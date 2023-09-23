@@ -19,15 +19,13 @@ stakeholders.
 ## Structure
 
 This directory is organized as follows:
-- [**`docs/`**](docs): This directory contains the documentation that 
-  describes the
-  domain model and API definitions.
-- [**`api.yaml`**](./api.yaml): This file contains the API definitions and schemas for 
-  the 
-  Region
-  Tracker service. Later on, this file may be split into separate files for 
-  different roles (e.g. user, admin, etc.) or components (e.g. frontend,
-  backend, etc.).
+
+- [**`docs/`**](docs): This directory contains the documentation that describes
+  the domain model and API definitions.
+- [**`api.yaml`**](./api.yaml): This file contains the API definitions and
+  schemas for the Region Tracker service. Later on, this file may be split into
+  separate files for different roles (e.g. user, admin, etc.) or components (
+  e.g. frontend, backend, etc.).
 
 ## Guidelines
 
