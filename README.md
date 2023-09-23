@@ -28,3 +28,35 @@ In the future, this monorepo may be divided into several dedicated repositories
 for each component. Therefore, please be very careful when making commits. It's
 recommended to make commits in one component's directory at a time to facilitate
 easier separation later.
+
+### Enforcing Directory-Specific Commits
+
+To ensure that commits are made in one component's directory at a time, we have
+set up both pre-commit hooks and GitHub Actions.
+
+#### Using Pre-Commit Hooks
+
+1. Navigate to the repository root directory.
+2. Run the following command to set the custom hooks directory:
+   ```bash
+   git config core.hooksPath .git-hooks
+   ```
+
+Now, every time you try to commit, the pre-commit hook will run and check if the
+changes are restricted to a single directory. If not, the commit will be
+aborted.
+
+#### Using GitHub Actions
+
+We also use GitHub Actions to enforce this rule. The action is defined
+in `.github/workflows/directory_check.yml`.
+
+This action runs automatically on every push to the `main` branch and on every
+pull request targeting the `main` branch. If the changes in the push or pull
+request affect more than one component's directory, the action will fail,
+preventing the changes from being merged.
+
+By using these two methods, we aim to maintain a clean commit history and make
+the future separation of components into their own repositories as smooth as
+possible.
+

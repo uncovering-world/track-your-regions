@@ -1,0 +1,20 @@
+name: Directory Check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-dirs:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Check directories
+      run: ./.shared-scripts/check_directories.sh github-action
+
