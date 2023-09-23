@@ -7,7 +7,10 @@ context=$1
 if [[ $context == "pre-commit" ]]; then
     changed_files=$(git diff --cached --name-only)
 elif [[ $context == "github-action" ]]; then
-    changed_files=$(git diff --name-only HEAD~1 HEAD)
+    # Always in detached HEAD state in GitHub Actions
+    current_commit=$(git rev-parse HEAD)
+    parent_commit=$(git rev-parse "${current_commit}~1")
+    changed_files=$(git diff --name-only "${parent_commit}" "${current_commit}")
 else
     echo "Error: Unknown context '$context'"
     exit 1
