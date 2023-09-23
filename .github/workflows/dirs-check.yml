@@ -14,6 +14,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 2  # Fetch the last two commits
 
     - name: Check directories
       run: ./.shared-scripts/check_directories.sh github-action
