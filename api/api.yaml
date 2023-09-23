@@ -1,0 +1,227 @@
+openapi: 3.1.0
+info:
+  title: Region Tracking API
+  version: 1.0.0
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /regions:
+    get:
+      summary: List all subregions of a given region or all regions if no parent is given
+      parameters:
+        - name: parentRegionId
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of regions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Region'
+        '400':
+          description: Bad request
+        '404':
+          description: Parent region not found
+
+  /user/regions:
+    get:
+      summary: List user's visited regions
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: List of visited regions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserRegion'
+        '204':
+          description: No regions found'
+        '401':
+          description: Unauthorized
+        '404':
+          description: User not found
+        '500':
+          description: Internal server error
+    post:
+      summary: Add a region to the user's list
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                regionId:
+                  type: string
+      responses:
+        '201':
+          description: Region added successfully
+
+  /user/regions/{regionId}:
+    delete:
+      summary: Remove a region from the user's list
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: regionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Region removed successfully
+        '400':
+          description: Bad request
+        '404':
+          description: Region not found
+
+  /regions/{regionId}/experiences:
+    get:
+      summary: List experiences for a specific region
+      parameters:
+        - name: regionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of experiences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Experience'
+
+  /user/experiences:
+    get:
+      summary: List user's completed experiences
+      responses:
+        '200':
+          description: List of completed experiences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserExperience'
+    post:
+      summary: Mark an experience as done
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                experienceId:
+                  type: string
+                regionId:
+                  type: string
+      responses:
+        '201':
+          description: Experience marked as done
+        '400':
+          description: Bad request
+        '404':
+            description: Experience or region not found
+
+
+  /user/experiences/{experienceId}:
+    delete:
+      summary: Mark an experience as undone
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: experienceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Experience marked as undone
+
+  /user/{userId}/regions:
+    get:
+      summary: List another user's visited regions
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of visited regions
+        '204':
+          description: No regions found
+        '404':
+          description: User not found
+
+  /user/{userId}/experiences:
+    get:
+      summary: List another user's completed experiences
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of completed experiences
+        '404':
+          description: User not found
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+  schemas:
+    Region:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        parentRegionId:
+          type: string
+
+    Experience:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    UserRegion:
+      type: object
+      properties:
+        userId:
+          type: string
+        regionId:
+          type: string
+
+    UserExperience:
+      type: object
+      properties:
+        userId:
+          type: string
+        experienceId:
+          type: string
+
+  
