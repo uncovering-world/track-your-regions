@@ -3,13 +3,21 @@
 # Determine the context (pre-commit or GitHub Action)
 context=$1
 
+BASE_SHA=$2
+
 # Get the list of changed files based on the context
 if [[ $context == "pre-commit" ]]; then
+    # Get the list staged files
     changed_files=$(git diff --cached --name-only)
 elif [[ $context == "github-action" ]]; then
+    # Check that the BASE_SHA is set
+    if [[ -z "${BASE_SHA}" ]]; then
+        echo "Error: BASE_SHA is not set"
+        exit 1
+    fi
     # Always in detached HEAD state in GitHub Actions
     current_commit=$(git rev-parse HEAD)
-    parent_commit=$(git rev-parse "${current_commit}~1")
+    parent_commit=${BASE_SHA}
     changed_files=$(git diff --name-only "${parent_commit}" "${current_commit}")
 else
     echo "Error: Unknown context '$context'"
@@ -21,6 +29,7 @@ changed_dirs=""
 
 # Loop through the list of changed files to check which directories are affected
 for file in $changed_files; do
+    echo "Checking file: $file"
     dir=$(dirname "$file")
     if [[ $dir == "." || ! $dir =~ ^(api|backend|frontend|deployment) ]]; then
         dir="root"

@@ -15,8 +15,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 2  # Fetch the last two commits
+        fetch-depth: 0  # Fetch all history for all tags and branches, fix it later
+
+    - name: Get base SHA for push event
+      if: github.event_name == 'push'
+      run:  echo "PARENT_SHA=${{ github.event.before }}" >> $GITHUB_ENV
+
+    - name: Get base SHA for pull_request event
+      if: github.event_name == 'pull_request'
+      run:  echo "PARENT_SHA=${{ github.event.pull_request.base.sha }}" >> $GITHUB_ENV
 
     - name: Check directories
-      run: ./.shared-scripts/check_directories.sh github-action
+      run: |
+        #Get the parent commit from GH action context
+        ./.shared-scripts/check_directories.sh github-action ${{ env.PARENT_SHA }}
 
