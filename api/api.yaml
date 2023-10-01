@@ -7,17 +7,41 @@ security:
   - ApiKeyAuth: []
 
 paths:
-  /regions:
+
+  # Region endpoints
+
+  # Retrieve information about a specific region (root or subregion)
+  /regions/{regionId}:
     get:
-      summary: List all subregions of a given region or all regions if no parent is given
+      summary: Retrieve information about a specific region
       parameters:
-        - name: parentRegionId
+        - name: regionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Region information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Region'
+        '404':
+          description: Region not found
+
+  # Search for regions by name
+  /regions/search:
+    get:
+      summary: Search for regions by name
+      parameters:
+        - name: query
           in: query
           schema:
             type: string
       responses:
         '200':
-          description: List of regions
+          description: List of regions matching the query
           content:
             application/json:
               schema:
@@ -26,8 +50,27 @@ paths:
                   $ref: '#/components/schemas/Region'
         '400':
           description: Bad request
-        '404':
-          description: Parent region not found
+
+  /regions/{regionId}/experiences:
+    get:
+      summary: List experiences for a specific region
+      parameters:
+        - name: regionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of experiences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Experience'
+
+# User endpoints
 
   /user/regions:
     get:
@@ -83,25 +126,6 @@ paths:
           description: Bad request
         '404':
           description: Region not found
-
-  /regions/{regionId}/experiences:
-    get:
-      summary: List experiences for a specific region
-      parameters:
-        - name: regionId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: List of experiences
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Experience'
 
   /user/experiences:
     get:
@@ -183,6 +207,8 @@ paths:
         '404':
           description: User not found
 
+# Shared components
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -199,6 +225,8 @@ components:
           type: string
         parentRegionId:
           type: string
+        HasSubregions:
+          type: boolean
 
     Experience:
       type: object
