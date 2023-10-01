@@ -11,9 +11,6 @@ document, please refer to the [DDD Overview](./ddd_overview.md).
   structured hierarchically, meaning a region can contain sub-regions.
 - **Experience**: An activity or sight that can be completed or seen in a
   region.
-- **Visited Region**: A region that has been visited by a user.
-- **Completed Experience**: An experience that has been completed by a user in a
-  specific region.
 
 ## Entities
 
@@ -27,70 +24,78 @@ document, please refer to the [DDD Overview](./ddd_overview.md).
 
 ### Region
 
-- **Description**: A geographical area that can be visited. Regions are
-  structured hierarchically.
+- **Description**: A geographical area that can be visited.
 - **Attributes**:
   - `ID`: Unique identifier
   - `Name`: Name of the region
-  - `ParentRegionID`: ID of the parent region, if any (this establishes the hierarchy)
+  - `ParentRegionID`: ID of the parent region, if any
   - `HasSubregions`: Boolean flag indicating if this region has subregions
 
 ### Experience
 
-- **Description**: An activity or sight that can be completed or seen in a
-  region.
+- **Description**: An activity or sight that can be completed or seen in a region.
 - **Attributes**:
   - `ID`: Unique identifier
   - `Name`: Name of the experience
 
-## Value Objects
+### RegionReport
 
-### VisitedRegion
-
-- **Description**: Represents a region visited by a user. Includes tracking of multiple visits.
+- **Description**: Represents a user's relationship with a region. Can be either planned or visited.
 - **Attributes**:
-  - `UserID`: ID of the user who visited the region
-  - `RegionID`: ID of the visited region
-  - `FirstVisitDate`: Date of the first visit
-  - `LastVisitDate`: Date of the most recent visit
+  - `UserID`: ID of the user
+  - `RegionID`: ID of the region
+  - `Status`: Planned/Visited
+  - `VisitDates`: Optional list of all visit dates
   - `NumberOfVisits`: Total number of visits
-  - `VisitDates`: Optional list of all visit dates (including first and last)
+  - `
 
-### CompletedExperience
+### ExperienceReport
 
-- **Description**: Represents an experience completed by a user in a specific region. Includes tracking of multiple completions.
+- **Description**: Represents a user's relationship with an experience. Can be either planned or completed.
 - **Attributes**:
-  - `UserID`: ID of the user who completed the experience
-  - `ExperienceID`: ID of the completed experience
-  - `RegionID`: ID of the region where the experience was completed
-  - `FirstCompletionDate`: Date of the first completion
-  - `LastCompletionDate`: Date of the most recent completion
-  - `NumberOfCompletions`: Total number of times the experience has been completed
-  - `CompletionDates`: Optional list of all completion dates (including first and last)
+  - `UserID`: ID of the user
+  - `ExperienceID`: ID of the experience
+  - `RegionID`: ID of the region where the experience is located
+  - `Status`: Planned/Completed
+  - `CompletionDates`: Optional list of all completion dates
+  - `NumberOfCompletions`: Total number of completions
 
 ## Aggregates
 
+### RegionDescription
+
+- **Description**: Represents a specific region along with the experiences available in that region.
+- **Consists of**:
+  - `Region`
+  - List of `Experience`
+- **Attributes**:
+  - `RegionID`: ID of the associated region
+  - `Experiences`: List of experiences available in the region
+
 ### UserJourney
 
-- **Description**: A collection of regions visited and experiences completed by a user.
+- **Description**: A collection of regions and experiences that a user has interacted with or plans to interact with.
 - **Consists of**:
-  - List of `VisitedRegion`
-  - List of `CompletedExperience`
+  - List of `RegionReport`
+  - List of `ExperienceReport`
 - **Attributes**:
-  - `Visibility`: Public/Private (Determines if the journey can be seen by Visitors)
+  - `Visibility`: Public/Private (Determines if the journey can be seen by others)
+  - `StartDate`: Optional start date of the journey
+  - `EndDate`: Optional end date of the journey
+  - `Status`: Planned/Ongoing/Completed
 
 ## Domain Events
 
-### RegionVisited
+### RegionInteracted
 
-- **Description**: Triggered when a user marks a region as visited.
+- **Description**: Triggered when a user marks a region as visited or planned.
 - **Attributes**:
   - `UserID`
   - `RegionID`
 
-### ExperienceCompleted
+### ExperienceInteracted
 
-- **Description**: Triggered when a user marks an experience as completed.
+- **Description**: Triggered when a user marks an experience as completed or planned.
 - **Attributes**:
   - `UserID`
   - `ExperienceID`
