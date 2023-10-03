@@ -5,12 +5,18 @@ document, please refer to the [DDD Overview](./ddd_overview.md).
 
 ## Ubiquitous Language
 
-- **User**: A person who uses the application to track visited regions and
-  experiences.
+- **User**: A person who uses the application to explore or track visited 
+  regions and experiences.
+- **Visitor**: A user who has not registered an account.
+- **Registered User**: A user who has registered an account.
 - **Region**: A geographical area that can be visited by a user. Regions are
   structured hierarchically, meaning a region can contain sub-regions.
 - **Experience**: An activity or sight that can be completed or seen in a
   region.
+- **Cultural Context**: The cultural context associated with a specific
+  experience. This includes the region(s) where a specific variation 
+  of the experience can be found and any relevant media sources (articles, 
+  podcasts, videos, etc.).
 
 ## Entities
 
@@ -37,6 +43,8 @@ document, please refer to the [DDD Overview](./ddd_overview.md).
 - **Attributes**:
   - `ID`: Unique identifier
   - `Name`: Name of the experience
+  - `CulturalContextID`: ID of associated cultural context
+  - `RegionIDs`: IDs of the regions where the experience can be found
 
 ### RegionReport
 
@@ -71,6 +79,15 @@ document, please refer to the [DDD Overview](./ddd_overview.md).
 - **Attributes**:
   - `RegionID`: ID of the associated region
   - `Experiences`: List of experiences available in the region
+
+### CulturalContext
+
+- **Description**: Represents the cultural context associated with a specific experience.
+- **Attributes**:
+  - `ID`: Unique identifier
+  - `ExperienceID`: ID of the associated experience
+  - `RegionIDs`: IDs of the associated regions
+  - `Sources`: List of relevant media sources (articles, podcasts, videos, etc.)
 
 ### UserJourney
 
