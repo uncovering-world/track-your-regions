@@ -1,0 +1,4 @@
+# Gitignore for NodeJS project
+
+node_modules
+package-lock.json
