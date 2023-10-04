@@ -8,6 +8,13 @@ aims to offer a comprehensive, hierarchically-structured list of predefined
 regions and associated experiences, making travel tracking both detailed and
 enriching.
 
+## Wiki
+
+We maintain a [wiki](https://github.com/OhmSpectator/track-your-regions/wiki)
+that tracks all the design documents related to this project. This is a central
+place where you can find detailed explanations, architecture decisions, and
+guidelines. 
+
 ## Project Structure
 
 This repository is organized as a monorepo containing several key components:
