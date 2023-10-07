@@ -3,7 +3,7 @@ PROJECT_NAME = tyr_postgis
 
 include .env
 
-REQUIRED_ENV_VARS = POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD GADM_FILE
+REQUIRED_ENV_VARS = DB_NAME DB_USER DB_PASSWORD GADM_FILE
 
 check-env:
 	@if [ ! -f .env ]; then \
@@ -11,8 +11,9 @@ check-env:
 		exit 1; \
 	fi
 	@for var in $(REQUIRED_ENV_VARS); do \
-		awk -F '=' -v key="$$var" '$$1 == key { if ($$2 == "" || $$2 == "<set_your_db_name>" || $$2 == "<set_your_db_user>" || $$2 == "<set_your_db_password>" || $$2 == "<set_path_to_your_gadm_file>") exit 1 }' .env || { echo "Error: $$var is not set or empty in .env"; exit 1; }; \
-	done
+    	awk -F '=' -v key="$$var" '$$1 == key { if ($$2 == "" || $$2 == " ") exit 1 }' .env || { echo "Error: $$var is not set or empty in .env"; exit 1; }; \
+    done
+
 
 # Check the GADM file path
 check-gadm-file:

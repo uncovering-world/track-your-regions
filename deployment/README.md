@@ -13,11 +13,11 @@ based on a GADM file.
 - Adhere to the established coding standards and naming conventions for consistency.
 - Test all deployment procedures thoroughly before executing them on production systems.
 
-## Dockerized PostGIS Setup
+## Dockerized Postgres Setup
 
 ### Features
 
-- Dockerized PostGIS service with GDAL
+- Dockerized Postgres service with GDAL
 - Automated database initialization based on a GADM file
 - Simplified build, run, and clean operations via a Makefile
 
@@ -35,7 +35,7 @@ based on a GADM file.
    cp .env.example .env
    ```
 
-2. Initialize the PostGIS database and import the GADM file:
+2. Initialize the Postgres database and import the GADM file:
 
    ```bash
    make init-db
