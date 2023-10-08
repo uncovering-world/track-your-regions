@@ -39,8 +39,9 @@ cur_pg.execute("""
     CREATE TABLE IF NOT EXISTS regions (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
-        parentRegionId INTEGER REFERENCES regions(id),
-        hasSubregions BOOLEAN NOT NULL
+        parent_region_id INTEGER REFERENCES regions(id),
+        has_subregions BOOLEAN NOT NULL,
+        gadm_uid INTEGER
     )
 """)
 
@@ -57,7 +58,7 @@ layer_name = layers[0]
 num_levels = 6
 
 # List of columns to fetch from the GeoPackage: GID_0, GID_1, ..., GID_5, NAME_0, NAME_1, ..., NAME_5
-columns = [f'GID_{i}' for i in range(num_levels)] + [f'NAME_{i}' for i in range(num_levels)]
+columns = [f'GID_{i}' for i in range(num_levels)] + [f'NAME_{i}' for i in range(num_levels)] + ['UID']
 
 # Fetch the relevant columns from the GeoPackage
 cur_gpkg.execute(f"SELECT {','.join(columns)} FROM {layer_name}")
@@ -101,14 +102,22 @@ for i, row in enumerate(rows):
             # If the GID is empty, finish processing the row
             break
         name = row_dict[f'NAME_{level}']
+        uid = row_dict['UID']
 
         if not existing_gids.get(gid):
             # If the region doesn't exist, create it
             # Check if the region has a subregion in this row
             has_subregions = level < num_levels - 1 and bool(row_dict[f'GID_{level + 1}'])
+            # We assign uid to the region, if it is a real GADM region, not a region we created to fill the hierarchy
+            # Marker for this is that it's the last level, and it has no subregions. For the created regions, we
+            # don't have a uid, so we set it to None
+            if has_subregions:
+                uid = None
+            else:
+                uid = int(uid)
             # Use query parameters to give the database driver a chance to escape the values
-            query = "INSERT INTO regions (name, hasSubregions, parentRegionId) VALUES (%s, %s, %s) RETURNING id"
-            params = (name, has_subregions, parent_region_id)
+            query = "INSERT INTO regions (name, has_subregions, parent_region_id, gadm_uid) VALUES (%s, %s, %s, %s) RETURNING id"
+            params = (name, has_subregions, parent_region_id, uid)
             cur_pg.execute(query, params)
             region_id = cur_pg.fetchone()[0]
             existing_gids[gid] = region_id
@@ -122,7 +131,7 @@ print("Done, in total: ", datetime.now() - timestamp_start)
 
 print("Creating indexes...")
 # Create indexes on the Region table
-cur_pg.execute("CREATE INDEX IF NOT EXISTS parent_region_idx ON regions (parentRegionId)")
+cur_pg.execute("CREATE INDEX IF NOT EXISTS parent_region_idx ON regions (parent_region_id)")
 print("Done")
 
 # Commit the changes and close the connections
