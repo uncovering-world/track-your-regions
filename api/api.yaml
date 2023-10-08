@@ -10,6 +10,20 @@ paths:
 
   # Region endpoints
 
+  # Retrieve root regions (regions without a parent)
+  /regions/root:
+    get:
+      summary: Retrieve all root regions
+      responses:
+        '200':
+          description: List of root regions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Region'
+
   # Retrieve information about a specific region (root or subregion)
   /regions/{regionId}:
     get:
