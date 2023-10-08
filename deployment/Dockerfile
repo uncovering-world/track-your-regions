@@ -25,7 +25,6 @@ ENV C_INCLUDE_PATH=/usr/include/gdal
 
 # Install python requirements
 RUN pip3 install -r /tmp/requirements.txt
-RUN pip3 install GDAL==`gdal-config --version`
 
 # Make the init script executable
 RUN chmod +x /docker-entrypoint-initdb.d/init-db.sh

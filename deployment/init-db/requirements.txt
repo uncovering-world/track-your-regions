@@ -1,3 +1,4 @@
-psycopg2-binary
-python-dotenv
-fiona
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+GDAL==3.6.2
+Fiona==1.9.4.post1
