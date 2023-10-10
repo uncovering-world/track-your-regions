@@ -10,9 +10,9 @@
   "main": "src/app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "migrate": "sequelize-cli db:migrate --config=src/config/sequelizeConfig.js --migrations-path=src/migrations",
-    "migrate:undo": "sequelize-cli db:migrate:undo --config=src/config/sequelizeConfig.js --migrations-path=src/migrations",
-    "migrate:generate": "sequelize-cli --config=./src/config/sequelizeConfig.js migration:generate --migrations-path=./src/migrations"
+    "migrate": "sequelize-cli db:migrate --config=config/sequelizeConfig.js",
+    "migrate:undo": "sequelize-cli db:migrate:undo --config=config/sequelizeConfig.js",
+    "migrate:generate": "sequelize-cli --config=config/sequelizeConfig.js migration:generate"
   },
   "keywords": [
     "geo",

@@ -9,6 +9,6 @@ module.exports = {
         dialect: 'postgres',
         models: [__dirname + '/../models'],
         migrationStorageTableName: 'sequelize_meta',
-        migrationStoragePath: './src/migrations'
+        migrationStoragePath: './migrations'
     },
 };
