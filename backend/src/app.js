@@ -1,10 +1,10 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const regionRoutes = require('./routes/regionRoutes');
+const routes = require('./routes');
 
 const app = express();
 
 app.use(bodyParser.json());
-app.use('/regions', regionRoutes);
+app.use(routes);
 
 module.exports = app;

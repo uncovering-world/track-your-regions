@@ -4,6 +4,6 @@ const regionRoutes = require('./regionRoutes');
 
 const router = express.Router();
 
-router.use('/region', regionRoutes);
+router.use('/regions', regionRoutes);
 
 module.exports = router;
