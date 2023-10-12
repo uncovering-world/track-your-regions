@@ -33,7 +33,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            type: integer
       responses:
         '200':
           description: Region information
@@ -53,17 +53,17 @@ paths:
               in: path
               required: true
               schema:
-                type: string
+                type: integer
         responses:
             '200':
               description: List of subregions
               content:
                 application/json:
-                schema:
+                  schema:
                     type: array
                     items:
                     $ref: '#/components/schemas/Region'
-            '202':
+            '204':
               description: Region has no subregions
             '404':
               description: Region not found
@@ -258,12 +258,12 @@ components:
       type: object
       properties:
         id:
-          type: string
+          type: integer
         name:
           type: string
         parentRegionId:
-          type: string
-        HasSubregions:
+          type: integer
+        hasSubregions:
           type: boolean
 
     Experience:
