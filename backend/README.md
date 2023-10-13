@@ -65,6 +65,7 @@ The `.env` file is primarily used in the following files:
 You can run the following npm scripts to perform various tasks:
 
 - `npm run test`: Run tests (currently not specified).
+- `npm run debug`: Run debugging server, using nodemon.
 - `npm run migrate`: Run database migrations.
 - `npm run migrate:undo`: Undo the last database migration.
 - `npm run migrate:generate`: Generate a new migration file.
