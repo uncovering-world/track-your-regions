@@ -87,8 +87,6 @@ paths:
                         type: array
                         items:
                         $ref: '#/components/schemas/Region'
-                '204':
-                  description: Region has no parent regions
                 '404':
                   description: Region not found
 
