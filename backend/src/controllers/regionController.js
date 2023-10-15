@@ -13,9 +13,6 @@ exports.getAncestors = async (req, res) => {
 
     try {
         const ancestors = await Region.getAncestors(regionId);
-        if (ancestors.length === 1) {
-            return res.status(204).json({ message: 'Region has no ancestors' });
-        }
         res.status(200).json(ancestors);
     } catch (err) {
         console.error(err);
