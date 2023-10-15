@@ -1,5 +1,29 @@
 const { Region } = require('../models');
 
+exports.getAncestors = async (req, res) => {
+    const { regionId } = req.params;
+
+    // Check if the region exists
+    const region = await Region.findOne({
+        where: { id: regionId }
+    });
+    if (!region) {
+        return res.status(404).json({ message: 'Region not found' });
+    }
+
+    try {
+        const ancestors = await Region.getAncestors(regionId);
+        if (ancestors.length === 1) {
+            return res.status(204).json({ message: 'Region has no ancestors' });
+        }
+        res.status(200).json(ancestors);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+}
+
+
 exports.getRootRegions = async (req, res) => {
     try {
         const regions = await Region.findAll({

@@ -32,5 +32,18 @@ router.get('/:regionId/subregions',
     }
 );
 
+router.get('/:regionId/ancestors',
+    ...[
+        check('regionId').isInt().withMessage('Region ID must be an integer')
+    ],
+    async (req, res) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            const errorMessages = errors.array().map(error => error.msg);
+            return res.status(400).json({errors: errorMessages});
+        }
+        await regionController.getAncestors(req, res);
+    }
+);
 
 module.exports = router;

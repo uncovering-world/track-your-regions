@@ -1,7 +1,25 @@
-const { Model, DataTypes } = require('sequelize');
+const { Model, DataTypes, QueryTypes} = require('sequelize');
 const sequelize = require("../config/db");
 
-class Region extends Model {}
+class Region extends Model {
+    static async getAncestors(regionId) {
+        return await sequelize.query(`
+            WITH RECURSIVE Ancestors AS (
+                SELECT id, parent_region_id as parentRegionId, name
+                FROM regions
+                WHERE id = :regionId
+                UNION ALL
+                SELECT r.id, r.parent_region_id as parentRegionId, r.name
+                FROM regions r
+                INNER JOIN Ancestors a ON r.id = a.parentRegionId
+            )
+            SELECT * FROM Ancestors;
+        `, {
+            replacements: { regionId },
+            type: QueryTypes.SELECT
+        });
+    }
+}
 
 Region.init({
     id: {
