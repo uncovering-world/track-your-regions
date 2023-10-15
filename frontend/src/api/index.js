@@ -21,6 +21,9 @@ export const fetchRootRegions = async () => {
 export const fetchSubregions = async (regionId) => {
     try {
         const response = await api.get(`/api/regions/${regionId}/subregions`);
+        if (response.status === 204) {
+            return null;
+        }
         return response.data;
     } catch (error) {
         console.error('Error fetching subregions:', error);
@@ -37,3 +40,16 @@ export const fetchRegion = async (regionId) => {
         return [];
     }
 }
+
+export const fetchAncestors = async (regionId) => {
+    try {
+        const response = await api.get(`/api/regions/${regionId}/ancestors`);
+        if (response.status === 204) {
+            return [];
+        }
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching ancestors:', error);
+        return [];
+    }
+};
