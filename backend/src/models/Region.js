@@ -19,6 +19,16 @@ class Region extends Model {
             type: QueryTypes.SELECT
         });
     }
+    
+    // Transform the returned object to API format
+    toApiFormat() {
+        return {
+            id: this.id,
+            name: this.name,
+            parentRegionId: this.parentRegionId,
+            hasSubregions: this.hasSubregions,
+        };
+    }
 }
 
 Region.init({

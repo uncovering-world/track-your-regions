@@ -28,7 +28,7 @@ exports.getRootRegions = async (req, res) => {
                 parentRegionId: null,
             },
         });
-        res.status(200).json(regions);
+        res.status(200).json(regions.map(region => region.toApiFormat()));
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Internal Server Error' });
@@ -74,7 +74,7 @@ exports.getSubregions = async (req, res) => {
             return res.status(202).json({ message: 'Region has no subregions' });
         }
 
-        res.status(200).json(subregions);
+        res.status(200).json(subregions.map(region => region.toApiFormat()));
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Internal Server Error' });
