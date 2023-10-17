@@ -57,12 +57,16 @@ layer_name = layers[0]
 # Number of levels in the GADM hierarchy
 num_levels = 6
 
-# List of columns to fetch from the GeoPackage: GID_0, GID_1, ..., GID_5, NAME_0, NAME_1, ..., NAME_5
-columns = [f'GID_{i}' for i in range(num_levels)] + [f'NAME_{i}' for i in range(num_levels)] + ['UID']
+# Update the columns list to include the predefined levels
+predefined_levels = ['CONTINENT', 'SUBCONT', 'SOVEREIGN', 'COUNTRY', 'GOVERNEDBY', 'REGION']
+columns = predefined_levels + [f'GID_{i}' for i in range(num_levels)] + [f'NAME_{i}' for i in range(num_levels)] + ['UID']
 
 # Fetch the relevant columns from the GeoPackage
 cur_gpkg.execute(f"SELECT {','.join(columns)} FROM {layer_name}")
 rows = cur_gpkg.fetchall()
+
+# Now you can access the predefined levels in your row_dict as they are part of the columns list
+geo_levels = predefined_levels + [f'NAME_{i}' for i in range(num_levels)]
 
 # Get the number of rows in the GeoPackage
 num_rows = len(rows)
@@ -76,8 +80,17 @@ rows_in_one_percent = int(num_rows / 100)
 timestamp = datetime.now()
 timestamp_start = timestamp
 
-existing_gids = {}
 
+def find_next_non_empty_level(idx, row_dict, geo_levels):
+    # Function to find the next non-empty level in the hierarchy
+    for next_idx in range(idx + 1, len(geo_levels)):
+        next_level_key = geo_levels[next_idx]
+        if row_dict.get(next_level_key, '') != '':
+            return next_level_key
+    return None  # Return None if no non-empty level is found
+
+
+existing_names = {}  # Dictionary to track existing regions
 
 # Loop through the rows from the SQLite cursor
 for i, row in enumerate(rows):
@@ -94,38 +107,48 @@ for i, row in enumerate(rows):
     for column, value in zip(columns, row):
         row_dict[column] = value
 
+    # Reset parent_region_id for each new row
     parent_region_id = None
-    # Recreate the regions, starting from the highest level
-    for level in range(num_levels):
-        gid = row_dict[f'GID_{level}']
-        if not gid:
-            # If the GID is empty, finish processing the row
-            break
-        name = row_dict[f'NAME_{level}']
-        uid = row_dict['UID']
+    last_valid_parent_region_id = None  # Variable to remember the last valid parent ID
+    path_parts = []  # List to build up the path for the current region
 
-        if not existing_gids.get(gid):
-            # If the region doesn't exist, create it
-            # Check if the region has a subregion in this row
-            has_subregions = level < num_levels - 1 and bool(row_dict[f'GID_{level + 1}'])
-            # We assign uid to the region, if it is a real GADM region, not a region we created to fill the hierarchy
-            # Marker for this is that it's the last level, and it has no subregions. For the created regions, we
-            # don't have a uid, so we set it to None
+    # Process each geographical level for the current row
+    for idx, level in enumerate(geo_levels):
+        if row_dict.get(level) is None:
+            continue
+        name = row_dict[level]
+        if name:
+            path_parts.append(name)  # Add the name to the path_parts list if it's not empty
+            key = "_".join(path_parts)  # Build the unique key from the path_parts list
+
+            # Determine if the current region has subregions
+            next_level = find_next_non_empty_level(idx, row_dict, geo_levels)  # Find the next non-empty level
+            has_subregions = next_level is not None  # Check if a non-empty level was found
+
+            # We assign uid to the region, if it is a real GADM region, not a region we created to fill the
+            # hierarchy. Marker for this is that it's the last level, and it has no subregions. For the created
+            # regions, we don't have a uid, so we set it to None
             if has_subregions:
                 uid = None
             else:
-                uid = int(uid)
-            # Use query parameters to give the database driver a chance to escape the values
-            query = "INSERT INTO regions (name, has_subregions, parent_region_id, gadm_uid) VALUES (%s, %s, %s, %s) RETURNING id"
-            params = (name, has_subregions, parent_region_id, uid)
-            cur_pg.execute(query, params)
-            region_id = cur_pg.fetchone()[0]
-            existing_gids[gid] = region_id
-        else:
-            # If the region already exists, get its ID
-            region_id = existing_gids[gid]
+                uid = row_dict.get('UID')
+                if uid is None:
+                    print("Warning: UID is None for region: ", key)
 
-        parent_region_id = region_id
+            if key not in existing_names:
+                # If the region doesn't exist, create it
+                # Use last_valid_parent_region_id as the parent_region_id for the current level
+                query = "INSERT INTO regions (name, has_subregions, parent_region_id, gadm_uid) VALUES (%s, %s, %s, %s) RETURNING id"
+                params = (name, has_subregions, last_valid_parent_region_id, uid)
+                cur_pg.execute(query, params)
+                region_id = cur_pg.fetchone()[0]
+                existing_names[key] = region_id
+            else:
+                # If the region already exists, get its ID
+                region_id = existing_names[key]
+
+            # Update last_valid_parent_region_id for the next level
+            last_valid_parent_region_id = region_id
 
 print("Done, in total: ", datetime.now() - timestamp_start)
 
