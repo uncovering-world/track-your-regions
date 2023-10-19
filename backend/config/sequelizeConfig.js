@@ -1,4 +1,8 @@
 require('dotenv').config();
+//Load all present .env.* files
+for (const env of ['', '.development', '.production', '.local']) {
+    require('dotenv').config({ path: `.env${env}` });
+}
 
 module.exports = {
     development: {
