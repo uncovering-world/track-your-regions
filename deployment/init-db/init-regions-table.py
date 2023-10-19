@@ -17,8 +17,15 @@ gadm_file = sys.argv[1]
 conn_gpkg = sqlite3.connect(gadm_file)
 cur_gpkg = conn_gpkg.cursor()
 
-# Read the DB credentials from .env
-load_dotenv()
+# Read the DB credentials from .env files.
+# The order of the files is important, as the variables are overwritten in the
+# order they are loaded.
+env_files = [".env", ".env.development", ".env.production", ".env.local"]
+for env_file in env_files:
+    if os.path.exists(env_file):
+        print(f"Loading environment variables from {env_file}")
+        load_dotenv(env_file)
+
 db_name = os.getenv("DB_NAME")
 db_user = os.getenv("DB_USER")
 db_password = os.getenv("DB_PASSWORD")

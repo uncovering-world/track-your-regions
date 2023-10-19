@@ -50,7 +50,7 @@ ENV POSTGRES_USER=$DB_USER
 ENV POSTGRES_PASSWORD=$DB_PASSWORD
 
 # Copy the .env file to the container
-COPY .env /tmp/.env
+COPY .env* /
 
 USER postgres
 
