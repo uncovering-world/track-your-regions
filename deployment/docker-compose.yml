@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  gadm-db:
+  tyr-db:
     build:
       context: .
       args:
@@ -11,9 +11,30 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "5432:5432"
+      - "${HOST_DB_PORT}:${DEFAULT_POSTGRES_PORT}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build: ${BACKEND_PATH}
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: tyr-db
+    depends_on:
+      - tyr-db
+    ports:
+      - "${HOST_BACKEND_PORT}:${DEFAULT_NODEJS_PORT}"
+
+  frontend:
+    build: ${FRONTEND_PATH}
+    environment:
+      REACT_APP_API_URL: http://${BACKEND_HOST}:${HOST_BACKEND_PORT}
+    depends_on:
+      - backend
+    ports:
+      - "${HOST_FRONTEND_PORT}:${DEFAULT_REACT_PORT}"
 
 volumes:
   postgres_data:
