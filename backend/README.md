@@ -2,17 +2,15 @@
 
 ## Overview
 
-This directory contains the backend code responsible for handling the logic,
-database interactions, and API endpoints for the Region Tracker service.
+This directory contains the backend code for the Region Tracker service, including logic, database interactions, and API endpoints.
 
 ## Tech Stack
 
-This backend is built using the following technologies:
-
 - **Node.js**: The runtime environment for executing JavaScript server-side.
-- **Express**: A fast, unopinionated web framework for Node.js.
+- **Express**: A web framework for Node.js.
 - **Sequelize**: A promise-based Node.js ORM for SQL databases.
 - **PostgreSQL**: The database used for storing application data.
+- **Docker**: Used for containerizing the backend service for quick setup and testing.
 
 ## Directory Structure
 
@@ -22,27 +20,34 @@ This backend is built using the following technologies:
 │   └── sequelizeConfig.js       # Sequelize configuration
 ├── migrations/                  # Database migration files
 ├── src/                         # Main application source code
-│   ├── config/                  # Configuration files used by the application in runtime
+│   ├── config/                  # Runtime configuration files
 │   │   └── db.js                # Database configuration
 │   ├── controllers/             # Business logic for API endpoints
 │   │   └── regionController.js  # Controller for region-related operations
 │   ├── models/                  # Sequelize models
 │   │   ├── index.js             # Entry point for models
-│   │   └── Region.js            # Model for region table
+│   │   └── Region.js            # Model for the region table
 │   ├── routes/                  # API routes
 │   │   ├── index.js             # Main route file
 │   │   └── regionRoutes.js      # Routes for region-related operations
 │   ├── app.js                   # Main application file
 │   └── server.js                # Server setup
 ├── test/                        # Test files
+├── Dockerfile                   # Dockerfile for containerization (for docker-compose use only)
 ├── package.json                 # Project metadata and dependencies
 └── README.md                    # Project documentation
 ```
 
 ## Environment Configuration (.env)
 
-The `.env` file is used to store environment variables that are required for the application to run. This file is not
-checked into version control to keep sensitive information like API keys, database passwords, etc., secure.
+Multiple `.env` files can be used to separate environment variables based on the environment where the application is running. The hierarchy is as follows:
+
+- `.env`: Common settings
+- `.env.development`: For development settings
+- `.env.production`: For production settings
+- `.env.local`: For local overrides
+
+The repository contains an example `.env.development` file.
 
 ### Example `.env` File
 
@@ -54,11 +59,22 @@ DB_NAME=track_your_regions
 TEST_SERVER_PORT=3000
 ```
 
-The `.env` file is primarily used in the following files:
+## Usage
 
-- `src/config/db.js`: For database configuration.
-- `src/server.js`: For setting up the server port and other server-related configurations.
-- `config/sequelizeConfig.js`: For Sequelize database configuration.
+### With Docker Compose
+
+The `Dockerfile` in this directory is intended solely for use by `docker-compose`. While it can work independently, it's not recommended. For individual service testing and debugging, it's advised to use npm directly.
+
+To run the backend service as part of the full stack, refer to the main `README.md` in the `deployment/` directory for instructions on using `docker-compose`.
+
+### Without Docker Compose
+
+To run the backend service individually:
+
+```bash
+npm install
+npm run debug
+```
 
 ## Available Targets
 
@@ -91,13 +107,3 @@ npm run migrate:generate -- --name add-email-to-users
 
 This will generate a new file in the `migrations/` directory, something like `XXXXXXXXXXXXXX-add-email-to-users.js`,
 where `XXXXXXXXXXXXXX` is a timestamp.
-
-## Guidelines
-
-- Keep the codebase clean and well-documented to ensure maintainability.
-- Follow best practices for security, especially when dealing with user data and
-  authentication.
-- Adhere to the established coding standards and naming conventions for
-  consistency.
-- Ensure that any new features or endpoints are accompanied by appropriate unit
-  tests.
