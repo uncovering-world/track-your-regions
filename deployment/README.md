@@ -2,30 +2,19 @@
 
 ## Overview
 
-This directory includes scripts for deploying the service, managing configurations, and orchestrating various components
-of the Region Tracker service. It now also includes a Dockerized PostGIS setup with automated database initialization
-based on a GADM file.
+This directory contains scripts and configurations for deploying the Region Tracker service. The primary objectives are:
 
-## Guidelines
+1. To initialize the Postgres database so that it can be used by the backend service.
+2. To initialize all services together for quick setup and testing purposes.
 
-- Ensure that all deployment scripts are well-documented and easy to understand.
-- Follow best practices for security and scalability when writing deployment scripts.
-- Adhere to the established coding standards and naming conventions for consistency.
-- Test all deployment procedures thoroughly before executing them on production systems.
+> **Note**: This workflow is designed for quick testing and is not suitable for production deployments.
 
-## Dockerized Postgres Setup
+## Database Initialization
 
 ### Features
 
 - Dockerized Postgres service with GDAL
 - Automated database initialization based on a GADM file
-- Simplified build, run, and clean operations via a Makefile
-
-### Requirements
-
-- Docker
-- docker-compose
-- A GADM file (GeoPackage format)
 
 ### Usage
 
@@ -35,26 +24,44 @@ based on a GADM file.
    cp .env.example .env
    ```
 
-2. Initialize the Postgres database and import the GADM file:
+2. Initialize the Postgres database:
 
    ```bash
    make init-db
    ```
 
+3. If you need to re-initialize the database, use:
+
+   ```bash
+   make reinit-db
+   ```
+
+## Quick Setup and Testing of All Services
+
+### Features
+
+- Dockerized backend and frontend services
+- Simplified build, run, and clean operations via a Makefile
+
+### Usage
+
+1. Start all services and initialize the database:
+
+   ```bash
+   make start-all
+   ```
+
+### Running Services Individually
+
+To run the frontend and backend services independently, navigate to their respective directories and use npm commands directly. The Dockerfiles in those directories are intended solely for use by docker-compose.
+
 ### Additional Makefile Targets
 
-- `make build`: Build the Docker image.
-- `make run`: Run the Docker container.
+- `make build`: Build all Docker images.
+- `make run`: Run all Docker containers.
+- `make migrate-db`: Migrate the database.
 - `make reinit-db`: Forcefully re-initialize the database.
-- `make clean-container`: Stop and remove the Docker container.
-- `make clean-image`: Remove the Docker image.
-- `make clean-all`: Remove the Docker container, image, and volume.
-- `make clean-volume`: Remove the Docker volume.
-
-### Troubleshooting
-
-If you encounter issues related to Docker or database initialization, you can force re-initialization using:
-
-```bash
-make reinit-db
-```
+- `make clean-container`: Stop and remove all Docker containers.
+- `make clean-image`: Remove all Docker images.
+- `make clean-volume`: Remove all Docker volumes.
+- `make clean-all`: Perform a complete cleanup.
