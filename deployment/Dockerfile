@@ -31,7 +31,10 @@ RUN chmod +x /docker-entrypoint-initdb.d/init-db.sh
 
 # Copy the GADM file to the container
 ARG GADM_FILE
-COPY $GADM_FILE /tmp/gadm.gpkg
+COPY $GADM_FILE /data/gadm/gadm.gpkg
+
+# Define a volume
+VOLUME /data/gadm
 
 # Run PostgreSQL on default port
 EXPOSE 5432
