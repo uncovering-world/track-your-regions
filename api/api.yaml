@@ -46,27 +46,35 @@ paths:
 
   # Retrieve subregions for a specific region
   /regions/{regionId}/subregions:
-      get:
-        summary: Retrieve subregions for a specific region
-        parameters:
-            - name: regionId
-              in: path
-              required: true
+    get:
+      summary: Retrieve subregions for a specific region
+      parameters:
+        - name: regionId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: getAll
+          in: query
+          required: false
+          description: Whether to retrieve all nested subregions or just the immediate subregions.
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of subregions
+          content:
+            application/json:
               schema:
-                type: integer
-        responses:
-            '200':
-              description: List of subregions
-              content:
-                application/json:
-                  schema:
-                    type: array
-                    items:
-                    $ref: '#/components/schemas/Region'
-            '204':
-              description: Region has no subregions
-            '404':
-              description: Region not found
+                type: array
+                items:
+                $ref: '#/components/schemas/Region'
+        '204':
+          description: Region has no subregions
+        '400':
+          description: Bad request
+        '404':
+          description: Region not found
 
   # Retrieve the parent regions for a specific region
   /regions/{regionId}/ancestors:
