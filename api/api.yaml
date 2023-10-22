@@ -90,6 +90,30 @@ paths:
                 '404':
                   description: Region not found
 
+  /regions/{regionId}/geometry:
+    get:
+      summary: Retrieve the geometry for a specific region
+      parameters:
+        - name: regionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Geometry of the region
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  geometry:
+                    type: string
+        '400':
+          description: Bad request
+        '404':
+          description: Region not found
+
   # Search for regions by name
   /regions/search:
     get:
