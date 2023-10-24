@@ -1,4 +1,4 @@
-FROM postgres:16.0
+FROM postgis/postgis:16-3.4
 
 # Prepare apt-get
 RUN apt-get update

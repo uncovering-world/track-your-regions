@@ -33,10 +33,11 @@ check-gadm-file:
 
 # ---- Docker Database Commands ----
 build-db: check-env
-	$(DC) build tyr-db
+	# Check if the database is already built
+	@$(DC) images | grep tyr-db >/dev/null || $(DC) build tyr-db
 
 run-db:
-	$(DC) up tyr-db -d
+	$(DC) up -d tyr-db
 
 init-db: check-gadm-file build-db run-db
 	@echo "Database initialized and GPKG file imported."
