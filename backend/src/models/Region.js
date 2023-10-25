@@ -62,6 +62,11 @@ Region.init({
         type: DataTypes.INTEGER,
         allowNull: true,
         field: 'gadm_uid'
+    },
+    geom: {
+        type: DataTypes.GEOMETRY('MULTIPOLYGON', 4326),
+        allowNull: true,
+        field: 'geom'
     }
 }, {
     sequelize,
