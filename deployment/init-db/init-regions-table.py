@@ -172,6 +172,8 @@ print("Done, in total: ", datetime.now() - timestamp_start)
 print("Creating indexes...")
 # Create indexes on the Region table
 cur_pg.execute("CREATE INDEX IF NOT EXISTS parent_region_idx ON regions (parent_region_id)")
+# Create a GiST index on the geometry column
+cur_pg.execute("CREATE INDEX IF NOT EXISTS geom_idx ON regions USING GIST (geom)")
 print("Done")
 
 # Commit the changes and close the connections
