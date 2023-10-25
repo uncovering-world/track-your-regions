@@ -104,6 +104,32 @@ exports.getRegionById = async (req, res) => {
     }
 };
 
+
+async function getAllSubregions(regionId) {
+    const query = `
+    WITH RECURSIVE Subregions AS (
+        SELECT id, parent_region_id as parentRegionId, name
+        FROM regions
+        WHERE parent_region_id = :regionId
+        UNION ALL
+        SELECT r.id, r.parent_region_id as parentRegionId, r.name
+        FROM regions r
+        INNER JOIN Subregions s ON r.parent_region_id = s.id
+    )
+    SELECT * FROM Subregions;
+`;
+
+    const result = await sequelize.query(query, {
+        replacements: { regionId },
+        type: QueryTypes.SELECT,
+        mapToModel: true, // Required to map the result to Region instances
+        model: Region // The model to map to
+    });
+
+    return result;
+}
+
+
 // Retrieve subregions for a specific region
 exports.getSubregions = async (req, res) => {
     const { regionId } = req.params;
