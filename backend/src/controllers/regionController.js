@@ -17,19 +17,17 @@ exports.getGeometry = async (req, res) => {
 
     if (!geometry) {
         const query = `
-            WITH RECURSIVE Subregions AS (
-                SELECT id, geom
-                FROM regions
-                WHERE id = :regionId
-                UNION ALL
-                SELECT r.id, r.geom
-                FROM regions r
-                INNER JOIN Subregions s ON r.parent_region_id = s.id
-                WHERE s.geom IS NULL
-            )
-            SELECT ST_AsGeoJSON(ST_Multi(ST_Union(geom))) as geometry
+            WITH RECURSIVE Subregions AS (SELECT id, ST_Simplify(geom, 0.01) as simplified_geom
+                                          FROM regions
+                                          WHERE id = :regionId
+                                          UNION ALL
+                                          SELECT r.id, ST_Simplify(r.geom, 0.01) as simplified_geom
+                                          FROM regions r
+                                                   INNER JOIN Subregions s ON r.parent_region_id = s.id
+                                          WHERE s.simplified_geom IS NULL)
+            SELECT ST_AsGeoJSON(ST_Multi(ST_Union(simplified_geom))) as geometry
             FROM Subregions
-            WHERE geom IS NOT NULL;
+            WHERE simplified_geom IS NOT NULL;
         `;
 
         const result = await sequelize.query(query, {
