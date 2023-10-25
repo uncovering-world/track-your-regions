@@ -133,6 +133,7 @@ async function getAllSubregions(regionId) {
 // Retrieve subregions for a specific region
 exports.getSubregions = async (req, res) => {
     const { regionId } = req.params;
+    const { getAll } = req.query;
 
     try {
         // Check if the region exists
@@ -145,9 +146,15 @@ exports.getSubregions = async (req, res) => {
         }
 
         // Retrieve subregions
-        const subregions = await Region.findAll({
-            where: { parentRegionId: regionId }
-        });
+        let subregions;
+        // Check the getAll query parameter
+        if (getAll === 'true') {
+            subregions = await getAllSubregions(regionId);
+        } else {
+            subregions = await Region.findAll({
+                where: { parentRegionId: regionId }
+            });
+        }
 
         if (subregions.length === 0) {
             return res.status(202).json({ message: 'Region has no subregions' });
