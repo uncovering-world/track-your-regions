@@ -107,6 +107,12 @@ paths:
           required: true
           schema:
             type: integer
+        - name: resolveEmpty
+          in: query
+          required: false
+          description: Whether to resolve empty geometries by aggregating the geometries of the subregions.
+          schema:
+            type: boolean
       responses:
         '200':
           description: Geometry of the region
@@ -117,6 +123,8 @@ paths:
                 properties:
                   geometry:
                     type: string
+        '204':
+          description: Region has no geometry
         '400':
           description: Bad request
         '404':
