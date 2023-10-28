@@ -5,10 +5,12 @@ const sequelize  = require("../config/db");
 
 exports.getGeometry = async (req, res) => {
     const { regionId } = req.params;
+    const resolveEmpty = req.query.resolveEmpty === 'true';
+
+    // Check if the region exists
     const region = await Region.findOne({
         where: { id: regionId }
     });
-
     if (!region) {
         return res.status(404).json({ message: 'Region not found' });
     }
@@ -16,6 +18,9 @@ exports.getGeometry = async (req, res) => {
     let geometry = region.geom;
 
     if (!geometry) {
+        if (!resolveEmpty) {
+            return res.status(204).json({ message: 'Geometry not found' });
+        }
         const query = `
             WITH RECURSIVE Subregions AS (SELECT id, ST_Simplify(geom, 0.01) as simplified_geom
                                           FROM regions

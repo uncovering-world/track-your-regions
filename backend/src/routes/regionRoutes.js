@@ -49,7 +49,8 @@ router.get('/:regionId/ancestors',
 
 router.get('/:regionId/geometry',
     ...[
-        check('regionId').isInt().withMessage('Region ID must be an integer')
+        check('regionId').isInt().withMessage('Region ID must be an integer'),
+        check('resolveEmpty').optional().isBoolean().withMessage('resolveEmpty must be a boolean')
     ],
     async (req, res) => {
         const errors = validationResult(req);
