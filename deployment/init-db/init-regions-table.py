@@ -107,12 +107,16 @@ def find_next_non_empty_level(idx, feature, geo_levels):
     for next_idx in range(idx + 1, len(geo_levels)):
         next_level_key = geo_levels[next_idx]
         if feature.GetField(next_level_key):
+            # Check, that it has a different name than the current level
+            if feature.GetField(next_level_key) == feature.GetField(geo_levels[idx]):
+                continue
             return next_level_key
     return None
 
 
 existing_names = {}  # Dictionary to track existing regions
 identified_country_levels = {}  # Dictionary to track identified country levels per feature
+last_valid_parent_name = None  # Variable to remember the last valid parent name
 
 for i, feature in enumerate(lyr):
     if i % features_in_one_percent == 0 and i > 0:
@@ -131,6 +135,10 @@ for i, feature in enumerate(lyr):
     last_valid_parent_region_id = None  # Variable to remember the last valid parent ID
     path_parts = []  # List to build up the path for the current region
 
+    # Reset parent_region_id and other variables for each new feature
+    last_valid_parent_name = None
+
+    # Identify the country level for the current feature
     for level in country_levels:
         if feature.GetField(level):
             identified_country_levels[feature.GetField('UID')] = level
@@ -139,11 +147,17 @@ for i, feature in enumerate(lyr):
     # Process each geographical level for the current feature
     for idx, level in enumerate(geo_levels):
         name = feature.GetField(level)
+
+        # Skip empty levels
         if not name:
             continue
 
         # Skip non-prioritized country levels
         if level in country_levels and level != identified_country_levels.get(feature.GetField('UID')):
+            continue
+
+        # Skip levels with the same name as the last valid parent
+        if name == last_valid_parent_name:
             continue
 
         path_parts.append(name)  # Add the name to the path_parts list if it's not empty
@@ -179,6 +193,9 @@ for i, feature in enumerate(lyr):
 
         # Update last_valid_parent_region_id for the next level
         last_valid_parent_region_id = region_id
+
+        # Update last_valid_parent_name for the next level
+        last_valid_parent_name = name
 
 print("Done, in total: ", datetime.now() - timestamp_start)
 
