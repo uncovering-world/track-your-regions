@@ -77,8 +77,10 @@ lyr = ds.GetLayerByName(layer_name)
 # Number of levels in the GADM hierarchy
 num_levels = 6
 
+# List of the levels equal to "country", ordered by priority
+country_levels = ['COUNTRY', 'GOVERNEDBY', 'SOVEREIGN']
 # Update the properties list to include the predefined levels
-predefined_levels = ['CONTINENT', 'SUBCONT', 'SOVEREIGN', 'COUNTRY', 'GOVERNEDBY', 'REGION']
+predefined_levels = ['CONTINENT', 'SUBCONT'] + country_levels + ['REGION']
 # List of all properties requested from the GeoPackage
 properties = predefined_levels + [f'GID_{i}' for i in range(num_levels)] + [f'NAME_{i}' for i in range(num_levels)] + ['UID', 'geom']
 
@@ -110,6 +112,7 @@ def find_next_non_empty_level(idx, feature, geo_levels):
 
 
 existing_names = {}  # Dictionary to track existing regions
+identified_country_levels = {}  # Dictionary to track identified country levels per feature
 
 for i, feature in enumerate(lyr):
     if i % features_in_one_percent == 0 and i > 0:
@@ -128,11 +131,21 @@ for i, feature in enumerate(lyr):
     last_valid_parent_region_id = None  # Variable to remember the last valid parent ID
     path_parts = []  # List to build up the path for the current region
 
+    for level in country_levels:
+        if feature.GetField(level):
+            identified_country_levels[feature.GetField('UID')] = level
+            break
+
     # Process each geographical level for the current feature
     for idx, level in enumerate(geo_levels):
         name = feature.GetField(level)
         if not name:
             continue
+
+        # Skip non-prioritized country levels
+        if level in country_levels and level != identified_country_levels.get(feature.GetField('UID')):
+            continue
+
         path_parts.append(name)  # Add the name to the path_parts list if it's not empty
         key = "_".join(path_parts)  # Build the unique key from the path_parts list
 
