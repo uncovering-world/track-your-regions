@@ -42,7 +42,8 @@ run-db:
 init-db: check-gadm-file build-db run-db
 	@echo "Database initialized and GPKG file imported."
 	# Check if the database is ready and has the required tables
-	@until $(DC) exec -T tyr-db pg_isready >/dev/null 2>&1 && $(DC) exec -T tyr-db psql -U $(DB_USER) -d $(DB_NAME) -c "\dt" 2>&1 | grep regions >/dev/null; do \
+	@until $(DC) exec -T tyr-db pg_isready -U $(DB_USER) -d $(DB_NAME) > /dev/null 2>&1 && \
+	       $(DC) exec -T tyr-db psql -U $(DB_USER) -d $(DB_NAME) -c "\dt" 2>&1 | grep regions >/dev/null; do \
 		sleep 1; \
 	done
 
