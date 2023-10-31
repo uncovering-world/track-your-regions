@@ -1,7 +1,8 @@
 version: '3.8'
 
 services:
-  tyr-db:
+  db:
+    container_name: tyr-db
     build:
       context: .
       args:
@@ -17,20 +18,22 @@ services:
       - gadm_data:/data/gadm
 
   backend:
+    container_name: tyr-backend
     build: ${BACKEND_PATH}
     environment:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: tyr-db
+      DB_HOST: db
     depends_on:
-      - tyr-db
+      - db
     volumes:
       - gadm_data:/data/gadm
     ports:
       - "${HOST_BACKEND_PORT}:${DEFAULT_NODEJS_PORT}"
 
   frontend:
+    container_name: tyr-frontend
     build: ${FRONTEND_PATH}
     environment:
       REACT_APP_API_URL: http://${BACKEND_HOST}:${HOST_BACKEND_PORT}

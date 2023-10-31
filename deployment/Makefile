@@ -34,16 +34,16 @@ check-gadm-file:
 # ---- Docker Database Commands ----
 build-db: check-env
 	# Check if the database is already built
-	@$(DC) images | grep tyr-db >/dev/null || $(DC) build tyr-db
+	@$(DC) images | grep db >/dev/null || $(DC) build db
 
 run-db:
-	$(DC) up -d tyr-db
+	$(DC) up -d db
 
 init-db: check-gadm-file build-db run-db
 	@echo "Database initialized and GPKG file imported."
 	# Check if the database is ready and has the required tables
-	@until $(DC) exec -T tyr-db pg_isready -U $(DB_USER) -d $(DB_NAME) > /dev/null 2>&1 && \
-	       $(DC) exec -T tyr-db psql -U $(DB_USER) -d $(DB_NAME) -c "\dt" 2>&1 | grep regions >/dev/null; do \
+	@until $(DC) exec -T db pg_isready -U $(DB_USER) -d $(DB_NAME) > /dev/null 2>&1 && \
+	       $(DC) exec -T db psql -U $(DB_USER) -d $(DB_NAME) -c "\dt" 2>&1 | grep regions >/dev/null; do \
 		sleep 1; \
 	done
 
