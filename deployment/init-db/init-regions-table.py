@@ -128,7 +128,6 @@ for i, feature in enumerate(lyr):
         print(f"Handled {int(i / features_in_one_percent):3d}% ({i:{max_feature_digits}} features) - last batch in {time_diff:.2f} seconds. Estimated time left: {estimated_time_left:.2f} seconds")
         timestamp = datetime.now()
 
-    uid = feature.GetField('UID')
 
     # Reset parent_region_id for each new feature
     parent_region_id = None
@@ -174,8 +173,8 @@ for i, feature in enumerate(lyr):
             uid = None
             geom = None
         else:
+            uid = feature.GetField('UID')
             geom = feature.GetGeometryRef().ExportToWkb()
-            # uid is already set above
 
         if key not in existing_names:
             query = """
