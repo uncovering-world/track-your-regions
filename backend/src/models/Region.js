@@ -71,6 +71,7 @@ Region.init({
 }, {
     sequelize,
     tableName: 'regions',
+    timestamps: false, // Don't add the timestamp attributes (updatedAt, createdAt)
 });
 
 module.exports = Region;
