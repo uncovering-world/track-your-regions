@@ -78,9 +78,9 @@ lyr = ds.GetLayerByName(layer_name)
 num_levels = 6
 
 # List of the levels equal to "country", ordered by priority
-country_levels = ['COUNTRY', 'GOVERNEDBY', 'SOVEREIGN']
+subcountry_levels = ['SOVEREIGN', 'GOVERNEDBY']
 # Update the properties list to include the predefined levels
-predefined_levels = ['CONTINENT', 'SUBCONT'] + country_levels + ['REGION']
+predefined_levels = ['CONTINENT', 'SUBCONT'] + subcountry_levels + ['COUNTRY', 'REGION']
 # List of all properties requested from the GeoPackage
 properties = predefined_levels + [f'GID_{i}' for i in range(num_levels)] + [f'NAME_{i}' for i in range(num_levels)] + ['UID', 'geom']
 
@@ -115,7 +115,8 @@ def find_next_non_empty_level(idx, feature, geo_levels):
 
 
 existing_names = {}  # Dictionary to track existing regions
-identified_country_levels = {}  # Dictionary to track identified country levels per feature
+identified_subcountry_levels = {}  # Dictionary to track identified subcountry levels per feature
+identified_subcountry_names = {}  # Dictionary to track identified subcountry names per feature
 last_valid_parent_name = None  # Variable to remember the last valid parent name
 
 for i, feature in enumerate(lyr):
@@ -128,7 +129,6 @@ for i, feature in enumerate(lyr):
         print(f"Handled {int(i / features_in_one_percent):3d}% ({i:{max_feature_digits}} features) - last batch in {time_diff:.2f} seconds. Estimated time left: {estimated_time_left:.2f} seconds")
         timestamp = datetime.now()
 
-
     # Reset parent_region_id for each new feature
     parent_region_id = None
     last_valid_parent_region_id = None  # Variable to remember the last valid parent ID
@@ -137,10 +137,11 @@ for i, feature in enumerate(lyr):
     # Reset parent_region_id and other variables for each new feature
     last_valid_parent_name = None
 
-    # Identify the country level for the current feature
-    for level in country_levels:
+    # Identify the subcountry level for the current feature
+    for level in subcountry_levels:
         if feature.GetField(level):
-            identified_country_levels[feature.GetField('UID')] = level
+            identified_subcountry_levels[feature.GetField('UID')] = level
+            identified_subcountry_names[feature.GetField('UID')] = feature.GetField(level)
             break
 
     # Process each geographical level for the current feature
@@ -152,10 +153,20 @@ for i, feature in enumerate(lyr):
             continue
 
         # Skip non-prioritized country levels
-        if level in country_levels and level != identified_country_levels.get(feature.GetField('UID')):
+        if level in subcountry_levels and level != identified_subcountry_levels.get(feature.GetField('UID')):
+            continue
+
+        # Skip subcountry levels if the identified subcountry level name is equal to the country level
+        if level in subcountry_levels and identified_subcountry_names.get(feature.GetField('UID')) == feature.GetField('COUNTRY'):
+            continue
+
+        # Skip the NAME_0 level if it's the same as the country level
+        # Sometimes the NAME_0 represents country, sometimes it represents a region within a country
+        if level == 'NAME_0' and name == feature.GetField('COUNTRY'):
             continue
 
         # Skip levels with the same name as the last valid parent
+        # Fixme: check if this region has no siblings. Otherwise, we have to keep it
         if name == last_valid_parent_name:
             continue
 
