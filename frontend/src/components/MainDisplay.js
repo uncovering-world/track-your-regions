@@ -5,27 +5,18 @@ import { fetchRegion } from '../api';
 import RegionMap from "./RegionMap";
 
 const MainDisplay = () => {
-    const { selectedRegionId, selectedRegionName, setSelectedRegionInfo } = useRegion();
-
-    useEffect(() => {
-        const fetchSelectedRegionInfo = async () => {
-            try {
-                if (selectedRegionId !== null && selectedRegionId !== 0) {
-                    const info = await fetchRegion(selectedRegionId);
-                    setSelectedRegionInfo(info.regionName);
-                }
-            } catch (error) {
-                console.error(`Error fetching region info: ${error}`);
-            }
-        };
-
-        fetchSelectedRegionInfo();
-    }, [selectedRegionId]);
+    const { selectedRegion, setSelectedRegion } = useRegion();
 
     return (
         <div>
-            {selectedRegionName && <h1>{selectedRegionName}</h1>}
-            {selectedRegionName && <RegionMap/>}
+            {selectedRegion.name ? (
+                <>
+                    <h1>{selectedRegion.name}</h1>
+                    <RegionMap/>
+                </>
+            ) : (
+                <p>No region selected.</p>
+            )}
         </div>
     );
 };

@@ -8,24 +8,15 @@ export const useRegion = () => {
 };
 
 export const RegionProvider = ({ children }) => {
-    const [selectedRegionId, setSelectedRegionId] = useState(null);
-    const [selectedRegionName, setSelectedRegionName] = useState(null);
-    const [selectedRegionInfo, setSelectedRegionInfo] = useState({});
-    const [selectedRegionHasSubregions, setSelectedRegionHasSubregions] = useState(false);
+    const [selectedRegion, setSelectedRegion] = useState({
+        id: null,
+        name: 'World',
+        info: {},
+        hasSubregions: false,
+    });
 
     return (
-        <RegionContext.Provider
-            value={{
-                selectedRegionId,
-                setSelectedRegionId,
-                selectedRegionName,
-                setSelectedRegionName,
-                selectedRegionInfo,
-                setSelectedRegionInfo,
-                selectedRegionHasSubregions,
-                setSelectedRegionHasSubregions,
-            }}
-        >
+        <RegionContext.Provider value={{ selectedRegion, setSelectedRegion }}>
             {children}
         </RegionContext.Provider>
     );
