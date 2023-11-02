@@ -6,11 +6,11 @@ import {fetchRegionGeometry} from "../api";
 const MapComponent = () => {
     const mapContainer = useRef(null);
     const map = useRef(null);
-    const { selectedRegionId, selectedRegionName } = useRegion();
+    const { selectedRegion } = useRegion();
 
     const fetchSelectedRegionGeometry = async () => {
-        if (selectedRegionId !== null && selectedRegionId !== 0) {
-            const response = await fetchRegionGeometry(selectedRegionId);
+        if (selectedRegion.id !== null && selectedRegion.id !== 0) {
+            const response = await fetchRegionGeometry(selectedRegion.id);
             if (response) {
                 return response.geometry;
             } else {
@@ -72,7 +72,7 @@ const MapComponent = () => {
                 map.current = null;
             }
         };
-    }, [selectedRegionName]);
+    }, [selectedRegion]);
 
     return <div ref={mapContainer} style={{ width: '100%', height: '400px' }} />;
 };

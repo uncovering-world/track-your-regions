@@ -7,7 +7,7 @@ import { useRegion } from './RegionContext';
 
 const ListOfRegions = () => {
 
-    const { selectedRegionId, setSelectedRegionId, setSelectedRegionName, selectedRegionHasSubregions, setSelectedRegionHasSubregions } = useRegion();
+    const { selectedRegion, setSelectedRegion } = useRegion();
     const [regions, setRegions] = useState([]);
 
     const fetchRegions = async (regionId, hasSubregions) => {
@@ -27,13 +27,19 @@ const ListOfRegions = () => {
     };
 
     useEffect(() => {
-        fetchRegions(selectedRegionId, selectedRegionHasSubregions);
-    }, [selectedRegionId, setSelectedRegionHasSubregions]);
+        fetchRegions(selectedRegion.id, selectedRegion.hasSubregions);
+    }, [selectedRegion]);
 
     const handleItemClick = (region) => {
-        setSelectedRegionId(region.id);
-        setSelectedRegionName(region.name);
-        setSelectedRegionHasSubregions(region.hasSubregions);
+        setSelectedRegion(
+            {
+                id: region.id,
+                name: region.name,
+                info: selectedRegion.info,
+                hasSubregions: region.hasSubregions,
+            }
+        );
+
     };
 
     return (
