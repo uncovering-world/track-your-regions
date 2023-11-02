@@ -9,9 +9,13 @@ const MainDisplay = () => {
 
     useEffect(() => {
         const fetchSelectedRegionInfo = async () => {
-            if (selectedRegionId !== null && selectedRegionId !== 0) {
-                const info = await fetchRegion(selectedRegionId);
-                setSelectedRegionInfo(info.regionName);
+            try {
+                if (selectedRegionId !== null && selectedRegionId !== 0) {
+                    const info = await fetchRegion(selectedRegionId);
+                    setSelectedRegionInfo(info.regionName);
+                }
+            } catch (error) {
+                console.error(`Error fetching region info: ${error}`);
             }
         };
 

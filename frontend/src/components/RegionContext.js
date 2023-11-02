@@ -11,6 +11,7 @@ export const RegionProvider = ({ children }) => {
     const [selectedRegionId, setSelectedRegionId] = useState(null);
     const [selectedRegionName, setSelectedRegionName] = useState(null);
     const [selectedRegionInfo, setSelectedRegionInfo] = useState({});
+    const [selectedRegionHasSubregions, setSelectedRegionHasSubregions] = useState(false);
 
     return (
         <RegionContext.Provider
@@ -20,7 +21,9 @@ export const RegionProvider = ({ children }) => {
                 selectedRegionName,
                 setSelectedRegionName,
                 selectedRegionInfo,
-                setSelectedRegionInfo
+                setSelectedRegionInfo,
+                selectedRegionHasSubregions,
+                setSelectedRegionHasSubregions,
             }}
         >
             {children}
