@@ -41,6 +41,20 @@ export const fetchRegion = async (regionId) => {
     }
 }
 
+// Fetch the geometry for a region. Returns null if no geometry is found.
+export const fetchRegionGeometry = async (regionId, force) => {
+    try {
+        const response = await api.get(`/api/regions/${regionId}/geometry`, {params: {resolveEmpty: force}});
+        if (response.status === 204 || response.status === 404) {
+            return null;
+        }
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching region geometry:', error);
+        throw new Error(`Error fetching region geometry: ${error.message}`);
+    }
+}
+
 export const fetchAncestors = async (regionId) => {
     try {
         const response = await api.get(`/api/regions/${regionId}/ancestors`);
