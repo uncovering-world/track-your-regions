@@ -7,37 +7,40 @@ import { useRegion } from './RegionContext';
 
 const ListOfRegions = () => {
 
-    const { selectedRegionId, setSelectedRegionId, setSelectedRegionName } = useRegion();
+    const { selectedRegionId, setSelectedRegionId, setSelectedRegionName, selectedRegionHasSubregions, setSelectedRegionHasSubregions } = useRegion();
     const [regions, setRegions] = useState([]);
 
-    const fetchRegions = async (regionId) => {
+    const fetchRegions = async (regionId, hasSubregions) => {
 
         let newRegions = [];
         if (regionId) {
-            newRegions = await fetchSubregions(regionId);
+            if (hasSubregions) {
+                newRegions = await fetchSubregions(regionId);
+            }
         } else {
             newRegions = await fetchRootRegions();
         }
 
-        setRegions(newRegions);
+        if (newRegions.length > 0) {
+            setRegions(newRegions);
+        }
     };
 
     useEffect(() => {
-        fetchRegions(selectedRegionId).then(r => console.log(r));
-    }, [selectedRegionId]);
+        fetchRegions(selectedRegionId, selectedRegionHasSubregions);
+    }, [selectedRegionId, setSelectedRegionHasSubregions]);
 
-    const handleItemClick = (regionId, regionName, hasSubregions) => {
-        if (hasSubregions) {
-            setSelectedRegionId(regionId);
-        }
-        setSelectedRegionName(regionName);
+    const handleItemClick = (region) => {
+        setSelectedRegionId(region.id);
+        setSelectedRegionName(region.name);
+        setSelectedRegionHasSubregions(region.hasSubregions);
     };
 
     return (
         <Box style={{ height: '400px', overflow: 'auto' }}>
             <List>
                 {regions.map((region) => (
-                    <ListItem key={region.id} button onClick={() => handleItemClick(region.id, region.name, region.hasSubregions)}>
+                    <ListItem key={region.id} button onClick={() => handleItemClick(region)}>
                         {region.name}
                     </ListItem>
                 ))}
