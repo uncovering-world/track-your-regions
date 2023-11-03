@@ -1,0 +1,3 @@
+openai
+psycopg2
+python-dotenv
