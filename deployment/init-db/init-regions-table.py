@@ -1,6 +1,7 @@
 from datetime import datetime
 import os
 import sys
+import sqlite3
 
 from dotenv import load_dotenv
 import psycopg2
@@ -42,6 +43,10 @@ print("Connecting to the database...")
 # Connect to the PostgreSQL database
 conn_pg = psycopg2.connect(f"dbname={db_name} user={db_user} password={db_password}")
 cur_pg = conn_pg.cursor()
+
+# Open a connection to the GeoPackage as an SQLite database
+conn_sqlite = sqlite3.connect(gadm_file)
+cursor_sqlite = conn_sqlite.cursor()
 
 # Create the Region table, if it doesn't exist
 cur_pg.execute("""
@@ -103,15 +108,55 @@ timestamp_start = timestamp
 last_valid_parent_region_id = None  # Variable to remember the last valid parent ID
 
 
-def find_next_non_empty_level(idx, feature, geo_levels):
+def find_next_non_empty_level(idx, feature, geo_levels, has_siblings):
     for next_idx in range(idx + 1, len(geo_levels)):
         next_level_key = geo_levels[next_idx]
         if feature.GetField(next_level_key):
-            # Check, that it has a different name than the current level
             if feature.GetField(next_level_key) == feature.GetField(geo_levels[idx]):
-                continue
+                if not has_siblings:
+                    continue
             return next_level_key
     return None
+
+
+def has_siblings_sqlite(feature, level, geo_levels, lyr_name):
+    # Determine the index of the current level
+    level_index = geo_levels.index(level)
+
+    if existing_names.get(last_valid_parent_path_key, {}).get("children_num", 0) > 0:
+        return True
+
+    # Start building the WHERE clause for the SQL query
+    where_clauses = []
+    query_params = []
+
+    # Loop over all parent levels
+    for parent_level_index in range(level_index):
+        parent_level = geo_levels[parent_level_index]
+        parent_name = feature.GetField(parent_level)
+        if parent_name:
+            # Add the condition to match the parent level name
+            where_clauses.append(f"{parent_level} = ?")
+            query_params.append(parent_name)
+
+    # Add the condition to exclude the current feature's name
+    where_clauses.append(f"{level} <> ?")
+    query_params.append(feature.GetField(level))
+
+    # Combine all WHERE clauses
+    where_clause = " AND ".join(where_clauses)
+
+    # Build the full SQL query
+    sql_query = f"SELECT COUNT(*) FROM {lyr_name} WHERE {where_clause} AND {level} != ''"
+
+    # Execute the query with all collected parameters
+    cursor_sqlite.execute(sql_query, query_params)
+    result = cursor_sqlite.fetchone()
+
+    # Check if siblings exist
+    if result[0] == 0:
+        print("No siblings for", feature.GetField(level), "in", feature.GetField('NAME_0'), " id:", feature.GetField('UID'))
+    return result[0] > 0
 
 
 existing_names = {}  # Dictionary to track existing regions
@@ -133,6 +178,7 @@ for i, feature in enumerate(lyr):
     parent_region_id = None
     last_valid_parent_region_id = None  # Variable to remember the last valid parent ID
     path_parts = []  # List to build up the path for the current region
+    last_valid_parent_path_key = None  # Variable to remember the last valid parent path key
 
     # Reset parent_region_id and other variables for each new feature
     last_valid_parent_name = None
@@ -165,16 +211,18 @@ for i, feature in enumerate(lyr):
         if level == 'NAME_0' and name == feature.GetField('COUNTRY'):
             continue
 
+        has_siblings = existing_names.get(last_valid_parent_path_key, {}).get("children_num", 0) > 0
         # Skip levels with the same name as the last valid parent
-        # Fixme: check if this region has no siblings. Otherwise, we have to keep it
         if name == last_valid_parent_name:
-            continue
+            has_siblings = has_siblings_sqlite(feature, level, geo_levels, layer_name)
+            if not has_siblings:
+                continue
 
         path_parts.append(name)  # Add the name to the path_parts list if it's not empty
         key = "_".join(path_parts)  # Build the unique key from the path_parts list
 
         # Determine if the current region has subregions
-        next_level = find_next_non_empty_level(idx, feature, geo_levels)  # Find the next non-empty level
+        next_level = find_next_non_empty_level(idx, feature, geo_levels, has_siblings)  # Find the next non-empty level
         has_subregions = next_level is not None  # Check if a non-empty level was found
 
         # We assign uid and geometry to the region, if it is a real GADM region, not a region we created to fill the
@@ -196,16 +244,21 @@ for i, feature in enumerate(lyr):
             params = (name, has_subregions, last_valid_parent_region_id, uid, geom)
             cur_pg.execute(query, params)
             region_id = cur_pg.fetchone()[0]
-            existing_names[key] = region_id
+            existing_names[key] = {"id": region_id, "children_num": 0}
+            if last_valid_parent_path_key:
+                existing_names[last_valid_parent_path_key]["children_num"] += 1
         else:
             # If the region already exists, get its ID
-            region_id = existing_names[key]
+            region_id = existing_names[key]["id"]
 
         # Update last_valid_parent_region_id for the next level
         last_valid_parent_region_id = region_id
 
         # Update last_valid_parent_name for the next level
         last_valid_parent_name = name
+
+        # Update the last_valid_parent_path_key
+        last_valid_parent_path_key = key
 
 print("Done, in total: ", datetime.now() - timestamp_start)
 
@@ -220,3 +273,4 @@ print("Done")
 conn_pg.commit()
 cur_pg.close()
 conn_pg.close()
+conn_sqlite.close()
