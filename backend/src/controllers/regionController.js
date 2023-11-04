@@ -17,6 +17,18 @@ exports.getGeometry = async (req, res) => {
 
     let geometry = region.geom;
 
+    // Convert any geometry to MultiPolygon if it exists
+    if (geometry) {
+        geometry = await sequelize.query(
+            `SELECT ST_AsGeoJSON(ST_Multi(:geometry)) as geometry`, {
+                replacements: { geometry: geometry },
+                type: QueryTypes.SELECT
+            }
+        );
+
+        geometry = geometry.length > 0 ? geometry[0].geometry : null;
+    }
+
     if (!geometry) {
         if (!resolveEmpty) {
             return res.status(204).json({ message: 'Geometry not found' });
