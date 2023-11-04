@@ -115,14 +115,14 @@ paths:
             type: boolean
       responses:
         '200':
-          description: Geometry of the region
+          description: Geometry of the region, in GeoJSON format, always a MultiPolygon
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   geometry:
-                    type: string
+                    $ref: '#/components/schemas/MultiPolygonGeometry'
         '204':
           description: Region has no geometry
         '400':
@@ -327,6 +327,58 @@ components:
           type: integer
         hasSubregions:
           type: boolean
+
+    CRS:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [ name ]
+          description: Type of CRS; here, 'name' refers to a named CRS.
+        properties:
+          type: object
+          properties:
+            name:
+              type: string
+              description: Name of the CRS used; typically an EPSG code.
+              example: "EPSG:4326"
+
+    Coordinate:
+      type: array
+      minItems: 2
+      maxItems: 2
+      items:
+        type: number
+        format: double
+      description: A longitude and latitude pair.
+
+    LinearRing:
+      type: array
+      items:
+        $ref: '#/components/schemas/Coordinate'
+      description: A closed LineString, with four or more positions. The first and last positions are equivalent (they represent the same point).
+
+    Polygon:
+      type: array
+      items:
+        $ref: '#/components/schemas/LinearRing'
+      description: An array of LinearRings where the first element is the outer boundary and any subsequent elements are inner boundaries (holes).
+
+    MultiPolygonGeometry:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [ MultiPolygon ]
+          description: Type of the geometry; for this API, always 'MultiPolygon'.
+        coordinates:
+          type: array
+          items:
+            $ref: '#/components/schemas/Polygon'
+          description: An array of Polygons that make up the MultiPolygon.
+        crs:
+          $ref: '#/components/schemas/CRS'
+        description: A GeoJSON object representing the geometry of the region as a MultiPolygon.
 
     Experience:
       type: object
