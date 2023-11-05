@@ -42,6 +42,9 @@ run-db: build-db
 just-run-db: build-db
 	export RUN_INIT=false && $(DC) up -d db
 
+db-shell:
+	$(DC) exec -it db /bin/bash
+
 init-db: check-gadm-file run-db
 	@echo "Database initialized and GPKG file imported."
 	# Check if the database is ready and has the required tables
