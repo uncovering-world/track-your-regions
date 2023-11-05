@@ -29,10 +29,6 @@ RUN pip3 install -r /tmp/requirements.txt
 # Make the init script executable
 RUN chmod +x /docker-entrypoint-initdb.d/init-db.sh
 
-# Copy the GADM file to the container
-ARG GADM_FILE
-COPY $GADM_FILE /data/gadm/gadm.gpkg
-
 # Define a volume
 VOLUME /data/gadm
 
