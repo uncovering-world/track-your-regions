@@ -4,17 +4,13 @@ FROM postgis/postgis:16-3.4
 RUN apt-get update
 
 # Install python3 and pip3
-RUN apt-get install -y python3 python3-pip python3-venv
+RUN apt-get install -y python3 python3-pip
 
 # Copy initialization scripts and GPKG file
 COPY ./init-db.sh /docker-entrypoint-initdb.d/init-db.sh
 
 # Copy the init script to the container
 COPY ./init-db/* /tmp/
-
-# Create a virtual environment and activate it
-RUN python3 -m venv /venv
-ENV PATH="/venv/bin:$PATH"
 
 # Install GDAL
 RUN apt-get install -y gdal-bin libgdal-dev
