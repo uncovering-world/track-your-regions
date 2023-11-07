@@ -6,7 +6,7 @@ RUN apt-get update && \
     gdal-bin libgdal-dev \
     locales \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean \
+    && apt-get clean
 
 # Configure environment variables for GDAL
 ENV GDAL_CONFIG=/usr/bin/gdal-config
