@@ -207,6 +207,17 @@ if __name__ == "__main__":
             # Skip the NAME_0 level if it's the same as the country level
             # Sometimes the NAME_0 represents country, sometimes it represents a region within a country
             if level == 'NAME_0' and name == record['COUNTRY']:
+                # We can skip it only if the next level is not empty
+                if find_next_non_empty_level(idx, record, geo_levels):
+                    continue
+                # if the next level is empty, we need to update the parent region with the current region info
+                uid = record['UID']
+                geom = None if not args.geometry else geometries[uid]
+                cur_pg.execute("""
+                    UPDATE regions
+                    SET gadm_uid = %s, geom = ST_GeomFromWKB(%s, 4326), has_subregions = FALSE
+                    WHERE id = %s
+                """, (uid, geom, last_valid_parent_region_id))
                 continue
 
             # We have skipped all the unnecessary levels, so we can form a unique key for the current region
