@@ -276,6 +276,11 @@ if __name__ == "__main__":
             last_valid_parent_region_path = region_path
     print("Initial DB creation complete.")
 
+    # Create indexes on the Region table for id
+    print("Creating index for the id field...", end=" ", flush=True)
+    cur_pg.execute("CREATE INDEX IF NOT EXISTS idx_id ON regions (id)")
+    print("done.")
+
     if not args.fast:
         # Merge single children with their parents
         print("Merging single children with their parents...")
@@ -299,17 +304,15 @@ if __name__ == "__main__":
                 del existing_regions_paths[single_child["parent_path"]]
         print("DB postprocessing complete.")
 
-    print("Creating indexes.")
     # Create indexes on the Region table
-    print("Creating parents index...", end=" ", flush=True)
-    cur_pg.execute("CREATE INDEX IF NOT EXISTS parent_region_idx ON regions (parent_region_id)")
+    print("Creating index for the parent_region_id field...", end=" ", flush=True)
+    cur_pg.execute("CREATE INDEX IF NOT EXISTS idx_parent_region ON regions (parent_region_id)")
     print("done.")
     # Create a GiST index on the geometry column
     if args.geometry:
         print("Creating geometry index...", end=" ", flush=True)
-        cur_pg.execute("CREATE INDEX IF NOT EXISTS geom_idx ON regions USING GIST (geom)")
+        cur_pg.execute("CREATE INDEX IF NOT EXISTS idx_geom ON regions USING GIST (geom)")
         print("done.")
-    print("Indexes created.")
     print(f"DB init complete in {datetime.now() - global_timestamp_start} !")
 
     # Commit the changes and close the connections
