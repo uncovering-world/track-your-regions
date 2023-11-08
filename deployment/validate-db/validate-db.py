@@ -1,6 +1,6 @@
 import argparse
+import json
 import os
-import random
 import sys
 
 import openai
@@ -16,44 +16,89 @@ def save_error_report(region_id, gadm_uid, hierarchy, feedback):
         print(f"Error during file ({error_report_file}) operation: {e}")
 
 
-def add_to_cache(region_id, gadm_uid):
+# Write the checked region IDs to a file to avoid checking them again
+# Write just commma-separated values, no newlines
+def add_to_cache(regions_id):
+    if not regions_id:
+        return
     try:
         with open(checked_cache_file, "a") as file:
-            file.write(f"{region_id},{gadm_uid}\n")
+            if os.stat(checked_cache_file).st_size > 0:
+                file.write(",")
+            # regions_id is a list of integers, so we need to convert it to a string
+            regions_id = [str(region_id) for region_id in regions_id]
+            file.write(",".join(regions_id))
     except IOError as e:
         print(f"Error during file ({checked_cache_file}) operation: {e}")
 
 
 # Function to color text red in terminal
 def red_text(text):
-    return f"\033[91m{text}\033[0m"
+    return f"\033[38;5;9m{text}\033[0m"
+
+def orange_text(text):
+    return f"\033[38;5;208m{text}\033[0m"
+
+def slight_yellow_text(text):
+    return f"\033[38;5;220m{text}\033[0m"
+
+def green_text(text):
+    return f"\033[92m{text}\033[0m"
+
+def print_error_title(title, severity):
+    if severity == "high":
+        print(red_text(title))
+    elif severity == "medium":
+        print(orange_text(title))
+    elif severity == "low":
+        print(slight_yellow_text(title))
 
 
 def load_cache():
     try:
         with open(checked_cache_file, "r") as file:
-            return {line.strip().split(',')[0] for line in file}
+            return file.read().split(",")
     except FileNotFoundError:
-        return set()
+        return None
+    except IOError as e:
+        print(f"Error during file ({checked_cache_file}) operation: {e}")
+    return None
 
 
-def get_max_region_id():
-    cur.execute("SELECT MAX(id) FROM regions")
-    return cur.fetchone()[0]
+def get_hierarchy(cur, region_id):
+    path_to_root = []
+    original_region_parent_id = None
+    original_region_id = region_id
 
-
-def get_hierarchy(region_id):
-    hierarchy = []
+    # Building the path from the given region up to the root
     while region_id:
         cur.execute("SELECT name, parent_region_id FROM regions WHERE id = %s", (region_id,))
         row = cur.fetchone()
         if row:
             name, parent_region_id = row
-            hierarchy.append(name)
+            path_to_root.insert(0, name)  # Insert at the beginning to build the path bottom-up.
+            if original_region_parent_id is None:
+                original_region_parent_id = parent_region_id
             region_id = parent_region_id
         else:
             break
-    return " > ".join(reversed(hierarchy))
+
+    # Fetching siblings of the parent region of the original region
+    siblings = []
+    siblings_ids = []
+    if original_region_parent_id is not None:
+        cur.execute("SELECT name, id FROM regions WHERE parent_region_id = %s AND id != %s",
+                    (original_region_parent_id, original_region_id))
+        rows = cur.fetchall()
+        siblings = [row[0] for row in rows]
+        siblings_ids = [row[1] for row in rows]
+
+    # Constructing the final hierarchy string
+    hierarchy_string = " -> ".join(path_to_root)
+    if siblings:
+        hierarchy_string += ", " + ", ".join(siblings)
+
+    return hierarchy_string, siblings_ids
 
 
 error_report_file = "error_reports.txt"
@@ -86,7 +131,7 @@ parser.add_argument('-n', '--num-regions', type=int, default=10, help='Number of
 args = parser.parse_args()
 
 # Use the specified model based on the --cheap flag
-model_to_use = "gpt-3.5-turbo" if args.cheap else "gpt-4"
+model_to_use = "gpt-3.5-turbo-1106" if args.cheap else "gpt-4-1106-preview"
 
 # Use the specified number of regions to check
 num_regions_to_check = args.num_regions
@@ -97,54 +142,110 @@ cur = conn.cursor()
 
 
 checked_regions = load_cache()
-max_id = get_max_region_id()
 
-# Exclude the checked regions from the possible ID range
-possible_ids = set(range(1, max_id + 1)) - checked_regions
-possible_ids_list = list(possible_ids) # Convert to list for random sampling
-region_ids = random.sample(possible_ids_list, min(num_regions_to_check, len(possible_ids_list)))
 
+# Generate a WHERE clause to exclude the regions that were already checked
+where_clause = "WHERE id NOT IN (" + ",".join(checked_regions) + ")" if checked_regions else ""
+# Generate a list of random region IDs to check, excluding the ones that were already checked, by SQL
+cur.execute(f"""
+    SELECT id FROM regions
+    {where_clause}
+    ORDER BY random()
+    LIMIT {num_regions_to_check}
+""")
+region_ids = [row[0] for row in cur.fetchall()]
 
 error_mark = "WARNING"
 
 initial_prompt = (
-    "Review the following region hierarchy and provide feedback. Look for any discrepancies such as incorrect region"
-    "names, out-of-place elements, or non-standard abbreviations that don't fit typical administrative divisions. Reply"
-    f"'yes' if the hierarchy is correct without any issues. Reply '{error_mark}' with details if it's not, and explain"
-    "what seems incorrect or out of place."
+ "Check out our region hierarchy. It is very important to me. Reply in JSON."
+ "If it's perfect, reply with `{\"status\": \"valid\"}'."
+ "Notice an issue? Point it out with `{\"status\": \"error\", \"severity\": \"low|medium|high\", \"detail\": \"Explain the issue\"}`."
+ "The hierarchy is provided in the following format: Parent -> Parent -> Parent -> Sibling, Sibling, Sibling."
 )
 
+client = openai.Client(api_key=openai.api_key)
+
+input_tokens = 0
+output_tokens = 0
+
 # Validate region hierarchy data for selected regions
+def valid_schema(json_feedback):
+    if "status" not in json_feedback:
+        return False
+    if json_feedback["status"] == "error":
+        if "severity" not in json_feedback:
+            return False
+        if json_feedback["severity"] not in ["low", "medium", "high"]:
+            return False
+        if "detail" not in json_feedback:
+            return False
+    elif json_feedback["status"] == "valid":
+        if "detail" in json_feedback:
+            return False
+    else:
+        return False
+    return True
+
+
 for region_id in region_ids:
     cur.execute("SELECT gadm_uid FROM regions WHERE id = %s", (region_id,))
     result = cur.fetchone()  # Store the result of fetchone
     gadm_uid = result[0] if result else None  # Check if result is not None before subscripting
-    hierarchy = get_hierarchy(region_id)
+    hierarchy, siblings = get_hierarchy(cur, region_id)
     title_message = f"Validating region hierarchy: {hierarchy}"
-    print(f"{'-' * len(title_message)}")
+    print(f"{'-' * 80}")
     print(f"Validating region hierarchy: {hierarchy}")  # Tab at the beginning for separation
     try:
-        response = openai.ChatCompletion.create(
+        completion = client.chat.completions.create(
             model=model_to_use,
             messages=[
                 {"role": "system", "content": initial_prompt},
                 {"role": "user", "content": hierarchy}
             ],
+            response_format = {"type": "json_object"},
+            n=1,
+
             max_tokens=150
         )
-        feedback = response['choices'][0]['message']['content'].strip()
-        if error_mark in feedback:
+        feedback = completion.choices[0].message.content
+        input_tokens += completion.usage.prompt_tokens
+        output_tokens += completion.usage.completion_tokens
+
+        try:
+            json_feedback = json.loads(feedback)
+        except json.JSONDecodeError:
+            print(red_text(f"Error: Invalid JSON response from OpenAI API: {feedback}"))
+            continue
+
+        if not valid_schema(json_feedback):
+            print(red_text(f"Error: Invalid JSON response from OpenAI API: {feedback}"))
+            continue
+
+        if json_feedback["status"] == "error":
             # Red text for the error message part only
-            print(f"{red_text('Potential error in region:')} {region_id}")
+            print_error_title(f"Potential error in region id: {region_id}", json_feedback["severity"])
             # Normal color for feedback
-            print(feedback)
-            save_error_report(region_id, gadm_uid, hierarchy, feedback)
+            print(json_feedback["detail"])
+            save_error_report(region_id, gadm_uid, hierarchy, json_feedback["detail"])
         else:
-            add_to_cache(region_id, gadm_uid)
-    except openai.error.OpenAIError as e:
+            print(green_text("OK."))
+            regions_id = siblings + [region_id]
+            add_to_cache(regions_id)
+    except openai.OpenAIError as e:
         # Red text for exceptions
         print(red_text(f"Error: {e}"))
         continue  # Continue with the next iteration
+
+# Count costs
+input_price = 0.001 if args.cheap else 0.01
+output_price = 0.002 if args.cheap else 0.02
+
+input_cost = input_price * float(input_tokens) / 1000
+output_cost = output_price * float(output_tokens) / 1000
+
+print(f"Input tokens: {input_tokens}, cost: {input_cost}")
+print(f"Output tokens: {output_tokens}, cost: {output_cost}")
 
 # Close database connection
 cur.close()
