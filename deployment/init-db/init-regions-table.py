@@ -64,6 +64,8 @@ if __name__ == "__main__":
     db_name = os.getenv("DB_NAME")
     db_user = os.getenv("DB_USER")
     db_password = os.getenv("DB_PASSWORD")
+    # Optional DB_HOST variable, defaults to localhost
+    db_host = os.getenv("DB_HOST", "localhost")
 
     # Check that the DB credentials were provided
     if db_name is None or db_user is None or db_password is None:
@@ -73,7 +75,7 @@ if __name__ == "__main__":
     # Connect to the PostgreSQL database
     print(f"Connecting to the database {db_name} as {db_user}...", end=" ")
     try:
-        conn_pg = psycopg2.connect(f"dbname={db_name} user={db_user} password={db_password}")
+        conn_pg = psycopg2.connect(f"dbname={db_name} user={db_user} password={db_password} host={db_host}")
     except psycopg2.OperationalError as e:
         print(f"Error: Could not connect to the database: {e}")
         sys.exit(1)
