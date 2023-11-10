@@ -6,6 +6,6 @@ if [ "$RUN_INIT" != "true" ]; then
   exit 0
 fi
 
-echo "Creating database..."
+echo "Running init-db.sh..."
 python3 -u /tmp/init-regions-table.py /data/gadm/gadm.gpkg --geometry
-echo "Done."
+echo "init-db.sh complete"
