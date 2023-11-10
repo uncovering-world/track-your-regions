@@ -4,6 +4,9 @@ import random
 import sys
 
 import openai
+from openai import OpenAI
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 import psycopg2
 from dotenv import load_dotenv
 
@@ -70,7 +73,7 @@ db_name = os.getenv("DB_NAME")
 db_user = os.getenv("DB_USER")
 db_password = os.getenv("DB_PASSWORD")
 db_host = os.getenv("DB_HOST", 'localhost')
-openai.api_key = os.getenv("OPENAI_API_KEY")
+
 
 # Check that the DB credentials were provided
 if not all([db_name, db_user, db_password, openai.api_key]):
@@ -124,14 +127,12 @@ for region_id in region_ids:
     print(f"{'-' * len(title_message)}")
     print(f"Validating region hierarchy: {hierarchy}")  # Tab at the beginning for separation
     try:
-        response = openai.ChatCompletion.create(
-            model=model_to_use,
-            messages=[
-                {"role": "system", "content": initial_prompt},
-                {"role": "user", "content": hierarchy}
-            ],
-            max_tokens=150
-        )
+        response = client.chat.completions.create(model=model_to_use,
+        messages=[
+            {"role": "system", "content": initial_prompt},
+            {"role": "user", "content": hierarchy}
+        ],
+        max_tokens=150)
         feedback = response['choices'][0]['message']['content'].strip()
         if error_mark in feedback:
             # Red text for the error message part only
@@ -141,7 +142,7 @@ for region_id in region_ids:
             save_error_report(region_id, gadm_uid, hierarchy, feedback)
         else:
             add_to_cache(region_id, gadm_uid)
-    except openai.error.OpenAIError as e:
+    except openai.OpenAIError as e:
         # Red text for exceptions
         print(red_text(f"Error: {e}"))
         continue  # Continue with the next iteration
