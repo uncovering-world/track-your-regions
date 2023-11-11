@@ -8,28 +8,28 @@ import psycopg2
 from dotenv import load_dotenv
 
 
-def save_error_report(region_id, gadm_uid, hierarchy, feedback):
+def save_error_report(id, gadm_uid, hierarchy, feedback):
     try:
-        with open(error_report_file, "a") as file:
-            file.write(f"Region ID: {region_id}, GADM ID: {gadm_uid}\n{hierarchy}\n{feedback}\n\n")
+        with open(errors_file, "a") as file:
+            file.write(f"AdmDivision ID: {id}, GADM ID: {gadm_uid}\n{hierarchy}\n{feedback}\n\n")
     except IOError as e:
-        print(f"Error during file ({error_report_file}) operation: {e}")
+        print(f"Error during file ({errors_file}) operation: {e}")
 
 
 # Write the checked region IDs to a file to avoid checking them again
 # Write just commma-separated values, no newlines
-def add_to_cache(regions_id):
-    if not regions_id:
+def add_to_cache(ids):
+    if not ids:
         return
     try:
-        with open(checked_cache_file, "a") as file:
-            if os.stat(checked_cache_file).st_size > 0:
+        with open(cache_file, "a") as file:
+            if os.stat(cache_file).st_size > 0:
                 file.write(",")
-            # regions_id is a list of integers, so we need to convert it to a string
-            regions_id = [str(region_id) for region_id in regions_id]
-            file.write(",".join(regions_id))
+            # ids is a list of integers, so we need to convert it to a string
+            ids = [str(id) for id in ids]
+            file.write(",".join(ids))
     except IOError as e:
-        print(f"Error during file ({checked_cache_file}) operation: {e}")
+        print(f"Error during file ({cache_file}) operation: {e}")
 
 
 # Function to color text red in terminal
@@ -56,39 +56,39 @@ def print_error_title(title, severity):
 
 def load_cache():
     try:
-        with open(checked_cache_file, "r") as file:
+        with open(cache_file, "r") as file:
             return file.read().split(",")
     except FileNotFoundError:
         return None
     except IOError as e:
-        print(f"Error during file ({checked_cache_file}) operation: {e}")
+        print(f"Error during file ({cache_file}) operation: {e}")
     return None
 
 
-def get_hierarchy(cur, region_id):
+def get_hierarchy(cur, id):
     path_to_root = []
-    original_region_parent_id = None
-    original_region_id = region_id
+    original_parent_id = None
+    original_id = id
 
     # Building the path from the given region up to the root
-    while region_id:
-        cur.execute("SELECT name, parent_region_id FROM regions WHERE id = %s", (region_id,))
+    while id:
+        cur.execute("SELECT name, parent_id FROM adm_divisions WHERE id = %s", (id,))
         row = cur.fetchone()
         if row:
-            name, parent_region_id = row
+            name, parent_id = row
             path_to_root.insert(0, name)  # Insert at the beginning to build the path bottom-up.
-            if original_region_parent_id is None:
-                original_region_parent_id = parent_region_id
-            region_id = parent_region_id
+            if original_parent_id is None:
+                original_parent_id = parent_id
+            id = parent_id
         else:
             break
 
     # Fetching siblings of the parent region of the original region
     siblings = []
     siblings_ids = []
-    if original_region_parent_id is not None:
-        cur.execute("SELECT name, id FROM regions WHERE parent_region_id = %s AND id != %s",
-                    (original_region_parent_id, original_region_id))
+    if original_parent_id is not None:
+        cur.execute("SELECT name, id FROM adm_divisions WHERE parent_id = %s AND id != %s",
+                    (original_parent_id, original_id))
         rows = cur.fetchall()
         siblings = [row[0] for row in rows]
         siblings_ids = [row[1] for row in rows]
@@ -101,8 +101,8 @@ def get_hierarchy(cur, region_id):
     return hierarchy_string, siblings_ids
 
 
-error_report_file = "error_reports.txt"
-checked_cache_file = ".checked_cache"
+errors_file = "error_reports.txt"
+cache_file = ".checked_cache"
 
 # Read the DB credentials from .env files.
 env_files = [".env", ".env.development", ".env.production", ".env.local"]
@@ -123,9 +123,9 @@ if not all([db_name, db_user, db_password, openai.api_key]):
     sys.exit(1)
 
 # Setup argument parser
-parser = argparse.ArgumentParser(description="Script to validate region hierarchies with OpenAI API.")
+parser = argparse.ArgumentParser(description="Script to validate administrative divisions hierarchies with OpenAI API.")
 parser.add_argument('-c', '--cheap', action='store_true', help='Use the gpt-3.5-turbo model instead of gpt-4.')
-parser.add_argument('-n', '--num-regions', type=int, default=10, help='Number of random regions to check.')
+parser.add_argument('-n', '--num-divisions', type=int, default=10, help='Number of random divisions to check.')
 
 # Parse arguments
 args = parser.parse_args()
@@ -134,26 +134,24 @@ args = parser.parse_args()
 model_to_use = "gpt-3.5-turbo-1106" if args.cheap else "gpt-4-1106-preview"
 
 # Use the specified number of regions to check
-num_regions_to_check = args.num_regions
+num_divisions_to_check = args.num_divisions
 
 # Connect to your database
 conn = psycopg2.connect(dbname=db_name, user=db_user, password=db_password, host=db_host)
 cur = conn.cursor()
 
+checked_divisions = load_cache()
 
-checked_regions = load_cache()
-
-
-# Generate a WHERE clause to exclude the regions that were already checked
-where_clause = "WHERE id NOT IN (" + ",".join(checked_regions) + ")" if checked_regions else ""
-# Generate a list of random region IDs to check, excluding the ones that were already checked, by SQL
+# Generate a WHERE clause to exclude the divisions that were already checked
+where_clause = "WHERE id NOT IN (" + ",".join(checked_divisions) + ")" if checked_divisions else ""
+# Generate a list of random division IDs to check, excluding the ones that were already checked, by SQL
 cur.execute(f"""
-    SELECT id FROM regions
+    SELECT id FROM adm_divisions
     {where_clause}
     ORDER BY random()
-    LIMIT {num_regions_to_check}
+    LIMIT {num_divisions_to_check}
 """)
-region_ids = [row[0] for row in cur.fetchall()]
+ids = [row[0] for row in cur.fetchall()]
 
 error_mark = "WARNING"
 
@@ -169,7 +167,7 @@ client = openai.Client(api_key=openai.api_key)
 input_tokens = 0
 output_tokens = 0
 
-# Validate region hierarchy data for selected regions
+# Validate region hierarchy data for selected divisions
 def valid_schema(json_feedback):
     if "status" not in json_feedback:
         return False
@@ -188,14 +186,13 @@ def valid_schema(json_feedback):
     return True
 
 
-for region_id in region_ids:
-    cur.execute("SELECT gadm_uid FROM regions WHERE id = %s", (region_id,))
+for id in ids:
+    cur.execute("SELECT gadm_uid FROM adm_divisions WHERE id = %s", (id,))
     result = cur.fetchone()  # Store the result of fetchone
     gadm_uid = result[0] if result else None  # Check if result is not None before subscripting
-    hierarchy, siblings = get_hierarchy(cur, region_id)
-    title_message = f"Validating region hierarchy: {hierarchy}"
+    hierarchy, siblings = get_hierarchy(cur, id)
     print(f"{'-' * 80}")
-    print(f"Validating region hierarchy: {hierarchy}")  # Tab at the beginning for separation
+    print(f"Validating division hierarchy: {hierarchy}")  # Tab at the beginning for separation
     try:
         completion = client.chat.completions.create(
             model=model_to_use,
@@ -203,9 +200,8 @@ for region_id in region_ids:
                 {"role": "system", "content": initial_prompt},
                 {"role": "user", "content": hierarchy}
             ],
-            response_format = {"type": "json_object"},
+            response_format={"type": "json_object"},
             n=1,
-
             max_tokens=150
         )
         feedback = completion.choices[0].message.content
@@ -224,14 +220,14 @@ for region_id in region_ids:
 
         if json_feedback["status"] == "error":
             # Red text for the error message part only
-            print_error_title(f"Potential error in region id: {region_id}", json_feedback["severity"])
+            print_error_title(f"Potential error in division id: {id}", json_feedback["severity"])
             # Normal color for feedback
             print(json_feedback["detail"])
-            save_error_report(region_id, gadm_uid, hierarchy, json_feedback["detail"])
+            save_error_report(id, gadm_uid, hierarchy, json_feedback["detail"])
         else:
             print(green_text("OK."))
-            regions_id = siblings + [region_id]
-            add_to_cache(regions_id)
+            checked_ids = siblings + [id]
+            add_to_cache(checked_ids)
     except openai.OpenAIError as e:
         # Red text for exceptions
         print(red_text(f"Error: {e}"))

@@ -95,15 +95,15 @@ directly. The Dockerfiles in those directories are intended solely for use by do
 - `make clean-volume`: Remove all Docker volumes.
 - `make clean-all`: Perform a complete cleanup.
 
-## `init-regions-table` Script Parameters and Docker Execution
+## `init-db` Script Parameters and Docker Execution
 
-The `init-regions-table` script is a Python script intended to run within a Docker container to initialize an empty
+The `init-db` script is a Python script intended to run within a Docker container to initialize an empty
 database. The script has options to customize the initialization process based on the requirements of the current
 environment.
 
 ### Script Options
 
-The `init-regions-table` Python script supports the following command-line options:
+The `init-db` Python script supports the following command-line options:
 
 - `--fast`: Runs the initialization script in 'fast' mode, skipping the postprocessing for a quicker setup. This is
   especially useful for debugging and development purposes when the full dataset is not required.
@@ -113,18 +113,18 @@ The `init-regions-table` Python script supports the following command-line optio
 
 ### Setting Script Parameters in Docker
 
-These options are passed to the `init-regions-table` script from the `init-db.sh` shell script, which is the Docker
+These options are passed to the `init-db` script from the `init-db.sh` shell script, which is the Docker
 container's entry point. To set these options, you need to modify the `init-db.sh` script as follows:
 
 1. Open the `init-db.sh` file in a text editor.
-2. Locate the line where `init-regions-table.py` is called.
+2. Locate the line where `init-db.py` is called.
 3. Add the desired options to this command.
 
 Here's an example snippet from `init-db.sh` that includes both options:
 
 ```bash
 # Inside init-db.sh
-python init-regions-table.py --fast --geometry
+python init-db.py --fast --geometry
 ```
 
 Make sure to include only the options relevant to your deployment. For instance, to enable fast initialization without
@@ -132,7 +132,7 @@ geometry data, you would only include `--fast`:
 
 ```bash
 # Inside init-db.sh for fast initialization without geometry
-python init-regions-table.py --fast
+python init-db.py --fast
 ```
 
 ### Note on Usage

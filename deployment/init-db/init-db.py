@@ -80,9 +80,9 @@ class Timestamp:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Script to initialize the regions table in the database.")
+    parser = argparse.ArgumentParser(description="Script to initialize the administartive divisions table in the database.")
     parser.add_argument('gadm_file', help='Path to the GADM GeoPackage file.')
-    parser.add_argument('-g', '--geometry', action='store_true', help='Adds the geometry to the regions table.')
+    parser.add_argument('-g', '--geometry', action='store_true', help='Adds the geometry to the administartive divisions table.')
     parser.add_argument('-f', '--fast', action='store_true', help='Fast mode - does not do postprocessing.')
     return parser.parse_args()
 
@@ -117,9 +117,9 @@ class GADMRecord:
         self._record = dict(zip(properties, row))
         # Dictionary to store the subcountry level and name for the current record
         self._subcountry_level = None
-        self.region_path_parts = []  # List to build up the path for the current region
-        self.last_valid_parent_region_id = None
-        self.last_valid_parent_region_path = None
+        self.path_parts = []  # List to build up the path for the current region
+        self.last_valid_parent_id = None
+        self.last_valid_parent_path = None
         self.last_valid_parent_name = None
 
     def __getitem__(self, item):
@@ -142,10 +142,10 @@ class GADMRecord:
                 return next_level_name
         return None
 
-class Region:
-    def __init__(self, record, region_type, name):
-        self.record = record # Reference to the GADMRecord instance to which the Region belongs
-        self.type = region_type
+class AdmDivision:
+    def __init__(self, record, division_type, name):
+        self.record = record # Reference to the GADMRecord instance to which the division belongs
+        self.type = division_type
         self.name = name
         self.path = None
         self.id = None
@@ -154,7 +154,7 @@ class Region:
         self.single_child = None
 
     def update_path(self):
-        self.path = "_".join(self.record.region_path_parts)
+        self.path = "_".join(self.record.path_parts)
 
 
 class GADMRecordsProcessor:
@@ -169,7 +169,7 @@ class GADMRecordsProcessor:
         self.postprocess = not args.fast
         self.src_table_name = self._get_gadm_table_name()
         self.geometries = {}
-        self.existing_regions = {}
+        self.divisions = {}
         self.single_children = []
         self.records_num = self._records_num()
 
@@ -189,20 +189,20 @@ class GADMRecordsProcessor:
     def create_dst_table(self):
         try:
             self.dst_cursor.execute("""
-                CREATE TABLE IF NOT EXISTS regions (
+                CREATE TABLE IF NOT EXISTS adm_divisions (
                         id SERIAL PRIMARY KEY,
                         name VARCHAR(255) NOT NULL,
-                        parent_region_id INTEGER REFERENCES regions(id),
-                        has_subregions BOOLEAN NOT NULL,
+                        parent_id INTEGER REFERENCES adm_divisions(id),
+                        has_children BOOLEAN NOT NULL,
                         gadm_uid INTEGER,
                         geom GEOMETRY(MULTIPOLYGON, 4326)
                     )
                 """)
         except psycopg2.OperationalError as e:
-            print(f"Error: Could not create the regions table: {e}")
+            print(f"Error: Could not create the adm_divisions table: {e}")
             sys.exit(1)
 
-    # Get the name of the GADM regions table from the GeoPackage.
+    # Get the name of the GADM table from the GeoPackage.
     # It will also be used as the name of the layer when the GeoPackage is opened with GDAL (to read geometries).
     def _get_gadm_table_name(self):
         try:
@@ -239,7 +239,7 @@ class GADMRecordsProcessor:
             self.geometries[gadm_uid] = geometry
         timestamp.print_total()
 
-    def init_regions_table(self):
+    def init_adm_divisions_table(self):
         self.src_cursor.execute(f"SELECT {', '.join(self.properties)} FROM {self.src_table_name}")
         timestamp = Timestamp(self.records_num, "GADM records")
         for row in self.src_cursor:
@@ -258,95 +258,95 @@ class GADMRecordsProcessor:
 
         # Process each geographical level for the current record
         for level in self.geo_levels:
-            region = Region(record, level, record[level])
+            division = AdmDivision(record, level, record[level])
 
             # Skip empty levels
-            if not region.name:
+            if not division.name:
                 continue
 
             # Skip unnecessary subcountry level
-            if region.type in self.subcountry_levels:
+            if division.type in self.subcountry_levels:
                 # Skip non-prioritized country levels
-                if region.type != record.subcountry_level:
+                if division.type != record.subcountry_level:
                     continue
                 # It's the prioritized subcountry level, so we need to check if it's the same as the country level
-                elif region.name == record['COUNTRY']:
+                elif division.name == record['COUNTRY']:
                     continue
 
             # Skip the NAME_0 level if it's the same as the country level
-            # Sometimes the NAME_0 represents country, sometimes it represents a region within a country
-            if region.type == 'NAME_0' and region.name == record['COUNTRY']:
+            # Sometimes the NAME_0 represents country, sometimes it represents a division within a country
+            if division.type == 'NAME_0' and division.name == record['COUNTRY']:
                 # We can skip it only if the next level is not empty
-                if record.next_non_empty_level(region.type):
+                if record.next_non_empty_level(division.type):
                     continue
-                # if the next level is empty, we need to update the parent region with the current region info
+                # if the next level is empty, we need to update the parent division with the current division info
                 uid = record['UID']
                 geom = None if not self.handle_geometry else self.geometries[uid]
                 self.dst_cursor.execute("""
-                    UPDATE regions
-                    SET gadm_uid = %s, geom = ST_GeomFromWKB(%s, 4326), has_subregions = FALSE
+                    UPDATE adm_divisions
+                    SET gadm_uid = %s, geom = ST_GeomFromWKB(%s, 4326), has_children = FALSE
                     WHERE id = %s
-                """, (uid, geom, record.last_valid_parent_region_id))
+                """, (uid, geom, record.last_valid_parent_id))
                 continue
 
-            # We have skipped all the unnecessary levels, so we can form a unique key for the current region
-            record.region_path_parts.append(region.name)  # Add the name to the path_parts list if it's not empty
-            region.update_path()  # Build the unique key from the path_parts list
+            # We have skipped all the unnecessary levels, so we can form a unique key for the current division
+            record.path_parts.append(division.name)  # Add the name to the path_parts list if it's not empty
+            division.update_path()  # Build the unique key from the path_parts list
 
-            # Determine if the current region has subregions
-            next_level = record.next_non_empty_level(region.type)
-            has_subregions = next_level is not None  # Check if a non-empty level was found
+            # Determine if the current division has subregions
+            next_level = record.next_non_empty_level(division.type)
+            has_children = next_level is not None  # Check if a non-empty level was found
 
-            # We assign uid to the region, if it's the last level, and it has no subregions,
-            # as only such regions have a unique uid in GADM.
-            if has_subregions:
+            # We assign uid to the division, if it's the last level, and it has no subdivisions,
+            # as only such divisions have a unique uid in GADM.
+            if has_children:
                 uid = None
                 geom = None
             else:
                 uid = record['UID']
                 geom = None if not self.handle_geometry else self.geometries[uid]
 
-            if region.path not in self.existing_regions:
+            if division.path not in self.divisions:
                 query = """
-                    INSERT INTO regions (name, has_subregions, parent_region_id, gadm_uid, geom)
+                    INSERT INTO adm_divisions (name, has_children, parent_id, gadm_uid, geom)
                     VALUES (%s, %s, %s, %s, ST_GeomFromWKB(%s, 4326))
                     RETURNING id
                 """
-                params = (region.name, has_subregions, record.last_valid_parent_region_id, uid, geom)
+                params = (division.name, has_children, record.last_valid_parent_id, uid, geom)
                 self.dst_cursor.execute(query, params)
-                region.id = self.dst_cursor.fetchone()[0]
-                self.existing_regions[region.path] = region
+                division.id = self.dst_cursor.fetchone()[0]
+                self.divisions[division.path] = division
 
                 # If not in fast mode, append the information that tracks single children and
                 # helps to merge them with their parents later during the postprocessing
                 if not args.fast:
-                    region.parent_id = record.last_valid_parent_region_id
-                    region.parent_path = record.last_valid_parent_region_path
-                    region.parent_name = record.last_valid_parent_name
-                    # If the region has a parent, update the parent's children_num and single_child
+                    division.parent_id = record.last_valid_parent_id
+                    division.parent_path = record.last_valid_parent_path
+                    division.parent_name = record.last_valid_parent_name
+                    # If the division has a parent, update the parent's children_num and single_child
                     # It is necessary to detect single children and merge them with their parents later
-                    if record.last_valid_parent_region_path:
-                        parent_region = self.existing_regions[record.last_valid_parent_region_path]
-                        parent_region.children_num += 1
-                        if parent_region.children_num == 1:
+                    if record.last_valid_parent_path:
+                        parent = self.divisions[record.last_valid_parent_path]
+                        parent.children_num += 1
+                        if parent.children_num == 1:
                             # Mark as potentially single child, as it's the first child found for the parent
-                            self.single_children.append(region)
-                            # Save the potential single child ID to the parent region
-                            parent_region.single_child = region
-                        elif parent_region.children_num == 2:
+                            self.single_children.append(division)
+                            # Save the potential single child ID to the parent division
+                            parent.single_child = division
+                        elif parent.children_num == 2:
                             # The second child was found, so remove the sibling from the list of single children
-                            sibling = parent_region.single_child
+                            sibling = parent.single_child
                             # Remove the sibling from the list of single children
                             self.single_children.remove(sibling)
-                            parent_region.single_child = None
+                            parent.single_child = None
             else:
-                # If the region already exists, get its ID
-                region = self.existing_regions[region.path]
+                # If the division already exists, get its ID
+                division = self.divisions[division.path]
 
-            # Update the parent region info for the next iteration
-            record.last_valid_parent_region_id = region.id
-            record.last_valid_parent_name = region.name
-            record.last_valid_parent_region_path = region.path
+            # Update the parent division info for the next iteration
+            record.last_valid_parent_id = division.id
+            record.last_valid_parent_name = division.name
+            record.last_valid_parent_path = division.path
 
     def merge_single_children(self):
         timestamp = Timestamp(len(self.single_children), "single children")
@@ -354,20 +354,18 @@ class GADMRecordsProcessor:
             timestamp.print()
             # Merge the single child with its parent only if they have the same name
             if single_child.name == single_child.parent_name:
-                old_parent = self.existing_regions[single_child.parent_path]
-                new_parent = self.existing_regions.get(old_parent.parent_path)
-                # Remove the parent region and update the single child's parent ID
-                # First - get the parent region's parent ID
-                # Second - update the single child's parent ID
-                self.dst_cursor.execute("UPDATE regions SET parent_region_id = %s WHERE id = %s",
+                old_parent = self.divisions[single_child.parent_path]
+                new_parent = self.divisions.get(old_parent.parent_path)
+                # Remove the parent division and update the single child's parent ID
+                # Update the single child's parent ID
+                self.dst_cursor.execute("UPDATE adm_divisions SET parent_id = %s WHERE id = %s",
                                         (new_parent.id if new_parent else None, single_child.id))
                 # Do not forget to update the single child's parent ID in the dictionary
-                # But first, save the old parent ID to delete the parent region later
                 single_child.parent_id = new_parent.id if new_parent else None
                 single_child.parent_path = new_parent.path if new_parent else None
-                # Third - delete the parent region
-                cur_dst.execute("DELETE FROM regions WHERE id = %s", (old_parent.id,))
-                del self.existing_regions[old_parent.path]
+                # Delete the parent
+                cur_dst.execute("DELETE FROM adm_divisions WHERE id = %s", (old_parent.id,))
+                del self.divisions[old_parent.path]
         timestamp.print_total()
 
 
@@ -406,13 +404,13 @@ if __name__ == "__main__":
             print(" without postprocessing", end="")
         print(":")
 
-        print("Initializing the regions table...")
-        records_processor.init_regions_table()
-        print("Regions table initialization complete.")
+        print("Initializing the adm_divisions table...")
+        records_processor.init_adm_divisions_table()
+        print("adm_divisions table initialization complete.")
 
-        # Create indexes on the Region table for id
+        # Create indexes for id
         print("Creating index for the id field...", end=" ", flush=True)
-        cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_id ON regions (id)")
+        cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_id ON adm_divisions (id)")
         print("done.")
 
         if not args.fast:
@@ -421,9 +419,9 @@ if __name__ == "__main__":
             records_processor.merge_single_children()
             print("Single children merging complete.")
 
-        # Create indexes on the Region table
-        print("Creating index for the parent_region_id field...", end=" ", flush=True)
-        cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_parent_region ON regions (parent_region_id)")
+        # Create indexes on the adm_divisions table
+        print("Creating index for the parent_id field...", end=" ", flush=True)
+        cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_parent_id ON adm_divisions (parent_id)")
         print("done.")
         # Create a GiST index on the geometry column
         if args.geometry:

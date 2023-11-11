@@ -39,7 +39,7 @@ ENV POSTGRES_PASSWORD=$DB_PASSWORD
 COPY .env* /
 
 # Copy the init script to the container
-COPY ./init-db/init-regions-table.py /tmp/
+COPY init-db/init-db.py /tmp/
 
 # Make the init script executable
 RUN chmod +x /docker-entrypoint-initdb.d/init-db.sh
