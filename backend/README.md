@@ -26,7 +26,7 @@ This directory contains the backend code for the Region Tracker service, includi
 │   │   └── regionController.js  # Controller for region-related operations
 │   ├── models/                  # Sequelize models
 │   │   ├── index.js             # Entry point for models
-│   │   └── Region.js            # Model for the region table
+│   │   └── AdmDivision.js            # Model for the region table
 │   ├── routes/                  # API routes
 │   │   ├── index.js             # Main route file
 │   │   └── regionRoutes.js      # Routes for region-related operations

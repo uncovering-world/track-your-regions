@@ -1,21 +1,21 @@
 const { Model, DataTypes, QueryTypes} = require('sequelize');
 const sequelize = require("../config/db");
 
-class Region extends Model {
+class AdmDivision extends Model {
     static async getAncestors(regionId) {
         return await sequelize.query(`
             WITH RECURSIVE Ancestors AS (
-                SELECT id, parent_region_id as parentRegionId, name
-                FROM regions
-                WHERE id = :regionId
+                SELECT id, parent_id as parentId, name
+                FROM adm_divisions
+                WHERE id = :id
                 UNION ALL
-                SELECT r.id, r.parent_region_id as parentRegionId, r.name
-                FROM regions r
-                INNER JOIN Ancestors a ON r.id = a.parentRegionId
+                SELECT ad.id, ad.parent_id as parentId, ad.name
+                FROM adm_divisions ad
+                INNER JOIN Ancestors a ON ad.id = a.parentId
             )
             SELECT * FROM Ancestors;
         `, {
-            replacements: { regionId },
+            replacements: { id },
             type: QueryTypes.SELECT
         });
     }
@@ -25,13 +25,13 @@ class Region extends Model {
         return {
             id: this.id,
             name: this.name,
-            parentRegionId: this.parentRegionId,
-            hasSubregions: this.hasSubregions,
+            parentId: this.parentId,
+            hasChildren: this.hasChildren,
         };
     }
 }
 
-Region.init({
+AdmDivision.init({
     id: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -44,19 +44,19 @@ Region.init({
         allowNull: false,
         field: 'name'
     },
-    parentRegionId: {
+    parentId: {
         type: DataTypes.INTEGER,
-        field: 'parent_region_id',
+        field: 'parent_id',
         references: {
-            model: 'regions',
+            model: 'adm_divisions',
             key: 'id'
         },
         allowNull: true
     },
-    hasSubregions: {
+    hasChildren: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
-        field: 'has_subregions'
+        field: 'has_children'
     },
     gadmUid: {
         type: DataTypes.INTEGER,
@@ -70,8 +70,8 @@ Region.init({
     }
 }, {
     sequelize,
-    tableName: 'regions',
+    tableName: 'adm_divisions',
     timestamps: false, // Don't add the timestamp attributes (updatedAt, createdAt)
 });
 
-module.exports = Region;
+module.exports = AdmDivision;

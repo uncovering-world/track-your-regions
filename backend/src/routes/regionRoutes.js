@@ -5,9 +5,9 @@ const { check, query, validationResult } = require('express-validator');
 const router = express.Router();
 
 router.get('/root', regionController.getRootRegions);
-router.get('/:regionId',
+router.get('/:id',
     ...[
-        check('regionId').isInt().withMessage('Region ID must be an integer')
+        check('id').isInt().withMessage('ID must be an integer')
     ],
     async (req, res) => {
         const errors = validationResult(req);

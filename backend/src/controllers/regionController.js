@@ -1,5 +1,4 @@
-const { Region } = require('../models');
-const { Model, DataTypes, QueryTypes } = require('sequelize');
+const { AdmDivision } = require('../models');
 const sequelize  = require("../config/db");
 
 
@@ -8,30 +7,30 @@ exports.getGeometry = async (req, res) => {
     const resolveEmpty = req.query.resolveEmpty === 'true';
 
     // Check if the region exists
-    const region = await Region.findOne({
+    const division = await AdmDivision.findOne({
         where: { id: regionId }
     });
-    if (!region) {
+    if (!division) {
         return res.status(404).json({ message: 'Region not found' });
     }
 
     let geometry = region.geom;
 
-   if (!geometry) {
+    if (!geometry) {
         if (!resolveEmpty) {
             return res.status(204).json({ message: 'Geometry not found' });
         }
         const query = `
-            WITH RECURSIVE Subregions AS (SELECT id, ST_Simplify(geom, 0.01) as simplified_geom
-                                          FROM regions
+            WITH RECURSIVE Children AS (SELECT id, ST_Simplify(geom, 0.01) as simplified_geom
+                                          FROM adm_divisions
                                           WHERE id = :regionId
                                           UNION ALL
-                                          SELECT r.id, ST_Simplify(r.geom, 0.01) as simplified_geom
-                                          FROM regions r
-                                                   INNER JOIN Subregions s ON r.parent_region_id = s.id
-                                          WHERE s.simplified_geom IS NULL)
+                                          SELECT ad.id, ST_Simplify(ad.geom, 0.01) as simplified_geom
+                                          FROM adm_divisions ad
+                                                   INNER JOIN Children c ON ad.parent_id = c.id
+                                          WHERE c.simplified_geom IS NULL)
             SELECT ST_AsGeoJSON(ST_Multi(ST_Union(simplified_geom))) as geometry
-            FROM Subregions
+            FROM Children
             WHERE simplified_geom IS NOT NULL;
         `;
 
@@ -44,7 +43,7 @@ exports.getGeometry = async (req, res) => {
 
         if (geometry) {
             // Update the geometry in the database
-            await Region.update({ geom: geometry }, {
+            await AdmDivision.update({ geom: geometry }, {
                 where: { id: regionId }
             });
         } else {
@@ -57,11 +56,11 @@ exports.getGeometry = async (req, res) => {
 
 
 exports.getAncestors = async (req, res) => {
-    const { regionId } = req.params;
+    const { refionId } = req.params;
 
     // Check if the region exists
     const region = await Region.findOne({
-        where: { id: regionId }
+        where: { id: id }
     });
     if (!region) {
         return res.status(404).json({ message: 'Region not found' });

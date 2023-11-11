@@ -1,7 +1,7 @@
-const Region = require('./Region');
+const AdmDivision = require('./AdmDivision');
 
 const models = {
-    Region,
+    AdmDivision,
 };
 
 module.exports = models;
