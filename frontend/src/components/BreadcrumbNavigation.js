@@ -14,12 +14,12 @@ const BreadcrumbNavigation = () => {
                 const ancestors = await fetchAncestors(selectedRegion.id);
                 if (Array.isArray(ancestors)) {
                     const reversedAncestors = ancestors.reverse();
-                    setBreadcrumbItems([{id: 0, name: 'World', hasSubregions: true }, ...reversedAncestors]);
+                    setBreadcrumbItems([{id: 0, name: 'World', hasChildren: true }, ...reversedAncestors]);
                 } else {
                     console.error('Ancestors is not an array:', ancestors);
                 }
             } else {
-                setBreadcrumbItems([{ id: null, name: 'World', hasSubregions: true }]);
+                setBreadcrumbItems([{ id: null, name: 'World', hasChildren: true }]);
             }
         };
         fetchAndSetAncestors();
