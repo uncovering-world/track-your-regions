@@ -1,0 +1,37 @@
+language: "en"
+early_access: true
+reviews:
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  path_filters:
+    - "!**/.xml"
+  path_instructions:
+    - path: "**/.env*"
+      instructions: |
+        "Check that the sensitive data is not stored in the repository."
+    - path: "frontend/api/**"
+      instructions: |
+        "Check the frontend API consumption against the Swagger documentation to confirm:
+        - The frontend correctly uses the API endpoints, parameters, and handles responses as defined in Swagger.
+        - Any discrepancies between the frontend implementation and the Swagger spec are identified and corrected."
+    - path: "frontend/**/*.js"
+      instructions: |
+        "Check that the frontend code is well structured and follows the best practices of ReactJS."
+    - path: "backend/**/*.js"
+      instructions: |
+        "Check that the backend code is well structured and follows the best practices of NodeJS."
+    - path: "backend/**/*.js"
+      instructions: |
+        "Check the backend API implementation against the Swagger documentation to confirm:
+        - The backend correctly implements the API endpoints, parameters, and responses as defined in Swagger.
+        - Any discrepancies between the backend implementation and the Swagger spec are identified and corrected."
+  auto_review:
+    enabled: true
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+    drafts: true
+chat:
+  auto_reply: true
