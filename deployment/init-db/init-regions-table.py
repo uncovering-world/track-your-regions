@@ -27,6 +27,8 @@ class DatabaseConnectionManager:
             print(f"Error: Could not connect to the database {self.db_name} as {self.db_user}: {e}")
             sys.exit(1)
         print("done.")
+        if self.gadm_file is None:
+            return self.cur_pg, None
         print(f"Opening {self.gadm_file} as a SQLite database...", end=" ")
         try:
             self.conn_sqlite = sqlite3.connect(self.gadm_file)
@@ -41,6 +43,8 @@ class DatabaseConnectionManager:
         self.conn_pg.commit()
         self.cur_pg.close()
         self.conn_pg.close()
+        if self.gadm_file is None:
+            return
         self.cur_sqlite.close()
         self.conn_sqlite.close()
 
@@ -81,9 +85,10 @@ class Timestamp:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Script to initialize the regions table in the database.")
-    parser.add_argument('gadm_file', help='Path to the GADM GeoPackage file.')
+    parser.add_argument('-s', '--source', help='Path to the GADM GeoPackage file.')
     parser.add_argument('-g', '--geometry', action='store_true', help='Adds the geometry to the regions table.')
     parser.add_argument('-f', '--fast', action='store_true', help='Fast mode - does not do postprocessing.')
+    parser.add_argument('-a', '--alt-only', action='store_true', help='Generate only the Alternative Hierarchy table.')
     return parser.parse_args()
 
 
@@ -167,11 +172,11 @@ class GADMRecordsProcessor:
         self.properties = self.geo_levels + ['UID', 'geom']
         self.handle_geometry = args.geometry
         self.postprocess = not args.fast
-        self.src_table_name = self._get_gadm_table_name()
+        self.src_table_name = self._get_gadm_table_name() if self.src_file else None
         self.geometries = {}
         self.existing_regions = {}
         self.single_children = []
-        self.records_num = self._records_num()
+        self.records_num = self._records_num() if self.src_file else 0
 
     def _records_num(self):
         print(f"Counting records in the {self.src_table_name} table...", end=" ", flush=True)
@@ -186,7 +191,7 @@ class GADMRecordsProcessor:
     def property_index(self, property_name):
         return self.properties.index(property_name)
 
-    def create_dst_table(self):
+    def create_regions_table(self):
         try:
             self.dst_cursor.execute("""
                 CREATE TABLE IF NOT EXISTS regions (
@@ -370,65 +375,135 @@ class GADMRecordsProcessor:
                 del self.existing_regions[old_parent.path]
         timestamp.print_total()
 
+    def create_alternative_hierarchy_table(self):
+        try:
+            self.dst_cursor.execute("""
+                CREATE TABLE IF NOT EXISTS alternative_hierarchy (
+                        id SERIAL PRIMARY KEY,
+                        parent_id INTEGER REFERENCES alternative_hierarchy(id),
+                        hierarchy_type VARCHAR(255) NOT NULL,
+                        region_group_name VARCHAR(255) NOT NULL,
+                        is_active BOOLEAN NOT NULL
+                    )
+            """)
+            self.dst_cursor.execute("""
+                CREATE TABLE IF NOT EXISTS region_group_mapping (
+                        alternative_hierarchy_id INTEGER REFERENCES alternative_hierarchy(id),
+                        region_id INTEGER REFERENCES regions(id)
+                    )
+            """)
+        except psycopg2.OperationalError as e:
+            print(f"Error: Could not create the alternative_hierarchy table: {e}")
+            sys.exit(1)
+
+    # Populate the Alternative Hierarchy table with the data from the regions table
+    def populate_alternative_hierarchy_table(self):
+        # Step 1: Insert all regions into the alternative_hierarchy table without parent_id
+        self.dst_cursor.execute("SELECT id, name FROM regions")
+        regions = self.dst_cursor.fetchall()
+
+        # Store the mapping of region_id to alternative_hierarchy_id
+        region_to_alt_id = {}
+
+        timestamp = Timestamp(len(regions), "regions copied to alternative_hierarchy")
+        for region_id, name in regions:
+            timestamp.print()
+            self.dst_cursor.execute("""
+                INSERT INTO alternative_hierarchy (hierarchy_type, region_group_name, is_active)
+                VALUES (%s, %s, %s) RETURNING id
+            """, ('Administrative Division', name, True))
+            alt_hierarchy_id = self.dst_cursor.fetchone()[0]
+            region_to_alt_id[region_id] = alt_hierarchy_id
+        timestamp.print_total()
+
+        # Step 2: Update the parent_id in the alternative_hierarchy table
+        timestamp = Timestamp(len(regions), "alternative_hierarchy parent_id updated")
+        for region_id, name in regions:
+            timestamp.print()
+            self.dst_cursor.execute("SELECT parent_region_id FROM regions WHERE id = %s", (region_id,))
+            parent_region_id = self.dst_cursor.fetchone()[0]
+
+            if parent_region_id is not None:
+                alt_parent_id = region_to_alt_id.get(parent_region_id)
+                self.dst_cursor.execute("""
+                    UPDATE alternative_hierarchy SET parent_id = %s WHERE id = %s
+                """, (alt_parent_id, region_to_alt_id[region_id]))
+        timestamp.print_total()
+
+        # Step 3: Populate the region_group_mapping table
+        timestamp = Timestamp(len(region_to_alt_id), "region_group_mapping populated")
+        for region_id, alt_hierarchy_id in region_to_alt_id.items():
+            timestamp.print()
+            self.dst_cursor.execute("""
+                INSERT INTO region_group_mapping (alternative_hierarchy_id, region_id)
+                VALUES (%s, %s)
+            """, (alt_hierarchy_id, region_id))
+        timestamp.print_total()
+
 
 if __name__ == "__main__":
 
     args = parse_args()
 
-    gadm_file = args.gadm_file
+    gadm_file = args.source
 
     # Check that the GeoPackage file exists
-    if not os.path.exists(gadm_file):
+    if not args.alt_only and not os.path.exists(gadm_file):
         print(f"Error: GeoPackage file {gadm_file} does not exist")
         sys.exit(1)
 
     # Read the DB credentials from .env files.
     db_name, db_user, db_password, db_host = get_db_credentials_from_env()
 
+    global_timestamp_start = datetime.now()
+
     with DatabaseConnectionManager(db_host, db_name, db_user, db_password, gadm_file) as (cur_dst, cur_src):
 
         records_processor = GADMRecordsProcessor(cur_src, cur_dst, gadm_file, args)
 
-        # Create the Region table, if it doesn't exist
-        records_processor.create_dst_table()
+        if not args.alt_only:
+            # Create the Region table, if it doesn't exist
+            records_processor.create_regions_table()
 
-        global_timestamp_start = datetime.now()
+            if args.geometry:
+                print("Copying geometries into memory:")
+                records_processor.copy_geometry_into_memory()
+                print("Geometry copying complete.")
 
-        if args.geometry:
-            print("Copying geometries into memory:")
-            records_processor.copy_geometry_into_memory()
-            print("Geometry copying complete.")
+            print(f"Processing {records_processor.records_num} GADM records", end="")
+            if args.geometry:
+                print(" with geometries", end="")
+            if args.fast:
+                print(" without postprocessing", end="")
+            print(":")
 
-        print(f"Processing {records_processor.records_num} GADM records", end="")
-        if args.geometry:
-            print(" with geometries", end="")
-        if args.fast:
-            print(" without postprocessing", end="")
-        print(":")
+            print("Initializing the regions table...")
+            records_processor.init_regions_table()
+            print("Regions table initialization complete.")
 
-        print("Initializing the regions table...")
-        records_processor.init_regions_table()
-        print("Regions table initialization complete.")
-
-        # Create indexes on the Region table for id
-        print("Creating index for the id field...", end=" ", flush=True)
-        cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_id ON regions (id)")
-        print("done.")
-
-        if not args.fast:
-            # Merge single children with their parents
-            print("Merging single children with their parents...")
-            records_processor.merge_single_children()
-            print("Single children merging complete.")
-
-        # Create indexes on the Region table
-        print("Creating index for the parent_region_id field...", end=" ", flush=True)
-        cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_parent_region ON regions (parent_region_id)")
-        print("done.")
-        # Create a GiST index on the geometry column
-        if args.geometry:
-            print("Creating geometry index...", end=" ", flush=True)
-            cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_geom ON regions USING GIST (geom)")
+            # Create indexes on the Region table for id
+            print("Creating index for the id field...", end=" ", flush=True)
+            cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_id ON regions (id)")
             print("done.")
-        print(f"DB init complete in {datetime.now() - global_timestamp_start} !")
 
+            if not args.fast:
+                # Merge single children with their parents
+                print("Merging single children with their parents...")
+                records_processor.merge_single_children()
+                print("Single children merging complete.")
+
+            # Create indexes on the Region table
+            print("Creating index for the parent_region_id field...", end=" ", flush=True)
+            cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_parent_region ON regions (parent_region_id)")
+            print("done.")
+            # Create a GiST index on the geometry column
+            if args.geometry:
+                print("Creating geometry index...", end=" ", flush=True)
+                cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_geom ON regions USING GIST (geom)")
+                print("done.")
+
+        # Generate Alternative Hierarchy table
+        print("Generating Alternative Hierarchy table...")
+        records_processor.create_alternative_hierarchy_table()
+        records_processor.populate_alternative_hierarchy_table()
+    print(f"DB init complete in {datetime.now() - global_timestamp_start} !")

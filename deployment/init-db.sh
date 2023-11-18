@@ -7,5 +7,5 @@ if [ "$RUN_INIT" != "true" ]; then
 fi
 
 echo "Running init-db.sh..."
-python3 -u /tmp/init-regions-table.py /data/gadm/gadm.gpkg --geometry
+python3 -u /tmp/init-regions-table.py -s /data/gadm/gadm.gpkg --geometry
 echo "init-db.sh complete"
