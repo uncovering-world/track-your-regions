@@ -33,8 +33,12 @@ check-gadm-file:
 
 # ---- Docker Database Commands ----
 build-db: check-env
-	# Check if the database is already built
-	@$(DC) images | grep db >/dev/null || $(DC) build db
+	# If FORCE is set, force the rebuild of the database image, check if the image exists otherwise
+	@if [ -z "$(FORCE)" ]; then \
+		$(DC) images | grep db >/dev/null || $(DC) build db; \
+	else \
+		$(DC) build db; \
+	fi
 
 run-db: build-db
 	export RUN_INIT=true && $(DC) up -d db
@@ -52,6 +56,10 @@ init-db: check-gadm-file run-db
 	       $(DC) exec -T db psql -U $(DB_USER) -d $(DB_NAME) -c "\dt" 2>&1 | grep regions >/dev/null; do \
 		sleep 1; \
 	done
+
+init-alt-table: init-db
+	@echo "Initialize alternative hierarchy table."
+	$(DC) exec -T db python3 -u /tmp/init-regions-table.py -a
 
 # ---- Migrations ----
 migrate-db: init-db
