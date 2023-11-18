@@ -447,6 +447,10 @@ if __name__ == "__main__":
 
     gadm_file = args.source
 
+    if not args.alt_only and gadm_file is None:
+        print("Error: Path to the GADM GeoPackage file must be provided with -s")
+        sys.exit(1)
+
     # Check that the GeoPackage file exists
     if not args.alt_only and not os.path.exists(gadm_file):
         print(f"Error: GeoPackage file {gadm_file} does not exist")
