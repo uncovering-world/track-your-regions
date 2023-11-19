@@ -14,6 +14,15 @@ paths:
   /regions/root:
     get:
       summary: Retrieve all root regions
+      parameters:
+        - name: hierarchy
+          in: query
+          required: false
+          description: |
+            The hierarchy to retrieve root regions for.
+            If not specified, the default hierarchy is used.
+          schema:
+            type: string
       responses:
         '200':
           description: List of root regions
@@ -34,6 +43,14 @@ paths:
           required: true
           schema:
             type: integer
+        - name: hierarchy
+          in: query
+          required: false
+          description: |
+            The hierarchy to which the region belongs.
+            If not specified, the default hierarchy is used.
+          schema:
+            type: string
       responses:
         '200':
           description: Region information
@@ -60,6 +77,14 @@ paths:
           description: Whether to retrieve all nested subregions or just the immediate subregions.
           schema:
             type: boolean
+        - name: hierarchy
+          in: query
+          required: false
+          description: |
+            The hierarchy to which the region belongs.
+            If not specified, the default hierarchy is used.
+          schema:
+            type: string
       responses:
         '200':
           description: List of subregions
@@ -78,25 +103,33 @@ paths:
 
   # Retrieve the parent regions for a specific region
   /regions/{regionId}/ancestors:
-        get:
-            summary: Retrieve the parent regions for a specific region
-            parameters:
-                - name: regionId
-                  in: path
-                  required: true
-                  schema:
-                    type: integer
-            responses:
-                '200':
-                  description: List of parent regions, including the region itself, in order
-                  content:
-                    application/json:
-                      schema:
-                        type: array
-                        items:
-                        $ref: '#/components/schemas/Region'
-                '404':
-                  description: Region not found
+    get:
+      summary: Retrieve the parent regions for a specific region
+      parameters:
+        - name: regionId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: hierarchy
+          in: query
+          required: false
+          description: |
+            The hierarchy to which the region belongs.
+            If not specified, the default hierarchy is used.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of parent regions, including the region itself, in order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Region'
+        '404':
+          description: Region not found
 
   /regions/{regionId}/geometry:
     get:
@@ -113,6 +146,14 @@ paths:
           description: Whether to resolve empty geometries by aggregating the geometries of the subregions.
           schema:
             type: boolean
+        - name: hierarchy
+          in: query
+          required: false
+          description: |
+            The hierarchy to which the region belongs.
+            If not specified, the default hierarchy is used.
+          schema:
+            type: string
       responses:
         '200':
           description: Geometry of the region, in GeoJSON format, always a MultiPolygon
@@ -129,6 +170,20 @@ paths:
           description: Bad request
         '404':
           description: Region not found
+
+  # List the available hierarchies
+  /regions/hierarchies:
+    get:
+      summary: List the available hierarchies
+      responses:
+        '200':
+          description: List of available hierarchies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
 
   # Search for regions by name
   /regions/search:
