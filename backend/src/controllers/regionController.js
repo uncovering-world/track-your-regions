@@ -1,7 +1,17 @@
-const { Region } = require('../models');
-const { Model, DataTypes, QueryTypes } = require('sequelize');
+
+const { Region, Hierarchy , HierarchyNames} = require('../models');
+const { QueryTypes } = require('sequelize');
 const sequelize  = require("../config/db");
 
+exports.getHierarchies = async (req, res) => {
+    try {
+        const hierarchies = await HierarchyNames.findAll();
+        res.status(200).json(hierarchies.map(hierarchy => hierarchy.toApiFormat()));
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+}
 
 exports.getGeometry = async (req, res) => {
     const { regionId } = req.params;
@@ -79,12 +89,19 @@ exports.getAncestors = async (req, res) => {
 
 exports.getRootRegions = async (req, res) => {
     try {
-        const regions = await Region.findAll({
+        let { hierarchyId } = req.query.hierarchyId || {};
+        // If hierarchyId is not provided use default hierarchy
+        if (!hierarchyId) {
+            hierarchyId = 1;
+        }
+
+        const hierarchy_regions = await Hierarchy.findAll({
             where: {
-                parentRegionId: null,
+                parentId: null,
+                hierarchyId: hierarchyId
             },
         });
-        res.status(200).json(regions.map(region => region.toApiFormat()));
+        res.status(200).json(hierarchy_regions.map(region => region.toApiFormat()));
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Internal Server Error' });

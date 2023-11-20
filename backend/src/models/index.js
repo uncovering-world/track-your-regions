@@ -1,21 +1,27 @@
 const Region = require('./Region');
-const AlternativeHierarchy = require('./AlternativeHierarchy');
+const Hierarchy = require('./Hierarchy');
+const HierarchyNames = require('./HierarchyNames');
 
-AlternativeHierarchy.belongsToMany(Region, {
+Hierarchy.belongsToMany(Region, {
     through: 'region_group_mapping', // Name of the intermediate mapping table
     foreignKey: 'alternative_hierarchy_id', // Foreign key in the mapping table referring to AlternativeHierarchy
     otherKey: 'region_id', // Foreign key in the mapping table referring to Region
 });
 
-Region.belongsToMany(AlternativeHierarchy, {
+Hierarchy.belongsTo(HierarchyNames, {
+    foreignKey: 'hierarchy_id',
+});
+
+Region.belongsToMany(Hierarchy, {
     through: 'region_group_mapping', // Name of the intermediate mapping table
     foreignKey: 'region_id', // Foreign key in the mapping table referring to Region
-    otherKey: 'alternative_hierarchy_id', // Foreign key in the mapping table referring to AlternativeHierarchy
+    otherKey: 'alternative_hierarchy_id', // Foreign key in the mapping table referring to Hierarchy
 });
 
 const models = {
     Region,
-    AlternativeHierarchy
+    Hierarchy,
+    HierarchyNames,
 };
 
 module.exports = models;
