@@ -389,7 +389,8 @@ class GADMRecordsProcessor:
                         region_id SERIAL PRIMARY KEY,
                         parent_id INTEGER REFERENCES hierarchy(region_id),
                         hierarchy_id INTEGER REFERENCES hierarchy_names(hierarchy_id),
-                        region_name VARCHAR(255) NOT NULL
+                        region_name VARCHAR(255) NOT NULL,
+                        has_subregions BOOLEAN NOT NULL
                     )
             """)
             self.dst_cursor.execute("""
@@ -413,26 +414,26 @@ class GADMRecordsProcessor:
         hierarchy_id = self.dst_cursor.fetchone()[0]
 
         # Step 1: Insert all regions into the hierarchies table without parent_id
-        self.dst_cursor.execute("SELECT id, name FROM regions")
+        self.dst_cursor.execute("SELECT id, name, has_subregions FROM regions")
         regions = self.dst_cursor.fetchall()
 
         # Store the mapping of original ids in the regions table to region ids in the hierarchy table
         region_to_alt_id = {}
 
         timestamp = Timestamp(len(regions), "regions copied to administrative hierarchy")
-        for region_id, name in regions:
+        for region_id, name, has_subregions in regions:
             timestamp.print()
             self.dst_cursor.execute("""
-                INSERT INTO hierarchy (hierarchy_id, region_name, parent_id)
-                VALUES (%s, %s, %s) RETURNING region_id
-            """, (hierarchy_id, name, None))
+                INSERT INTO hierarchy (hierarchy_id, region_name, parent_id, has_subregions)
+                VALUES (%s, %s, %s, %s) RETURNING region_id
+            """, (hierarchy_id, name, None, has_subregions))
             alt_id = self.dst_cursor.fetchone()[0]
             region_to_alt_id[region_id] = alt_id
         timestamp.print_total()
 
         # Step 2: Update the parent_id in the hierarchy table
         timestamp = Timestamp(len(regions), "parent_id updated")
-        for region_id, name in regions:
+        for region_id, name, _ in regions:
             timestamp.print()
             self.dst_cursor.execute("SELECT parent_region_id FROM regions WHERE id = %s", (region_id,))
             parent_region_id = self.dst_cursor.fetchone()[0]
