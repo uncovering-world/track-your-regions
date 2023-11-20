@@ -68,6 +68,7 @@ exports.getGeometry = async (req, res) => {
 
 exports.getAncestors = async (req, res) => {
     const { regionId } = req.params;
+    const { hierarchyId } = req.query.hierarchyId || 1;
 
     // Check if the region exists
     const region = await Region.findOne({
@@ -89,11 +90,7 @@ exports.getAncestors = async (req, res) => {
 
 exports.getRootRegions = async (req, res) => {
     try {
-        let { hierarchyId } = req.query.hierarchyId || {};
-        // If hierarchyId is not provided use default hierarchy
-        if (!hierarchyId) {
-            hierarchyId = 1;
-        }
+        let { hierarchyId } = req.query.hierarchyId || 1;
 
         const hierarchy_regions = await Hierarchy.findAll({
             where: {

@@ -43,6 +43,11 @@ Hierarchy.init({
         allowNull: false,
         field: 'region_name'
     },
+    hasSubregions: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        field: 'has_subregions'
+    }
 }, {
     sequelize,
     modelName: 'Hierarchy',
