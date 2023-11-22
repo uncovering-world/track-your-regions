@@ -11,13 +11,13 @@ class Hierarchy extends Model {
         };
     }
     static async getAncestors(regionId, hierarchyId) {
-        return await sequelize.query(`
+        const ancestors = await sequelize.query(`
             WITH RECURSIVE Ancestors AS (
                 SELECT region_id, parent_id as parentRegionId, region_name
                 FROM hierarchy
                 WHERE region_id = :regionId AND hierarchy_id = :hierarchyId
                 UNION ALL
-                SELECT h.region_id, h.parent_id as parentRegionId, h.name
+                SELECT h.region_id, h.parent_id as parentRegionId, h.region_name
                 FROM hierarchy h
                 INNER JOIN Ancestors a ON h.region_id = a.parentRegionId
             )
@@ -25,6 +25,9 @@ class Hierarchy extends Model {
         `, {
             replacements: { regionId, hierarchyId },
             type: QueryTypes.SELECT
+        });
+        return ancestors.map(ancestor => {
+            return { id: ancestor.region_id, name: ancestor.region_name, parentRegionId: ancestor.parentRegionId}
         });
     }
 }

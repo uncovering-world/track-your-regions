@@ -1,7 +1,9 @@
+const turf = require('@turf/turf');
 
 const { Region, Hierarchy , HierarchyNames} = require('../models');
 const { QueryTypes } = require('sequelize');
 const sequelize  = require("../config/db");
+
 
 exports.getHierarchies = async (req, res) => {
     try {
@@ -17,65 +19,88 @@ exports.getGeometry = async (req, res) => {
     const { regionId } = req.params;
     const resolveEmpty = req.query.resolveEmpty === 'true';
 
-    // Check if the region exists
-    const region = await Hierarchy.findByPk(regionId);
-    if (!region) {
+    // Fetch the corresponding region_id from the Hierarchy table
+    const hierarchyEntry = await Hierarchy.findByPk(regionId, {
+        include: [{
+            model: Region,
+            through: {
+                attributes: []
+            }, // Exclude the attributes of the join table
+        }]
+    });
+
+    if (!hierarchyEntry || !hierarchyEntry.Regions || hierarchyEntry.Regions.length === 0) {
         return res.status(404).json({ message: 'Region not found' });
     }
 
+    // Process all associated regions
+    let geometries = await Promise.all(hierarchyEntry.Regions.map(async (region_elem) => {
+        const region = region_elem.dataValues;
+        let geometry = region.geom;
 
-    let geometry = region.geom;
+        if (!geometry && resolveEmpty) {
+            const query = `
+                WITH RECURSIVE Subregions AS (
+                    SELECT id, ST_Simplify(geom, 0.0) as simplified_geom
+                    FROM regions
+                    WHERE id = :regionId
+                    UNION ALL
+                    SELECT r.id, ST_Simplify(r.geom, 0.0) as simplified_geom
+                    FROM regions r
+                    INNER JOIN Subregions s ON r.parent_region_id = s.id
+                    WHERE s.simplified_geom IS NULL
+                )
+                SELECT ST_Multi(ST_Union(simplified_geom)) as geometry
+                FROM Subregions
+                WHERE simplified_geom IS NOT NULL;
+            `;
 
-    if (!geometry) {
-        if (!resolveEmpty) {
-            return res.status(204).json({ message: 'Geometry not found' });
-        }
-        const query = `
-            WITH RECURSIVE Subregions AS (SELECT id, ST_Simplify(geom, 0.01) as simplified_geom
-                                          FROM regions
-                                          WHERE id = :regionId
-                                          UNION ALL
-                                          SELECT r.id, ST_Simplify(r.geom, 0.01) as simplified_geom
-                                          FROM regions r
-                                                   INNER JOIN Subregions s ON r.parent_region_id = s.id
-                                          WHERE s.simplified_geom IS NULL)
-            SELECT ST_AsGeoJSON(ST_Multi(ST_Union(simplified_geom))) as geometry
-            FROM Subregions
-            WHERE simplified_geom IS NOT NULL;
-        `;
-
-        const result = await sequelize.query(query, {
-            replacements: { regionId },
-            type: QueryTypes.SELECT
-        });
-
-        geometry = result.length > 0 ? result[0].geometry : null;
-
-        if (geometry) {
-            // Update the geometry in the database
-            await Region.update({ geom: geometry }, {
-                where: { id: regionId }
+            const result = await sequelize.query(query, {
+                replacements: { regionId: region.id },
+                type: QueryTypes.SELECT
             });
-        } else {
-            return res.status(404).json({ message: 'Geometry not found' });
+
+            geometry = result.length > 0 ? result[0].geometry : null;
+
+            if (geometry) {
+                // XXX Do we update the geometry in the right table?
+                // Optionally update the geometry in the database
+                await Region.update({ geom: geometry }, {
+                    where: { id: region.id }
+                });
+            }
         }
+        return geometry;
+    }));
+
+    geometries = geometries.filter(g => g != null);
+
+    if (geometries.length === 0) {
+        return res.status(204).json({ message: 'No geometries found' });
     }
 
-    return res.status(200).json({ geometry });
-};
+    // Combine all geometries into a single MultiPolygon
+    let combinedGeometry = geometries[0];
+    for (let i = 0; i < geometries.length; i++) {
+        combinedGeometry = turf.union(combinedGeometry, geometries[i]);
+    }
+    let result;
+    // Check the type of the combined geometry
+    if (combinedGeometry.geometry.type !== 'MultiPolygon') {
+        result = turf.multiPolygon([combinedGeometry.geometry.coordinates]);
+    } else {
+        result = turf.multiPolygon(combinedGeometry.geometry.coordinates);
+    }
 
+    return res.status(200).json(result);
+};
 
 exports.getAncestors = async (req, res) => {
     const { regionId } = req.params;
-    const { hierarchyId } = req.query.hierarchyId || 1;
+    const { hierarchyId } = req.query.hierarchyId || { hierarchyId: 1 };
 
     // Check if the region exists
-    const region = await Hierarchy.findOne({
-        where: {
-            id: regionId,
-            hierarchyId: hierarchyId
-        }
-    });
+    const region = await Hierarchy.findByPk(regionId)
     if (!region) {
         return res.status(404).json({ message: 'Region not found' });
     }
