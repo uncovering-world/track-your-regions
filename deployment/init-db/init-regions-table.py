@@ -88,7 +88,7 @@ def parse_args():
     parser.add_argument('-s', '--source', help='Path to the GADM GeoPackage file.')
     parser.add_argument('-g', '--geometry', action='store_true', help='Adds the geometry to the regions table.')
     parser.add_argument('-f', '--fast', action='store_true', help='Fast mode - does not do postprocessing.')
-    parser.add_argument('-a', '--alt-only', action='store_true', help='Generate only the Alternative Hierarchy table.')
+    parser.add_argument('-o', '--hierarchy-only', action='store_true', help='Generate only the Hierarchy table.')
     return parser.parse_args()
 
 
@@ -375,50 +375,66 @@ class GADMRecordsProcessor:
                 del self.existing_regions[old_parent.path]
         timestamp.print_total()
 
-    def create_alternative_hierarchy_table(self):
+    def create_hierarchy_tables(self):
         try:
             self.dst_cursor.execute("""
-                CREATE TABLE IF NOT EXISTS alternative_hierarchy (
-                        id SERIAL PRIMARY KEY,
-                        parent_id INTEGER REFERENCES alternative_hierarchy(id),
-                        hierarchy_type VARCHAR(255) NOT NULL,
-                        region_group_name VARCHAR(255) NOT NULL,
-                        is_active BOOLEAN NOT NULL
+                CREATE TABLE IF NOT EXISTS hierarchy_names (
+                    hierarchy_id SERIAL PRIMARY KEY,
+                    hierarchy_name VARCHAR(255) NOT NULL,
+                    is_active BOOLEAN NOT NULL
                     )
             """)
             self.dst_cursor.execute("""
-                CREATE TABLE IF NOT EXISTS region_group_mapping (
-                        alternative_hierarchy_id INTEGER REFERENCES alternative_hierarchy(id),
-                        region_id INTEGER REFERENCES regions(id)
+                CREATE TABLE IF NOT EXISTS hierarchy (
+                        region_id SERIAL PRIMARY KEY,
+                        parent_id INTEGER REFERENCES hierarchy(region_id),
+                        hierarchy_id INTEGER REFERENCES hierarchy_names(hierarchy_id),
+                        region_name VARCHAR(255) NOT NULL,
+                        has_subregions BOOLEAN NOT NULL
+                    )
+            """)
+            self.dst_cursor.execute("""
+                CREATE TABLE IF NOT EXISTS hierarchy_region_mapping (
+                        alt_region_id INTEGER REFERENCES hierarchy(region_id),
+                        region_id INTEGER REFERENCES regions(id),
+                        PRIMARY KEY (alt_region_id, region_id)
                     )
             """)
         except psycopg2.OperationalError as e:
-            print(f"Error: Could not create the alternative_hierarchy table: {e}")
+            print(f"Error: Could not create the hierarchy table: {e}")
             sys.exit(1)
 
-    # Populate the Alternative Hierarchy table with the data from the regions table
-    def populate_alternative_hierarchy_table(self):
-        # Step 1: Insert all regions into the alternative_hierarchy table without parent_id
-        self.dst_cursor.execute("SELECT id, name FROM regions")
+    # Populate the Hierarchy table with the data from the regions table
+    def populate_hierarchy_tables(self):
+
+        # Step 0: Create the hierarchy_names record
+        self.dst_cursor.execute("""
+            INSERT INTO hierarchy_names (hierarchy_name, is_active)
+            VALUES (%s, %s) RETURNING hierarchy_id
+        """, ('Administrative Division', True))
+        hierarchy_id = self.dst_cursor.fetchone()[0]
+
+        # Step 1: Insert all regions into the hierarchies table without parent_id
+        self.dst_cursor.execute("SELECT id, name, has_subregions FROM regions")
         regions = self.dst_cursor.fetchall()
 
-        # Store the mapping of region_id to alternative_hierarchy_id
+        # Store the mapping of original ids in the regions table to region ids in the hierarchy table
         region_to_alt_id = {}
 
-        timestamp = Timestamp(len(regions), "regions copied to alternative_hierarchy")
-        for region_id, name in regions:
+        timestamp = Timestamp(len(regions), "regions copied to administrative hierarchy")
+        for region_id, name, has_subregions in regions:
             timestamp.print()
             self.dst_cursor.execute("""
-                INSERT INTO alternative_hierarchy (hierarchy_type, region_group_name, is_active)
-                VALUES (%s, %s, %s) RETURNING id
-            """, ('Administrative Division', name, True))
-            alt_hierarchy_id = self.dst_cursor.fetchone()[0]
-            region_to_alt_id[region_id] = alt_hierarchy_id
+                INSERT INTO hierarchy (hierarchy_id, region_name, parent_id, has_subregions)
+                VALUES (%s, %s, %s, %s) RETURNING region_id
+            """, (hierarchy_id, name, None, has_subregions))
+            alt_id = self.dst_cursor.fetchone()[0]
+            region_to_alt_id[region_id] = alt_id
         timestamp.print_total()
 
-        # Step 2: Update the parent_id in the alternative_hierarchy table
-        timestamp = Timestamp(len(regions), "alternative_hierarchy parent_id updated")
-        for region_id, name in regions:
+        # Step 2: Update the parent_id in the hierarchy table
+        timestamp = Timestamp(len(regions), "parent_id updated")
+        for region_id, name, _ in regions:
             timestamp.print()
             self.dst_cursor.execute("SELECT parent_region_id FROM regions WHERE id = %s", (region_id,))
             parent_region_id = self.dst_cursor.fetchone()[0]
@@ -426,18 +442,18 @@ class GADMRecordsProcessor:
             if parent_region_id is not None:
                 alt_parent_id = region_to_alt_id.get(parent_region_id)
                 self.dst_cursor.execute("""
-                    UPDATE alternative_hierarchy SET parent_id = %s WHERE id = %s
+                    UPDATE hierarchy SET parent_id = %s WHERE region_id = %s
                 """, (alt_parent_id, region_to_alt_id[region_id]))
         timestamp.print_total()
 
-        # Step 3: Populate the region_group_mapping table
-        timestamp = Timestamp(len(region_to_alt_id), "region_group_mapping populated")
-        for region_id, alt_hierarchy_id in region_to_alt_id.items():
+        # Step 3: Populate the hierarchy_region_mapping table
+        timestamp = Timestamp(len(region_to_alt_id), "mappings populated")
+        for region_id, alt_id in region_to_alt_id.items():
             timestamp.print()
             self.dst_cursor.execute("""
-                INSERT INTO region_group_mapping (alternative_hierarchy_id, region_id)
+                INSERT INTO hierarchy_region_mapping (alt_region_id, region_id)
                 VALUES (%s, %s)
-            """, (alt_hierarchy_id, region_id))
+            """, (alt_id, region_id))
         timestamp.print_total()
 
 
@@ -447,12 +463,12 @@ if __name__ == "__main__":
 
     gadm_file = args.source
 
-    if not args.alt_only and gadm_file is None:
+    if not args.hierarchy_only and gadm_file is None:
         print("Error: Path to the GADM GeoPackage file must be provided with -s")
         sys.exit(1)
 
     # Check that the GeoPackage file exists
-    if not args.alt_only and not os.path.exists(gadm_file):
+    if not args.hierarchy_only and not os.path.exists(gadm_file):
         print(f"Error: GeoPackage file {gadm_file} does not exist")
         sys.exit(1)
 
@@ -465,7 +481,7 @@ if __name__ == "__main__":
 
         records_processor = GADMRecordsProcessor(cur_src, cur_dst, gadm_file, args)
 
-        if not args.alt_only:
+        if not args.hierarchy_only:
             # Create the Region table, if it doesn't exist
             records_processor.create_regions_table()
 
@@ -506,8 +522,8 @@ if __name__ == "__main__":
                 cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_geom ON regions USING GIST (geom)")
                 print("done.")
 
-        # Generate Alternative Hierarchy table
-        print("Generating Alternative Hierarchy table...")
-        records_processor.create_alternative_hierarchy_table()
-        records_processor.populate_alternative_hierarchy_table()
+        # Generate Hierarchy table
+        print("Generating Hierarchy table...")
+        records_processor.create_hierarchy_tables()
+        records_processor.populate_hierarchy_tables()
     print(f"DB init complete in {datetime.now() - global_timestamp_start} !")
