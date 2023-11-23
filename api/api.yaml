@@ -15,14 +15,14 @@ paths:
     get:
       summary: Retrieve all root regions
       parameters:
-        - name: hierarchy
+        - name: hierarchyId
           in: query
           required: false
           description: |
             The hierarchy to retrieve root regions for.
             If not specified, the default hierarchy is used.
           schema:
-            type: string
+            type: integer
       responses:
         '200':
           description: List of root regions
@@ -32,6 +32,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Region'
+        '400':
+          description: Bad request, most likely due to an invalid hierarchy ID
 
   # Retrieve information about a specific region (root or subregion)
   /regions/{regionId}:
@@ -43,14 +45,14 @@ paths:
           required: true
           schema:
             type: integer
-        - name: hierarchy
+        - name: hierarchyId
           in: query
           required: false
           description: |
             The hierarchy to which the region belongs.
             If not specified, the default hierarchy is used.
           schema:
-            type: string
+            type: integer
       responses:
         '200':
           description: Region information
@@ -58,8 +60,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Region'
+        '400':
+          description: Bad request
         '404':
           description: Region not found
+
 
   # Retrieve subregions for a specific region
   /regions/{regionId}/subregions:
@@ -77,14 +82,14 @@ paths:
           description: Whether to retrieve all nested subregions or just the immediate subregions.
           schema:
             type: boolean
-        - name: hierarchy
+        - name: hierarchyId
           in: query
           required: false
           description: |
             The hierarchy to which the region belongs.
             If not specified, the default hierarchy is used.
           schema:
-            type: string
+            type: integer
       responses:
         '200':
           description: List of subregions
@@ -111,14 +116,14 @@ paths:
           required: true
           schema:
             type: integer
-        - name: hierarchy
+        - name: hierarchyId
           in: query
           required: false
           description: |
             The hierarchy to which the region belongs.
             If not specified, the default hierarchy is used.
           schema:
-            type: string
+            type: integer
       responses:
         '200':
           description: List of parent regions, including the region itself, in order
@@ -128,6 +133,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Region'
+        '400':
+          description: Bad request
         '404':
           description: Region not found
 
@@ -146,14 +153,14 @@ paths:
           description: Whether to resolve empty geometries by aggregating the geometries of the subregions.
           schema:
             type: boolean
-        - name: hierarchy
+        - name: hierarchyId
           in: query
           required: false
           description: |
             The hierarchy to which the region belongs.
             If not specified, the default hierarchy is used.
           schema:
-            type: string
+            type: integer
       responses:
         '200':
           description: Geometry of the region, in GeoJSON format, always a MultiPolygon
@@ -183,7 +190,7 @@ paths:
               schema:
                 type: array
                 items:
-                  type: string
+                  $ref: '#/components/schemas/Hierarchy'
 
   # Search for regions by name
   /regions/search:
@@ -434,6 +441,14 @@ components:
         crs:
           $ref: '#/components/schemas/CRS'
         description: A GeoJSON object representing the geometry of the region as a MultiPolygon.
+
+    Hierarchy:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
 
     Experience:
       type: object
