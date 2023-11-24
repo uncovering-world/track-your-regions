@@ -59,7 +59,7 @@ init-db: check-gadm-file run-db
 
 init-alt-table: init-db
 	@echo "Initialize alternative hierarchy table."
-	$(DC) exec -T db python3 -u /tmp/init-regions-table.py -a
+	$(DC) exec -T db python3 -u /tmp/init-regions-table.py -o
 
 # ---- Migrations ----
 migrate-db: init-db
