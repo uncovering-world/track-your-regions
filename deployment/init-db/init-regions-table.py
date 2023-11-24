@@ -377,6 +377,7 @@ class GADMRecordsProcessor:
 
     def create_hierarchy_tables(self):
         try:
+            print("Creating hierarchy_names table...", end=" ", flush=True)
             self.dst_cursor.execute("""
                 CREATE TABLE IF NOT EXISTS hierarchy_names (
                     hierarchy_id SERIAL PRIMARY KEY,
@@ -384,22 +385,69 @@ class GADMRecordsProcessor:
                     is_active BOOLEAN NOT NULL
                     )
             """)
+            print("done.")
+            print("Creating hierarchy table...", end=" ", flush=True)
             self.dst_cursor.execute("""
                 CREATE TABLE IF NOT EXISTS hierarchy (
-                        region_id SERIAL PRIMARY KEY,
-                        parent_id INTEGER REFERENCES hierarchy(region_id),
+                        region_id INTEGER,
+                        parent_id INTEGER,
                         hierarchy_id INTEGER REFERENCES hierarchy_names(hierarchy_id),
                         region_name VARCHAR(255) NOT NULL,
-                        has_subregions BOOLEAN NOT NULL
+                        has_subregions BOOLEAN NOT NULL,
+                        PRIMARY KEY (region_id, hierarchy_id),
+                        FOREIGN KEY (parent_id, hierarchy_id) REFERENCES hierarchy(region_id, hierarchy_id)
                     )
             """)
+            print("done.")
+
+            # Create a function to get the next region_id for a hierarchy. The id is unique within a hierarchy.
+            print("Creating a function to get the next region_id...", end=" ", flush=True)
+            self.dst_cursor.execute("""
+                CREATE OR REPLACE FUNCTION get_next_region_id(h_id INTEGER) RETURNS INTEGER AS $$
+                DECLARE
+                    next_id INTEGER;
+                BEGIN
+                    SELECT COALESCE(MAX(region_id), 0) + 1 INTO next_id FROM hierarchy WHERE hierarchy_id = h_id;
+                    RETURN next_id;
+                END;
+                $$ LANGUAGE plpgsql;
+            """)
+            print("done.")
+
+            # Create a trigger function to automatically set the region_id for a hierarchy
+            print("Creating a trigger function to automatically set the region_id...", end=" ", flush=True)
+            self.dst_cursor.execute("""
+                CREATE OR REPLACE FUNCTION set_region_id() RETURNS TRIGGER AS $$
+                BEGIN
+                    IF NEW.region_id IS NULL THEN
+                        NEW.region_id = get_next_region_id(NEW.hierarchy_id);
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+            """)
+            print("done.")
+
+            # Create a trigger to automatically set the region_id for a hierarchy
+            print("Creating a trigger to automatically set the region_id...", end=" ", flush=True)
+            self.dst_cursor.execute("""
+                CREATE TRIGGER set_region_id_trigger
+                BEFORE INSERT ON hierarchy
+                FOR EACH ROW EXECUTE PROCEDURE set_region_id();
+            """)
+            print("done.")
+
+            print("Creating hierarchy_region_mapping table...", end=" ", flush=True)
             self.dst_cursor.execute("""
                 CREATE TABLE IF NOT EXISTS hierarchy_region_mapping (
-                        alt_region_id INTEGER REFERENCES hierarchy(region_id),
+                        alt_region_id INTEGER,
+                        hierarchy_id INTEGER REFERENCES hierarchy_names(hierarchy_id),
+                        FOREIGN KEY (alt_region_id, hierarchy_id) REFERENCES hierarchy(region_id, hierarchy_id),
                         region_id INTEGER REFERENCES regions(id),
-                        PRIMARY KEY (alt_region_id, region_id)
+                        PRIMARY KEY (alt_region_id, hierarchy_id, region_id)
                     )
             """)
+            print("done.")
         except psycopg2.OperationalError as e:
             print(f"Error: Could not create the hierarchy table: {e}")
             sys.exit(1)
@@ -414,6 +462,8 @@ class GADMRecordsProcessor:
         """, ('Administrative Division', True))
         hierarchy_id = self.dst_cursor.fetchone()[0]
 
+        region_id_for_adm_hierarchy = 0
+
         # Step 1: Insert all regions into the hierarchies table without parent_id
         self.dst_cursor.execute("SELECT id, name, has_subregions FROM regions")
         regions = self.dst_cursor.fetchall()
@@ -424,10 +474,11 @@ class GADMRecordsProcessor:
         timestamp = Timestamp(len(regions), "regions copied to administrative hierarchy")
         for region_id, name, has_subregions in regions:
             timestamp.print()
+            region_id_for_adm_hierarchy += 1
             self.dst_cursor.execute("""
-                INSERT INTO hierarchy (hierarchy_id, region_name, parent_id, has_subregions)
-                VALUES (%s, %s, %s, %s) RETURNING region_id
-            """, (hierarchy_id, name, None, has_subregions))
+                INSERT INTO hierarchy (region_id, hierarchy_id, region_name, parent_id, has_subregions)
+                VALUES (%s, %s, %s, %s, %s) RETURNING region_id
+            """, (region_id_for_adm_hierarchy, hierarchy_id, name, None, has_subregions))
             alt_id = self.dst_cursor.fetchone()[0]
             region_to_alt_id[region_id] = alt_id
         timestamp.print_total()
@@ -451,9 +502,9 @@ class GADMRecordsProcessor:
         for region_id, alt_id in region_to_alt_id.items():
             timestamp.print()
             self.dst_cursor.execute("""
-                INSERT INTO hierarchy_region_mapping (alt_region_id, region_id)
-                VALUES (%s, %s)
-            """, (alt_id, region_id))
+                INSERT INTO hierarchy_region_mapping (alt_region_id, hierarchy_id, region_id)
+                VALUES (%s, %s, %s)
+            """, (alt_id, hierarchy_id, region_id))
         timestamp.print_total()
 
 
@@ -526,4 +577,15 @@ if __name__ == "__main__":
         print("Generating Hierarchy table...")
         records_processor.create_hierarchy_tables()
         records_processor.populate_hierarchy_tables()
-    print(f"DB init complete in {datetime.now() - global_timestamp_start} !")
+        print("Creating index for the region_id, hierarchy_id fields in the hierarchy table...", end=" ", flush=True)
+        cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_region_hierarchy ON hierarchy (region_id, hierarchy_id)")
+        print("done.")
+        print("Creating index for the alt_region_id, hierarchy_id fields in the hierarchy_region_mapping table...", end=" ",
+              flush=True)
+        cur_dst.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mapping_alt_regtion_id ON hierarchy_region_mapping (alt_region_id, hierarchy_id)")
+        print("done.")
+        print("Creating index for the region_id field in the hierarchy_region_mapping table...", end=" ", flush=True)
+        cur_dst.execute("CREATE INDEX IF NOT EXISTS idx_mapping_region_id ON hierarchy_region_mapping (region_id)")
+        print("done.")
+        print(f"DB init complete in {datetime.now() - global_timestamp_start} !")
