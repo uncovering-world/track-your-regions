@@ -4,7 +4,7 @@ import { useNavigation } from './NavigationContext';
 import { fetchHierarchies } from '../api';  // Make sure this import points to your API fetching logic
 
 const HierarchySwitcher = () => {
-  const { selectedHierarchy, setSelectedHierarchy } = useNavigation();
+  const { selectedHierarchy, setSelectedHierarchy, setSelectedRegion } = useNavigation();
   const [hierarchies, setHierarchies] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -32,6 +32,13 @@ const HierarchySwitcher = () => {
 
   const handleHierarchyChange = (hierarchyId) => {
     setSelectedHierarchy({ hierarchyId });
+    // Reset the selected region to the world
+    setSelectedRegion({
+        id: null,
+        name: 'World',
+        info: {},
+        hasSubregions: false,
+    });
     handleClose();
   };
 

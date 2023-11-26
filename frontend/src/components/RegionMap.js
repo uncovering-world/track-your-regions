@@ -72,7 +72,7 @@ const MapComponent = () => {
                 map.current = null;
             }
         };
-    }, [selectedRegion]);
+    }, [selectedRegion, selectedHierarchy]);
 
     return <div ref={mapContainer} style={{ width: '100%', height: '400px' }} />;
 };
