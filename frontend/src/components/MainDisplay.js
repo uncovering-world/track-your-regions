@@ -1,7 +1,6 @@
-// MainPane.js
-import React, { useEffect } from 'react';
+import React from 'react';
+
 import { useNavigation } from './NavigationContext';
-import { fetchRegion } from '../api';
 import RegionMap from "./RegionMap";
 
 const MainDisplay = () => {
