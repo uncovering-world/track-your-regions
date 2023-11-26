@@ -27,7 +27,7 @@ This directory contains the frontend application for the Region Tracker service.
 │   │   ├── ListOfRegions.js
 │   │   ├── MainDisplay.js
 │   │   ├── NavigationPane.js
-│   │   ├── RegionContext.js
+│   │   ├── NavigationContext.js
 │   │   ├── RegionInfoPanel.js
 │   │   └── TreeView.js
 │   ├── App.js                    # Main application component

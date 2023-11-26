@@ -1,12 +1,12 @@
 import React, {useEffect, useRef} from 'react';
 import maplibregl from 'maplibre-gl';
-import {useRegion} from "./RegionContext";
+import {useNavigation} from "./NavigationContext";
 import {fetchRegionGeometry} from "../api";
 
 const MapComponent = () => {
     const mapContainer = useRef(null);
     const map = useRef(null);
-    const { selectedRegion } = useRegion();
+    const { selectedRegion } = useNavigation();
 
     const fetchSelectedRegionGeometry = async () => {
         if (selectedRegion.id !== null && selectedRegion.id !== 0) {

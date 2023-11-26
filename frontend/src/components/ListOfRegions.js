@@ -3,11 +3,11 @@ import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import { Box } from '@mui/material';
 import { fetchRootRegions, fetchSubregions } from '../api';
-import { useRegion } from './RegionContext';
+import { useNavigation } from './NavigationContext';
 
 const ListOfRegions = () => {
 
-    const { selectedRegion, setSelectedRegion } = useRegion();
+    const { selectedRegion, setSelectedRegion } = useNavigation();
     const [regions, setRegions] = useState([]);
 
     const fetchRegions = async (regionId, hasSubregions) => {

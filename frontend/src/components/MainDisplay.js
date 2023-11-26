@@ -1,11 +1,11 @@
 // MainPane.js
 import React, { useEffect } from 'react';
-import { useRegion } from './RegionContext';
+import { useNavigation } from './NavigationContext';
 import { fetchRegion } from '../api';
 import RegionMap from "./RegionMap";
 
 const MainDisplay = () => {
-    const { selectedRegion, setSelectedRegion } = useRegion();
+    const { selectedRegion } = useNavigation();
 
     return (
         <div>
