@@ -11,7 +11,7 @@ function App() {
         <NavigationProvider>
             <div className="App">
                 <Header/>
-                <Container b={2}>
+                <Container maxWidth="lg">
                     <Grid container spacing={3}>
                         <Grid item xs={4}>
                             <NavigationPane/>
