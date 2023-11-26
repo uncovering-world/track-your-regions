@@ -4,11 +4,11 @@ import NavigationPane from './components/NavigationPane';
 import MainDisplay from './components/MainDisplay';
 import Footer from './components/Footer';
 import { Container, Grid } from '@mui/material';
-import { RegionProvider } from './components/RegionContext';
+import { NavigationProvider } from './components/NavigationContext';
 
 function App() {
     return (
-        <RegionProvider>
+        <NavigationProvider>
             <div className="App">
                 <Header/>
                 <Container b={2}>
@@ -23,7 +23,7 @@ function App() {
                 </Container>
                 <Footer/>
             </div>
-        </RegionProvider>
+        </NavigationProvider>
     );
 }
 

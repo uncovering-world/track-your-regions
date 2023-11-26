@@ -67,3 +67,13 @@ export const fetchAncestors = async (regionId) => {
         return [];
     }
 };
+
+export const fetchHierarchies = async () => {
+    try {
+        const response = await api.get('/api/regions/hierarchies');
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching hierarchies:', error);
+        return [];
+    }
+}

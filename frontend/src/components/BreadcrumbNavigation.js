@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import Breadcrumbs from '@mui/material/Breadcrumbs';
 import { Typography } from "@mui/material";
-import { useRegion } from './RegionContext';
+import { useNavigation } from './NavigationContext';
 import {fetchAncestors, fetchRegion} from '../api';
 
 const BreadcrumbNavigation = () => {
-    const { selectedRegion, setSelectedRegion } = useRegion();
+    const { selectedRegion, setSelectedRegion, selectedHierarchy } = useNavigation();
     const [breadcrumbItems, setBreadcrumbItems] = useState([{ id: null, name: 'World', hasSubregions: true }]);
 
     useEffect(() => {
