@@ -28,7 +28,7 @@ const ListOfRegions = () => {
 
     useEffect(() => {
         fetchRegions(selectedRegion.id, selectedRegion.hasSubregions);
-    }, [selectedRegion]);
+    }, [selectedRegion, selectedHierarchy]);
 
     const handleItemClick = (region) => {
         setSelectedRegion(

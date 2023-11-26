@@ -23,7 +23,7 @@ const BreadcrumbNavigation = () => {
             }
         };
         fetchAndSetAncestors();
-    }, [selectedRegion]);
+    }, [selectedRegion, selectedHierarchy]);
 
 
     const handleBreadcrumbClick = async (regionId, index) => {
