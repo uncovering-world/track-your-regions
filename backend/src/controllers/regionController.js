@@ -1,6 +1,6 @@
 const turf = require('@turf/turf');
 
-const { Region, Hierarchy , HierarchyNames} = require('../models');
+const { Region, Hierarchy , HierarchyNames, HierarchyRegionMapping } = require('../models');
 const { QueryTypes } = require('sequelize');
 const sequelize  = require("../config/db");
 
@@ -16,66 +16,66 @@ exports.getHierarchies = async (req, res) => {
 }
 
 exports.getGeometry = async (req, res) => {
-    const { regionId } = req.params;
+    const regionId  = req.params.regionId;
     const resolveEmpty = req.query.resolveEmpty === 'true';
+    const hierarchyId = req.query.hierarchyId || 1;
 
-    // Fetch the corresponding region_id from the Hierarchy table
-    const hierarchyEntry = await Hierarchy.findByPk(regionId, {
-        include: [{
-            model: Region,
-            through: {
-                attributes: []
-            }, // Exclude the attributes of the join table
-        }]
-    });
-
-    if (!hierarchyEntry || !hierarchyEntry.Regions || hierarchyEntry.Regions.length === 0) {
+    // Check if the region exists
+    const region = await Hierarchy.findOne({
+        where: {
+            regionId: regionId,
+            hierarchyId: hierarchyId
+        },
+    })
+    if (!region) {
         return res.status(404).json({ message: 'Region not found' });
     }
 
-    // Process all associated regions
-    let geometries = await Promise.all(hierarchyEntry.Regions.map(async (region_elem) => {
-        const region = region_elem.dataValues;
-        let geometry = region.geom;
-
-        if (!geometry && resolveEmpty) {
-            const query = `
-                WITH RECURSIVE Subregions AS (
-                    SELECT h.region_id as RegionId, ST_Simplify(r.geom, 0.0) as simplified_geom
-                    FROM hierarchy h
-                    INNER JOIN hierarchy_region_mapping hrm ON hrm.alt_region_id = h.region_id
-                    INNER JOIN regions r ON hrm.region_id = r.id
-                    WHERE h.region_id = :regionId
-                    UNION ALL
-                    SELECT hr.region_id, ST_Simplify(rr.geom, 0.0) as simplified_geom
-                    FROM hierarchy hr
-                    INNER JOIN hierarchy_region_mapping hrmr ON hrmr.alt_region_id = hr.region_id
-                    INNER JOIN regions rr ON hrmr.region_id = rr.id
-                    INNER JOIN Subregions s ON hr.parent_id = s.RegionId
-                    WHERE s.simplified_geom IS NULL
-                )
-                SELECT ST_Multi(ST_Union(simplified_geom)) as geometry
-                FROM Subregions
-                WHERE simplified_geom IS NOT NULL;
-            `;
-
-            const result = await sequelize.query(query, {
-                replacements: { regionId: regionId },
-                type: QueryTypes.SELECT
-            });
-
-            geometry = result.length > 0 ? result[0].geometry : null;
-
-            if (geometry) {
-                // XXX Do we update the geometry in the right table?
-                // Optionally update the geometry in the database
-                await Region.update({ geom: geometry }, {
-                    where: { id: region.id }
+    //Find all subdivisions of the region
+    const divisions = await getDivisions(regionId, hierarchyId, res);
+    let geometries = [];
+    let notCompleted = false;
+    for (let division of divisions) {
+        const regionId = division.id;
+        const geom = division.geom;
+        if (geom) {
+            geometries.push(geom);
+        } else {
+            if (!resolveEmpty) {
+                notCompleted = true;
+                break;
+            } else {
+                // Find ids and geometries of all subdivisions of the division
+                const query = `
+                    WITH RECURSIVE Subregions AS (
+                        SELECT r.id as region_id, ST_Simplify(r.geom, 0.0) as simplified_geom
+                        FROM regions r
+                        WHERE r.parent_region_id = :regionId
+                        UNION ALL
+                        SELECT r_r.id, ST_Simplify(r_r.geom, 0.0) as simplified_geom_r
+                        FROM regions r_r
+                        INNER JOIN Subregions s ON r_r.parent_region_id = s.region_id
+                        WHERE s.simplified_geom IS NULL)
+                    SELECT ST_Multi(ST_Union(simplified_geom)) as geometry
+                    FROM Subregions
+                    WHERE simplified_geom IS NOT NULL;
+                `;
+                const result = await sequelize.query(query, {
+                    replacements: {regionId: regionId},
+                    type: QueryTypes.SELECT
                 });
+                const result_geometry = result[0].geometry;
+                // Update the geometry of the region
+                if (result_geometry) {
+                    geometries.push(result_geometry);
+                    // Asynchronously update the geometry of the region
+                    Region.update({geom: result_geometry}, {
+                        where: {id: regionId}
+                    }).then().catch(err => console.log(err));
+                }
             }
         }
-        return geometry;
-    }));
+    }
 
     geometries = geometries.filter(g => g != null);
 
@@ -83,12 +83,16 @@ exports.getGeometry = async (req, res) => {
         return res.status(204).json({ message: 'No geometries found' });
     }
 
+    if (notCompleted) {
+        return res.status(204).json({ message: 'Not all geometries are available' });
+    }
+
     // Combine all geometries into a single MultiPolygon
     let combinedGeometry = geometries[0];
+    let result;
     for (let i = 0; i < geometries.length; i++) {
         combinedGeometry = turf.union(combinedGeometry, geometries[i]);
     }
-    let result;
     // Check the type of the combined geometry
     if (combinedGeometry.geometry.type !== 'MultiPolygon') {
         result = turf.multiPolygon([combinedGeometry.geometry.coordinates]);
@@ -104,7 +108,12 @@ exports.getAncestors = async (req, res) => {
     const hierarchyId = req.query.hierarchyId || 1 ;
 
     // Check if the region exists
-    const region = await Hierarchy.findByPk(regionId)
+    const region = await Hierarchy.findOne({
+        where: {
+            regionId: regionId,
+            hierarchyId: hierarchyId
+        },
+    })
     if (!region) {
         return res.status(404).json({ message: 'Region not found' });
     }
@@ -117,7 +126,6 @@ exports.getAncestors = async (req, res) => {
         res.status(500).json({ message: 'Internal Server Error' });
     }
 }
-
 
 exports.getRootRegions = async (req, res) => {
     try {
@@ -139,8 +147,14 @@ exports.getRootRegions = async (req, res) => {
 exports.getRegionById = async (req, res) => {
     try {
         const { regionId } = req.params;
+        const hierarchyId = req.query.hierarchyId || 1;
 
-        const region = await Hierarchy.findByPk(regionId);
+        const region = await Hierarchy.findOne({
+            where: {
+                regionId: regionId,
+                hierarchyId: hierarchyId
+            },
+        });
 
         if (!region) {
             return res.status(404).json({ message: 'Region not found' });
@@ -156,40 +170,67 @@ exports.getRegionById = async (req, res) => {
 
 async function getAllSubregions(regionId, hierarchyId) {
     const query = `
-    WITH RECURSIVE Subregions AS (
-        SELECT region_id, parent_id as parentId, region_name
-        FROM hierarchy
-        WHERE parent_id = :regionId AND hierarchy_id = :hierarchyId
-        UNION ALL
-        SELECT h.region_id, h.parent_id as parentId, h.region_name
-        FROM hierarchy h
-        INNER JOIN Subregions s ON h.parent_id = s.region_id
-    )
-    SELECT * FROM Subregions;
-`;
+        WITH RECURSIVE Subregions AS (
+            SELECT *
+            FROM hierarchy
+            WHERE parent_id = :regionId AND hierarchy_id = :hierarchyId
+            UNION ALL
+            SELECT h.*
+            FROM hierarchy h
+            INNER JOIN Subregions s ON h.parent_id = s.region_id AND h.hierarchy_id = :hierarchyId
+        )
+        SELECT * FROM Subregions;
+    `;
 
-    return await sequelize.query(query, {
+     return await sequelize.query(query, {
         replacements: { regionId, hierarchyId },
         type: QueryTypes.SELECT,
         mapToModel: true,
         model: Hierarchy
     });
-
 }
 
+// Retrieve the divisions of a region. It does not include subdivisions of the divisions.
+async function getDivisions(regionId, hierarchyId) {
+    let regions = (await getSubregions(regionId, hierarchyId, false)).data;
+    // Add the region itself
+    regions.push(await Hierarchy.findOne({
+        where: {
+            regionId: regionId,
+            hierarchyId: hierarchyId
+        },
+    }));
+    let result_divisions = [];
+    for (let region of regions) {
+        const query = `
+            SELECT r.* FROM hierarchy_region_mapping hrm
+            JOIN regions r ON hrm.region_id = r.id
+            WHERE alt_region_id = :regionId AND hierarchy_id = :hierarchyId
+            `
+        const result = await sequelize.query(query, {
+            replacements: { regionId: region.regionId, hierarchyId: hierarchyId },
+            type: QueryTypes.SELECT,
+            mapToModel: true,
+            model: Region
+        });
+        result_divisions = result_divisions.concat(result.map(region => region.dataValues));
+    }
+    return result_divisions;
+}
 
 // Retrieve subregions for a specific region
-exports.getSubregions = async (req, res) => {
-    const { regionId } = req.params;
-    const { getAll } = req.query;
-    const hierarchyId = req.query.hierarchyId || 1;
-
+getSubregions = async (regionId, hierarchyId, getAll) => {
     try {
         // Check if the region exists
-        const region = await Hierarchy.findByPk(regionId)
+        const region = await Hierarchy.findOne({
+            where: {
+                regionId: regionId,
+                hierarchyId: hierarchyId
+            },
+        });
 
         if (!region) {
-            return res.status(404).json({ message: 'Region not found' });
+            return { data: [], message: 'Region not found', status: 404 };
         }
 
         // Retrieve subregions
@@ -199,17 +240,28 @@ exports.getSubregions = async (req, res) => {
             subregions = await getAllSubregions(regionId, hierarchyId);
         } else {
             subregions = await Hierarchy.findAll({
-                where: { parentId: regionId, hierarchyId: hierarchyId }
+                where: { parentId: regionId, hierarchyId: hierarchyId },
+                mapToModel: true,
+                model: Hierarchy
             });
         }
 
         if (subregions.length === 0) {
-            return res.status(202).json({ message: 'Region has no subregions' });
+            return { data: [], message: 'Region has no subregions', status: 202 };
         }
 
-        res.status(200).json(subregions.map(region => region.toApiFormat()));
+        return { data: subregions, status: 200 };
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: 'Internal Server Error' });
+        return { data: [], message: 'Internal Server Error', status: 500 };
     }
 };
+
+exports.getSubregions = async (req, res) => {
+    const regionId = req.params.regionId;
+    const getAll = req.query.getAll || false;
+    const hierarchyId = req.query.hierarchyId || 1;
+
+    const subregions = await getSubregions(regionId, hierarchyId, getAll);
+    return res.status(subregions.status).json(subregions.data ? subregions.data.map(r => r.toApiFormat()) : { message: subregions.message });
+}
