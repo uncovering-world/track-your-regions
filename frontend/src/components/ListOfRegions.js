@@ -7,7 +7,7 @@ import { useNavigation } from './NavigationContext';
 
 const ListOfRegions = () => {
 
-    const { selectedRegion, setSelectedRegion } = useNavigation();
+    const { selectedRegion, setSelectedRegion, selectedHierarchy } = useNavigation();
     const [regions, setRegions] = useState([]);
 
     const fetchRegions = async (regionId, hasSubregions) => {
@@ -15,10 +15,10 @@ const ListOfRegions = () => {
         let newRegions = [];
         if (regionId) {
             if (hasSubregions) {
-                newRegions = await fetchSubregions(regionId);
+                newRegions = await fetchSubregions(regionId, selectedHierarchy.hierarchyId);
             }
         } else {
-            newRegions = await fetchRootRegions();
+            newRegions = await fetchRootRegions(selectedHierarchy.hierarchyId);
         }
 
         if (newRegions.length > 0) {

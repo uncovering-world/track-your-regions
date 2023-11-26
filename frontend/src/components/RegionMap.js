@@ -6,11 +6,11 @@ import {fetchRegionGeometry} from "../api";
 const MapComponent = () => {
     const mapContainer = useRef(null);
     const map = useRef(null);
-    const { selectedRegion } = useNavigation();
+    const { selectedRegion, selectedHierarchy } = useNavigation();
 
     const fetchSelectedRegionGeometry = async () => {
         if (selectedRegion.id !== null && selectedRegion.id !== 0) {
-            const response = await fetchRegionGeometry(selectedRegion.id);
+            const response = await fetchRegionGeometry(selectedRegion.id, selectedHierarchy.hierarchyId);
             if (response) {
                 return response.geometry;
             } else {
