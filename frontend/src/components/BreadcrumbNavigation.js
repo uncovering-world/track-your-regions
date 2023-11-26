@@ -11,7 +11,7 @@ const BreadcrumbNavigation = () => {
     useEffect(() => {
         const fetchAndSetAncestors = async () => {
             if (selectedRegion.id !== null && selectedRegion.id !== 0) {
-                const ancestors = await fetchAncestors(selectedRegion.id);
+                const ancestors = await fetchAncestors(selectedRegion.id, selectedHierarchy.hierarchyId);
                 if (Array.isArray(ancestors)) {
                     const reversedAncestors = ancestors.reverse();
                     setBreadcrumbItems([{id: 0, name: 'World', hasSubregions: true }, ...reversedAncestors]);
@@ -33,7 +33,7 @@ const BreadcrumbNavigation = () => {
             hasSubregions = true;
         } else {
             try {
-                const region = await fetchRegion(regionId);
+                const region = await fetchRegion(regionId, selectedHierarchy.hierarchyId);
                 hasSubregions = region.hasSubregions;
             } catch (error) {
                 console.error(`Error fetching region ${regionId}, consider the region as not having subregions:`, error);

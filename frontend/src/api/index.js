@@ -8,9 +8,9 @@ const api = axios.create({
 });
 
 
-export const fetchRootRegions = async () => {
+export const fetchRootRegions = async (hierarchyId) => {
     try {
-        const response = await api.get('/api/regions/root');
+        const response = await api.get('/api/regions/root', {params: {hierarchyId: hierarchyId}});
         return response.data;
     } catch (error) {
         console.error('Error fetching root regions:', error);
@@ -18,9 +18,9 @@ export const fetchRootRegions = async () => {
     }
 };
 
-export const fetchSubregions = async (regionId) => {
+export const fetchSubregions = async (regionId, hierarchyId) => {
     try {
-        const response = await api.get(`/api/regions/${regionId}/subregions`);
+        const response = await api.get(`/api/regions/${regionId}/subregions`, {params: {hierarchyId: hierarchyId}});
         if (response.status === 204) {
             return null;
         }
@@ -31,9 +31,9 @@ export const fetchSubregions = async (regionId) => {
     }
 }
 
-export const fetchRegion = async (regionId) => {
+export const fetchRegion = async (regionId, hierarchyId) => {
     try {
-        const response = await api.get(`/api/regions/${regionId}`);
+        const response = await api.get(`/api/regions/${regionId}`, {params: {hierarchyId: hierarchyId}});
         return response.data;
     } catch (error) {
         console.error('Error fetching region:', error);
@@ -42,9 +42,9 @@ export const fetchRegion = async (regionId) => {
 }
 
 // Fetch the geometry for a region. Returns null if no geometry is found.
-export const fetchRegionGeometry = async (regionId, force) => {
+export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
     try {
-        const response = await api.get(`/api/regions/${regionId}/geometry`, {params: {resolveEmpty: force}});
+        const response = await api.get(`/api/regions/${regionId}/geometry`, {params: {resolveEmpty: force, hierarchyId: hierarchyId}});
         if (response.status === 204 || response.status === 404) {
             return null;
         }
@@ -55,9 +55,9 @@ export const fetchRegionGeometry = async (regionId, force) => {
     }
 }
 
-export const fetchAncestors = async (regionId) => {
+export const fetchAncestors = async (regionId, hierarchyId) => {
     try {
-        const response = await api.get(`/api/regions/${regionId}/ancestors`);
+        const response = await api.get(`/api/regions/${regionId}/ancestors`, {params: {hierarchyId: hierarchyId}});
         if (response.status === 204) {
             return [];
         }
