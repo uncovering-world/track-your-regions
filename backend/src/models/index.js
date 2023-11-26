@@ -1,27 +1,30 @@
 const Region = require('./Region');
 const Hierarchy = require('./Hierarchy');
 const HierarchyNames = require('./HierarchyNames');
-
-Hierarchy.belongsToMany(Region, {
-    through: 'hierarchy_region_mapping', // Name of the intermediate mapping table
-    foreignKey: 'alt_region_id', // Foreign key in the mapping table referring to AlternativeHierarchy
-    otherKey: 'region_id', // Foreign key in the mapping table referring to Region
-});
+const HierarchyRegionMapping = require('./HierarchyRegionMapping');
 
 Hierarchy.belongsTo(HierarchyNames, {
     foreignKey: 'hierarchy_id',
+    targetKey: 'hierarchyId',
 });
 
-Region.belongsToMany(Hierarchy, {
-    through: 'hierarchy_region_mapping', // Name of the intermediate mapping table
-    foreignKey: 'region_id', // Foreign key in the mapping table referring to Region
-    otherKey: 'alt_region_id', // Foreign key in the mapping table referring to Hierarchy
+HierarchyNames.hasMany(Hierarchy, {
+    foreignKey: 'hierarchy_id',
 });
+
+Hierarchy.belongsTo(Region, {
+    foreignKey: 'region_id',
+});
+
+// I cannot define many-to-many association between Hierarchy and Region as the primary key of Hierarchy is a composite
+// key and Sequelize does not support composite primary keys as foreign keys. So I have to define the association
+// manually.
 
 const models = {
     Region,
     Hierarchy,
     HierarchyNames,
+    HierarchyRegionMapping,
 };
 
 module.exports = models;

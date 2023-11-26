@@ -35,27 +35,19 @@ class Hierarchy extends Model {
 Hierarchy.init({
     regionId: {
         type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true,
-        field: 'region_id'
+        field: 'region_id',
+        primaryKey: true
     },
     parentId: {
         type: DataTypes.INTEGER,
         allowNull: true,
-        references: {
-            model: 'hierarchy',
-            key: 'region_id'
-        },
         field: 'parent_id'
     },
     hierarchyId: {
         type: DataTypes.INTEGER,
         allowNull: false,
         field: 'hierarchy_id',
-        references: {
-            model: 'hierarchy_names',
-            key: 'hierarchy_id'
-        }
+        primaryKey: true,
     },
     regionName: {
         type: DataTypes.STRING(255),

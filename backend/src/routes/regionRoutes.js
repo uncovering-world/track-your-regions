@@ -23,7 +23,8 @@ router.get('/root',
 );
 router.get('/:regionId',
     ...[
-        check('regionId').isInt().withMessage('Region ID must be an integer')
+        check('regionId').isInt().withMessage('Region ID must be an integer'),
+        check('hierarchyId').optional().isInt().withMessage('Hierarchy ID must be an integer'),
     ],
     async (req, res) => {
         const errors = validationResult(req);
