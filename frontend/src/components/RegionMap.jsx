@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import * as turf from '@turf/turf';
 import { useNavigation } from './NavigationContext';
@@ -9,34 +9,45 @@ function MapComponent() {
   const map = useRef(null);
   const { selectedRegion, selectedHierarchy } = useNavigation();
   const regionGeometryCache = useRef([]);
+  const [error, setError] = useState(null);
 
   const fetchSelectedRegionGeometry = async () => {
-    const cacheIndex = regionGeometryCache.current.findIndex(
-      (item) => item.id === selectedRegion.id && item.hierarchyId === selectedHierarchy.hierarchyId,
-    );
+    try {
+      const cacheIndex = regionGeometryCache.current.findIndex(
+        (item) => item.id === selectedRegion.id
+          && item.hierarchyId === selectedHierarchy.hierarchyId,
+      );
 
-    // Check if the geometry for the selected region is already in the cache
-    if (cacheIndex !== -1) {
-      return regionGeometryCache.current[cacheIndex].geometry;
-    }
+      // Check if the geometry for the selected region is already in the cache
+      if (cacheIndex !== -1) {
+        return regionGeometryCache.current[cacheIndex].geometry;
+      }
 
-    if (selectedRegion.id !== null && selectedRegion.id !== 0) {
-      const response = await fetchRegionGeometry(selectedRegion.id, selectedHierarchy.hierarchyId);
-      if (response) {
-        // Add new geometry to the cache, managing the cache size
-        if (regionGeometryCache.current.length >= 10) {
-          regionGeometryCache.current.shift(); // Remove the oldest item
+      if (selectedRegion.id !== null && selectedRegion.id !== 0) {
+        const response = await fetchRegionGeometry(
+          selectedRegion.id,
+          selectedHierarchy.hierarchyId,
+        );
+        if (response) {
+          // Add new geometry to the cache, managing the cache size
+          if (regionGeometryCache.current.length >= 10) {
+            regionGeometryCache.current.shift(); // Remove the oldest item
+          }
+          regionGeometryCache.current.push({
+            id: selectedRegion.id,
+            hierarchyId: selectedHierarchy.hierarchyId,
+            geometry: response.geometry,
+          });
+          return response.geometry;
         }
-        regionGeometryCache.current.push({
-          id: selectedRegion.id,
-          hierarchyId: selectedHierarchy.hierarchyId,
-          geometry: response.geometry,
-        });
-        return response.geometry;
+        return null;
       }
       return null;
+    } catch (fetchError) {
+      console.error('Error fetching region geometry: ', fetchError);
+      setError('An error occurred while fetching region geometry.');
+      return null;
     }
-    return null;
   };
 
   const initializeMap = async () => {
@@ -109,7 +120,12 @@ function MapComponent() {
     };
   }, [selectedRegion, selectedHierarchy]);
 
-  return <div ref={mapContainer} style={{ width: '100%', height: '400px' }} />;
+  return (
+    <div>
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+      <div ref={mapContainer} style={{ width: '100%', height: '400px' }} />
+    </div>
+  );
 }
 
 export default MapComponent;

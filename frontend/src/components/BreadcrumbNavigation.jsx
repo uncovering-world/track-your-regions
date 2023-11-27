@@ -7,60 +7,67 @@ import { fetchAncestors, fetchRegion } from '../api';
 function BreadcrumbNavigation() {
   const { selectedRegion, setSelectedRegion, selectedHierarchy } = useNavigation();
   const [breadcrumbItems, setBreadcrumbItems] = useState([{ id: null, name: 'World', hasSubregions: true }]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchAndSetAncestors = async () => {
-      if (selectedRegion.id !== null && selectedRegion.id !== 0) {
-        const ancestors = await fetchAncestors(selectedRegion.id, selectedHierarchy.hierarchyId);
-        if (Array.isArray(ancestors)) {
+      try {
+        if (selectedRegion.id !== null && selectedRegion.id !== 0) {
+          const ancestors = await fetchAncestors(selectedRegion.id, selectedHierarchy.hierarchyId);
           const reversedAncestors = ancestors.reverse();
           setBreadcrumbItems([{ id: 0, name: 'World', hasSubregions: true }, ...reversedAncestors]);
         } else {
-          console.error('Ancestors is not an array:', ancestors);
+          setBreadcrumbItems([{ id: null, name: 'World', hasSubregions: true }]);
         }
-      } else {
-        setBreadcrumbItems([{ id: null, name: 'World', hasSubregions: true }]);
+        setError(null);
+      } catch (fetchError) {
+        console.error('Error fetching ancestors: ', fetchError);
+        setError('We encountered an issue while retrieving the region\'s hierarchy. Please try again later.');
       }
     };
     fetchAndSetAncestors();
   }, [selectedRegion, selectedHierarchy]);
 
   const handleBreadcrumbClick = async (regionId, regionName, index) => {
-    let hasSubregions;
-    if (regionId === null || regionId === 0) {
-      hasSubregions = true;
-    } else {
-      try {
+    try {
+      let hasSubregions;
+      if (regionId === null || regionId === 0) {
+        hasSubregions = true;
+      } else {
         const region = await fetchRegion(regionId, selectedHierarchy.hierarchyId);
         hasSubregions = region.hasSubregions;
-      } catch (error) {
-        console.error(`Error fetching region ${regionId}, consider the region as not having subregions:`, error);
-        hasSubregions = false;
       }
+      setSelectedRegion({
+        id: regionId,
+        name: regionName,
+        hasSubregions,
+      });
+      // Truncate the breadcrumbItems array up to the clicked index + 1
+      setBreadcrumbItems((prevItems) => prevItems.slice(0, index + 1));
+      setError(null);
+    } catch (fetchError) {
+      console.error(`Error fetching region ${regionId}: `, fetchError);
+      setError('Unable to load the selected region. Please try selecting a different region or try again later.');
     }
-    setSelectedRegion({
-      id: regionId,
-      name: regionName,
-      hasSubregions,
-    });
-    // Truncate the breadcrumbItems array up to the clicked index + 1
-    setBreadcrumbItems((prevItems) => prevItems.slice(0, index + 1));
   };
 
   return (
-    <Breadcrumbs aria-label="breadcrumb">
-      {breadcrumbItems.map((item, index) => (
-        <Typography
-          color="inherit"
-          key={item.id}
-          style={{ cursor: 'pointer' }}
-        >
-          <ButtonBase component="button" onClick={() => handleBreadcrumbClick(item.id, item.name, index)}>
-            {item.name}
-          </ButtonBase>
-        </Typography>
-      ))}
-    </Breadcrumbs>
+    <div>
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+      <Breadcrumbs aria-label="breadcrumb">
+        {breadcrumbItems.map((item, index) => (
+          <Typography
+            color="inherit"
+            key={item.id}
+            style={{ cursor: 'pointer' }}
+          >
+            <ButtonBase component="button" onClick={() => handleBreadcrumbClick(item.id, item.name, index)}>
+              {item.name}
+            </ButtonBase>
+          </Typography>
+        ))}
+      </Breadcrumbs>
+    </div>
   );
 }
 

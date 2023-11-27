@@ -7,6 +7,7 @@ function HierarchySwitcher() {
   const { selectedHierarchy, setSelectedHierarchy, setSelectedRegion } = useNavigation();
   const [hierarchies, setHierarchies] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
+  const [error, setError] = useState(null);
   const open = Boolean(anchorEl);
 
   useEffect(() => {
@@ -14,8 +15,9 @@ function HierarchySwitcher() {
       try {
         const fetchedHierarchies = await fetchHierarchies();
         setHierarchies(fetchedHierarchies);
-      } catch (error) {
-        console.error('Error fetching hierarchies:', error);
+      } catch (fetchError) {
+        console.error('Error fetching hierarchies: ', fetchError);
+        setError('An error occurred while fetching hierarchies.');
       }
     };
 
@@ -31,19 +33,26 @@ function HierarchySwitcher() {
   };
 
   const handleHierarchyChange = (hierarchyId) => {
-    setSelectedHierarchy({ hierarchyId });
-    // Reset the selected region to the world
-    setSelectedRegion({
-      id: null,
-      name: 'World',
-      info: {},
-      hasSubregions: false,
-    });
-    handleClose();
+    try {
+      setSelectedHierarchy({ hierarchyId });
+      // Reset the selected region to the world
+      setSelectedRegion({
+        id: null,
+        name: 'World',
+        info: {},
+        hasSubregions: false,
+      });
+      handleClose();
+      setError(null);
+    } catch (handleError) {
+      console.error(`Error updating hierarchy to ${hierarchyId}: `, handleError);
+      setError("We're unable to switch the hierarchy right now. Please check your connection and try again.");
+    }
   };
 
   return (
     <div>
+      {error && <div style={{ color: 'red' }}>{error}</div>}
       <Button
         aria-controls="hierarchy-menu"
         aria-haspopup="true"
