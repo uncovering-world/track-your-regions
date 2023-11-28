@@ -55,7 +55,7 @@ const BreadcrumbNavigation = () => {
                 <Typography
                     color="inherit"
                     key={index}
-                    onClick={() => handleBreadcrumbClick(item.id, index, item.hasSubregions)}
+                    onClick={() => handleBreadcrumbClick(item.id, index)}
                     style={{ cursor: 'pointer' }}
                 >
                     {item.name}
