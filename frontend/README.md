@@ -21,16 +21,16 @@ This directory contains the frontend application for the Region Tracker service.
 │   ├── api
 │   │   └── index.js               # API interactions
 │   ├── components                 # UI Components
-│   │   ├── BreadcrumbNavigation.js
-│   │   ├── Footer.js
-│   │   ├── Header.js
-│   │   ├── ListOfRegions.js
-│   │   ├── MainDisplay.js
-│   │   ├── NavigationPane.js
-│   │   ├── NavigationContext.js
-│   │   ├── RegionInfoPanel.js
+│   │   ├── BreadcrumbNavigation.jsx
+│   │   ├── Footer.jsx
+│   │   ├── Header.jsx
+│   │   ├── ListOfRegions.jsx
+│   │   ├── MainDisplay.jsx
+│   │   ├── NavigationPane.jsx
+│   │   ├── NavigationContext.jsx
+│   │   ├── RegionInfoPanel.jsx
 │   │   └── TreeView.js
-│   ├── App.js                    # Main application component
+│   ├── App.jsx                    # Main application component
 │   └── index.js                  # Application entry point
 ├── Dockerfile                    # Dockerfile for containerization (for docker-compose use only)
 ├── README.md                     # Documentation
