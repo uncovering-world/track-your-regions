@@ -7,7 +7,9 @@
     "start": "react-scripts --openssl-legacy-provider start",
     "build": "react-scripts --openssl-legacy-provider build",
     "test": "react-scripts --openssl-legacy-provider test",
-    "eject": "react-scripts --openssl-legacy-provider eject"
+    "eject": "react-scripts --openssl-legacy-provider eject",
+    "lint": "eslint --ext .js,.jsx src",
+    "lint:fix": "eslint --fix --ext .js,.jsx src"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",
@@ -31,6 +33,7 @@
     ]
   },
   "devDependencies": {
+    "eslint": "^8.54.0",
     "eslint-config-airbnb": "^19.0.4",
     "react-scripts": "^5.0.1"
   }
