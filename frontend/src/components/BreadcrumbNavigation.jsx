@@ -52,7 +52,7 @@ function BreadcrumbNavigation() {
       {breadcrumbItems.map((item, index) => (
         <Typography
           color="inherit"
-          key={index}
+          key={item.id}
           onClick={() => handleBreadcrumbClick(item.id, index)}
           style={{ cursor: 'pointer' }}
         >
