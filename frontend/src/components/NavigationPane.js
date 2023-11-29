@@ -1,18 +1,17 @@
 import React, { useState } from 'react';
+import { Box } from '@mui/material';
 import BreadcrumbNavigation from './BreadcrumbNavigation';
 import ListOfRegions from './ListOfRegions';
-import { Box } from '@mui/material';
-import HierarchySwitcher from "./HierarchySwitcher";
+import HierarchySwitcher from './HierarchySwitcher';
 
-
-const NavigationPane = () => {
-    return (
-        <Box>
-            <HierarchySwitcher/>
-            <BreadcrumbNavigation/>
-            <ListOfRegions/>
-        </Box>
-    );
-};
+function NavigationPane() {
+  return (
+    <Box>
+      <HierarchySwitcher />
+      <BreadcrumbNavigation />
+      <ListOfRegions />
+    </Box>
+  );
+}
 
 export default NavigationPane;
