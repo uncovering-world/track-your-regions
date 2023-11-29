@@ -12,8 +12,8 @@ function HierarchySwitcher() {
   useEffect(() => {
     const getHierarchies = async () => {
       try {
-        const hierarchies = await fetchHierarchies();
-        setHierarchies(hierarchies);
+        const fetchedHierarchies = await fetchHierarchies();
+        setHierarchies(fetchedHierarchies);
       } catch (error) {
         console.error('Error fetching hierarchies:', error);
       }
