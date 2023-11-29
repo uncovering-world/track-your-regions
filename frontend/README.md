@@ -11,6 +11,23 @@ This directory contains the frontend application for the Region Tracker service.
 - **@mui/material**: Material-UI library for React components.
 - **Docker**: Used for containerizing the frontend service for quick setup and testing.
 
+## Code Style
+
+We use [Airbnb's JavaScript style guide](https://github.com/airbnb/javascript) for this project. 
+To ensure that the codebase adheres to this style guide, we use eslint to lint the codebase. The configuration file is `.eslintrc`.
+
+To run the linter, use the following command:
+
+```bash
+npm run lint
+```
+
+To automatically fix linting errors, use the following command:
+
+```bash
+npm run lint:fix
+```
+
 ## Directory Structure
 
 ```
@@ -71,3 +88,4 @@ npm start
 - `npm build`: Builds the production version of the app.
 - `npm test`: Run tests (currently not specified).
 - `npm eject`: Ejects the setup (Note: this is a one-way operation).
+- `npm run lint`: Lints the codebase.
