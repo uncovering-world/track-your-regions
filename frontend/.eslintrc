@@ -4,6 +4,7 @@
     "browser": true
   },
   "rules": {
-    "react/react-in-jsx-scope": "off"
+    "react/react-in-jsx-scope": "off",
+    "no-console": "off" // Only for development, remove for production
   }
 }
