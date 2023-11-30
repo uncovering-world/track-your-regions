@@ -1,5 +1,6 @@
 // NavigationContext.jsx
 import React, { createContext, useState, useContext } from 'react';
+import PropTypes from 'prop-types';
 
 const NavigationContext = createContext();
 
@@ -29,3 +30,7 @@ export function NavigationProvider({ children }) {
     </NavigationContext.Provider>
   );
 }
+
+NavigationProvider.propTypes = {
+  children: PropTypes.node.isRequired,
+};
