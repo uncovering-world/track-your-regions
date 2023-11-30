@@ -20,8 +20,6 @@ function MapComponent() {
   };
 
   useEffect(() => {
-    if (map.current) return;
-
     const initializeMap = async () => {
       const polygonData = await fetchSelectedRegionGeometry();
 
@@ -64,8 +62,11 @@ function MapComponent() {
       });
     };
 
-    initializeMap().then((r) => console.log(r));
+    if (!map.current) {
+      initializeMap().then((r) => console.log(r));
+    }
 
+    // Always set the cleanup function to remove the map
     return () => {
       if (map.current) {
         map.current.remove();
