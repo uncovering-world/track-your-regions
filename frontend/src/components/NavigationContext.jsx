@@ -1,5 +1,7 @@
 // NavigationContext.jsx
-import React, { createContext, useState, useContext } from 'react';
+import {
+  createContext, useState, useContext, useMemo,
+} from 'react';
 import PropTypes from 'prop-types';
 
 const NavigationContext = createContext();
@@ -18,14 +20,15 @@ export function NavigationProvider({ children }) {
     hierarchyId: 1,
   });
 
+  const value = useMemo(() => ({
+    selectedRegion,
+    setSelectedRegion,
+    selectedHierarchy,
+    setSelectedHierarchy,
+  }), [selectedRegion, selectedHierarchy]);
+
   return (
-    <NavigationContext.Provider value={{
-      selectedRegion,
-      setSelectedRegion,
-      selectedHierarchy,
-      setSelectedHierarchy,
-    }}
-    >
+    <NavigationContext.Provider value={value}>
       {children}
     </NavigationContext.Provider>
   );
