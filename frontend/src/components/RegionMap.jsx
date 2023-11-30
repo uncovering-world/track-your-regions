@@ -16,6 +16,7 @@ function MapComponent() {
       }
       return null;
     }
+    return null;
   };
 
   useEffect(() => {
