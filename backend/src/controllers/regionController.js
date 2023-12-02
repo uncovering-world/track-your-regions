@@ -261,5 +261,8 @@ exports.getSubregions = async (req, res) => {
   const hierarchyId = req.query.hierarchyId || 1;
 
   const subregions = await getSubregions(regionId, hierarchyId, getAll);
-  return res.status(subregions.status).json(subregions.data ? subregions.data.map((r) => r.toApiFormat()) : { message: subregions.message });
+  const result = subregions.data ? subregions.data.map(
+    (r) => r.toApiFormat(),
+  ) : { message: subregions.message };
+  return res.status(subregions.status).json(result);
 };

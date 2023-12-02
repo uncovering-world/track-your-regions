@@ -27,7 +27,9 @@ class Hierarchy extends Model {
       replacements: { regionId, hierarchyId },
       type: QueryTypes.SELECT,
     });
-    return ancestors.map((ancestor) => ({ id: ancestor.region_id, name: ancestor.region_name, parentRegionId: ancestor.parentRegionId }));
+    return ancestors.map((ancestor) => ({
+      id: ancestor.region_id, name: ancestor.region_name, parentRegionId: ancestor.parentRegionId,
+    }));
   }
 }
 

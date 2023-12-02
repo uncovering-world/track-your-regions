@@ -16,9 +16,9 @@ Hierarchy.belongsTo(Region, {
   foreignKey: 'region_id',
 });
 
-// I cannot define many-to-many association between Hierarchy and Region as the primary key of Hierarchy is a composite
-// key and Sequelize does not support composite primary keys as foreign keys. So I have to define the association
-// manually.
+// I cannot define many-to-many association between Hierarchy and Region as the primary key of
+// Hierarchy is a composite key and Sequelize does not support composite primary keys as foreign
+// keys. So I have to define the association manually.
 
 const models = {
   Region,
