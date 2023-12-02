@@ -21,7 +21,7 @@ router.get(
       const errorMessages = errors.array().map((error) => error.msg);
       return res.status(400).json({ errors: errorMessages });
     }
-    await regionController.getRootRegions(req, res);
+    return regionController.getRootRegions(req, res);
   },
 );
 router.get(
@@ -36,7 +36,7 @@ router.get(
       const errorMessages = errors.array().map((error) => error.msg);
       return res.status(400).json({ errors: errorMessages });
     }
-    await regionController.getRegionById(req, res);
+    return regionController.getRegionById(req, res);
   },
 );
 router.get(
@@ -52,7 +52,7 @@ router.get(
       const errorMessages = errors.array().map((error) => error.msg);
       return res.status(400).json({ errors: errorMessages });
     }
-    await regionController.getSubregions(req, res);
+    return regionController.getSubregions(req, res);
   },
 );
 
@@ -67,7 +67,7 @@ router.get(
       const errorMessages = errors.array().map((error) => error.msg);
       return res.status(400).json({ errors: errorMessages });
     }
-    await regionController.getAncestors(req, res);
+    return regionController.getAncestors(req, res);
   },
 );
 
@@ -83,7 +83,7 @@ router.get(
       const errorMessages = errors.array().map((error) => error.msg);
       return res.status(400).json({ errors: errorMessages });
     }
-    await regionController.getGeometry(req, res);
+    return regionController.getGeometry(req, res);
   },
 );
 
