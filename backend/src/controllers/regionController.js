@@ -180,7 +180,7 @@ async function getAllSubregions(regionId, hierarchyId) {
         SELECT * FROM Subregions;
     `;
 
-  return await sequelize.query(query, {
+  return sequelize.query(query, {
     replacements: { regionId, hierarchyId },
     type: QueryTypes.SELECT,
     mapToModel: true,
