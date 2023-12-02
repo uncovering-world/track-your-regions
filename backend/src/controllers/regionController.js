@@ -2,7 +2,7 @@ const turf = require('@turf/turf');
 
 const { QueryTypes } = require('sequelize');
 const {
-  Region, Hierarchy, HierarchyNames, HierarchyRegionMapping,
+  Region, Hierarchy, HierarchyNames,
 } = require('../models');
 const sequelize = require('../config/db');
 
