@@ -6,6 +6,95 @@ const {
 } = require('../models');
 const sequelize = require('../config/db');
 
+async function getAllSubregions(regionId, hierarchyId) {
+  const query = `
+        WITH RECURSIVE Subregions AS (
+            SELECT *
+            FROM hierarchy
+            WHERE parent_id = :regionId AND hierarchy_id = :hierarchyId
+            UNION ALL
+            SELECT h.*
+            FROM hierarchy h
+            INNER JOIN Subregions s ON h.parent_id = s.region_id AND h.hierarchy_id = :hierarchyId
+        )
+        SELECT * FROM Subregions;
+    `;
+
+  return sequelize.query(query, {
+    replacements: { regionId, hierarchyId },
+    type: QueryTypes.SELECT,
+    mapToModel: true,
+    model: Hierarchy,
+  });
+}
+
+// Retrieve subregions for a specific region
+async function getSubregions(regionId, hierarchyId, getAll) {
+  try {
+    // Check if the region exists
+    const region = await Hierarchy.findOne({
+      where: {
+        regionId,
+        hierarchyId,
+      },
+    });
+
+    if (!region) {
+      return { data: [], message: 'Region not found', status: 404 };
+    }
+
+    // Retrieve subregions
+    let subregions;
+    // Check the getAll query parameter
+    if (getAll === 'true') {
+      subregions = await getAllSubregions(regionId, hierarchyId);
+    } else {
+      subregions = await Hierarchy.findAll({
+        where: { parentId: regionId, hierarchyId },
+        mapToModel: true,
+        model: Hierarchy,
+      });
+    }
+
+    if (subregions.length === 0) {
+      return { data: [], message: 'Region has no subregions', status: 202 };
+    }
+
+    return { data: subregions, status: 200 };
+  } catch (err) {
+    console.error(err);
+    return { data: [], message: 'Internal Server Error', status: 500 };
+  }
+}
+
+// Retrieve the divisions of a region. It does not include subdivisions of the divisions.
+async function getDivisions(regionId, hierarchyId) {
+  const regions = (await getSubregions(regionId, hierarchyId, false)).data;
+  // Add the region itself
+  regions.push(await Hierarchy.findOne({
+    where: {
+      regionId,
+      hierarchyId,
+    },
+  }));
+  let result_divisions = [];
+  for (const region of regions) {
+    const query = `
+            SELECT r.* FROM hierarchy_region_mapping hrm
+            JOIN regions r ON hrm.region_id = r.id
+            WHERE alt_region_id = :regionId AND hierarchy_id = :hierarchyId
+            `;
+    const result = await sequelize.query(query, {
+      replacements: { regionId: region.regionId, hierarchyId },
+      type: QueryTypes.SELECT,
+      mapToModel: true,
+      model: Region,
+    });
+    result_divisions = result_divisions.concat(result.map((region) => region.dataValues));
+  }
+  return result_divisions;
+}
+
 exports.getHierarchies = async (req, res) => {
   try {
     const hierarchies = await HierarchyNames.findAll();
@@ -163,95 +252,6 @@ exports.getRegionById = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Internal Server Error' });
-  }
-};
-
-async function getAllSubregions(regionId, hierarchyId) {
-  const query = `
-        WITH RECURSIVE Subregions AS (
-            SELECT *
-            FROM hierarchy
-            WHERE parent_id = :regionId AND hierarchy_id = :hierarchyId
-            UNION ALL
-            SELECT h.*
-            FROM hierarchy h
-            INNER JOIN Subregions s ON h.parent_id = s.region_id AND h.hierarchy_id = :hierarchyId
-        )
-        SELECT * FROM Subregions;
-    `;
-
-  return sequelize.query(query, {
-    replacements: { regionId, hierarchyId },
-    type: QueryTypes.SELECT,
-    mapToModel: true,
-    model: Hierarchy,
-  });
-}
-
-// Retrieve the divisions of a region. It does not include subdivisions of the divisions.
-async function getDivisions(regionId, hierarchyId) {
-  const regions = (await getSubregions(regionId, hierarchyId, false)).data;
-  // Add the region itself
-  regions.push(await Hierarchy.findOne({
-    where: {
-      regionId,
-      hierarchyId,
-    },
-  }));
-  let result_divisions = [];
-  for (const region of regions) {
-    const query = `
-            SELECT r.* FROM hierarchy_region_mapping hrm
-            JOIN regions r ON hrm.region_id = r.id
-            WHERE alt_region_id = :regionId AND hierarchy_id = :hierarchyId
-            `;
-    const result = await sequelize.query(query, {
-      replacements: { regionId: region.regionId, hierarchyId },
-      type: QueryTypes.SELECT,
-      mapToModel: true,
-      model: Region,
-    });
-    result_divisions = result_divisions.concat(result.map((region) => region.dataValues));
-  }
-  return result_divisions;
-}
-
-// Retrieve subregions for a specific region
-getSubregions = async (regionId, hierarchyId, getAll) => {
-  try {
-    // Check if the region exists
-    const region = await Hierarchy.findOne({
-      where: {
-        regionId,
-        hierarchyId,
-      },
-    });
-
-    if (!region) {
-      return { data: [], message: 'Region not found', status: 404 };
-    }
-
-    // Retrieve subregions
-    let subregions;
-    // Check the getAll query parameter
-    if (getAll === 'true') {
-      subregions = await getAllSubregions(regionId, hierarchyId);
-    } else {
-      subregions = await Hierarchy.findAll({
-        where: { parentId: regionId, hierarchyId },
-        mapToModel: true,
-        model: Hierarchy,
-      });
-    }
-
-    if (subregions.length === 0) {
-      return { data: [], message: 'Region has no subregions', status: 202 };
-    }
-
-    return { data: subregions, status: 200 };
-  } catch (err) {
-    console.error(err);
-    return { data: [], message: 'Internal Server Error', status: 500 };
   }
 };
 
