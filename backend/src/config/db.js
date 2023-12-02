@@ -3,9 +3,9 @@ const { Sequelize } = require('sequelize');
 // Get the db credentials from the .env file
 require('dotenv').config();
 // Load all present .env.* files
-for (const env of ['', '.development', '.production', '.local']) {
+['', '.development', '.production', '.local'].forEach((env) => {
   require('dotenv').config({ path: `.env${env}` });
-}
+});
 
 // Create a new Sequelize instance
 const sequelize = new Sequelize(
