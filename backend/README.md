@@ -12,6 +12,23 @@ This directory contains the backend code for the Region Tracker service, includi
 - **PostgreSQL**: The database used for storing application data.
 - **Docker**: Used for containerizing the backend service for quick setup and testing.
 
+## Code Style
+
+We use [Airbnb's JavaScript style guide](https://github.com/airbnb/javascript) for this project.
+To ensure that the codebase adheres to this style guide, we use eslint to lint the codebase. The configuration file is `.eslintrc`.
+
+To run the linter, use the following command:
+
+```bash
+npm run lint
+```
+
+To automatically fix linting errors, use the following command:
+
+```bash
+npm run lint:fix
+```
+
 ## Directory Structure
 
 ```plaintext
@@ -85,6 +102,8 @@ You can run the following npm scripts to perform various tasks:
 - `npm run migrate`: Run database migrations.
 - `npm run migrate:undo`: Undo the last database migration.
 - `npm run migrate:generate`: Generate a new migration file.
+- `npm run lint`: Run ESLint on the project.
+- `npm run lint:fix`: Run ESLint on the project and fix any fixable errors.
 
 ## Database Migrations
 
