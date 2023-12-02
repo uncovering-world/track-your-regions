@@ -78,20 +78,23 @@ async function getDivisions(regionId, hierarchyId) {
     },
   }));
   let resultDivisions = [];
-  for (const region of regions) {
+  const promises = regions.map(async (region) => {
     const query = `
             SELECT r.* FROM hierarchy_region_mapping hrm
             JOIN regions r ON hrm.region_id = r.id
             WHERE alt_region_id = :regionId AND hierarchy_id = :hierarchyId
             `;
-    const result = await sequelize.query(query, {
+    return sequelize.query(query, {
       replacements: { regionId: region.regionId, hierarchyId },
       type: QueryTypes.SELECT,
       mapToModel: true,
       model: Region,
     });
-    resultDivisions = resultDivisions.concat(result.map((region) => region.dataValues));
-  }
+  });
+  const results = await Promise.all(promises);
+  results.forEach((result) => {
+    resultDivisions = resultDivisions.concat(result.map((r) => r.dataValues));
+  });
   return resultDivisions;
 }
 
@@ -124,15 +127,13 @@ exports.getGeometry = async (req, res) => {
   // Find all subdivisions of the region
   const divisions = await getDivisions(regionId, hierarchyId, res);
   let geometries = [];
-  let notCompleted = false;
-  for (const division of divisions) {
+  const promises = divisions.map(async (division) => {
     const regionId = division.id;
     const { geom } = division;
     if (geom) {
       geometries.push(geom);
     } else if (!resolveEmpty) {
-      notCompleted = true;
-      break;
+      return false;
     } else {
       // Find ids and geometries of all subdivisions of the division
       const query = `
@@ -163,7 +164,11 @@ exports.getGeometry = async (req, res) => {
         }).then().catch((err) => console.log(err));
       }
     }
-  }
+    return true;
+  });
+
+  const results = await Promise.all(promises);
+  const allHasGeometry = results.every((r) => r !== false);
 
   geometries = geometries.filter((g) => g != null);
 
@@ -171,7 +176,7 @@ exports.getGeometry = async (req, res) => {
     return res.status(204).json({ message: 'No geometries found' });
   }
 
-  if (notCompleted) {
+  if (!allHasGeometry) {
     return res.status(204).json({ message: 'Not all geometries are available' });
   }
 
