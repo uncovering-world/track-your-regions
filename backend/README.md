@@ -17,7 +17,7 @@ This directory contains the backend code for the Region Tracker service, includi
 ```plaintext
 .
 ├── config/                      # Global configuration files
-│   └── sequelizeConfig.js       # Sequelize configuration
+│   └── config.js                # Configuration read from environment variables
 ├── migrations/                  # Database migration files
 ├── src/                         # Main application source code
 │   ├── config/                  # Runtime configuration files

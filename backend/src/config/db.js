@@ -1,20 +1,15 @@
 const { Sequelize } = require('sequelize');
 
-// Get the db credentials from the .env file
-require('dotenv').config();
-// Load all present .env.* files
-['', '.development', '.production', '.local'].forEach((env) => {
-  require('dotenv').config({ path: `.env${env}` });
-});
+const config = require('../../config/config');
 
 // Create a new Sequelize instance
 const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASSWORD,
+  config.db_name,
+  config.db_user,
+  config.db_password,
   {
-    host: process.env.DB_HOST || 'localhost',
-    dialect: 'postgres',
+    host: config.db_host,
+    dialect: config.db_dialect,
   },
 );
 
