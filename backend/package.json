@@ -4,16 +4,16 @@
   "description": "Backend for Track Your Regions",
   "devDependencies": {
     "dotenv-cli": "^7.3.0",
+    "eslint": "^8.54.0",
+    "eslint-config-airbnb": "^19.0.4",
     "nodemon": "^3.0.1",
     "sequelize-auto": "^0.8.8",
-    "sequelize-cli": "^6.6.1",
-    "eslint": "^8.54.0",
-    "eslint-config-airbnb": "^19.0.4"
+    "sequelize-cli": "^6.6.1"
   },
   "main": "src/app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "debug": "nodemon src/server.js",
+    "debug": "NODE_ENV=development nodemon src/server.js",
     "migrate": "sequelize-cli db:migrate --config=config/sequelizeConfig.js",
     "migrate:undo": "sequelize-cli db:migrate:undo --config=config/sequelizeConfig.js",
     "migrate:generate": "sequelize-cli --config=config/sequelizeConfig.js migration:generate",
@@ -38,6 +38,7 @@
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "dotenv-flow": "^4.0.1",
     "express": "^4.18.2",
     "express-validator": "^7.0.1",
     "pg": "^8.11.3",
