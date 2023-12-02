@@ -183,7 +183,7 @@ exports.getGeometry = async (req, res) => {
   // Combine all geometries into a single MultiPolygon
   let combinedGeometry = geometries[0];
   let result;
-  for (let i = 0; i < geometries.length; i++) {
+  for (let i = 0; i < geometries.length; i += 1) {
     combinedGeometry = turf.union(combinedGeometry, geometries[i]);
   }
   // Check the type of the combined geometry
