@@ -77,7 +77,7 @@ async function getDivisions(regionId, hierarchyId) {
       hierarchyId,
     },
   }));
-  let result_divisions = [];
+  let resultDivisions = [];
   for (const region of regions) {
     const query = `
             SELECT r.* FROM hierarchy_region_mapping hrm
@@ -90,9 +90,9 @@ async function getDivisions(regionId, hierarchyId) {
       mapToModel: true,
       model: Region,
     });
-    result_divisions = result_divisions.concat(result.map((region) => region.dataValues));
+    resultDivisions = resultDivisions.concat(result.map((region) => region.dataValues));
   }
-  return result_divisions;
+  return resultDivisions;
 }
 
 exports.getHierarchies = async (req, res) => {
@@ -153,12 +153,12 @@ exports.getGeometry = async (req, res) => {
         replacements: { regionId },
         type: QueryTypes.SELECT,
       });
-      const result_geometry = result[0].geometry;
+      const resultGeometry = result[0].geometry;
       // Update the geometry of the region
-      if (result_geometry) {
-        geometries.push(result_geometry);
+      if (resultGeometry) {
+        geometries.push(resultGeometry);
         // Asynchronously update the geometry of the region
-        Region.update({ geom: result_geometry }, {
+        Region.update({ geom: resultGeometry }, {
           where: { id: regionId },
         }).then().catch((err) => console.log(err));
       }
@@ -219,13 +219,13 @@ exports.getRootRegions = async (req, res) => {
   try {
     const hierarchyId = req.query.hierarchyId || 1;
 
-    const hierarchy_regions = await Hierarchy.findAll({
+    const hierarchyRegions = await Hierarchy.findAll({
       where: {
         parentId: null,
         hierarchyId,
       },
     });
-    res.status(200).json(hierarchy_regions.map((region) => region.toApiFormat()));
+    res.status(200).json(hierarchyRegions.map((region) => region.toApiFormat()));
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Internal Server Error' });
