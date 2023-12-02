@@ -128,7 +128,7 @@ exports.getGeometry = async (req, res) => {
   const divisions = await getDivisions(regionId, hierarchyId, res);
   let geometries = [];
   const promises = divisions.map(async (division) => {
-    const regionId = division.id;
+    const divisionId = division.id;
     const { geom } = division;
     if (geom) {
       geometries.push(geom);
@@ -140,7 +140,7 @@ exports.getGeometry = async (req, res) => {
                     WITH RECURSIVE Subregions AS (
                         SELECT r.id as region_id, ST_Simplify(r.geom, 0.0) as simplified_geom
                         FROM regions r
-                        WHERE r.parent_region_id = :regionId
+                        WHERE r.parent_region_id = :divisionId
                         UNION ALL
                         SELECT r_r.id, ST_Simplify(r_r.geom, 0.0) as simplified_geom_r
                         FROM regions r_r
@@ -151,7 +151,7 @@ exports.getGeometry = async (req, res) => {
                     WHERE simplified_geom IS NOT NULL;
                 `;
       const result = await sequelize.query(query, {
-        replacements: { regionId },
+        replacements: { divisionId },
         type: QueryTypes.SELECT,
       });
       const resultGeometry = result[0].geometry;
@@ -160,7 +160,7 @@ exports.getGeometry = async (req, res) => {
         geometries.push(resultGeometry);
         // Asynchronously update the geometry of the region
         Region.update({ geom: resultGeometry }, {
-          where: { id: regionId },
+          where: { id: divisionId },
         }).then().catch((err) => console.log(err));
       }
     }
