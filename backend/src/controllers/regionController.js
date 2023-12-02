@@ -208,10 +208,10 @@ exports.getAncestors = async (req, res) => {
 
   try {
     const ancestors = await Hierarchy.getAncestors(regionId, hierarchyId);
-    res.status(200).json(ancestors);
+    return res.status(200).json(ancestors);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
@@ -248,10 +248,10 @@ exports.getRegionById = async (req, res) => {
       return res.status(404).json({ message: 'Region not found' });
     }
 
-    res.status(200).json(region.toApiFormat());
+    return res.status(200).json(region.toApiFormat());
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
