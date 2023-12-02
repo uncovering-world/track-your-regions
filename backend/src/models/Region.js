@@ -3,7 +3,7 @@ const sequelize = require('../config/db');
 
 class Region extends Model {
   static async getAncestors(regionId) {
-    return await sequelize.query(`
+    return sequelize.query(`
             WITH RECURSIVE Ancestors AS (
                 SELECT id, parent_region_id as parentRegionId, name
                 FROM regions
