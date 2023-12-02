@@ -2,5 +2,8 @@
   "extends": "airbnb",
   "env": {
     "node": true
+  },
+  "rules": {
+    "no-console": "off" // Only for development, remove for production
   }
 }
