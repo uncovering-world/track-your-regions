@@ -20,6 +20,8 @@ function MapComponent() {
   };
 
   const initializeMap = async () => {
+    if (!mapContainer.current) return; // wait for map container to load
+
     const polygonData = await fetchSelectedRegionGeometry();
 
     if (!polygonData || !polygonData.coordinates) {
