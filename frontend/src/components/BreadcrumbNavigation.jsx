@@ -25,7 +25,7 @@ function BreadcrumbNavigation() {
     fetchAndSetAncestors();
   }, [selectedRegion, selectedHierarchy]);
 
-  const handleBreadcrumbClick = async (regionId, index) => {
+  const handleBreadcrumbClick = async (regionId, regionName, index) => {
     let hasSubregions;
     if (regionId === null || regionId === 0) {
       hasSubregions = true;
@@ -40,7 +40,7 @@ function BreadcrumbNavigation() {
     }
     setSelectedRegion({
       id: regionId,
-      name: breadcrumbItems[index].name,
+      name: regionName,
       hasSubregions,
     });
     // Truncate the breadcrumbItems array up to the clicked index + 1
@@ -55,7 +55,7 @@ function BreadcrumbNavigation() {
           key={item.id}
           style={{ cursor: 'pointer' }}
         >
-          <ButtonBase component="button" onClick={() => handleBreadcrumbClick(item.id, index)}>
+          <ButtonBase component="button" onClick={() => handleBreadcrumbClick(item.id, item.name, index)}>
             {item.name}
           </ButtonBase>
         </Typography>
