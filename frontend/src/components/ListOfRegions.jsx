@@ -40,7 +40,7 @@ function ListOfRegions() {
   };
 
   return (
-    <Box style={{ height: '400px', overflow: 'auto' }}>
+    <Box sx={{ height: '400px', overflow: 'auto' }}>
       <List>
         {regions.map((region) => (
           <ListItem key={region.id} button onClick={() => handleItemClick(region)}>
