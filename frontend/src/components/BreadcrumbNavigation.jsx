@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Breadcrumbs from '@mui/material/Breadcrumbs';
-import { Typography } from '@mui/material';
+import { ButtonBase, Typography } from '@mui/material';
 import { useNavigation } from './NavigationContext';
 import { fetchAncestors, fetchRegion } from '../api';
 
@@ -53,10 +53,11 @@ function BreadcrumbNavigation() {
         <Typography
           color="inherit"
           key={item.id}
-          onClick={() => handleBreadcrumbClick(item.id, index)}
           style={{ cursor: 'pointer' }}
         >
-          {item.name}
+          <ButtonBase component="button" onClick={() => handleBreadcrumbClick(item.id, index)}>
+            {item.name}
+          </ButtonBase>
         </Typography>
       ))}
     </Breadcrumbs>
