@@ -33,25 +33,25 @@ npm run lint:fix
 ```
 .
 ├── public
-│   └── index.html                 # HTML template
+│   └── index.html                    # HTML template
 ├── src
 │   ├── api
-│   │   └── index.js               # API interactions
-│   ├── components                 # UI Components
+│   │   └── index.js                  # API interactions
+│   ├── components                    # UI Components
 │   │   ├── BreadcrumbNavigation.jsx
 │   │   ├── Footer.jsx
 │   │   ├── Header.jsx
+│   │   ├── HierarchySwitcher.jsx
 │   │   ├── ListOfRegions.jsx
 │   │   ├── MainDisplay.jsx
 │   │   ├── NavigationPane.jsx
-│   │   ├── NavigationContext.jsx
-│   │   ├── RegionInfoPanel.jsx
-│   │   └── TreeView.js
-│   ├── App.jsx                    # Main application component
-│   └── index.js                  # Application entry point
-├── Dockerfile                    # Dockerfile for containerization (for docker-compose use only)
-├── README.md                     # Documentation
-└── package.json                  # Project metadata and dependencies
+│   │   ├── RegionMap.jsx
+│   │   └── NavigationContext.jsx
+│   ├── App.jsx                       # Main application component
+│   └── index.js                      # Application entry point
+├── Dockerfile                        # Dockerfile for containerization (for docker-compose use only)
+├── README.md                         # Documentation
+└── package.json                      # Project metadata and dependencies
 ```
 
 ## Environment Configuration
