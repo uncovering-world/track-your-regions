@@ -11,7 +11,7 @@ on:
       - reopened
 
 jobs:
-  lint:
+  lint-backend:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code

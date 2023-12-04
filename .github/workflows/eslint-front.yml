@@ -12,7 +12,7 @@ on:
       - reopened
 
 jobs:
-  lint:
+  lint-frontend:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
