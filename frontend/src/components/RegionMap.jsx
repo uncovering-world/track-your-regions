@@ -8,18 +8,36 @@ function MapComponent() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const { selectedRegion, selectedHierarchy } = useNavigation();
+  const regionGeometryCache = useRef([]);
 
   const fetchSelectedRegionGeometry = async () => {
+    const cacheIndex = regionGeometryCache.current.findIndex(
+      (item) => item.id === selectedRegion.id && item.hierarchyId === selectedHierarchy.hierarchyId,
+    );
+
+    // Check if the geometry for the selected region is already in the cache
+    if (cacheIndex !== -1) {
+      return regionGeometryCache.current[cacheIndex].geometry;
+    }
+
     if (selectedRegion.id !== null && selectedRegion.id !== 0) {
       const response = await fetchRegionGeometry(selectedRegion.id, selectedHierarchy.hierarchyId);
       if (response) {
+        // Add new geometry to the cache, managing the cache size
+        if (regionGeometryCache.current.length >= 10) {
+          regionGeometryCache.current.shift(); // Remove the oldest item
+        }
+        regionGeometryCache.current.push({
+          id: selectedRegion.id,
+          hierarchyId: selectedHierarchy.hierarchyId,
+          geometry: response.geometry,
+        });
         return response.geometry;
       }
       return null;
     }
     return null;
   };
-
   const initializeMap = async () => {
     if (!mapContainer.current) return; // wait for map container to load
 
