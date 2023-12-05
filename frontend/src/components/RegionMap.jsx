@@ -38,52 +38,61 @@ function MapComponent() {
     }
     return null;
   };
+
   const initializeMap = async () => {
     if (!mapContainer.current) return; // wait for map container to load
 
     const polygonData = await fetchSelectedRegionGeometry();
 
     if (!polygonData || !polygonData.coordinates) {
-      // Handle the case where there is no geometry data, perhaps set a default view?
       console.log('No geometry data available for the selected region.');
       return;
     }
 
     const bounds = turf.bbox(polygonData);
-
-    // Create a MapLibre GL JS LngLatBounds object from the bounding box
     const mapBounds = new maplibregl.LngLatBounds([bounds[0], bounds[1]], [bounds[2], bounds[3]]);
 
-    map.current = new maplibregl.Map({
-      container: mapContainer.current,
-      style: 'https://demotiles.maplibre.org/style.json', // specify the base map style
-      bounds: mapBounds,
-      fitBoundsOptions: {
-        padding: 50,
-      },
-    });
-
-    map.current.on('load', () => {
-      map.current.addSource('polygon', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: polygonData, // use the geometry from the API response
+    if (map.current) {
+      // Map already exists, update the source and fit bounds
+      map.current.getSource('polygon').setData({
+        type: 'Feature',
+        properties: {},
+        geometry: polygonData,
+      });
+      map.current.fitBounds(mapBounds, { padding: 50 });
+    } else {
+      // Map does not exist, create a new instance
+      map.current = new maplibregl.Map({
+        container: mapContainer.current,
+        style: 'https://demotiles.maplibre.org/style.json',
+        bounds: mapBounds,
+        fitBoundsOptions: {
+          padding: 50,
         },
       });
 
-      map.current.addLayer({
-        id: 'polygon',
-        type: 'fill',
-        source: 'polygon',
-        layout: {},
-        paint: {
-          'fill-color': '#088', // fill color of the polygon
-          'fill-opacity': 0.8,
-        },
+      map.current.on('load', () => {
+        map.current.addSource('polygon', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: polygonData,
+          },
+        });
+
+        map.current.addLayer({
+          id: 'polygon',
+          type: 'fill',
+          source: 'polygon',
+          layout: {},
+          paint: {
+            'fill-color': '#088',
+            'fill-opacity': 0.8,
+          },
+        });
       });
-    });
+    }
   };
 
   useEffect(() => {
