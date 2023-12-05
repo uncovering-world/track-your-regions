@@ -182,10 +182,17 @@ exports.getGeometry = async (req, res) => {
 
   // Combine all geometries into a single MultiPolygon
   let combinedGeometry = geometries[0];
-  let result;
-  for (let i = 0; i < geometries.length; i += 1) {
-    combinedGeometry = turf.union(combinedGeometry, geometries[i]);
+  if (geometries.length === 1) {
+    // If there is only one geometry, return it converted to a MultiPolygon
+    combinedGeometry = turf.multiPolygon(combinedGeometry.coordinates);
   }
+  if (geometries.length > 1) {
+    // If there are multiple geometries, combine them into a single MultiPolygon
+    for (let i = 0; i < geometries.length; i += 1) {
+      combinedGeometry = turf.union(combinedGeometry, geometries[i]);
+    }
+  }
+  let result;
   // Check the type of the combined geometry
   if (combinedGeometry.geometry.type !== 'MultiPolygon') {
     result = turf.multiPolygon([combinedGeometry.geometry.coordinates]);
