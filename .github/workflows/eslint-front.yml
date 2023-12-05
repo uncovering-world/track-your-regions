@@ -1,18 +1,30 @@
-name: ESLint Front Check
+name: ESLint Frontend Check
 
 on:
   pull_request:
     branches: [ main ]
-    paths:
-      - 'frontend/**/*.js'
-      - 'frontend/**/*.jsx'
     types:
       - opened
       - synchronize
       - reopened
 
 jobs:
+  check-paths:
+    runs-on: ubuntu-latest
+    outputs:
+      run-lint: ${{ steps.paths-filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: paths-filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**/*.{js,jsx}'
+
   lint-frontend:
+    needs: check-paths
+    if: needs.check-paths.outputs.run-lint == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
