@@ -3,15 +3,28 @@ name: ESLint Backend Check
 on:
   pull_request:
     branches: [ main ]
-    paths:
-      - 'backend/**/*.js'
     types:
       - opened
       - synchronize
       - reopened
 
 jobs:
+  check-paths:
+    runs-on: ubuntu-latest
+    outputs:
+      run-lint: ${{ steps.paths-filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: paths-filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            backend:
+              - 'backend/**/*.js'
+
   lint-backend:
+    needs: check-paths
+    if: needs.check-paths.outputs.run-lint == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
