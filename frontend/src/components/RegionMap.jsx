@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
+import * as turf from '@turf/turf';
 import { useNavigation } from './NavigationContext';
 import { fetchRegionGeometry } from '../api';
 
@@ -30,14 +31,18 @@ function MapComponent() {
       return;
     }
 
+    const bounds = turf.bbox(polygonData);
+
+    // Create a MapLibre GL JS LngLatBounds object from the bounding box
+    const mapBounds = new maplibregl.LngLatBounds([bounds[0], bounds[1]], [bounds[2], bounds[3]]);
+
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://demotiles.maplibre.org/style.json', // specify the base map style
-      center: [
-        polygonData.coordinates[0][0][0][0],
-        polygonData.coordinates[0][0][0][1],
-      ], // center the map on the first coordinate of the polygon
-      zoom: 9,
+      bounds: mapBounds,
+      fitBoundsOptions: {
+        padding: 50,
+      },
     });
 
     map.current.on('load', () => {
