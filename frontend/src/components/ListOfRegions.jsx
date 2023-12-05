@@ -29,6 +29,9 @@ function ListOfRegions() {
   }, [selectedRegion, selectedHierarchy]);
 
   const handleItemClick = (region) => {
+    if (region.id === selectedRegion.id) {
+      return;
+    }
     setSelectedRegion(
       {
         id: region.id,
