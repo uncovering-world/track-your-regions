@@ -1,0 +1,24 @@
+name: Mark and Close Stale Pull Requests
+
+on:
+  schedule:
+    - cron: '41 2 * * *'  # Runs at 03:17 UTC every day.
+  workflow_dispatch:  # Allows manual triggering of the workflow
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/stale@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          days-before-stale: 7             # Number of days of inactivity before a PR is marked stale
+          days-before-close: 7             # Number of days after being marked stale before a PR is closed
+          stale-pr-message: 'This PR has been inactive for a week. It will be closed in another week if there is no further activity.'
+          stale-pr-label: 'stale'          # Label to apply to stale PRs
+          close-pr-message: 'Closing this stale PR due to inactivity.'
+          operations-per-run: 30           # Maximum number of operations per run
