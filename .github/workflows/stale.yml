@@ -16,8 +16,8 @@ jobs:
       - uses: actions/stale@v5
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-          days-before-stale: 7             # Number of days of inactivity before a PR is marked stale
-          days-before-close: 7             # Number of days after being marked stale before a PR is closed
+          days-before-pr-stale: 7             # Number of days of inactivity before a PR is marked stale
+          days-before-pr-close: 7             # Number of days after being marked stale before a PR is closed
           stale-pr-message: 'This PR has been inactive for a week. It will be closed in another week if there is no further activity.'
           stale-pr-label: 'stale'          # Label to apply to stale PRs
           close-pr-message: 'Closing this stale PR due to inactivity.'
