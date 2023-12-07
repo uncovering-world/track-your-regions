@@ -97,4 +97,79 @@ start-all: init-db build run migrate-db
 	@echo "Frontend is running on host port ${HOST_FRONTEND_PORT}"
 	@echo "All services are up and the database is initialized and migrated."
 
+# ---- Database Dump Commands ----
+
+DB_DUMP_DIR = ./db-dump
+DB_IMAGE_NAME = tyr-db
+GIT_COMMIT_HASH = $(shell git rev-parse --short HEAD)
+DB_IMAGE_TAG = $(GIT_COMMIT_HASH)
+
+setup-db-dump-dir:
+	@echo "Creating directory for database dumps..."
+	@mkdir -p $(DB_DUMP_DIR)
+	@echo "Directory created at ./db-dump/"
+
+dump-db: init-db setup-db-dump-dir
+	@set -e; \
+	if [ -n "$(FORCE)" ] || [ -z "$$(ls -A $(DB_DUMP_DIR))" ]; then \
+		echo "Creating database dump..."; \
+		DUMP_FILE="$(DB_DUMP_DIR)/db-dump-$$(date +%Y-%m-%d-%H-%M-%S).dump"; \
+		$(DC) exec -T db pg_dump -U $(DB_USER) -d $(DB_NAME) -F c -Z 9  > $$DUMP_FILE; \
+		echo "Database dump created: $$DUMP_FILE"; \
+	else \
+		echo "Dump file(s) already exist in $(DB_DUMP_DIR). Use FORCE=1 to override."; \
+	fi
+
+build-db-image: dump-db
+	@echo "Checking if Docker image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) already exists..."
+	@IMAGE_EXISTS=$$(docker images -q $(DB_IMAGE_NAME):$(DB_IMAGE_TAG)); \
+	if [ -z "$$IMAGE_EXISTS" ]; then \
+		echo "Building Docker image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG)..."; \
+		DB_DUMP_FILE=$(DB_DUMP_DIR)/$$(ls -t $(DB_DUMP_DIR) | head -1); \
+		docker build -f ./db-image/Dockerfile --build-arg DB_DUMP_FILE=$$DB_DUMP_FILE -t $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) .; \
+		echo "Docker image built successfully."; \
+	else \
+		echo "Docker image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) already exists. Skipping build."; \
+	fi
+
+# Docker image name and tag for GitHub Packages
+GHCR_IMAGE_NAME = ghcr.io/ohmspectator/tyr-db
+GHCR_IMAGE_TAG = $(DB_IMAGE_TAG)
+
+# Login to GitHub Container Registry
+login-ghcr:
+	@echo "Logging into GitHub Container Registry..."
+	@GITHUB_USERNAME=$$(gh api user --jq .login 2>/dev/null || echo $$GH_USERNAME); \
+	if [ -z "$$GITHUB_USERNAME" ]; then \
+		echo "Error: Could not determine GitHub username. Set GH_USERNAME environment variable."; \
+		exit 1; \
+	fi; \
+	if [ -z "$(GHCR_PAT)" ]; then \
+		echo "Error: GHCR_PAT environment variable not set."; \
+		exit 1; \
+	fi; \
+	echo $(GHCR_PAT) | docker login ghcr.io -u $$GITHUB_USERNAME --password-stdin
+
+
+# Push image to GitHub Container Registry
+push-db-image: build-db-image login-ghcr
+	@echo "Tagging and pushing Docker image to GitHub Container Registry..."
+	@docker tag $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)
+	@docker push $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)
+	@echo "Image pushed successfully to GitHub Container Registry."
+
+DB_CONTAINER_NAME = tyr-db-container
+DB_VOLUME_NAME = tyr-db-data
+
+# Run database from Docker image
+run-db-from-image:
+	@echo "Running database from Docker image..."
+	@docker volume create $(DB_VOLUME_NAME)
+	@docker run -d --name $(DB_CONTAINER_NAME) \
+	        -p $(HOST_DB_PORT):5432 \
+	        -v $(DB_VOLUME_NAME):/var/lib/postgresql/data \
+	        $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)
+	@echo "Database is running on host port $(HOST_DB_PORT)"
+
 .PHONY: build run init-db clean-container clean-image clean-all reinit-db clean-volume migrate start-all just-run-db
+.PHONY: dump-db
