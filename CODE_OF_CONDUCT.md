@@ -6,7 +6,7 @@
 
 2. **Introducing New Voyageurs** 🚀
 
-   Ahoy, new voyageurs! If you're setting sail with us, don't be shy. Share your story, interests, and how we can assist you in discussions. We value every newcomer, and it helps us tailor your experience to match your skills and interests. Anchors aweigh, and let's embark on this journey together! ⚓
+   Ahoy, new voyageurs! If you're setting sail with us, don't be shy. Share [here](https://github.com/OhmSpectator/track-your-regions/discussions/categories/introduce-yourself) your story, interests, and how we can assist you in discussions. We value every newcomer, and it helps us tailor your experience to match your skills and interests. Anchors aweigh, and let's embark on this journey together! ⚓
 
 3. **Respect: It's a Big Deal** 🤝
    
