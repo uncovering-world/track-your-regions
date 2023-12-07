@@ -37,5 +37,5 @@
    Our project is a family-friendly zone. Let's keep things as clean and shiny as a freshly scrubbed deck! 🛳️
 
 10. **Experiment, Play, Connect** 🌐
-   
-   Feel free to experiment with new ideas, play around with concepts, and connect with others. Innovation is our game! 🎮
+
+    Feel free to experiment with new ideas, play around with concepts, and connect with others. Innovation is our game! 🎮
