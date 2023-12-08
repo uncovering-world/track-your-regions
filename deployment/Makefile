@@ -14,7 +14,7 @@ ENV_FILE = .env.development
 DC = docker-compose --env-file $(ENV_FILE)
 
 # Required environment variables
-REQUIRED_ENV_VARS = DB_NAME DB_USER DB_PASSWORD GADM_FILE
+REQUIRED_ENV_VARS = DB_NAME DB_USER DB_PASSWORD GADM_FILE POSTGIS_VERSION
 
 # ---- Environment Checks ----
 check-env:
@@ -121,13 +121,16 @@ dump-db: init-db setup-db-dump-dir
 		echo "Dump file(s) already exist in $(DB_DUMP_DIR). Use FORCE=1 to override."; \
 	fi
 
-build-db-image: dump-db
+build-db-image: dump-db check-env
 	@echo "Checking if Docker image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) already exists..."
 	@IMAGE_EXISTS=$$(docker images -q $(DB_IMAGE_NAME):$(DB_IMAGE_TAG)); \
 	if [ -z "$$IMAGE_EXISTS" ]; then \
 		echo "Building Docker image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG)..."; \
 		DB_DUMP_FILE=$(DB_DUMP_DIR)/$$(ls -t $(DB_DUMP_DIR) | head -1); \
-		docker build -f ./db-image/Dockerfile --build-arg DB_DUMP_FILE=$$DB_DUMP_FILE -t $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) .; \
+		docker build -f ./db-image/Dockerfile \
+		       --build-arg DB_DUMP_FILE=$$DB_DUMP_FILE \
+		       --build-arg POSTGIS_VERSION=$(POSTGIS_VERSION) \
+		       -t $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) .; \
 		echo "Docker image built successfully."; \
 	else \
 		echo "Docker image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) already exists. Skipping build."; \
@@ -138,7 +141,7 @@ GHCR_IMAGE_NAME = ghcr.io/ohmspectator/tyr-db
 GHCR_IMAGE_TAG = $(DB_IMAGE_TAG)
 
 # Login to GitHub Container Registry
-login-ghcr:
+login-ghcr: check-env
 	@echo "Logging into GitHub Container Registry..."
 	@GITHUB_USERNAME=$$(gh api user --jq .login 2>/dev/null || echo $$GH_USERNAME); \
 	if [ -z "$$GITHUB_USERNAME" ]; then \
@@ -183,4 +186,4 @@ run-db-from-image: pull-db-image
 	@echo "Database is running on host port $(HOST_DB_PORT)"
 
 .PHONY: build run init-db clean-container clean-image clean-all reinit-db clean-volume migrate start-all just-run-db
-.PHONY: dump-db
+.PHONY: dump-db check-env

@@ -1,4 +1,5 @@
-FROM postgis/postgis:16-3.4
+ARG POSTGIS_VERSION
+FROM postgis/postgis:$POSTGIS_VERSION
 
 # Prepare apt-get
 RUN apt-get update && \
