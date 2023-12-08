@@ -155,14 +155,20 @@ login-ghcr:
 push-db-image: build-db-image login-ghcr
 	@echo "Tagging and pushing Docker image to GitHub Container Registry..."
 	@docker tag $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)
+	@docker tag $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) $(GHCR_IMAGE_NAME):latest
 	@docker push $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)
+	@docker push $(GHCR_IMAGE_NAME):latest
 	@echo "Image pushed successfully to GitHub Container Registry."
 
 DB_CONTAINER_NAME = tyr-db-container
 DB_VOLUME_NAME = tyr-db-data
 
+pull-db-image:
+	@echo "Pulling Docker image ($(GHCR_IMAGE_NAME):latest) from GitHub Container Registry..."
+	@docker pull $(GHCR_IMAGE_NAME):latest
+
 # Run database from Docker image
-run-db-from-image:
+run-db-from-image: pull-db-image
 	@echo "Running database from Docker image..."
 	@docker volume create $(DB_VOLUME_NAME)
 	@docker run -d --name $(DB_CONTAINER_NAME) \
