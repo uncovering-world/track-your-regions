@@ -5,6 +5,8 @@ services:
     container_name: tyr-db
     build:
       context: .
+      args:
+        POSTGIS_VERSION: ${POSTGIS_VERSION}
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}

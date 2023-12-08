@@ -1,5 +1,7 @@
+ARG POSTGIS_VERSION
+
 # Start from the PostGIS image
-FROM postgis/postgis:latest
+FROM postgis/postgis:$POSTGIS_VERSION
 
 ARG DB_DUMP_FILE
 
