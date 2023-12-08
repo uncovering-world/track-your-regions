@@ -170,6 +170,7 @@ DB_VOLUME_NAME = tyr-db-data
 pull-db-image:
 	@echo "Pulling Docker image ($(GHCR_IMAGE_NAME):latest) from GitHub Container Registry..."
 	@docker pull $(GHCR_IMAGE_NAME):latest
+	@echo "Docker image pulled successfully."
 
 # Run database from Docker image
 run-db-from-image: pull-db-image
@@ -181,7 +182,12 @@ run-db-from-image: pull-db-image
             -e POSTGRES_DB=$(DB_NAME) \
 	        -p $(HOST_DB_PORT):5432 \
 	        -v $(DB_VOLUME_NAME):/var/lib/postgresql/data \
-	        $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)
+	        $(GHCR_IMAGE_NAME):latest
+	@echo "Waiting for database container to stop..." # I'm not sure why container stops after running
+	@until [ "$$(docker inspect -f '{{.State.Running}}' $(DB_CONTAINER_NAME))" = "false" ]; do \
+		sleep 1; \
+	done
+	@echo "Database container stopped, restarting..."
 	@docker start $(DB_CONTAINER_NAME)
 	@echo "Database is running on host port $(HOST_DB_PORT)"
 
