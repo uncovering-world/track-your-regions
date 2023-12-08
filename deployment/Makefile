@@ -2,6 +2,7 @@
 -include .env.development
 -include .env.production
 -include .env.local
+export
 
 # Name of the Docker Compose project
 PROJECT_NAME = tyr
@@ -114,7 +115,7 @@ dump-db: init-db setup-db-dump-dir
 	if [ -n "$(FORCE)" ] || [ -z "$$(ls -A $(DB_DUMP_DIR))" ]; then \
 		echo "Creating database dump..."; \
 		DUMP_FILE="$(DB_DUMP_DIR)/db-dump-$$(date +%Y-%m-%d-%H-%M-%S).dump"; \
-		$(DC) exec -T db pg_dump -U $(DB_USER) -d $(DB_NAME) -F c -Z 9  > $$DUMP_FILE; \
+		$(DC) exec -T db pg_dump -U $(DB_USER) -d $(DB_NAME) -v -n public --no-owner --no-acl -F c -Z 9  > $$DUMP_FILE; \
 		echo "Database dump created: $$DUMP_FILE"; \
 	else \
 		echo "Dump file(s) already exist in $(DB_DUMP_DIR). Use FORCE=1 to override."; \
@@ -172,9 +173,13 @@ run-db-from-image: pull-db-image
 	@echo "Running database from Docker image..."
 	@docker volume create $(DB_VOLUME_NAME)
 	@docker run -d --name $(DB_CONTAINER_NAME) \
+            -e POSTGRES_USER=$(DB_USER) \
+            -e POSTGRES_PASSWORD=$(DB_PASSWORD) \
+            -e POSTGRES_DB=$(DB_NAME) \
 	        -p $(HOST_DB_PORT):5432 \
 	        -v $(DB_VOLUME_NAME):/var/lib/postgresql/data \
 	        $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)
+	@docker start $(DB_CONTAINER_NAME)
 	@echo "Database is running on host port $(HOST_DB_PORT)"
 
 .PHONY: build run init-db clean-container clean-image clean-all reinit-db clean-volume migrate start-all just-run-db
