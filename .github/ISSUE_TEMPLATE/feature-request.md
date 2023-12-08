@@ -7,8 +7,6 @@ assignees: ''
 
 ---
 
-# Enhancement/Task Request for [Your Project Name]
-
 ## Description
 Briefly describe the enhancement or task, providing relevant background or context.
 
