@@ -98,34 +98,45 @@ start-all: init-db build run migrate-db
 	@echo "Frontend is running on host port ${HOST_FRONTEND_PORT}"
 	@echo "All services are up and the database is initialized and migrated."
 
-# ---- Database Dump Commands ----
-
+# ---- Common Variable Declarations ----
 DB_DUMP_DIR = ./db-dump
 DB_IMAGE_NAME = tyr-db
 GIT_COMMIT_HASH = $(shell git rev-parse --short HEAD)
 DB_IMAGE_TAG = $(GIT_COMMIT_HASH)
+GHCR_IMAGE_NAME = ghcr.io/ohmspectator/tyr-db
+GHCR_IMAGE_TAG = $(DB_IMAGE_TAG)
+PREPOPULATED_DB_CONTAINER_NAME = prep-tyr-db-container
+DB_VOLUME_NAME = prep-tyr-db-data
 
 setup-db-dump-dir:
-	@echo "Creating directory for database dumps..."
-	@mkdir -p $(DB_DUMP_DIR)
-	@echo "Directory created at ./db-dump/"
+	@if [ -d $(DB_DUMP_DIR) ]; then \
+		echo "Directory $(DB_DUMP_DIR) already exists."; \
+	else \
+		echo "Creating directory for database dumps..."; \
+		mkdir -p $(DB_DUMP_DIR) ; \
+		echo "Directory created at ./db-dump/" ; \
+	fi
 
 dump-db: init-db setup-db-dump-dir
 	@set -e; \
-	if [ -n "$(FORCE)" ] || [ -z "$$(ls -A $(DB_DUMP_DIR))" ]; then \
+	if [ -n "$(FORCE_DUMP)" ] || [ -z "$$(ls -A $(DB_DUMP_DIR))" ]; then \
 		echo "Creating database dump..."; \
 		DUMP_FILE="$(DB_DUMP_DIR)/db-dump-$$(date +%Y-%m-%d-%H-%M-%S).dump"; \
-		$(DC) exec -T db pg_dump -U $(DB_USER) -d $(DB_NAME) -v -n public --no-owner --no-acl -F c -Z 9  > $$DUMP_FILE; \
+		$(DC) exec -T db pg_dump -U $(DB_USER) -d $(DB_NAME) -v --no-owner --no-acl -F c -Z 9  > $$DUMP_FILE; \
 		echo "Database dump created: $$DUMP_FILE"; \
 	else \
 		echo "Dump file(s) already exist in $(DB_DUMP_DIR). Use FORCE=1 to override."; \
 	fi
 
-build-db-image: dump-db check-env
-	@echo "Checking if Docker image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) already exists..."
+build-prepopulated-db-image: dump-db check-env
+	if [ -n "$(FORCE_PDBI_BUILD)" ]; then \
+		echo "Forcing build of prepopulated database image..."; \
+		echo "Removing image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) if exists"; \
+		docker rmi -f $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) || true; \
+	fi
 	@IMAGE_EXISTS=$$(docker images -q $(DB_IMAGE_NAME):$(DB_IMAGE_TAG)); \
 	if [ -z "$$IMAGE_EXISTS" ]; then \
-		echo "Building Docker image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG)..."; \
+		echo "Building  image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG)..."; \
 		DB_DUMP_FILE=$(DB_DUMP_DIR)/$$(ls -t $(DB_DUMP_DIR) | head -1); \
 		docker build -f ./db-image/Dockerfile \
 		       --build-arg DB_DUMP_FILE=$$DB_DUMP_FILE \
@@ -135,10 +146,6 @@ build-db-image: dump-db check-env
 	else \
 		echo "Docker image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) already exists. Skipping build."; \
 	fi
-
-# Docker image name and tag for GitHub Packages
-GHCR_IMAGE_NAME = ghcr.io/ohmspectator/tyr-db
-GHCR_IMAGE_TAG = $(DB_IMAGE_TAG)
 
 # Login to GitHub Container Registry
 login-ghcr: check-env
@@ -156,40 +163,97 @@ login-ghcr: check-env
 
 
 # Push image to GitHub Container Registry
-push-db-image: build-db-image login-ghcr
+push-db-image: build-prepopulated-db-image login-ghcr
 	@echo "Tagging and pushing Docker image to GitHub Container Registry..."
 	@docker tag $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)
 	@docker tag $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) $(GHCR_IMAGE_NAME):latest
+	@echo "Pushing image $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)..."
 	@docker push $(GHCR_IMAGE_NAME):$(GHCR_IMAGE_TAG)
+	@echo "Image pushed successfully to GitHub Container Registry."
+	@echo "Pushing image $(GHCR_IMAGE_NAME):latest..."
 	@docker push $(GHCR_IMAGE_NAME):latest
 	@echo "Image pushed successfully to GitHub Container Registry."
 
-DB_CONTAINER_NAME = tyr-db-container
-DB_VOLUME_NAME = tyr-db-data
+get-prepopulated-db-image:
+	@if [ -n "$(LOCAL_IMAGE)" ]; then \
+		echo "Using local image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG)"; \
+		if [ -z "$$(docker images -q $(DB_IMAGE_NAME):$(DB_IMAGE_TAG))" ]; then \
+			echo "Error: Local image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG) does not exist."; \
+			exit 1; \
+		fi; \
+	else \
+		if [ -n "$$(docker images -q $(GHCR_IMAGE_NAME):latest)" ]; then \
+  			echo "Docker image $(GHCR_IMAGE_NAME):latest already exists."; \
+		else \
+			echo "Pulling Docker image ($(GHCR_IMAGE_NAME):latest) from GitHub Container Registry..." ; \
+			docker pull $(GHCR_IMAGE_NAME):latest; \
+		fi; \
+		echo "Docker image $(GHCR_IMAGE_NAME):latest is ready to use."; \
+	fi
 
-pull-db-image:
-	@echo "Pulling Docker image ($(GHCR_IMAGE_NAME):latest) from GitHub Container Registry..."
-	@docker pull $(GHCR_IMAGE_NAME):latest
-	@echo "Docker image pulled successfully."
+stop-prepopulated-db-container:
+	@if [ -z "$$(docker ps -aq -f name=$(PREPOPULATED_DB_CONTAINER_NAME))" ]; then \
+  		echo "Database container $(PREPOPULATED_DB_CONTAINER_NAME) does not exist, skipping stop."; \
+	else \
+		echo "Stopping database container $(PREPOPULATED_DB_CONTAINER_NAME)..."; \
+		docker stop $(PREPOPULATED_DB_CONTAINER_NAME); \
+		until [ "$$(docker inspect -f '{{.State.Running}}' $(PREPOPULATED_DB_CONTAINER_NAME))" = "false" ]; do \
+			sleep 1; \
+		done
+		echo "Database container stopped."; \
+	fi
+
+clean-prepopulated-db-container: stop-prepopulated-db-container
+	@echo "Removing database container..."
+	@docker rm -f $(PREPOPULATED_DB_CONTAINER_NAME) || true
+	@echo "Database container removed."
+	@echo "Removing volume $(DB_VOLUME_NAME)..."
+	@docker volume rm -f $(DB_VOLUME_NAME) || true
+	@echo "Volume removed."
+
+init-prepopulated-db-container: get-prepopulated-db-image
+	@if [ -n "$(FORCE_PDBC_INIT)" ]; then \
+  		echo "Forcing re-initialization of database from Docker image..."; \
+		make clean-prepopulated-db-container; \
+	fi
+	@echo "Creating prepopulated database volume..."
+	@if [ -z "$$(docker volume ls -q -f name=$(DB_VOLUME_NAME))" ]; then \
+		echo "Creating Docker volume $(DB_VOLUME_NAME)..."; \
+		docker volume create $(DB_VOLUME_NAME); \
+		echo "Docker volume $(DB_VOLUME_NAME) created."; \
+	fi
+	@echo "Prepopulated database volume created."
+	@echo "Initializing database from Docker image..."
+	@if [ -n "$(FORCE_PDBC_INIT)" ] || [ -z "$$(docker ps -aq -f name=$(PREPOPULATED_DB_CONTAINER_NAME))" ]; then \
+  		echo "Creating database container..."; \
+  		if [ -n "$(LOCAL_IMAGE)" ]; then \
+  			echo "Using local image $(DB_IMAGE_NAME):$(DB_IMAGE_TAG)"; \
+  			IMAGE_NAME=$(DB_IMAGE_NAME) IMAGE_TAG=$(DB_IMAGE_TAG) ; \
+  		else \
+  			echo "Using image $(GHCR_IMAGE_NAME):latest"; \
+  			IMAGE_NAME=$(GHCR_IMAGE_NAME) IMAGE_TAG=latest ; \
+  		fi; \
+	    docker run -d --name $(PREPOPULATED_DB_CONTAINER_NAME) \
+			   -e POSTGRES_USER=$(DB_USER) \
+			   -e POSTGRES_PASSWORD=$(DB_PASSWORD) \
+			   -e POSTGRES_DB=$(DB_NAME) \
+	           -p $(HOST_DB_PORT):5432 \
+	    	   -v $(DB_VOLUME_NAME):/var/lib/postgresql/data \
+	      	   $$IMAGE_NAME:$$IMAGE_TAG ;\
+	    echo "Database container created."; \
+	fi
 
 # Run database from Docker image
-run-db-from-image: pull-db-image
-	@echo "Running database from Docker image..."
-	@docker volume create $(DB_VOLUME_NAME)
-	@docker run -d --name $(DB_CONTAINER_NAME) \
-            -e POSTGRES_USER=$(DB_USER) \
-            -e POSTGRES_PASSWORD=$(DB_PASSWORD) \
-            -e POSTGRES_DB=$(DB_NAME) \
-	        -p $(HOST_DB_PORT):5432 \
-	        -v $(DB_VOLUME_NAME):/var/lib/postgresql/data \
-	        $(GHCR_IMAGE_NAME):latest
-	@echo "Waiting for database container to stop..." # I'm not sure why container stops after running
-	@until [ "$$(docker inspect -f '{{.State.Running}}' $(DB_CONTAINER_NAME))" = "false" ]; do \
-		sleep 1; \
-	done
-	@echo "Database container stopped, restarting..."
-	@docker start $(DB_CONTAINER_NAME)
+start-prepopulated-db-container: init-prepopulated-db-container
+	@docker start $(PREPOPULATED_DB_CONTAINER_NAME)
 	@echo "Database is running on host port $(HOST_DB_PORT)"
+
+test-prepopulated-db-container-cycle:
+	@echo "Testing database container cycle..."
+	@make build-prepopulated-db-image
+	@make stop
+	@make start-prepopulated-db-container LOCAL_IMAGE=$(LOCAL_IMAGE)
+	@echo "Database container cycle test passed."
 
 .PHONY: build run init-db clean-container clean-image clean-all reinit-db clean-volume migrate start-all just-run-db
 .PHONY: dump-db check-env
