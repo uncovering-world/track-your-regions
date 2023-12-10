@@ -21,25 +21,20 @@ This directory contains scripts and configurations for deploying the Region Trac
 
 ### Usage
 
-1. Copy the `.env.example` file to `.env` and set the environment variables:
+1. Copy the `.env.development.example` file to `.env.development` and set the environment variables, including GitHub Container Registry (GHCR) credentials and PostGIS version:
 
    ```bash
-   cp .env.example .env
+   cp .env.development.example .env.development
    ```
+
 #### Environment Configuration Files
 
-The application supports loading environment variables from several `.env*` files. These files allow you to define
-environment-specific settings that the application can use. Here is the order of precedence for the environment files:
+The application supports loading environment variables from several `.env*` files. These files allow you to define environment-specific settings that the application can use. Here is the order of precedence for the environment files:
 
 * `.env` - General defaults: This file contains default environment variables that are common across all environments.
-* `.env.development` - Development environment: Contains defaults for the development environment.
+* `.env.development` - Development environment: Contains defaults for the development environment, including GHCR and PostGIS settings.
 * `.env.production` - Production environment: Contains defaults for the production environment.
-* `.env.local` - Local overrides: This file is intended for environment variables that should not be committed to the
-   version control system, typically used for secrets or local overrides.
-
-The application will load these files and use the environment variables defined within them. If multiple files define
-the same variable, the last one loaded will take precedence. Typically, `.env.local` is used for secrets and should not
-be checked into version control, while the others can be used for shared environment configurations.
+* `.env.local` - Local overrides: This file is intended for environment variables that should not be committed to the version control system, typically used for secrets or local overrides.
 
 2. Initialize the Postgres database with the core hierarchy:
 
@@ -63,6 +58,45 @@ be checked into version control, while the others can be used for shared environ
 
    This will drop the current database and re-run the initialization process.
 
+## Prepopulated Database Container
+
+We also support the process for creating and using a prepopulated database container. This container can be built
+and pushed to the GitHub Container Registry, then pulled and used to initialize the database quickly.
+
+### Usage of Prepopulated Database Container
+
+If you want to use the prepopulated database container, you can use the following command:
+
+```bash
+make start-prepopulated-db-container
+```
+
+It will pull the prepopulated database image from the GitHub Container Registry and start the container. It
+will also initialize the database and create a volume for the database data, so the container can be stopped
+and started without losing data.
+
+### Creating  the Prepopulated Database Container
+
+To create and push the prepopulated database container, use the following command:
+
+```bash
+make push-prepopulated-db-container-cycle
+```
+
+### Flags and Makefile Targets for Prepopulated Database Container
+
+- `FORCE_DUMP`: Forces the creation of a new database dump, even if one already exists.
+- `FORCE_PDBI_BUILD`: Forces the build of the prepopulated database image, even if it already exists.
+- `LOCAL_IMAGE`: Use a locally available image instead of pulling from the GitHub Container Registry.
+- `FORCE_PDBC_INIT`: Forces the re-initialization of the prepopulated database container.
+
+### Additional Makefile Targets
+
+- `make dump-db`: Dump the current database to a file.
+- `make build-prepopulated-db-image`: Build the Docker image with the prepopulated database.
+- `make push-db-image`: Push the prepopulated database image to the GitHub Container Registry.
+- `make test-prepopulated-db-container-cycle`: Test the entire process of building, pushing, and starting the prepopulated database container.
+
 ## Quick Setup and Testing of All Services
 
 ### Features
@@ -80,68 +114,13 @@ be checked into version control, while the others can be used for shared environ
 
 ### Running Services Individually
 
-To run the frontend and backend services independently, navigate to their respective directories and use npm commands
-directly. The Dockerfiles in those directories are intended solely for use by docker-compose.
+To run the frontend and backend services independently, navigate to their respective directories and use npm commands directly. The Dockerfiles in those directories are intended solely for use by docker-compose.
+
+Remember that if you run the backend independently, you will need to use a prepopulated database container or initialize the database manually. See the [Database Initialization](#database-initialization) and [Prepopulated Database Container](#prepopulated-database-container) sections for more information.
 
 ### Additional Makefile Targets
 
 - `make build`: Build all Docker images.
 - `make run`: Run all Docker containers.
 - `make migrate-db`: Migrate the database.
-- `make reinit-db`: Forcefully re-initialize the database.
-- `make db-shell`: Access the database command line interface.
-- `make clean-container`: Stop and remove all Docker containers.
-- `make clean-image`: Remove all Docker images.
-- `make clean-volume`: Remove all Docker volumes.
-- `make clean-all`: Perform a complete cleanup.
-
-## `init-regions-table` Script Parameters and Docker Execution
-
-The `init-regions-table` script is a Python script intended to run within a Docker container to initialize an empty
-database. The script has options to customize the initialization process based on the requirements of the current
-environment.
-
-### Script Options
-
-The `init-regions-table` Python script supports the following command-line options:
-
-- `--fast`: Runs the initialization script in 'fast' mode, skipping the postprocessing for a quicker setup. This is
-  especially useful for debugging and development purposes when the full dataset is not required.
-
-- `--geometry`: Includes geometric data during the initialization. This option increases the initialization time but is
-  necessary for environments where spatial data is essential. It's set by default.
-
-### Setting Script Parameters in Docker
-
-These options are passed to the `init-regions-table` script from the `init-db.sh` shell script, which is the Docker
-container's entry point. To set these options, you need to modify the `init-db.sh` script as follows:
-
-1. Open the `init-db.sh` file in a text editor.
-2. Locate the line where `init-regions-table.py` is called.
-3. Add the desired options to this command.
-
-Here's an example snippet from `init-db.sh` that includes both options:
-
-```bash
-# Inside init-db.sh
-python init-regions-table.py --fast --geometry
-```
-
-Make sure to include only the options relevant to your deployment. For instance, to enable fast initialization without
-geometry data, you would only include `--fast`:
-
-```bash
-# Inside init-db.sh for fast initialization without geometry
-python init-regions-table.py --fast
-```
-
-### Note on Usage
-
-- The `--fast` option is recommended for development and testing environments where speed is preferred over data
-  completeness.
-- The `--geometry` option should be used when the geometrical integrity of the data is important for the application's
-  functionality.
-
-Remember to rebuild your Docker image if you make changes to the `init-db.sh` script to ensure that the container runs
-with the updated initialization parameters.
-
+- `make reinit-db`: Forcefully re-initialize
