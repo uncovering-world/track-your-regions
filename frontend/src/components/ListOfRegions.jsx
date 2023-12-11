@@ -9,7 +9,15 @@ function ListOfRegions() {
   const { selectedRegion, setSelectedRegion, selectedHierarchy } = useNavigation();
   const [regions, setRegions] = useState([]);
 
-  const fetchRegions = async (regionId, hasSubregions) => {
+  /**
+ * Fetches the regions based on the selected region and hierarchy context.
+ * If regionId is provided and hasSubregions is true, it fetches subregions,
+ * otherwise, it fetches root regions.
+ * @param {number|null} regionId - The ID of the selected region, or null.
+ * @param {boolean} hasSubregions - Indicates if selected region has subregions.
+ * @returns {Promise<void>} No return value, updates the regions state directly.
+ */
+const fetchRegions = async (regionId, hasSubregions) => {
     let newRegions = [];
     if (regionId) {
       if (hasSubregions) {
@@ -28,7 +36,13 @@ function ListOfRegions() {
     fetchRegions(selectedRegion.id, selectedRegion.hasSubregions);
   }, [selectedRegion, selectedHierarchy]);
 
-  const handleItemClick = (region) => {
+  /**
+ * Handles click events on region list items.
+ * Updates the selectedRegion context when a new region is selected.
+ * @param {Object} region - The region object corresponding to the clicked list item.
+ * @returns {void} No return value.
+ */
+const handleItemClick = (region) => {
     if (region.id === selectedRegion.id) {
       return;
     }
