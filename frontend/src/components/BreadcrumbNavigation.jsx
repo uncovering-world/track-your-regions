@@ -8,7 +8,10 @@ function BreadcrumbNavigation() {
   const { selectedRegion, setSelectedRegion, selectedHierarchy } = useNavigation();
   const [breadcrumbItems, setBreadcrumbItems] = useState([{ id: null, name: 'World', hasSubregions: true }]);
 
-  useEffect(() => {
+  /**
+ * Effect to fetch and set the breadcrumb ancestors whenever the selectedRegion or selectedHierarchy changes.
+ */
+useEffect(() => {
     const fetchAndSetAncestors = async () => {
       if (selectedRegion.id !== null && selectedRegion.id !== 0) {
         const ancestors = await fetchAncestors(selectedRegion.id, selectedHierarchy.hierarchyId);
@@ -25,7 +28,14 @@ function BreadcrumbNavigation() {
     fetchAndSetAncestors();
   }, [selectedRegion, selectedHierarchy]);
 
-  const handleBreadcrumbClick = async (regionId, regionName, index) => {
+  /**
+ * Handle click events on breadcrumb items.
+ * @param {number|null} regionId - The ID of the region corresponding to the clicked breadcrumb, or null for the 'World'.
+ * @param {string} regionName - The name of the region corresponding to the clicked breadcrumb.
+ * @param {number} index - The index of the clicked breadcrumb item in the breadcrumbItems array.
+ * Updates the selectedRegion state and trims the breadcrumbItems state up to the selected item.
+ */
+const handleBreadcrumbClick = async (regionId, regionName, index) => {
     let hasSubregions;
     if (regionId === null || regionId === 0) {
       hasSubregions = true;
