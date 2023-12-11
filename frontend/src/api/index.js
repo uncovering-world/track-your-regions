@@ -7,6 +7,11 @@ const api = axios.create({
   },
 });
 
+/**
+ * Fetches the root regions based on a given hierarchy ID.
+ * @param {string} hierarchyId The hierarchy ID for which to retrieve root regions.
+ * @returns {Array<Object> | Array} An array of root regions or an empty array if an error occurs.
+ */
 export const fetchRootRegions = async (hierarchyId) => {
   try {
     const response = await api.get('/api/regions/root', { params: { hierarchyId } });
@@ -30,6 +35,12 @@ export const fetchSubregions = async (regionId, hierarchyId) => {
   }
 };
 
+/**
+ * Fetches the details of a specific region given the region ID and hierarchy ID.
+ * @param {string} regionId The ID of the region to retrieve.
+ * @param {string} hierarchyId The hierarchy ID to which the region belongs.
+ * @returns {Object | Array} The region details or an empty array if an error occurs.
+ */
 export const fetchRegion = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}`, { params: { hierarchyId } });
