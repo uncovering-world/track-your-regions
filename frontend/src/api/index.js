@@ -7,6 +7,11 @@ const api = axios.create({
   },
 });
 
+/**
+ * Fetches an array of root regions for a given hierarchy.
+ * @param {string} hierarchyId - The unique identifier for the hierarchy to fetch root regions for.
+ * @return {Promise<Array>} A promise that resolves to an array of root regions.
+ */
 export const fetchRootRegions = async (hierarchyId) => {
   try {
     const response = await api.get('/api/regions/root', { params: { hierarchyId } });
@@ -17,6 +22,12 @@ export const fetchRootRegions = async (hierarchyId) => {
   }
 };
 
+/**
+ * Fetches an array of subregions for a given region within a hierarchy, or null if no subregions exist.
+ * @param {string} regionId - The unique identifier for the region to fetch subregions for.
+ * @param {string} hierarchyId - The unique identifier for the hierarchy that the region is part of.
+ * @return {Promise<Array|null>} A promise that resolves to an array of subregions or null.
+ */
 export const fetchSubregions = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/subregions`, { params: { hierarchyId } });
@@ -30,6 +41,12 @@ export const fetchSubregions = async (regionId, hierarchyId) => {
   }
 };
 
+/**
+ * Fetches the data for a specific region within a hierarchy.
+ * @param {string} regionId - The unique identifier for the region to fetch data for.
+ * @param {string} hierarchyId - The unique identifier for the hierarchy that the region is part of.
+ * @return {Promise<Object>} A promise that resolves to the data of the region.
+ */
 export const fetchRegion = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}`, { params: { hierarchyId } });
@@ -40,7 +57,13 @@ export const fetchRegion = async (regionId, hierarchyId) => {
   }
 };
 
-// Fetch the geometry for a region. Returns null if no geometry is found.
+/**
+ * Fetches the geometry data for a specific region within a hierarchy.
+ * @param {string} regionId - The unique identifier for the region to fetch geometry for.
+ * @param {string} hierarchyId - The unique identifier for the hierarchy that the region is part of.
+ * @param {boolean} [force=false] - A flag that influences whether to resolve with null when no geometry is found.
+ * @return {Promise<Object|null>} A promise that resolves to the geometry data of the region or null.
+ */
 export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/geometry`, { params: { resolveEmpty: force, hierarchyId } });
@@ -54,6 +77,12 @@ export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
   }
 };
 
+/**
+ * Fetches an array of ancestor regions for a specific region within a hierarchy.
+ * @param {string} regionId - The unique identifier for the region to fetch ancestors for.
+ * @param {string} hierarchyId - The unique identifier for the hierarchy that the region is part of.
+ * @return {Promise<Array>} A promise that resolves to an array of ancestor regions.
+ */
 export const fetchAncestors = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/ancestors`, { params: { hierarchyId } });
@@ -67,6 +96,10 @@ export const fetchAncestors = async (regionId, hierarchyId) => {
   }
 };
 
+/**
+ * Fetches an array of hierarchies available in the system.
+ * @return {Promise<Array>} A promise that resolves to an array of hierarchies.
+ */
 export const fetchHierarchies = async () => {
   try {
     const response = await api.get('/api/regions/hierarchies');
