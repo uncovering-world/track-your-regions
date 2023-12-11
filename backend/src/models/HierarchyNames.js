@@ -2,7 +2,10 @@ const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../config/db');
 
 class HierarchyNames extends Model {
-  // Transform the returned object to API format
+  /**
+   * Transforms the hierarchy data to a format suitable for API responses.
+   * @return {Object} An object that includes `hierarchyId` and `hierarchyName` properties.
+   */
   toApiFormat() {
     return {
       hierarchyId: this.hierarchyId,
