@@ -90,6 +90,10 @@ export const fetchAncestors = async (regionId, hierarchyId) => {
   }
 };
 
+/**
+ * Fetches a list of available region hierarchies.
+ * @returns {Array} An array of hierarchy objects.
+ */
 export const fetchHierarchies = async () => {
   try {
     const response = await api.get('/api/regions/hierarchies');
