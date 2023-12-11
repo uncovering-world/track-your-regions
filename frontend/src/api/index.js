@@ -9,7 +9,7 @@ const api = axios.create({
 
 /**
  * Fetches the root regions for a given hierarchy.
- * @param {string} hierarchyId - The ID of the hierarchy.
+ * @param {number} hierarchyId - The ID of the hierarchy.
  * @returns {Array} An array of root regions.
  */
 export const fetchRootRegions = async (hierarchyId) => {
@@ -24,8 +24,8 @@ export const fetchRootRegions = async (hierarchyId) => {
 
 /**
  * Fetches the subregions of a specific region within a hierarchy.
- * @param {string} regionId - The ID of the region to find subregions for.
- * @param {string} hierarchyId - The ID of the hierarchy.
+ * @param {number} regionId - The ID of the region to find subregions for.
+ * @param {number} hierarchyId - The ID of the hierarchy.
  * @returns {Array|null} An array of subregions, or null if no subregions are found.
  */
 export const fetchSubregions = async (regionId, hierarchyId) => {
@@ -43,8 +43,8 @@ export const fetchSubregions = async (regionId, hierarchyId) => {
 
 /**
  * Fetches detailed information about a specific region.
- * @param {string} regionId - The ID of the region.
- * @param {string} hierarchyId - The ID of the hierarchy.
+ * @param {number} regionId - The ID of the region.
+ * @param {number} hierarchyId - The ID of the hierarchy.
  * @returns {Object} An object containing the detailed information of the region.
  */
 export const fetchRegion = async (regionId, hierarchyId) => {
@@ -59,6 +59,9 @@ export const fetchRegion = async (regionId, hierarchyId) => {
 
 // Fetch the geometry for a region. Returns null if no geometry is found.
 export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
+  // Ensure the inputs are integers before making an API call
+  regionId = parseInt(regionId, 10);
+  hierarchyId = parseInt(hierarchyId, 10);
   try {
     const response = await api.get(`/api/regions/${regionId}/geometry`, { params: { resolveEmpty: force, hierarchyId } });
     if (response.status === 204 || response.status === 404) {
@@ -73,8 +76,8 @@ export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
 
 /**
  * Fetches the ancestor regions for a given region within a hierarchy.
- * @param {string} regionId - The ID of the region to find ancestors for.
- * @param {string} hierarchyId - The ID of the hierarchy.
+ * @param {number} regionId - The ID of the region to find ancestors for.
+ * @param {number} hierarchyId - The ID of the hierarchy.
  * @returns {Array} An array of ancestor regions.
  */
 export const fetchAncestors = async (regionId, hierarchyId) => {
