@@ -9,8 +9,8 @@ function BreadcrumbNavigation() {
   const [breadcrumbItems, setBreadcrumbItems] = useState([{ id: null, name: 'World', hasSubregions: true }]);
 
   /**
- * Effect to fetch and set the breadcrumb ancestors whenever the selectedRegion or selectedHierarchy changes.
- */
+   * Effect to fetch and set the breadcrumb ancestors whenever the selectedRegion or selectedHierarchy changes.
+   */
 useEffect(() => {
     const fetchAndSetAncestors = async () => {
       if (selectedRegion.id !== null && selectedRegion.id !== 0) {
@@ -29,7 +29,7 @@ useEffect(() => {
   }, [selectedRegion, selectedHierarchy]);
 
   /**
- * Handle click events on breadcrumb items.
+   * Handle click events on breadcrumb items.
  * @param {number|null} regionId - The ID of the region corresponding to the clicked breadcrumb, or null for the 'World'.
  * @param {string} regionName - The name of the region corresponding to the clicked breadcrumb.
  * @param {number} index - The index of the clicked breadcrumb item in the breadcrumbItems array.
@@ -51,7 +51,7 @@ const handleBreadcrumbClick = async (regionId, regionName, index) => {
     setSelectedRegion({
       id: regionId,
       name: regionName,
-      hasSubregions,
+      hasSubregions
     });
     // Truncate the breadcrumbItems array up to the clicked index + 1
     setBreadcrumbItems((prevItems) => prevItems.slice(0, index + 1));
@@ -65,7 +65,7 @@ const handleBreadcrumbClick = async (regionId, regionName, index) => {
           key={item.id}
           style={{ cursor: 'pointer' }}
         >
-          <ButtonBase component="button" onClick={() => handleBreadcrumbClick(item.id, item.name, index)}>
+          <ButtonBase component="span" onClick={() => handleBreadcrumbClick(item.id, item.name, index)}>
             {item.name}
           </ButtonBase>
         </Typography>
