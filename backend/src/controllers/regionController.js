@@ -6,6 +6,12 @@ const {
 } = require('../models');
 const sequelize = require('../config/db');
 
+/**
+ * Recursively fetch all subregions for a specific region within a hierarchy.
+ * @param {number} regionId - The ID of the region to fetch subregions for.
+ * @param {number} hierarchyId - The ID of the hierarchy to which the region belongs.
+ * @returns {Promise<Array>} A promise that resolves to an array of subregion records.
+ */
 async function getAllSubregions(regionId, hierarchyId) {
   const query = `
         WITH RECURSIVE Subregions AS (
@@ -29,6 +35,13 @@ async function getAllSubregions(regionId, hierarchyId) {
 }
 
 // Retrieve subregions for a specific region
+/**
+ * Fetch subregions for a specific region and hierarchy with an option to recursively fetch all subregions.
+ * @param {number} regionId - The ID of the region to fetch subregions for.
+ * @param {number} hierarchyId - The ID of the hierarchy to which the region belongs.
+ * @param {string} getAll - A string flag indicating whether to get all subregions or direct subregions only.
+ * @returns {Promise<Object>} A promise that resolves to an object containing the subregions data and the HTTP status code.
+ */
 async function getSubregions(regionId, hierarchyId, getAll) {
   try {
     // Check if the region exists
@@ -68,6 +81,13 @@ async function getSubregions(regionId, hierarchyId, getAll) {
 }
 
 // Retrieve the divisions of a region. It does not include subdivisions of the divisions.
+/**
+ * Retrieve divisions of a specific region within a hierarchy, including the region itself.
+ * Does not include subdivisions of the divisions.
+ * @param {number} regionId - The ID of the region to find divisions for.
+ * @param {number} hierarchyId - The ID of the hierarchy to which the region belongs.
+ * @returns {Promise<Array>} A promise that resolves to an array of division records.
+ */
 async function getDivisions(regionId, hierarchyId) {
   const regions = (await getSubregions(regionId, hierarchyId, false)).data;
   // Add the region itself
@@ -98,6 +118,11 @@ async function getDivisions(regionId, hierarchyId) {
   return resultDivisions;
 }
 
+/**
+ * Handler for fetching all hierarchies.
+ * Does not take any parameters from the request.
+ * @returns {Promise} A promise that resolves to sending a response with status 200 and the hierarchies, or status 500 if an error occurs.
+ */
 exports.getHierarchies = async (req, res) => {
   try {
     const hierarchies = await HierarchyNames.findAll();
@@ -108,6 +133,12 @@ exports.getHierarchies = async (req, res) => {
   }
 };
 
+/**
+ * Handler for fetching the combined geometry of a region's divisions.
+ * @param {Request} req - The request object containing regionId as path parameter and optional hierarchyId, and resolveEmpty as query parameters.
+ * @param {Response} res - The response object used to send back the corresponding HTTP response.
+ * @returns {Promise} A promise that resolves to sending a response with the combined geometries, or 204 if no geometries are found, or status 500 if an error occurs.
+ */
 exports.getGeometry = async (req, res) => {
   const { regionId } = req.params;
   const resolveEmpty = req.query.resolveEmpty === 'true';
@@ -203,6 +234,12 @@ exports.getGeometry = async (req, res) => {
   return res.status(200).json(result);
 };
 
+/**
+ * Handler for fetching the ancestor regions of a given region within the hierarchy.
+ * @param {Request} req - The request object containing regionId as path parameter and optional hierarchyId as a query parameter.
+ * @param {Response} res - The response object used to send back the corresponding HTTP response.
+ * @returns {Promise} A promise that resolves to sending a response with the ancestor regions, or status 404 if the region is not found, or status 500 if an error occurs.
+ */
 exports.getAncestors = async (req, res) => {
   const { regionId } = req.params;
   const hierarchyId = req.query.hierarchyId || 1;
@@ -227,6 +264,12 @@ exports.getAncestors = async (req, res) => {
   }
 };
 
+/**
+ * Handler for fetching the root regions of a given hierarchy.
+ * @param {Request} req - The request object containing optional hierarchyId as a query parameter.
+ * @param {Response} res - The response object used to send back the corresponding HTTP response.
+ * @returns {Promise} A promise that resolves to sending a response with the root regions, or status 500 if an error occurs.
+ */
 exports.getRootRegions = async (req, res) => {
   try {
     const hierarchyId = req.query.hierarchyId || 1;
@@ -267,6 +310,12 @@ exports.getRegionById = async (req, res) => {
   }
 };
 
+/**
+ * Handler for fetching subregions of a given region based on the hierarchy.
+ * @param {Request} req - The request object containing regionId as path parameter and optional hierarchyId, and getAll as query parameters.
+ * @param {Response} res - The response object used to send back the corresponding HTTP response.
+ * @returns {Promise} A promise that resolves to sending a response with the subregions, the message, or the status 500 if an error occurs.
+ */
 exports.getSubregions = async (req, res) => {
   const { regionId } = req.params;
   const getAll = req.query.getAll || false;
