@@ -17,7 +17,7 @@ export const fetchRootRegions = async (hierarchyId) => {
     const response = await api.get('/api/regions/root', { params: { hierarchyId } });
     return response.data;
   } catch (error) {
-    console.error('Error fetching root regions:', error);
+    console.error('Error fetching root regions:', error);;
     return [];
   }
 };
@@ -74,7 +74,7 @@ export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
     return response.data;
   } catch (error) {
     console.error('Error fetching region geometry:', error);
-    throw new Error(`Error fetching region geometry: ${error.message}`);
+    throw new Error('Error fetching region geometry: ' + error.message);
   }
 };
 
@@ -106,7 +106,7 @@ export const fetchHierarchies = async () => {
     const response = await api.get('/api/regions/hierarchies');
     return response.data;
   } catch (error) {
-    console.error('Error fetching hierarchies:', error);
+    console.error('Error fetching hierarchies:', error);;
     return [];
   }
 };
