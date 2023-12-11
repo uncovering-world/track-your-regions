@@ -6,6 +6,27 @@ rules:
   - "All new business logic should have corresponding unit tests."
   - "Refactor large functions to be more modular."
   - "Add docstrings to all functions and file headers."
+  - "In the PR description, provide the Issue number that your PR fixes in a form `Fixes #<Issue Number>`"
+  - "Make changes only in the directory you are working on (frontend, backend, or deployment)."
+  - "For JavaScript (used in frontend and backend), follow the Airbnb JavaScript Style Guide"
+  - "For Python (used in deployment scripts), use Black"
+  - |
+    Follow this format for all commit messages:
+    ```
+    <Type>: <Topic>.
+  
+    <Description>
+  
+    [Issue: #<GitHub Issue Number>]
+
+    ```
+    Type can be one of the following:
+    - `front`: Frontend
+    - `back`: Backend
+    - `deploy`: Deployment
+        Or leave it blank if the commit is not specific to any of the above.
+    Ensure the commit message is concise yet descriptive.
+    If the commit fixes an issue, add the issue number in the commit message.
 
 # This is the branch that Sweep will develop from and make pull requests to. Most people use 'main' or 'master' but some users also use 'dev' or 'staging'.
 branch: 'main'
@@ -18,10 +39,26 @@ gha_enabled: True
 # Example:
 #
 # description: sweepai/sweep is a python project. The main api endpoints are in sweepai/api.py. Write code that adheres to PEP8.
-description: ''
+description: |
+  ## Directory Structure
+  The project is divided into three main directories as mentioned in the [README](./README.md) file:
+  - Frontend: `./frontend`
+  - Backend: `./backend`
+  - Deployment: `./deployment`
+  ## Backend Tech Stack
+  - **Node.js**: The runtime environment for executing JavaScript server-side.
+  - **Express**: A web framework for Node.js.
+  - **Sequelize**: A promise-based Node.js ORM for SQL databases.
+  - **PostgreSQL**: The database used for storing application data.
+  - **Docker**: Used for containerizing the backend service for quick setup and testing.
+  ## Frontend Tech Stack
+  - **React**: The library used for building the user interface.
+  - **Axios**: Promise-based HTTP client for making API calls.
+  - **@mui/material**: Material-UI library for React components.
+  - **Docker**: Used for containerizing the frontend service for quick setup and testing.
 
 # This sets whether to create pull requests as drafts. If this is set to True, then all pull requests will be created as drafts and GitHub Actions will not be triggered.
-draft: False
+draft: True
 
 # This is a list of directories that Sweep will not be able to edit.
 blocked_dirs: []
