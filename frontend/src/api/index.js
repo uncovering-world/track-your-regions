@@ -7,6 +7,11 @@ const api = axios.create({
   },
 });
 
+/**
+ * Fetches the root regions for a given hierarchy.
+ * @param {string} hierarchyId - The ID of the hierarchy.
+ * @returns {Array} An array of root regions.
+ */
 export const fetchRootRegions = async (hierarchyId) => {
   try {
     const response = await api.get('/api/regions/root', { params: { hierarchyId } });
@@ -17,6 +22,12 @@ export const fetchRootRegions = async (hierarchyId) => {
   }
 };
 
+/**
+ * Fetches the subregions of a specific region within a hierarchy.
+ * @param {string} regionId - The ID of the region to find subregions for.
+ * @param {string} hierarchyId - The ID of the hierarchy.
+ * @returns {Array|null} An array of subregions, or null if no subregions are found.
+ */
 export const fetchSubregions = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/subregions`, { params: { hierarchyId } });
@@ -30,6 +41,12 @@ export const fetchSubregions = async (regionId, hierarchyId) => {
   }
 };
 
+/**
+ * Fetches detailed information about a specific region.
+ * @param {string} regionId - The ID of the region.
+ * @param {string} hierarchyId - The ID of the hierarchy.
+ * @returns {Object} An object containing the detailed information of the region.
+ */
 export const fetchRegion = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}`, { params: { hierarchyId } });
@@ -54,6 +71,12 @@ export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
   }
 };
 
+/**
+ * Fetches the ancestor regions for a given region within a hierarchy.
+ * @param {string} regionId - The ID of the region to find ancestors for.
+ * @param {string} hierarchyId - The ID of the hierarchy.
+ * @returns {Array} An array of ancestor regions.
+ */
 export const fetchAncestors = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/ancestors`, { params: { hierarchyId } });
