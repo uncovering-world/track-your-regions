@@ -11,6 +11,12 @@ class Hierarchy extends Model {
     };
   }
 
+  /**
+   * Retrieves an array of ancestor regions for a specific region within a hierarchy.
+   * @param {string|number} regionId - The unique identifier for the region to fetch ancestors for.
+   * @param {string|number} hierarchyId - The unique identifier for the hierarchy that the region is part of.
+   * @return {Promise<Array>} A promise that resolves to an array of ancestor regions.
+   */
   static async getAncestors(regionId, hierarchyId) {
     const ancestors = await sequelize.query(`
             WITH RECURSIVE Ancestors AS (
