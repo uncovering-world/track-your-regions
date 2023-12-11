@@ -7,7 +7,8 @@ const {
 const sequelize = require('../config/db');
 
 /**
- * Recursively fetch all subregions for a specific region within a hierarchy.
+ * Recursively fetch all subregions for a specific region within a 
+ * hierarchy.
  * @param {number} regionId - The ID of the region to fetch subregions for.
  * @param {number} hierarchyId - The ID of the hierarchy to which the region belongs.
  * @returns {Promise<Array>} A promise that resolves to an array of subregion records.
@@ -39,7 +40,8 @@ async function getAllSubregions(regionId, hierarchyId) {
  * Fetch subregions for a specific region and hierarchy with an option to recursively fetch all subregions.
  * @param {number} regionId - The ID of the region to fetch subregions for.
  * @param {number} hierarchyId - The ID of the hierarchy to which the region belongs.
- * @param {string} getAll - A string flag indicating whether to get all subregions or direct subregions only.
+ * @param {string} getAll - A string flag indicating whether to get all 
+ * subregions or direct subregions only.
  * @returns {Promise<Object>} A promise that resolves to an object containing the subregions data and the HTTP status code.
  */
 async function getSubregions(regionId, hierarchyId, getAll) {
@@ -137,7 +139,8 @@ exports.getHierarchies = async (req, res) => {
  * Handler for fetching the combined geometry of a region's divisions.
  * @param {Request} req - The request object containing regionId as path parameter and optional hierarchyId, and resolveEmpty as query parameters.
  * @param {Response} res - The response object used to send back the corresponding HTTP response.
- * @returns {Promise} A promise that resolves to sending a response with the combined geometries, or 204 if no geometries are found, or status 500 if an error occurs.
+ * @returns {Promise} A promise that resolves to sending a response with 
+ * the combined geometries, or 204 if no geometries are found, or status 500 if an error occurs.
  */
 exports.getGeometry = async (req, res) => {
   const { regionId } = req.params;
@@ -314,7 +317,8 @@ exports.getRegionById = async (req, res) => {
  * Handler for fetching subregions of a given region based on the hierarchy.
  * @param {Request} req - The request object containing regionId as path parameter and optional hierarchyId, and getAll as query parameters.
  * @param {Response} res - The response object used to send back the corresponding HTTP response.
- * @returns {Promise} A promise that resolves to sending a response with the subregions, the message, or the status 500 if an error occurs.
+ * @returns {Promise} A promise that resolves to sending a response with 
+ * the subregions, the message, or the status 500 if an error occurs.
  */
 exports.getSubregions = async (req, res) => {
   const { regionId } = req.params;
