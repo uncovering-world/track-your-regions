@@ -67,7 +67,14 @@ async function getSubregions(regionId, hierarchyId, getAll) {
   }
 }
 
-// Retrieve the divisions of a region. It does not include subdivisions of the divisions.
+/**
+ * Retrieves the divisions of a region given the region ID and hierarchy ID.
+ * It takes a region ID and a hierarchy ID as parameters.
+ * It returns an array of divisions or an empty array if an error occurs.
+ * @param {string} regionId The ID of the region whose divisions are to be retrieved.
+ * @param {string} hierarchyId The hierarchy ID to which the region belongs.
+ * @returns {Array<Object> | Array} An array of divisions or an empty array if an error occurs.
+ */
 async function getDivisions(regionId, hierarchyId) {
   const regions = (await getSubregions(regionId, hierarchyId, false)).data;
   // Add the region itself
@@ -98,6 +105,11 @@ async function getDivisions(regionId, hierarchyId) {
   return resultDivisions;
 }
 
+/**
+ * Retrieves all available hierarchies.
+ * It takes no parameters.
+ * @returns {Array<Object>} An array of hierarchy objects.
+ */
 exports.getHierarchies = async (req, res) => {
   try {
     const hierarchies = await HierarchyNames.findAll();
