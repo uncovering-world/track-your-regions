@@ -199,7 +199,7 @@ stop-prepopulated-db-container:
 		docker stop $(PREPOPULATED_DB_CONTAINER_NAME); \
 		until [ "$$(docker inspect -f '{{.State.Running}}' $(PREPOPULATED_DB_CONTAINER_NAME))" = "false" ]; do \
 			sleep 1; \
-		done
+		done; \
 		echo "Database container stopped."; \
 	fi
 
