@@ -12,7 +12,11 @@ const api = axios.create({
  * @param {number} hierarchyId - The ID of the hierarchy.
  * @returns {Array} An array of root regions.
  */
-export const fetchRootRegions = async (hierarchyId) => {
+/**
+ * Fetches all users from the database.
+ * @returns {Promise<Array>} A promise that resolves to an array of user objects.
+ */
+export const fetchUsers = async () => {
   try {
     const response = await api.get('/api/regions/root', { params: { hierarchyId } });
     return response.data;
@@ -28,7 +32,12 @@ export const fetchRootRegions = async (hierarchyId) => {
  * @param {number} hierarchyId - The ID of the hierarchy.
  * @returns {Array|null} An array of subregions, or null if no subregions are found.
  */
-export const fetchSubregions = async (regionId, hierarchyId) => {
+/**
+ * Fetches a user by ID from the database.
+ * @param {string} userId - The ID of the user to retrieve.
+ * @returns {Promise<Object>} A promise that resolves to the user object.
+ */
+export const fetchUser = async (userId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/subregions`, { params: { hierarchyId } });
     if (response.status === 204) {
@@ -47,7 +56,13 @@ export const fetchSubregions = async (regionId, hierarchyId) => {
  * @param {number} hierarchyId - The ID of the hierarchy.
  * @returns {Object} An object containing the detailed information of the region.
  */
-export const fetchRegion = async (regionId, hierarchyId) => {
+/**
+ * Updates a user's information in the database.
+ * @param {string} userId - The ID of the user to update.
+ * @param {Object} updates - The updates to apply to the user.
+ * @returns {Promise<Object>} A promise that resolves to the updated user object.
+ */
+export const updateUser = async (userId, updates) => {
   try {
     const response = await api.get(`/api/regions/${regionId}`, { params: { hierarchyId } });
     return response.data;
