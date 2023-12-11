@@ -1,11 +1,12 @@
 const express = require('express');
+
 const router = express.Router();
 
 /**
  * Fetches all users from the database.
  * @returns {Array} An array of user objects.
  */
-router.get('/users', async (req, res) => {
+router.get('/users', async () => {
   // Fetch users from database
 });
 
@@ -14,7 +15,7 @@ router.get('/users', async (req, res) => {
  * @param {string} userId - The ID of the user.
  * @returns {Object} The user object.
  */
-router.get('/users/:userId', async (req, res) => {
+router.get('/users/:userId', async () => {
   // Fetch user by ID from database
 });
 
@@ -24,7 +25,7 @@ router.get('/users/:userId', async (req, res) => {
  * @param {Object} updates - The updates to apply to the user.
  * @returns {Object} The updated user object.
  */
-router.put('/users/:userId', async (req, res) => {
+router.put('/users/:userId', async () => {
   // Update user in database
 });
 
