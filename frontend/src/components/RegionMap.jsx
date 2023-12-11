@@ -4,6 +4,16 @@ import * as turf from '@turf/turf';
 import { useNavigation } from './NavigationContext';
 import { fetchRegionGeometry } from '../api';
 
+/**
+ * MapComponent is a React functional component that generates a map visualizing the selected region's geometry.
+ * It utilizes the useNavigation context to listen for changes in the selected region or hierarchy and updates the map accordingly.
+ * @returns {React.ReactElement} The map container element.
+ */
+/**
+ * MapComponent is a React functional component that generates a map visualizing the selected region's geometry.
+ * It utilizes the useNavigation context to listen for changes in the selected region or hierarchy and updates the map accordingly.
+ * @returns {React.ReactElement} The map container element.
+ */
 function MapComponent() {
   const mapContainer = useRef(null);
   const map = useRef(null);
