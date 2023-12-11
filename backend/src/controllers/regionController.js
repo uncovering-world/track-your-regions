@@ -6,6 +6,12 @@ const {
 } = require('../models');
 const sequelize = require('../config/db');
 
+/**
+ * Retrieve all subregions of a given region within a hierarchy.
+ * @param {number} regionId - The unique identifier of the region.
+ * @param {number} hierarchyId - The unique identifier of the hierarchy.
+ * @returns {Promise<Array>} A promise that resolves to an array of subregions.
+ */
 async function getAllSubregions(regionId, hierarchyId) {
   const query = `
         WITH RECURSIVE Subregions AS (
@@ -68,6 +74,13 @@ async function getSubregions(regionId, hierarchyId, getAll) {
 }
 
 // Retrieve the divisions of a region. It does not include subdivisions of the divisions.
+/**
+ * Retrieve the divisions of a region within a given hierarchy.
+ * It does not include subdivisions of the divisions.
+ * @param {number} regionId - The unique identifier of the region.
+ * @param {number} hierarchyId - The unique identifier of the hierarchy.
+ * @returns {Promise<Array>} A promise that resolves to an array of divisions.
+ */
 async function getDivisions(regionId, hierarchyId) {
   const regions = (await getSubregions(regionId, hierarchyId, false)).data;
   // Add the region itself
@@ -98,6 +111,12 @@ async function getDivisions(regionId, hierarchyId) {
   return resultDivisions;
 }
 
+/**
+ * Get all hierarchy names and details.
+ * @param {Object} req - The request object.
+ * @param {Object} res - The response object.
+ * @returns {void} Responds with a list of hierarchy names and details.
+ */
 exports.getHierarchies = async (req, res) => {
   try {
     const hierarchies = await HierarchyNames.findAll();
