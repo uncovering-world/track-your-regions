@@ -22,14 +22,25 @@ function HierarchySwitcher() {
     getHierarchies();
   }, []);
 
+  /**
+   * Handles click event to open the hierarchy menu.
+   * @param {object} event - The event object containing details of the click event.
+   */
   const handleClick = (event) => {
     setAnchorEl(event.currentTarget);
   };
 
+  /**
+   * Closes the hierarchy menu.
+   */
   const handleClose = () => {
     setAnchorEl(null);
   };
 
+  /**
+   * Handles the selection of a new hierarchy and resets the selected region.
+   * @param {number} hierarchyId - The ID of the hierarchy to be set as selected.
+   */
   const handleHierarchyChange = (hierarchyId) => {
     setSelectedHierarchy({ hierarchyId });
     // Reset the selected region to the world
