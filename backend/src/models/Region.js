@@ -20,6 +20,16 @@ class Region extends Model {
     });
   }
 
+  /**
+   * Retrieves an array of ancestor regions for a specific region.
+   * This function uses a recursive common table expression to gather all ancestors up to the root.
+   * @param {number|string} regionId - The unique identifier for the region to fetch ancestors for.
+   * @return {Promise<Array>} A promise that resolves to an array of ancestor region objects.
+   */
+  /**
+   * Transforms the region data to a format suitable for API responses.
+   * @return {Object} An object containing the ids, name, parentRegionId and status of having subregions for the region.
+   */
   // Transform the returned object to API format
   toApiFormat() {
     return {
