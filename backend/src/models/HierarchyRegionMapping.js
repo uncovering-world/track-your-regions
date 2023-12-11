@@ -2,7 +2,10 @@ const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../config/db');
 
 class HierarchyRegionMapping extends Model {
-  // Transform the returned object to API format
+  /**
+   * Converts the instance to an object formatted for API responses.
+   * @return {Object} An object containing `hierarchyId`, `regionId`, and `altRegionId`.
+   */
   toApiFormat() {
     return {
       hierarchyId: this.hierarchyId,
