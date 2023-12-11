@@ -12,8 +12,11 @@ class Hierarchy extends Model {
   }
 
   /**
-   * Retrieves an array of ancestor regions for a specific region within a hierarchy.
-   * @param {string|number} regionId - The unique identifier for the region to fetch ancestors for.
+   * Retrieves an array of ancestor regions for a specific
+   * region within a hierarchy. The unique identifier for the
+   * region and hierarchy must be provided.
+   * @param {string|number} regionId - The unique identifier for the region.
+   * @param {string|number} hierarchyId - The hierarchy identifier.
    * @param {string|number} hierarchyId - The unique identifier for the hierarchy that the region is part of.
    * @return {Promise<Array>} A promise that resolves to an array of ancestor regions.
    */
@@ -34,7 +37,9 @@ class Hierarchy extends Model {
       type: QueryTypes.SELECT,
     });
     return ancestors.map((ancestor) => ({
-      id: ancestor.region_id, name: ancestor.region_name, parentRegionId: ancestor.parentRegionId,
+      id: ancestor.region_id,
+      name: ancestor.region_name,
+      parentRegionId: ancestor.parentRegionId,
     }));
   }
 }
