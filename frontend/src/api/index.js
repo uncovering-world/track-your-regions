@@ -7,6 +7,11 @@ const api = axios.create({
   },
 });
 
+/**
+ * Fetch the root regions for a given hierarchy.
+ * @param {number} hierarchyId - The ID of the hierarchy.
+ * @returns {Array<Object>} An array of root regions.
+ */
 export const fetchRootRegions = async (hierarchyId) => {
   try {
     const response = await api.get('/api/regions/root', { params: { hierarchyId } });
@@ -17,6 +22,12 @@ export const fetchRootRegions = async (hierarchyId) => {
   }
 };
 
+/**
+ * Fetch the subregions for a specific region.
+ * @param {number} regionId - The ID of the parent region.
+ * @param {number} hierarchyId - The ID of the hierarchy.
+ * @returns {Array<Object>|null} An array of subregions, or null if there are none.
+ */
 export const fetchSubregions = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/subregions`, { params: { hierarchyId } });
@@ -30,6 +41,12 @@ export const fetchSubregions = async (regionId, hierarchyId) => {
   }
 };
 
+/**
+ * Fetch details of a specific region.
+ * @param {number} regionId - The ID of the region.
+ * @param {number} hierarchyId - The ID of the hierarchy.
+ * @returns {Object} Details of the region.
+ */
 export const fetchRegion = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}`, { params: { hierarchyId } });
@@ -41,6 +58,13 @@ export const fetchRegion = async (regionId, hierarchyId) => {
 };
 
 // Fetch the geometry for a region. Returns null if no geometry is found.
+/**
+ * Fetch the geometry for a region. Returns null if no geometry is found.
+ * @param {number} regionId - The ID of the region.
+ * @param {number} hierarchyId - The ID of the hierarchy.
+ * @param {boolean} force - Whether to force the fetch operation.
+ * @returns {Object|null} The region's geometry data, or null if no geometry is found.
+ */
 export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/geometry`, { params: { resolveEmpty: force, hierarchyId } });
