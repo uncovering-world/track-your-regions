@@ -20,7 +20,7 @@ jobs:
           days-before-issue-close: -1         # Do not close Issues
           days-before-pr-stale: 7             # Number of days of inactivity before a PR is marked stale
           days-before-pr-close: 7             # Number of days after being marked stale before a PR is closed
-          stale-pr-message: '👋 Hey there! Just noticed this PR has been quiet for a week. We miss your updates! If there is no activity in the next week, we will need to close it for housekeeping. 😊🧹'
+          stale-pr-message: '👋 Hey there! Just noticed this PR has been quiet for a week. We miss your updates! If there is no activity in the next week, we will need to close it for housekeeping. 😊🧹 Fixes #<Issue Number>'
           stale-pr-label: 'stale'          # Label to apply to stale PRs
-          close-pr-message: '🚪 We are doing a little housekeeping and noticed this PR has been quiet for a while. We are going to close it for now. If you are ready to pick this up again, please feel free to open a new PR or reach out to us, and we will be happy to help you reopen this one! 😄👍'
+          close-pr-message: '🚪 We are doing a little housekeeping and noticed this PR has been quiet for a while. We are going to close it for now. If you are ready to pick this up again, please feel free to open a new PR or reach out to us, and we will be happy to help you reopen this one! 😄👍 Fixes #<Issue Number>'
           operations-per-run: 30           # Maximum number of operations per run
