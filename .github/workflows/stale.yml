@@ -2,7 +2,7 @@ name: Mark and Close Stale Pull Requests
 
 on:
   schedule:
-    - cron: '41 2 * * *'  # Runs at 03:17 UTC every day.
+    - cron: '41 2 * * *'  # Runs at 02:41 UTC every day.
   workflow_dispatch:  # Allows manual triggering of the workflow
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
           days-before-issue-close: -1         # Do not close Issues
           days-before-pr-stale: 7             # Number of days of inactivity before a PR is marked stale
           days-before-pr-close: 7             # Number of days after being marked stale before a PR is closed
-          stale-pr-message: 'This PR has been inactive for a week. It will be closed in another week if there is no further activity.'
+          stale-pr-message: '👋 Hey there! Just noticed this PR has been quiet for a week. We miss your updates! If there is no activity in the next week, we will need to close it for housekeeping. 😊🧹'
           stale-pr-label: 'stale'          # Label to apply to stale PRs
-          close-pr-message: 'Closing this stale PR due to inactivity.'
+          close-pr-message: '🚪 We are doing a little housekeeping and noticed this PR has been quiet for a while. We are going to close it for now. If you are ready to pick this up again, please feel free to open a new PR or reach out to us, and we will be happy to help you reopen this one! 😄👍'
           operations-per-run: 30           # Maximum number of operations per run
