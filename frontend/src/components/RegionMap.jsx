@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import * as turf from '@turf/turf';
+import { Button } from '@mui/material';
 import { useNavigation } from './NavigationContext';
 import { fetchRegionGeometry } from '../api';
 
@@ -19,7 +20,7 @@ function MapComponent() {
   const regionGeometryCache = useRef([]);
   const [error, setError] = useState(null);
 
-  const fetchSelectedRegionGeometry = async () => {
+  const fetchSelectedRegionGeometry = async (force = false) => {
     try {
       const cacheIndex = regionGeometryCache.current.findIndex(
         (item) => item.id === selectedRegion.id
@@ -27,7 +28,7 @@ function MapComponent() {
       );
 
       // Check if the geometry for the selected region is already in the cache
-      if (cacheIndex !== -1) {
+      if (cacheIndex !== -1 && !force) {
         return regionGeometryCache.current[cacheIndex].geometry;
       }
 
@@ -128,9 +129,17 @@ function MapComponent() {
     };
   }, [selectedRegion, selectedHierarchy]);
 
+  const handleForceGeometryFetch = async () => {
+    await fetchSelectedRegionGeometry(true);
+    initializeMap();
+  };
+
   return (
     <div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
+      {!fetchSelectedRegionGeometry() && (
+        <Button onClick={handleForceGeometryFetch}>Fetch Geometry</Button>
+      )}
       <div ref={mapContainer} style={{ width: '100%', height: '400px' }} />
     </div>
   );
