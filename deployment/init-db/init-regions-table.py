@@ -92,6 +92,41 @@ class Timestamp:
         loop_time_diff = (time_now - self.loop_start_time).total_seconds()
         loop_time_human = datetime.fromtimestamp(loop_time_diff).strftime("%H:%M:%S")
         print(f"Handled {self.total_items} {self.items_name} in {loop_time_human}.")
+        self.loop_start_time = datetime.now()
+        self.iteration_timestamp = self.loop_start_time
+        self.items_name = items_name
+        self.total_items = total_items
+        self.items_in_one_percent = math.ceil(float(total_items) / 100)
+        self.iteration = 0
+
+    def print(self):
+        self.iteration += 1
+        if self.iteration % self.items_in_one_percent != 0:
+            return
+        # Print a progress message every 1% of features and timestamp, how long it took
+        time_now = datetime.now()
+        iteration_time_diff = (time_now - self.iteration_timestamp).total_seconds()
+        loop_time_diff = (time_now - self.loop_start_time).total_seconds()
+        estimated_time_left = (
+            loop_time_diff / (float(self.iteration) / self.total_items)
+        ) - loop_time_diff
+        # Get the milliseconds part of the estimated time left
+        ms_part = estimated_time_left - int(estimated_time_left)
+        ms = f"{ms_part:.3f}".split(".")[1]
+        estimated_time_left_human = datetime.fromtimestamp(
+            estimated_time_left
+        ).strftime("%H:%M:%S")
+        max_digits = len(str(self.total_items))
+        print(
+            f"Handled {int(self.iteration / self.items_in_one_percent):3d}% ({self.iteration:{max_digits}}/{self.total_items} {self.items_name}) - last batch in {iteration_time_diff:.2f} seconds. Estimated time left: {estimated_time_left_human}.{ms}"
+        )
+        self.iteration_timestamp = time_now
+
+    def print_total(self):
+        time_now = datetime.now()
+        loop_time_diff = (time_now - self.loop_start_time).total_seconds()
+        loop_time_human = datetime.fromtimestamp(loop_time_diff).strftime("%H:%M:%S")
+        print(f"Handled {self.total_items} {self.items_name} in {loop_time_human}.")
 
 
 def parse_args():
