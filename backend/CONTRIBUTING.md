@@ -8,12 +8,12 @@ Follow the [Airbnb JavaScript Style Guide](https://github.com/airbnb/javascript)
 
 To run the linter checks run
 ```shell
-npm run linter
+npm run lint
 ```
 
 To fix what can be fixed automatically run
 ```shell
-`npm run linter:fix`
+`npm run lint:fix`
 ```
 
 ### Testing
