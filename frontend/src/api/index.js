@@ -58,6 +58,13 @@ export const fetchRegion = async (regionId, hierarchyId) => {
 };
 
 // Fetch the geometry for a region. Returns null if no geometry is found.
+/**
+ * Fetches the geometry for a given region, hierarchy, and force flag.
+ * @param {Number} regionId - The ID of the region to fetch the geometry for.
+ * @param {Number} hierarchyId - The ID of the hierarchy to which the region belongs.
+ * @param {Boolean} force - If true, resolve empty geometry.
+ * @returns {Object|null} - The geometry object for the given region and hierarchy, or null if no geometry is found.
+ */
 export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/geometry`, { params: { resolveEmpty: force, hierarchyId } });
