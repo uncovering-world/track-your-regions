@@ -58,7 +58,7 @@ Follow this format for all commit messages:
 
 <Description>
 
-[Issue: #<GitHub Issue Number>]
+Each commit message should include the related issue number in the form: [Issue: #<GitHub Issue Number>]
 
 Signed-off-by: <Your Name> <Your Email>
 ```
