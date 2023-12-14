@@ -4,9 +4,9 @@ import { useNavigation } from './NavigationContext';
 import { fetchHierarchies } from '../api'; // Make sure this import points to your API fetching logic
 
 /**
- * HierarchySwitcher is a component that provides a button and menu to switch between different
- * hierarchy views. It utilizes the NavigationContext to manage state, fetching hierarchies,
- * and handling user interactions.
+ * HierarchySwitcher provides a button and menu to switch hierarchies.
+ * It uses NavigationContext for state management, hierarchy fetching,
+ * and user interaction handling.
  *
  * There are no parameters for this function. It creates its own state and context from the component.
  *
