@@ -6,6 +6,12 @@ const {
 } = require('../models');
 const sequelize = require('../config/db');
 
+/**
+ * Retrieves all subregions for a specific region and hierarchy.
+ * @param {number} regionId - The ID of the region.
+ * @param {number} hierarchyId - The ID of the hierarchy.
+ * @returns {Promise<Array>} A promise that resolves to an array of subregions.
+ */
 async function getAllSubregions(regionId, hierarchyId) {
   const query = `
         WITH RECURSIVE Subregions AS (
@@ -28,7 +34,13 @@ async function getAllSubregions(regionId, hierarchyId) {
   });
 }
 
-// Retrieve subregions for a specific region
+/**
+ * Retrieves subregions for a given region and hierarchy, with an option to get all subregions recursively.
+ * @param {number} regionId - The ID of the parent region.
+ * @param {number} hierarchyId - The ID of the hierarchy.
+ * @param {string} getAll - A string flag to indicate whether to retrieve all subregions.
+ * @returns {Promise<Object>} A promise that resolves to an object with subregions data or an error message.
+ */
 async function getSubregions(regionId, hierarchyId, getAll) {
   try {
     // Check if the region exists
@@ -67,7 +79,12 @@ async function getSubregions(regionId, hierarchyId, getAll) {
   }
 }
 
-// Retrieve the divisions of a region. It does not include subdivisions of the divisions.
+/**
+ * Retrieves divisions of a given region without including its subdivisions.
+ * @param {number} regionId - The ID of the region to retrieve divisions for.
+ * @param {number} hierarchyId - The ID of the hierarchy the region belongs to.
+ * @returns {Promise<Array>} A promise that resolves to an array of division regions.
+ */
 async function getDivisions(regionId, hierarchyId) {
   const regions = (await getSubregions(regionId, hierarchyId, false)).data;
   // Add the region itself
@@ -98,6 +115,12 @@ async function getDivisions(regionId, hierarchyId) {
   return resultDivisions;
 }
 
+/**
+ * Controller to retrieve all hierarchy names.
+ * @param {object} req - The request object containing query parameters.
+ * @param {object} res - The response object to send back the hierarchy data.
+ * @returns {Promise<void>} This function does not return a value but sends a response.
+ */
 exports.getHierarchies = async (req, res) => {
   try {
     const hierarchies = await HierarchyNames.findAll();
