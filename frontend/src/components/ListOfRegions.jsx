@@ -5,6 +5,15 @@ import { Box } from '@mui/material';
 import { fetchRootRegions, fetchSubregions } from '../api';
 import { useNavigation } from './NavigationContext';
 
+/**
+ * `ListOfRegions` is a component that displays a list of clickable regions.
+ *
+ * It makes use of the `NavigationContext` for managing the state and handles the selection
+ * of regions based on user interaction. It fetches the root or subregions depending on
+ * the selected region and hierarchy context. This component does not take parameters.
+ *
+ * @return {JSX.Element} A box containing the list of regions, with potential error messaging.
+ */
 function ListOfRegions() {
   const { selectedRegion, setSelectedRegion, selectedHierarchy } = useNavigation();
   const [regions, setRegions] = useState([]);

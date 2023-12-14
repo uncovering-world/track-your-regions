@@ -3,6 +3,16 @@ import { Button, Menu, MenuItem } from '@mui/material';
 import { useNavigation } from './NavigationContext';
 import { fetchHierarchies } from '../api'; // Make sure this import points to your API fetching logic
 
+/**
+ * HierarchySwitcher provides a button and menu to switch hierarchies.
+ * It uses NavigationContext for state management, hierarchy fetching,
+ * and user interaction handling.
+ *
+ * There are no parameters for this function. It creates its own state and context from the
+ * component.
+ *
+ * @return {JSX.Element} A button and menu for selecting hierarchies within the application.
+ */
 function HierarchySwitcher() {
   const { selectedHierarchy, setSelectedHierarchy, setSelectedRegion } = useNavigation();
   const [hierarchies, setHierarchies] = useState([]);
