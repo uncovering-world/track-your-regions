@@ -7,6 +7,11 @@ const api = axios.create({
   },
 });
 
+/**
+ * Fetches the root regions for a given hierarchy.
+ * @param {Number} hierarchyId - The ID of the hierarchy to fetch root regions for.
+ * @returns {Array} - An array of root regions for the given hierarchy.
+ */
 export const fetchRootRegions = async (hierarchyId) => {
   try {
     const response = await api.get('/api/regions/root', { params: { hierarchyId } });
