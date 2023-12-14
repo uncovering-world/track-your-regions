@@ -4,6 +4,14 @@ import { ButtonBase, Typography } from '@mui/material';
 import { useNavigation } from './NavigationContext';
 import { fetchAncestors, fetchRegion } from '../api';
 
+/**
+ * BreadcrumbNavigation creates a breadcrumb trail for the user to follow back to previous regions.
+ * It dynamically fetches and displays parent regions of the currently selected region.
+ *
+ * There are no parameters for this function. It utilizes state and context from the component.
+ *
+ * @return {JSX.Element} The breadcrumb trail as a React component.
+ */
 function BreadcrumbNavigation() {
   const { selectedRegion, setSelectedRegion, selectedHierarchy } = useNavigation();
   const [breadcrumbItems, setBreadcrumbItems] = useState([{ id: null, name: 'World', hasSubregions: true }]);
