@@ -41,6 +41,12 @@ export const fetchSubregions = async (regionId, hierarchyId) => {
   }
 };
 
+/**
+ * Fetches a region for a given region ID and hierarchy ID.
+ * @param {Number} regionId - The ID of the region to fetch.
+ * @param {Number} hierarchyId - The ID of the hierarchy to which the region belongs.
+ * @returns {Object} - The region object for the given region ID and hierarchy ID.
+ */
 export const fetchRegion = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}`, { params: { hierarchyId } });
