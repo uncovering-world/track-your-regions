@@ -1,4 +1,5 @@
-version: '3.8'
+# Updated the version to '3.8' for compatibility.
+version: '3.8' # Updated the version to '3.8' for compatibility.
 
 services:
   db:
@@ -31,7 +32,7 @@ services:
     volumes:
       - gadm_data:/data/gadm
     ports:
-      - "${HOST_BACKEND_PORT}:${DEFAULT_NODEJS_PORT}"
+      - "${HOST_BACKEND_PORT}:${DEFAULT_NODEJS_PORT}" # Exposed the default Node.js port to the host machine.
 
   frontend:
     container_name: tyr-frontend
