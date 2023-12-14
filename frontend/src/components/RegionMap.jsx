@@ -4,6 +4,14 @@ import * as turf from '@turf/turf';
 import { useNavigation } from './NavigationContext';
 import { fetchRegionGeometry } from '../api';
 
+/**
+ * MapComponent initializes and displays a map using MapLibre for the currently selected region.
+ *
+ * It fetches the selected region's geometry and displays it on the map.
+ * This function does not take any parameters.
+ *
+ * @return {JSX.Element} A div that contains either an error message or the map container.
+ */
 function MapComponent() {
   const mapContainer = useRef(null);
   const map = useRef(null);

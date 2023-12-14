@@ -3,6 +3,11 @@ import React from 'react';
 import { useNavigation } from './NavigationContext';
 import RegionMap from './RegionMap';
 
+/**
+ * MainDisplay renders the main content area of the application,
+ * displaying either the details of the selected region or a prompt
+ * when no region is selected.
+ */
 function MainDisplay() {
   const { selectedRegion } = useNavigation();
 
