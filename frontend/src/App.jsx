@@ -6,6 +6,10 @@ import MainDisplay from './components/MainDisplay';
 import Footer from './components/Footer';
 import { NavigationProvider } from './components/NavigationContext';
 
+/**
+ * App is the main component that renders the app's layout, composed of
+ * the Header, NavigationPane, MainDisplay, and Footer components within a container.
+ */
 function App() {
   return (
     <NavigationProvider>
