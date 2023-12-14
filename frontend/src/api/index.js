@@ -64,7 +64,8 @@ export const fetchRegion = async (regionId, hierarchyId) => {
  * @param {Number} regionId - The ID of the region to fetch the geometry for.
  * @param {Number} hierarchyId - The ID of the hierarchy to which the region belongs.
  * @param {Boolean} force - If true, resolve empty geometry.
- * @returns {Object|null} - The geometry object for the given region and hierarchy, or null if no geometry is found.
+ * @returns {Object|null} - The geometry object for the given region and hierarchy,
+   * or null if no geometry is found.
  */
 export const fetchRegionGeometry = async (regionId, hierarchyId, force) => {
   try {
