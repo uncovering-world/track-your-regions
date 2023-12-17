@@ -198,6 +198,14 @@ paths:
           in: query
           schema:
             type: string
+        - name: hierarchyId
+          in: query
+          required: false
+          description: |
+            The hierarchy to search in.
+            If not specified, the default hierarchy is used.
+          schema:
+            type: integer
       responses:
         '200':
           description: List of regions matching the query
@@ -207,6 +215,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Region'
+        '204':
+          description: No regions match the query
         '400':
           description: Bad request
 
