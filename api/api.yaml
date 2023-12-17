@@ -4,6 +4,27 @@ info:
   version: 0.0.1
 
 paths:
+  /user/regions:
+    get:
+      summary: Retrieve regions for the authenticated user
+    /user/experiences:
+      get:
+      summary: Retrieve experiences for the authenticated user
+    /user/{userId}/regions:
+      get:
+      summary: Retrieve regions for a specific user
+    /user/{userId}/experiences:
+      get:
+      summary: Retrieve experiences for a specific user
+  /regions/{regionId}/experiences:
+    get:
+      summary: Retrieve experiences for the region
+      parameters:
+        - name: regionId
+          in: path
+          required: true
+          schema:
+            type: integer
 
   # Region endpoints
 
