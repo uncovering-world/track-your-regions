@@ -55,8 +55,13 @@ exports.searchRegions = async (req, res) => {
       type: QueryTypes.SELECT,
     });
 
-    // Map and format the results
-    const result = regions.map((region) => ({
+    // Filtering out duplicates
+    const uniqueRegions = new Map();
+    regions.forEach((region) => {
+      uniqueRegions.set(region.region_id, region);
+    });
+
+    const result = Array.from(uniqueRegions.values()).map((region) => ({
       id: region.region_id,
       name: region.region_name,
       path: region.path,
