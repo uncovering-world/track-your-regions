@@ -14,40 +14,46 @@ exports.searchRegions = async (req, res) => {
     // Split the input query into terms
     const queryTerms = inputQuery.split(' ').filter((term) => term.trim() !== '');
 
-    // Construct the WHERE clause to match each term
-    const whereClause = queryTerms.map((term) => `p.path ILIKE '%${term}%'`).join(' AND ');
+    // Construct the WHERE clause to match each term in the region name or path
+    const nameMatchClause = queryTerms.map((term) => `region_name ILIKE '%${term}%'`).join(' OR ');
+    const pathMatchClause = queryTerms.map((term) => `result.path ILIKE '%${term}%'`).join(' AND ');
 
     const sqlQuery = `
       WITH RECURSIVE PathCTE AS (
-        SELECT 
-          h.region_id, 
-          h.region_name, 
-          h.parent_id, 
-          h.hierarchy_id, 
-          CAST(h.region_name AS VARCHAR(255)) AS path
-        FROM 
-          hierarchy h
-        WHERE 
-          h.hierarchy_id = :hierarchyId
+        SELECT
+          region_id,
+          region_name,
+          parent_id,
+          hierarchy_id,
+          CAST(region_name AS VARCHAR(255)) AS path,
+          region_name AS main_name,
+          region_id AS main_id
+        FROM
+          hierarchy
+        WHERE
+          hierarchy_id = :hierarchyId AND (${nameMatchClause})
         UNION ALL
-        SELECT 
-          h.region_id, 
-          h.region_name, 
-          h.parent_id, 
-          h.hierarchy_id, 
-          CAST(p.path || ' > ' || h.region_name AS VARCHAR(255)) AS path
-        FROM 
-          hierarchy h
-          JOIN PathCTE p ON h.parent_id = p.region_id
-        WHERE 
-          h.hierarchy_id = :hierarchyId
-      )
-      SELECT 
-        p.*
-      FROM 
-        PathCTE p
-      WHERE 
-        ${whereClause};
+          SELECT
+            parent.region_id,
+            parent.region_name,
+            parent.parent_id,
+            parent.hierarchy_id,
+            CAST(parent.region_name || ' > ' || child.path AS VARCHAR(255)) AS path,
+            child.main_name AS main_name,
+            child.main_id AS main_id
+          FROM
+            hierarchy parent
+          JOIN PathCTE child ON parent.region_id = child.parent_id
+          WHERE parent.hierarchy_id = :hierarchyId
+        )
+        SELECT
+          result.main_id,
+          result.main_name,
+          result.path
+        FROM
+         PathCTE result
+        WHERE
+          ${pathMatchClause};
     `;
 
     const regions = await sequelize.query(sqlQuery, {
@@ -55,17 +61,23 @@ exports.searchRegions = async (req, res) => {
       type: QueryTypes.SELECT,
     });
 
-    // Filtering out duplicates
     const uniqueRegions = new Map();
     regions.forEach((region) => {
-      uniqueRegions.set(region.region_id, region);
+      if (!uniqueRegions.has(region.main_id)
+        || uniqueRegions.get(region.main_id).path.length < region.path.length) {
+        uniqueRegions.set(region.main_id, region);
+      }
     });
 
     const result = Array.from(uniqueRegions.values()).map((region) => ({
-      id: region.region_id,
-      name: region.region_name,
+      id: region.main_id,
+      name: region.main_name,
       path: region.path,
     }));
+
+    if (result.length === 0) {
+      return res.status(204).json({ message: 'No regions found' });
+    }
 
     return res.status(200).json(result);
   } catch (err) {
