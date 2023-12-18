@@ -6,6 +6,69 @@ const {
 } = require('../models');
 const sequelize = require('../config/db');
 
+exports.searchRegions = async (req, res) => {
+  try {
+    const inputQuery = req.query.query; // "America York"
+    const hierarchyId = req.query.hierarchyId || 1;
+
+    // Split the input query into terms
+    const queryTerms = inputQuery.split(' ').filter((term) => term.trim() !== '');
+
+    // Construct the WHERE clause to match each term
+    const whereClause = queryTerms.map((term) => `p.path ILIKE '%${term}%'`).join(' AND ');
+
+    const sqlQuery = `
+      WITH RECURSIVE PathCTE AS (
+        SELECT 
+          h.region_id, 
+          h.region_name, 
+          h.parent_id, 
+          h.hierarchy_id, 
+          CAST(h.region_name AS VARCHAR(255)) AS path
+        FROM 
+          hierarchy h
+        WHERE 
+          h.hierarchy_id = :hierarchyId
+        UNION ALL
+        SELECT 
+          h.region_id, 
+          h.region_name, 
+          h.parent_id, 
+          h.hierarchy_id, 
+          CAST(p.path || ' > ' || h.region_name AS VARCHAR(255)) AS path
+        FROM 
+          hierarchy h
+          JOIN PathCTE p ON h.parent_id = p.region_id
+        WHERE 
+          h.hierarchy_id = :hierarchyId
+      )
+      SELECT 
+        p.*
+      FROM 
+        PathCTE p
+      WHERE 
+        ${whereClause};
+    `;
+
+    const regions = await sequelize.query(sqlQuery, {
+      replacements: { hierarchyId },
+      type: QueryTypes.SELECT,
+    });
+
+    // Map and format the results
+    const result = regions.map((region) => ({
+      id: region.region_id,
+      name: region.region_name,
+      path: region.path,
+    }));
+
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
 async function getAllSubregions(regionId, hierarchyId) {
   const query = `
         WITH RECURSIVE Subregions AS (

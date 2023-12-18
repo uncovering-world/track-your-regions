@@ -24,6 +24,23 @@ router.get(
     return regionController.getRootRegions(req, res);
   },
 );
+
+router.get(
+  '/search',
+  [
+    query('query').isString().withMessage('Query must be a string'),
+    query('hierarchyId').optional().isInt().withMessage('Hierarchy ID must be an integer'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const errorMessages = errors.array().map((error) => error.msg);
+      return res.status(400).json({ errors: errorMessages });
+    }
+    return regionController.searchRegions(req, res);
+  },
+);
+
 router.get(
   '/:regionId',
   ...[
