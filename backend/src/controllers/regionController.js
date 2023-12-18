@@ -49,11 +49,33 @@ exports.searchRegions = async (req, res) => {
         SELECT
           result.main_id,
           result.main_name,
-          result.path
+          result.path,
+          (
+            CASE WHEN result.path ILIKE '%> ${inputQuery}' OR result.path = '${inputQuery}' THEN 400 ELSE 0 END
+            +
+            CASE WHEN result.main_name ILIKE '%${inputQuery}%' THEN 300 ELSE 0 END
+            +
+            CASE WHEN result.main_name ~* '${queryTerms.join('\\s+')}' THEN 200 ELSE 0 END
+            +
+            ${queryTerms.map((term) => `
+              CASE 
+              WHEN result.main_name ~* '(^|\\W)${term}(\\W|$)' THEN 100 
+              ELSE 0 
+              END
+            `).join(' + ')}
+            +
+            ${queryTerms.map((term, index) => `
+              CASE 
+              WHEN result.main_name ILIKE '%${term}%' THEN ${index + 1} 
+              ELSE 0 
+              END
+            `).join(' + ')}
+          ) AS relevance_score
         FROM
          PathCTE result
         WHERE
-          ${pathMatchClause};
+          ${pathMatchClause}
+        ORDER BY relevance_score DESC;
     `;
 
     const regions = await sequelize.query(sqlQuery, {
