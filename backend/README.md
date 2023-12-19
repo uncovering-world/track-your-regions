@@ -126,3 +126,17 @@ npm run migrate:generate -- --name add-email-to-users
 
 This will generate a new file in the `migrations/` directory, something like `XXXXXXXXXXXXXX-add-email-to-users.js`,
 where `XXXXXXXXXXXXXX` is a timestamp.
+
+
+## Some Implementation Details
+
+### Search Functionality
+
+#### Search Algorithm
+- Advanced relevance scoring based on query term matches in `region_name` and hierarchical paths.
+- Prioritization of exact matches, ordered term sequences, and direct path matches.
+
+#### Performance Optimization
+To optimize search performance, the following techniques are used:
+- PostgreSQL indices on `region_name` (GIN), `hierarchy_id`, and `parent_id` fields in the `hierarchy` table.
+- Use of GIN index with `pg_trgm` extension for efficient text search.
