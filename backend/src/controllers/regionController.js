@@ -1,3 +1,5 @@
+const { buildQuery } = require('./queryBuilder');
+const { executeQuery } = require('./queryExecutor');
 const turf = require('@turf/turf');
 
 const { QueryTypes } = require('sequelize');
@@ -5,6 +7,8 @@ const {
   Region, Hierarchy, HierarchyNames,
 } = require('../models');
 const sequelize = require('../config/db');
+
+const { queryBuilder, queryExecutor } = require('./queryBuilder');
 
 exports.searchRegions = async (req, res) => {
   try {
@@ -82,11 +86,8 @@ exports.searchRegions = async (req, res) => {
         ORDER BY relevance_score DESC;
     `;
 
-    const regions = await sequelize.query(sqlQuery, {
-      replacements,
-      type: QueryTypes.SELECT,
-    });
-
+    const sqlQuery = queryBuilder.buildQuery(inputQuery, hierarchyId);
+    const result = await queryExecutor.executeQuery(sqlQuery, replacements);
     const uniqueRegions = new Map();
     regions.forEach((region) => {
       if (!uniqueRegions.has(region.main_id)
@@ -102,7 +103,8 @@ exports.searchRegions = async (req, res) => {
     }));
 
     if (result.length === 0) {
-      return res.status(204).json({ message: 'No regions found' });
+      const filteredResults = Array.from(result.values()).map(({ main_id, main_name, path }) => ({ id: main_id, name: main_name, path }));
+      return res.status(200).json(filteredResults);
     }
 
     return res.status(200).json(result);
