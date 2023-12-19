@@ -18,7 +18,7 @@ function buildQuery(queryTerms, hierarchyId) {
   });
 
   // Construct the SQL query
-  const sqlQuery = `
+  const query = `
     WITH RECURSIVE PathCTE AS (
       SELECT
         region_id,
