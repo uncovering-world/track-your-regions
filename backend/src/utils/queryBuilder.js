@@ -1,4 +1,4 @@
-const { QueryTypes } = require('sequelize');
+
 const sequelize = require('../config/db');
 
 function buildQuery(queryTerms, hierarchyId) {
