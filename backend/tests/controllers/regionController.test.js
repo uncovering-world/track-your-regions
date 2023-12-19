@@ -1,4 +1,6 @@
 const { searchRegions } = require('../../src/controllers/regionController');
+const jest = require('jest');
+const { describe, test, expect } = require('jest');
 
 describe('searchRegions', () => {
   // Test case 1: Test when the input query matches the region name exactly
