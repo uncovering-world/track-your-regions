@@ -1,4 +1,5 @@
 const { searchRegions } = require('../../src/controllers/regionController');
+const { searchRegions } = require('../../src/controllers/regionController');
 const jest = require('jest');
 const { describe, test, expect } = require('jest');
 
