@@ -15,8 +15,18 @@ exports.searchRegions = async (req, res) => {
     const queryTerms = inputQuery.split(' ').filter((term) => term.trim() !== '');
 
     // Construct the WHERE clause to match each term in the region name or path
-    const nameMatchClause = queryTerms.map((term) => `region_name ILIKE '%${term}%'`).join(' OR ');
-    const pathMatchClause = queryTerms.map((term) => `result.path ILIKE '%${term}%'`).join(' AND ');
+    const nameMatchClauses = queryTerms.map((term, index) => `region_name ILIKE :term${index}`).join(' OR ');
+    const pathMatchClauses = queryTerms.map((term, index) => `result.path ILIKE :term${index}`).join(' AND ');
+
+    // Construct the replacements object, to be used in the query
+    const replacements = {
+      hierarchyId,
+      inputQuery,
+    };
+    replacements.regexPattern = queryTerms.join('\\s+'); // Regex pattern to match all terms in the region name
+    queryTerms.forEach((term, index) => {
+      replacements[`term${index}`] = `%${term}%`;
+    });
 
     const sqlQuery = `
       WITH RECURSIVE PathCTE AS (
@@ -31,7 +41,7 @@ exports.searchRegions = async (req, res) => {
         FROM
           hierarchy
         WHERE
-          hierarchy_id = :hierarchyId AND (${nameMatchClause})
+          hierarchy_id = :hierarchyId AND (${nameMatchClauses})
         UNION ALL
           SELECT
             parent.region_id,
@@ -51,35 +61,29 @@ exports.searchRegions = async (req, res) => {
           result.main_name,
           result.path,
           (
-            CASE WHEN result.path ILIKE '%> ${inputQuery}' OR result.path = '${inputQuery}' THEN 400 ELSE 0 END
+            CASE WHEN result.path ILIKE '%> ' || :inputQuery || '%' THEN 400 ELSE 0 END
             +
-            CASE WHEN result.main_name ILIKE '%${inputQuery}%' THEN 300 ELSE 0 END
+            CASE WHEN result.main_name ILIKE '%' || :inputQuery || '%' THEN 300 ELSE 0 END
             +
-            CASE WHEN result.main_name ~* '${queryTerms.join('\\s+')}' THEN 200 ELSE 0 END
+            CASE WHEN result.main_name ~* :regexPattern THEN 200 ELSE 0 END
             +
-            ${queryTerms.map((term) => `
-              CASE 
-              WHEN result.main_name ~* '(^|\\W)${term}(\\W|$)' THEN 100 
-              ELSE 0 
-              END
+            ${queryTerms.map((_, index) => `
+               CASE WHEN result.main_name ~* ( '(^|\\w)' || :term${index} || '(\\w|$)' ) THEN 100 ELSE 0 END
             `).join(' + ')}
             +
-            ${queryTerms.map((term, index) => `
-              CASE 
-              WHEN result.main_name ILIKE '%${term}%' THEN ${index + 1} 
-              ELSE 0 
-              END
+            ${queryTerms.map((_, index) => `
+              CASE WHEN result.main_name ILIKE '%' || :term${index} || '%' THEN ${index + 1} ELSE 0 END
             `).join(' + ')}
           ) AS relevance_score
         FROM
          PathCTE result
         WHERE
-          ${pathMatchClause}
+          ${pathMatchClauses}
         ORDER BY relevance_score DESC;
     `;
 
     const regions = await sequelize.query(sqlQuery, {
-      replacements: { hierarchyId },
+      replacements,
       type: QueryTypes.SELECT,
     });
 
