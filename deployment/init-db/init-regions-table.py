@@ -703,6 +703,23 @@ if __name__ == "__main__":
         )
         print("done.")
         print(
+            "Creating index for the hierarchy_id field in the hierarchy table...",
+            end=" ",
+            flush=True,
+        )
+        cur_dst.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hierarchy_id ON hierarchy (hierarchy_id)"
+        )
+        print("done.")
+        print(
+            "Creating index for parent_id field in the hierarchy table...",
+            end=" ",
+            flush=True,
+        )
+        cur_dst.execute(
+            "CREATE INDEX IF NOT EXISTS idx_parent_id_in_hierarchy ON hierarchy (parent_id)"
+        )
+        print(
             "Creating index for the region_id field in the hierarchy_region_mapping table...",
             end=" ",
             flush=True,
@@ -711,4 +728,24 @@ if __name__ == "__main__":
             "CREATE INDEX IF NOT EXISTS idx_mapping_region_id ON hierarchy_region_mapping (region_id)"
         )
         print("done.")
+        print(
+            "Install trigram extension (for similarity search)...", end=" ", flush=True
+        )
+        cur_dst.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        print("done.")
+        print(
+            "Creating index for the region_name field in the hierarchy table...",
+            end=" ",
+            flush=True,
+        )
+        cur_dst.execute(
+            "CREATE INDEX idx_region_name_in_hierarchy ON hierarchy USING GIN(region_name gin_trgm_ops)"
+        )
+        print("done.")
+        print(
+            "Creating index for the region_name field in the hierarchy_region_mapping table...",
+            end=" ",
+            flush=True,
+        )
+
         print(f"DB init complete in {datetime.now() - global_timestamp_start} !")
