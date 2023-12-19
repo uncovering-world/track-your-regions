@@ -2,11 +2,11 @@ const { buildQuery } = require('./queryBuilder');
 const { executeQuery } = require('./queryExecutor');
 const turf = require('@turf/turf');
 
-const { QueryTypes } = require('sequelize');
+
 const {
   Region, Hierarchy, HierarchyNames,
 } = require('../models');
-const sequelize = require('../config/db');
+
 
 const { queryBuilder, queryExecutor } = require('./queryBuilder');
 
