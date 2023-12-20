@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { render, screen, fireEvent, test } from '@testing-library/react';
 import { describe, test } from 'mocha';
 import Search from './Search.jsx';
-import { expect } from '@testing-library/react';
+import { expect } from 'chai';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import Search from './Search.jsx';
