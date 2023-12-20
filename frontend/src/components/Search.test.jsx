@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe } from 'mocha';
+import { render, screen, fireEvent, test } from '@testing-library/react';
+import { describe, test } from 'mocha';
 import Search from './Search.jsx';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { render, screen, fireEvent } from '@testing-library/react';
