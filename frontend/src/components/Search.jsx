@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Autocomplete, TextField } from '@mui/material';
 import { fetchSearchResults, fetchRegion } from '../api';
 import { useNavigation } from './NavigationContext';
+import { Autocomplete, TextField } from '@mui/material';
+import { fetchSearchResults, fetchRegion } from '../api';
+import { useNavigation } from './NavigationContext';
 
 /**
  * Component for searching and selecting regions.
@@ -193,7 +196,7 @@ const handleKeyPress = async (event) => {
         });
       }}
       onKeyPress={handleKeyPress}
-      renderInput={(params) => (
+  renderInput={(params) => (
         <TextField
           label="Search Regions"
           variant="outlined"
@@ -212,4 +215,4 @@ const handleKeyPress = async (event) => {
   );
 }
 
-export default Search;
+  export default Search;
