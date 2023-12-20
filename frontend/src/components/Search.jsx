@@ -195,7 +195,7 @@ const handleKeyPress = async (event) => {
           force: false,
         });
       }}
-      onKeyPress={handleKeyPress}
+        onKeyPress={handleKeyPress}
   renderInput={(params) => (
         <TextField
           label="Search Regions"
