@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {CommitMessageTemplate} from '../components';
 import { Autocomplete, TextField } from '@mui/material';
 import { fetchSearchResults, fetchRegion } from '../api';
 import { useNavigation } from './NavigationContext';
