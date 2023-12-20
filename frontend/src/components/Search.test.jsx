@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import Search from './Search';
+import Search from './Search.jsx';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 describe('Search component', () => {
   test('should display autocomplete dropdown', () => {
