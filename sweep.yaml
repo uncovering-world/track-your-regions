@@ -4,7 +4,7 @@
 # This setting contains a list of rules that Sweep will check for. If any of these rules are broken in a new commit, Sweep will create an pull request to fix the broken rule.
 rules:
   - "All new business logic should have corresponding unit tests."
-  - "Add jsdoc to all functions and file headers."
+  - "Add docstrings to all functions and file headers."
 
 # This is the branch that Sweep will develop from and make pull requests to. Most people use 'main' or 'master' but some users also use 'dev' or 'staging'.
 branch: 'main'
@@ -34,6 +34,7 @@ description: |
   - **Axios**: Promise-based HTTP client for making API calls.
   - **@mui/material**: Material-UI library for React components.
   - **Docker**: Used for containerizing the frontend service for quick setup and testing.
+  - **JSDoc**: Documentation format for JavaScript code.
 
 # This sets whether to create pull requests as drafts. If this is set to True, then all pull requests will be created as drafts and GitHub Actions will not be triggered.
 draft: True
