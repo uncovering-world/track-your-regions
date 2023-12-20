@@ -113,6 +113,12 @@ useEffect(() => {
 
     const timerId = setTimeout(fetchResults, 500);
 
+    /**
+     * Render the Autocomplete component with all its event handlers, input handlers, and options.
+     * Also handle the key press event to trigger a search.
+     * @param {object} params - The parameters for rendering the Autocomplete component
+     * @returns {JSX.Element} - The Autocomplete component
+     */
     return () => {
       active = false;
       clearTimeout(timerId);
