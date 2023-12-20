@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Autocomplete, TextField } from '@mui/material';
 import { fetchSearchResults, fetchRegion } from '../api';
 import { useNavigation } from './NavigationContext';
@@ -9,6 +9,7 @@ function Search() {
   const [inputValue, setInputValue] = useState({});
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const { selectedRegion, setSelectedRegion, selectedHierarchyId } = useNavigation();
+  const prevSelectedRegion = useRef();
 
   function formatNames(foundResults) {
     const nameCount = new Map();
@@ -66,6 +67,13 @@ function Search() {
         setIsDropdownOpen(false);
       }
     };
+
+    if (prevSelectedRegion.current !== selectedRegion) {
+      prevSelectedRegion.current = selectedRegion;
+      return () => {
+        active = false;
+      };
+    }
 
     if (selectedRegion && selectedRegion.name === searchTerm) {
       return () => {
