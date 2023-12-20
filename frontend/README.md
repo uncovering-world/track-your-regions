@@ -46,6 +46,7 @@ npm run lint:fix
 │   │   ├── MainDisplay.jsx
 │   │   ├── NavigationPane.jsx
 │   │   ├── RegionMap.jsx
+│   │   ├── Search.jsx
 │   │   └── NavigationContext.jsx
 │   ├── App.jsx                       # Main application component
 │   └── index.js                      # Application entry point
@@ -89,3 +90,28 @@ npm start
 - `npm test`: Run tests (currently not specified).
 - `npm eject`: Ejects the setup (Note: this is a one-way operation).
 - `npm run lint`: Lints the codebase.
+
+## Features
+
+### Search
+
+The application includes a search feature that allows users to quickly find
+regions by name. This feature is implemented in the frontend and interacts
+with the backend to fetch search results.
+
+#### UI/UX Considerations:
+
+- **Search Bar Placement**: Integrated at the top of the navigation pane,
+  ensuring high visibility and ease of access for users.
+- **Responsive Autocomplete**: Implements a responsive autocomplete mechanism.
+  As users type in the search bar, suggestions are dynamically generated based
+  on the input, providing a smooth and interactive user experience.
+- **Search Efficiency & Debouncing**: Optimized for performance, the search 
+  feature includes debouncing to limit the number of backend calls, enhancing
+  efficiency, especially when dealing with large datasets.
+- **Search Result Formatting**: Search results display the region name, along
+  with a unique path or identifier when similar names exist. This helps users
+  distinguish between regions with identical names.
+- **Keyboard Navigation Support**: Users can navigate through search results
+  using keyboard arrows, enhancing accessibility and ease of use.
+
