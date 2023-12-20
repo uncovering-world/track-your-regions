@@ -3,6 +3,10 @@ import { Autocomplete, TextField } from '@mui/material';
 import { fetchSearchResults, fetchRegion } from '../api';
 import { useNavigation } from './NavigationContext';
 
+/**
+ * Component for searching and selecting regions.
+ * This component provides a search bar with autocomplete for selecting regions based on user input.
+ */
 function Search() {
   const [searchTerm, setSearchTerm] = useState({ name: '', force: false });
   const [searchResults, setSearchResults] = useState([]);
