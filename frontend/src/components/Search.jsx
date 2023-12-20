@@ -120,7 +120,12 @@ useEffect(() => {
   }, [searchTerm, selectedRegion]);
 
   // Handle Enter key press
-  const handleKeyPress = async (event) => {
+  /**
+ * Handle the key press event to trigger a search.
+ * @param {Event} event - The key press event
+ * @returns {void}
+ */
+const handleKeyPress = async (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       setSearchTerm({ name: searchTerm.name, force: true });
