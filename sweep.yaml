@@ -3,6 +3,7 @@
 
 # This setting contains a list of rules that Sweep will check for. If any of these rules are broken in a new commit, Sweep will create an pull request to fix the broken rule.
 rules:
+  - "In the PR description, provide the Issue number that your PR fixes in a form `Fixes #<Issue Number>`"
   - "All new business logic should have corresponding unit tests."
   - "Add jsdoc to all functions and file headers."
 
