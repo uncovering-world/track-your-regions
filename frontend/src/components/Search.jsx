@@ -1,92 +1,76 @@
 import React, { useState, useEffect } from 'react';
-import Select from '@mui/material/Select';
-import MenuItem from '@mui/material/MenuItem';
-import FormControl from '@mui/material/FormControl';
-import InputLabel from '@mui/material/InputLabel';
-import { useNavigation } from './NavigationContext';
+import { Autocomplete, TextField } from '@mui/material';
 import { fetchSearchResults } from '../api';
+import { useNavigation } from './NavigationContext';
 
 function Search() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [selectedItem, setSelectedItem] = useState('');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [inputValue, setInputValue] = useState('');
   const { setSelectedRegion } = useNavigation();
 
-  const handleChange = (event) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const handleSelectChange = (event) => {
-    console.log(event);
-    setSelectedItem(event.target.value);
-    setSelectedRegion(
-      {
-        id: event.target.value.id,
-        name: event.target.value.name,
-        info: {},
-        hasSubregions: false,
-      },
-    );
-  };
-
-  const handleSearch = () => {
-    setIsSearching(true);
-  };
-
   useEffect(() => {
-    const timerId = setTimeout(async () => {
-      try {
-        if (searchTerm.length > 3 || isSearching) {
-          const results = await fetchSearchResults(searchTerm);
-          if (results.length === 1) {
-            setSelectedItem(results[0].path);
-          }
-          setSearchResults(results);
-          if (results.length > 0) {
-            setIsDropdownOpen(true); // Open dropdown if there are results
-          }
-        } else {
-          setSearchResults([]);
-          setIsDropdownOpen(false); // Close dropdown if there are no results
-        }
-      } catch (fetchError) {
-        console.error('Error fetching search results: ', fetchError);
-      }
-      setIsSearching(false);
-    }, 500);
+    let active = true;
 
-    return () => clearTimeout(timerId);
-  }, [searchTerm, isSearching]);
+    const fetchResults = async () => {
+      if (searchTerm.length > 3) {
+        try {
+          const results = await fetchSearchResults(searchTerm);
+          if (active) {
+            setSearchResults(results);
+          }
+        } catch (error) {
+          console.error('Error fetching search results:', error);
+        }
+      } else {
+        setSearchResults([]);
+      }
+    };
+
+    if (!searchTerm || searchTerm.length < 3) {
+      setSearchResults([]);
+      return () => {
+        active = false;
+      };
+    }
+    const timerId = setTimeout(fetchResults, 500);
+
+    return () => {
+      active = false;
+      clearTimeout(timerId);
+    };
+  }, [searchTerm]);
 
   return (
-    <div>
-      <input
-        type="text"
-        placeholder="Search"
-        value={searchTerm}
-        onChange={handleChange}
-      />
-      <button type="submit" onClick={handleSearch}>Search</button>
-      <FormControl fullWidth>
-        <InputLabel id="search-results-label">Results</InputLabel>
-        <Select
-          labelId="search-results-label"
-          id="search-results"
-          value={selectedItem}
-          label="Results"
-          onChange={handleSelectChange}
-          open={isDropdownOpen} // Control the open state of the dropdown
-        >
-          {searchResults.map((item) => (
-            <MenuItem key={item.id} value={item.path}>
-              {item.path}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-    </div>
+    <Autocomplete
+      id="search-autocomplete"
+      options={searchResults.map((option) => option.name)}
+      value={searchTerm}
+      onChange={(event, newValue) => {
+        const selectedRegion = searchResults.find((region) => region.name === newValue);
+        setSelectedRegion(selectedRegion);
+      }}
+      inputValue={inputValue}
+      onInputChange={(event, newInputValue) => {
+        setInputValue(newInputValue);
+        setSearchTerm(newInputValue);
+      }}
+      renderInput={(params) => (
+        <TextField
+          label="Search Regions"
+          variant="outlined"
+          InputProps={{
+            inputProps: {
+              ...params.inputProps,
+            },
+            ...params.InputProps,
+          }}
+          ref={params.InputProps.ref}
+          inputRef={params.inputRef}
+          fullWidth
+        />
+      )}
+    />
   );
 }
 
