@@ -76,3 +76,16 @@ export const fetchHierarchies = async () => {
     return [];
   }
 };
+
+export const fetchSearchResults = async (query, hierarchyId) => {
+  try {
+    const response = await api.get('/api/regions/search', { params: { query, hierarchyId } });
+    if (response.status === 204) {
+      return [];
+    }
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching search results:', error);
+    return [];
+  }
+};
