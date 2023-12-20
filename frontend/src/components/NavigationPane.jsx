@@ -3,6 +3,7 @@ import { Box } from '@mui/material';
 import BreadcrumbNavigation from './BreadcrumbNavigation';
 import ListOfRegions from './ListOfRegions';
 import HierarchySwitcher from './HierarchySwitcher';
+import Search from './Search';
 
 /**
  * NavigationPane is a layout component that renders the navigation side panel,
@@ -12,6 +13,7 @@ function NavigationPane() {
   return (
     <Box>
       <HierarchySwitcher />
+      <Search />
       <BreadcrumbNavigation />
       <ListOfRegions />
     </Box>
