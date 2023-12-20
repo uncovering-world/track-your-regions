@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import { Box } from '@mui/material';
-import { fetchRootRegions, fetchSubregions } from '../api';
+import { fetchAncestors, fetchRootRegions, fetchSubregions } from '../api';
 import { useNavigation } from './NavigationContext';
 
 /**
@@ -20,11 +20,26 @@ function ListOfRegions() {
   const [error, setError] = useState(null);
 
   const fetchRegions = async (regionId, hasSubregions) => {
+    let newRegions = [];
     try {
-      let newRegions = [];
       if (regionId) {
         if (hasSubregions) {
           newRegions = await fetchSubregions(regionId, selectedHierarchy.hierarchyId);
+        } else {
+          // Fecth the siblings of the selected region
+          // TODO: do not fetch the siblings if they are already fetched
+          // First - fetch the parent of the selected region
+          // TODO: add a dedicated API endpoint for fetching siblings
+          const ancestors = await fetchAncestors(regionId, selectedHierarchy.hierarchyId);
+          // The parent is the second item in the ancestors array as the
+          // first item is the region itself.
+          if (!ancestors || ancestors.length < 2) {
+            setError('Unable to find the parent region, and hence the siblings.');
+            return;
+          }
+          const parent = ancestors[1];
+          // Then fetch the subregions of the parent
+          newRegions = await fetchSubregions(parent.id, selectedHierarchy.hierarchyId);
         }
       } else {
         newRegions = await fetchRootRegions(selectedHierarchy.hierarchyId);
