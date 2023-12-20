@@ -55,7 +55,12 @@ function formatNames(foundResults) {
     });
   }
 
-  useEffect(() => {
+  /*
+ * Perform side effects in the component based on changing state
+ * @param {function} effect - The function containing the side effect
+ * @param {Array} dependencies - The state dependencies for the effect
+ */
+useEffect(() => {
     let active = true;
 
     const fetchResults = async () => {
