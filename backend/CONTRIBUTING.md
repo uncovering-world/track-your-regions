@@ -1,6 +1,7 @@
 ## Contributing to Region Tracker Backend
 
-### Directory Structure 
+### Directory Structure
+- Ensure that the "sweep.yaml" file is located in the backend directory.
 Make changes only in the `backend` directory. Adhere to the structure outlined in the backend [README](./README.md).
 
 ### Coding Style
