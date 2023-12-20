@@ -27,9 +27,9 @@ function ListOfRegions() {
           newRegions = await fetchSubregions(regionId, selectedHierarchy.hierarchyId);
         } else {
           // Fecth the siblings of the selected region
-          // TODO: do not fetch the siblings if they are already fetched
+          // TODO: do not fetch the siblings if they are already fetched. Address in #159.
           // First - fetch the parent of the selected region
-          // TODO: add a dedicated API endpoint for fetching siblings
+          // TODO: add a dedicated API endpoint for fetching siblings. Address in #159.
           const ancestors = await fetchAncestors(regionId, selectedHierarchy.hierarchyId);
           // The parent is the second item in the ancestors array as the
           // first item is the region itself.
