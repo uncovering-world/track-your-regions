@@ -67,6 +67,11 @@ function Search() {
       }
     };
 
+    if (selectedRegion && selectedRegion.name === searchTerm) {
+      return () => {
+        active = false;
+      };
+    }
     if (selectedRegion) {
       if (!searchTerm || searchTerm.length < 3) {
         setSearchResults([]);
@@ -92,7 +97,10 @@ function Search() {
         if (option && typeof option === 'object' && option.name) {
           return option.segment ? `${option.name} (${option.segment})` : option.name;
         }
-        return option;
+        if (option && typeof option === 'string') {
+          return option;
+        }
+        return '';
       }}
       freeSolo
       open={isDropdownOpen}
@@ -124,7 +132,6 @@ function Search() {
       inputValue={searchTerm}
       onInputChange={(event, newInputValue) => {
         if (newInputValue.length === 0) {
-          console.log('newInputValue is empty');
           setIsDropdownOpen(false);
           return;
         }
