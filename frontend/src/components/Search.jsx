@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {CommitMessageTemplate} from '../components';
 import { Autocomplete, TextField } from '@mui/material';
 import { fetchSearchResults, fetchRegion } from '../api';
 import { useNavigation } from './NavigationContext';
@@ -115,6 +116,7 @@ function Search() {
 
   return (
     <Autocomplete
+onChange={/* Replace with the new commit message format template */}
       id="search-autocomplete"
       options={searchResults.length > 0 ? formatNames(searchResults) : [inputValue]}
       getOptionLabel={(option) => {
