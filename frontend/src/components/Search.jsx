@@ -15,7 +15,12 @@ function Search() {
   const { selectedRegion, setSelectedRegion, selectedHierarchyId } = useNavigation();
   const prevSelectedRegion = useRef();
 
-  function formatNames(foundResults) {
+  /**
+ * Format names within found results based on uniqueness.
+ * @param {Array.<object>} foundResults - The list of found results to format
+ * @returns {Array.<object>} - The formatted list of results
+ */
+function formatNames(foundResults) {
     const nameCount = new Map();
     foundResults.forEach((item) => {
       nameCount.set(item.name, (nameCount.get(item.name) || 0) + 1);
