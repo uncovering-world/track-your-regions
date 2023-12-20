@@ -4,7 +4,7 @@ import { fetchSearchResults, fetchRegion } from '../api';
 import { useNavigation } from './NavigationContext';
 
 function Search() {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState({ name: '', force: false });
   const [searchResults, setSearchResults] = useState([]);
   const [inputValue, setInputValue] = useState({});
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -50,9 +50,9 @@ function Search() {
     let active = true;
 
     const fetchResults = async () => {
-      if (searchTerm.length > 3) {
+      if (searchTerm.name.length > 3 || searchTerm.force) {
         try {
-          const results = await fetchSearchResults(searchTerm);
+          const results = await fetchSearchResults(searchTerm.name);
           if (active) {
             setSearchResults(results);
             if (results.length > 0) {
@@ -75,13 +75,13 @@ function Search() {
       };
     }
 
-    if (selectedRegion && selectedRegion.name === searchTerm) {
+    if (selectedRegion && selectedRegion.name === searchTerm.name) {
       return () => {
         active = false;
       };
     }
     if (selectedRegion) {
-      if (!searchTerm || searchTerm.length < 3) {
+      if (!searchTerm.name || (searchTerm.name.length < 3 && !searchTerm.force)) {
         setSearchResults([]);
         setIsDropdownOpen(false);
         return () => {
@@ -89,6 +89,14 @@ function Search() {
         };
       }
     }
+
+    if (searchTerm.force) {
+      fetchResults();
+      return () => {
+        active = false;
+      };
+    }
+
     const timerId = setTimeout(fetchResults, 500);
 
     return () => {
@@ -96,6 +104,14 @@ function Search() {
       clearTimeout(timerId);
     };
   }, [searchTerm, selectedRegion]);
+
+  // Handle Enter key press
+  const handleKeyPress = async (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      setSearchTerm({ name: searchTerm.name, force: true });
+    }
+  };
 
   return (
     <Autocomplete
@@ -120,10 +136,10 @@ function Search() {
       onClose={() => {
         setIsDropdownOpen(false);
       }}
-      value={searchTerm}
+      value={searchTerm.name}
       onChange={async (event, newValue) => {
         if (!newValue) {
-          setSearchTerm('');
+          setSearchTerm({ name: '', force: false });
           return;
         }
         const selectedItem = searchResults.find((region) => region.id === newValue.id);
@@ -137,7 +153,7 @@ function Search() {
         setSelectedRegion(newRegion);
         setIsDropdownOpen(false);
       }}
-      inputValue={searchTerm}
+      inputValue={searchTerm.name}
       onInputChange={(event, newInputValue) => {
         if (newInputValue.length === 0) {
           setIsDropdownOpen(false);
@@ -146,8 +162,12 @@ function Search() {
         // find the region with the matching name
         const matchingRegion = searchResults.find((region) => region.name === newInputValue);
         setInputValue(matchingRegion);
-        setSearchTerm(matchingRegion ? matchingRegion.name : newInputValue);
+        setSearchTerm({
+          name: matchingRegion ? matchingRegion.name : newInputValue,
+          force: false,
+        });
       }}
+      onKeyPress={handleKeyPress}
       renderInput={(params) => (
         <TextField
           label="Search Regions"
