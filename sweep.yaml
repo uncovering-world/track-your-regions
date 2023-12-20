@@ -4,29 +4,7 @@
 # This setting contains a list of rules that Sweep will check for. If any of these rules are broken in a new commit, Sweep will create an pull request to fix the broken rule.
 rules:
   - "All new business logic should have corresponding unit tests."
-  - "Refactor large functions to be more modular."
-  - "Add docstrings to all functions and file headers."
-  - "In the PR description, provide the Issue number that your PR fixes in a form `Fixes #<Issue Number>`"
-  - "Make changes only in the directory you are working on (frontend, backend, or deployment)."
-  - "For JavaScript (used in frontend and backend), follow the Airbnb JavaScript Style Guide"
-  - "For Python (used in deployment scripts), use Black"
-  - |
-    Follow this format for all commit messages:
-    ```
-    <Type>: <Topic>.
-  
-    <Description>
-  
-    [Issue: #<GitHub Issue Number>]
-
-    ```
-    Type can be one of the following:
-    - `front`: Frontend
-    - `back`: Backend
-    - `deploy`: Deployment
-        Or leave it blank if the commit is not specific to any of the above.
-    Ensure the commit message is concise yet descriptive.
-    If the commit fixes an issue, add the issue number in the commit message.
+  - "Add jsdoc to all functions and file headers."
 
 # This is the branch that Sweep will develop from and make pull requests to. Most people use 'main' or 'master' but some users also use 'dev' or 'staging'.
 branch: 'main'
