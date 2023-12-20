@@ -3,7 +3,7 @@ import { Autocomplete, TextField } from '@mui/material';
 import { fetchSearchResults, fetchRegion } from '../api';
 import { useNavigation } from './NavigationContext';
 
-function Search() {
+export default function Search() {
   const [searchTerm, setSearchTerm] = useState({ name: '', force: false });
   const [searchResults, setSearchResults] = useState([]);
   const [inputValue, setInputValue] = useState({});
@@ -114,7 +114,7 @@ function Search() {
   };
 
   return (
-    <Autocomplete
+    <Autocomplete inputProps={{ 'data-testid': 'search-autocomplete-input' }}
       id="search-autocomplete"
       options={searchResults.length > 0 ? formatNames(searchResults) : [inputValue]}
       getOptionLabel={(option) => {
