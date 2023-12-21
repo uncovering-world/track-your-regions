@@ -36,6 +36,13 @@ exports.searchRegions = async (req, res) => {
       replacements[`term${index}`] = `%${term}%`;
     });
 
+    const regexMatchCaseStatements = [];
+    const substringMatchCaseStatements = [];
+    for (let i = 0; i < queryTerms.length; i += 1) {
+      regexMatchCaseStatements.push(`CASE WHEN result.main_name ~* ( '(^|\\w)' || :term${i} || '(\\w|$)' ) THEN 100 ELSE 0 END`);
+      substringMatchCaseStatements.push(`CASE WHEN result.main_name ILIKE '%' || :term${i} || '%' THEN ${i + 1} ELSE 0 END`);
+    }
+
     const sqlQuery = `
       WITH RECURSIVE PathCTE AS (
         SELECT
@@ -75,13 +82,9 @@ exports.searchRegions = async (req, res) => {
             +
             CASE WHEN result.main_name ~* :regexPattern THEN 200 ELSE 0 END
             +
-            ${queryTerms.map((_, index) => `
-               CASE WHEN result.main_name ~* ( '(^|\\w)' || :term${index} || '(\\w|$)' ) THEN 100 ELSE 0 END
-            `).join(' + ')}
+            (${regexMatchCaseStatements.join(' + ')})
             +
-            ${queryTerms.map((_, index) => `
-              CASE WHEN result.main_name ILIKE '%' || :term${index} || '%' THEN ${index + 1} ELSE 0 END
-            `).join(' + ')}
+            (${substringMatchCaseStatements.join(' + ')})
           ) AS relevance_score
         FROM
          PathCTE result
