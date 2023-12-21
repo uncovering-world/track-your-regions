@@ -22,10 +22,6 @@ exports.searchRegions = async (req, res) => {
     // Split the input query into terms
     const queryTerms = inputQuery.split(' ').filter((term) => term.trim() !== '');
 
-    // Construct the WHERE clause to match each term in the region name or path
-    const nameMatchClauses = queryTerms.map((term, index) => `region_name ILIKE :term${index}`).join(' OR ');
-    const pathMatchClauses = queryTerms.map((term, index) => `result.path ILIKE :term${index}`).join(' AND ');
-
     // Construct the replacements object, to be used in the query
     const replacements = {
       hierarchyId,
@@ -36,12 +32,18 @@ exports.searchRegions = async (req, res) => {
       replacements[`term${index}`] = `%${term}%`;
     });
 
+    const nameMatchClausesList = [];
+    const pathMatchClausesList = [];
     const regexMatchCaseStatements = [];
     const substringMatchCaseStatements = [];
     for (let i = 0; i < queryTerms.length; i += 1) {
       regexMatchCaseStatements.push(`CASE WHEN result.main_name ~* ( '(^|\\w)' || :term${i} || '(\\w|$)' ) THEN 100 ELSE 0 END`);
       substringMatchCaseStatements.push(`CASE WHEN result.main_name ILIKE '%' || :term${i} || '%' THEN ${i + 1} ELSE 0 END`);
+      nameMatchClausesList.push(`region_name ILIKE :term${i}`);
+      pathMatchClausesList.push(`result.path ILIKE :term${i}`);
     }
+    const nameMatchClauses = nameMatchClausesList.join(' OR ');
+    const pathMatchClauses = pathMatchClausesList.join(' AND ');
 
     const sqlQuery = `
       WITH RECURSIVE PathCTE AS (
