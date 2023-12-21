@@ -4,7 +4,7 @@ const cors = require('cors');
 const routes = require('./routes');
 
 // TODO: Add CSRF protection, see GH Issue #170. Ignore for now.
-// eslint-disable-next-line max-len
+app.use(csrf());
 // nosemgrep: javascript.express.security.audit.express-check-csurf-middleware-usage.express-check-csurf-middleware-usage
 const app = express();
 
