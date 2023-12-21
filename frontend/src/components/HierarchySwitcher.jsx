@@ -55,7 +55,7 @@ function HierarchySwitcher() {
       handleClose();
       setError(null);
     } catch (handleError) {
-      console.error(`Error updating hierarchy to ${hierarchyId}: `, handleError);
+      console.error('Error updating hierarchy to %d: %o', hierarchyId, handleError);
       setError("We're unable to switch the hierarchy right now. Please check your connection and try again.");
     }
   };

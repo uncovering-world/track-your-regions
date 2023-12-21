@@ -54,7 +54,7 @@ function BreadcrumbNavigation() {
       setBreadcrumbItems((prevItems) => prevItems.slice(0, index + 1));
       setError(null);
     } catch (fetchError) {
-      console.error(`Error fetching region ${regionId}: `, fetchError);
+      console.error('Error fetching region %d: %o', regionId, fetchError);
       setError('Unable to load the selected region. Please try selecting a different region or try again later.');
     }
   };
