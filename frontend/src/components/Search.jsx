@@ -117,6 +117,7 @@ function Search() {
     <Autocomplete
       id="search-autocomplete"
       options={searchResults.length > 0 ? formatNames(searchResults) : [inputValue]}
+      filterOptions={(x) => x}
       getOptionLabel={(option) => {
         if (option && typeof option === 'object' && option.name) {
           return option.segment ? `${option.name} (${option.segment})` : option.name;
@@ -159,11 +160,9 @@ function Search() {
           setIsDropdownOpen(false);
           return;
         }
-        // find the region with the matching name
-        const matchingRegion = searchResults.find((region) => region.name === newInputValue);
-        setInputValue(matchingRegion);
+        setInputValue(newInputValue);
         setSearchTerm({
-          name: matchingRegion ? matchingRegion.name : newInputValue,
+          name: newInputValue,
           force: false,
         });
       }}
