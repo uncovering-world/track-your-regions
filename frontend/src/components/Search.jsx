@@ -13,7 +13,12 @@ function Search() {
 
   // Returns an object of the form:
   // { name: 'Region Name', segment: 'Region Segment (if name is not unique)', id: 'Region ID' }
-  function formatNames(foundResults) {
+  function formatNames(foundResults)
+  /**
+   * Formats the search results into an array of region objects.
+   * @param {array} foundResults - The search results to be formatted.
+   * @returns {array} An array of formatted region objects with properties: name, segment, and id.
+   */ {
     // Group paths by the last element (which is the same as region.name)
     const pathsByLastName = {};
     foundResults.forEach((region) => {
