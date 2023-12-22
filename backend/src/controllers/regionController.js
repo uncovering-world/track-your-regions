@@ -1,3 +1,7 @@
+/**
+ * This file contains the controller functions for managing regions.
+ */
+
 const turf = require('@turf/turf');
 
 const { QueryTypes } = require('sequelize');
