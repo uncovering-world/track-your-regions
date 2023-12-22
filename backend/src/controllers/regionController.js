@@ -374,6 +374,14 @@ exports.getGeometry = async (req, res) => {
 };
 
 exports.getAncestors = async (req, res) => {
+  
+  /**
+   * Retrieves the ancestors of a region.
+   *
+   * @param {Object} req - The request object.
+   * @param {Object} res - The response object.
+   * @returns {Promise<void>} - A promise that resolves when the ancestors are retrieved.
+   */
   const { regionId } = req.params;
   const hierarchyId = req.query.hierarchyId || 1;
 
