@@ -170,6 +170,14 @@ async function getAllSubregions(regionId, hierarchyId) {
 }
 
 // Retrieve subregions for a specific region
+/**
+ * Retrieves subregions for a specific region.
+ *
+ * @param {number} regionId - The ID of the region.
+ * @param {number} hierarchyId - The ID of the hierarchy.
+ * @param {boolean} getAll - Whether to retrieve all subregions or only direct subregions.
+ * @returns {Promise<Object>} - A promise that resolves to an object containing the subregions data and status.
+ */
 async function getSubregions(regionId, hierarchyId, getAll) {
   try {
     // Check if the region exists
