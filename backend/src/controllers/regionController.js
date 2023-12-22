@@ -254,6 +254,13 @@ async function getDivisions(regionId, hierarchyId) {
   return resultDivisions;
 }
 
+/**
+ * Retrieves all available hierarchies.
+ *
+ * @param {Object} req - The request object.
+ * @param {Object} res - The response object.
+ * @returns {Promise<void>} - A promise that resolves when the hierarchies are retrieved.
+ */
 exports.getHierarchies = async (req, res) => {
   try {
     const hierarchies = await HierarchyNames.findAll();
