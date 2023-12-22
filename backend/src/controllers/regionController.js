@@ -271,6 +271,13 @@ exports.getHierarchies = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves the geometry for a region.
+ *
+ * @param {Object} req - The request object.
+ * @param {Object} res - The response object.
+ * @returns {Promise<void>} - A promise that resolves when the geometry is retrieved.
+ */
 exports.getGeometry = async (req, res) => {
   const { regionId } = req.params;
   const resolveEmpty = req.query.resolveEmpty === 'true';
