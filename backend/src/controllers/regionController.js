@@ -405,6 +405,13 @@ exports.getAncestors = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves the root regions for a hierarchy.
+ *
+ * @param {Object} req - The request object.
+ * @param {Object} res - The response object.
+ * @returns {Promise<void>} - A promise that resolves when the root regions are retrieved.
+ */
 exports.getRootRegions = async (req, res) => {
   try {
     const hierarchyId = req.query.hierarchyId || 1;
