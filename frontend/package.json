@@ -8,8 +8,8 @@
     "build": "react-scripts --openssl-legacy-provider build",
     "test": "react-scripts --openssl-legacy-provider test",
     "eject": "react-scripts --openssl-legacy-provider eject",
-    "lint": "eslint --ext .js,.jsx src",
-    "lint:fix": "eslint --fix --ext .js,.jsx src"
+    "lint": "eslint . --ext .js,.jsx --ext .md",
+    "lint:fix": "eslint . --ext .js,.jsx --ext .md --fix"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",
@@ -40,6 +40,7 @@
   "devDependencies": {
     "eslint": "^8.54.0",
     "eslint-config-airbnb": "^19.0.4",
+    "eslint-plugin-markdownlint": "^0.5.0",
     "react-scripts": "^5.0.1"
   }
 }
