@@ -2,7 +2,8 @@
 
 ## Overview
 
-This directory contains the backend code for the Region Tracker service, including logic, database interactions, and API endpoints.
+This directory contains the backend code for the Region Tracker service,
+including logic, database interactions, and API endpoints.
 
 ## Tech Stack
 
@@ -10,12 +11,15 @@ This directory contains the backend code for the Region Tracker service, includi
 - **Express**: A web framework for Node.js.
 - **Sequelize**: A promise-based Node.js ORM for SQL databases.
 - **PostgreSQL**: The database used for storing application data.
-- **Docker**: Used for containerizing the backend service for quick setup and testing.
+- **Docker**: Used for containerizing the backend service for quick setup and
+  testing.
 
 ## Code Style
 
-We use [Airbnb's JavaScript style guide](https://github.com/airbnb/javascript) for this project.
-To ensure that the codebase adheres to this style guide, we use eslint to lint the codebase. The configuration file is `.eslintrc`.
+We use [Airbnb's JavaScript style guide](https://github.com/airbnb/javascript)
+for this project.
+To ensure that the codebase adheres to this style guide, we use eslint to lint
+the codebase. The configuration file is `.eslintrc`.
 
 To run the linter, use the following command:
 
@@ -50,14 +54,17 @@ npm run lint:fix
 │   ├── app.js                   # Main application file
 │   └── server.js                # Server setup
 ├── test/                        # Test files
-├── Dockerfile                   # Dockerfile for containerization (for docker-compose use only)
+├── Dockerfile                   # Dockerfile for containerization
+│                                # (for docker-compose use only)
+├── test/                        # Test files
 ├── package.json                 # Project metadata and dependencies
 └── README.md                    # Project documentation
 ```
 
 ## Environment Configuration (.env)
 
-Multiple `.env` files can be used to separate environment variables based on the environment where the application is running. The hierarchy is as follows:
+Multiple `.env` files can be used to separate environment variables based on the
+environment where the application is running. The hierarchy is as follows:
 
 - `.env`: Common settings
 - `.env.development`: For development settings
@@ -80,9 +87,13 @@ TEST_SERVER_PORT=3000
 
 ### With Docker Compose
 
-The `Dockerfile` in this directory is intended solely for use by `docker-compose`. While it can work independently, it's not recommended. For individual service testing and debugging, it's advised to use npm directly.
+The `Dockerfile` in this directory is intended solely for use
+by `docker-compose`. While it can work independently, it's not recommended. For
+individual service testing and debugging, it's advised to use npm directly.
 
-To run the backend service as part of the full stack, refer to the main `README.md` in the `deployment/` directory for instructions on using `docker-compose`.
+To run the backend service as part of the full stack, refer to the
+main `README.md` in the `deployment/` directory for instructions on
+using `docker-compose`.
 
 ### Without Docker Compose
 
@@ -107,36 +118,45 @@ You can run the following npm scripts to perform various tasks:
 
 ## Database Migrations
 
-We use Sequelize migrations to manage the database schema. Migration files are located in the `migrations/` directory.
+We use Sequelize migrations to manage the database schema. Migration files are
+located in the `migrations/` directory.
 
 ### Using migrate:generate to Generate a New Migration File
 
-The `migrate:generate` script is a convenient way to generate a new migration file. This script uses Sequelize CLI to
+The `migrate:generate` script is a convenient way to generate a new migration
+file. This script uses Sequelize CLI to
 create a new migration file in the `migrations/` directory.
 
 ```shell
 npm run migrate:generate -- --name <name-of-your-migration>
 ```
 
-Let's say you want to create a new migration for adding a email column to a users table. You can run:
+Let's say you want to create a new migration for adding a email column to a
+users table. You can run:
 
 ```shell
 npm run migrate:generate -- --name add-email-to-users
 ```
 
-This will generate a new file in the `migrations/` directory, something like `XXXXXXXXXXXXXX-add-email-to-users.js`,
+This will generate a new file in the `migrations/` directory, something
+like `XXXXXXXXXXXXXX-add-email-to-users.js`,
 where `XXXXXXXXXXXXXX` is a timestamp.
-
 
 ## Some Implementation Details
 
 ### Search Functionality
 
 #### Search Algorithm
-- Advanced relevance scoring based on query term matches in `region_name` and hierarchical paths.
-- Prioritization of exact matches, ordered term sequences, and direct path matches.
+
+- Advanced relevance scoring based on query term matches in `region_name` and
+  hierarchical paths.
+- Prioritization of exact matches, ordered term sequences, and direct path
+  matches.
 
 #### Performance Optimization
+
 To optimize search performance, the following techniques are used:
-- PostgreSQL indices on `region_name` (GIN), `hierarchy_id`, and `parent_id` fields in the `hierarchy` table.
+
+- PostgreSQL indices on `region_name` (GIN), `hierarchy_id`, and `parent_id`
+  fields in the `hierarchy` table.
 - Use of GIN index with `pg_trgm` extension for efficient text search.
