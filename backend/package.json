@@ -6,6 +6,7 @@
     "dotenv-cli": "^7.3.0",
     "eslint": "^8.54.0",
     "eslint-config-airbnb": "^19.0.4",
+    "eslint-plugin-markdownlint": "^0.5.0",
     "nodemon": "^3.0.1",
     "sequelize-auto": "^0.8.8",
     "sequelize-cli": "^6.6.1"
@@ -20,8 +21,8 @@
     "migrate": "sequelize-cli db:migrate --config=config/sequelizeConfig.js",
     "migrate:undo": "sequelize-cli db:migrate:undo --config=config/sequelizeConfig.js",
     "migrate:generate": "sequelize-cli --config=config/sequelizeConfig.js migration:generate",
-    "lint": "eslint . --ext .js",
-    "lint:fix": "eslint . --ext .js --fix"
+    "lint": "eslint . --ext .js --ext .md",
+    "lint:fix": "eslint . --ext .js --ext .md --fix"
   },
   "keywords": [
     "geo",
