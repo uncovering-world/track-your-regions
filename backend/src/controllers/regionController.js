@@ -19,6 +19,14 @@ const sequelize = require('../config/db');
  * @returns {Object} - An array of regions found
  * @throws {Error} - If an error occurs during the search
  */
+/**
+ * Searches for regions based on the input query and hierarchy.
+ *
+ * @param {Object} req - The request object
+ * @param {Object} res - The response object
+ * @returns {Object} - An array of regions found
+ * @throws {Error} - If an error occurs during the search
+ */
 exports.searchRegions = async (req, res) => {
   try {
     const inputQuery = req.query.query; // "America York"
