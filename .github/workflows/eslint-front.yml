@@ -7,6 +7,10 @@ on:
       - opened
       - synchronize
       - reopened
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
 
 jobs:
   check-paths:
