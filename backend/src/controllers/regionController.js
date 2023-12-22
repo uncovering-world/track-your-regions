@@ -1,6 +1,7 @@
 const turf = require('@turf/turf');
 
 const { QueryTypes } = require('sequelize');
+const _ = require('lodash');
 const {
   Region, Hierarchy, HierarchyNames,
 } = require('../models');
@@ -21,14 +22,16 @@ exports.searchRegions = async (req, res) => {
 
     // Split the input query into terms
     const queryTerms = inputQuery.split(' ').filter((term) => term.trim() !== '');
+    // Escape the query terms to be used in the regex pattern
+    const escapedQueryTerms = queryTerms.map((term) => _.escapeRegExp(term));
 
     // Construct the replacements object, to be used in the query
     const replacements = {
       hierarchyId,
       inputQuery,
     };
-    replacements.regexPattern = queryTerms.join('\\s+'); // Regex pattern to match all terms in the region name
-    queryTerms.forEach((term, index) => {
+    replacements.regexPattern = escapedQueryTerms.join('\\s+'); // Regex pattern to match all terms in the region name
+    escapedQueryTerms.forEach((term, index) => {
       replacements[`term${index}`] = `%${term}%`;
     });
 
@@ -36,7 +39,7 @@ exports.searchRegions = async (req, res) => {
     const pathMatchClausesList = [];
     const regexMatchCaseStatements = [];
     const substringMatchCaseStatements = [];
-    for (let i = 0; i < queryTerms.length; i += 1) {
+    for (let i = 0; i < escapedQueryTerms.length; i += 1) {
       regexMatchCaseStatements.push(`CASE WHEN result.main_name ~* ( '(^|\\w)' || :term${i} || '(\\w|$)' ) THEN 100 ELSE 0 END`);
       substringMatchCaseStatements.push(`CASE WHEN result.main_name ILIKE '%' || :term${i} || '%' THEN ${i + 1} ELSE 0 END`);
       nameMatchClausesList.push(`region_name ILIKE :term${i}`);
