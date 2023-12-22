@@ -21,6 +21,7 @@ jobs:
           filters: |
             backend:
               - 'backend/**/*.js'
+              - 'backend/**/*.md'
 
   lint-backend:
     needs: check-paths
