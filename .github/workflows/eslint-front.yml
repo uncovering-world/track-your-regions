@@ -25,6 +25,7 @@ jobs:
           filters: |
             frontend:
               - 'frontend/**/*.{js,jsx}'
+              - 'frontend/**/*.md'
 
   lint-frontend:
     needs: check-paths
