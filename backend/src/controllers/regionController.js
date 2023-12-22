@@ -429,6 +429,13 @@ exports.getRootRegions = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves a region by its ID.
+ *
+ * @param {Object} req - The request object.
+ * @param {Object} res - The response object.
+ * @returns {Promise<void>} - A promise that resolves when the region is retrieved.
+ */
 exports.getRegionById = async (req, res) => {
   try {
     const { regionId } = req.params;
