@@ -217,6 +217,13 @@ async function getSubregions(regionId, hierarchyId, getAll) {
 }
 
 // Retrieve the divisions of a region. It does not include subdivisions of the divisions.
+/**
+ * Retrieves the divisions of a region.
+ *
+ * @param {number} regionId - The ID of the region.
+ * @param {number} hierarchyId - The ID of the hierarchy.
+ * @returns {Promise<Array>} - A promise that resolves to an array of divisions.
+ */
 async function getDivisions(regionId, hierarchyId) {
   const regions = (await getSubregions(regionId, hierarchyId, false)).data;
   // Add the region itself
