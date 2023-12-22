@@ -141,6 +141,13 @@ exports.searchRegions = async (req, res) => {
 };
 
 async function getAllSubregions(regionId, hierarchyId) {
+  /**
+   * Retrieves all subregions for a specific region.
+   *
+   * @param {number} regionId - The ID of the region.
+   * @param {number} hierarchyId - The ID of the hierarchy.
+   * @returns {Promise<Array>} - A promise that resolves to an array of subregions.
+   */
   const query = `
         WITH RECURSIVE Subregions AS (
             SELECT *
