@@ -5,5 +5,10 @@
   },
   "rules": {
     "no-console": "off" // Only for development, remove for production
-  }
+  },
+  "overrides": [{
+    "files": ["*.md"],
+    "parser": "eslint-plugin-markdownlint/parser",
+    "extends": ["plugin:markdownlint/recommended"]
+  }]
 }
