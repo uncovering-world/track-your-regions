@@ -1,0 +1,11 @@
+{
+  "name": "backend-test",
+  "version": "1.0.0",
+  "description": "Unit tests for the backend",
+  "scripts": {
+    "test": "jest regionController.test.js Hierarchy.test.js"
+  },
+  "devDependencies": {
+    "jest": "^27.0.6"
+  }
+}
