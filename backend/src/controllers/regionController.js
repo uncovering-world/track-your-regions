@@ -139,7 +139,13 @@ async function getAllSubregions(regionId, hierarchyId) {
             FROM hierarchy h
             INNER JOIN Subregions s ON h.parent_id = s.region_id AND h.hierarchy_id = :hierarchyId
         )
-        SELECT * FROM Subregions;
+        SELECT
+            region_id as "regionId",
+            parent_id as "parentId",
+            hierarchy_id as "hierarchyId",
+            region_name as "regionName",
+            has_subregions as "hasSubregions"
+        FROM Subregions;
     `;
 
   return sequelize.query(query, {
