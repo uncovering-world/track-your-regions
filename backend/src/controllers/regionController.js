@@ -405,8 +405,6 @@ exports.getSiblings = async (req, res) => {
   const { regionId } = req.params;
   const hierarchyId = req.query.hierarchyId || 1;
 
-  console.log('regionId: ', regionId);
-
   // Check if the region exists
   const region = await Hierarchy.findOne({
     where: {
