@@ -19,11 +19,11 @@ function MapComponent() {
   const regionGeometryCache = useRef([]);
   const [error, setError] = useState(null);
 
-  const fetchSelectedRegionGeometry = async () => {
+  const getRegionGeometry = async (regionId, hierarchyId) => {
     try {
       const cacheIndex = regionGeometryCache.current.findIndex(
-        (item) => item.id === selectedRegion.id
-          && item.hierarchyId === selectedHierarchy.hierarchyId,
+        (item) => item.id === regionId
+          && item.hierarchyId === hierarchyId,
       );
 
       // Check if the geometry for the selected region is already in the cache
@@ -31,10 +31,10 @@ function MapComponent() {
         return regionGeometryCache.current[cacheIndex].geometry;
       }
 
-      if (selectedRegion.id !== null && selectedRegion.id !== 0) {
+      if (regionId !== null && regionId !== 0) {
         const response = await fetchRegionGeometry(
-          selectedRegion.id,
-          selectedHierarchy.hierarchyId,
+          regionId,
+          hierarchyId,
         );
         if (response) {
           // Add new geometry to the cache, managing the cache size
@@ -42,8 +42,8 @@ function MapComponent() {
             regionGeometryCache.current.shift(); // Remove the oldest item
           }
           regionGeometryCache.current.push({
-            id: selectedRegion.id,
-            hierarchyId: selectedHierarchy.hierarchyId,
+            id: regionId,
+            hierarchyId,
             geometry: response.geometry,
           });
           return response.geometry;
@@ -56,6 +56,17 @@ function MapComponent() {
       setError('An error occurred while fetching region geometry.');
       return null;
     }
+  };
+
+  const fetchSelectedRegionGeometry = async () => {
+    if (selectedRegion && selectedHierarchy) {
+      const geometry = await getRegionGeometry(
+        selectedRegion.id,
+        selectedHierarchy.hierarchyId,
+      );
+      return geometry;
+    }
+    return null;
   };
 
   const initializeMap = async () => {
