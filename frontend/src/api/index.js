@@ -34,6 +34,7 @@ export const fetchSubregions = async (regionId, hierarchyId) => {
   try {
     const response = await api.get(`/api/regions/${regionId}/subregions`, { params: { hierarchyId } });
     if (response.status === 204) {
+      // TODO return empty array instead of null, Issue #189
       return null;
     }
     return response.data;
