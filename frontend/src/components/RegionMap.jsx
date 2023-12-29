@@ -58,19 +58,6 @@ function MapComponent() {
     }
   };
 
-  const fetchSelectedRegionGeometry = async () => {
-    if (selectedRegion && selectedHierarchy) {
-      const geometry = await getRegionGeometry(
-        selectedRegion.id,
-        selectedHierarchy.hierarchyId,
-      );
-      return geometry;
-    }
-    return null;
-  };
-
-  // TODO, remove eslint disable once unsed in the following commits, issue #185
-  // eslint-disable-next-line no-unused-vars
   const getVisibleRegions = async () => {
     try {
       // If region has subregions, fetch the subregions
@@ -94,23 +81,47 @@ function MapComponent() {
   const initializeMap = async () => {
     if (!mapContainer.current) return; // wait for map container to load
 
-    const polygonData = await fetchSelectedRegionGeometry();
+    const visibleRegions = await getVisibleRegions();
 
-    if (!polygonData || !polygonData.coordinates) {
-      console.log('No geometry data available for the selected region.');
+    const features = await Promise.all(visibleRegions.map(async (region) => {
+      const geometry = await getRegionGeometry(
+        region.id,
+        selectedHierarchy.hierarchyId,
+      );
+      if (geometry && geometry.coordinates) { // Ensure geometry data is valid
+        return ({
+          type: 'Feature',
+          properties: {
+            id: region.id,
+            name: region.name,
+            isSelected: region.id === selectedRegion.id,
+          },
+          geometry,
+        });
+      }
+      return null;
+    }));
+
+    // Filter out any null features due to failed geometry fetches
+    const validFeatures = features.filter((feature) => feature !== null);
+
+    if (validFeatures.length === 0) {
+      setError('No regions to display.');
       return;
     }
 
-    const bounds = turf.bbox(polygonData);
+    // Compute the bounding box for the valid features
+    const featureCollection = {
+      type: 'FeatureCollection',
+      features: validFeatures,
+    };
+    const bounds = turf.bbox(featureCollection);
     const mapBounds = new maplibregl.LngLatBounds([bounds[0], bounds[1]], [bounds[2], bounds[3]]);
+    setError(null);
 
     if (map.current) {
       // Map already exists, update the source and fit bounds
-      map.current.getSource('polygon').setData({
-        type: 'Feature',
-        properties: {},
-        geometry: polygonData,
-      });
+      map.current.getSource('polygon').setData(featureCollection);
       map.current.fitBounds(mapBounds, { padding: 50 });
     } else {
       // Map does not exist, create a new instance
@@ -126,11 +137,7 @@ function MapComponent() {
       map.current.on('load', () => {
         map.current.addSource('polygon', {
           type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: polygonData,
-          },
+          data: featureCollection,
         });
 
         map.current.addLayer({
@@ -139,8 +146,22 @@ function MapComponent() {
           source: 'polygon',
           layout: {},
           paint: {
-            'fill-color': '#088',
+            'fill-color': ['case',
+              ['==', ['get', 'isSelected'], true], '#090', // Selected region color
+              '#088', // Other region color
+            ],
             'fill-opacity': 0.8,
+          },
+        });
+        // Outline Layer for the regions
+        map.current.addLayer({
+          id: 'region-outline',
+          type: 'line',
+          source: 'polygon',
+          layout: {},
+          paint: {
+            'line-color': '#000', // Border color
+            'line-width': 2, // Border width
           },
         });
       });
