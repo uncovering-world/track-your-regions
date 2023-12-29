@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import * as turf from '@turf/turf';
 import { useNavigation } from './NavigationContext';
-import { fetchRegionGeometry } from '../api';
+import { fetchRegionGeometry, fetchSiblings, fetchSubregions } from '../api';
 
 /**
  * MapComponent initializes and displays a map using MapLibre for the currently selected region.
@@ -67,6 +67,28 @@ function MapComponent() {
       return geometry;
     }
     return null;
+  };
+
+  // TODO, remove eslint disable once unsed in the following commits, issue #185
+  // eslint-disable-next-line no-unused-vars
+  const getVisibleRegions = async () => {
+    try {
+      // If region has subregions, fetch the subregions
+      if (selectedRegion.hasSubregions) {
+        const subregions = await fetchSubregions(selectedRegion.id, selectedHierarchy.hierarchyId);
+        if (subregions === null) {
+          return [];
+        }
+        return subregions;
+      }
+      // If region does not have subregions, fetch the siblings
+      const siblings = await fetchSiblings(selectedRegion.id, selectedHierarchy.hierarchyId);
+      return siblings;
+    } catch (fetchError) {
+      console.error('Error fetching visible regions: ', fetchError);
+      setError('An error occurred while fetching visible regions.');
+      return [];
+    }
   };
 
   const initializeMap = async () => {
