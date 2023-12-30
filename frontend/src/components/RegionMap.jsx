@@ -18,6 +18,7 @@ function MapComponent() {
   const { selectedRegion, selectedHierarchy } = useNavigation();
   const regionGeometryCache = useRef([]);
   const [error, setError] = useState(null);
+  const [renderedFeatures, setRenderedFeatures] = useState([]);
 
   const getRegionGeometry = async (regionId, hierarchyId) => {
     try {
@@ -78,6 +79,28 @@ function MapComponent() {
     }
   };
 
+  const updateSelectedRegionStyle = (newSelectedRegionId) => {
+    const updatedFeatures = renderedFeatures.map((feature) => ({
+      ...feature,
+      properties: {
+        ...feature.properties,
+        isSelected: feature.properties.id === newSelectedRegionId,
+      },
+    }));
+
+    const featureCollection = {
+      type: 'FeatureCollection',
+      features: updatedFeatures,
+    };
+    const bounds = turf.bbox(featureCollection);
+    const mapBounds = new maplibregl.LngLatBounds([bounds[0], bounds[1]], [bounds[2], bounds[3]]);
+
+    if (map.current.getSource('polygon')) {
+      map.current.getSource('polygon').setData(featureCollection);
+      map.current.fitBounds(mapBounds, { padding: 50 });
+    }
+  };
+
   const initializeMap = async () => {
     if (!mapContainer.current) return; // wait for map container to load
 
@@ -99,6 +122,11 @@ function MapComponent() {
           geometry,
         });
       }
+      // Nothing to render, clean up the map
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
       return null;
     }));
 
@@ -106,9 +134,10 @@ function MapComponent() {
     const validFeatures = features.filter((feature) => feature !== null);
 
     if (validFeatures.length === 0) {
-      setError('No regions to display.');
       return;
     }
+
+    setRenderedFeatures(validFeatures);
 
     // Compute the bounding box for the valid features
     const featureCollection = {
@@ -117,7 +146,6 @@ function MapComponent() {
     };
     const bounds = turf.bbox(featureCollection);
     const mapBounds = new maplibregl.LngLatBounds([bounds[0], bounds[1]], [bounds[2], bounds[3]]);
-    setError(null);
 
     if (map.current) {
       // Map already exists, update the source and fit bounds
@@ -169,17 +197,14 @@ function MapComponent() {
   };
 
   useEffect(() => {
-    if (!map.current) {
-      initializeMap().then((r) => console.log(r));
-    }
-
-    // Always set the cleanup function to remove the map
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
+    if (map.current) {
+      const renederedIds = renderedFeatures.map((feature) => feature.properties.id);
+      if (renederedIds.includes(selectedRegion.id)) {
+        updateSelectedRegionStyle(selectedRegion.id);
+        return;
       }
-    };
+    }
+    initializeMap();
   }, [selectedRegion, selectedHierarchy]);
 
   return (
