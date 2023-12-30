@@ -5,12 +5,11 @@ import { useNavigation } from './NavigationContext';
 import { fetchRegionGeometry, fetchSiblings, fetchSubregions } from '../api';
 
 /**
- * MapComponent initializes and displays a map using MapLibre for the currently selected region.
+ * @function MapComponent
  *
- * It fetches the selected region's geometry and displays it on the map.
- * This function does not take any parameters.
+ * @description Initializes and displays a map using MapLibre for the currently selected region.
+ * @returns {JSX.Element} A div that contains either an error message or the map container.
  *
- * @return {JSX.Element} A div that contains either an error message or the map container.
  */
 function MapComponent() {
   const mapContainer = useRef(null);
