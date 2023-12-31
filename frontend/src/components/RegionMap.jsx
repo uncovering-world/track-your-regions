@@ -64,9 +64,6 @@ function MapComponent() {
       // If region has subregions, fetch the subregions
       if (selectedRegion.hasSubregions) {
         const subregions = await fetchSubregions(selectedRegion.id, selectedHierarchy.hierarchyId);
-        if (subregions === null) {
-          return [];
-        }
         return subregions;
       }
       // If region does not have subregions, fetch the siblings
