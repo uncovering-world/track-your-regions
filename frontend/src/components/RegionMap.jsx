@@ -38,12 +38,11 @@ function MapComponent() {
 
       const newRegion = fetchRegion(clickedRegion.id, selectedHierarchy.hierarchyId);
 
-      // TODO: Create a new object with the region info to set as the selected region, issue #186
       const newSelectedRegion = {
         id: clickedRegion.id,
         name: clickedRegion.name,
-        info: null, // TODO: Fetch region info, issue #186
-        hasSubregions: null, // TODO: Fetch, issue #186
+        info: null, // TODO: Add info to the region object, do in a scope of Issue  #196
+        hasSubregions: newRegion.hasSubregions,
       };
 
       setSelectedRegion(newSelectedRegion);
