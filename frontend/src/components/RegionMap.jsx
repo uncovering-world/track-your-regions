@@ -1,3 +1,10 @@
+/**
+ * This file contains the MapComponent which initializes and displays
+ * a map using MapLibre for the currently selected region.
+ *
+ * The functions within help manage map interactions such as selecting a region, fetching
+ * and displaying region data, and handling visual updates.
+ */
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import Tooltip from '@mui/material/Tooltip';
@@ -14,6 +21,12 @@ import {
  * This function does not take any parameters.
  *
  * @return {JSX.Element} A div that contains either an error message or the map container.
+ */
+/**
+ * Initializes and displays a map using MapLibre for the currently selected region.
+ * It does not take any parameters and does not return any value.
+ *
+ * @function
  */
 function MapComponent() {
   const mapContainer = useRef(null);
