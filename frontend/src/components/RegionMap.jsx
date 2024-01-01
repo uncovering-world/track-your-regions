@@ -3,7 +3,7 @@ import maplibregl from 'maplibre-gl';
 import * as turf from '@turf/turf';
 import { useNavigation } from './NavigationContext';
 import {
-  fetchRegionGeometry, fetchSiblings, fetchSubregions, fetchRootRegions,
+  fetchRegionGeometry, fetchSiblings, fetchSubregions, fetchRootRegions, fetchRegion,
 } from '../api';
 
 /**
@@ -21,6 +21,7 @@ function MapComponent() {
   const regionGeometryCache = useRef([]);
   const [error, setError] = useState(null);
   const [renderedFeatures, setRenderedFeatures] = useState([]);
+  const selectedRegionRef = useRef(selectedRegion);
 
   // Function to handle region click on the map
   const handleRegionClick = (e) => {
@@ -30,10 +31,12 @@ function MapComponent() {
 
     if (features.length > 0) {
       const clickedRegion = features[0].properties;
-      const clickedRegionId = clickedRegion.id;
 
-      // TODO, remove this console.log, it's for debugging, issue #186
-      console.log('clickedRegionId: ', clickedRegionId);
+      if (clickedRegion.id === selectedRegionRef.current.id) {
+        return;
+      }
+
+      const newRegion = fetchRegion(clickedRegion.id, selectedHierarchy.hierarchyId);
 
       // TODO: Create a new object with the region info to set as the selected region, issue #186
       const newSelectedRegion = {
@@ -235,6 +238,7 @@ function MapComponent() {
   };
 
   useEffect(() => {
+    selectedRegionRef.current = selectedRegion;
     if (map.current) {
       const renederedIds = renderedFeatures.map((feature) => feature.properties.id);
       if (renederedIds.includes(selectedRegion.id)) {
