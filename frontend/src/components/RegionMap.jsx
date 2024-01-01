@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import * as turf from '@turf/turf';
 import { useNavigation } from './NavigationContext';
-import { fetchRegionGeometry, fetchSiblings, fetchSubregions } from '../api';
+import {
+  fetchRegionGeometry, fetchSiblings, fetchSubregions, fetchRootRegions,
+} from '../api';
 
 /**
  * MapComponent initializes and displays a map using MapLibre for the currently selected region.
@@ -85,6 +87,9 @@ function MapComponent() {
   };
 
   const getVisibleRegions = async () => {
+    if (!selectedRegion.id) {
+      return fetchRootRegions(selectedHierarchy.hierarchyId);
+    }
     try {
       // If region has subregions, fetch the subregions
       if (selectedRegion.hasSubregions) {
