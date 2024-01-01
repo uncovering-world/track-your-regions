@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+import Tooltip from '@mui/material/Tooltip';
 import * as turf from '@turf/turf';
 import { useNavigation } from './NavigationContext';
 import {
@@ -22,6 +23,8 @@ function MapComponent() {
   const [error, setError] = useState(null);
   const [renderedFeatures, setRenderedFeatures] = useState([]);
   const selectedRegionRef = useRef(selectedRegion);
+  const [tooltipContent, setTooltipContent] = useState('');
+  const [tooltipOpen, setTooltipOpen] = useState(false);
 
   // Function to handle region click on the map
   const handleRegionClick = (e) => {
@@ -226,12 +229,24 @@ function MapComponent() {
       // Set up click event handler for selecting regions
       map.current.on('click', 'polygon', handleRegionClick);
 
-      // Optional: Change the cursor to a pointer when over clickable regions
-      map.current.on('mouseenter', 'polygon', () => {
-        map.current.getCanvas().style.cursor = 'pointer';
+      // Show a tooltip with the region name when hovering over regions
+      map.current.on('mousemove', 'polygon', (e) => {
+        const featuresUnder = map.current.queryRenderedFeatures(e.point, {
+          layers: ['polygon'],
+        });
+        if (featuresUnder.length > 0) {
+          const hoveredRegion = featuresUnder[0].properties;
+          map.current.getCanvas().style.cursor = 'pointer';
+          setTooltipContent(hoveredRegion.name);
+          setTooltipOpen(true);
+        } else {
+          setTooltipOpen(false);
+        }
       });
+
       map.current.on('mouseleave', 'polygon', () => {
         map.current.getCanvas().style.cursor = '';
+        setTooltipOpen(false);
       });
     }
   };
@@ -251,7 +266,9 @@ function MapComponent() {
   return (
     <div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <div ref={mapContainer} style={{ width: '100%', height: '400px' }} />
+      <Tooltip title={tooltipContent} open={tooltipOpen} placement="right" followCursor>
+        <div ref={mapContainer} style={{ width: '100%', height: '400px' }} />
+      </Tooltip>
     </div>
   );
 }
