@@ -15,10 +15,35 @@ import { fetchRegionGeometry, fetchSiblings, fetchSubregions } from '../api';
 function MapComponent() {
   const mapContainer = useRef(null);
   const map = useRef(null);
-  const { selectedRegion, selectedHierarchy } = useNavigation();
+  const { selectedRegion, selectedHierarchy, setSelectedRegion } = useNavigation();
   const regionGeometryCache = useRef([]);
   const [error, setError] = useState(null);
   const [renderedFeatures, setRenderedFeatures] = useState([]);
+
+  // Function to handle region click on the map
+  const handleRegionClick = (e) => {
+    const features = map.current.queryRenderedFeatures(e.point, {
+      layers: ['polygon'],
+    });
+
+    if (features.length > 0) {
+      const clickedRegion = features[0].properties;
+      const clickedRegionId = clickedRegion.id;
+
+      // TODO, remove this console.log, it's for debugging, issue #186
+      console.log('clickedRegionId: ', clickedRegionId);
+
+      // TODO: Create a new object with the region info to set as the selected region, issue #186
+      const newSelectedRegion = {
+        id: clickedRegion.id,
+        name: clickedRegion.name,
+        info: null, // TODO: Fetch region info, issue #186
+        hasSubregions: null, // TODO: Fetch, issue #186
+      };
+
+      setSelectedRegion(newSelectedRegion);
+    }
+  };
 
   const getRegionGeometry = async (regionId, hierarchyId) => {
     try {
@@ -189,6 +214,17 @@ function MapComponent() {
             'line-width': 2, // Border width
           },
         });
+      });
+
+      // Set up click event handler for selecting regions
+      map.current.on('click', 'polygon', handleRegionClick);
+
+      // Optional: Change the cursor to a pointer when over clickable regions
+      map.current.on('mouseenter', 'polygon', () => {
+        map.current.getCanvas().style.cursor = 'pointer';
+      });
+      map.current.on('mouseleave', 'polygon', () => {
+        map.current.getCanvas().style.cursor = '';
       });
     }
   };
