@@ -137,7 +137,15 @@ function MapComponent() {
       type: 'FeatureCollection',
       features: updatedFeatures,
     };
-    const bounds = turf.bbox(featureCollection);
+    const seletctedRegionFeature = updatedFeatures.find(
+      (feature) => feature.properties.id === newSelectedRegionId,
+    );
+    let bounds;
+    if (seletctedRegionFeature) {
+      bounds = turf.bbox(seletctedRegionFeature);
+    } else {
+      bounds = turf.bbox(featureCollection);
+    }
     const mapBounds = new maplibregl.LngLatBounds([bounds[0], bounds[1]], [bounds[2], bounds[3]]);
 
     if (map.current.getSource('polygon')) {
@@ -189,7 +197,16 @@ function MapComponent() {
       type: 'FeatureCollection',
       features: validFeatures,
     };
-    const bounds = turf.bbox(featureCollection);
+
+    const seletctedRegionFeature = validFeatures.find(
+      (feature) => feature.properties.id === selectedRegion.id,
+    );
+    let bounds;
+    if (seletctedRegionFeature) {
+      bounds = turf.bbox(seletctedRegionFeature);
+    } else {
+      bounds = turf.bbox(featureCollection);
+    }
     const mapBounds = new maplibregl.LngLatBounds([bounds[0], bounds[1]], [bounds[2], bounds[3]]);
 
     if (map.current) {
