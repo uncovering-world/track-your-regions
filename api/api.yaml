@@ -25,6 +25,9 @@ paths:
   /regions/root:
     get:
       summary: Retrieve all root regions
+      description: |
+        Retrieve all root regions for a given hierarchy.
+        If no hierarchy is specified, the default hierarchy is used.
       parameters:
         - name: hierarchyId
           in: query
@@ -50,6 +53,9 @@ paths:
   /regions/{regionId}:
     get:
       summary: Retrieve information about a specific region
+      description: |
+        Retrieve information about a specific region, including its name, parent region, and whether it has subregions.
+        If the region is a root region, the parent region is null.
       parameters:
         - name: regionId
           in: path
@@ -81,6 +87,9 @@ paths:
   /regions/{regionId}/subregions:
     get:
       summary: Retrieve subregions for a specific region
+      description: |
+        Retrieve subregions for a specific region.
+        If the region has no subregions, a 204 response is returned.
       parameters:
         - name: regionId
           in: path
@@ -121,6 +130,9 @@ paths:
   /regions/{regionId}/ancestors:
     get:
       summary: Retrieve the parent regions for a specific region
+      description: |
+        Retrieve the parent regions for a specific region, including the region itself.
+        The regions are returned in order, with the root region first and the region itself last.
       parameters:
         - name: regionId
           in: path
@@ -152,6 +164,11 @@ paths:
   /regions/{regionId}/geometry:
     get:
       summary: Retrieve the geometry for a specific region
+      description: |
+        Retrieve the geometry for a specific region.
+        If the region has no geometry, the resolution of empty geometries is controlled by the `resolveEmpty`
+        query parameter. If `resolveEmpty` is true, the geometry of the region is computed by aggregating the
+        geometries of the subregions. If `resolveEmpty` is false, a 204 response is returned.
       parameters:
         - name: regionId
           in: path
@@ -193,6 +210,9 @@ paths:
   /regions/hierarchies:
     get:
       summary: List the available hierarchies
+      description: |
+        List the available hierarchies.
+        The default hierarchy is always included in the list.
       responses:
         '200':
           description: List of available hierarchies
@@ -207,6 +227,11 @@ paths:
   /regions/search:
     get:
       summary: Search for regions by name
+      description: |
+        Search for regions by name.
+        The search is case-insensitive and matches partial words.
+        The search is performed on the name of the region and all its ancestors.
+        The results are ordered by the relevance of the match, with the most relevant match first.
       parameters:
         - name: query
           required: true
@@ -238,6 +263,8 @@ paths:
   /regions/{regionId}/siblings:
     get:
       summary: Retrieve the sibling regions for a specific region
+      description: |
+        Retrieve the sibling regions for a specific region, including the region itself.
       parameters:
         - name: regionId
           in: path
