@@ -1,0 +1,8 @@
+{
+  "devDependencies": {
+    "@stoplight/spectral-cli": "^6.11.0"
+  },
+  "scripts": {
+    "lint": "spectral lint api.yaml"
+  }
+}
