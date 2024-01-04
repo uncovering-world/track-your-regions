@@ -195,6 +195,7 @@ paths:
       summary: Search for regions by name
       parameters:
         - name: query
+          required: true
           in: query
           schema:
             type: string
