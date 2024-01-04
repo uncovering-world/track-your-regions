@@ -2,6 +2,10 @@ openapi: 3.1.0
 info:
   title: Region Tracking API
   version: 0.0.1
+  contact:
+    name: Uncovering World Support
+    url: https://uncovering.world
+    email: info@uncovering.world
 
 servers:
   - url: http://localhost:3000
