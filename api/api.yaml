@@ -1,11 +1,15 @@
 openapi: 3.1.0
 info:
-  title: Region Tracking API
+  title: Track Your Regions API
   version: 0.0.1
   contact:
     name: Uncovering World Support
     url: https://uncovering.world
     email: info@uncovering.world
+  description: |
+    The Track Your Regions API provides access to the region data used by the Uncovering World platform.
+    It gives access to the regions (and related information) and to the other data that is stored in the platform.
+    The API is currently in development and not yet available for public use.
 
 servers:
   - url: http://localhost:3000
