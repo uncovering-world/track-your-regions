@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ./backend/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('./backend/package-lock.json') }}
+          key: ${{ runner.os }}-back-node-${{ hashFiles('./backend/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-back-node-
 
