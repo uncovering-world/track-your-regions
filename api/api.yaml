@@ -24,6 +24,7 @@ paths:
   # Retrieve root regions (regions without a parent)
   /regions/root:
     get:
+      operationId: getRootRegions
       summary: Retrieve all root regions
       description: |
         Retrieve all root regions for a given hierarchy.
@@ -52,6 +53,7 @@ paths:
   # Retrieve information about a specific region (root or subregion)
   /regions/{regionId}:
     get:
+      operationId: getRegion
       summary: Retrieve information about a specific region
       description: |
         Retrieve information about a specific region, including its name, parent region, and whether it has subregions.
@@ -86,6 +88,7 @@ paths:
   # Retrieve subregions for a specific region
   /regions/{regionId}/subregions:
     get:
+      operationId: getSubregions
       summary: Retrieve subregions for a specific region
       description: |
         Retrieve subregions for a specific region.
@@ -129,6 +132,7 @@ paths:
   # Retrieve the parent regions for a specific region
   /regions/{regionId}/ancestors:
     get:
+      operationId: getRegionAncestors
       summary: Retrieve the parent regions for a specific region
       description: |
         Retrieve the parent regions for a specific region, including the region itself.
@@ -163,6 +167,7 @@ paths:
 
   /regions/{regionId}/geometry:
     get:
+      operationId: getRegionGeometry
       summary: Retrieve the geometry for a specific region
       description: |
         Retrieve the geometry for a specific region.
@@ -209,6 +214,7 @@ paths:
   # List the available hierarchies
   /regions/hierarchies:
     get:
+      operationId: getHierarchies
       summary: List the available hierarchies
       description: |
         List the available hierarchies.
@@ -226,6 +232,7 @@ paths:
   # Search for regions by name
   /regions/search:
     get:
+      operationId: searchRegions
       summary: Search for regions by name
       description: |
         Search for regions by name.
@@ -262,6 +269,7 @@ paths:
 
   /regions/{regionId}/siblings:
     get:
+      operationId: getRegionSiblings
       summary: Retrieve the sibling regions for a specific region
       description: |
         Retrieve the sibling regions for a specific region, including the region itself.
