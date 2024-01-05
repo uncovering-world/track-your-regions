@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ./api/node_modules
-          key: ${{ runner.os }}-api-node-${{ hashFiles('./api/package-lock.json') }}
+          key: ${{ runner.os }}-api-node-${{ hashFiles('./api/package.json') }}
           restore-keys: |
             ${{ runner.os }}-api-node-
 
