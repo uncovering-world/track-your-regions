@@ -17,6 +17,14 @@ servers:
   - url: https://api.uncovering.world
     description: Production server, not yet available
 
+tags:
+  - name: regions
+    description: Operations related to regions and divisions
+  - name: hierarchy
+    description: Operations related to hierarchies
+  - name: geometry
+    description: Operations related to region geometry
+
 paths:
 
   # Region endpoints
@@ -25,6 +33,7 @@ paths:
   /regions/root:
     get:
       operationId: getRootRegions
+      tags: [regions]
       summary: Retrieve all root regions
       description: |
         Retrieve all root regions for a given hierarchy.
@@ -54,6 +63,7 @@ paths:
   /regions/{regionId}:
     get:
       operationId: getRegion
+      tags: [regions]
       summary: Retrieve information about a specific region
       description: |
         Retrieve information about a specific region, including its name, parent region, and whether it has subregions.
@@ -89,6 +99,7 @@ paths:
   /regions/{regionId}/subregions:
     get:
       operationId: getSubregions
+      tags: [regions]
       summary: Retrieve subregions for a specific region
       description: |
         Retrieve subregions for a specific region.
@@ -133,6 +144,7 @@ paths:
   /regions/{regionId}/ancestors:
     get:
       operationId: getRegionAncestors
+      tags: [regions]
       summary: Retrieve the parent regions for a specific region
       description: |
         Retrieve the parent regions for a specific region, including the region itself.
@@ -168,6 +180,7 @@ paths:
   /regions/{regionId}/geometry:
     get:
       operationId: getRegionGeometry
+      tags: [regions, geometry]
       summary: Retrieve the geometry for a specific region
       description: |
         Retrieve the geometry for a specific region.
@@ -215,6 +228,7 @@ paths:
   /regions/hierarchies:
     get:
       operationId: getHierarchies
+      tags: [regions, hierarchy]
       summary: List the available hierarchies
       description: |
         List the available hierarchies.
@@ -233,6 +247,7 @@ paths:
   /regions/search:
     get:
       operationId: searchRegions
+      tags: [regions]
       summary: Search for regions by name
       description: |
         Search for regions by name.
@@ -270,6 +285,7 @@ paths:
   /regions/{regionId}/siblings:
     get:
       operationId: getRegionSiblings
+      tags: [regions]
       summary: Retrieve the sibling regions for a specific region
       description: |
         Retrieve the sibling regions for a specific region, including the region itself.
