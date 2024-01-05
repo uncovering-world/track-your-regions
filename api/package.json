@@ -3,6 +3,6 @@
     "@stoplight/spectral-cli": "^6.11.0"
   },
   "scripts": {
-    "lint": "spectral lint api.yaml"
+    "lint": "spectral lint api.yaml --fail-severity warn"
   }
 }
