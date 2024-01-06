@@ -276,7 +276,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Region'
+                  $ref: '#/components/schemas/SearchResult'
         '204':
           description: No regions match the query
         '400':
@@ -337,6 +337,17 @@ components:
           type: integer
         hasSubregions:
           type: boolean
+
+    SearchResult:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        path:
+          type: string
+          description: A ' > ' delimited string representing the hierarchical path of the region.
 
     CRS:
       type: object
