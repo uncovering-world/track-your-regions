@@ -132,7 +132,7 @@ paths:
               schema:
                 type: array
                 items:
-                $ref: '#/components/schemas/Region'
+                  $ref: '#/components/schemas/Region'
         '204':
           description: Region has no subregions
         '400':
