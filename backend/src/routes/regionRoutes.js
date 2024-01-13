@@ -1,6 +1,8 @@
 const express = require('express');
 const { check, query, validationResult } = require('express-validator');
 const regionController = require('../controllers/regionController');
+const { getDataTypeRange } = require('../utils/dataTypes');
+const { Hierarchy, Region } = require('../models');
 
 const router = express.Router();
 
@@ -13,7 +15,9 @@ router.get(
 router.get(
   '/root',
   ...[
-    check('hierarchyId').optional().isInt().withMessage('Hierarchy ID must be an integer'),
+    check('hierarchyId').optional().isInt(
+      { min: 0, max: getDataTypeRange(Hierarchy, 'hierarchyId').max },
+    ).withMessage('Hierarchy ID must be valid non-negative integer'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -29,7 +33,9 @@ router.get(
   '/search',
   [
     query('query').isString().withMessage('Query must be a string'),
-    query('hierarchyId').optional().isInt().withMessage('Hierarchy ID must be an integer'),
+    query('hierarchyId').optional().isInt(
+      { min: 0, max: getDataTypeRange(Hierarchy, 'hierarchyId').max },
+    ).withMessage('Hierarchy ID must be a valid non-negative integer'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -44,8 +50,12 @@ router.get(
 router.get(
   '/:regionId',
   ...[
-    check('regionId').isInt().withMessage('Region ID must be an integer'),
-    check('hierarchyId').optional().isInt().withMessage('Hierarchy ID must be an integer'),
+    check('regionId').isInt(
+      { min: 0, max: getDataTypeRange(Region, 'id').max },
+    ).withMessage('Region ID must be a valid non-negative integer'),
+    check('hierarchyId').optional().isInt(
+      { min: 0, max: getDataTypeRange(Hierarchy, 'hierarchyId').max },
+    ).withMessage('Hierarchy ID must be a valid non-negative integer'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -59,9 +69,13 @@ router.get(
 router.get(
   '/:regionId/subregions',
   ...[
-    check('regionId').isInt().withMessage('Region ID must be an integer'),
+    check('regionId').isInt(
+      { min: 0, max: getDataTypeRange(Region, 'id').max },
+    ).withMessage('Region ID must be a valid non-negative integer'),
     query('getAll').optional().isBoolean().withMessage('getAll must be a boolean'),
-    query('hierarchyId').optional().isInt().withMessage('Hierarchy ID must be an integer'),
+    query('hierarchyId').optional().isInt(
+      { min: 0, max: getDataTypeRange(Hierarchy, 'hierarchyId').max },
+    ).withMessage('Hierarchy ID must be a valid non-negative integer'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -76,7 +90,9 @@ router.get(
 router.get(
   '/:regionId/ancestors',
   ...[
-    check('regionId').isInt().withMessage('Region ID must be an integer'),
+    check('regionId').isInt(
+      { min: 0, max: getDataTypeRange(Region, 'id').max },
+    ).withMessage('Region ID must be a valid non-negative integer'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -91,7 +107,9 @@ router.get(
 router.get(
   '/:regionId/geometry',
   ...[
-    check('regionId').isInt().withMessage('Region ID must be an integer'),
+    check('regionId').isInt(
+      { min: 0, max: getDataTypeRange(Region, 'id').max },
+    ).withMessage('Region ID must be a valid non-negative integer'),
     check('resolveEmpty').optional().isBoolean().withMessage('resolveEmpty must be a boolean'),
   ],
   async (req, res) => {
@@ -107,8 +125,12 @@ router.get(
 router.get(
   '/:regionId/siblings',
   ...[
-    check('regionId').isInt().withMessage('Region ID must be an integer'),
-    check('hierarchyId').optional().isInt().withMessage('Hierarchy ID must be an integer'),
+    check('regionId').isInt(
+      { min: 0, max: getDataTypeRange(Region, 'id').max },
+    ).withMessage('Region ID must be a valid non-negative integer'),
+    check('hierarchyId').optional().isInt(
+      { min: 0, max: getDataTypeRange(Hierarchy, 'hierarchyId').max },
+    ).withMessage('Hierarchy ID must be a valid non-negative integer'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
