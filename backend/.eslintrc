@@ -10,5 +10,8 @@
     "files": ["*.md"],
     "parser": "eslint-plugin-markdownlint/parser",
     "extends": ["plugin:markdownlint/recommended"]
-  }]
+  }],
+  "parserOptions": {
+    "ecmaVersion": 2020 // Need to use BigInt
+  }
 }
