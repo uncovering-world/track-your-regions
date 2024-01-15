@@ -110,6 +110,9 @@ router.get(
     check('regionId').isInt(
       { min: 0, max: getDataTypeRange(Region, 'id').max },
     ).withMessage('Region ID must be a valid non-negative integer'),
+    check('hierarchyId').optional().isInt(
+      { min: 0, max: getDataTypeRange(Hierarchy, 'hierarchyId').max },
+    ).withMessage('Hierarchy ID must be a valid non-negative integer'),
     check('resolveEmpty').optional().isBoolean().withMessage('resolveEmpty must be a boolean'),
   ],
   async (req, res) => {
