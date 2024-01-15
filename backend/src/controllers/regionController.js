@@ -185,7 +185,7 @@ async function getSubregions(regionId, hierarchyId, getAll) {
     }
 
     if (subregions.length === 0) {
-      return { data: [], message: 'Region has no subregions', status: 202 };
+      return { data: [], message: 'Region has no subregions', status: 204 };
     }
 
     return { data: subregions, status: 200 };
