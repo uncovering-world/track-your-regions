@@ -10,8 +10,8 @@ PROJECT_NAME = tyr
 # Default environment file
 ENV_FILE = .env.development
 
-# Docker Compose command with default environment file
-DC = docker-compose --env-file $(ENV_FILE)
+# Determine the Docker Compose command based on the Docker version
+export DC := $(shell command -v docker >/dev/null && docker --version | awk '{print $$3}' | cut -d'.' -f1,2 | sed 's/,//g' | (read v; if [ $$(echo "$$v >= 20.10" | bc -l) -eq 1 ]; then echo "docker compose --env-file $(ENV_FILE)"; else echo "docker-compose --env-file $(ENV_FILE)"; command -v docker-compose >/dev/null || { echo "Error: Docker Compose is not installed." >&2; exit 1; }; fi))
 
 # Required environment variables
 REQUIRED_ENV_VARS = DB_NAME DB_USER DB_PASSWORD GADM_FILE POSTGIS_VERSION
