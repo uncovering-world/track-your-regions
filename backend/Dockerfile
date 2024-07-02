@@ -1,5 +1,5 @@
 # Use the official Node.js image
-FROM node:21
+FROM node:22.2-bookworm-slim
 
 # Set working directory
 WORKDIR /usr/src/app
