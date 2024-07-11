@@ -19,7 +19,7 @@ REQUIRED_ENV_VARS = DB_NAME DB_USER DB_PASSWORD GADM_FILE POSTGIS_VERSION
 # ---- Environment Checks ----
 check-env:
 	@if [ ! -f $(ENV_FILE) ]; then \
-		echo "Error: .env file is missing. Initialize it from .env.example."; \
+		echo "Error: .env.development file is missing. Initialize it from .env.development.example."; \
 		exit 1; \
 	fi
 	@for var in $(REQUIRED_ENV_VARS); do \
@@ -86,7 +86,7 @@ reinit-db: check-gadm-file clean-volume init-db
 stop:
 	$(DC) stop
 
-build: check-env
+build: check-env check-gadm-file
 	$(DC) build
 
 run: check-env
