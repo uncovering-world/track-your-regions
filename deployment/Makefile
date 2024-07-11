@@ -86,7 +86,7 @@ reinit-db: check-gadm-file clean-volume init-db
 stop:
 	$(DC) stop
 
-build: check-env
+build: check-env check-gadm-file
 	$(DC) build
 
 run: check-env
