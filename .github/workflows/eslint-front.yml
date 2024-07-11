@@ -45,8 +45,6 @@ jobs:
         with:
           path: ./frontend/node_modules
           key: ${{ runner.os }}-front-node-${{ hashFiles('./frontend/package.json') }}
-          restore-keys: |
-           ${{ runner.os }}-front-node-
 
       - name: Install dependencies
         run: npm install

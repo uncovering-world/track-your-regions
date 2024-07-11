@@ -45,8 +45,6 @@ jobs:
         with:
           path: ./backend/node_modules
           key: ${{ runner.os }}-back-node-${{ hashFiles('./backend/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-back-node-
 
       - name: Install dependencies
         run: npm install
