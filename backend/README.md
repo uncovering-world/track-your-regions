@@ -56,7 +56,6 @@ npm run lint:fix
 ├── test/                        # Test files
 ├── Dockerfile                   # Dockerfile for containerization
 │                                # (for docker-compose use only)
-├── test/                        # Test files
 ├── package.json                 # Project metadata and dependencies
 └── README.md                    # Project documentation
 ```
