@@ -97,7 +97,7 @@ npm start
 ## Available Scripts
 
 - `npm start`: Starts the development server.
-- `npm build`: Builds the production version of the app.
+- `npm run build`: Builds the production version of the app.
 - `npm test`: Run tests (currently not specified).
 - `npm eject`: Ejects the setup (Note: this is a one-way operation).
 - `npm run lint`: Lints the codebase.
