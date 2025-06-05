@@ -56,7 +56,7 @@ aborted.
 #### Using GitHub Actions
 
 We also use GitHub Actions to enforce this rule. The action is defined
-in `.github/workflows/directory_check.yml`.
+in `.github/workflows/dirs-check.yml`.
 
 This action runs automatically on every push to the `main` branch and on every
 pull request targeting the `main` branch. If the changes in the push or pull
