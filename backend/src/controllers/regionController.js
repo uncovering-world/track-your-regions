@@ -118,7 +118,7 @@ exports.searchRegions = async (req, res) => {
     }));
 
     if (result.length === 0) {
-      return res.status(204).json({ message: 'No regions found' });
+      return res.sendStatus(204);
     }
 
     return res.status(200).json(result);
@@ -185,7 +185,7 @@ async function getSubregions(regionId, hierarchyId, getAll) {
     }
 
     if (subregions.length === 0) {
-      return { data: [], message: 'Region has no subregions', status: 204 };
+      return { data: [], status: 204 };
     }
 
     return { data: subregions, status: 200 };
@@ -301,11 +301,11 @@ exports.getGeometry = async (req, res) => {
   geometries = geometries.filter((g) => g != null);
 
   if (geometries.length === 0) {
-    return res.status(204).json({ message: 'No geometries found' });
+    return res.sendStatus(204);
   }
 
   if (!allHasGeometry) {
-    return res.status(204).json({ message: 'Not all geometries are available' });
+    return res.sendStatus(204);
   }
 
   // Combine all geometries into a single MultiPolygon
@@ -401,6 +401,9 @@ exports.getSubregions = async (req, res) => {
   const hierarchyId = req.query.hierarchyId || 1;
 
   const subregions = await getSubregions(regionId, hierarchyId, getAll);
+  if (subregions.status === 204) {
+    return res.sendStatus(204);
+  }
   const result = subregions.data ? subregions.data.map(
     (r) => r.toApiFormat(),
   ) : { message: subregions.message };

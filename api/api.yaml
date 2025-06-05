@@ -134,7 +134,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/Region'
         '204':
-          description: Region has no subregions
+          description: Region has no subregions. No content is returned.
         '400':
           description: Bad request
         '404':
@@ -218,7 +218,7 @@ paths:
                   geometry:
                     $ref: '#/components/schemas/MultiPolygonGeometry'
         '204':
-          description: Region has no geometry
+          description: Region has no geometry. No content is returned.
         '400':
           description: Bad request
         '404':
@@ -278,7 +278,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/SearchResult'
         '204':
-          description: No regions match the query
+          description: No regions match the query. No content is returned.
         '400':
           description: Bad request
 
