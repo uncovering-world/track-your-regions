@@ -8,7 +8,7 @@ function Search() {
   const [searchResults, setSearchResults] = useState([]);
   const [inputValue, setInputValue] = useState({});
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const { selectedRegion, setSelectedRegion, selectedHierarchyId } = useNavigation();
+  const { selectedRegion, setSelectedRegion, selectedHierarchy } = useNavigation();
   const prevSelectedRegion = useRef();
 
   // Returns an object of the form:
@@ -63,7 +63,10 @@ function Search() {
     const fetchResults = async () => {
       if (searchTerm.name.length > 3 || searchTerm.force) {
         try {
-          const results = await fetchSearchResults(searchTerm.name);
+          const results = await fetchSearchResults(
+            searchTerm.name,
+            selectedHierarchy.hierarchyId,
+          );
           if (active) {
             setSearchResults(results);
             if (results.length > 0) {
@@ -114,7 +117,7 @@ function Search() {
       active = false;
       clearTimeout(timerId);
     };
-  }, [searchTerm, selectedRegion]);
+  }, [searchTerm, selectedRegion, selectedHierarchy]);
 
   // Handle Enter key press
   const handleKeyPress = async (event) => {
@@ -155,7 +158,10 @@ function Search() {
           return;
         }
         const selectedItem = searchResults.find((region) => region.id === newValue.id);
-        const region = await fetchRegion(selectedItem.id, selectedHierarchyId);
+        const region = await fetchRegion(
+          selectedItem.id,
+          selectedHierarchy.hierarchyId,
+        );
         const newRegion = {
           id: region.id,
           name: region.name,
