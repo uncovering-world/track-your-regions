@@ -17,7 +17,7 @@ This directory contains scripts and configurations for deploying the Region Trac
 - Automated database initialization based on the GADM file
 - Hierarchical data processing for improved performance
 - Indexing on critical fields to enhance query speeds
-- Option to toggle the inclusion of geometric data for faster initial setup
+- Includes geometric data in the initial setup
 
 ### Usage
 
@@ -36,21 +36,13 @@ The application supports loading environment variables from several `.env*` file
 * `.env.production` - Production environment: Contains defaults for the production environment.
 * `.env.local` - Local overrides: This file is intended for environment variables that should not be committed to the version control system, typically used for secrets or local overrides.
 
-2. Initialize the Postgres database with the core hierarchy:
+2. Initialize the Postgres database with the core hierarchy and geometry:
 
    ```bash
    make init-db
    ```
 
-   This will exclude geometric data by default for a quicker setup.
-
-3. To include geometric data after the hierarchy is established, run:
-
-   ```bash
-   make init-db-geom
-   ```
-
-4. If you need to re-initialize the database, use:
+3. If you need to re-initialize the database, use:
 
    ```bash
    make reinit-db
@@ -75,12 +67,18 @@ It will pull the prepopulated database image from the GitHub Container Registry 
 will also initialize the database and create a volume for the database data, so the container can be stopped
 and started without losing data.
 
-### Creating  the Prepopulated Database Container
+### Creating the Prepopulated Database Image
 
-To create and push the prepopulated database container, use the following command:
+To build and push the prepopulated database image, run:
 
 ```bash
-make push-prepopulated-db-container-cycle
+make push-db-image
+```
+
+You can verify the entire cycle of building, pushing and starting the container with:
+
+```bash
+make test-prepopulated-db-container-cycle
 ```
 
 ### Flags and Makefile Targets for Prepopulated Database Container
