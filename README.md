@@ -13,7 +13,17 @@ enriching.
 We maintain a [wiki](https://github.com/OhmSpectator/track-your-regions/wiki)
 that tracks all the design documents related to this project. This is a central
 place where you can find detailed explanations, architecture decisions, and
-guidelines. 
+guidelines.
+
+## Features
+
+### Views - Region Grouping Functionality
+
+The Views feature allows you to create custom groupings of regions based on
+specific criteria. This enables organizing regions by themes, geography,
+culture, or any other categorization that makes sense for your use case.
+
+See [docs/VIEWS.md](docs/VIEWS.md) for detailed documentation. 
 
 ## Project Structure
 
@@ -28,6 +38,8 @@ This repository is organized as a monorepo containing several key components:
   and backend.
 - **`deployment/`**: This directory is planned to include scripts for deploying
   the service, managing configurations, and orchestrating various components.
+- **`docs/`**: This directory contains documentation for various features and
+  functionality of the application.
 
 ## Future Considerations
 
