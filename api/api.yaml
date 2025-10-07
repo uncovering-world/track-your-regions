@@ -24,6 +24,8 @@ tags:
     description: Operations related to hierarchies
   - name: geometry
     description: Operations related to region geometry
+  - name: views
+    description: Operations related to region grouping views
 
 paths:
 
@@ -317,6 +319,299 @@ paths:
         '404':
           description: Region not found
 
+  # View endpoints
+
+  # Retrieve all views
+  /views:
+    get:
+      operationId: getViews
+      tags: [views]
+      summary: Retrieve all views
+      description: |
+        Retrieve all views for a given hierarchy.
+        Views are groupings of regions based on specific criteria.
+      parameters:
+        - name: hierarchyId
+          in: query
+          required: false
+          description: |
+            The hierarchy to retrieve views for.
+            If not specified, the default hierarchy is used.
+          schema:
+            type: integer
+        - name: includeInactive
+          in: query
+          required: false
+          description: |
+            Whether to include inactive views in the results.
+            Defaults to false.
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of views
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/View'
+        '204':
+          description: No views found
+        '400':
+          description: Bad request
+
+    post:
+      operationId: createView
+      tags: [views]
+      summary: Create a new view
+      description: |
+        Create a new view for grouping regions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - hierarchyId
+              properties:
+                name:
+                  type: string
+                  description: Name of the view
+                description:
+                  type: string
+                  description: Description of the view
+                hierarchyId:
+                  type: integer
+                  description: The hierarchy this view belongs to
+                isActive:
+                  type: boolean
+                  description: Whether the view is active
+                  default: true
+      responses:
+        '201':
+          description: View created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/View'
+        '400':
+          description: Bad request
+        '404':
+          description: Hierarchy not found
+        '500':
+          description: Internal server error
+
+  # Retrieve a specific view
+  /views/{viewId}:
+    get:
+      operationId: getViewById
+      tags: [views]
+      summary: Retrieve a specific view
+      description: |
+        Retrieve information about a specific view by its ID.
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: View information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/View'
+        '404':
+          description: View not found
+        '500':
+          description: Internal server error
+
+    put:
+      operationId: updateView
+      tags: [views]
+      summary: Update a view
+      description: |
+        Update an existing view's information.
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name of the view
+                description:
+                  type: string
+                  description: Description of the view
+                isActive:
+                  type: boolean
+                  description: Whether the view is active
+      responses:
+        '200':
+          description: View updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/View'
+        '400':
+          description: Bad request
+        '404':
+          description: View not found
+        '500':
+          description: Internal server error
+
+    delete:
+      operationId: deleteView
+      tags: [views]
+      summary: Delete a view
+      description: |
+        Delete a view and all its region associations.
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: View deleted successfully
+        '404':
+          description: View not found
+        '500':
+          description: Internal server error
+
+  # Get regions in a view
+  /views/{viewId}/regions:
+    get:
+      operationId: getViewRegions
+      tags: [views]
+      summary: Get all regions in a view
+      description: |
+        Retrieve all regions that belong to a specific view.
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of regions in the view
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Region'
+        '204':
+          description: No regions found in this view
+        '404':
+          description: View not found
+        '500':
+          description: Internal server error
+
+    post:
+      operationId: addRegionsToView
+      tags: [views]
+      summary: Add regions to a view
+      description: |
+        Add one or more regions to a view.
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - regions
+              properties:
+                regions:
+                  type: array
+                  description: Array of regions to add to the view
+                  items:
+                    type: object
+                    required:
+                      - regionId
+                    properties:
+                      regionId:
+                        type: integer
+                        description: ID of the region to add
+                      hierarchyId:
+                        type: integer
+                        description: Hierarchy ID (optional, uses view's hierarchy if not specified)
+      responses:
+        '201':
+          description: Regions added to view successfully
+        '400':
+          description: Bad request
+        '404':
+          description: View or region not found
+        '500':
+          description: Internal server error
+
+    delete:
+      operationId: removeRegionsFromView
+      tags: [views]
+      summary: Remove regions from a view
+      description: |
+        Remove one or more regions from a view.
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - regions
+              properties:
+                regions:
+                  type: array
+                  description: Array of regions to remove from the view
+                  items:
+                    type: object
+                    required:
+                      - regionId
+                    properties:
+                      regionId:
+                        type: integer
+                        description: ID of the region to remove
+                      hierarchyId:
+                        type: integer
+                        description: Hierarchy ID (optional, uses view's hierarchy if not specified)
+      responses:
+        '200':
+          description: Regions removed from view successfully
+        '400':
+          description: Bad request
+        '404':
+          description: View not found
+        '500':
+          description: Internal server error
+
 # Shared components
 
 components:
@@ -387,6 +682,7 @@ components:
 
     MultiPolygonGeometry:
       type: object
+      description: A GeoJSON object representing the geometry of the region as a MultiPolygon.
       properties:
         type:
           type: string
@@ -399,7 +695,6 @@ components:
           description: An array of Polygons that make up the MultiPolygon.
         crs:
           $ref: '#/components/schemas/CRS'
-        description: A GeoJSON object representing the geometry of the region as a MultiPolygon.
 
     Hierarchy:
       type: object
@@ -408,3 +703,27 @@ components:
           type: integer
         name:
           type: string
+
+    View:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the view
+        name:
+          type: string
+          description: Name of the view
+        description:
+          type: string
+          description: Description of the view
+        hierarchyId:
+          type: integer
+          description: The hierarchy this view belongs to
+        isActive:
+          type: boolean
+          description: Whether the view is active
+      required:
+        - id
+        - name
+        - hierarchyId
+        - isActive
