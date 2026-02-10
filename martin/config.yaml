@@ -1,0 +1,26 @@
+# Martin Vector Tile Server Configuration
+# https://maplibre.org/martin/
+#
+# This configuration auto-discovers tables and functions from PostGIS.
+# Functions use the `query_params json` pattern for parameters.
+#
+# Example tile requests:
+#   /tile_gadm_root_divisions/3/4/2
+#   /tile_world_view_root_regions/3/4/2?world_view_id=5
+#   /tile_region_subregions/5/16/10?parent_id=15
+
+# Listen address
+listen_addresses: '0.0.0.0:3000'
+
+# Database connection
+postgres:
+  # Connection string from environment variable
+  connection_string: ${DATABASE_URL}
+
+  # Auto-discover tables and functions
+  auto_publish:
+    tables: true
+    functions: true
+
+  # Default pool settings
+  pool_size: 20
