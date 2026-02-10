@@ -1,3 +1,0 @@
-openai
-psycopg2-binary
-python-dotenv

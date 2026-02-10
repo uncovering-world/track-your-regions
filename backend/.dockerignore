@@ -1,6 +1,0 @@
-node_modules
-.env.development
-.env.example
-Dockerfile
-package-lock.json
-README.md

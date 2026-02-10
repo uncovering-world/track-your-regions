@@ -1,0 +1,94 @@
+services:
+  db:
+    image: postgis/postgis:${POSTGIS_VERSION:-16-3.4}
+    container_name: ${STACK_NAME:-tyr-ng}-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-track_regions}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-track_regions}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ${STACK_NAME:-tyr-ng}-backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-track_regions}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      NODE_ENV: development
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Authentication
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      # Google OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Apple Sign-In (TODO: untested, requires Apple Developer account)
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+      APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+      # Email (SMTP) — optional in dev, falls back to console logging
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@localhost}
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - ./backend/src:/app/src:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npm run dev
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ${STACK_NAME:-tyr-ng}-frontend
+    environment:
+      VITE_API_URL: http://localhost:${BACKEND_PORT:-3001}
+      VITE_MARTIN_URL: http://localhost:${MARTIN_PORT:-3000}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/index.html:/app/index.html:ro
+    depends_on:
+      - backend
+    command: npm run dev -- --host
+
+  # Martin Vector Tile Server
+  # Serves MVT tiles directly from PostGIS for fast map rendering
+  martin:
+    image: ghcr.io/maplibre/martin:v0.14.2
+    container_name: ${STACK_NAME:-tyr-ng}-martin
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-track_regions}
+    ports:
+      - "${MARTIN_PORT:-3000}:3000"
+    volumes:
+      - ./martin/config.yaml:/config.yaml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["--config", "/config.yaml"]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

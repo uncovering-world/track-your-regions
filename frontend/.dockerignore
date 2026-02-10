@@ -1,6 +1,0 @@
-Dockerfile
-.gitignore
-package-lock.json
-README.md
-.env.development
-node_modules

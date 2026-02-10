@@ -1,4 +1,0 @@
-#!/bin/bash
-
-# Call the shared script with the "pre-commit" context
-.shared-scripts/check_directories.sh pre-commit
