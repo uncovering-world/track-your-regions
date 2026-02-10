@@ -1,4 +1,0 @@
-.env.local
-.env.development
-.data
-db-dump

@@ -1,0 +1,22 @@
+# Dependencies & build output
+node_modules/
+dist/
+build/
+
+# Claude Code config
+.claude/
+
+# Data directories
+data/
+db/data/
+
+# Non-source files (no security-relevant code)
+*.sql
+*.md
+*.json
+*.yaml
+*.yml
+
+# Test infrastructure
+.test-results/
+.playwright-mcp/

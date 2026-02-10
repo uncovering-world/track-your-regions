@@ -1,0 +1,14 @@
+services:
+  e2e:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.e2e
+    container_name: ${STACK_NAME:-tyr-ng}-e2e
+    environment:
+      E2E_BASE_URL: http://frontend:5173
+      CI: "1"
+    depends_on:
+      - frontend
+    command: ["bash", "-lc", "sleep infinity"]
+    profiles:
+      - test

@@ -1,24 +1,17 @@
-# Use the official Node.js image
-FROM node:21
+FROM node:20-alpine
 
-# Set working directory
-WORKDIR /usr/src/app
+WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy app source code
-COPY . .
+# Copy source
+COPY --chown=node:node . .
 
-# Set environment variables (you can also use a .env file)
-ENV DB_HOST=$DB_HOST
-ENV DB_PORT=$DB_PORT
-ENV DB_NAME=$DB_NAME
-ENV DB_USER=$DB_USER
+RUN chown node:node /app
 
-# Expose the port the app runs on
-EXPOSE 3000
+EXPOSE 3001
 
-# Start the application
-CMD ["npm", "run", "debug"]
+USER node
+CMD ["npm", "run", "dev"]

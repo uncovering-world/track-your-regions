@@ -1,21 +1,18 @@
-# Use the official Node.js image
-FROM node:21
+FROM node:20-alpine
 
-# Set working directory
-WORKDIR /usr/src/app
+WORKDIR /app
 
 # Install dependencies
-COPY package.json ./
+COPY package*.json ./
 RUN npm install
 
-# Copy app source code
-COPY . .
+# Copy source
+COPY --chown=node:node . .
 
-# Build the React app
-RUN npm run build
+# Vite needs to write temp files in /app/ at startup
+RUN chown node:node /app
 
-# Expose the port the app runs on
-EXPOSE 3000
+EXPOSE 5173
 
-# Start the application
-CMD ["npm", "start"]
+USER node
+CMD ["npm", "run", "dev", "--", "--host"]
