@@ -1,0 +1,43 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Figtree', 'Helvetica', 'Arial', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* MapLibre GL overrides */
+.maplibregl-map {
+  font-family: inherit;
+  /* Allow popups to overflow outside map bounds */
+  overflow: visible !important;
+}
+
+.maplibregl-canvas-container {
+  overflow: visible !important;
+}
+
+.maplibregl-popup-content {
+  padding: 12px 16px;
+  border-radius: 4px;
+}
+
+/* Hover tooltip styles - allow overflow and ensure visibility */
+.experience-hover-tooltip {
+  z-index: 1000 !important;
+}
+
+.experience-hover-tooltip .maplibregl-popup-content {
+  padding: 0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
