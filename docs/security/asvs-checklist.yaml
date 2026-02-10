@@ -1,0 +1,355 @@
+# asvs-checklist.yaml
+# OWASP ASVS 5.0 Security Verification Checklist
+# Status: pass | fail | partial | n/a | not-checked
+# Updated by: claude-code security audit runs
+
+meta:
+  target_level: 2
+  last_audit: "2026-02-10"
+  last_audit_pass: 2  # Two audit passes on same day (pre and post email verification)
+  app: track-your-regions
+  result: "64/64 pass (0 fail, 0 partial)"
+
+chapters:
+
+  V1_encoding_sanitization:
+    V1.2.1:
+      desc: "Output encoding for HTTP response relevant to context"
+      level: 1
+      status: pass
+      notes: "React JSX auto-escapes; Helmet sets security headers; no unsafe HTML rendering patterns found"
+    V1.2.2:
+      desc: "URL encoding for dynamically built URLs, safe protocols only"
+      level: 1
+      status: pass
+      notes: "External URLs use encodeURIComponent(). Curator websiteUrl validated server-side against unsafe schemes (javascript:, data:, vbscript:, blob:). Fixed 2026-02-10"
+    V1.2.3:
+      desc: "Output encoding for dynamic JavaScript/JSON content"
+      level: 1
+      status: pass
+      notes: "React handles encoding; no unsafe HTML injection patterns detected"
+    V1.2.4:
+      desc: "Parameterized queries for all database operations"
+      level: 1
+      status: pass
+      notes: "All 350+ pool.query() calls use $N placeholders. Dynamic columns from hardcoded maps only"
+    V1.2.5:
+      desc: "OS command injection protection"
+      level: 1
+      status: pass
+      notes: "No exec/spawn calls with user input"
+    V1.2.6:
+      desc: "SPARQL/external query injection protection"
+      level: 1
+      status: pass
+      notes: "lat/lng validated: isFinite() + bounds check (-90/90, -180/180) before SPARQL interpolation. Fixed 2026-02-10"
+
+  V2_validation_business_logic:
+    V2.2.1:
+      desc: "Anti-automation controls for sensitive endpoints"
+      level: 1
+      status: pass
+      notes: "express-rate-limit on login (10/15min), register (5/hour), refresh (30/min). Fixed 2026-02-10"
+    V2.3.1:
+      desc: "Business logic flow enforced server-side"
+      level: 1
+      status: pass
+      notes: "Sync operations, curation, region management all server-side"
+    V2.4.1:
+      desc: "Input validation on all endpoints"
+      level: 1
+      status: pass
+      notes: "Zod schemas on all route files: auth, experience, user, admin, world-view, geocode, AI, view, division. Validates body, query, and path params. Fixed 2026-02-10"
+
+  V3_web_frontend_security:
+    V3.2.1:
+      desc: "Content rendering controls prevent incorrect context execution"
+      level: 1
+      status: pass
+      notes: "Helmet sets Content-Type, X-Content-Type-Options; images served with correct MIME types; trusted image domain allowlist"
+    V3.2.2:
+      desc: "Text content rendered safely, not as HTML"
+      level: 1
+      status: pass
+      notes: "React JSX auto-escapes all interpolated values; no raw HTML rendering detected"
+    V3.4.1:
+      desc: "HSTS header included on all responses"
+      level: 1
+      status: pass
+      notes: "Helmet HSTS configured with max-age=31536000 (1 year), includeSubDomains, preload. Fixed 2026-02-10"
+    V3.4.2:
+      desc: "CORS Access-Control-Allow-Origin is fixed value, not wildcard"
+      level: 1
+      status: pass
+      notes: "Set to FRONTEND_URL env var (single origin), credentials:true"
+    V3.4.4:
+      desc: "X-Content-Type-Options: nosniff header set"
+      level: 2
+      status: pass
+      notes: "Helmet sets this by default"
+    V3.4.5:
+      desc: "Referrer-Policy header set"
+      level: 2
+      status: pass
+      notes: "Helmet sets Referrer-Policy by default"
+    V3.4.6:
+      desc: "frame-ancestors CSP directive set"
+      level: 2
+      status: pass
+      notes: "Helmet sets X-Frame-Options and CSP frame-ancestors by default"
+    V3.5.1:
+      desc: "CSRF protection beyond CORS preflight"
+      level: 1
+      status: pass
+      notes: "Three layers: (1) Origin header verified on POST/PUT/DELETE, (2) SameSite=Strict on refresh cookie, (3) access token in Authorization header (not cookie). Fixed 2026-02-10"
+    V3.5.3:
+      desc: "Sensitive endpoints use appropriate HTTP methods"
+      level: 1
+      status: pass
+      notes: "State-changing operations use POST/PUT/DELETE, reads use GET"
+
+  V4_api_web_service:
+    V4.1.1:
+      desc: "CORS properly configured"
+      level: 1
+      status: pass
+      notes: "Restricted to FRONTEND_URL origin with credentials; no wildcard"
+    V4.1.2:
+      desc: "Rate limiting on API endpoints"
+      level: 1
+      status: pass
+      notes: "express-rate-limit on auth (login, register, refresh), geocode search (30/min), and experience search (30/min). Fixed 2026-02-10"
+    V4.1.3:
+      desc: "API responses don't leak sensitive data"
+      level: 1
+      status: pass
+      notes: "500 errors return generic 'Internal server error' in production (err.message masked). Stack traces never sent. Fixed 2026-02-10"
+    V4.1.4:
+      desc: "Request body size limits"
+      level: 1
+      status: pass
+      notes: "express.json({ limit: '10mb' }) configured; urlencoded defaults to 100KB"
+
+  V5_file_handling:
+    V5.2.1:
+      desc: "File size limits enforced on downloads"
+      level: 1
+      status: pass
+      notes: "Content-Length pre-check + 20MB Transform stream limit. Oversized downloads rejected or aborted mid-stream. Fixed 2026-02-10"
+    V5.2.2:
+      desc: "File extension + content-type validation"
+      level: 1
+      status: pass
+      notes: "imageService checks content-type starts with image/"
+    V5.3.1:
+      desc: "Downloaded files not executable server-side"
+      level: 1
+      status: pass
+      notes: "Images stored in /data/images/, not in executable paths"
+    V5.3.2:
+      desc: "No user-controlled file paths"
+      level: 1
+      status: pass
+      notes: "Both sourceName and externalId sanitized with replace(/[^a-zA-Z0-9_-]/g, '-'). Path traversal prevented. Fixed 2026-02-10"
+
+  V6_authentication:
+    V6.1.1:
+      desc: "Rate limiting and anti-brute-force on auth"
+      level: 1
+      status: pass
+      notes: "express-rate-limit on login (10/15min), register (5/hour), refresh (30/min). No account lockout yet. Fixed 2026-02-10"
+    V6.2.1:
+      desc: "Passwords >= 8 chars"
+      level: 1
+      status: pass
+      notes: "Zod schema enforces min 8, max 128 chars"
+    V6.2.2:
+      desc: "Users can change password"
+      level: 1
+      status: pass
+      notes: "POST /api/auth/change-password — validates current password, checks HIBP, revokes all sessions. Fixed 2026-02-10"
+    V6.2.3:
+      desc: "Password change requires current password"
+      level: 1
+      status: pass
+      notes: "bcrypt.compare() verifies current password before allowing change. Fixed 2026-02-10"
+    V6.2.4:
+      desc: "Passwords checked against common password list"
+      level: 1
+      status: pass
+      notes: "HIBP k-Anonymity API checked on registration and password change. Fails open if HIBP unavailable. Fixed 2026-02-10"
+    V6.2.5:
+      desc: "No composition rules restricting character types"
+      level: 1
+      status: pass
+      notes: "Only min/max length enforced, no character class requirements"
+    V6.2.6:
+      desc: "Password fields use type=password"
+      level: 1
+      status: pass
+      notes: "MUI TextField with type='password' used in login/register forms"
+    V6.2.7:
+      desc: "Paste and password managers allowed"
+      level: 1
+      status: pass
+      notes: "No paste prevention detected; standard MUI TextField"
+    V6.2.8:
+      desc: "Password verified as-is, no truncation or case changes"
+      level: 1
+      status: pass
+      notes: "bcrypt.compare() uses raw input"
+    V6.2.9:
+      desc: "Passwords up to 64+ chars permitted"
+      level: 2
+      status: pass
+      notes: "Max 128 chars allowed"
+    V6.2.12:
+      desc: "Passwords checked against breached password sets"
+      level: 2
+      status: pass
+      notes: "HIBP k-Anonymity API (only first 5 SHA-1 chars sent — privacy-preserving). Applied on register + password change. Fixed 2026-02-10"
+    V6.3.1:
+      desc: "Password hashing with approved algorithm"
+      level: 1
+      status: pass
+      notes: "bcryptjs with 12 salt rounds"
+    V6.4.1:
+      desc: "Email verification flow"
+      level: 1
+      status: pass
+      notes: "Full email verification: register sends token, verify-email endpoint verifies and auto-logs in. Login blocked until verified. 24h token expiry, resend endpoint. Fixed 2026-02-10"
+    V6.5.1:
+      desc: "Credential enumeration resistance"
+      level: 1
+      status: pass
+      notes: "Register always returns identical response regardless of email existence (no 409). Resend-verification also returns uniform response. Login returns generic 'Invalid email or password'. Fixed 2026-02-10"
+
+  V7_session_management:
+    V7.2.1:
+      desc: "Session tokens cryptographically random, >= 128 bits entropy"
+      level: 1
+      status: pass
+      notes: "Refresh tokens are 32 random bytes (256 bits entropy). JWT signed with HMAC-SHA256"
+    V7.3.1:
+      desc: "Session timeout configured"
+      level: 1
+      status: pass
+      notes: "Access token: 15min. Refresh token: 7 days. Both enforced"
+    V7.3.2:
+      desc: "Refresh token rotation implemented"
+      level: 2
+      status: pass
+      notes: "Old refresh token revoked when new one issued via rotateRefreshToken()"
+    V7.3.3:
+      desc: "Refresh tokens stored securely"
+      level: 2
+      status: pass
+      notes: "Server: SHA256 hash in DB. Client: httpOnly, Secure, SameSite=Strict cookie (path=/api/auth). Fixed 2026-02-10"
+    V7.3.4:
+      desc: "Refresh token reuse detection"
+      level: 2
+      status: pass
+      notes: "Token family tracking via family_id column. Reuse of a revoked token triggers revocation of the entire family (all descendant tokens). Fixed 2026-02-10"
+    V7.3.5:
+      desc: "Logout invalidates tokens"
+      level: 1
+      status: pass
+      notes: "Logout revokes refresh token AND blacklists access token JTI (in-memory, auto-cleaned). Token immediately rejected by verifyAccessToken(). Fixed 2026-02-10"
+    V7.3.6:
+      desc: "Concurrent session limits"
+      level: 2
+      status: pass
+      notes: "Max 10 active refresh tokens per user. Oldest tokens auto-revoked when limit exceeded. Fixed 2026-02-10"
+    V7.3.7:
+      desc: "Expired token cleanup"
+      level: 2
+      status: pass
+      notes: "cleanup_refresh_tokens() SQL function scheduled via setInterval every 6 hours in index.ts. Fixed 2026-02-10"
+
+  V8_authorization:
+    V8.2.1:
+      desc: "Authorization enforced server-side"
+      level: 1
+      status: pass
+      notes: "All admin endpoints use requireAdmin. SSE geometry compute endpoint fixed to include requireAdmin. Fixed 2026-02-10"
+    V8.3.1:
+      desc: "Users can only access their own data (IDOR protection)"
+      level: 1
+      status: pass
+      notes: "All user-scoped queries use /me/ pattern with req.user.id. No URL-based user ID accepted for personal data"
+    V8.3.2:
+      desc: "Curator scope enforcement"
+      level: 1
+      status: pass
+      notes: "checkCuratorScope() validates global/source/region scopes with recursive CTE. getCurationLog scope check added. Fixed 2026-02-10"
+
+  V9_self_contained_tokens:
+    V9.1.1:
+      desc: "Tokens validated using digital signature or MAC"
+      level: 1
+      status: pass
+      notes: "JWT verified with jsonwebtoken.verify() using HMAC-SHA256"
+    V9.1.2:
+      desc: "Algorithm allowlist enforced, no 'None' algorithm"
+      level: 1
+      status: pass
+      notes: "jwt.verify() now called with { algorithms: ['HS256'] }. Fixed 2026-02-10"
+    V9.1.3:
+      desc: "Key material from trusted pre-configured sources only"
+      level: 1
+      status: pass
+      notes: "JWT_SECRET from environment variable, not from token headers"
+    V9.2.1:
+      desc: "Token validity time span verified (nbf, exp claims)"
+      level: 1
+      status: pass
+      notes: "Access token expires in 15min; jsonwebtoken.verify() checks exp automatically"
+    V9.2.2:
+      desc: "Token type validated (access vs refresh)"
+      level: 2
+      status: pass
+      notes: "Structurally incompatible: access=JWT (jwt.verify), refresh=opaque hash (DB lookup). Cannot interchange"
+    V9.2.3:
+      desc: "Audience (aud) claim validated"
+      level: 2
+      status: pass
+      notes: "iss='track-your-regions' and aud='track-your-regions-app' set in jwt.sign() and validated in jwt.verify(). Fixed 2026-02-10"
+    V9.2.4:
+      desc: "No sensitive data in JWT payload"
+      level: 2
+      status: pass
+      notes: "JWT payload contains only sub (user id), uuid, and role. Email and displayName removed — fetched via /me endpoint. Fixed 2026-02-10"
+
+  V13_configuration:
+    V13.3.1:
+      desc: "No secrets in source code or config files"
+      level: 1
+      status: pass
+      notes: ".env excluded by .gitignore; .env.example has placeholder values only; no hardcoded secrets found"
+    V13.4.1:
+      desc: "No sensitive data in error messages"
+      level: 1
+      status: pass
+      notes: "500 errors masked in production (generic message). Stack traces never sent. Fixed 2026-02-10"
+    V13.4.2:
+      desc: "Production secret validation"
+      level: 2
+      status: pass
+      notes: "JWT_SECRET missing in production throws fatal error, blocking startup. Dev mode shows warning. Fixed 2026-02-10"
+
+  V14_data_protection:
+    V14.2.1:
+      desc: "Sensitive data identified and classified"
+      level: 1
+      status: pass
+      notes: "User travel data, visited regions, auth tokens identified as sensitive"
+    V14.3.1:
+      desc: "Sensitive data not stored in browser storage unencrypted"
+      level: 1
+      status: pass
+      notes: "Refresh token in httpOnly cookie (not accessible to JS). Access token in memory. Only non-sensitive data (last-used email, theme) in localStorage. Fixed 2026-02-10"
+    V14.3.2:
+      desc: "OAuth tokens not exposed in URLs"
+      level: 1
+      status: pass
+      notes: "OAuth callback uses one-time authorization code in URL. Tokens exchanged via POST /api/auth/exchange-code (refresh set as httpOnly cookie). Fixed 2026-02-10"
