@@ -34,6 +34,7 @@ pnpm-debug.log*
 coverage/
 playwright-report/
 test-results/
+.test-results/
 frontend/playwright-report/
 frontend/test-results/
 
@@ -62,3 +63,15 @@ venv/
 
 # Legacy deployment dir (untracked GADM data)
 deployment/
+
+# Claude Code (local settings are machine-specific)
+.claude/settings.local.json
+
+# Playwright MCP
+.playwright-mcp/
+
+# Debug screenshots
+*.png
+
+# Binary artifacts
+*.dmg
