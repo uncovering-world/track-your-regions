@@ -1,0 +1,229 @@
+category,service_tier,model,unit,input_usd_per_1M,cached_input_usd_per_1M,output_usd_per_1M,training_usd,price_usd,quality,resolution_or_variant,notes
+text_tokens,batch,gpt-5.2,USD_per_1M_tokens,0.875,0.0875,7.0,,,,,
+text_tokens,batch,gpt-5.1,USD_per_1M_tokens,0.625,0.0625,5.0,,,,,
+text_tokens,batch,gpt-5,USD_per_1M_tokens,0.625,0.0625,5.0,,,,,
+text_tokens,batch,gpt-5-mini,USD_per_1M_tokens,0.125,0.0125,1.0,,,,,
+text_tokens,batch,gpt-5-nano,USD_per_1M_tokens,0.025,0.0025,0.2,,,,,
+text_tokens,batch,gpt-5.2-pro,USD_per_1M_tokens,10.5,,84.0,,,,,
+text_tokens,batch,gpt-5-pro,USD_per_1M_tokens,7.5,,60.0,,,,,
+text_tokens,batch,gpt-4.1,USD_per_1M_tokens,1.0,,4.0,,,,,
+text_tokens,batch,gpt-4.1-mini,USD_per_1M_tokens,0.2,,0.8,,,,,
+text_tokens,batch,gpt-4.1-nano,USD_per_1M_tokens,0.05,,0.2,,,,,
+text_tokens,batch,gpt-4o,USD_per_1M_tokens,1.25,,5.0,,,,,
+text_tokens,batch,gpt-4o-2024-05-13,USD_per_1M_tokens,2.5,,7.5,,,,,
+text_tokens,batch,gpt-4o-mini,USD_per_1M_tokens,0.075,,0.3,,,,,
+text_tokens,batch,o1,USD_per_1M_tokens,7.5,,30.0,,,,,
+text_tokens,batch,o1-pro,USD_per_1M_tokens,75.0,,300.0,,,,,
+text_tokens,batch,o3-pro,USD_per_1M_tokens,10.0,,40.0,,,,,
+text_tokens,batch,o3,USD_per_1M_tokens,1.0,,4.0,,,,,
+text_tokens,batch,o3-deep-research,USD_per_1M_tokens,5.0,,20.0,,,,,
+text_tokens,batch,o4-mini,USD_per_1M_tokens,0.55,,2.2,,,,,
+text_tokens,batch,o4-mini-deep-research,USD_per_1M_tokens,1.0,,4.0,,,,,
+text_tokens,batch,o3-mini,USD_per_1M_tokens,0.55,,2.2,,,,,
+text_tokens,flex,gpt-5.2,USD_per_1M_tokens,0.875,0.0875,7.0,,,,,
+text_tokens,flex,gpt-5.1,USD_per_1M_tokens,0.625,0.0625,5.0,,,,,
+text_tokens,flex,gpt-5,USD_per_1M_tokens,0.625,0.0625,5.0,,,,,
+text_tokens,flex,gpt-5-mini,USD_per_1M_tokens,0.125,0.0125,1.0,,,,,
+text_tokens,flex,gpt-5-nano,USD_per_1M_tokens,0.025,0.0025,0.2,,,,,
+text_tokens,flex,o3,USD_per_1M_tokens,1.0,0.25,4.0,,,,,
+text_tokens,flex,o4-mini,USD_per_1M_tokens,0.55,0.138,2.2,,,,,
+text_tokens,standard,gpt-5.2,USD_per_1M_tokens,1.75,0.175,14.0,,,,,
+text_tokens,standard,gpt-5.1,USD_per_1M_tokens,1.25,0.125,10.0,,,,,
+text_tokens,standard,gpt-5,USD_per_1M_tokens,1.25,0.125,10.0,,,,,
+text_tokens,standard,gpt-5-mini,USD_per_1M_tokens,0.25,0.025,2.0,,,,,
+text_tokens,standard,gpt-5-nano,USD_per_1M_tokens,0.05,0.005,0.4,,,,,
+text_tokens,standard,gpt-5.2-chat-latest,USD_per_1M_tokens,1.75,0.175,14.0,,,,,
+text_tokens,standard,gpt-5.1-chat-latest,USD_per_1M_tokens,1.25,0.125,10.0,,,,,
+text_tokens,standard,gpt-5-chat-latest,USD_per_1M_tokens,1.25,0.125,10.0,,,,,
+text_tokens,standard,gpt-5.2-codex,USD_per_1M_tokens,1.75,0.175,14.0,,,,,
+text_tokens,standard,gpt-5.1-codex-max,USD_per_1M_tokens,1.25,0.125,10.0,,,,,
+text_tokens,standard,gpt-5.1-codex,USD_per_1M_tokens,1.25,0.125,10.0,,,,,
+text_tokens,standard,gpt-5-codex,USD_per_1M_tokens,1.25,0.125,10.0,,,,,
+text_tokens,standard,gpt-5.2-pro,USD_per_1M_tokens,21.0,,168.0,,,,,
+text_tokens,standard,gpt-5-pro,USD_per_1M_tokens,15.0,,120.0,,,,,
+text_tokens,standard,gpt-4.1,USD_per_1M_tokens,2.0,0.5,8.0,,,,,
+text_tokens,standard,gpt-4.1-mini,USD_per_1M_tokens,0.4,0.1,1.6,,,,,
+text_tokens,standard,gpt-4.1-nano,USD_per_1M_tokens,0.1,0.025,0.4,,,,,
+text_tokens,standard,gpt-4o,USD_per_1M_tokens,2.5,1.25,10.0,,,,,
+text_tokens,standard,gpt-4o-2024-05-13,USD_per_1M_tokens,5.0,,15.0,,,,,
+text_tokens,standard,gpt-4o-mini,USD_per_1M_tokens,0.15,0.075,0.6,,,,,
+text_tokens,standard,gpt-realtime,USD_per_1M_tokens,4.0,0.4,16.0,,,,,
+text_tokens,standard,gpt-realtime-mini,USD_per_1M_tokens,0.6,0.06,2.4,,,,,
+text_tokens,standard,gpt-4o-realtime-preview,USD_per_1M_tokens,5.0,2.5,20.0,,,,,
+text_tokens,standard,gpt-4o-mini-realtime-preview,USD_per_1M_tokens,0.6,0.3,2.4,,,,,
+text_tokens,standard,gpt-audio,USD_per_1M_tokens,2.5,,10.0,,,,,
+text_tokens,standard,gpt-audio-mini,USD_per_1M_tokens,0.6,,2.4,,,,,
+text_tokens,standard,gpt-4o-audio-preview,USD_per_1M_tokens,2.5,,10.0,,,,,
+text_tokens,standard,gpt-4o-mini-audio-preview,USD_per_1M_tokens,0.15,,0.6,,,,,
+text_tokens,standard,o1,USD_per_1M_tokens,15.0,7.5,60.0,,,,,
+text_tokens,standard,o1-pro,USD_per_1M_tokens,150.0,,600.0,,,,,
+text_tokens,standard,o3-pro,USD_per_1M_tokens,20.0,,80.0,,,,,
+text_tokens,standard,o3,USD_per_1M_tokens,2.0,0.5,8.0,,,,,
+text_tokens,standard,o3-deep-research,USD_per_1M_tokens,10.0,2.5,40.0,,,,,
+text_tokens,standard,o4-mini,USD_per_1M_tokens,1.1,0.275,4.4,,,,,
+text_tokens,standard,o4-mini-deep-research,USD_per_1M_tokens,2.0,0.5,8.0,,,,,
+text_tokens,standard,o3-mini,USD_per_1M_tokens,1.1,0.55,4.4,,,,,
+text_tokens,standard,o1-mini,USD_per_1M_tokens,1.1,0.55,4.4,,,,,
+text_tokens,standard,gpt-5.1-codex-mini,USD_per_1M_tokens,0.25,0.025,2.0,,,,,
+text_tokens,standard,codex-mini-latest,USD_per_1M_tokens,1.5,0.375,6.0,,,,,
+text_tokens,standard,gpt-5-search-api,USD_per_1M_tokens,1.25,0.125,10.0,,,,,
+text_tokens,standard,gpt-4o-mini-search-preview,USD_per_1M_tokens,0.15,,0.6,,,,,
+text_tokens,standard,gpt-4o-search-preview,USD_per_1M_tokens,2.5,,10.0,,,,,
+text_tokens,standard,computer-use-preview,USD_per_1M_tokens,3.0,,12.0,,,,,
+text_tokens,standard,gpt-image-1.5,USD_per_1M_tokens,5.0,1.25,10.0,,,,,
+text_tokens,standard,chatgpt-image-latest,USD_per_1M_tokens,5.0,1.25,10.0,,,,,
+text_tokens,standard,gpt-image-1,USD_per_1M_tokens,5.0,1.25,,,,,,
+text_tokens,standard,gpt-image-1-mini,USD_per_1M_tokens,2.0,0.2,,,,,,
+text_tokens,priority,gpt-5.2,USD_per_1M_tokens,3.5,0.35,28.0,,,,,
+text_tokens,priority,gpt-5.1,USD_per_1M_tokens,2.5,0.25,20.0,,,,,
+text_tokens,priority,gpt-5,USD_per_1M_tokens,2.5,0.25,20.0,,,,,
+text_tokens,priority,gpt-5-mini,USD_per_1M_tokens,0.45,0.045,3.6,,,,,
+text_tokens,priority,gpt-5.2-codex,USD_per_1M_tokens,3.5,0.35,28.0,,,,,
+text_tokens,priority,gpt-5.1-codex-max,USD_per_1M_tokens,2.5,0.25,20.0,,,,,
+text_tokens,priority,gpt-5.1-codex,USD_per_1M_tokens,2.5,0.25,20.0,,,,,
+text_tokens,priority,gpt-5-codex,USD_per_1M_tokens,2.5,0.25,20.0,,,,,
+text_tokens,priority,gpt-4.1,USD_per_1M_tokens,3.5,0.875,14.0,,,,,
+text_tokens,priority,gpt-4.1-mini,USD_per_1M_tokens,0.7,0.175,2.8,,,,,
+text_tokens,priority,gpt-4.1-nano,USD_per_1M_tokens,0.2,0.05,0.8,,,,,
+text_tokens,priority,gpt-4o,USD_per_1M_tokens,4.25,2.125,17.0,,,,,
+text_tokens,priority,gpt-4o-2024-05-13,USD_per_1M_tokens,8.75,,26.25,,,,,
+text_tokens,priority,gpt-4o-mini,USD_per_1M_tokens,0.25,0.125,1.0,,,,,
+text_tokens,priority,o3,USD_per_1M_tokens,3.5,0.875,14.0,,,,,
+text_tokens,priority,o4-mini,USD_per_1M_tokens,2.0,0.5,8.0,,,,,
+image_tokens,,gpt-image-1.5,USD_per_1M_image_tokens,8.0,2.0,32.0,,,,,
+image_tokens,,chatgpt-image-latest,USD_per_1M_image_tokens,8.0,2.0,32.0,,,,,
+image_tokens,,gpt-image-1,USD_per_1M_image_tokens,10.0,2.5,40.0,,,,,
+image_tokens,,gpt-image-1-mini,USD_per_1M_image_tokens,2.5,0.25,8.0,,,,,
+image_tokens,,gpt-realtime,USD_per_1M_image_tokens,5.0,0.5,,,,,,
+image_tokens,,gpt-realtime-mini,USD_per_1M_image_tokens,0.8,0.08,,,,,,
+audio_tokens,,gpt-realtime,USD_per_1M_audio_tokens,32.0,0.4,64.0,,,,,
+audio_tokens,,gpt-realtime-mini,USD_per_1M_audio_tokens,10.0,0.3,20.0,,,,,
+audio_tokens,,gpt-4o-realtime-preview,USD_per_1M_audio_tokens,40.0,2.5,80.0,,,,,
+audio_tokens,,gpt-4o-mini-realtime-preview,USD_per_1M_audio_tokens,10.0,0.3,20.0,,,,,
+audio_tokens,,gpt-audio,USD_per_1M_audio_tokens,32.0,,64.0,,,,,
+audio_tokens,,gpt-audio-mini,USD_per_1M_audio_tokens,10.0,,20.0,,,,,
+audio_tokens,,gpt-4o-audio-preview,USD_per_1M_audio_tokens,40.0,,80.0,,,,,
+audio_tokens,,gpt-4o-mini-audio-preview,USD_per_1M_audio_tokens,10.0,,20.0,,,,,
+video,,sora-2,USD_per_second,,,,,0.1,,720p,Portrait 720x1280 / Landscape 1280x720
+video,,sora-2-pro,USD_per_second,,,,,0.3,,720p,Portrait 720x1280 / Landscape 1280x720
+video,,sora-2-pro,USD_per_second,,,,,0.5,,1024p,Portrait 1024x1792 / Landscape 1792x1024
+fine_tuning,batch,o4-mini-2025-04-16,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),2.0,0.5,8.0,$100.00 / hour,,,,
+fine_tuning,batch,o4-mini-2025-04-16 (with data sharing),USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),1.0,0.25,4.0,$100.00 / hour,,,,
+fine_tuning,batch,gpt-4.1-2025-04-14,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),1.5,0.5,6.0,25.0,,,,
+fine_tuning,batch,gpt-4.1-mini-2025-04-14,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),0.4,0.1,1.6,5.0,,,,
+fine_tuning,batch,gpt-4.1-nano-2025-04-14,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),0.1,0.025,0.4,1.5,,,,
+fine_tuning,batch,gpt-4o-2024-08-06,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),2.225,0.9,12.5,25.0,,,,
+fine_tuning,batch,gpt-4o-mini-2024-07-18,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),0.15,0.075,0.6,3.0,,,,
+fine_tuning,batch,gpt-3.5-turbo,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),1.5,,3.0,8.0,,,,
+fine_tuning,batch,davinci-002,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),6.0,,6.0,6.0,,,,
+fine_tuning,batch,babbage-002,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),0.8,,0.9,0.4,,,,
+fine_tuning,standard,o4-mini-2025-04-16,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),4.0,1.0,16.0,$100.00 / hour,,,,
+fine_tuning,standard,o4-mini-2025-04-16 (with data sharing),USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),2.0,0.5,8.0,$100.00 / hour,,,,
+fine_tuning,standard,gpt-4.1-2025-04-14,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),3.0,0.75,12.0,25.0,,,,
+fine_tuning,standard,gpt-4.1-mini-2025-04-14,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),0.8,0.2,3.2,5.0,,,,
+fine_tuning,standard,gpt-4.1-nano-2025-04-14,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),0.2,0.05,0.8,1.5,,,,
+fine_tuning,standard,gpt-4o-2024-08-06,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),3.75,1.875,15.0,25.0,,,,
+fine_tuning,standard,gpt-4o-mini-2024-07-18,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),0.3,0.15,1.2,3.0,,,,
+fine_tuning,standard,gpt-3.5-turbo,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),3.0,,6.0,8.0,,,,
+fine_tuning,standard,davinci-002,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),12.0,,12.0,6.0,,,,
+fine_tuning,standard,babbage-002,USD_per_1M_tokens (training) / USD_per_1M_tokens (inference),1.6,,1.6,0.4,,,,
+tool,,code-interpreter,USD_per_container,,,,,0.03,,,1 GB (default)
+tool,,code-interpreter,USD_per_container,,,,,0.12,,,4 GB
+tool,,code-interpreter,USD_per_container,,,,,0.48,,,16 GB
+tool,,code-interpreter,USD_per_container,,,,,1.92,,,64 GB
+tool,,file-search-storage,USD_per_GB_day,,,,,0.1,,,1GB free
+tool,,file-search-tool-call,USD_per_1k_calls,,,,,2.5,,,Responses API only
+tool,,web-search,USD_per_1k_calls,,,,,10.0,,,All models (plus search content tokens billed at model input rates)
+tool,,web-search-preview (reasoning models),USD_per_1k_calls,,,,,10.0,,,Plus search content tokens billed at model input rates
+tool,,web-search-preview (non-reasoning models),USD_per_1k_calls,,,,,25.0,,,Search content tokens are free
+speech_text_tokens,,gpt-4o-mini-tts,USD_per_1M_text_tokens,0.6,,,,,,,Also listed as ~$0.015/min
+speech_text_tokens,,gpt-4o-transcribe,USD_per_1M_text_tokens,2.5,,10.0,,,,,Also listed as ~$0.006/min
+speech_text_tokens,,gpt-4o-transcribe-diarize,USD_per_1M_text_tokens,2.5,,10.0,,,,,Also listed as ~$0.006/min
+speech_text_tokens,,gpt-4o-mini-transcribe,USD_per_1M_text_tokens,1.25,,5.0,,,,,Also listed as ~$0.003/min
+speech_audio_tokens,,gpt-4o-mini-tts,USD_per_1M_audio_tokens,,,12.0,,,,,Also listed as ~$0.015/min
+speech_audio_tokens,,gpt-4o-transcribe,USD_per_1M_audio_tokens,6.0,,,,,,,Also listed as ~$0.006/min
+speech_audio_tokens,,gpt-4o-transcribe-diarize,USD_per_1M_audio_tokens,6.0,,,,,,,Also listed as ~$0.006/min
+speech_audio_tokens,,gpt-4o-mini-transcribe,USD_per_1M_audio_tokens,3.0,,,,,,,Also listed as ~$0.003/min
+speech_other,,whisper,USD_per_minute,,,,,0.006,,,Transcription
+speech_other,,tts-1,USD_per_1M_characters,,,,,15.0,,,Speech generation
+speech_other,,tts-1-hd,USD_per_1M_characters,,,,,30.0,,,Speech generation
+image_generation,,gpt-image-1.5,USD_per_image,,,,,0.009,low,1024x1024,
+image_generation,,gpt-image-1.5,USD_per_image,,,,,0.013,low,1024x1536,
+image_generation,,gpt-image-1.5,USD_per_image,,,,,0.013,low,1536x1024,
+image_generation,,gpt-image-1.5,USD_per_image,,,,,0.034,medium,1024x1024,
+image_generation,,gpt-image-1.5,USD_per_image,,,,,0.05,medium,1024x1536,
+image_generation,,gpt-image-1.5,USD_per_image,,,,,0.05,medium,1536x1024,
+image_generation,,gpt-image-1.5,USD_per_image,,,,,0.133,high,1024x1024,
+image_generation,,gpt-image-1.5,USD_per_image,,,,,0.2,high,1024x1536,
+image_generation,,gpt-image-1.5,USD_per_image,,,,,0.2,high,1536x1024,
+image_generation,,chatgpt-image-latest,USD_per_image,,,,,0.009,low,1024x1024,
+image_generation,,chatgpt-image-latest,USD_per_image,,,,,0.013,low,1024x1536,
+image_generation,,chatgpt-image-latest,USD_per_image,,,,,0.013,low,1536x1024,
+image_generation,,chatgpt-image-latest,USD_per_image,,,,,0.034,medium,1024x1024,
+image_generation,,chatgpt-image-latest,USD_per_image,,,,,0.05,medium,1024x1536,
+image_generation,,chatgpt-image-latest,USD_per_image,,,,,0.05,medium,1536x1024,
+image_generation,,chatgpt-image-latest,USD_per_image,,,,,0.133,high,1024x1024,
+image_generation,,chatgpt-image-latest,USD_per_image,,,,,0.2,high,1024x1536,
+image_generation,,chatgpt-image-latest,USD_per_image,,,,,0.2,high,1536x1024,
+image_generation,,gpt-image-1,USD_per_image,,,,,0.011,low,1024x1024,
+image_generation,,gpt-image-1,USD_per_image,,,,,0.016,low,1024x1536,
+image_generation,,gpt-image-1,USD_per_image,,,,,0.016,low,1536x1024,
+image_generation,,gpt-image-1,USD_per_image,,,,,0.042,medium,1024x1024,
+image_generation,,gpt-image-1,USD_per_image,,,,,0.063,medium,1024x1536,
+image_generation,,gpt-image-1,USD_per_image,,,,,0.063,medium,1536x1024,
+image_generation,,gpt-image-1,USD_per_image,,,,,0.167,high,1024x1024,
+image_generation,,gpt-image-1,USD_per_image,,,,,0.25,high,1024x1536,
+image_generation,,gpt-image-1,USD_per_image,,,,,0.25,high,1536x1024,
+image_generation,,gpt-image-1-mini,USD_per_image,,,,,0.005,low,1024x1024,
+image_generation,,gpt-image-1-mini,USD_per_image,,,,,0.006,low,1024x1536,
+image_generation,,gpt-image-1-mini,USD_per_image,,,,,0.006,low,1536x1024,
+image_generation,,gpt-image-1-mini,USD_per_image,,,,,0.011,medium,1024x1024,
+image_generation,,gpt-image-1-mini,USD_per_image,,,,,0.015,medium,1024x1536,
+image_generation,,gpt-image-1-mini,USD_per_image,,,,,0.015,medium,1536x1024,
+image_generation,,gpt-image-1-mini,USD_per_image,,,,,0.036,high,1024x1024,
+image_generation,,gpt-image-1-mini,USD_per_image,,,,,0.052,high,1024x1536,
+image_generation,,gpt-image-1-mini,USD_per_image,,,,,0.052,high,1536x1024,
+image_generation,,dall-e-3,USD_per_image,,,,,0.04,standard,1024x1024,
+image_generation,,dall-e-3,USD_per_image,,,,,0.08,standard,1024x1792,
+image_generation,,dall-e-3,USD_per_image,,,,,0.08,standard,1792x1024,
+image_generation,,dall-e-3,USD_per_image,,,,,0.08,hd,1024x1024,
+image_generation,,dall-e-3,USD_per_image,,,,,0.12,hd,1024x1792,
+image_generation,,dall-e-3,USD_per_image,,,,,0.12,hd,1792x1024,
+image_generation,,dall-e-2,USD_per_image,,,,,0.016,standard,256x256,
+image_generation,,dall-e-2,USD_per_image,,,,,0.018,standard,512x512,
+image_generation,,dall-e-2,USD_per_image,,,,,0.02,standard,1024x1024,
+embeddings,,text-embedding-3-small,USD_per_1M_tokens,0.02,,,,,,,Batch cost: $0.01 per 1M tokens
+embeddings,,text-embedding-3-large,USD_per_1M_tokens,0.13,,,,,,,Batch cost: $0.065 per 1M tokens
+embeddings,,text-embedding-ada-002,USD_per_1M_tokens,0.1,,,,,,,Batch cost: $0.05 per 1M tokens
+moderation,,omni-moderation,free,,,,,0.0,,,Made available free of charge
+text_tokens,legacy_batch,gpt-4-turbo-2024-04-09,USD_per_1M_tokens,5.0,,15.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-4-0125-preview,USD_per_1M_tokens,5.0,,15.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-4-1106-preview,USD_per_1M_tokens,5.0,,15.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-4-1106-vision-preview,USD_per_1M_tokens,5.0,,15.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-4-0613,USD_per_1M_tokens,15.0,,30.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-4-0314,USD_per_1M_tokens,15.0,,30.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-4-32k,USD_per_1M_tokens,30.0,,60.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-3.5-turbo-0125,USD_per_1M_tokens,0.25,,0.75,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-3.5-turbo-1106,USD_per_1M_tokens,1.0,,2.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-3.5-turbo-0613,USD_per_1M_tokens,1.5,,2.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-3.5-0301,USD_per_1M_tokens,1.5,,2.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,gpt-3.5-turbo-16k-0613,USD_per_1M_tokens,1.5,,2.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,davinci-002,USD_per_1M_tokens,1.0,,1.0,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_batch,babbage-002,USD_per_1M_tokens,0.2,,0.2,,,,,Legacy model pricing (Batch)
+text_tokens,legacy_standard,chatgpt-4o-latest,USD_per_1M_tokens,5.0,,15.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-4-turbo-2024-04-09,USD_per_1M_tokens,10.0,,30.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-4-0125-preview,USD_per_1M_tokens,10.0,,30.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-4-1106-preview,USD_per_1M_tokens,10.0,,30.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-4-1106-vision-preview,USD_per_1M_tokens,10.0,,30.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-4-0613,USD_per_1M_tokens,30.0,,60.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-4-0314,USD_per_1M_tokens,30.0,,60.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-4-32k,USD_per_1M_tokens,60.0,,120.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-3.5-turbo,USD_per_1M_tokens,0.5,,1.5,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-3.5-turbo-0125,USD_per_1M_tokens,0.5,,1.5,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-3.5-turbo-1106,USD_per_1M_tokens,1.0,,2.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-3.5-turbo-0613,USD_per_1M_tokens,1.5,,2.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-3.5-0301,USD_per_1M_tokens,1.5,,2.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-3.5-turbo-instruct,USD_per_1M_tokens,1.5,,2.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,gpt-3.5-turbo-16k-0613,USD_per_1M_tokens,3.0,,4.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,davinci-002,USD_per_1M_tokens,2.0,,2.0,,,,,Legacy model pricing (Standard)
+text_tokens,legacy_standard,babbage-002,USD_per_1M_tokens,0.4,,0.4,,,,,Legacy model pricing (Standard)
