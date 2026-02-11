@@ -182,8 +182,8 @@ export const locationIdParamSchema = z.object({
   locationId: z.coerce.number().int().positive(),
 });
 
-export const contentIdParamSchema = z.object({
-  contentId: z.coerce.number().int().positive(),
+export const treasureIdParamSchema = z.object({
+  treasureId: z.coerce.number().int().positive(),
 });
 
 // =============================================================================
@@ -196,7 +196,7 @@ export const experienceSearchQuerySchema = z.object({
 });
 
 export const experienceListQuerySchema = z.object({
-  sourceId: z.coerce.number().int().positive().optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
   category: z.string().max(255).optional(),
   country: z.string().max(255).optional(),
   regionId: z.coerce.number().int().positive().optional(),
@@ -262,7 +262,7 @@ export const createManualExperienceBodySchema = z.object({
   countryCode: z.string().max(10).optional(),
   countryName: z.string().max(255).optional(),
   regionId: z.number().int().positive(),
-  sourceId: z.number().int().positive().optional(),
+  categoryId: z.number().int().positive().optional(),
   websiteUrl: safeUrlSchema,
   wikipediaUrl: safeUrlSchema,
 });
@@ -291,20 +291,20 @@ export const markLocationVisitedBodySchema = z.object({
 });
 
 export const visitedExperiencesQuerySchema = z.object({
-  sourceId: z.coerce.number().int().positive().optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const visitedIdsQuerySchema = z.object({
-  sourceId: z.coerce.number().int().positive().optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
 });
 
 export const visitedLocationIdsQuerySchema = z.object({
   experienceId: z.coerce.number().int().positive().optional(),
 });
 
-export const viewedContentIdsQuerySchema = z.object({
+export const viewedTreasureIdsQuerySchema = z.object({
   experienceId: z.coerce.number().int().positive().optional(),
 });
 
@@ -320,8 +320,8 @@ export const visitedRegionBodySchema = z.object({
 // Admin schemas
 // =============================================================================
 
-export const sourceIdParamSchema = z.object({
-  sourceId: z.coerce.number().int().positive(),
+export const categoryIdParamSchema = z.object({
+  categoryId: z.coerce.number().int().positive(),
 });
 
 export const logIdParamSchema = z.object({
@@ -340,13 +340,13 @@ export const startSyncBodySchema = z.object({
   force: z.boolean().optional(),
 });
 
-export const reorderSourcesBodySchema = z.object({
-  sourceIds: z.array(z.number().int().positive()).min(1),
+export const reorderCategoriesBodySchema = z.object({
+  categoryIds: z.array(z.number().int().positive()).min(1),
 });
 
 export const startRegionAssignmentBodySchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
-  sourceId: z.coerce.number().int().positive().optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
 });
 
 export const regionAssignmentStatusQuerySchema = z.object({
@@ -355,20 +355,20 @@ export const regionAssignmentStatusQuerySchema = z.object({
 
 export const experienceCountsQuerySchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
-  sourceId: z.coerce.number().int().positive().optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
 });
 
 export const syncLogsQuerySchema = z.object({
-  sourceId: z.coerce.number().int().positive().optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const createCuratorAssignmentBodySchema = z.object({
   userId: z.number().int().positive(),
-  scopeType: z.enum(['region', 'source', 'global']),
+  scopeType: z.enum(['region', 'category', 'global']),
   regionId: z.number().int().positive().optional(),
-  sourceId: z.number().int().positive().optional(),
+  categoryId: z.number().int().positive().optional(),
   notes: z.string().max(1000).optional(),
 });
 

@@ -160,9 +160,9 @@ export const regionMembersRelations = relations(regionMembers, ({ one }) => ({
 // =============================================================================
 
 /**
- * Experience data sources (UNESCO, national parks, landmarks, etc.)
+ * Experience categories (UNESCO, museums, landmarks, etc.)
  */
-export const experienceSources = pgTable('experience_sources', {
+export const experienceCategories = pgTable('experience_categories', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 255 }).notNull().unique(),
   description: varchar('description', { length: 2000 }),
@@ -181,7 +181,7 @@ export const experienceSources = pgTable('experience_sources', {
  */
 export const experiences = pgTable('experiences', {
   id: serial('id').primaryKey(),
-  sourceId: integer('source_id').notNull().references(() => experienceSources.id, { onDelete: 'cascade' }),
+  categoryId: integer('category_id').notNull().references(() => experienceCategories.id, { onDelete: 'cascade' }),
   externalId: varchar('external_id', { length: 255 }).notNull(),
   // Names
   name: varchar('name', { length: 500 }).notNull(),
@@ -202,12 +202,13 @@ export const experiences = pgTable('experiences', {
   createdBy: integer('created_by'),  // References users(id) - handled at DB level
   curatedFields: jsonb('curated_fields').default([]),
   status: varchar('status', { length: 20 }).notNull().default('active'),
+  isIconic: boolean('is_iconic').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-  sourceIdx: index('idx_experiences_source').on(table.sourceId),
-  categoryIdx: index('idx_experiences_category').on(table.category),
-  uniqueSourceExternal: unique('unique_source_external_id').on(table.sourceId, table.externalId),
+  categoryIdx: index('idx_experiences_category_id').on(table.categoryId),
+  categoryClassIdx: index('idx_experiences_category').on(table.category),
+  uniqueCategoryExternal: unique('unique_category_external_id').on(table.categoryId, table.externalId),
 }));
 
 /**
@@ -249,7 +250,7 @@ export const userVisitedExperiences = pgTable('user_visited_experiences', {
  */
 export const experienceSyncLogs = pgTable('experience_sync_logs', {
   id: serial('id').primaryKey(),
-  sourceId: integer('source_id').notNull().references(() => experienceSources.id, { onDelete: 'cascade' }),
+  categoryId: integer('category_id').notNull().references(() => experienceCategories.id, { onDelete: 'cascade' }),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   status: varchar('status', { length: 50 }).default('running'),
@@ -261,7 +262,7 @@ export const experienceSyncLogs = pgTable('experience_sync_logs', {
   triggeredBy: integer('triggered_by'),  // References users(id) - handled at DB level
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-  sourceIdx: index('idx_experience_sync_logs_source').on(table.sourceId),
+  categoryIdx: index('idx_experience_sync_logs_category').on(table.categoryId),
   statusIdx: index('idx_experience_sync_logs_status').on(table.status),
 }));
 
@@ -269,20 +270,20 @@ export const experienceSyncLogs = pgTable('experience_sync_logs', {
 // Experience Relations
 // =============================================================================
 
-export const experienceSourcesRelations = relations(experienceSources, ({ many }) => ({
+export const experienceCategoriesRelations = relations(experienceCategories, ({ many }) => ({
   experiences: many(experiences),
   syncLogs: many(experienceSyncLogs),
 }));
 
 export const experiencesRelations = relations(experiences, ({ one, many }) => ({
-  source: one(experienceSources, {
-    fields: [experiences.sourceId],
-    references: [experienceSources.id],
+  category: one(experienceCategories, {
+    fields: [experiences.categoryId],
+    references: [experienceCategories.id],
   }),
   regionAssignments: many(experienceRegions),
   userVisits: many(userVisitedExperiences),
   locations: many(experienceLocations),
-  contents: many(experienceContents),
+  treasureLinks: many(experienceTreasures),
 }));
 
 export const experienceRegionsRelations = relations(experienceRegions, ({ one }) => ({
@@ -305,44 +306,65 @@ export const userVisitedExperiencesRelations = relations(userVisitedExperiences,
 }));
 
 export const experienceSyncLogsRelations = relations(experienceSyncLogs, ({ one }) => ({
-  source: one(experienceSources, {
-    fields: [experienceSyncLogs.sourceId],
-    references: [experienceSources.id],
+  category: one(experienceCategories, {
+    fields: [experienceSyncLogs.categoryId],
+    references: [experienceCategories.id],
   }),
   // Note: triggeredBy user relation not defined as users table is not in Drizzle
 }));
 
 // =============================================================================
-// Experience Contents (artworks, artifacts within experiences)
+// Treasures (artworks, artifacts — can belong to multiple venues)
 // =============================================================================
 
 /**
- * Notable contents within experiences (e.g., paintings in museums)
+ * Notable treasures (artworks, artifacts) that can belong to multiple venues.
+ * Globally unique items linked to experiences via junction table.
  */
-export const experienceContents = pgTable('experience_contents', {
+export const treasures = pgTable('treasures', {
   id: serial('id').primaryKey(),
-  experienceId: integer('experience_id').notNull().references(() => experiences.id, { onDelete: 'cascade' }),
-  externalId: varchar('external_id', { length: 255 }).notNull(),
+  externalId: varchar('external_id', { length: 255 }).notNull().unique(),
   name: varchar('name', { length: 500 }).notNull(),
-  contentType: varchar('content_type', { length: 50 }).notNull(),
+  treasureType: varchar('treasure_type', { length: 50 }).notNull(),
   artist: varchar('artist', { length: 500 }),
   year: integer('year'),
   imageUrl: varchar('image_url', { length: 1000 }),
   sitelinksCount: integer('sitelinks_count').notNull().default(0),
+  isIconic: boolean('is_iconic').notNull().default(false),
   // metadata stored as JSONB in DB
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-  experienceIdx: index('idx_experience_contents_experience').on(table.experienceId),
-  contentTypeIdx: index('idx_experience_contents_type').on(table.contentType),
-  sitelinksIdx: index('idx_experience_contents_sitelinks').on(table.sitelinksCount),
-  uniqueExperienceContent: unique('unique_experience_content').on(table.experienceId, table.externalId),
+  treasureTypeIdx: index('idx_treasures_type').on(table.treasureType),
+  sitelinksIdx: index('idx_treasures_sitelinks').on(table.sitelinksCount),
 }));
 
-export const experienceContentsRelations = relations(experienceContents, ({ one }) => ({
+/**
+ * Junction table: many-to-many between experiences and treasures
+ */
+export const experienceTreasures = pgTable('experience_treasures', {
+  id: serial('id').primaryKey(),
+  experienceId: integer('experience_id').notNull().references(() => experiences.id, { onDelete: 'cascade' }),
+  treasureId: integer('treasure_id').notNull().references(() => treasures.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  experienceIdx: index('idx_experience_treasures_experience').on(table.experienceId),
+  treasureIdx: index('idx_experience_treasures_treasure').on(table.treasureId),
+  uniqueExperienceTreasure: unique('unique_experience_treasure').on(table.experienceId, table.treasureId),
+}));
+
+export const treasuresRelations = relations(treasures, ({ many }) => ({
+  experienceLinks: many(experienceTreasures),
+}));
+
+export const experienceTreasuresRelations = relations(experienceTreasures, ({ one }) => ({
   experience: one(experiences, {
-    fields: [experienceContents.experienceId],
+    fields: [experienceTreasures.experienceId],
     references: [experiences.id],
+  }),
+  treasure: one(treasures, {
+    fields: [experienceTreasures.treasureId],
+    references: [treasures.id],
   }),
 }));
 
@@ -442,7 +464,7 @@ export const curatorAssignments = pgTable('curator_assignments', {
   userId: integer('user_id').notNull(),  // References users(id) - handled at DB level
   scopeType: varchar('scope_type', { length: 20 }).notNull(),
   regionId: integer('region_id').references(() => regions.id, { onDelete: 'cascade' }),
-  sourceId: integer('source_id').references(() => experienceSources.id, { onDelete: 'cascade' }),
+  categoryId: integer('category_id').references(() => experienceCategories.id, { onDelete: 'cascade' }),
   assignedBy: integer('assigned_by').notNull(),  // References users(id)
   assignedAt: timestamp('assigned_at', { withTimezone: true }).defaultNow(),
   notes: varchar('notes', { length: 2000 }),
