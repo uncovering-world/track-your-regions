@@ -24,15 +24,15 @@ interface VisitedLocationIds {
 /**
  * Hook for managing experience-level visited status (backward compatible)
  */
-export function useVisitedExperiences(sourceId?: number) {
+export function useVisitedExperiences(categoryId?: number) {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
 
   // Fetch visited experience IDs
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['visited-experiences', 'ids', sourceId],
+    queryKey: ['visited-experiences', 'ids', categoryId],
     queryFn: async (): Promise<VisitedExperienceIds> => {
-      const params = sourceId ? `?sourceId=${sourceId}` : '';
+      const params = categoryId ? `?categoryId=${categoryId}` : '';
       return authFetchJson(`${API_URL}/api/users/me/visited-experiences/ids${params}`);
     },
     enabled: isAuthenticated,
@@ -202,34 +202,34 @@ export function useVisitedLocations(experienceId?: number) {
 }
 
 /**
- * Hook for managing viewed contents (artwork "seen" tracking)
+ * Hook for managing viewed treasures (artwork "seen" tracking)
  */
-export function useViewedContents(experienceId?: number) {
+export function useViewedTreasures(experienceId?: number) {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['viewed-contents', experienceId],
-    queryFn: async (): Promise<{ viewedContentIds: number[] }> => {
+    queryKey: ['viewed-treasures', experienceId],
+    queryFn: async (): Promise<{ viewedTreasureIds: number[] }> => {
       const params = experienceId ? `?experienceId=${experienceId}` : '';
-      return authFetchJson(`${API_URL}/api/users/me/viewed-contents/ids${params}`);
+      return authFetchJson(`${API_URL}/api/users/me/viewed-treasures/ids${params}`);
     },
     enabled: isAuthenticated,
     staleTime: 60000,
   });
 
   const viewedIds = useMemo(() => {
-    return new Set(data?.viewedContentIds || []);
-  }, [data?.viewedContentIds]);
+    return new Set(data?.viewedTreasureIds || []);
+  }, [data?.viewedTreasureIds]);
 
   const markViewedMutation = useMutation({
-    mutationFn: async (contentId: number) => {
-      return authFetchJson(`${API_URL}/api/users/me/viewed-contents/${contentId}`, {
+    mutationFn: async (treasureId: number) => {
+      return authFetchJson(`${API_URL}/api/users/me/viewed-treasures/${treasureId}`, {
         method: 'POST',
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['viewed-contents'] });
+      queryClient.invalidateQueries({ queryKey: ['viewed-treasures'] });
       queryClient.invalidateQueries({ queryKey: ['visited-experiences'] });
       queryClient.invalidateQueries({ queryKey: ['visited-locations'] });
       queryClient.invalidateQueries({ queryKey: ['experience-visited-status'] });
@@ -237,13 +237,13 @@ export function useViewedContents(experienceId?: number) {
   });
 
   const unmarkViewedMutation = useMutation({
-    mutationFn: async (contentId: number) => {
-      return authFetchJson(`${API_URL}/api/users/me/viewed-contents/${contentId}`, {
+    mutationFn: async (treasureId: number) => {
+      return authFetchJson(`${API_URL}/api/users/me/viewed-treasures/${treasureId}`, {
         method: 'DELETE',
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['viewed-contents'] });
+      queryClient.invalidateQueries({ queryKey: ['viewed-treasures'] });
     },
   });
 

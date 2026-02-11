@@ -584,33 +584,35 @@ cmd_status() {
         local exp_count=$(table_count "$active" "experiences")
         local exp_loc_count=$(table_count "$active" "experience_locations")
         local exp_reg_count=$(table_count "$active" "experience_regions")
-        local exp_content_count=$(table_count "$active" "experience_contents")
+        local exp_content_count=$(table_count "$active" "treasures")
+        local exp_treasure_link_count=$(table_count "$active" "experience_treasures")
         local exp_reject_count=$(table_count "$active" "experience_rejections")
         local exp_curation_count=$(table_count "$active" "experience_curation_log")
 
         echo "  experiences:              $exp_count"
         echo "  experience_locations:     $exp_loc_count"
         echo "  experience_regions:       $exp_reg_count"
-        echo "  experience_contents:      $exp_content_count"
+        echo "  treasures:                $exp_content_count"
+        echo "  experience_treasures:     $exp_treasure_link_count"
         echo "  experience_rejections:    $exp_reject_count"
         echo "  experience_curation_log:  $exp_curation_count"
 
-        if table_exists "$active" "experience_sources" && table_exists "$active" "experiences"; then
-            local source_breakdown
-            source_breakdown=$(psql_cmd -d "$active" -tAc "
-                SELECT s.name, COUNT(e.id)
-                FROM experience_sources s
-                LEFT JOIN experiences e ON e.source_id = s.id
-                GROUP BY s.id, s.name, s.display_priority
-                ORDER BY s.display_priority, s.id
+        if table_exists "$active" "experience_categories" && table_exists "$active" "experiences"; then
+            local category_breakdown
+            category_breakdown=$(psql_cmd -d "$active" -tAc "
+                SELECT c.name, COUNT(e.id)
+                FROM experience_categories c
+                LEFT JOIN experiences e ON e.category_id = c.id
+                GROUP BY c.id, c.name, c.display_priority
+                ORDER BY c.display_priority, c.id
             " 2>/dev/null || true)
 
-            if [[ -n "$source_breakdown" ]]; then
-                echo "  by source:"
-                while IFS='|' read -r source_name source_count; do
-                    [[ -z "$source_name" ]] && continue
-                    echo "    - $source_name: $source_count"
-                done <<< "$source_breakdown"
+            if [[ -n "$category_breakdown" ]]; then
+                echo "  by category:"
+                while IFS='|' read -r category_name category_count; do
+                    [[ -z "$category_name" ]] && continue
+                    echo "    - $category_name: $category_count"
+                done <<< "$category_breakdown"
             fi
         fi
 
@@ -620,7 +622,7 @@ cmd_status() {
         local visited_regions_count=$(table_count "$active" "user_visited_regions")
         local visited_exp_count=$(table_count "$active" "user_visited_experiences")
         local visited_loc_count=$(table_count "$active" "user_visited_locations")
-        local viewed_content_count=$(table_count "$active" "user_viewed_contents")
+        local viewed_content_count=$(table_count "$active" "user_viewed_treasures")
         local curator_assignment_count=$(table_count "$active" "curator_assignments")
 
         echo "  users:                    $user_count"
@@ -628,7 +630,7 @@ cmd_status() {
         echo "  user_visited_regions:     $visited_regions_count"
         echo "  user_visited_experiences: $visited_exp_count"
         echo "  user_visited_locations:   $visited_loc_count"
-        echo "  user_viewed_contents:     $viewed_content_count"
+        echo "  user_viewed_treasures:    $viewed_content_count"
 
         if table_exists "$active" "users"; then
             local role_breakdown

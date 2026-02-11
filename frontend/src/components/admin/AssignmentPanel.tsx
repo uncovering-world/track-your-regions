@@ -32,7 +32,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  getSources,
+  getCategories,
   startRegionAssignment,
   getAssignmentStatus,
   cancelAssignment,
@@ -56,7 +56,7 @@ export function AssignmentPanel() {
   // Fetch sources (to check if assignment is needed)
   const { data: sources, refetch: refetchSources } = useQuery({
     queryKey: ['admin', 'sources'],
-    queryFn: getSources,
+    queryFn: getCategories,
   });
 
   // Check if any source needs assignment

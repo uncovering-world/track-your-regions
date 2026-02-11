@@ -19,7 +19,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AddIcon from '@mui/icons-material/Add';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { RegionExperienceCount, ExperienceSource } from '../../api/experiences';
+import type { RegionExperienceCount, ExperienceCategory } from '../../api/experiences';
 
 /**
  * Auto-assign colors from a palette for any number of sources.
@@ -40,8 +40,8 @@ const SOURCE_PALETTE = [
   '#EA580C', // orange
 ];
 
-function getSourceColor(sourceId: number): string {
-  return SOURCE_PALETTE[sourceId % SOURCE_PALETTE.length];
+function getCategoryColor(categoryId: number): string {
+  return SOURCE_PALETTE[categoryId % SOURCE_PALETTE.length];
 }
 
 /** Short display name — strips common long prefixes for compact display */
@@ -54,10 +54,10 @@ function shortSourceName(name: string): string {
 
 interface DiscoverRegionListProps {
   regions: RegionExperienceCount[];
-  sources: ExperienceSource[];
+  categories: ExperienceCategory[];
   isLoading: boolean;
   onNavigate: (regionId: number, regionName: string) => void;
-  onSourceClick: (regionId: number, regionName: string, sourceId: number, sourceName: string) => void;
+  onCategoryClick: (regionId: number, regionName: string, categoryId: number, categoryName: string) => void;
   /** Called when curator clicks "+" to add experience of any category to a region.
    *  Only called for regions where canAddToRegion returns true (if provided). */
   onAddExperience?: (regionId: number, regionName: string) => void;
@@ -67,21 +67,21 @@ interface DiscoverRegionListProps {
 
 export function DiscoverRegionList({
   regions,
-  sources,
+  categories,
   isLoading,
   onNavigate,
-  onSourceClick,
+  onCategoryClick,
   onAddExperience,
   canAddToRegion,
 }: DiscoverRegionListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // Build a lookup: sourceId → source object
-  const sourceById = useMemo(() => {
-    const map = new Map<number, ExperienceSource>();
-    for (const s of sources) map.set(s.id, s);
+  // Build a lookup: categoryId → category object
+  const categoryById = useMemo(() => {
+    const map = new Map<number, ExperienceCategory>();
+    for (const s of categories) map.set(s.id, s);
     return map;
-  }, [sources]);
+  }, [categories]);
 
   const virtualizer = useVirtualizer({
     count: regions.length,
@@ -125,11 +125,11 @@ export function DiscoverRegionList({
           const hasChildren = region.has_subregions;
 
           // Sorted source entries (by display_priority)
-          const sortedSourceEntries = Object.entries(region.source_counts)
-            .map(([sid, count]) => ({ sourceId: Number(sid), count }))
+          const sortedSourceEntries = Object.entries(region.category_counts)
+            .map(([sid, count]) => ({ categoryId: Number(sid), count }))
             .sort((a, b) => {
-              const sa = sourceById.get(a.sourceId);
-              const sb = sourceById.get(b.sourceId);
+              const sa = categoryById.get(a.categoryId);
+              const sb = categoryById.get(b.categoryId);
               return (sa?.display_priority ?? 99) - (sb?.display_priority ?? 99);
             });
 
@@ -191,21 +191,21 @@ export function DiscoverRegionList({
 
               {/* Source count pills — text labels, not icons */}
               <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0, alignItems: 'center' }}>
-                {sortedSourceEntries.map(({ sourceId, count }) => {
-                  const source = sourceById.get(sourceId);
+                {sortedSourceEntries.map(({ categoryId, count }) => {
+                  const source = categoryById.get(categoryId);
                   if (!source) return null;
-                  const color = getSourceColor(sourceId);
+                  const color = getCategoryColor(categoryId);
                   const label = shortSourceName(source.name);
 
                   return (
                     <Tooltip
-                      key={sourceId}
+                      key={categoryId}
                       title={`${count} ${source.name} in ${region.region_name}`}
                     >
                       <Box
                         onClick={(e) => {
                           e.stopPropagation();
-                          onSourceClick(region.region_id, region.region_name, sourceId, source.name);
+                          onCategoryClick(region.region_id, region.region_name, categoryId, source.name);
                         }}
                         sx={{
                           display: 'inline-flex',

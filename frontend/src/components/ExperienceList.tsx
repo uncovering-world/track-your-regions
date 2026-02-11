@@ -2,7 +2,7 @@
  * ExperienceList - Display experiences grouped by source
  *
  * Features:
- * - Grouped by source_name (e.g., "UNESCO World Heritage Sites")
+ * - Grouped by category_name (e.g., "UNESCO World Heritage Sites")
  * - Hover-to-highlight: bidirectional between list and markers
  * - Click expands inline details
  * - Checkboxes for authenticated users to mark visited
@@ -46,12 +46,12 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useExperienceContext, extractImageUrl, toThumbnailUrl } from '../hooks/useExperienceContext';
 import { useAuth } from '../hooks/useAuth';
-import { useVisitedExperiences, useVisitedLocations, useExperienceVisitedStatus, useViewedContents } from '../hooks/useVisitedExperiences';
+import { useVisitedExperiences, useVisitedLocations, useExperienceVisitedStatus, useViewedTreasures } from '../hooks/useVisitedExperiences';
 import {
   fetchExperience,
   fetchExperienceLocations,
-  fetchExperienceContents,
-  fetchExperienceSources,
+  fetchExperienceTreasures,
+  fetchExperienceCategories,
   unrejectExperience,
   removeExperienceFromRegion,
   type Experience,
@@ -79,8 +79,8 @@ const categoryColors: Record<string, string> = {
 };
 
 interface ExperienceGroup {
-  sourceName: string;
-  sourcePriority: number;
+  categoryName: string;
+  categoryPriority: number;
   experiences: Experience[];
 }
 
@@ -101,7 +101,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     toggleSelectedExperience,
     triggerFlyTo,
     triggerFitRegion,
-    setExpandedSourceNames,
+    setExpandedCategoryNames,
   } = useExperienceContext();
   const { isAuthenticated, isCurator } = useAuth();
   const { selectedRegion } = useNavigation();
@@ -121,19 +121,19 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const [rejectedSectionOpen, setRejectedSectionOpen] = useState(false);
   const [addDialogState, setAddDialogState] = useState<{
     open: boolean;
-    defaultSourceId?: number;
+    defaultCategoryId?: number;
     defaultTab?: 0 | 1;
   }>({ open: false });
 
   // Fetch sources to map source names → IDs for per-group add buttons
   const { data: sourcesData } = useQuery({
     queryKey: ['experience-sources'],
-    queryFn: fetchExperienceSources,
+    queryFn: fetchExperienceCategories,
     enabled: !!isCurator,
   });
 
   // Build a source name → source ID lookup
-  const sourceNameToId = useMemo(() => {
+  const categoryNameToId = useMemo(() => {
     const map = new Map<string, number>();
     sourcesData?.forEach((s) => map.set(s.name, s.id));
     return map;
@@ -170,21 +170,21 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const locationRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  // Group active experiences by source_name, sorted by display_priority
+  // Group active experiences by category_name, sorted by display_priority
   const groups = useMemo<ExperienceGroup[]>(() => {
     const groupMap = new Map<string, { experiences: Experience[]; priority: number }>();
 
     for (const exp of activeExperiences) {
-      const sourceName = exp.source_name || 'Experiences';
-      if (!groupMap.has(sourceName)) {
-        groupMap.set(sourceName, { experiences: [], priority: exp.source_priority ?? 100 });
+      const categoryName = exp.category_name || 'Experiences';
+      if (!groupMap.has(categoryName)) {
+        groupMap.set(categoryName, { experiences: [], priority: exp.category_priority ?? 100 });
       }
-      groupMap.get(sourceName)!.experiences.push(exp);
+      groupMap.get(categoryName)!.experiences.push(exp);
     }
 
     return Array.from(groupMap.entries())
-      .map(([sourceName, { experiences: exps, priority }]) => ({ sourceName, sourcePriority: priority, experiences: exps }))
-      .sort((a, b) => a.sourcePriority - b.sourcePriority);
+      .map(([categoryName, { experiences: exps, priority }]) => ({ categoryName, categoryPriority: priority, experiences: exps }))
+      .sort((a, b) => a.categoryPriority - b.categoryPriority);
   }, [activeExperiences]);
 
   // Reset when region changes
@@ -195,19 +195,19 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       prevRegionId.current = regionId;
       hasAutoExpanded.current = false;
       setExpandedGroups(new Set());
-      setExpandedSourceNames(new Set());
+      setExpandedCategoryNames(new Set());
     }
-  }, [regionId, setExpandedSourceNames]);
+  }, [regionId, setExpandedCategoryNames]);
 
   // Auto-expand first group on initial load (once per region)
   useEffect(() => {
     if (groups.length > 0 && !hasAutoExpanded.current) {
       hasAutoExpanded.current = true;
-      const initial = new Set([groups[0].sourceName]);
+      const initial = new Set([groups[0].categoryName]);
       setExpandedGroups(initial);
-      setExpandedSourceNames(initial);
+      setExpandedCategoryNames(initial);
     }
-  }, [groups, setExpandedSourceNames]);
+  }, [groups, setExpandedCategoryNames]);
 
   // Scroll to item only when hovered from map marker (not from list hover)
   // Use manual scrolling to avoid affecting page scroll
@@ -268,15 +268,15 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     }
   }, [selectedExperienceId, scrollContainerRef]);
 
-  const toggleGroup = (sourceName: string) => {
+  const toggleGroup = (categoryName: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(sourceName)) {
-        next.delete(sourceName);
+      if (next.has(categoryName)) {
+        next.delete(categoryName);
       } else {
-        next.add(sourceName);
+        next.add(categoryName);
       }
-      setExpandedSourceNames(next);
+      setExpandedCategoryNames(next);
       return next;
     });
   };
@@ -381,11 +381,11 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
       <List disablePadding>
         {groups.map((group) => (
-        <Box key={group.sourceName}>
+        <Box key={group.categoryName}>
           {/* Group Header */}
           <ListItem
             component="div"
-            onClick={() => toggleGroup(group.sourceName)}
+            onClick={() => toggleGroup(group.categoryName)}
             sx={{
               bgcolor: 'grey.100',
               cursor: 'pointer',
@@ -395,19 +395,19 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
             <ListItemText
               primary={
                 <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  {group.sourceName} ({group.experiences.length})
+                  {group.categoryName} ({group.experiences.length})
                 </Typography>
               }
             />
             {/* Per-source "+" button to create a new experience under this source */}
             {hasCuratorScope && regionId && (
-              <Tooltip title={`Add new ${group.sourceName.toLowerCase().replace(/^top /, '')}`}>
+              <Tooltip title={`Add new ${group.categoryName.toLowerCase().replace(/^top /, '')}`}>
                 <IconButton
                   size="small"
                   onClick={(e) => {
                     e.stopPropagation();
-                    const sourceId = sourceNameToId.get(group.sourceName);
-                    setAddDialogState({ open: true, defaultSourceId: sourceId, defaultTab: 0 });
+                    const categoryId = categoryNameToId.get(group.categoryName);
+                    setAddDialogState({ open: true, defaultCategoryId: categoryId, defaultTab: 0 });
                   }}
                   sx={{ mr: 0.5 }}
                 >
@@ -415,11 +415,11 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
                 </IconButton>
               </Tooltip>
             )}
-            {expandedGroups.has(group.sourceName) ? <ExpandLess /> : <ExpandMore />}
+            {expandedGroups.has(group.categoryName) ? <ExpandLess /> : <ExpandMore />}
           </ListItem>
 
           {/* Group Items */}
-          <Collapse in={expandedGroups.has(group.sourceName)} timeout="auto" unmountOnExit>
+          <Collapse in={expandedGroups.has(group.categoryName)} timeout="auto" unmountOnExit>
             <List disablePadding>
               {group.experiences.map((exp) => renderExperienceItem(exp))}
             </List>
@@ -476,7 +476,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
           onClose={() => setAddDialogState({ open: false })}
           regionId={regionId}
           regionName={selectedRegion?.name}
-          defaultSourceId={addDialogState.defaultSourceId}
+          defaultCategoryId={addDialogState.defaultCategoryId}
           defaultTab={addDialogState.defaultTab}
         />
       )}
@@ -780,7 +780,7 @@ function ExperienceExpandedDetails({
   // Fetch contents (artworks) - only if experience has contents
   const { data: contentsData } = useQuery({
     queryKey: ['experience-contents', experience.id],
-    queryFn: () => fetchExperienceContents(experience.id),
+    queryFn: () => fetchExperienceTreasures(experience.id),
     staleTime: 300000,
   });
 
@@ -922,8 +922,8 @@ function ExperienceExpandedDetails({
       )}
 
       {/* Artworks / Contents list */}
-      {contentsData && contentsData.contents.length > 0 && (
-        <ArtworksList contents={contentsData.contents} total={contentsData.total} experienceId={experience.id} />
+      {contentsData && contentsData.treasures.length > 0 && (
+        <ArtworksList contents={contentsData.treasures} total={contentsData.total} experienceId={experience.id} />
       )}
 
       {/* Multi-location list */}
@@ -1132,20 +1132,20 @@ function ExperienceExpandedDetails({
 
 const ARTWORKS_INITIAL_LIMIT = 10;
 
-function ArtworksList({ contents, total, experienceId }: { contents: import('../api/experiences').ExperienceContent[]; total: number; experienceId: number }) {
+function ArtworksList({ contents, total, experienceId }: { contents: import('../api/experiences').ExperienceTreasure[]; total: number; experienceId: number }) {
   const { setPreviewImageUrl } = useExperienceContext();
   const { isAuthenticated } = useAuth();
-  const { viewedIds, viewedCount, markViewed, unmarkViewed } = useViewedContents(experienceId);
+  const { viewedIds, viewedCount, markViewed, unmarkViewed } = useViewedTreasures(experienceId);
   const [showAll, setShowAll] = useState(false);
   const displayContents = showAll ? contents : contents.slice(0, ARTWORKS_INITIAL_LIMIT);
   const hasMore = total > ARTWORKS_INITIAL_LIMIT;
 
-  const handleToggleViewed = (contentId: number, e: React.MouseEvent) => {
+  const handleToggleViewed = (treasureId: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (viewedIds.has(contentId)) {
-      unmarkViewed(contentId);
+    if (viewedIds.has(treasureId)) {
+      unmarkViewed(treasureId);
     } else {
-      markViewed(contentId);
+      markViewed(treasureId);
     }
   };
 
@@ -1243,7 +1243,7 @@ function ArtworksList({ contents, total, experienceId }: { contents: import('../
                   {[
                     content.artist,
                     content.year,
-                    content.content_type,
+                    content.treasure_type,
                   ].filter(Boolean).join(' \u00B7 ')}
                 </Typography>
               </Box>

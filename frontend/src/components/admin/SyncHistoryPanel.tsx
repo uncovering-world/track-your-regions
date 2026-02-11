@@ -161,7 +161,7 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
   return (
     <TableRow hover>
       <TableCell>{getStatusChip()}</TableCell>
-      <TableCell>{log.source_name}</TableCell>
+      <TableCell>{log.category_name}</TableCell>
       <TableCell>{formatDate(log.started_at)}</TableCell>
       <TableCell>{formatDuration(log.started_at, log.completed_at)}</TableCell>
       <TableCell align="right">{log.total_fetched.toLocaleString()}</TableCell>
@@ -209,7 +209,7 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
             <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: '1fr 1fr', mb: 3 }}>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Source</Typography>
-                <Typography>{log.source_name}</Typography>
+                <Typography>{log.category_name}</Typography>
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Status</Typography>

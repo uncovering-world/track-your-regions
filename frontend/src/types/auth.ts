@@ -38,11 +38,11 @@ export interface RegisterCredentials {
 
 export interface CuratorScope {
   id: number;
-  scopeType: 'global' | 'region' | 'source';
+  scopeType: 'global' | 'region' | 'category';
   regionId: number | null;
   regionName: string | null;
-  sourceId: number | null;
-  sourceName: string | null;
+  categoryId: number | null;
+  categoryName: string | null;
 }
 
 export interface AuthState {

@@ -151,8 +151,8 @@ interface ExperienceContextType {
   getExperienceById: (id: number) => Experience | undefined;
 
   // Expanded source names (controls which markers are visible)
-  expandedSourceNames: Set<string>;
-  setExpandedSourceNames: (names: Set<string>) => void;
+  expandedCategoryNames: Set<string>;
+  setExpandedCategoryNames: (names: Set<string>) => void;
 
   // Artwork preview image (shown as overlay on map)
   previewImageUrl: string | null;
@@ -164,7 +164,7 @@ interface ExperienceContextType {
     experienceName: string;
     locationId: number | null;
     locationName: string | null;
-    sourceName: string | null;
+    categoryName: string | null;
     category: string | null;
     imageUrl: string | null;
     longitude: number;
@@ -175,7 +175,7 @@ interface ExperienceContextType {
     experienceName: string;
     locationId: number | null;
     locationName: string | null;
-    sourceName: string | null;
+    categoryName: string | null;
     category: string | null;
     imageUrl: string | null;
     longitude: number;
@@ -198,14 +198,14 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   const [selectedExperienceId, setSelectedExperienceId] = useState<number | null>(null);
   const [flyToExperienceId, setFlyToExperienceId] = useState<number | null>(null);
   const [shouldFitRegion, setShouldFitRegion] = useState(false);
-  const [expandedSourceNames, setExpandedSourceNames] = useState<Set<string>>(new Set());
+  const [expandedCategoryNames, setExpandedCategoryNames] = useState<Set<string>>(new Set());
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [hoverPreview, setHoverPreview] = useState<{
     experienceId: number;
     experienceName: string;
     locationId: number | null;
     locationName: string | null;
-    sourceName: string | null;
+    categoryName: string | null;
     category: string | null;
     imageUrl: string | null;
     longitude: number;
@@ -297,13 +297,13 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     triggerFitRegion,
     clearFitRegion,
     getExperienceById,
-    expandedSourceNames,
-    setExpandedSourceNames,
+    expandedCategoryNames,
+    setExpandedCategoryNames,
     previewImageUrl,
     setPreviewImageUrl,
     hoverPreview,
     setHoverPreview,
-  }), [data, isLoading, experiences, regionId, isExploring, hoveredExperienceId, hoveredLocationId, hoverSource, setHoveredFromMarker, setHoveredFromList, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedSourceNames, previewImageUrl, hoverPreview]);
+  }), [data, isLoading, experiences, regionId, isExploring, hoveredExperienceId, hoveredLocationId, hoverSource, setHoveredFromMarker, setHoveredFromList, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, previewImageUrl, hoverPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>

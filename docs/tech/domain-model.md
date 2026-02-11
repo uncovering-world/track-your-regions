@@ -80,7 +80,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full model.
 - **Attributes**:
   - `ID`: Unique identifier
-  - `SourceID`: ID of the data source (UNESCO, etc.)
+  - `CategoryID`: ID of the experience category (UNESCO, etc.)
   - `ExternalID`: ID from the original data source
   - `Name`: Name of the experience
   - `NameLocal`: Multilingual names (JSONB)
@@ -95,17 +95,17 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `ImageURL`: URL to representative image
   - `Metadata`: Source-specific data (JSONB)
 
-### ExperienceSource
+### ExperienceCategory
 
-- **Description**: A data source for experiences (e.g., UNESCO World Heritage Sites,
-  National Parks). Enables extensibility for multiple experience providers.
+- **Description**: A category of experiences (e.g., UNESCO World Heritage Sites,
+  Top Museums). Enables extensibility for multiple experience types.
 - **Attributes**:
   - `ID`: Unique identifier
-  - `Name`: Source name (unique)
+  - `Name`: Category name (unique)
   - `Description`: Human-readable description
   - `APIEndpoint`: External API URL for syncing
   - `APIConfig`: Configuration for sync process (JSONB)
-  - `IsActive`: Whether the source is enabled
+  - `IsActive`: Whether the category is enabled
   - `LastSyncAt`: Timestamp of last sync
   - `LastSyncStatus`: 'success', 'partial', or 'failed'
 
@@ -133,32 +133,32 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `Ordinal`: Display order within the experience
   - `Location`: Geographic point (PostGIS Point, SRID 4326)
 
-### ExperienceContent (Treasure)
+### Treasure
 
 - **Description**: An independently trackable treasure inside a venue experience
   (artwork in a museum, species in a park). Treasures have a many-to-many
-  relationship with venues — the same species can be found in multiple zoos.
-  Iconic treasures are called **highlights** and shown with a badge.
-  Currently used for venue significance computation; region-scoped treasure
-  browsing is planned. DB table: `experience_contents`.
+  relationship with venues via `experience_treasures` junction table — the same
+  species can be found in multiple zoos. Iconic treasures (`is_iconic = true`)
+  are called **highlights** and shown with a badge. Globally unique by `external_id`.
+  DB table: `treasures`, junction: `experience_treasures`.
   See [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md).
 - **Attributes**:
   - `ID`: Unique identifier
-  - `ExperienceID`: Parent experience
-  - `ExternalID`: Source identifier (e.g., Wikidata QID)
+  - `ExternalID`: Globally unique source identifier (e.g., Wikidata QID)
   - `Name`: Treasure title
-  - `ContentType`: Classification (painting, sculpture, etc.)
+  - `TreasureType`: Classification (painting, sculpture, etc.)
   - `Artist`: Optional creator name
   - `Year`: Optional creation year
+  - `IsIconic`: Whether this is a highlight treasure
 
 ### CuratorAssignment
 
 - **Description**: Scoped permission entry that allows curation.
 - **Attributes**:
   - `UserID`: Curator user ID
-  - `ScopeType`: `global` | `region` | `source`
+  - `ScopeType`: `global` | `region` | `category`
   - `RegionID`: Present when scope is region-scoped
-  - `SourceID`: Present when scope is source-scoped
+  - `CategoryID`: Present when scope is category-scoped
   - `AssignedBy`: Admin who granted scope
 
 ### ExperienceRejection

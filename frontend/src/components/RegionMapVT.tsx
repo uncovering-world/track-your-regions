@@ -1196,9 +1196,9 @@ export function RegionMapVT() {
             <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }} noWrap>
               {hoverPreview.locationName || 'Primary location'}
             </Typography>
-            {hoverPreview.sourceName && (
+            {hoverPreview.categoryName && (
               <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
-                {hoverPreview.sourceName}
+                {hoverPreview.categoryName}
               </Typography>
             )}
           </Box>

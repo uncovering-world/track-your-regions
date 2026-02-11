@@ -33,7 +33,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   fetchExperience,
   fetchExperienceLocations,
-  fetchExperienceContents,
+  fetchExperienceTreasures,
   type Experience,
 } from '../../api/experiences';
 import { useAuth } from '../../hooks/useAuth';
@@ -41,7 +41,7 @@ import {
   useVisitedExperiences,
   useVisitedLocations,
   useExperienceVisitedStatus,
-  useViewedContents,
+  useViewedTreasures,
 } from '../../hooks/useVisitedExperiences';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
@@ -87,7 +87,7 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
   // Fetch contents
   const { data: contentsData } = useQuery({
     queryKey: ['experience-contents', experience.id],
-    queryFn: () => fetchExperienceContents(experience.id),
+    queryFn: () => fetchExperienceTreasures(experience.id),
     staleTime: 300000,
   });
 
@@ -105,7 +105,7 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
     visitedLocations: visitedLocationCount,
     locations: locationsWithVisitedStatus,
   } = useExperienceVisitedStatus(experience.id);
-  const { viewedIds, markViewed, unmarkViewed } = useViewedContents(experience.id);
+  const { viewedIds, markViewed, unmarkViewed } = useViewedTreasures(experience.id);
 
   const imageUrl = extractImageUrl(experience.image_url);
   const catStyle = categoryColors[experience.category || ''] || { bg: '#E0E7FF', text: '#4F46E5' };
@@ -285,9 +285,9 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
         )}
 
         {/* Contents / Artworks section */}
-        {contentsData && contentsData.contents.length > 0 && (
+        {contentsData && contentsData.treasures.length > 0 && (
           <ContentsSection
-            contents={contentsData.contents}
+            contents={contentsData.treasures}
             totalCount={contentsData.total}
             isAuthenticated={isAuthenticated}
             viewedIds={viewedIds}
@@ -555,7 +555,7 @@ function LocationsSection({
 // =============================================================================
 
 interface ContentsSectionProps {
-  contents: { id: number; name: string; content_type: string; artist: string | null; year: number | null; image_url: string | null; sitelinks_count: number }[];
+  contents: { id: number; name: string; treasure_type: string; artist: string | null; year: number | null; image_url: string | null; sitelinks_count: number }[];
   totalCount: number;
   isAuthenticated: boolean;
   viewedIds: Set<number>;
