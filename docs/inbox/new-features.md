@@ -1,3 +1,0 @@
-1. Curators must be able to curate all the contents of the expiriecnes, inluding the locations and the content items. It will require a good UX/UI design.
-2. ~~Add Semgrep so I can run it locally witn npm run command. It must cover as much of vuln categories from our security settings as possible.~~ **Done** — `npm run security:scan` (Semgrep with p/owasp-top-ten, p/nodejs, p/react, p/secrets), `npm run security:deps` (npm audit), `npm run security:all` (both)
-3. We should add a sync bwetween Map Mode and Discovery mode. If we are in discovery mode on a page of specific region - we should easily switch to the Map mode of the same region. Vise versa would be nice as well, but for that we should also choos a catergory of exp that we want to discover.
