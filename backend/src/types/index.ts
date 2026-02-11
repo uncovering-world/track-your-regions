@@ -186,6 +186,10 @@ export const treasureIdParamSchema = z.object({
   treasureId: z.coerce.number().int().positive(),
 });
 
+export const markTreasureViewedBodySchema = z.object({
+  experienceId: z.number().int().positive().optional(),
+});
+
 // =============================================================================
 // Experience schemas
 // =============================================================================
@@ -262,7 +266,7 @@ export const createManualExperienceBodySchema = z.object({
   countryCode: z.string().max(10).optional(),
   countryName: z.string().max(255).optional(),
   regionId: z.number().int().positive(),
-  categoryId: z.number().int().positive().optional(),
+  categoryId: z.number().int().positive(),
   websiteUrl: safeUrlSchema,
   wikipediaUrl: safeUrlSchema,
 });

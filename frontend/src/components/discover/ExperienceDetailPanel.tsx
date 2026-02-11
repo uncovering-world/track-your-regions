@@ -291,7 +291,7 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
             totalCount={contentsData.total}
             isAuthenticated={isAuthenticated}
             viewedIds={viewedIds}
-            onMarkViewed={markViewed}
+            onMarkViewed={(id) => markViewed({ treasureId: id, experienceId: experience.id })}
             onUnmarkViewed={unmarkViewed}
           />
         )}

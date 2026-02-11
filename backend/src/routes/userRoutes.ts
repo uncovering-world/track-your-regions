@@ -8,6 +8,7 @@ import {
   experienceIdParamSchema,
   locationIdParamSchema,
   treasureIdParamSchema,
+  markTreasureViewedBodySchema,
   idParamSchema,
   visitedRegionBodySchema,
   markVisitedBodySchema,
@@ -282,7 +283,7 @@ router.get('/me/viewed-treasures/ids', validate(viewedTreasureIdsQuerySchema, 'q
  * POST /api/users/me/viewed-treasures/:treasureId
  * Mark a treasure as viewed (auto-marks parent experience as visited)
  */
-router.post('/me/viewed-treasures/:treasureId', validate(treasureIdParamSchema, 'params'), requireAuth, markTreasureViewed);
+router.post('/me/viewed-treasures/:treasureId', validate(treasureIdParamSchema, 'params'), validate(markTreasureViewedBodySchema), requireAuth, markTreasureViewed);
 
 /**
  * DELETE /api/users/me/viewed-treasures/:treasureId

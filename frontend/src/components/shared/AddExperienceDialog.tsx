@@ -83,17 +83,17 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
     },
   });
 
-  // --- Sources for Create New tab ---
-  const { data: sources } = useQuery({
-    queryKey: ['experience-sources'],
+  // --- Categories for Create New tab ---
+  const { data: categories } = useQuery({
+    queryKey: ['experience-categories'],
     queryFn: fetchExperienceCategories,
   });
 
-  // Sync tab and source when dialog opens with different defaults
+  // Sync tab and category when dialog opens with different defaults
   useEffect(() => {
     if (open) {
       setActiveTab(defaultTab ?? 0);
-      setNewSourceId(defaultCategoryId ?? '');
+      setNewCategoryId(defaultCategoryId ?? '');
     }
   }, [open, defaultTab, defaultCategoryId]);
 
@@ -101,7 +101,7 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newCategory, setNewCategory] = useState('');
-  const [newCategoryId, setNewSourceId] = useState<number | ''>(defaultCategoryId ?? '');
+  const [newCategoryId, setNewCategoryId] = useState<number | ''>(defaultCategoryId ?? '');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [newWikipediaUrl, setNewWikipediaUrl] = useState('');
@@ -288,7 +288,7 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
       setNewName('');
       setNewDescription('');
       setNewCategory('');
-      setNewSourceId('');
+      setNewCategoryId('');
       setCoords(null);
       setNewImageUrl('');
       setNewWikipediaUrl('');
@@ -433,13 +433,13 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
 
             <Box sx={{ display: 'flex', gap: 2 }}>
               <FormControl fullWidth size="small" required>
-                <InputLabel>Source</InputLabel>
+                <InputLabel>Category</InputLabel>
                 <Select
                   value={newCategoryId}
-                  label="Source"
-                  onChange={(e) => setNewSourceId(e.target.value as number | '')}
+                  label="Category"
+                  onChange={(e) => setNewCategoryId(e.target.value as number | '')}
                 >
-                  {sources?.map((s) => (
+                  {categories?.map((s) => (
                     <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                   ))}
                 </Select>

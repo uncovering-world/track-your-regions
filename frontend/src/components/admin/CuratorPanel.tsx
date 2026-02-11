@@ -225,7 +225,7 @@ function ScopeChip({
   const label =
     scope.scopeType === 'global' ? 'Global' :
     scope.scopeType === 'region' ? scope.regionName || `Region #${scope.regionId}` :
-    scope.categoryName || `Source #${scope.categoryId}`;
+    scope.categoryName || `Category #${scope.categoryId}`;
 
   return (
     <Chip
