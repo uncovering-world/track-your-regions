@@ -110,6 +110,13 @@ For comments where the reviewer misunderstands the context, draft a polite reply
 {Suggested sequence for tackling the items, grouping related changes}
 ```
 
-### 7. Ask before proceeding
+### 7. Commit rules for fixes
+
+When fixing issues from PR comments, **NEVER** create generic "address review comments" commits. Each commit must be a meaningful, topic-based change:
+- Group fixes by topic (e.g., "Fix stale query keys after source→category rename", "Add body validation to markTreasureViewed route")
+- If the fix is small and belongs to an existing commit's topic, **amend** to that commit instead of creating a new one
+- Each commit message should describe **what** changed and **why**, not "address PR feedback"
+
+### 8. Ask before proceeding
 
 After presenting the plan, ask the user which items they want to address. Do NOT start making changes automatically. For "Disagree" items, confirm with the user before posting any replies.
