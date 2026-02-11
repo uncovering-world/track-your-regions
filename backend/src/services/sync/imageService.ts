@@ -91,14 +91,21 @@ export function clearImages(sourceName: string): number {
  * Non-Wikimedia URLs pass through unchanged.
  */
 function toWikimediaThumbnail(url: string, width: number = WIKIMEDIA_THUMB_WIDTH): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url; // Not a valid URL — pass through unchanged
+  }
+
   // Special:FilePath URLs (from Wikidata SPARQL) — append ?width= parameter
-  if (url.includes('Special:FilePath')) {
-    const sep = url.includes('?') ? '&' : '?';
+  if (parsed.hostname === 'commons.wikimedia.org' && parsed.pathname.includes('Special:FilePath')) {
+    const sep = parsed.search ? '&' : '?';
     return `${url}${sep}width=${width}`;
   }
 
   // Direct upload.wikimedia.org URLs
-  if (url.includes('upload.wikimedia.org') && !url.includes('/thumb/')) {
+  if (parsed.hostname === 'upload.wikimedia.org' && !url.includes('/thumb/')) {
     const match = url.match(/^(https?:\/\/upload\.wikimedia\.org\/wikipedia\/[^/]+)\/([\da-f]\/[\da-f]{2}\/(.+))$/i);
     if (match) {
       const [, base, hashPath, filename] = match;
