@@ -15,7 +15,7 @@ import type {
 } from './types.js';
 import { runningSyncs } from './types.js';
 
-const UNESCO_SOURCE_ID = 1; // Seeded in migration
+const UNESCO_CATEGORY_ID = 1; // Seeded in migration
 const PAGE_SIZE = 100;
 const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
 const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
@@ -254,7 +254,7 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
   const locations = parseComponentsList(record.components_list);
 
   return {
-    sourceId: UNESCO_SOURCE_ID,
+    categoryId: UNESCO_CATEGORY_ID,
     externalId: String(record.id_no),
     name: record.name_en || `Site ${record.id_no}`,
     nameLocal,
@@ -278,7 +278,7 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
 async function upsertExperience(exp: ProcessedExperience): Promise<'created' | 'updated'> {
   const result = await pool.query(
     `INSERT INTO experiences (
-      source_id, external_id, name, name_local, description, short_description,
+      category_id, external_id, name, name_local, description, short_description,
       category, tags, location, country_codes, country_names, image_url, metadata,
       created_at, updated_at
     ) VALUES (
@@ -286,7 +286,7 @@ async function upsertExperience(exp: ProcessedExperience): Promise<'created' | '
       ST_SetSRID(ST_MakePoint($9, $10), 4326),
       $11, $12, $13, $14, NOW(), NOW()
     )
-    ON CONFLICT (source_id, external_id) DO UPDATE SET
+    ON CONFLICT (category_id, external_id) DO UPDATE SET
       name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
       name_local = CASE WHEN experiences.curated_fields ? 'name_local' THEN experiences.name_local ELSE EXCLUDED.name_local END,
       description = CASE WHEN experiences.curated_fields ? 'description' THEN experiences.description ELSE EXCLUDED.description END,
@@ -301,7 +301,7 @@ async function upsertExperience(exp: ProcessedExperience): Promise<'created' | '
       updated_at = NOW()
     RETURNING id, (xmax = 0) AS inserted`,
     [
-      exp.sourceId,
+      exp.categoryId,
       exp.externalId,
       exp.name,
       JSON.stringify(exp.nameLocal),
@@ -376,10 +376,10 @@ async function upsertExperienceLocations(experienceId: number, exp: ProcessedExp
  */
 async function createSyncLog(triggeredBy: number | null): Promise<number> {
   const result = await pool.query(
-    `INSERT INTO experience_sync_logs (source_id, triggered_by, status)
+    `INSERT INTO experience_sync_logs (category_id, triggered_by, status)
      VALUES ($1, $2, 'running')
      RETURNING id`,
-    [UNESCO_SOURCE_ID, triggeredBy]
+    [UNESCO_CATEGORY_ID, triggeredBy]
   );
   return result.rows[0].id;
 }
@@ -416,13 +416,13 @@ async function updateSyncLog(
 
   // Also update the source's last sync info
   await pool.query(
-    `UPDATE experience_sources SET
+    `UPDATE experience_categories SET
       last_sync_at = NOW(),
       last_sync_status = $2,
       last_sync_error = $3
      WHERE id = $1`,
     [
-      UNESCO_SOURCE_ID,
+      UNESCO_CATEGORY_ID,
       status,
       status === 'failed' ? 'See sync log for details' : null,
     ]
@@ -442,15 +442,15 @@ async function cleanupUnescoData(progress: SyncProgress): Promise<void> {
     WHERE location_id IN (
       SELECT el.id FROM experience_locations el
       JOIN experiences e ON el.experience_id = e.id
-      WHERE e.source_id = $1
+      WHERE e.category_id = $1
     )
-  `, [UNESCO_SOURCE_ID]);
+  `, [UNESCO_CATEGORY_ID]);
 
   // 2. Delete user visited experiences
   await pool.query(`
     DELETE FROM user_visited_experiences
-    WHERE experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [UNESCO_SOURCE_ID]);
+    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [UNESCO_CATEGORY_ID]);
 
   // 3. Delete experience location regions (auto-assigned only, preserve manual curator assignments)
   await pool.query(`
@@ -459,27 +459,27 @@ async function cleanupUnescoData(progress: SyncProgress): Promise<void> {
       AND location_id IN (
         SELECT el.id FROM experience_locations el
         JOIN experiences e ON el.experience_id = e.id
-        WHERE e.source_id = $1
+        WHERE e.category_id = $1
       )
-  `, [UNESCO_SOURCE_ID]);
+  `, [UNESCO_CATEGORY_ID]);
 
   // 4. Delete experience regions (auto-assigned only, preserve manual curator assignments)
   await pool.query(`
     DELETE FROM experience_regions
     WHERE assignment_type = 'auto'
-      AND experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [UNESCO_SOURCE_ID]);
+      AND experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [UNESCO_CATEGORY_ID]);
 
   // 5. Delete experience locations
   await pool.query(`
     DELETE FROM experience_locations
-    WHERE experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [UNESCO_SOURCE_ID]);
+    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [UNESCO_CATEGORY_ID]);
 
   // 6. Delete experiences
   const result = await pool.query(`
-    DELETE FROM experiences WHERE source_id = $1
-  `, [UNESCO_SOURCE_ID]);
+    DELETE FROM experiences WHERE category_id = $1
+  `, [UNESCO_CATEGORY_ID]);
 
   console.log(`[UNESCO Sync] Cleaned up ${result.rowCount} existing experiences`);
   progress.statusMessage = `Cleaned up ${result.rowCount} existing experiences`;
@@ -492,7 +492,7 @@ async function cleanupUnescoData(progress: SyncProgress): Promise<void> {
  */
 export async function syncUnescoSites(triggeredBy: number | null, force: boolean = false): Promise<void> {
   // Check if already running
-  const existing = runningSyncs.get(UNESCO_SOURCE_ID);
+  const existing = runningSyncs.get(UNESCO_CATEGORY_ID);
   if (existing && existing.status !== 'complete' && existing.status !== 'failed' && existing.status !== 'cancelled') {
     throw new Error('UNESCO sync already in progress');
   }
@@ -510,7 +510,7 @@ export async function syncUnescoSites(triggeredBy: number | null, force: boolean
     currentItem: '',
     logId: null,
   };
-  runningSyncs.set(UNESCO_SOURCE_ID, progress);
+  runningSyncs.set(UNESCO_CATEGORY_ID, progress);
 
   const errorDetails: { externalId: string; error: string }[] = [];
 
@@ -613,8 +613,8 @@ export async function syncUnescoSites(triggeredBy: number | null, force: boolean
     // Clean up after delay, but only if this sync's progress is still current
     const thisProgress = progress;
     setTimeout(() => {
-      if (runningSyncs.get(UNESCO_SOURCE_ID) === thisProgress) {
-        runningSyncs.delete(UNESCO_SOURCE_ID);
+      if (runningSyncs.get(UNESCO_CATEGORY_ID) === thisProgress) {
+        runningSyncs.delete(UNESCO_CATEGORY_ID);
       }
     }, 30000);
   }
@@ -624,14 +624,14 @@ export async function syncUnescoSites(triggeredBy: number | null, force: boolean
  * Get current sync status
  */
 export function getUnescoSyncStatus(): SyncProgress | null {
-  return runningSyncs.get(UNESCO_SOURCE_ID) || null;
+  return runningSyncs.get(UNESCO_CATEGORY_ID) || null;
 }
 
 /**
  * Cancel running sync
  */
 export function cancelUnescoSync(): boolean {
-  const progress = runningSyncs.get(UNESCO_SOURCE_ID);
+  const progress = runningSyncs.get(UNESCO_CATEGORY_ID);
   if (progress && progress.status !== 'complete' && progress.status !== 'failed') {
     progress.cancel = true;
     progress.statusMessage = 'Cancelling...';

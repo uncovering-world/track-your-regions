@@ -7,7 +7,7 @@ import {
   worldViewIdParamSchema,
   experienceIdParamSchema,
   locationIdParamSchema,
-  contentIdParamSchema,
+  treasureIdParamSchema,
   idParamSchema,
   visitedRegionBodySchema,
   markVisitedBodySchema,
@@ -16,7 +16,7 @@ import {
   visitedExperiencesQuerySchema,
   visitedIdsQuerySchema,
   visitedLocationIdsQuerySchema,
-  viewedContentIdsQuerySchema,
+  viewedTreasureIdsQuerySchema,
   markAllLocationsQuerySchema,
 } from '../types/index.js';
 import {
@@ -31,9 +31,9 @@ import {
   getExperienceVisitedStatus,
   markAllLocationsVisited,
   unmarkAllLocationsVisited,
-  getViewedContentIds,
-  markContentViewed,
-  unmarkContentViewed,
+  getViewedTreasureIds,
+  markTreasureViewed,
+  unmarkTreasureViewed,
 } from '../controllers/experience/index.js';
 
 const router = Router();
@@ -71,13 +71,13 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response):
           ca.scope_type as "scopeType",
           ca.region_id as "regionId",
           r.name as "regionName",
-          ca.source_id as "sourceId",
-          es.name as "sourceName",
+          ca.category_id as "categoryId",
+          es.name as "categoryName",
           ca.assigned_at as "assignedAt",
           ca.notes
         FROM curator_assignments ca
         LEFT JOIN regions r ON ca.region_id = r.id
-        LEFT JOIN experience_sources es ON ca.source_id = es.id
+        LEFT JOIN experience_categories es ON ca.category_id = es.id
         WHERE ca.user_id = $1
         ORDER BY ca.assigned_at DESC
       `, [req.user!.id]);
@@ -269,25 +269,25 @@ router.post('/me/experiences/:experienceId/mark-all-locations', validate(experie
 router.delete('/me/experiences/:experienceId/mark-all-locations', validate(experienceIdParamSchema, 'params'), validate(markAllLocationsQuerySchema, 'query'), requireAuth, unmarkAllLocationsVisited);
 
 // =============================================================================
-// Viewed Contents Routes (artwork "seen" tracking)
+// Viewed Treasures Routes (artwork "seen" tracking)
 // =============================================================================
 
 /**
- * GET /api/users/me/viewed-contents/ids
- * Get IDs of viewed contents for quick lookup
+ * GET /api/users/me/viewed-treasures/ids
+ * Get IDs of viewed treasures for quick lookup
  */
-router.get('/me/viewed-contents/ids', validate(viewedContentIdsQuerySchema, 'query'), requireAuth, getViewedContentIds);
+router.get('/me/viewed-treasures/ids', validate(viewedTreasureIdsQuerySchema, 'query'), requireAuth, getViewedTreasureIds);
 
 /**
- * POST /api/users/me/viewed-contents/:contentId
- * Mark a content as viewed (auto-marks parent experience as visited)
+ * POST /api/users/me/viewed-treasures/:treasureId
+ * Mark a treasure as viewed (auto-marks parent experience as visited)
  */
-router.post('/me/viewed-contents/:contentId', validate(contentIdParamSchema, 'params'), requireAuth, markContentViewed);
+router.post('/me/viewed-treasures/:treasureId', validate(treasureIdParamSchema, 'params'), requireAuth, markTreasureViewed);
 
 /**
- * DELETE /api/users/me/viewed-contents/:contentId
- * Unmark a content as viewed (does NOT unvisit parent experience)
+ * DELETE /api/users/me/viewed-treasures/:treasureId
+ * Unmark a treasure as viewed (does NOT unvisit parent experience)
  */
-router.delete('/me/viewed-contents/:contentId', validate(contentIdParamSchema, 'params'), requireAuth, unmarkContentViewed);
+router.delete('/me/viewed-treasures/:treasureId', validate(treasureIdParamSchema, 'params'), requireAuth, unmarkTreasureViewed);
 
 export default router;

@@ -159,15 +159,15 @@ export function requireCurator(req: AuthenticatedRequest, res: Response, next: N
 // Helper: Check Curator Scope
 // =============================================================================
 /**
- * Checks if a curator has permission for the given region (and optionally source).
- * Admin always has access. Checks global scope, then source scope, then walks
+ * Checks if a curator has permission for the given region (and optionally category).
+ * Admin always has access. Checks global scope, then category scope, then walks
  * up the region hierarchy via recursive CTE.
  */
 export async function checkCuratorScope(
   userId: number,
   userRole: UserRole,
   regionId: number,
-  sourceId?: number,
+  categoryId?: number,
 ): Promise<boolean> {
   // Admin bypass
   if (userRole === 'admin') return true;
@@ -179,13 +179,13 @@ export async function checkCuratorScope(
   );
   if (globalResult.rows.length > 0) return true;
 
-  // Check source scope if sourceId provided
-  if (sourceId) {
-    const sourceResult = await pool.query(
-      `SELECT id FROM curator_assignments WHERE user_id = $1 AND scope_type = 'source' AND source_id = $2 LIMIT 1`,
-      [userId, sourceId],
+  // Check category scope if categoryId provided
+  if (categoryId) {
+    const categoryResult = await pool.query(
+      `SELECT id FROM curator_assignments WHERE user_id = $1 AND scope_type = 'category' AND category_id = $2 LIMIT 1`,
+      [userId, categoryId],
     );
-    if (sourceResult.rows.length > 0) return true;
+    if (categoryResult.rows.length > 0) return true;
   }
 
   // Check region scope: walk up the region hierarchy

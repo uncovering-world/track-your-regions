@@ -3,14 +3,14 @@
  *
  * Fetches notable outdoor sculptures and monuments from Wikidata.
  * Each item becomes a direct experience with its own map marker.
- * No grouping, no experience_contents — simpler than museums.
+ * No grouping, no treasures — simpler than museums.
  */
 
 import { pool } from '../../db/index.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
 import { runningSyncs } from './types.js';
 
-const LANDMARK_SOURCE_ID = 3;
+const LANDMARK_CATEGORY_ID = 3;
 const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
 const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
 const SPARQL_DELAY_MS = 1000;
@@ -271,7 +271,7 @@ async function upsertLandmarkExperience(
 
   const result = await pool.query(
     `INSERT INTO experiences (
-      source_id, external_id, name, name_local, description, short_description,
+      category_id, external_id, name, name_local, description, short_description,
       category, tags, location, country_codes, country_names, image_url, metadata,
       created_at, updated_at
     ) VALUES (
@@ -279,7 +279,7 @@ async function upsertLandmarkExperience(
       ST_SetSRID(ST_MakePoint($9, $10), 4326),
       $11, $12, $13, $14, NOW(), NOW()
     )
-    ON CONFLICT (source_id, external_id) DO UPDATE SET
+    ON CONFLICT (category_id, external_id) DO UPDATE SET
       name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
       name_local = CASE WHEN experiences.curated_fields ? 'name_local' THEN experiences.name_local ELSE EXCLUDED.name_local END,
       description = CASE WHEN experiences.curated_fields ? 'description' THEN experiences.description ELSE EXCLUDED.description END,
@@ -294,7 +294,7 @@ async function upsertLandmarkExperience(
       updated_at = NOW()
     RETURNING id, (xmax = 0) AS inserted`,
     [
-      LANDMARK_SOURCE_ID,
+      LANDMARK_CATEGORY_ID,
       landmark.qid,
       landmark.label,
       JSON.stringify({ en: landmark.label }),
@@ -330,10 +330,10 @@ async function upsertLandmarkExperience(
 
 async function createSyncLog(triggeredBy: number | null): Promise<number> {
   const result = await pool.query(
-    `INSERT INTO experience_sync_logs (source_id, triggered_by, status)
+    `INSERT INTO experience_sync_logs (category_id, triggered_by, status)
      VALUES ($1, $2, 'running')
      RETURNING id`,
-    [LANDMARK_SOURCE_ID, triggeredBy]
+    [LANDMARK_CATEGORY_ID, triggeredBy]
   );
   return result.rows[0].id;
 }
@@ -359,12 +359,12 @@ async function updateSyncLog(
   );
 
   await pool.query(
-    `UPDATE experience_sources SET
+    `UPDATE experience_categories SET
       last_sync_at = NOW(),
       last_sync_status = $2,
       last_sync_error = $3
      WHERE id = $1`,
-    [LANDMARK_SOURCE_ID, status, status === 'failed' ? 'See sync log for details' : null]
+    [LANDMARK_CATEGORY_ID, status, status === 'failed' ? 'See sync log for details' : null]
   );
 }
 
@@ -376,14 +376,14 @@ async function cleanupLandmarkData(progress: SyncProgress): Promise<void> {
     WHERE location_id IN (
       SELECT el.id FROM experience_locations el
       JOIN experiences e ON el.experience_id = e.id
-      WHERE e.source_id = $1
+      WHERE e.category_id = $1
     )
-  `, [LANDMARK_SOURCE_ID]);
+  `, [LANDMARK_CATEGORY_ID]);
 
   await pool.query(`
     DELETE FROM user_visited_experiences
-    WHERE experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [LANDMARK_SOURCE_ID]);
+    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [LANDMARK_CATEGORY_ID]);
 
   await pool.query(`
     DELETE FROM experience_location_regions
@@ -391,24 +391,24 @@ async function cleanupLandmarkData(progress: SyncProgress): Promise<void> {
       AND location_id IN (
         SELECT el.id FROM experience_locations el
         JOIN experiences e ON el.experience_id = e.id
-        WHERE e.source_id = $1
+        WHERE e.category_id = $1
       )
-  `, [LANDMARK_SOURCE_ID]);
+  `, [LANDMARK_CATEGORY_ID]);
 
   await pool.query(`
     DELETE FROM experience_regions
     WHERE assignment_type = 'auto'
-      AND experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [LANDMARK_SOURCE_ID]);
+      AND experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [LANDMARK_CATEGORY_ID]);
 
   await pool.query(`
     DELETE FROM experience_locations
-    WHERE experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [LANDMARK_SOURCE_ID]);
+    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [LANDMARK_CATEGORY_ID]);
 
   const result = await pool.query(`
-    DELETE FROM experiences WHERE source_id = $1
-  `, [LANDMARK_SOURCE_ID]);
+    DELETE FROM experiences WHERE category_id = $1
+  `, [LANDMARK_CATEGORY_ID]);
 
   console.log(`[Landmark Sync] Cleaned up ${result.rowCount} existing landmarks`);
   progress.statusMessage = `Cleaned up ${result.rowCount} existing landmarks`;
@@ -418,7 +418,7 @@ async function cleanupLandmarkData(progress: SyncProgress): Promise<void> {
  * Main sync function — fetches outdoor sculptures and monuments from Wikidata
  */
 export async function syncLandmarks(triggeredBy: number | null, force: boolean = false): Promise<void> {
-  const existing = runningSyncs.get(LANDMARK_SOURCE_ID);
+  const existing = runningSyncs.get(LANDMARK_CATEGORY_ID);
   if (existing && existing.status !== 'complete' && existing.status !== 'failed' && existing.status !== 'cancelled') {
     throw new Error('Landmark sync already in progress');
   }
@@ -435,7 +435,7 @@ export async function syncLandmarks(triggeredBy: number | null, force: boolean =
     currentItem: '',
     logId: null,
   };
-  runningSyncs.set(LANDMARK_SOURCE_ID, progress);
+  runningSyncs.set(LANDMARK_CATEGORY_ID, progress);
 
   const errorDetails: { externalId: string; error: string }[] = [];
 
@@ -576,8 +576,8 @@ export async function syncLandmarks(triggeredBy: number | null, force: boolean =
     // Clean up after delay, but only if this sync's progress is still current
     const thisProgress = progress;
     setTimeout(() => {
-      if (runningSyncs.get(LANDMARK_SOURCE_ID) === thisProgress) {
-        runningSyncs.delete(LANDMARK_SOURCE_ID);
+      if (runningSyncs.get(LANDMARK_CATEGORY_ID) === thisProgress) {
+        runningSyncs.delete(LANDMARK_CATEGORY_ID);
       }
     }, 30000);
   }
@@ -587,14 +587,14 @@ export async function syncLandmarks(triggeredBy: number | null, force: boolean =
  * Get current landmark sync status
  */
 export function getLandmarkSyncStatus(): SyncProgress | null {
-  return runningSyncs.get(LANDMARK_SOURCE_ID) || null;
+  return runningSyncs.get(LANDMARK_CATEGORY_ID) || null;
 }
 
 /**
  * Cancel running landmark sync
  */
 export function cancelLandmarkSync(): boolean {
-  const progress = runningSyncs.get(LANDMARK_SOURCE_ID);
+  const progress = runningSyncs.get(LANDMARK_CATEGORY_ID);
   if (progress && progress.status !== 'complete' && progress.status !== 'failed') {
     progress.cancel = true;
     progress.statusMessage = 'Cancelling...';

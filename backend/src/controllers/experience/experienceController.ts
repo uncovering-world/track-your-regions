@@ -27,7 +27,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  * - bbox: Bounding box filter "west,south,east,north"
  */
 export async function listExperiences(req: Request, res: Response): Promise<void> {
-  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : null;
+  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : null;
   const category = req.query.category ? String(req.query.category) : null;
   const country = req.query.country ? String(req.query.country) : null;
   const regionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
@@ -50,19 +50,19 @@ export async function listExperiences(req: Request, res: Response): Promise<void
       e.metadata->>'inDanger' as in_danger,
       ST_X(e.location) as longitude,
       ST_Y(e.location) as latitude,
-      s.name as source_name,
-      s.display_priority as source_priority
+      s.name as category_name,
+      s.display_priority as category_priority
     FROM experiences e
-    JOIN experience_sources s ON e.source_id = s.id
+    JOIN experience_categories s ON e.category_id = s.id
   `;
 
   const conditions: string[] = [];
   const params: (string | number)[] = [];
   let paramIndex = 1;
 
-  if (sourceId) {
-    conditions.push(`e.source_id = $${paramIndex++}`);
-    params.push(sourceId);
+  if (categoryId) {
+    conditions.push(`e.category_id = $${paramIndex++}`);
+    params.push(categoryId);
   }
 
   if (category) {
@@ -110,7 +110,7 @@ export async function listExperiences(req: Request, res: Response): Promise<void
   const result = await pool.query(query, params);
 
   // Get total count for pagination (same WHERE, no LIMIT/OFFSET)
-  let countQuery = 'SELECT COUNT(*) FROM experiences e JOIN experience_sources s ON e.source_id = s.id';
+  let countQuery = 'SELECT COUNT(*) FROM experiences e JOIN experience_categories s ON e.category_id = s.id';
   if (conditions.length > 0) {
     countQuery += ' WHERE ' + conditions.join(' AND ');
   }
@@ -137,7 +137,7 @@ export async function getExperience(req: Request, res: Response): Promise<void> 
   const result = await pool.query(`
     SELECT
       e.id,
-      e.source_id,
+      e.category_id,
       e.external_id,
       e.name,
       e.name_local,
@@ -155,10 +155,10 @@ export async function getExperience(req: Request, res: Response): Promise<void> 
       ST_Y(e.location) as latitude,
       ST_AsGeoJSON(e.boundary)::json as boundary_geojson,
       e.area_km2,
-      s.name as source_name,
-      s.description as source_description
+      s.name as category_name,
+      s.description as category_description
     FROM experiences e
-    JOIN experience_sources s ON e.source_id = s.id
+    JOIN experience_categories s ON e.category_id = s.id
     WHERE e.id = $1
   `, [id]);
 
@@ -237,12 +237,12 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
         ST_Y(e.location) as latitude,
         e.metadata->>'inDanger' as in_danger,
         (SELECT COUNT(*)::int FROM experience_locations el WHERE el.experience_id = e.id) as location_count,
-        s.name as source_name,
-        s.display_priority as source_priority
+        s.name as category_name,
+        s.display_priority as category_priority
         ${rejectionSelect}
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_sources s ON e.source_id = s.id
+      JOIN experience_categories s ON e.category_id = s.id
       ${descendantRejectionJoin}
       WHERE er.region_id IN (SELECT id FROM descendant_regions)
       ${rejectionFilter}
@@ -270,12 +270,12 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
         ST_Y(e.location) as latitude,
         e.metadata->>'inDanger' as in_danger,
         (SELECT COUNT(*)::int FROM experience_locations el WHERE el.experience_id = e.id) as location_count,
-        s.name as source_name,
-        s.display_priority as source_priority
+        s.name as category_name,
+        s.display_priority as category_priority
         ${rejectionSelect}
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_sources s ON e.source_id = s.id
+      JOIN experience_categories s ON e.category_id = s.id
       ${simpleRejectionJoin}
       WHERE er.region_id = $1
       ${rejectionFilter}
@@ -313,10 +313,10 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
 }
 
 /**
- * List experience sources
- * GET /api/experiences/sources
+ * List experience categories
+ * GET /api/experiences/categories
  */
-export async function listSources(req: Request, res: Response): Promise<void> {
+export async function listCategories(req: Request, res: Response): Promise<void> {
   const result = await pool.query(`
     SELECT
       s.id,
@@ -326,8 +326,8 @@ export async function listSources(req: Request, res: Response): Promise<void> {
       s.last_sync_at,
       s.last_sync_status,
       s.display_priority,
-      (SELECT COUNT(*) FROM experiences WHERE source_id = s.id) as experience_count
-    FROM experience_sources s
+      (SELECT COUNT(*) FROM experiences WHERE category_id = s.id) as experience_count
+    FROM experience_categories s
     WHERE s.is_active = true
     ORDER BY s.display_priority, s.name
   `);
@@ -383,7 +383,7 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
  * - worldViewId: Required. The world view to get counts for
  * - parentRegionId: Optional. If provided, returns counts for subregions only
  *
- * Returns an array of { region_id, region_name, has_subregions, source_counts: { [sourceId]: count } }
+ * Returns an array of { region_id, region_name, has_subregions, category_counts: { [categoryId]: count } }
  * Only returns direct assignment counts (not recursive children).
  */
 export async function getExperienceRegionCounts(req: Request, res: Response): Promise<void> {
@@ -403,7 +403,7 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
       r.name as region_name,
       r.color as region_color,
       EXISTS(SELECT 1 FROM regions c WHERE c.parent_region_id = r.id LIMIT 1) as has_subregions,
-      e.source_id,
+      e.category_id,
       COUNT(DISTINCT er.experience_id) as count
     FROM regions r
     JOIN experience_regions er ON r.id = er.region_id
@@ -412,7 +412,7 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     WHERE r.world_view_id = $1
       AND ${parentRegionId ? 'r.parent_region_id = $2' : 'r.parent_region_id IS NULL'}
       AND rej.id IS NULL
-    GROUP BY r.id, r.name, r.color, e.source_id
+    GROUP BY r.id, r.name, r.color, e.category_id
     ORDER BY r.name
   `, parentRegionId ? [worldViewId, parentRegionId] : [worldViewId]);
 
@@ -429,12 +429,12 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     ORDER BY r.name
   `, parentRegionId ? [worldViewId, parentRegionId] : [worldViewId]);
 
-  // Aggregate into { regionId -> { sourceId -> count } }
+  // Aggregate into { regionId -> { categoryId -> count } }
   const countMap = new Map<number, Record<number, number>>();
   for (const row of result.rows) {
     const rid = row.region_id;
     if (!countMap.has(rid)) countMap.set(rid, {});
-    countMap.get(rid)![row.source_id] = parseInt(row.count);
+    countMap.get(rid)![row.category_id] = parseInt(row.count);
   }
 
   const response = allRegionsResult.rows.map(row => ({
@@ -442,7 +442,7 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     region_name: row.region_name,
     region_color: row.region_color,
     has_subregions: row.has_subregions,
-    source_counts: countMap.get(row.region_id) || {},
+    category_counts: countMap.get(row.region_id) || {},
   }));
 
   res.json(response);
@@ -463,7 +463,7 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
     return;
   }
 
-  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : null;
+  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : null;
   const limit = Math.min(parseInt(String(req.query.limit)) || 100, 500);
   const offset = parseInt(String(req.query.offset)) || 0;
 
@@ -481,19 +481,19 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
       e.image_url,
       ST_X(e.location) as longitude,
       ST_Y(e.location) as latitude,
-      s.name as source_name
+      s.name as category_name
     FROM user_visited_experiences uve
     JOIN experiences e ON uve.experience_id = e.id
-    JOIN experience_sources s ON e.source_id = s.id
+    JOIN experience_categories s ON e.category_id = s.id
     WHERE uve.user_id = $1
   `;
 
   const params: (number | string)[] = [userId];
   let paramIndex = 2;
 
-  if (sourceId) {
-    query += ` AND e.source_id = $${paramIndex++}`;
-    params.push(sourceId);
+  if (categoryId) {
+    query += ` AND e.category_id = $${paramIndex++}`;
+    params.push(categoryId);
   }
 
   query += ` ORDER BY uve.visited_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
@@ -504,9 +504,9 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
   // Get total count
   let countQuery = 'SELECT COUNT(*) FROM user_visited_experiences uve JOIN experiences e ON uve.experience_id = e.id WHERE uve.user_id = $1';
   const countParams: number[] = [userId];
-  if (sourceId) {
-    countQuery += ' AND e.source_id = $2';
-    countParams.push(sourceId);
+  if (categoryId) {
+    countQuery += ' AND e.category_id = $2';
+    countParams.push(categoryId);
   }
   const countResult = await pool.query(countQuery, countParams);
 
@@ -661,7 +661,7 @@ export async function getVisitedIds(req: AuthenticatedRequest, res: Response): P
     return;
   }
 
-  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : null;
+  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : null;
 
   let query = `
     SELECT uve.experience_id
@@ -670,12 +670,12 @@ export async function getVisitedIds(req: AuthenticatedRequest, res: Response): P
 
   const params: number[] = [userId];
 
-  if (sourceId) {
+  if (categoryId) {
     query += `
       JOIN experiences e ON uve.experience_id = e.id
-      WHERE uve.user_id = $1 AND e.source_id = $2
+      WHERE uve.user_id = $1 AND e.category_id = $2
     `;
-    params.push(sourceId);
+    params.push(categoryId);
   } else {
     query += ' WHERE uve.user_id = $1';
   }
@@ -735,29 +735,6 @@ export async function getExperienceLocations(req: Request, res: Response): Promi
     locations: result.rows,
     totalLocations: result.rows.length,
     regionId,
-  });
-}
-
-/**
- * Get contents (artworks, artifacts) for an experience
- * GET /api/experiences/:id/contents
- */
-export async function getExperienceContents(req: Request, res: Response): Promise<void> {
-  const experienceId = parseInt(String(req.params.id));
-
-  const result = await pool.query(`
-    SELECT
-      id, external_id, name, content_type, artist, year,
-      image_url, sitelinks_count
-    FROM experience_contents
-    WHERE experience_id = $1
-    ORDER BY sitelinks_count DESC
-  `, [experienceId]);
-
-  res.json({
-    experienceId,
-    contents: result.rows,
-    total: result.rows.length,
   });
 }
 
@@ -1064,14 +1041,38 @@ export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: 
 }
 
 // =============================================================================
-// Viewed Contents (artwork "seen" tracking)
+// Viewed Treasures (artwork "seen" tracking)
 // =============================================================================
 
 /**
- * Get viewed content IDs for current user
- * GET /api/users/me/viewed-contents/ids
+ * Get contents (treasures) for an experience
+ * GET /api/experiences/:id/treasures
  */
-export async function getViewedContentIds(req: AuthenticatedRequest, res: Response): Promise<void> {
+export async function getExperienceTreasures(req: Request, res: Response): Promise<void> {
+  const experienceId = parseInt(String(req.params.id));
+
+  const result = await pool.query(`
+    SELECT
+      t.id, t.external_id, t.name, t.treasure_type, t.artist, t.year,
+      t.image_url, t.sitelinks_count, t.is_iconic
+    FROM treasures t
+    JOIN experience_treasures et ON t.id = et.treasure_id
+    WHERE et.experience_id = $1
+    ORDER BY t.sitelinks_count DESC
+  `, [experienceId]);
+
+  res.json({
+    experienceId,
+    treasures: result.rows,
+    total: result.rows.length,
+  });
+}
+
+/**
+ * Get viewed treasure IDs for current user
+ * GET /api/users/me/viewed-treasures/ids
+ */
+export async function getViewedTreasureIds(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user?.id;
   if (!userId) {
     res.status(401).json({ error: 'Authentication required' });
@@ -1081,105 +1082,121 @@ export async function getViewedContentIds(req: AuthenticatedRequest, res: Respon
   const experienceId = req.query.experienceId ? parseInt(String(req.query.experienceId)) : null;
 
   let query = `
-    SELECT uvc.content_id
-    FROM user_viewed_contents uvc
-    JOIN experience_contents ec ON uvc.content_id = ec.id
-    WHERE uvc.user_id = $1
+    SELECT uvt.treasure_id
+    FROM user_viewed_treasures uvt
   `;
 
   const params: number[] = [userId];
 
   if (experienceId) {
-    query += ' AND ec.experience_id = $2';
+    query += `
+      JOIN experience_treasures et ON uvt.treasure_id = et.treasure_id
+      WHERE uvt.user_id = $1 AND et.experience_id = $2
+    `;
     params.push(experienceId);
+  } else {
+    query += ' WHERE uvt.user_id = $1';
   }
 
   const result = await pool.query(query, params);
 
   res.json({
-    viewedContentIds: result.rows.map(r => r.content_id),
+    viewedTreasureIds: result.rows.map(r => r.treasure_id),
   });
 }
 
 /**
- * Mark a content as viewed
- * POST /api/users/me/viewed-contents/:contentId
+ * Mark a treasure as viewed
+ * POST /api/users/me/viewed-treasures/:treasureId
+ * Body: { experienceId } — needed to auto-mark the venue as visited (treasure can be in multiple venues).
  * Also auto-marks the parent experience as visited.
  */
-export async function markContentViewed(req: AuthenticatedRequest, res: Response): Promise<void> {
+export async function markTreasureViewed(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user?.id;
   if (!userId) {
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
 
-  const contentId = parseInt(String(req.params.contentId));
+  const treasureId = parseInt(String(req.params.treasureId));
 
-  // Verify content exists and get experience info
-  const contentResult = await pool.query(`
-    SELECT ec.id, ec.name, ec.experience_id, e.name as experience_name
-    FROM experience_contents ec
-    JOIN experiences e ON ec.experience_id = e.id
-    WHERE ec.id = $1
-  `, [contentId]);
+  // Verify treasure exists
+  const treasureResult = await pool.query(
+    'SELECT id, name FROM treasures WHERE id = $1',
+    [treasureId],
+  );
 
-  if (contentResult.rows.length === 0) {
-    res.status(404).json({ error: 'Content not found' });
+  if (treasureResult.rows.length === 0) {
+    res.status(404).json({ error: 'Treasure not found' });
     return;
   }
 
-  const content = contentResult.rows[0];
+  const treasure = treasureResult.rows[0];
 
   // Insert viewed record
   await pool.query(`
-    INSERT INTO user_viewed_contents (user_id, content_id, viewed_at)
+    INSERT INTO user_viewed_treasures (user_id, treasure_id, viewed_at)
     VALUES ($1, $2, NOW())
-    ON CONFLICT (user_id, content_id) DO NOTHING
-  `, [userId, contentId]);
+    ON CONFLICT (user_id, treasure_id) DO NOTHING
+  `, [userId, treasureId]);
 
-  // Auto-mark parent experience as visited
-  await pool.query(`
-    INSERT INTO user_visited_experiences (user_id, experience_id, visited_at)
-    VALUES ($1, $2, NOW())
-    ON CONFLICT (user_id, experience_id) DO NOTHING
-  `, [userId, content.experience_id]);
+  // If experienceId provided, auto-mark that venue as visited
+  const experienceId = req.body.experienceId ? parseInt(String(req.body.experienceId)) : null;
+  let experienceName: string | null = null;
 
-  // Auto-mark all locations of the experience as visited
-  // (needed because the checkbox state is driven by location visits)
-  await pool.query(`
-    INSERT INTO user_visited_locations (user_id, location_id, visited_at)
-    SELECT $1, el.id, NOW()
-    FROM experience_locations el
-    WHERE el.experience_id = $2
-    ON CONFLICT (user_id, location_id) DO NOTHING
-  `, [userId, content.experience_id]);
+  if (experienceId) {
+    // Verify the treasure is linked to this experience
+    const linkResult = await pool.query(
+      'SELECT 1 FROM experience_treasures WHERE experience_id = $1 AND treasure_id = $2',
+      [experienceId, treasureId],
+    );
+    if (linkResult.rows.length > 0) {
+      await pool.query(`
+        INSERT INTO user_visited_experiences (user_id, experience_id, visited_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (user_id, experience_id) DO NOTHING
+      `, [userId, experienceId]);
+
+      // Auto-mark all locations of the experience as visited
+      await pool.query(`
+        INSERT INTO user_visited_locations (user_id, location_id, visited_at)
+        SELECT $1, el.id, NOW()
+        FROM experience_locations el
+        WHERE el.experience_id = $2
+        ON CONFLICT (user_id, location_id) DO NOTHING
+      `, [userId, experienceId]);
+
+      const expResult = await pool.query('SELECT name FROM experiences WHERE id = $1', [experienceId]);
+      experienceName = expResult.rows[0]?.name || null;
+    }
+  }
 
   res.json({
     success: true,
-    contentId,
-    contentName: content.name,
-    experienceId: content.experience_id,
-    experienceName: content.experience_name,
+    treasureId,
+    treasureName: treasure.name,
+    experienceId,
+    experienceName,
   });
 }
 
 /**
- * Unmark a content as viewed
- * DELETE /api/users/me/viewed-contents/:contentId
+ * Unmark a treasure as viewed
+ * DELETE /api/users/me/viewed-treasures/:treasureId
  * Does NOT unvisit the parent experience.
  */
-export async function unmarkContentViewed(req: AuthenticatedRequest, res: Response): Promise<void> {
+export async function unmarkTreasureViewed(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user?.id;
   if (!userId) {
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
 
-  const contentId = parseInt(String(req.params.contentId));
+  const treasureId = parseInt(String(req.params.treasureId));
 
   const result = await pool.query(
-    'DELETE FROM user_viewed_contents WHERE user_id = $1 AND content_id = $2 RETURNING id',
-    [userId, contentId]
+    'DELETE FROM user_viewed_treasures WHERE user_id = $1 AND treasure_id = $2 RETURNING id',
+    [userId, treasureId]
   );
 
   if (result.rowCount === 0) {
@@ -1187,7 +1204,7 @@ export async function unmarkContentViewed(req: AuthenticatedRequest, res: Respon
     return;
   }
 
-  res.json({ success: true, contentId });
+  res.json({ success: true, treasureId });
 }
 
 /**

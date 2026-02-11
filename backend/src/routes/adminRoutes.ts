@@ -10,12 +10,12 @@ import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { pool } from '../db/index.js';
 import { validate } from '../middleware/errorHandler.js';
 import {
-  sourceIdParamSchema,
+  categoryIdParamSchema,
   logIdParamSchema,
   assignmentIdParamSchema,
   userIdParamSchema,
   startSyncBodySchema,
-  reorderSourcesBodySchema,
+  reorderCategoriesBodySchema,
   startRegionAssignmentBodySchema,
   regionAssignmentStatusQuerySchema,
   experienceCountsQuerySchema,
@@ -31,8 +31,8 @@ import {
   fixImages,
   getSyncLogs,
   getSyncLogDetails,
-  getSources,
-  reorderSources,
+  getCategories,
+  reorderCategories,
   startRegionAssignment,
   getRegionAssignmentStatus,
   cancelRegionAssignment,
@@ -52,22 +52,22 @@ const router = Router();
 // =============================================================================
 
 // List all experience sources
-router.get('/sync/sources', getSources);
+router.get('/sync/categories', getCategories);
 
 // Reorder experience sources (set display_priority)
-router.put('/sync/sources/reorder', validate(reorderSourcesBodySchema), reorderSources);
+router.put('/sync/categories/reorder', validate(reorderCategoriesBodySchema), reorderCategories);
 
 // Start sync for a source
-router.post('/sync/sources/:sourceId/start', validate(sourceIdParamSchema, 'params'), validate(startSyncBodySchema), startSync);
+router.post('/sync/categories/:categoryId/start', validate(categoryIdParamSchema, 'params'), validate(startSyncBodySchema), startSync);
 
 // Get sync status for a source (poll this endpoint)
-router.get('/sync/sources/:sourceId/status', validate(sourceIdParamSchema, 'params'), getSyncStatus);
+router.get('/sync/categories/:categoryId/status', validate(categoryIdParamSchema, 'params'), getSyncStatus);
 
 // Cancel sync for a source
-router.post('/sync/sources/:sourceId/cancel', validate(sourceIdParamSchema, 'params'), cancelSync);
+router.post('/sync/categories/:categoryId/cancel', validate(categoryIdParamSchema, 'params'), cancelSync);
 
 // Fix missing images for a source
-router.post('/sync/sources/:sourceId/fix-images', validate(sourceIdParamSchema, 'params'), fixImages);
+router.post('/sync/categories/:categoryId/fix-images', validate(categoryIdParamSchema, 'params'), fixImages);
 
 // Get sync history/logs
 router.get('/sync/logs', validate(syncLogsQuerySchema, 'query'), getSyncLogs);

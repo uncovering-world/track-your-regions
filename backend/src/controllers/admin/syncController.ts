@@ -1,7 +1,7 @@
 /**
  * Admin Sync Controller
  *
- * Handles sync operations for experience sources (UNESCO, etc.)
+ * Handles sync operations for experience categories (UNESCO, etc.)
  */
 
 import { Request, Response } from 'express';
@@ -25,21 +25,21 @@ import {
 } from '../../services/sync/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
-const UNESCO_SOURCE_ID = 1;
-const MUSEUM_SOURCE_ID = 2;
-const LANDMARK_SOURCE_ID = 3;
+const UNESCO_CATEGORY_ID = 1;
+const MUSEUM_CATEGORY_ID = 2;
+const LANDMARK_CATEGORY_ID = 3;
 
 /**
  * Start sync for a source
- * POST /api/admin/sync/sources/:sourceId/start
+ * POST /api/admin/sync/sources/:categoryId/start
  */
 export async function startSync(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
+  const categoryId = parseInt(String(req.params.categoryId));
 
   // Validate source exists
   const source = await pool.query(
-    'SELECT id, name, is_active FROM experience_sources WHERE id = $1',
-    [sourceId]
+    'SELECT id, name, is_active FROM experience_categories WHERE id = $1',
+    [categoryId]
   );
 
   if (source.rows.length === 0) {
@@ -53,7 +53,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   }
 
   // Check if already running
-  const existing = runningSyncs.get(sourceId);
+  const existing = runningSyncs.get(categoryId);
   if (existing && !['complete', 'failed', 'cancelled'].includes(existing.status)) {
     res.status(409).json({ error: 'Sync already in progress for this source' });
     return;
@@ -66,15 +66,15 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   const force = req.body.force === true;
 
   // Start sync based on source type
-  if (sourceId === UNESCO_SOURCE_ID) {
+  if (categoryId === UNESCO_CATEGORY_ID) {
     syncUnescoSites(triggeredBy, force).catch((err) => {
       console.error('[Sync Controller] UNESCO sync error:', err);
     });
-  } else if (sourceId === MUSEUM_SOURCE_ID) {
+  } else if (categoryId === MUSEUM_CATEGORY_ID) {
     syncMuseums(triggeredBy, force).catch((err) => {
       console.error('[Sync Controller] Museum sync error:', err);
     });
-  } else if (sourceId === LANDMARK_SOURCE_ID) {
+  } else if (categoryId === LANDMARK_CATEGORY_ID) {
     syncLandmarks(triggeredBy, force).catch((err) => {
       console.error('[Sync Controller] Landmark sync error:', err);
     });
@@ -85,8 +85,8 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
 
   res.json({
     started: true,
-    sourceId,
-    sourceName: source.rows[0].name,
+    categoryId,
+    categoryName: source.rows[0].name,
     force,
     message: force
       ? 'Force sync started (existing data will be deleted). Poll /status endpoint for progress.'
@@ -96,18 +96,18 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
 
 /**
  * Get sync status for a source
- * GET /api/admin/sync/sources/:sourceId/status
+ * GET /api/admin/sync/sources/:categoryId/status
  */
 export async function getSyncStatus(req: Request, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
+  const categoryId = parseInt(String(req.params.categoryId));
 
   // Get in-memory sync status for known sources
   let status: ReturnType<typeof getUnescoSyncStatus> = null;
-  if (sourceId === UNESCO_SOURCE_ID) {
+  if (categoryId === UNESCO_CATEGORY_ID) {
     status = getUnescoSyncStatus();
-  } else if (sourceId === MUSEUM_SOURCE_ID) {
+  } else if (categoryId === MUSEUM_CATEGORY_ID) {
     status = getMuseumSyncStatus();
-  } else if (sourceId === LANDMARK_SOURCE_ID) {
+  } else if (categoryId === LANDMARK_CATEGORY_ID) {
     status = getLandmarkSyncStatus();
   }
 
@@ -131,8 +131,8 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
 
   // No in-memory status - check the database for last sync status
   const source = await pool.query(
-    'SELECT last_sync_at, last_sync_status FROM experience_sources WHERE id = $1',
-    [sourceId]
+    'SELECT last_sync_at, last_sync_status FROM experience_categories WHERE id = $1',
+    [categoryId]
   );
 
   if (source.rows.length === 0) {
@@ -149,17 +149,17 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
 
 /**
  * Cancel sync for a source
- * POST /api/admin/sync/sources/:sourceId/cancel
+ * POST /api/admin/sync/sources/:categoryId/cancel
  */
 export async function cancelSync(req: Request, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
+  const categoryId = parseInt(String(req.params.categoryId));
 
   let cancelled = false;
-  if (sourceId === UNESCO_SOURCE_ID) {
+  if (categoryId === UNESCO_CATEGORY_ID) {
     cancelled = cancelUnescoSync();
-  } else if (sourceId === MUSEUM_SOURCE_ID) {
+  } else if (categoryId === MUSEUM_CATEGORY_ID) {
     cancelled = cancelMuseumSync();
-  } else if (sourceId === LANDMARK_SOURCE_ID) {
+  } else if (categoryId === LANDMARK_CATEGORY_ID) {
     cancelled = cancelLandmarkSync();
   } else {
     res.status(400).json({ error: 'Cancel not implemented for this source' });
@@ -170,13 +170,13 @@ export async function cancelSync(req: Request, res: Response): Promise<void> {
 
 /**
  * Fix missing images for a source
- * POST /api/admin/sync/sources/:sourceId/fix-images
+ * POST /api/admin/sync/sources/:categoryId/fix-images
  */
 export async function fixImages(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const sourceId = parseInt(String(req.params.sourceId));
+  const categoryId = parseInt(String(req.params.categoryId));
   const triggeredBy = req.user?.id || null;
 
-  if (sourceId === MUSEUM_SOURCE_ID) {
+  if (categoryId === MUSEUM_CATEGORY_ID) {
     fixMuseumImages(triggeredBy).catch((err) => {
       console.error('[Sync Controller] Fix museum images error:', err);
     });
@@ -191,15 +191,15 @@ export async function fixImages(req: AuthenticatedRequest, res: Response): Promi
  * GET /api/admin/sync/logs
  */
 export async function getSyncLogs(req: Request, res: Response): Promise<void> {
-  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : null;
+  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : null;
   const limit = Math.min(parseInt(String(req.query.limit)) || 20, 100);
   const offset = parseInt(String(req.query.offset)) || 0;
 
   let query = `
     SELECT
       l.id,
-      l.source_id,
-      s.name as source_name,
+      l.category_id,
+      s.name as category_name,
       l.started_at,
       l.completed_at,
       l.status,
@@ -210,16 +210,16 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
       l.triggered_by,
       u.display_name as triggered_by_name
     FROM experience_sync_logs l
-    JOIN experience_sources s ON l.source_id = s.id
+    JOIN experience_categories s ON l.category_id = s.id
     LEFT JOIN users u ON l.triggered_by = u.id
   `;
 
   const params: (number | string)[] = [];
   let paramIndex = 1;
 
-  if (sourceId) {
-    query += ` WHERE l.source_id = $${paramIndex++}`;
-    params.push(sourceId);
+  if (categoryId) {
+    query += ` WHERE l.category_id = $${paramIndex++}`;
+    params.push(categoryId);
   }
 
   query += ` ORDER BY l.started_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
@@ -230,9 +230,9 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
   // Get total count
   let countQuery = 'SELECT COUNT(*) FROM experience_sync_logs';
   const countParams: number[] = [];
-  if (sourceId) {
-    countQuery += ' WHERE source_id = $1';
-    countParams.push(sourceId);
+  if (categoryId) {
+    countQuery += ' WHERE category_id = $1';
+    countParams.push(categoryId);
   }
   const countResult = await pool.query(countQuery, countParams);
 
@@ -254,10 +254,10 @@ export async function getSyncLogDetails(req: Request, res: Response): Promise<vo
   const result = await pool.query(
     `SELECT
       l.*,
-      s.name as source_name,
+      s.name as category_name,
       u.display_name as triggered_by_name
      FROM experience_sync_logs l
-     JOIN experience_sources s ON l.source_id = s.id
+     JOIN experience_categories s ON l.category_id = s.id
      LEFT JOIN users u ON l.triggered_by = u.id
      WHERE l.id = $1`,
     [logId]
@@ -275,7 +275,7 @@ export async function getSyncLogDetails(req: Request, res: Response): Promise<vo
  * List all experience sources with assignment status
  * GET /api/admin/sync/sources
  */
-export async function getSources(req: Request, res: Response): Promise<void> {
+export async function getCategories(req: Request, res: Response): Promise<void> {
   // Get sources
   const sourcesResult = await pool.query(`
     SELECT
@@ -287,7 +287,7 @@ export async function getSources(req: Request, res: Response): Promise<void> {
       last_sync_status,
       display_priority,
       created_at
-    FROM experience_sources
+    FROM experience_categories
     WHERE is_active = true
     ORDER BY display_priority, id
   `);
@@ -324,7 +324,7 @@ export async function getSources(req: Request, res: Response): Promise<void> {
  */
 export async function startRegionAssignment(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.body.worldViewId || req.query.worldViewId));
-  const sourceId = req.body.sourceId ? parseInt(String(req.body.sourceId)) : undefined;
+  const categoryId = req.body.categoryId ? parseInt(String(req.body.categoryId)) : undefined;
 
   if (!worldViewId || isNaN(worldViewId)) {
     res.status(400).json({ error: 'worldViewId is required' });
@@ -343,7 +343,7 @@ export async function startRegionAssignment(req: Request, res: Response): Promis
   }
 
   // Start assignment in background
-  assignExperiencesToRegions(worldViewId, sourceId).catch((err) => {
+  assignExperiencesToRegions(worldViewId, categoryId).catch((err) => {
     console.error('[Sync Controller] Region assignment error:', err);
   });
 
@@ -351,7 +351,7 @@ export async function startRegionAssignment(req: Request, res: Response): Promis
     started: true,
     worldViewId,
     worldViewName: worldView.rows[0].name,
-    sourceId: sourceId || null,
+    categoryId: categoryId || null,
     message: 'Region assignment started. Poll /status endpoint for progress.',
   });
 }
@@ -409,36 +409,36 @@ export async function cancelRegionAssignment(req: Request, res: Response): Promi
  */
 export async function getExperienceCounts(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.query.worldViewId));
-  const sourceId = req.query.sourceId ? parseInt(String(req.query.sourceId)) : undefined;
+  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : undefined;
 
   if (!worldViewId || isNaN(worldViewId)) {
     res.status(400).json({ error: 'worldViewId query parameter is required' });
     return;
   }
 
-  const counts = await getExperienceCountsByRegion(worldViewId, sourceId);
+  const counts = await getExperienceCountsByRegion(worldViewId, categoryId);
   res.json(counts);
 }
 
 /**
  * Reorder experience sources (set display_priority)
  * PUT /api/admin/sync/sources/reorder
- * Body: { sourceIds: [1, 3, 2] }  -- array of source IDs in desired order
+ * Body: { categoryIds: [1, 3, 2] }  -- array of source IDs in desired order
  */
-export async function reorderSources(req: Request, res: Response): Promise<void> {
-  const { sourceIds } = req.body as { sourceIds?: number[] };
+export async function reorderCategories(req: Request, res: Response): Promise<void> {
+  const { categoryIds } = req.body as { categoryIds?: number[] };
 
-  if (!Array.isArray(sourceIds) || sourceIds.length === 0) {
-    res.status(400).json({ error: 'sourceIds array is required' });
+  if (!Array.isArray(categoryIds) || categoryIds.length === 0) {
+    res.status(400).json({ error: 'categoryIds array is required' });
     return;
   }
 
   await pool.query('BEGIN');
   try {
-    for (let i = 0; i < sourceIds.length; i++) {
+    for (let i = 0; i < categoryIds.length; i++) {
       await pool.query(
-        'UPDATE experience_sources SET display_priority = $1 WHERE id = $2',
-        [i + 1, sourceIds[i]]
+        'UPDATE experience_categories SET display_priority = $1 WHERE id = $2',
+        [i + 1, categoryIds[i]]
       );
     }
     await pool.query('COMMIT');
@@ -447,5 +447,5 @@ export async function reorderSources(req: Request, res: Response): Promise<void>
     throw err;
   }
 
-  res.json({ success: true, order: sourceIds });
+  res.json({ success: true, order: categoryIds });
 }
