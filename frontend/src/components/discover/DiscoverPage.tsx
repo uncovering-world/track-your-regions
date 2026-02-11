@@ -41,8 +41,8 @@ const SOURCE_PALETTE = [
   '#9333EA', '#CA8A04', '#0891B2', '#BE185D', '#4F46E5', '#EA580C',
 ];
 
-function getSourceColor(sourceId: number): string {
-  return SOURCE_PALETTE[sourceId % SOURCE_PALETTE.length];
+function getCategoryColor(categoryId: number): string {
+  return SOURCE_PALETTE[categoryId % SOURCE_PALETTE.length];
 }
 
 function shortSourceName(name: string): string {
@@ -62,8 +62,8 @@ export function DiscoverPage() {
     countsLoading,
     navigateToRegion,
     navigateToBreadcrumb,
-    sources,
-    activeSources,
+    categories,
+    activeCategories,
     levelTotals,
     activeView,
     openExperienceView,
@@ -96,11 +96,11 @@ export function DiscoverPage() {
     const scopes = curatorScopes ?? [];
     if (scopes.length === 0) return undefined;
 
-    // Global or source scope → can add to any region
-    const hasGlobalOrSourceScope = scopes.some(
-      s => s.scopeType === 'global' || s.scopeType === 'source'
+    // Global or category scope → can add to any region
+    const hasGlobalOrCategoryScope = scopes.some(
+      s => s.scopeType === 'global' || s.scopeType === 'category'
     );
-    if (hasGlobalOrSourceScope) return (_regionId: number) => true;
+    if (hasGlobalOrCategoryScope) return (_regionId: number) => true;
 
     // Region-scoped: check if any breadcrumb ancestor or the region itself is assigned
     const curatorRegionIds = new Set(
@@ -231,10 +231,10 @@ export function DiscoverPage() {
         {/* Level summary — total counts per source */}
         {!countsLoading && Object.keys(levelTotals).length > 0 && (
           <Box sx={{ px: 1.5, py: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap', borderBottom: '1px solid', borderColor: 'divider' }}>
-            {activeSources.map(source => {
+            {activeCategories.map(source => {
               const count = levelTotals[source.id] || 0;
               if (!count) return null;
-              const color = getSourceColor(source.id);
+              const color = getCategoryColor(source.id);
               return (
                 <Chip
                   key={source.id}
@@ -258,10 +258,10 @@ export function DiscoverPage() {
         {/* Region tree list */}
         <DiscoverRegionList
           regions={regionCounts}
-          sources={sources}
+          categories={categories}
           isLoading={countsLoading}
           onNavigate={navigateToRegion}
-          onSourceClick={openExperienceView}
+          onCategoryClick={openExperienceView}
           onAddExperience={canAddToRegion ? handleAddExperience : undefined}
           canAddToRegion={canAddToRegion}
         />

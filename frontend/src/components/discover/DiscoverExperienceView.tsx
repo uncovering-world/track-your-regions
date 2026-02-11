@@ -87,7 +87,7 @@ export function DiscoverExperienceView({
   // ── Hover sync state ──
   const [hoveredExperienceId, setHoveredExperienceId] = useState<number | null>(null);
   const [hoverPreview, setHoverPreview] = useState<{
-    name: string; imageUrl: string | null; sourceName: string;
+    name: string; imageUrl: string | null; categoryName: string;
   } | null>(null);
   const hoverSourceRef = useRef<'list' | 'map' | null>(null);
   const isAutoScrollingRef = useRef(false);
@@ -112,7 +112,7 @@ export function DiscoverExperienceView({
         setHoverPreview({
           name: exp.name,
           imageUrl: rawImg ? toThumbnailUrl(rawImg, 250) : null,
-          sourceName: exp.source_name || '',
+          categoryName: exp.category_name || '',
         });
       }
     } else {
@@ -127,7 +127,7 @@ export function DiscoverExperienceView({
   };
 
   const shortSourceName = activeView
-    ? activeView.sourceName
+    ? activeView.categoryName
         .replace('UNESCO World Heritage Sites', 'UNESCO')
         .replace('Top Museums', 'Museums')
         .replace('Public Art & Monuments', 'Public Art')
@@ -147,7 +147,7 @@ export function DiscoverExperienceView({
   // Reset search when active view changes
   useEffect(() => {
     setSearch('');
-  }, [activeView?.regionId, activeView?.sourceId]);
+  }, [activeView?.regionId, activeView?.categoryId]);
 
   // ── Map init (once) ──
   useEffect(() => {
@@ -821,9 +821,9 @@ export function DiscoverExperienceView({
               <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
                 {hoverPreview.name}
               </Typography>
-              {hoverPreview.sourceName && (
+              {hoverPreview.categoryName && (
                 <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
-                  {hoverPreview.sourceName}
+                  {hoverPreview.categoryName}
                 </Typography>
               )}
             </Box>
@@ -962,7 +962,7 @@ export function DiscoverExperienceView({
           onClose={() => setAddDialogOpen(false)}
           regionId={activeView.regionId}
           regionName={activeView.regionName}
-          defaultSourceId={activeView.sourceId}
+          defaultCategoryId={activeView.categoryId}
         />
       )}
     </Box>

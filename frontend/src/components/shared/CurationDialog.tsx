@@ -279,8 +279,8 @@ export function CurationDialog({ experience, regionId, onClose }: CurationDialog
           <Typography variant="h6" sx={{ flex: 1 }}>
             Curate Experience
           </Typography>
-          {experience.source_name && (
-            <Chip label={experience.source_name} size="small" variant="outlined" />
+          {experience.category_name && (
+            <Chip label={experience.category_name} size="small" variant="outlined" />
           )}
         </Box>
       </DialogTitle>

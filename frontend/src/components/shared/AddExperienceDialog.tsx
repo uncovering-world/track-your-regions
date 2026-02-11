@@ -43,7 +43,7 @@ import {
   searchExperiences,
   assignExperienceToRegion,
   createManualExperience,
-  fetchExperienceSources,
+  fetchExperienceCategories,
 } from '../../api/experiences';
 import { searchPlaces, suggestImageUrl } from '../../api/geocode';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
@@ -56,12 +56,12 @@ interface AddExperienceDialogProps {
   /** Region name — appended to Nominatim queries for better geo-disambiguation */
   regionName?: string;
   /** Pre-select this source when opening Create New tab */
-  defaultSourceId?: number;
+  defaultCategoryId?: number;
   /** Open directly on a specific tab: 0 = Create New, 1 = Search & Add */
   defaultTab?: 0 | 1;
 }
 
-export function AddExperienceDialog({ open, onClose, regionId, regionName, defaultSourceId, defaultTab }: AddExperienceDialogProps) {
+export function AddExperienceDialog({ open, onClose, regionId, regionName, defaultCategoryId, defaultTab }: AddExperienceDialogProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(defaultTab ?? 0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -86,22 +86,22 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
   // --- Sources for Create New tab ---
   const { data: sources } = useQuery({
     queryKey: ['experience-sources'],
-    queryFn: fetchExperienceSources,
+    queryFn: fetchExperienceCategories,
   });
 
   // Sync tab and source when dialog opens with different defaults
   useEffect(() => {
     if (open) {
       setActiveTab(defaultTab ?? 0);
-      setNewSourceId(defaultSourceId ?? '');
+      setNewSourceId(defaultCategoryId ?? '');
     }
-  }, [open, defaultTab, defaultSourceId]);
+  }, [open, defaultTab, defaultCategoryId]);
 
   // --- Create New tab state ---
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newCategory, setNewCategory] = useState('');
-  const [newSourceId, setNewSourceId] = useState<number | ''>(defaultSourceId ?? '');
+  const [newCategoryId, setNewSourceId] = useState<number | ''>(defaultCategoryId ?? '');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [newWikipediaUrl, setNewWikipediaUrl] = useState('');
@@ -333,12 +333,12 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
       imageUrl: newImageUrl || undefined,
       wikipediaUrl: newWikipediaUrl || undefined,
       websiteUrl: newWebsiteUrl || undefined,
-      sourceId: newSourceId || undefined,
+      categoryId: newCategoryId || undefined,
       regionId,
     });
   };
 
-  const canCreate = !!newName && coords !== null && !!newSourceId;
+  const canCreate = !!newName && coords !== null && !!newCategoryId;
 
   // Helper text for image field
   const imageHelperText = suggestMutation.isError
@@ -435,7 +435,7 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
               <FormControl fullWidth size="small" required>
                 <InputLabel>Source</InputLabel>
                 <Select
-                  value={newSourceId}
+                  value={newCategoryId}
                   label="Source"
                   onChange={(e) => setNewSourceId(e.target.value as number | '')}
                 >
@@ -615,7 +615,7 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
                       )}
                       <ListItemText
                         primary={exp.name}
-                        secondary={[exp.source_name, exp.category, exp.country_names?.[0]].filter(Boolean).join(' \u00B7 ')}
+                        secondary={[exp.category_name, exp.category, exp.country_names?.[0]].filter(Boolean).join(' \u00B7 ')}
                         primaryTypographyProps={{ variant: 'body2', fontWeight: 500, noWrap: true }}
                         secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
                       />

@@ -3,8 +3,8 @@
  *
  * Manages:
  * - Region tree navigation (breadcrumbs, current level children)
- * - Experience counts per source at each tree level
- * - Active view state: which region+source is being explored
+ * - Experience counts per category at each tree level
+ * - Active view state: which region+category is being explored
  * - Loading experiences for the active view
  * - Selected experience for inline detail
  */
@@ -13,18 +13,18 @@ import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchExperienceRegionCounts,
-  fetchExperienceSources,
+  fetchExperienceCategories,
   fetchExperiencesByRegion,
   fetchExperienceLocations,
 } from '../api/experiences';
 import { useNavigation } from './useNavigation';
 
-/** The active experience view: region + source selection */
+/** The active experience view: region + category selection */
 export interface ActiveView {
   regionId: number;
   regionName: string;
-  sourceId: number;
-  sourceName: string;
+  categoryId: number;
+  categoryName: string;
 }
 
 /** Breadcrumb item for tree navigation */
@@ -46,10 +46,10 @@ export function useDiscoverExperiences() {
     ? breadcrumbs[breadcrumbs.length - 1].regionId
     : null;
 
-  // Fetch experience sources (for icon/name mapping)
-  const { data: sources = [] } = useQuery({
-    queryKey: ['experience-sources'],
-    queryFn: fetchExperienceSources,
+  // Fetch experience categories (for icon/name mapping)
+  const { data: categories = [] } = useQuery({
+    queryKey: ['experience-categories'],
+    queryFn: fetchExperienceCategories,
     staleTime: 300000,
   });
 
@@ -61,22 +61,22 @@ export function useDiscoverExperiences() {
     staleTime: 120000,
   });
 
-  // Active sources (only those with counts at this level)
-  const activeSources = useMemo(() => {
-    const sourceIds = new Set<number>();
+  // Active categories (only those with counts at this level)
+  const activeCategories = useMemo(() => {
+    const categoryIds = new Set<number>();
     for (const rc of regionCounts) {
-      for (const sid of Object.keys(rc.source_counts)) {
-        sourceIds.add(Number(sid));
+      for (const sid of Object.keys(rc.category_counts)) {
+        categoryIds.add(Number(sid));
       }
     }
-    return sources.filter(s => s.is_active && sourceIds.has(s.id));
-  }, [sources, regionCounts]);
+    return categories.filter(s => s.is_active && categoryIds.has(s.id));
+  }, [categories, regionCounts]);
 
   // Total experience count per source at current level
   const levelTotals = useMemo(() => {
     const totals: Record<number, number> = {};
     for (const rc of regionCounts) {
-      for (const [sid, count] of Object.entries(rc.source_counts)) {
+      for (const [sid, count] of Object.entries(rc.category_counts)) {
         totals[Number(sid)] = (totals[Number(sid)] || 0) + count;
       }
     }
@@ -85,7 +85,7 @@ export function useDiscoverExperiences() {
 
   // Fetch experiences for active view (region + source)
   const { data: experiencesData, isLoading: experiencesLoading } = useQuery({
-    queryKey: ['discover-experiences', activeView?.regionId, activeView?.sourceId],
+    queryKey: ['discover-experiences', activeView?.regionId, activeView?.categoryId],
     queryFn: () => fetchExperiencesByRegion(activeView!.regionId, {
       includeChildren: true,
       limit: 500,
@@ -93,13 +93,13 @@ export function useDiscoverExperiences() {
     enabled: !!activeView,
     staleTime: 120000,
     select: (data) => {
-      // Filter to only the selected source
+      // Filter to only the selected category
       if (!activeView) return data;
       return {
         ...data,
         experiences: data.experiences.filter(e => {
-          const sourceMatch = sources.find(s => s.name === e.source_name);
-          return sourceMatch && sourceMatch.id === activeView.sourceId;
+          const categoryMatch = categories.find(s => s.name === e.category_name);
+          return categoryMatch && categoryMatch.id === activeView.categoryId;
         }),
       };
     },
@@ -158,10 +158,10 @@ export function useDiscoverExperiences() {
   const openExperienceView = useCallback((
     regionId: number,
     regionName: string,
-    sourceId: number,
-    sourceName: string
+    categoryId: number,
+    categoryName: string
   ) => {
-    setActiveView({ regionId, regionName, sourceId, sourceName });
+    setActiveView({ regionId, regionName, categoryId, categoryName });
     setSelectedExperienceId(null);
   }, []);
 
@@ -195,8 +195,8 @@ export function useDiscoverExperiences() {
     navigateToBreadcrumb,
 
     // Sources
-    sources,
-    activeSources,
+    categories,
+    activeCategories,
     levelTotals,
 
     // Experience view

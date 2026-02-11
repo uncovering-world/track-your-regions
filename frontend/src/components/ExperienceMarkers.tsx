@@ -224,7 +224,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     shouldFitRegion,
     clearFitRegion,
     getExperienceById,
-    expandedSourceNames,
+    expandedCategoryNames,
     setHoverPreview,
   } = useExperienceContext();
 
@@ -301,8 +301,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     const result: MarkerData[] = [];
 
     for (const exp of experiences.slice(0, 100)) {
-      const sourceName = exp.source_name || 'Experiences';
-      if (expandedSourceNames.size > 0 && !expandedSourceNames.has(sourceName)) continue;
+      const categoryName = exp.category_name || 'Experiences';
+      if (expandedCategoryNames.size > 0 && !expandedCategoryNames.has(categoryName)) continue;
 
       const locations = locationsByExperience[exp.id];
 
@@ -344,7 +344,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     }
 
     return result;
-  }, [experiences, locationsByExperience, expandedSourceNames]);
+  }, [experiences, locationsByExperience, expandedCategoryNames]);
 
   // Keep a ref so map callbacks can access the latest markers
   const markersRef = useRef(markers);
@@ -479,7 +479,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
               experienceName: marker.experience.name,
               locationId: marker.locationId,
               locationName: marker.locationName,
-              sourceName: marker.experience.source_name ?? null,
+              categoryName: marker.experience.category_name ?? null,
               category: marker.experience.category ?? null,
               imageUrl: marker.experience.image_url,
               longitude: marker.longitude,
@@ -541,7 +541,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
                 experienceName: exp.name,
                 locationId: locationId ?? null,
                 locationName: (feature.properties?.name as string | null | undefined) ?? null,
-                sourceName: exp.source_name ?? null,
+                categoryName: exp.category_name ?? null,
                 category: exp.category ?? null,
                 imageUrl: exp.image_url,
                 longitude: coords[0],
@@ -650,7 +650,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
             experienceName: exp.name,
             locationId: loc.id,
             locationName: loc.name || `Location ${loc.ordinal + 1}`,
-            sourceName: exp.source_name ?? null,
+            categoryName: exp.category_name ?? null,
             category: exp.category ?? null,
             imageUrl: exp.image_url,
             longitude: loc.longitude,
@@ -677,7 +677,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       experienceName: marker.experience.name,
       locationId: marker.locationId,
       locationName: marker.locationName,
-      sourceName: marker.experience.source_name ?? null,
+      categoryName: marker.experience.category_name ?? null,
       category: marker.experience.category ?? null,
       imageUrl: marker.experience.image_url,
       longitude: marker.longitude,

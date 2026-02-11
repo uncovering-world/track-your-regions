@@ -25,8 +25,8 @@ export interface Experience {
   in_danger: boolean;
   longitude: number;
   latitude: number;
-  source_name: string;
-  source_priority?: number;
+  category_name: string;
+  category_priority?: number;
   location_count?: number;
   created_at?: string;
   // Curator rejection fields (only present when curator has scope)
@@ -91,14 +91,14 @@ export interface ExperienceLocationsResponse {
 }
 
 export interface ExperienceDetail extends Experience {
-  source_id: number;
+  category_id: number;
   name_local: Record<string, string> | null;
   description: string | null;
   tags: string[] | null;
   metadata: Record<string, unknown> | null;
   boundary_geojson: GeoJSON.Geometry | null;
   area_km2: number | null;
-  source_description: string | null;
+  category_description: string | null;
   regions: {
     id: number;
     name: string;
@@ -126,7 +126,7 @@ export interface ExperiencesByRegionResponse {
   offset: number;
 }
 
-export interface ExperienceSource {
+export interface ExperienceCategory {
   id: number;
   name: string;
   description: string | null;
@@ -145,7 +145,7 @@ export interface ExperienceSource {
  * List experiences with filtering
  */
 export async function fetchExperiences(params?: {
-  sourceId?: number;
+  categoryId?: number;
   category?: string;
   country?: string;
   regionId?: number;
@@ -155,7 +155,7 @@ export async function fetchExperiences(params?: {
   offset?: number;
 }): Promise<ExperiencesResponse> {
   const searchParams = new URLSearchParams();
-  if (params?.sourceId) searchParams.set('sourceId', String(params.sourceId));
+  if (params?.categoryId) searchParams.set('categoryId', String(params.categoryId));
   if (params?.category) searchParams.set('category', params.category);
   if (params?.country) searchParams.set('country', params.country);
   if (params?.regionId) searchParams.set('regionId', String(params.regionId));
@@ -210,10 +210,10 @@ export async function searchExperiences(
 }
 
 /**
- * List experience sources
+ * List experience categories
  */
-export async function fetchExperienceSources(): Promise<ExperienceSource[]> {
-  return fetchJson<ExperienceSource[]>(`${API_URL}/api/experiences/sources`);
+export async function fetchExperienceCategories(): Promise<ExperienceCategory[]> {
+  return fetchJson<ExperienceCategory[]>(`${API_URL}/api/experiences/categories`);
 }
 
 /**
@@ -229,32 +229,32 @@ export async function fetchExperienceLocations(
 }
 
 /**
- * Content item within an experience (artwork, artifact)
+ * Treasure item within an experience (artwork, artifact)
  */
-export interface ExperienceContent {
+export interface ExperienceTreasure {
   id: number;
   external_id: string;
   name: string;
-  content_type: string;
+  treasure_type: string;
   artist: string | null;
   year: number | null;
   image_url: string | null;
   sitelinks_count: number;
 }
 
-export interface ExperienceContentsResponse {
+export interface ExperienceTreasuresResponse {
   experienceId: number;
-  contents: ExperienceContent[];
+  treasures: ExperienceTreasure[];
   total: number;
 }
 
 /**
- * Get contents (artworks, artifacts) for an experience
+ * Get treasures (artworks, artifacts) for an experience
  */
-export async function fetchExperienceContents(
+export async function fetchExperienceTreasures(
   experienceId: number
-): Promise<ExperienceContentsResponse> {
-  return fetchJson<ExperienceContentsResponse>(`${API_URL}/api/experiences/${experienceId}/contents`);
+): Promise<ExperienceTreasuresResponse> {
+  return fetchJson<ExperienceTreasuresResponse>(`${API_URL}/api/experiences/${experienceId}/treasures`);
 }
 
 /**
@@ -265,11 +265,11 @@ export interface RegionExperienceCount {
   region_name: string;
   region_color: string | null;
   has_subregions: boolean;
-  source_counts: Record<number, number>;
+  category_counts: Record<number, number>;
 }
 
 /**
- * Get experience counts per region per source for a world view
+ * Get experience counts per region per category for a world view
  * Used by Discover page tree navigation
  */
 export async function fetchExperienceRegionCounts(
@@ -339,7 +339,7 @@ export async function createManualExperience(data: {
   countryCode?: string;
   countryName?: string;
   regionId: number;
-  sourceId?: number;
+  categoryId?: number;
   websiteUrl?: string;
   wikipediaUrl?: string;
 }): Promise<{ id: number; name: string; externalId: string }> {

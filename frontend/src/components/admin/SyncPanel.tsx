@@ -30,12 +30,12 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getSources,
+  getCategories,
   startSync,
   getSyncStatus,
   cancelSync,
-  reorderSources,
-  type ExperienceSource,
+  reorderCategories,
+  type ExperienceCategory,
   type SyncStatus,
 } from '../../api/admin';
 
@@ -43,11 +43,11 @@ export function SyncPanel() {
   const queryClient = useQueryClient();
   const { data: sources, isLoading } = useQuery({
     queryKey: ['admin', 'sources'],
-    queryFn: getSources,
+    queryFn: getCategories,
   });
 
   // Drag-and-drop state
-  const [orderedSources, setOrderedSources] = useState<ExperienceSource[]>([]);
+  const [orderedSources, setOrderedSources] = useState<ExperienceCategory[]>([]);
   const dragItemRef = useRef<number | null>(null);
   const dragOverItemRef = useRef<number | null>(null);
 
@@ -59,7 +59,7 @@ export function SyncPanel() {
   }, [sources]);
 
   const reorderMutation = useMutation({
-    mutationFn: (sourceIds: number[]) => reorderSources(sourceIds),
+    mutationFn: (sourceIds: number[]) => reorderCategories(sourceIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] });
     },
@@ -151,7 +151,7 @@ export function SyncPanel() {
 }
 
 interface SourceCardProps {
-  source: ExperienceSource;
+  source: ExperienceCategory;
 }
 
 function SourceCard({ source }: SourceCardProps) {

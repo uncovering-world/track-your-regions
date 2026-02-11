@@ -52,12 +52,12 @@ npm run db:mark-golden
 3. Update consuming component hooks/UI.
 4. Run `typecheck` for both packages.
 
-### Add a new experience source
+### Add a new experience category
 
-1. Seed source in `experience_sources`.
+1. Seed category in `experience_categories`.
 2. Implement sync service under `backend/src/services/sync/`.
 3. Wire sync controller/admin route behavior.
-4. Confirm source appears via `/api/experiences/sources`.
+4. Confirm category appears via `/api/experiences/categories`.
 
 ### Map/UI behavior regressions
 

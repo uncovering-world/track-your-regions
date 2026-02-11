@@ -12,7 +12,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 // Types
 // =============================================================================
 
-export interface ExperienceSource {
+export interface ExperienceCategory {
   id: number;
   name: string;
   description: string | null;
@@ -41,8 +41,8 @@ export interface SyncStatus {
 
 export interface SyncLog {
   id: number;
-  source_id: number;
-  source_name: string;
+  category_id: number;
+  category_name: string;
   started_at: string;
   completed_at: string | null;
   status: string;
@@ -76,19 +76,19 @@ export interface AssignmentStatus {
 // =============================================================================
 
 /**
- * Get all experience sources
+ * Get all experience categories
  */
-export async function getSources(): Promise<ExperienceSource[]> {
-  return authFetchJson<ExperienceSource[]>(`${API_URL}/api/admin/sync/sources`);
+export async function getCategories(): Promise<ExperienceCategory[]> {
+  return authFetchJson<ExperienceCategory[]>(`${API_URL}/api/admin/sync/categories`);
 }
 
 /**
- * Start sync for a source
- * @param sourceId - The source to sync
+ * Start sync for a category
+ * @param categoryId - The category to sync
  * @param force - If true, delete all existing data before syncing
  */
-export async function startSync(sourceId: number, force: boolean = false): Promise<{ started: boolean; message: string; force?: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/start`, {
+export async function startSync(categoryId: number, force: boolean = false): Promise<{ started: boolean; message: string; force?: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ force }),
@@ -96,38 +96,38 @@ export async function startSync(sourceId: number, force: boolean = false): Promi
 }
 
 /**
- * Get sync status for a source
+ * Get sync status for a category
  */
-export async function getSyncStatus(sourceId: number): Promise<SyncStatus> {
-  return authFetchJson<SyncStatus>(`${API_URL}/api/admin/sync/sources/${sourceId}/status`);
+export async function getSyncStatus(categoryId: number): Promise<SyncStatus> {
+  return authFetchJson<SyncStatus>(`${API_URL}/api/admin/sync/categories/${categoryId}/status`);
 }
 
 /**
- * Cancel sync for a source
+ * Cancel sync for a category
  */
-export async function cancelSync(sourceId: number): Promise<{ cancelled: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/cancel`, {
+export async function cancelSync(categoryId: number): Promise<{ cancelled: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/cancel`, {
     method: 'POST',
   });
 }
 
 /**
- * Fix missing images for a source
+ * Fix missing images for a category
  */
-export async function fixImages(sourceId: number): Promise<{ started: boolean; message: string }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/${sourceId}/fix-images`, {
+export async function fixImages(categoryId: number): Promise<{ started: boolean; message: string }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/fix-images`, {
     method: 'POST',
   });
 }
 
 /**
- * Reorder experience sources (set display_priority)
+ * Reorder experience categories (set display_priority)
  */
-export async function reorderSources(sourceIds: number[]): Promise<{ success: boolean }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/sources/reorder`, {
+export async function reorderCategories(categoryIds: number[]): Promise<{ success: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/categories/reorder`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourceIds }),
+    body: JSON.stringify({ categoryIds }),
   });
 }
 
@@ -135,12 +135,12 @@ export async function reorderSources(sourceIds: number[]): Promise<{ success: bo
  * Get sync logs
  */
 export async function getSyncLogs(
-  sourceId?: number,
+  categoryId?: number,
   limit = 20,
   offset = 0
 ): Promise<SyncLogsResponse> {
   const params = new URLSearchParams();
-  if (sourceId) params.set('sourceId', String(sourceId));
+  if (categoryId) params.set('categoryId', String(categoryId));
   params.set('limit', String(limit));
   params.set('offset', String(offset));
 
@@ -163,12 +163,12 @@ export async function getSyncLogDetails(logId: number): Promise<SyncLog & { erro
  */
 export async function startRegionAssignment(
   worldViewId: number,
-  sourceId?: number
+  categoryId?: number
 ): Promise<{ started: boolean; message: string }> {
   return authFetchJson(`${API_URL}/api/admin/experiences/assign-regions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ worldViewId, sourceId }),
+    body: JSON.stringify({ worldViewId, categoryId }),
   });
 }
 
@@ -197,10 +197,10 @@ export async function cancelAssignment(worldViewId: number): Promise<{ cancelled
  */
 export async function getExperienceCountsByRegion(
   worldViewId: number,
-  sourceId?: number
+  categoryId?: number
 ): Promise<{ regionId: number; regionName: string; count: number }[]> {
   const params = new URLSearchParams({ worldViewId: String(worldViewId) });
-  if (sourceId) params.set('sourceId', String(sourceId));
+  if (categoryId) params.set('categoryId', String(categoryId));
 
   return authFetchJson(`${API_URL}/api/admin/experiences/counts-by-region?${params}`);
 }
@@ -211,11 +211,11 @@ export async function getExperienceCountsByRegion(
 
 export interface CuratorScope {
   id: number;
-  scopeType: 'region' | 'source' | 'global';
+  scopeType: 'region' | 'category' | 'global';
   regionId: number | null;
   regionName: string | null;
-  sourceId: number | null;
-  sourceName: string | null;
+  categoryId: number | null;
+  categoryName: string | null;
   assignedAt: string;
   notes: string | null;
 }
@@ -252,9 +252,9 @@ export async function listCurators(): Promise<CuratorInfo[]> {
  */
 export async function createCuratorAssignment(data: {
   userId: number;
-  scopeType: 'region' | 'source' | 'global';
+  scopeType: 'region' | 'category' | 'global';
   regionId?: number;
-  sourceId?: number;
+  categoryId?: number;
   notes?: string;
 }): Promise<{ id: number; userId: number; scopeType: string; rolePromoted: boolean }> {
   return authFetchJson(`${API_URL}/api/admin/curators`, {
