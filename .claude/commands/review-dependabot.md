@@ -155,7 +155,7 @@ After the review:
 
 If the user wants to merge:
 ```bash
-gh pr merge <number> --squash
+gh pr merge <number> --rebase
 ```
 
-Use `--squash` for clean history. Merge one at a time and report success/failure for each.
+Use `--rebase` for fast-forward merge (no merge commits). Merge one at a time and report success/failure for each.
