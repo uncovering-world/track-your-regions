@@ -194,7 +194,7 @@ The checklist is shown already partially filled (based on quiz answers), the use
 
 The checklist becomes a progress system:
 
-- **Basic level** (Stranger → Aware): 0 points
+- **Stranger**: 0 points (default, no engagement)
 - **Passed through**: 5-10 basic points (was there, spent the night, ate)
 - **Explored**: 15-25 points, including culture and interaction with locals
 - **Deep connection**: 30+ points, including language, work, repeat visits
@@ -236,13 +236,19 @@ Correct answer → connection level stays. Incorrect → honest decrease.
 
 The checklist is one way to determine Connection State, along with the quiz and temporal decay.
 
-| Connection State | Typical Checklist Indicators |
-|---|---|
-| **Stranger** | Everything empty |
-| **Aware** | Only culture/history, no physical presence |
-| **Passed through** | Minimal physical presence (1-2 days, transit), low interaction |
-| **Explored** | Several days, food, transport, culture, basic phrases |
-| **Deep connection** | Repeat visits, work/living, deep communication with locals, language |
+| Connection State | Typical Checklist Indicators | Requires |
+|---|---|---|
+| **Stranger** | Everything empty | — |
+| **Aware** | Only culture/history, no physical presence | Quiz system (cannot be detected from experience tracking or checklists alone) |
+| **Passed through** | Minimal physical presence (1-2 days, transit), low interaction | Visit-based signals |
+| **Explored** | Several days, food, transport, culture, basic phrases | Visit-based signals |
+| **Deep connection** | Repeat visits, work/living, deep communication with locals, language | Visit-based signals |
+
+### Phased rollout
+
+**Phase 1 (visit-based)**: Connection state derived from experience engagement, checklist items, and visit history. Supports Stranger → Passed Through → Explored → Deep Connection. The Aware state is not possible here — without a quiz, you can't distinguish "knows about Florence" from "never heard of Florence."
+
+**Phase 2 (with quiz)**: The quiz system enables the Aware state by testing factual, sensory, and spatial knowledge. The ratio of factual to sensory knowledge distinguishes someone who read about Florence from someone who stood in front of the David. See [`QUIZ-SYSTEM.md`](QUIZ-SYSTEM.md).
 
 ---
 

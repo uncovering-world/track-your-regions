@@ -20,11 +20,10 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   "Nordic Countries".
 - **Experience**: An activity or sight that can be completed or seen in a
   region.
-- **Cultural Context**: The cultural context associated with a specific
-experience. This includes the region(s) where a specific variation
-of the experience can be found and any relevant media sources (articles,
-podcasts, videos, etc.). Read more about cultural context on the
-  [Cultural Context](../vision/cultural-context.md) page.
+- **Cultural Context**: A design principle applied across experience descriptions,
+  not a standalone entity. Cultural context means providing historical, social,
+  and environmental background for experiences — helping travelers understand
+  rather than judge. See [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md).
 
 ## Entities
 
@@ -75,9 +74,10 @@ podcasts, videos, etc.). Read more about cultural context on the
 
 ### Experience
 
-- **Description**: A location-based point of interest that can be explored and marked
-  as visited. Examples include UNESCO World Heritage Sites, national parks, and landmarks.
-  See [Experiences System](experiences.md) for detailed documentation.
+- **Description**: Anything a user can engage with in connection with a region — must be
+  trackable. May act as a venue (holding treasures, e.g. a museum with artworks) or stand
+  alone (e.g. a UNESCO site, a monument). See [Experiences System](experiences.md) and
+  [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full model.
 - **Attributes**:
   - `ID`: Unique identifier
   - `SourceID`: ID of the data source (UNESCO, etc.)
@@ -86,7 +86,7 @@ podcasts, videos, etc.). Read more about cultural context on the
   - `NameLocal`: Multilingual names (JSONB)
   - `Description`: Full description
   - `ShortDescription`: Brief description for display
-  - `Category`: Classification (e.g., 'cultural', 'natural', 'mixed')
+  - `Category`: Per-source classification (e.g., 'cultural', 'natural', 'mixed' for UNESCO; 'art', 'history' for museums)
   - `Tags`: Additional classification tags (JSONB)
   - `Location`: Geographic point (PostGIS Point, SRID 4326)
   - `Boundary`: Optional boundary geometry (PostGIS MultiPolygon)
@@ -121,8 +121,10 @@ podcasts, videos, etc.). Read more about cultural context on the
 
 ### ExperienceLocation
 
-- **Description**: An individual location for a multi-location experience
-  (for serial nominations or distributed places).
+- **Description**: A physical location belonging to an experience. An experience
+  may have zero locations (region-associated but not place-bound, e.g. books),
+  one location (a single point on the map), or many (serial nominations,
+  distributed sites). Each location is independently trackable.
 - **Attributes**:
   - `ID`: Unique identifier
   - `ExperienceID`: Parent experience
@@ -131,14 +133,20 @@ podcasts, videos, etc.). Read more about cultural context on the
   - `Ordinal`: Display order within the experience
   - `Location`: Geographic point (PostGIS Point, SRID 4326)
 
-### ExperienceContent
+### ExperienceContent (Treasure)
 
-- **Description**: Notable content item inside an experience (artwork/artifact).
+- **Description**: An independently trackable treasure inside a venue experience
+  (artwork in a museum, species in a park). Treasures have a many-to-many
+  relationship with venues — the same species can be found in multiple zoos.
+  Iconic treasures are called **highlights** and shown with a badge.
+  Currently used for venue significance computation; region-scoped treasure
+  browsing is planned. DB table: `experience_contents`.
+  See [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md).
 - **Attributes**:
   - `ID`: Unique identifier
   - `ExperienceID`: Parent experience
   - `ExternalID`: Source identifier (e.g., Wikidata QID)
-  - `Name`: Item title
+  - `Name`: Treasure title
   - `ContentType`: Classification (painting, sculpture, etc.)
   - `Artist`: Optional creator name
   - `Year`: Optional creation year
@@ -209,12 +217,7 @@ podcasts, videos, etc.). Read more about cultural context on the
 
 ### CulturalContext
 
-- **Description**: Represents the cultural context associated with a specific experience.
-- **Attributes**:
-  - `ID`: Unique identifier
-  - `ExperienceID`: ID of the associated experience
-  - `RegionIDs`: IDs of the associated regions
-  - `Sources`: List of relevant media sources (articles, podcasts, videos, etc.)
+> **Note:** Cultural context is a design principle applied across experience descriptions, not a standalone entity. The original plan for a separate `CulturalContext` aggregate has been superseded — context is woven into experience metadata, regional profiles, and locals' perspectives instead. See [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md).
 
 ### UserJourney
 

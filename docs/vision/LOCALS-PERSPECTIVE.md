@@ -57,7 +57,7 @@ One of the most popular Reddit threads: describe your place through specific det
 > "The metro is more beautiful than most museums. In winter it gets dark at 4 PM. The city is huge, but everyone constantly complains about traffic. There's a strange tradition of giving flowers to women for any reason and no reason."
 
 **Mechanics:**
-- User with **Deep connection** or **Lived there** level can create a description
+- User with **Deep Connection** level can create a description
 - Description goes through moderation (to avoid stereotypes and insults)
 - Other users vote for best descriptions
 - Top 3 descriptions are shown in the region profile
@@ -183,7 +183,7 @@ Practical tips on how not to look like a tourist.
 - **Stranger / Aware** — can only read
 - **Passed through** — can suggest, but goes through strict moderation
 - **Explored** — can create most types of content
-- **Deep connection / Lived there** — full rights, including "Describe without naming"
+- **Deep Connection** — full rights, including "Describe without naming"
 
 ### Moderation System:
 

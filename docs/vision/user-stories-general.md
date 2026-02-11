@@ -1,6 +1,6 @@
 # General User Stories
 
-> **Implementation Status:** These user stories describe the product vision. Items marked with ✅ are implemented, others are planned.
+> **Implementation Status:** These user stories describe the product vision. Items marked with ✅ are implemented, others are planned. The core experiences system (browsing, tracking, curation) is implemented — see [`EXPERIENCES-OVERVIEW.md`](EXPERIENCES-OVERVIEW.md) for the full vision.
 
 ---
 
@@ -49,35 +49,30 @@
 - **I want**: To see the regions visited by another user  
 - **So that**: I can get travel inspiration  
 
-### Browse Experiences  
-- **As an**: Existing User  
-- **I want**: To see a list of experiences available in a specific region  
-- **So that**: I can plan my visit  
+### Browse Experiences ✅
+- **As an**: Existing User
+- **I want**: To see a list of experiences available in a specific region
+- **So that**: I can plan my visit
 
-### Mark Experience as Completed  
-- **As an**: Existing User  
-- **I want**: To mark an experience as completed in a specific region  
-- **So that**: I can track what I've done  
+### Mark Experience as Completed ✅
+- **As an**: Existing User
+- **I want**: To mark an experience as completed in a specific region
+- **So that**: I can track what I've done
 
-### Undo Completed Experience  
-- **As an**: Existing User  
-- **I want**: To mark a previously completed experience as undone  
-- **So that**: I can correct it if marked by mistake  
+### Undo Completed Experience ✅
+- **As an**: Existing User
+- **I want**: To mark a previously completed experience as undone
+- **So that**: I can correct it if marked by mistake
 
-### List My Completed Experiences  
-- **As an**: Existing User  
-- **I want**: To see a list of all experiences I've completed  
-- **So that**: I can recall my experiences  
+### List My Completed Experiences ✅
+- **As an**: Existing User
+- **I want**: To see a list of all experiences I've completed
+- **So that**: I can recall my experiences
 
 ### List Another User's Completed Experiences  
 - **As an**: Existing User  
 - **I want**: To see the experiences completed by another user  
 - **So that**: I can get ideas for my own journey  
-
-### OAuth Authentication
-- **As a**: New or Existing User
-- **I want**: To authenticate using OAuth (e.g., Google, Facebook, GitHub)
-- **So that**: I can quickly and securely access the service without creating a new password
 
 ### Search Experiences  
 - **As an**: Existing User  

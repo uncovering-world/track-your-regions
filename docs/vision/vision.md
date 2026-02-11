@@ -71,32 +71,11 @@ Everything a curator can do (implicitly, without needing explicit curator assign
 
 ## The Experience System
 
-Experiences are the atomic units of travel engagement. Each experience is a specific thing you can see, visit, or do in a location — a UNESCO site, a museum, a monument.
+Experiences are the atomic units of travel engagement — anything a user can discover, learn about, or do in connection with a region. Three experience categories are live: UNESCO World Heritage Sites (~1,250), Museums (~100 top art museums), and Public Art & Monuments (~200). Plans to expand into books, films, food, festivals, wildlife, and many more categories.
 
-### Current Sources
+Users browse experiences in two views: **Map mode** (select a region, see grouped experiences below) and **Discover mode** (tree-based navigation with map + card list). Curators maintain content quality through rejection, editing, and manual creation with AI-assisted lookup.
 
-| Source | Count | Data Origin |
-|--------|-------|-------------|
-| UNESCO World Heritage Sites | ~1,200 | UNESCO API + Wikidata enrichment |
-| Top Museums | ~3,000 | Wikidata SPARQL (filtered for actual museums with collections) |
-| Public Art & Monuments | ~200 | Wikidata SPARQL (outdoor sculptures, monuments, memorials) |
-
-### How It Works
-
-1. **Sync services** pull data from external sources, downloading images and metadata
-2. **Region assignment** maps each experience to regions based on geographic coordinates
-3. **Multi-location support** — experiences like "Historic Centre of Rome" have multiple location points
-4. **Curator review** — curators clean up assignments, reject irrelevant items, add missing ones
-5. **User tracking** — users mark experiences as visited, building their personal completion record
-
-### Browsing Experiences
-
-Two complementary views:
-
-- **Map mode** — select a region on the map, see its experiences in a grouped list below (grouped by source, sorted by display_priority). Click to expand for details, images, country info, and external links. Hovering a marker shows a preview card with image, name, and source
-- **Discover mode** — tree-based navigation with breadcrumbs. Pick a world view, drill into regions, click a source badge to see all experiences. Map + card list side by side, with a slide-in detail panel. Hovering a marker shows a preview card (same style as Map mode). Curators see a "+" button next to each region's source badges (only for regions within their scope) to add experiences of any category, plus an "Add" button in the list header when viewing a specific source
-
-External links are unified across all experience types. Each experience can show two links: a Wikipedia button (book icon, linking to the English Wikipedia article when available) and a Website button (globe icon, linking to the official site — UNESCO page, museum website, or landmark website). The same rendering applies regardless of source
+For the complete experience vision — categories, classification, user interaction, quiz system, context layers, gamification, and implementation phases — see [`EXPERIENCES-OVERVIEW.md`](EXPERIENCES-OVERVIEW.md). For implementation details, see [`experiences.md`](../tech/experiences.md)
 
 ---
 
@@ -129,56 +108,33 @@ Vector tiles served by Martin (PostGIS-native tile server). The frontend uses Ma
 
 ## Future Vision
 
-### Connection Levels (Planned)
+The experience system will grow along several axes. See [`EXPERIENCES-OVERVIEW.md`](EXPERIENCES-OVERVIEW.md) for the complete vision with implementation phases.
 
-Replace the binary visited/not-visited model with a spectrum of connection:
+### Connection States (Planned)
 
-| Level | Meaning |
-|-------|---------|
-| Stranger | No knowledge, no visit |
-| Aware | Knowledgeable but never visited (the armchair traveler) |
-| Passed Through | Visited but remembers little (transit, long ago) |
-| Explored | Visited and remembers sensory details |
-| Deep Connection | Lived there, returned multiple times, knows the non-obvious |
-
-Connection levels would be inferred through quiz interactions and decay over time as memories fade, creating a natural re-engagement loop. See `CONNECTION-LEVEL-CHECKLIST.md` for the criteria framework.
+Replace binary visited/not-visited with a spectrum of connection depth. First phase: visit-based states (Stranger, Passed Through, Explored, Deep Connection) derived from experience tracking, checklist input, and visit history. Second phase: add the Aware state (knowledgeable but never visited) once the quiz system can detect theoretical knowledge. See [`CONNECTION-LEVEL-CHECKLIST.md`](CONNECTION-LEVEL-CHECKLIST.md).
 
 ### Quiz-Based Onboarding (Planned)
 
-Instead of tedious data entry, users reconstruct their travel history through play. Rounds of 5-7 cards test factual, sensory, spatial, and emotional knowledge to infer where you've been and how deeply you experienced it. See `QUIZ-SYSTEM.md` for full design.
+Reconstruct travel history through play — rounds of cards testing factual, sensory, spatial, and emotional knowledge. See [`QUIZ-SYSTEM.md`](QUIZ-SYSTEM.md).
 
-### Expanded Experience Categories (Planned)
+### Expanded Categories (Planned)
 
-Beyond UNESCO/museums/art, the platform can grow to include:
+Books, films, food, festivals, notable people, wildlife, intangible heritage, and 15+ more categories. See [`PROPOSED-EXPERIENCE-CATEGORIES.md`](PROPOSED-EXPERIENCE-CATEGORIES.md).
 
-- **Books & Films** — stories set in or filmed in a region
-- **Regional Food** — traditional dishes, GI-protected products
-- **Festivals & Events** — recurring cultural celebrations
-- **Notable People** — famous figures born in or associated with a region
-- **Wildlife** — observable species with seasonality
-- **Intangible Heritage** — traditional crafts, performing arts, rituals
-- **Regional Profiles** — composite snapshot cards with key facts, "changes since your visit"
+### Context Layers (Planned)
 
-See `experiences-plan.md` (in tech/planning) for full category proposals.
-
-### Locals' Perspective (Planned)
-
-User-generated content from people who know a place deeply: "describe without naming," "things only locals know," recommendations, stereotype busting. See `LOCALS-PERSPECTIVE.md`.
-
-### Cultural Context (Planned)
-
-Educational layer providing historical, social, and environmental context for experiences. Rooted in cultural relativism — helping travelers understand rather than judge. See `cultural-context.md`.
+- **Regional Profiles** — key facts, climate, economy, "changes since your visit." See [`REGIONAL-PROFILE.md`](REGIONAL-PROFILE.md)
+- **Locals' Perspective** — user-generated local knowledge. See [`LOCALS-PERSPECTIVE.md`](LOCALS-PERSPECTIVE.md)
+- **Cultural Context** — historical and social background woven into experience descriptions, rooted in cultural relativism
 
 ### Social Features (Planned)
 
-- Follow other users, see their visited regions and experiences
-- Journey planning — curated lists of places to visit
-- Privacy controls — choose what's visible to others
-- On-site notifications for friends' updates
+Follow users, journey planning, privacy controls, notifications.
 
 ### Mobile Apps (Planned)
 
-Native iOS/Android apps sharing the same API. See `mobile-planning.md` (in tech/planning) for evaluation of React Native vs native approaches.
+Native iOS/Android sharing the same API. See `mobile-planning.md` (in tech/planning).
 
 ---
 
