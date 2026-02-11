@@ -90,7 +90,7 @@ Niche but passionate audience â€” coin collecting is one of the world's mos
 
 ## Lazarus Species
 
-Animals and plants once thought extinct that were rediscovered alive. A curated quest showing what they are and where to see them.
+Animals and plants once thought extinct that were rediscovered alive. A curated quest showing what they are and where to see them. Implementation note: Lazarus is modeled as a **tag** on species treasures (see [`EXPERIENCES-OVERVIEW.md`](EXPERIENCES-OVERVIEW.md)), enabling cross-venue browsing ("Lazarus species and where to find them").
 
 Incredible stories: a fish extinct for 66 million years found in 1938, an insect found on an ocean rock after 80 years, a tree known only from dinosaur-era fossils discovered in a canyon in 1994. ~350 documented species, 13+ viewable in zoos/sanctuaries worldwide.
 

@@ -54,6 +54,30 @@ Instead of "mark where you've been" — a series of cards that simultaneously en
 
 ---
 
+## Data Import (Supplementary)
+
+The quiz is the primary onboarding method, but traditional import can accelerate it — especially for experienced travelers with 30+ regions.
+
+### Priority 1: Smart Manual Input
+
+Show a map. Let the user tap regions and select approximate year. Most people have visited 10-30 regions, not 300 — this takes 2-3 minutes. Pre-populates regions for targeted quiz rounds.
+
+### Priority 2: Google Takeout
+
+User uploads Location History JSON from takeout.google.com. We parse coordinates, map to regions, and show: "We found these trips — confirm?" This seeds region-level data; the quiz then fills in granular experiences within each region.
+
+### Priority 3: Photo GPS
+
+"Upload photos from a trip — we'll figure out where it was." Not a primary onboarding flow, but a way to add specific trips later. Works best when the user selects a specific album rather than granting full library access.
+
+### What We Don't Do
+
+- **Browser extensions** — fragile (sites change markup), creepy (reads data on third-party sites), high trust barrier
+- **Email parsing** — powerful in theory (booking confirmations), but the privacy cost outweighs the benefit
+- **Always-on location tracking** — not our model; we respect that travel is something you reflect on, not something that's passively logged
+
+---
+
 ## How the Quiz Works
 
 ### Rounds

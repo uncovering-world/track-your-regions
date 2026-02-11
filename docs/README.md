@@ -38,8 +38,6 @@ docs/
 | Document | Topic | Status |
 |----------|-------|--------|
 | [curator-system.md](tech/planning/curator-system.md) | Curator roles, scope-based auth, curation workflows | Core implemented; remaining improvements listed |
-| [experiences-plan.md](tech/planning/experiences-plan.md) | Proposed experience categories (books, films, food, etc.) | Planned |
-| [enter-data.md](tech/planning/enter-data.md) | Quiz-based onboarding and connection model | Planned |
 | [ci-cd.md](tech/planning/ci-cd.md) | GitHub Actions CI workflow | Implemented |
 | [testing-strategy.md](tech/planning/testing-strategy.md) | High-level testing model (fast lane + E2E lanes, coverage philosophy, CI tiers) | In progress (baseline implemented; command defaults aligned) |
 | [testing-feature-matrix-v1.md](tech/planning/testing-feature-matrix-v1.md) | First-pass use-case/workflow/scenario inventory mapped to test lanes | Draft v1 (active) |
@@ -54,16 +52,16 @@ docs/
 | Document | Topic |
 |----------|-------|
 | [vision.md](vision/vision.md) | **Root vision** — project idea, user roles, design principles |
-| [QUIZ-SYSTEM.md](vision/QUIZ-SYSTEM.md) | Quiz design: card types, rounds, adaptiveness |
+| [EXPERIENCES-OVERVIEW.md](vision/EXPERIENCES-OVERVIEW.md) | **Experiences master overview** — categories, venues & treasures, type & significance, tracking, gamification, phases (start here for experiences) |
+| [QUIZ-SYSTEM.md](vision/QUIZ-SYSTEM.md) | Quiz design: card types, rounds, adaptiveness, data import |
 | [CONNECTION-LEVEL-CHECKLIST.md](vision/CONNECTION-LEVEL-CHECKLIST.md) | Depth-of-connection criteria and mechanics |
+| [PROPOSED-EXPERIENCE-CATEGORIES.md](vision/PROPOSED-EXPERIENCE-CATEGORIES.md) | Detailed proposals for 25+ experience categories with data sources |
+| [EXPERIENCE-TYPE-AND-SIGNIFICANCE.md](vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md) | Per-category type enums and binary significance (Iconic or default) |
+| [REGIONAL-PROFILE.md](vision/REGIONAL-PROFILE.md) | Region snapshot cards, "changes since your visit" |
 | [LOCALS-PERSPECTIVE.md](vision/LOCALS-PERSPECTIVE.md) | User-generated local knowledge content |
-| [cultural-context.md](vision/cultural-context.md) | Cultural relativism and educational context |
 | [user-stories-general.md](vision/user-stories-general.md) | Core user stories (registration, tracking, social) |
 | [user-stories-regions-listing.md](vision/user-stories-regions-listing.md) | Browse and search regions |
 | [user-stories-journey-planning.md](vision/user-stories-journey-planning.md) | Trip planning and journey creation |
-| [user-stories-engagement.md](vision/user-stories-engagement.md) | Visit depth through experiences |
-| [user-stories-common-experiences.md](vision/user-stories-common-experiences.md) | Universal experiences across regions |
-| [user-stories-educational.md](vision/user-stories-educational.md) | Learning about regions |
 | [user-stories-ai-interview.md](vision/user-stories-ai-interview.md) | AI-assisted travel reflection |
 
 ## Security

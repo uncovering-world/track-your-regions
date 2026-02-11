@@ -8,7 +8,7 @@ Experiences are location-based entities linked to regions. The system supports:
 
 - Public browsing and map visualization
 - User visit tracking (experience-level and location-level)
-- Multi-location experiences (serial nominations, distributed sites)
+- Flexible location model (0, 1, or many locations per experience)
 - Curator workflows (reject/edit/assign/create)
 - Multi-source ingestion (UNESCO, museums, monuments)
 
@@ -29,16 +29,20 @@ Experiences are location-based entities linked to regions. The system supports:
 - `user_visited_experiences`: per-user visit state
 - `experience_sync_logs`: sync audit log by source
 
-### Multi-location support
+### Location model
 
-- `experience_locations`: child locations per experience
+An experience can have zero, one, or many locations. Location-bound experiences (museums, monuments) have physical coordinates; non-location-bound ones (books, films) are tied to regions conceptually. Multi-location experiences (UNESCO serial nominations) have independently trackable child locations.
+
+- `experience_locations`: locations per experience (0..N)
 - `experience_location_regions`: region assignment per location
 - `user_visited_locations`: per-user location visits
 
-### Museum/artwork support
+### Treasures (artworks/artifacts)
 
-- `experience_contents`: notable contents (artworks/artifacts) inside experiences
-- `user_viewed_contents`: per-user viewed content tracking
+Treasures are independently trackable things inside venue experiences. Currently implemented for museum artworks. Treasures have a many-to-many relationship with venues (planned); iconic treasures are called **highlights**. See [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full concept.
+
+- `experience_contents`: treasures inside experiences (artworks, artifacts)
+- `user_viewed_contents`: per-user treasure tracking
 
 ### Curation support
 
@@ -114,7 +118,7 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 | GET | `/api/experiences/sources` | Active sources ordered by priority |
 | GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId` |
 | GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region` |
-| GET | `/api/experiences/:id/contents` | Artwork/content list |
+| GET | `/api/experiences/:id/contents` | Treasures list (artworks/artifacts) |
 
 ### User visits (`requireAuth`)
 
