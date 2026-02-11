@@ -27,11 +27,11 @@ export const runningAssignments = new Map<number, AssignmentProgress>();
  * Then propagates assignments up to ancestor regions and denormalizes to experience_regions.
  *
  * @param worldViewId - The world view to assign experiences within
- * @param sourceId - Optional: only assign experiences from this source
+ * @param categoryId - Optional: only assign experiences from this source
  */
 export async function assignExperiencesToRegions(
   worldViewId: number,
-  sourceId?: number
+  categoryId?: number
 ): Promise<AssignmentProgress> {
   // Check if already running for this world view
   const existing = runningAssignments.get(worldViewId);
@@ -51,7 +51,7 @@ export async function assignExperiencesToRegions(
   runningAssignments.set(worldViewId, progress);
 
   try {
-    console.log(`[Region Assignment] Starting for world view ${worldViewId}${sourceId ? ` (source ${sourceId})` : ''}`);
+    console.log(`[Region Assignment] Starting for world view ${worldViewId}${categoryId ? ` (source ${categoryId})` : ''}`);
 
     // Step 1: Clear existing auto-assignments for this world view
     progress.statusMessage = 'Clearing previous auto-assignments...';
@@ -65,8 +65,8 @@ export async function assignExperiencesToRegions(
         AND elr.region_id = r.id
         AND r.world_view_id = $1
         AND elr.assignment_type = 'auto'
-        ${sourceId ? 'AND e.source_id = $2' : ''}
-    `, sourceId ? [worldViewId, sourceId] : [worldViewId]);
+        ${categoryId ? 'AND e.category_id = $2' : ''}
+    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
 
     console.log(`[Region Assignment] Cleared ${clearLocResult.rowCount} location-region auto-assignments`);
 
@@ -77,8 +77,8 @@ export async function assignExperiencesToRegions(
       WHERE er.region_id = r.id
         AND r.world_view_id = $1
         AND er.assignment_type = 'auto'
-        ${sourceId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE source_id = $2)' : ''}
-    `, sourceId ? [worldViewId, sourceId] : [worldViewId]);
+        ${categoryId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE category_id = $2)' : ''}
+    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
 
     console.log(`[Region Assignment] Cleared ${clearExpResult.rowCount} experience-region auto-assignments`);
 
@@ -102,9 +102,9 @@ export async function assignExperiencesToRegions(
         AND r.geom IS NOT NULL
         AND r.geom && el.location
         AND ST_Contains(r.geom, el.location)
-        ${sourceId ? 'AND e.source_id = $2' : ''}
+        ${categoryId ? 'AND e.category_id = $2' : ''}
       ON CONFLICT (location_id, region_id) DO NOTHING
-    `, sourceId ? [worldViewId, sourceId] : [worldViewId]);
+    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
 
     progress.directAssignments = directResult.rowCount || 0;
     console.log(`[Region Assignment] Created ${progress.directAssignments} direct location-region assignments`);
@@ -128,10 +128,10 @@ export async function assignExperiencesToRegions(
         WHERE r.world_view_id = $1
           AND r.parent_region_id IS NOT NULL
           AND elr.assignment_type = 'auto'
-          ${sourceId ? `AND elr.location_id IN (
+          ${categoryId ? `AND elr.location_id IN (
             SELECT el.id FROM experience_locations el
             JOIN experiences e ON el.experience_id = e.id
-            WHERE e.source_id = $2
+            WHERE e.category_id = $2
           )` : ''}
 
         UNION
@@ -147,7 +147,7 @@ export async function assignExperiencesToRegions(
       FROM ancestors
       WHERE region_id IS NOT NULL
       ON CONFLICT (location_id, region_id) DO NOTHING
-    `, sourceId ? [worldViewId, sourceId] : [worldViewId]);
+    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
 
     progress.ancestorAssignments = ancestorResult.rowCount || 0;
     console.log(`[Region Assignment] Created ${progress.ancestorAssignments} ancestor location-region assignments`);
@@ -171,9 +171,9 @@ export async function assignExperiencesToRegions(
       JOIN experiences e ON el.experience_id = e.id
       JOIN regions r ON elr.region_id = r.id
       WHERE r.world_view_id = $1
-        ${sourceId ? 'AND e.source_id = $2' : ''}
+        ${categoryId ? 'AND e.category_id = $2' : ''}
       ON CONFLICT (experience_id, region_id) DO NOTHING
-    `, sourceId ? [worldViewId, sourceId] : [worldViewId]);
+    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
 
     progress.experienceAssignments = expResult.rowCount || 0;
     console.log(`[Region Assignment] Created ${progress.experienceAssignments} denormalized experience-region assignments`);
@@ -235,7 +235,7 @@ export function cancelAssignment(worldViewId: number): boolean {
  */
 export async function getExperienceCountsByRegion(
   worldViewId: number,
-  sourceId?: number
+  categoryId?: number
 ): Promise<{ regionId: number; regionName: string; count: number }[]> {
   const result = await pool.query(`
     SELECT
@@ -244,12 +244,12 @@ export async function getExperienceCountsByRegion(
       COUNT(er.experience_id) as count
     FROM regions r
     LEFT JOIN experience_regions er ON r.id = er.region_id
-      ${sourceId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE source_id = $2)' : ''}
+      ${categoryId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE category_id = $2)' : ''}
     WHERE r.world_view_id = $1
     GROUP BY r.id, r.name
     HAVING COUNT(er.experience_id) > 0
     ORDER BY count DESC
-  `, sourceId ? [worldViewId, sourceId] : [worldViewId]);
+  `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
 
   return result.rows.map(row => ({
     regionId: row.region_id,

@@ -19,7 +19,7 @@ export interface SyncProgress {
 }
 
 /**
- * Store for tracking running syncs by sourceId
+ * Store for tracking running syncs by categoryId
  */
 export const runningSyncs = new Map<number, SyncProgress>();
 
@@ -108,12 +108,12 @@ export interface WikidataMuseum {
 }
 
 /**
- * Artwork processed and ready for experience_contents insertion
+ * Artwork processed and ready for treasures insertion
  */
 export interface ProcessedContent {
   externalId: string;       // Wikidata QID
   name: string;
-  contentType: 'painting' | 'sculpture';
+  treasureType: 'painting' | 'sculpture';
   artist: string | null;
   year: number | null;
   imageUrl: string | null;
@@ -157,7 +157,7 @@ export interface WikidataLandmark {
  * Processed experience data ready for DB insertion
  */
 export interface ProcessedExperience {
-  sourceId: number;
+  categoryId: number;
   externalId: string;
   name: string;
   nameLocal: Record<string, string>;

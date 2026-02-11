@@ -7,7 +7,7 @@
  *   2. Group by collection (museum), taking top 100 unique museums
  *   3. Fetch museum details (coordinates, country, image)
  *   4. Resolve department collections to parent museums
- *   5. Upsert museums as experiences, artworks as experience_contents
+ *   5. Upsert museums as experiences, artworks as treasures (many-to-many)
  */
 
 import { pool } from '../../db/index.js';
@@ -21,7 +21,7 @@ import type {
 import { runningSyncs } from './types.js';
 // Museums use remote Wikimedia URLs, no local image storage
 
-const MUSEUM_SOURCE_ID = 2;
+const MUSEUM_CATEGORY_ID = 2;
 const TARGET_MUSEUM_COUNT = 115; // Overshoot: some collections lack coordinates
 const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
 const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
@@ -416,7 +416,7 @@ async function upsertMuseumExperience(
 
   const result = await pool.query(
     `INSERT INTO experiences (
-      source_id, external_id, name, name_local, description, short_description,
+      category_id, external_id, name, name_local, description, short_description,
       category, tags, location, country_codes, country_names, image_url, metadata,
       created_at, updated_at
     ) VALUES (
@@ -424,7 +424,7 @@ async function upsertMuseumExperience(
       ST_SetSRID(ST_MakePoint($9, $10), 4326),
       $11, $12, $13, $14, NOW(), NOW()
     )
-    ON CONFLICT (source_id, external_id) DO UPDATE SET
+    ON CONFLICT (category_id, external_id) DO UPDATE SET
       name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
       name_local = CASE WHEN experiences.curated_fields ? 'name_local' THEN experiences.name_local ELSE EXCLUDED.name_local END,
       description = CASE WHEN experiences.curated_fields ? 'description' THEN experiences.description ELSE EXCLUDED.description END,
@@ -439,7 +439,7 @@ async function upsertMuseumExperience(
       updated_at = NOW()
     RETURNING id, (xmax = 0) AS inserted`,
     [
-      MUSEUM_SOURCE_ID,
+      MUSEUM_CATEGORY_ID,
       museum.qid,
       details.museumLabel,
       JSON.stringify({ en: details.museumLabel }),
@@ -474,38 +474,49 @@ async function upsertMuseumExperience(
 }
 
 /**
- * Upsert artworks as experience_contents for a museum
+ * Upsert artworks as treasures and link to experience via junction table
  */
-async function upsertMuseumContents(
+async function upsertMuseumTreasures(
   experienceId: number,
   artworks: ProcessedContent[]
 ): Promise<void> {
   for (const artwork of artworks) {
-    await pool.query(
-      `INSERT INTO experience_contents (
-        experience_id, external_id, name, content_type, artist, year,
+    // Step 1: Upsert into treasures (globally unique by external_id)
+    const treasureResult = await pool.query(
+      `INSERT INTO treasures (
+        external_id, name, treasure_type, artist, year,
         image_url, sitelinks_count, metadata, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-      ON CONFLICT (experience_id, external_id) DO UPDATE SET
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+      ON CONFLICT (external_id) DO UPDATE SET
         name = EXCLUDED.name,
-        content_type = EXCLUDED.content_type,
+        treasure_type = EXCLUDED.treasure_type,
         artist = EXCLUDED.artist,
         year = EXCLUDED.year,
         image_url = EXCLUDED.image_url,
         sitelinks_count = EXCLUDED.sitelinks_count,
         metadata = EXCLUDED.metadata,
-        updated_at = NOW()`,
+        updated_at = NOW()
+      RETURNING id`,
       [
-        experienceId,
         artwork.externalId,
         artwork.name,
-        artwork.contentType,
+        artwork.treasureType,
         artwork.artist,
         artwork.year,
         artwork.imageUrl,
         artwork.sitelinksCount,
         null, // metadata
       ]
+    );
+
+    const treasureId = treasureResult.rows[0].id;
+
+    // Step 2: Link treasure to experience via junction table
+    await pool.query(
+      `INSERT INTO experience_treasures (experience_id, treasure_id)
+       VALUES ($1, $2)
+       ON CONFLICT (experience_id, treasure_id) DO NOTHING`,
+      [experienceId, treasureId]
     );
   }
 }
@@ -515,10 +526,10 @@ async function upsertMuseumContents(
  */
 async function createSyncLog(triggeredBy: number | null): Promise<number> {
   const result = await pool.query(
-    `INSERT INTO experience_sync_logs (source_id, triggered_by, status)
+    `INSERT INTO experience_sync_logs (category_id, triggered_by, status)
      VALUES ($1, $2, 'running')
      RETURNING id`,
-    [MUSEUM_SOURCE_ID, triggeredBy]
+    [MUSEUM_CATEGORY_ID, triggeredBy]
   );
   return result.rows[0].id;
 }
@@ -547,12 +558,12 @@ async function updateSyncLog(
   );
 
   await pool.query(
-    `UPDATE experience_sources SET
+    `UPDATE experience_categories SET
       last_sync_at = NOW(),
       last_sync_status = $2,
       last_sync_error = $3
      WHERE id = $1`,
-    [MUSEUM_SOURCE_ID, status, status === 'failed' ? 'See sync log for details' : null]
+    [MUSEUM_CATEGORY_ID, status, status === 'failed' ? 'See sync log for details' : null]
   );
 }
 
@@ -563,24 +574,31 @@ async function cleanupMuseumData(progress: SyncProgress): Promise<void> {
   progress.statusMessage = 'Cleaning up existing museum data...';
 
   // Delete in correct order due to foreign key constraints
+  // Delete treasure links and orphaned treasures
   await pool.query(`
-    DELETE FROM experience_contents
-    WHERE experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [MUSEUM_SOURCE_ID]);
+    DELETE FROM experience_treasures
+    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [MUSEUM_CATEGORY_ID]);
+
+  // Delete orphaned treasures (not linked to any experience)
+  await pool.query(`
+    DELETE FROM treasures
+    WHERE id NOT IN (SELECT DISTINCT treasure_id FROM experience_treasures)
+  `);
 
   await pool.query(`
     DELETE FROM user_visited_locations
     WHERE location_id IN (
       SELECT el.id FROM experience_locations el
       JOIN experiences e ON el.experience_id = e.id
-      WHERE e.source_id = $1
+      WHERE e.category_id = $1
     )
-  `, [MUSEUM_SOURCE_ID]);
+  `, [MUSEUM_CATEGORY_ID]);
 
   await pool.query(`
     DELETE FROM user_visited_experiences
-    WHERE experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [MUSEUM_SOURCE_ID]);
+    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [MUSEUM_CATEGORY_ID]);
 
   await pool.query(`
     DELETE FROM experience_location_regions
@@ -588,24 +606,24 @@ async function cleanupMuseumData(progress: SyncProgress): Promise<void> {
       AND location_id IN (
         SELECT el.id FROM experience_locations el
         JOIN experiences e ON el.experience_id = e.id
-        WHERE e.source_id = $1
+        WHERE e.category_id = $1
       )
-  `, [MUSEUM_SOURCE_ID]);
+  `, [MUSEUM_CATEGORY_ID]);
 
   await pool.query(`
     DELETE FROM experience_regions
     WHERE assignment_type = 'auto'
-      AND experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [MUSEUM_SOURCE_ID]);
+      AND experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [MUSEUM_CATEGORY_ID]);
 
   await pool.query(`
     DELETE FROM experience_locations
-    WHERE experience_id IN (SELECT id FROM experiences WHERE source_id = $1)
-  `, [MUSEUM_SOURCE_ID]);
+    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
+  `, [MUSEUM_CATEGORY_ID]);
 
   const result = await pool.query(`
-    DELETE FROM experiences WHERE source_id = $1
-  `, [MUSEUM_SOURCE_ID]);
+    DELETE FROM experiences WHERE category_id = $1
+  `, [MUSEUM_CATEGORY_ID]);
 
   // No need to clear images from disk — museums use remote Wikimedia URLs
 
@@ -618,7 +636,7 @@ async function cleanupMuseumData(progress: SyncProgress): Promise<void> {
  */
 export async function syncMuseums(triggeredBy: number | null, force: boolean = false): Promise<void> {
   // Check if already running
-  const existing = runningSyncs.get(MUSEUM_SOURCE_ID);
+  const existing = runningSyncs.get(MUSEUM_CATEGORY_ID);
   if (existing && existing.status !== 'complete' && existing.status !== 'failed' && existing.status !== 'cancelled') {
     throw new Error('Museum sync already in progress');
   }
@@ -636,7 +654,7 @@ export async function syncMuseums(triggeredBy: number | null, force: boolean = f
     currentItem: '',
     logId: null,
   };
-  runningSyncs.set(MUSEUM_SOURCE_ID, progress);
+  runningSyncs.set(MUSEUM_CATEGORY_ID, progress);
 
   const errorDetails: { externalId: string; error: string }[] = [];
 
@@ -683,7 +701,7 @@ export async function syncMuseums(triggeredBy: number | null, force: boolean = f
       museum.artworks.push({
         externalId: artwork.artworkQid,
         name: artwork.artworkLabel,
-        contentType: artwork.artworkType,
+        treasureType: artwork.artworkType,
         artist: artwork.creatorLabel,
         year: artwork.year,
         imageUrl: artwork.imageUrl,
@@ -758,7 +776,7 @@ export async function syncMuseums(triggeredBy: number | null, force: boolean = f
 
       try {
         const { experienceId, isCreated } = await upsertMuseumExperience(museum);
-        await upsertMuseumContents(experienceId, museum.artworks);
+        await upsertMuseumTreasures(experienceId, museum.artworks);
 
         if (isCreated) {
           progress.created++;
@@ -814,8 +832,8 @@ export async function syncMuseums(triggeredBy: number | null, force: boolean = f
     // Clean up after delay, but only if this sync's progress is still current
     const thisProgress = progress;
     setTimeout(() => {
-      if (runningSyncs.get(MUSEUM_SOURCE_ID) === thisProgress) {
-        runningSyncs.delete(MUSEUM_SOURCE_ID);
+      if (runningSyncs.get(MUSEUM_CATEGORY_ID) === thisProgress) {
+        runningSyncs.delete(MUSEUM_CATEGORY_ID);
       }
     }, 30000);
   }
@@ -825,14 +843,14 @@ export async function syncMuseums(triggeredBy: number | null, force: boolean = f
  * Get current museum sync status
  */
 export function getMuseumSyncStatus(): SyncProgress | null {
-  return runningSyncs.get(MUSEUM_SOURCE_ID) || null;
+  return runningSyncs.get(MUSEUM_CATEGORY_ID) || null;
 }
 
 /**
  * Cancel running museum sync
  */
 export function cancelMuseumSync(): boolean {
-  const progress = runningSyncs.get(MUSEUM_SOURCE_ID);
+  const progress = runningSyncs.get(MUSEUM_CATEGORY_ID);
   if (progress && progress.status !== 'complete' && progress.status !== 'failed') {
     progress.cancel = true;
     progress.statusMessage = 'Cancelling...';
@@ -847,7 +865,7 @@ export function cancelMuseumSync(): boolean {
  */
 export async function fixMuseumImages(_triggeredBy: number | null): Promise<void> {
   // Check if already running
-  const existing = runningSyncs.get(MUSEUM_SOURCE_ID);
+  const existing = runningSyncs.get(MUSEUM_CATEGORY_ID);
   if (existing && existing.status !== 'complete' && existing.status !== 'failed' && existing.status !== 'cancelled') {
     throw new Error('Museum sync already in progress');
   }
@@ -864,17 +882,17 @@ export async function fixMuseumImages(_triggeredBy: number | null): Promise<void
     currentItem: '',
     logId: null,
   };
-  runningSyncs.set(MUSEUM_SOURCE_ID, progress);
+  runningSyncs.set(MUSEUM_CATEGORY_ID, progress);
 
   try {
     // Find museums missing images or with old local paths
     const result = await pool.query(`
       SELECT id, external_id, name, metadata
       FROM experiences
-      WHERE source_id = $1
+      WHERE category_id = $1
         AND (image_url IS NULL OR image_url = '' OR image_url LIKE '/images/%')
         AND metadata IS NOT NULL
-    `, [MUSEUM_SOURCE_ID]);
+    `, [MUSEUM_CATEGORY_ID]);
 
     const museums = result.rows;
     progress.total = museums.length;
@@ -932,8 +950,8 @@ export async function fixMuseumImages(_triggeredBy: number | null): Promise<void
   } finally {
     const thisProgress = progress;
     setTimeout(() => {
-      if (runningSyncs.get(MUSEUM_SOURCE_ID) === thisProgress) {
-        runningSyncs.delete(MUSEUM_SOURCE_ID);
+      if (runningSyncs.get(MUSEUM_CATEGORY_ID) === thisProgress) {
+        runningSyncs.delete(MUSEUM_CATEGORY_ID);
       }
     }, 30000);
   }

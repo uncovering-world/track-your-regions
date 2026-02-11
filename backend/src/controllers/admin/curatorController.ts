@@ -26,15 +26,15 @@ export async function listCurators(_req: AuthenticatedRequest, res: Response): P
         'scopeType', ca.scope_type,
         'regionId', ca.region_id,
         'regionName', r.name,
-        'sourceId', ca.source_id,
-        'sourceName', es.name,
+        'categoryId', ca.category_id,
+        'categoryName', es.name,
         'assignedAt', ca.assigned_at,
         'notes', ca.notes
       ) ORDER BY ca.assigned_at DESC) as scopes
     FROM users u
     JOIN curator_assignments ca ON u.id = ca.user_id
     LEFT JOIN regions r ON ca.region_id = r.id
-    LEFT JOIN experience_sources es ON ca.source_id = es.id
+    LEFT JOIN experience_categories es ON ca.category_id = es.id
     WHERE u.role IN ('curator', 'admin')
     GROUP BY u.id, u.display_name, u.email, u.role, u.avatar_url
     ORDER BY u.display_name
@@ -49,7 +49,7 @@ export async function listCurators(_req: AuthenticatedRequest, res: Response): P
  * Body: { userId, scopeType, regionId?, sourceId?, notes? }
  */
 export async function createCuratorAssignment(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const { userId, scopeType, regionId, sourceId, notes } = req.body;
+  const { userId, scopeType, regionId, categoryId, notes } = req.body;
   const assignedBy = req.user!.id;
 
   if (!userId || !scopeType) {
@@ -57,8 +57,8 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
     return;
   }
 
-  if (!['region', 'source', 'global'].includes(scopeType)) {
-    res.status(400).json({ error: 'scopeType must be region, source, or global' });
+  if (!['region', 'category', 'global'].includes(scopeType)) {
+    res.status(400).json({ error: 'scopeType must be region, category, or global' });
     return;
   }
 
@@ -67,8 +67,8 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
     return;
   }
 
-  if (scopeType === 'source' && !sourceId) {
-    res.status(400).json({ error: 'sourceId is required for source scope' });
+  if (scopeType === 'category' && !categoryId) {
+    res.status(400).json({ error: 'categoryId is required for category scope' });
     return;
   }
 
@@ -88,11 +88,11 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
     }
   }
 
-  // Verify source exists if scope is source
-  if (scopeType === 'source') {
-    const sourceResult = await pool.query('SELECT id FROM experience_sources WHERE id = $1', [sourceId]);
-    if (sourceResult.rows.length === 0) {
-      res.status(404).json({ error: 'Source not found' });
+  // Verify category exists if scope is category
+  if (scopeType === 'category') {
+    const catResult = await pool.query('SELECT id FROM experience_categories WHERE id = $1', [categoryId]);
+    if (catResult.rows.length === 0) {
+      res.status(404).json({ error: 'Category not found' });
       return;
     }
   }
@@ -101,10 +101,10 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
   await pool.query('BEGIN');
   try {
     const insertResult = await pool.query(`
-      INSERT INTO curator_assignments (user_id, scope_type, region_id, source_id, assigned_by, notes)
+      INSERT INTO curator_assignments (user_id, scope_type, region_id, category_id, assigned_by, notes)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id, assigned_at
-    `, [userId, scopeType, regionId || null, sourceId || null, assignedBy, notes || null]);
+    `, [userId, scopeType, regionId || null, categoryId || null, assignedBy, notes || null]);
 
     // Promote user to curator if currently 'user'
     const currentRole = userResult.rows[0].role;
@@ -119,7 +119,7 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
       userId,
       scopeType,
       regionId: regionId || null,
-      sourceId: sourceId || null,
+      categoryId: categoryId || null,
       assignedAt: insertResult.rows[0].assigned_at,
       rolePromoted: currentRole === 'user',
     });

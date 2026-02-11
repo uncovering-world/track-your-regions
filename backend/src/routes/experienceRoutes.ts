@@ -12,10 +12,10 @@ import {
   getExperience,
   getExperiencesByRegion,
   getExperienceRegionCounts,
-  listSources,
+  listCategories,
   searchExperiences,
   getExperienceLocations,
-  getExperienceContents,
+  getExperienceTreasures,
   rejectExperience,
   unrejectExperience,
   assignExperienceToRegion,
@@ -60,10 +60,10 @@ const searchLimiter = rateLimit({
 // Search experiences (full-text search)
 router.get('/search', searchLimiter, validate(experienceSearchQuerySchema, 'query'), searchExperiences);
 
-// List experience sources
-router.get('/sources', listSources);
+// List experience categories
+router.get('/categories', listCategories);
 
-// Get experience counts per region per source (for Discover page tree)
+// Get experience counts per region per category (for Discover page tree)
 router.get('/region-counts', validate(experienceRegionCountsQuerySchema, 'query'), getExperienceRegionCounts);
 
 // Get experiences by region (optionalAuth to support curator rejection visibility)
@@ -107,7 +107,7 @@ router.get('/:id', validate(idParamSchema, 'params'), getExperience);
 // Get locations for an experience (multi-location support)
 router.get('/:id/locations', validate(idParamSchema, 'params'), validate(experienceLocationsQuerySchema, 'query'), getExperienceLocations);
 
-// Get contents (artworks, artifacts) for an experience
-router.get('/:id/contents', validate(idParamSchema, 'params'), getExperienceContents);
+// Get treasures (artworks, artifacts) for an experience
+router.get('/:id/treasures', validate(idParamSchema, 'params'), getExperienceTreasures);
 
 export default router;
