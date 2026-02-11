@@ -1287,8 +1287,8 @@ CREATE INDEX IF NOT EXISTS idx_regions_world_view_id ON regions(world_view_id);
 -- Generic system for location-based experiences that can be assigned to regions.
 -- Designed to be extensible for multiple data sources (UNESCO, national parks, etc.)
 
--- Experience data sources (UNESCO, future: national parks, landmarks, etc.)
-CREATE TABLE IF NOT EXISTS experience_sources (
+-- Experience categories (UNESCO, museums, landmarks, etc.)
+CREATE TABLE IF NOT EXISTS experience_categories (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
@@ -1302,13 +1302,13 @@ CREATE TABLE IF NOT EXISTS experience_sources (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE experience_sources IS 'External data sources for experiences (UNESCO, national parks, etc.)';
-COMMENT ON COLUMN experience_sources.api_config IS 'Source-specific API configuration (pagination, auth, etc.)';
-COMMENT ON COLUMN experience_sources.last_sync_status IS 'Status of last sync: success, partial, or failed';
-COMMENT ON COLUMN experience_sources.display_priority IS 'Display order in experience list (lower = shown first)';
+COMMENT ON TABLE experience_categories IS 'Experience categories (UNESCO, museums, landmarks, etc.)';
+COMMENT ON COLUMN experience_categories.api_config IS 'Category-specific API configuration (pagination, auth, etc.)';
+COMMENT ON COLUMN experience_categories.last_sync_status IS 'Status of last sync: success, partial, or failed';
+COMMENT ON COLUMN experience_categories.display_priority IS 'Display order in experience list (lower = shown first)';
 
--- Seed UNESCO as the first source
-INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority)
+-- Seed UNESCO as the first category
+INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority)
 VALUES (
     'UNESCO World Heritage Sites',
     'Official UNESCO World Heritage List - Cultural, Natural, and Mixed sites worldwide',
@@ -1318,10 +1318,10 @@ VALUES (
 )
 ON CONFLICT (name) DO NOTHING;
 
--- Generic experiences (source-agnostic)
+-- Generic experiences (category-agnostic)
 CREATE TABLE IF NOT EXISTS experiences (
     id SERIAL PRIMARY KEY,
-    source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
     external_id VARCHAR(255) NOT NULL,
 
     -- Names (multilingual support)
@@ -1350,7 +1350,7 @@ CREATE TABLE IF NOT EXISTS experiences (
     -- Media
     image_url VARCHAR(1000),
 
-    -- Source-specific metadata (UNESCO: date_inscribed, danger, criteria, etc.)
+    -- Category-specific metadata (UNESCO: date_inscribed, danger, criteria, etc.)
     metadata JSONB,
 
     -- Curation fields
@@ -1358,28 +1358,31 @@ CREATE TABLE IF NOT EXISTS experiences (
     created_by INTEGER REFERENCES users(id),
     curated_fields JSONB DEFAULT '[]'::jsonb,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'draft', 'archived')),
+    is_iconic BOOLEAN NOT NULL DEFAULT FALSE,
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
 
-    UNIQUE(source_id, external_id)
+    UNIQUE(category_id, external_id)
 );
 
-COMMENT ON TABLE experiences IS 'Location-based experiences from various sources (UNESCO sites, etc.)';
-COMMENT ON COLUMN experiences.external_id IS 'ID from the source system (e.g., UNESCO id_no)';
+COMMENT ON TABLE experiences IS 'Location-based experiences from various categories (UNESCO sites, museums, etc.)';
+COMMENT ON COLUMN experiences.external_id IS 'ID from the category system (e.g., UNESCO id_no)';
 COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "fr": "...", ...}';
 COMMENT ON COLUMN experiences.location IS 'Required point location for the experience';
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
-COMMENT ON COLUMN experiences.metadata IS 'Source-specific data (UNESCO: date_inscribed, danger, criteria, etc.)';
+COMMENT ON COLUMN experiences.metadata IS 'Category-specific data (UNESCO: date_inscribed, danger, criteria, etc.)';
+COMMENT ON COLUMN experiences.is_iconic IS 'Whether this experience is considered iconic/must-see';
 
 -- Spatial indexes for experiences
 CREATE INDEX IF NOT EXISTS idx_experiences_location ON experiences USING GIST(location);
 CREATE INDEX IF NOT EXISTS idx_experiences_boundary ON experiences USING GIST(boundary) WHERE boundary IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_name_trgm ON experiences USING GIN(name gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS idx_experiences_source ON experiences(source_id);
+CREATE INDEX IF NOT EXISTS idx_experiences_category_id ON experiences(category_id);
 CREATE INDEX IF NOT EXISTS idx_experiences_category ON experiences(category) WHERE category IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_experiences_external_id ON experiences(source_id, external_id);
+CREATE INDEX IF NOT EXISTS idx_experiences_external_id ON experiences(category_id, external_id);
+CREATE INDEX IF NOT EXISTS idx_experiences_iconic ON experiences(is_iconic) WHERE is_iconic = true;
 
 -- Experience-Region junction table (auto-computed via spatial containment)
 -- When an experience point falls within a region's geometry, it gets assigned
@@ -1420,7 +1423,7 @@ CREATE INDEX IF NOT EXISTS idx_user_visited_experiences_experience ON user_visit
 -- Sync audit log for tracking sync operations
 CREATE TABLE IF NOT EXISTS experience_sync_logs (
     id SERIAL PRIMARY KEY,
-    source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
     started_at TIMESTAMPTZ DEFAULT NOW(),
     completed_at TIMESTAMPTZ,
     status VARCHAR(50) DEFAULT 'running',  -- 'running', 'success', 'partial', 'failed', 'cancelled'
@@ -1437,7 +1440,7 @@ COMMENT ON TABLE experience_sync_logs IS 'Audit log for experience sync operatio
 COMMENT ON COLUMN experience_sync_logs.status IS 'Sync status: running, success, partial, failed, cancelled';
 COMMENT ON COLUMN experience_sync_logs.triggered_by IS 'Admin user who triggered the sync (NULL for scheduled syncs)';
 
-CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_source ON experience_sync_logs(source_id);
+CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_category ON experience_sync_logs(category_id);
 CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_status ON experience_sync_logs(status) WHERE status = 'running';
 
 -- =============================================================================
@@ -1504,8 +1507,8 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region ON experience_
 -- Stores notable items within experiences like museums (e.g., paintings,
 -- sculptures). Used for ranking museums by artwork fame.
 
--- Seed "Top Museums" as experience source
-INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority)
+-- Seed "Top Museums" as experience category
+INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority)
 VALUES (
     'Top Museums',
     'World''s most notable museums ranked by artwork fame, sourced from Wikidata',
@@ -1515,8 +1518,8 @@ VALUES (
 )
 ON CONFLICT (name) DO NOTHING;
 
--- Seed "Public Art & Monuments" as experience source
-INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority)
+-- Seed "Public Art & Monuments" as experience category
+INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority)
 VALUES (
     'Public Art & Monuments',
     'Notable outdoor sculptures and monuments worldwide, sourced from Wikidata',
@@ -1526,47 +1529,67 @@ VALUES (
 )
 ON CONFLICT (name) DO NOTHING;
 
-CREATE TABLE IF NOT EXISTS experience_contents (
+-- =============================================================================
+-- Treasures (artworks, artifacts — can belong to multiple venues)
+-- =============================================================================
+-- Globally unique items (e.g., Mona Lisa) linked to experiences via junction table.
+-- A treasure can appear in multiple venues (many-to-many).
+
+CREATE TABLE IF NOT EXISTS treasures (
     id SERIAL PRIMARY KEY,
-    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    external_id VARCHAR(255) NOT NULL,       -- Wikidata QID (e.g., "Q12418")
+    external_id VARCHAR(255) NOT NULL UNIQUE, -- Wikidata QID (e.g., "Q12418") — globally unique
     name VARCHAR(500) NOT NULL,               -- "Mona Lisa"
-    content_type VARCHAR(50) NOT NULL,        -- 'painting', 'sculpture'
+    treasure_type VARCHAR(50) NOT NULL,       -- 'painting', 'sculpture'
     artist VARCHAR(500),                       -- "Leonardo da Vinci"
     year INTEGER,                              -- 1503
     image_url VARCHAR(1000),                   -- Wikimedia Commons URL (not downloaded)
     sitelinks_count INTEGER NOT NULL DEFAULT 0,
+    is_iconic BOOLEAN NOT NULL DEFAULT FALSE,
     metadata JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(experience_id, external_id)
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE experience_contents IS 'Notable contents (artworks, artifacts) within experiences like museums';
-COMMENT ON COLUMN experience_contents.external_id IS 'Wikidata QID for the artwork/item';
-COMMENT ON COLUMN experience_contents.sitelinks_count IS 'Wikipedia sitelinks count - proxy for fame/notability';
+COMMENT ON TABLE treasures IS 'Notable treasures (artworks, artifacts) that can belong to multiple venues';
+COMMENT ON COLUMN treasures.external_id IS 'Wikidata QID for the artwork/item — globally unique';
+COMMENT ON COLUMN treasures.sitelinks_count IS 'Wikipedia sitelinks count - proxy for fame/notability';
+COMMENT ON COLUMN treasures.is_iconic IS 'Whether this treasure is considered iconic/must-see';
 
-CREATE INDEX IF NOT EXISTS idx_experience_contents_experience ON experience_contents(experience_id);
-CREATE INDEX IF NOT EXISTS idx_experience_contents_type ON experience_contents(content_type);
-CREATE INDEX IF NOT EXISTS idx_experience_contents_sitelinks ON experience_contents(sitelinks_count DESC);
+CREATE INDEX IF NOT EXISTS idx_treasures_type ON treasures(treasure_type);
+CREATE INDEX IF NOT EXISTS idx_treasures_sitelinks ON treasures(sitelinks_count DESC);
+CREATE INDEX IF NOT EXISTS idx_treasures_iconic ON treasures(is_iconic) WHERE is_iconic = true;
+
+-- Junction table: many-to-many between experiences and treasures
+CREATE TABLE IF NOT EXISTS experience_treasures (
+    id SERIAL PRIMARY KEY,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    treasure_id INTEGER NOT NULL REFERENCES treasures(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(experience_id, treasure_id)
+);
+
+COMMENT ON TABLE experience_treasures IS 'Links treasures to experiences (many-to-many: one treasure can be in multiple venues)';
+
+CREATE INDEX IF NOT EXISTS idx_experience_treasures_experience ON experience_treasures(experience_id);
+CREATE INDEX IF NOT EXISTS idx_experience_treasures_treasure ON experience_treasures(treasure_id);
 
 -- =============================================================================
--- User Viewed Contents (artwork "seen" tracking)
+-- User Viewed Treasures (artwork "seen" tracking)
 -- =============================================================================
--- Tracks which artworks/contents a user has seen within an experience.
--- Marking a content as viewed auto-marks the parent experience as visited.
+-- Tracks which treasures a user has seen.
+-- Marking a treasure as viewed auto-marks the parent experience as visited.
 
-CREATE TABLE IF NOT EXISTS user_viewed_contents (
+CREATE TABLE IF NOT EXISTS user_viewed_treasures (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    content_id INTEGER NOT NULL REFERENCES experience_contents(id) ON DELETE CASCADE,
+    treasure_id INTEGER NOT NULL REFERENCES treasures(id) ON DELETE CASCADE,
     viewed_at TIMESTAMPTZ DEFAULT NOW(),
     notes TEXT,
-    UNIQUE(user_id, content_id)
+    UNIQUE(user_id, treasure_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_viewed_contents_user ON user_viewed_contents(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_viewed_contents_content ON user_viewed_contents(content_id);
+CREATE INDEX IF NOT EXISTS idx_user_viewed_treasures_user ON user_viewed_treasures(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_viewed_treasures_treasure ON user_viewed_treasures(treasure_id);
 
 -- =============================================================================
 -- Curator System
@@ -1578,17 +1601,17 @@ CREATE INDEX IF NOT EXISTS idx_user_viewed_contents_content ON user_viewed_conte
 CREATE TABLE IF NOT EXISTS curator_assignments (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    scope_type VARCHAR(20) NOT NULL CHECK (scope_type IN ('region', 'source', 'global')),
+    scope_type VARCHAR(20) NOT NULL CHECK (scope_type IN ('region', 'category', 'global')),
     region_id INTEGER REFERENCES regions(id) ON DELETE CASCADE,
-    source_id INTEGER REFERENCES experience_sources(id) ON DELETE CASCADE,
+    category_id INTEGER REFERENCES experience_categories(id) ON DELETE CASCADE,
     assigned_by INTEGER NOT NULL REFERENCES users(id),
     assigned_at TIMESTAMPTZ DEFAULT NOW(),
     notes TEXT,
     -- Ensure correct nullable combinations per scope_type
     CONSTRAINT valid_scope CHECK (
-        (scope_type = 'global' AND region_id IS NULL AND source_id IS NULL) OR
-        (scope_type = 'region' AND region_id IS NOT NULL AND source_id IS NULL) OR
-        (scope_type = 'source' AND region_id IS NULL AND source_id IS NOT NULL)
+        (scope_type = 'global' AND region_id IS NULL AND category_id IS NULL) OR
+        (scope_type = 'region' AND region_id IS NOT NULL AND category_id IS NULL) OR
+        (scope_type = 'category' AND region_id IS NULL AND category_id IS NOT NULL)
     )
 );
 
@@ -1597,13 +1620,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_global_assignment
     ON curator_assignments(user_id) WHERE scope_type = 'global';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_region_assignment
     ON curator_assignments(user_id, region_id) WHERE scope_type = 'region';
-CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_source_assignment
-    ON curator_assignments(user_id, source_id) WHERE scope_type = 'source';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_category_assignment
+    ON curator_assignments(user_id, category_id) WHERE scope_type = 'category';
 
 CREATE INDEX IF NOT EXISTS idx_curator_assignments_user ON curator_assignments(user_id);
 
-COMMENT ON TABLE curator_assignments IS 'Scoped curator permissions: global, per-region, or per-source';
-COMMENT ON COLUMN curator_assignments.scope_type IS 'Permission scope: global (all), region (specific region + descendants), source (specific experience source)';
+COMMENT ON TABLE curator_assignments IS 'Scoped curator permissions: global, per-region, or per-category';
+COMMENT ON COLUMN curator_assignments.scope_type IS 'Permission scope: global (all), region (specific region + descendants), category (specific experience category)';
 
 -- Experience curation audit log
 CREATE TABLE IF NOT EXISTS experience_curation_log (
