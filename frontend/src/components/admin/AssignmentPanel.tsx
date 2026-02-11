@@ -43,7 +43,7 @@ import { fetchWorldViews } from '../../api/worldViews';
 
 export function AssignmentPanel() {
   const [selectedWorldView, setSelectedWorldView] = useState<number | null>(null);
-  const [selectedSource, setSelectedSource] = useState<number | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [status, setStatus] = useState<AssignmentStatus | null>(null);
 
@@ -53,25 +53,25 @@ export function AssignmentPanel() {
     queryFn: fetchWorldViews,
   });
 
-  // Fetch sources (to check if assignment is needed)
-  const { data: sources, refetch: refetchSources } = useQuery({
-    queryKey: ['admin', 'sources'],
+  // Fetch categories (to check if assignment is needed)
+  const { data: categories, refetch: refetchCategories } = useQuery({
+    queryKey: ['admin', 'categories'],
     queryFn: getCategories,
   });
 
-  // Check if any source needs assignment
-  const needsAssignment = sources?.some(s => s.assignment_needed);
+  // Check if any category needs assignment
+  const needsAssignment = categories?.some(s => s.assignment_needed);
 
   // Fetch experience counts when world view is selected
   const { data: counts, refetch: refetchCounts } = useQuery({
-    queryKey: ['admin', 'experienceCounts', selectedWorldView, selectedSource],
-    queryFn: () => getExperienceCountsByRegion(selectedWorldView!, selectedSource || undefined),
+    queryKey: ['admin', 'experienceCounts', selectedWorldView, selectedCategory],
+    queryFn: () => getExperienceCountsByRegion(selectedWorldView!, selectedCategory || undefined),
     enabled: !!selectedWorldView,
   });
 
   // Start assignment mutation
   const startMutation = useMutation({
-    mutationFn: () => startRegionAssignment(selectedWorldView!, selectedSource || undefined),
+    mutationFn: () => startRegionAssignment(selectedWorldView!, selectedCategory || undefined),
     onSuccess: () => {
       setIsPolling(true);
     },
@@ -94,13 +94,13 @@ export function AssignmentPanel() {
         setIsPolling(false);
         refetchCounts();
         // Refresh sources to update assignment_needed flag
-        refetchSources();
+        refetchCategories();
       }
     } catch (error) {
       console.error('Error polling status:', error);
       setIsPolling(false);
     }
-  }, [selectedWorldView, refetchCounts, refetchSources]);
+  }, [selectedWorldView, refetchCounts, refetchCategories]);
 
   // Check initial status when world view changes
   useEffect(() => {
@@ -159,17 +159,17 @@ export function AssignmentPanel() {
             </FormControl>
 
             <FormControl sx={{ minWidth: 250 }}>
-              <InputLabel>Source (optional)</InputLabel>
+              <InputLabel>Category (optional)</InputLabel>
               <Select
-                value={selectedSource || ''}
-                label="Source (optional)"
-                onChange={(e) => setSelectedSource(e.target.value as number || null)}
+                value={selectedCategory || ''}
+                label="Category (optional)"
+                onChange={(e) => setSelectedCategory(e.target.value as number || null)}
                 disabled={isRunning}
               >
-                <MenuItem value="">All Sources</MenuItem>
-                {sources?.map((source) => (
-                  <MenuItem key={source.id} value={source.id}>
-                    {source.name}
+                <MenuItem value="">All Categories</MenuItem>
+                {categories?.map((cat) => (
+                  <MenuItem key={cat.id} value={cat.id}>
+                    {cat.name}
                   </MenuItem>
                 ))}
               </Select>

@@ -223,9 +223,11 @@ export function useViewedTreasures(experienceId?: number) {
   }, [data?.viewedTreasureIds]);
 
   const markViewedMutation = useMutation({
-    mutationFn: async (treasureId: number) => {
+    mutationFn: async ({ treasureId, experienceId }: { treasureId: number; experienceId?: number }) => {
       return authFetchJson(`${API_URL}/api/users/me/viewed-treasures/${treasureId}`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ experienceId }),
       });
     },
     onSuccess: () => {

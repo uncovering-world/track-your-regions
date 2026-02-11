@@ -208,7 +208,7 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
           <Box>
             <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: '1fr 1fr', mb: 3 }}>
               <Box>
-                <Typography variant="subtitle2" color="text.secondary">Source</Typography>
+                <Typography variant="subtitle2" color="text.secondary">Category</Typography>
                 <Typography>{log.category_name}</Typography>
               </Box>
               <Box>

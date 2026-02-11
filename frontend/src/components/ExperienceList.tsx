@@ -125,19 +125,19 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     defaultTab?: 0 | 1;
   }>({ open: false });
 
-  // Fetch sources to map source names → IDs for per-group add buttons
-  const { data: sourcesData } = useQuery({
-    queryKey: ['experience-sources'],
+  // Fetch categories to map category names → IDs for per-group add buttons
+  const { data: categoriesData } = useQuery({
+    queryKey: ['experience-categories'],
     queryFn: fetchExperienceCategories,
     enabled: !!isCurator,
   });
 
-  // Build a source name → source ID lookup
+  // Build a category name → category ID lookup
   const categoryNameToId = useMemo(() => {
     const map = new Map<string, number>();
-    sourcesData?.forEach((s) => map.set(s.name, s.id));
+    categoriesData?.forEach((s) => map.set(s.name, s.id));
     return map;
-  }, [sourcesData]);
+  }, [categoriesData]);
 
   // Check if any experiences have is_rejected field (indicates curator has scope for this region)
   const hasCuratorScope = isCurator && experiences.some((exp) => exp.is_rejected !== undefined);
@@ -1145,7 +1145,7 @@ function ArtworksList({ contents, total, experienceId }: { contents: import('../
     if (viewedIds.has(treasureId)) {
       unmarkViewed(treasureId);
     } else {
-      markViewed(treasureId);
+      markViewed({ treasureId, experienceId });
     }
   };
 
