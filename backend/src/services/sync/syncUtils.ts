@@ -174,7 +174,11 @@ export async function updateSyncLog(
 /**
  * Delete all data for a category in correct foreign-key order.
  *
- * Preserves manual curator assignments (assignment_type != 'auto').
+ * Region assignment links (experience_regions, experience_location_regions) are
+ * deleted with an auto-only filter first to avoid FK violations, but all
+ * assignments — including manual curator assignments — are ultimately removed
+ * via ON DELETE CASCADE when experiences and locations are deleted.
+ *
  * Museums should call their treasure cleanup before this function.
  *
  * @returns Number of deleted experiences
