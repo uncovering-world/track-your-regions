@@ -339,7 +339,7 @@ async function upsertMuseumExperience(
     tags: ['museum'],
     lon: details.lon!,
     lat: details.lat!,
-    countryCodes: details.countryLabel ? [] : [],
+    countryCodes: [],
     countryNames: details.countryLabel ? [details.countryLabel] : [],
     imageUrl,
     metadata,
