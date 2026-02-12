@@ -136,6 +136,7 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 | GET | `/api/experiences` | Filters: `categoryId`, `category`, `country`, `regionId`, `search`, `bbox`, `limit`, `offset` |
 | GET | `/api/experiences/:id` | Full detail |
 | GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `limit`, `offset`; optional auth affects rejection visibility |
+| GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren`. Eliminates N+1 per-experience location fetches |
 | GET | `/api/experiences/search` | `q`, `limit` |
 | GET | `/api/experiences/categories` | Active categories ordered by priority |
 | GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId` |
@@ -221,6 +222,7 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 - Creating a manual experience inserts into 4 tables within a transaction: `experiences`, `experience_locations`, `experience_regions`, and `experience_location_regions`. The last one is critical — without it, the location's `in_region` flag is false and the marker won't appear on the map
 - `LocationPicker` lives in `frontend/src/components/shared/` with coordinate parsing in `frontend/src/utils/coordinateParser.ts`. Accepts `name` prop to pre-populate search/AI fields; coordinates sync across all modes (e.g. map click shows in Coordinates tab). Exposes `onPlaceSelect` callback that passes Wikidata ID from Nominatim search results
 - Visited tracking uses location-level system (`user_visited_locations`) for both the root checkbox and the "Mark Visited" button. The experience-level table (`user_visited_experiences`) is maintained for backward compatibility but the UI is driven entirely by location visits. The `markAllLocations` batch endpoint handles both single- and multi-location experiences consistently
+- **Batch location fetching**: `useRegionLocations(regionId)` hook (`frontend/src/hooks/useRegionLocations.ts`) fetches all locations for all experiences in a region via a single `GET /api/experiences/by-region/:regionId/locations` call. Both `ExperienceMarkers` and `ExperienceList` consume this shared hook, eliminating ~300 individual API calls for a 150-experience region. Visit checkbox state is derived from the global `useVisitedLocations().isLocationVisited()` rather than per-experience `useExperienceVisitedStatus()` calls
 - Rejected experience visibility is scope-dependent and returned by backend
 - Multi-location experiences expose `location_count` in region browse responses for map/list UX
 - Detailed marker interaction architecture is documented in `experience-map-ui.md`

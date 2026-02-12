@@ -17,6 +17,12 @@ This document describes how experience markers work in both map surfaces:
 
 This lets list and map stay synchronized without prop drilling.
 
+## Batch location data
+
+Both `ExperienceMarkers` and `ExperienceList` consume `useRegionLocations(regionId)` — a shared React Query hook that fetches all locations for all experiences in the region via a single `GET /api/experiences/by-region/:regionId/locations` call (5-min staleTime). This replaces the previous N+1 pattern where each component individually fetched `GET /api/experiences/:id/locations` per experience.
+
+Visit checkbox state in `ExperienceList` is derived from the global `useVisitedLocations().isLocationVisited(locationId)` rather than per-experience `useExperienceVisitedStatus()` calls, further reducing API calls from ~150 to 0 for visited status.
+
 ## Marker model
 
 Map Mode uses three GeoJSON sources:
