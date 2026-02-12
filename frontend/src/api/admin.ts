@@ -112,15 +112,6 @@ export async function cancelSync(categoryId: number): Promise<{ cancelled: boole
 }
 
 /**
- * Fix missing images for a category
- */
-export async function fixImages(categoryId: number): Promise<{ started: boolean; message: string }> {
-  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/fix-images`, {
-    method: 'POST',
-  });
-}
-
-/**
  * Reorder experience categories (set display_priority)
  */
 export async function reorderCategories(categoryIds: number[]): Promise<{ success: boolean }> {

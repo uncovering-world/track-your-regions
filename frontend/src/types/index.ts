@@ -120,28 +120,8 @@ export interface GeoJSONFeature {
 }
 
 // =============================================================================
-// Navigation State
-// =============================================================================
-
-export interface NavigationState {
-  selectedDivision: AdministrativeDivision | null;
-  selectedWorldView: WorldView | null;
-  selectedView: View | null;
-  breadcrumbs: AdministrativeDivision[];
-}
-
-// =============================================================================
-// API Response Types
-// =============================================================================
-
-export interface ApiError {
-  error: string;
-  details?: unknown;
-}
-
-// =============================================================================
 // Auth Types (re-exported from auth.ts)
 // =============================================================================
 
-export type { User, UserRole, AuthTokens, AuthResponse, AuthState, LoginCredentials, RegisterCredentials } from './auth.js';
+export type { User, UserRole, AuthResponse, AuthState, LoginCredentials, RegisterCredentials } from './auth.js';
 

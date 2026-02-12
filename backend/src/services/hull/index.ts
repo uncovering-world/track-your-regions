@@ -29,8 +29,3 @@ export {
   previewHullFromGeometry,
 } from './generator.js';
 
-// Low-level utilities (for testing or advanced use)
-export { crossesDateline, splitPointsAtDateline } from './dateline.js';
-export { normalizeLngForRange, clampPolygonToLngRange, ensureEdgeAt } from './clamp.js';
-export { extractEdgeLatitudes, adjustEdgeLatRange, alignDatelineEdges } from './align.js';
-export { generateHullForPointGroup, generateHullFromPoints } from './hullCalculator.js';

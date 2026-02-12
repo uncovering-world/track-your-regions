@@ -159,7 +159,7 @@ export function calculateCost(
 }
 
 /**
- * Get all loaded pricing data
+ * Get all loaded pricing data (exported for tests)
  */
 export function getAllPricing(): ModelPricing[] {
   loadPricing();

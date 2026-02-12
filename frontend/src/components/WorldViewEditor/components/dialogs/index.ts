@@ -23,7 +23,6 @@ export {
   doesLineCrossPolygon,
   intersectPolygonWithSource,
   calculateRemainingGeometry,
-  simplifyPath,
   isSinglePolygon,
 } from './polygonCutUtils';
 

@@ -233,25 +233,6 @@ export function calculateRemainingGeometry(
 }
 
 /**
- * Simplify a freehand-drawn path to reduce the number of points.
- */
-export function simplifyPath(
-  points: [number, number][],
-  tolerance: number = 0.001
-): [number, number][] {
-  if (points.length < 3) return points;
-
-  try {
-    const line = turf.lineString(points);
-    const simplified = turf.simplify(line, { tolerance, highQuality: true });
-    return (simplified.geometry as GeoJSON.LineString).coordinates as [number, number][];
-  } catch (e) {
-    console.error('Failed to simplify path:', e);
-    return points;
-  }
-}
-
-/**
  * Check if the source geometry is a single polygon (not MultiPolygon with multiple parts).
  */
 export function isSinglePolygon(

@@ -10,7 +10,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Experience } from '../../api/experiences';
-import type { CuratorScope } from '../../types/auth';
+import type { CuratorScope } from '../../api/admin';
 import { authFetchJson } from '../../api/fetchUtils';
 import { CurationDialog } from '../shared/CurationDialog';
 import { AddExperienceDialog } from '../shared/AddExperienceDialog';
