@@ -11,6 +11,7 @@ import {
   getExperience,
   getExperiencesByRegion,
   getExperienceRegionCounts,
+  getRegionExperienceLocations,
   listCategories,
   searchExperiences,
   getExperienceLocations,
@@ -33,6 +34,7 @@ import {
   experiencesByRegionQuerySchema,
   experienceRegionCountsQuerySchema,
   experienceLocationsQuerySchema,
+  regionLocationsQuerySchema,
   idParamSchema,
   regionIdParamSchema,
   idAndRegionIdParamSchema,
@@ -60,6 +62,9 @@ router.get('/region-counts', publicReadLimiter, validate(experienceRegionCountsQ
 
 // Get experiences by region (optionalAuth to support curator rejection visibility)
 router.get('/by-region/:regionId', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(experiencesByRegionQuerySchema, 'query'), optionalAuth, getExperiencesByRegion);
+
+// Get all locations for all experiences in a region (batch, eliminates N+1)
+router.get('/by-region/:regionId/locations', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(regionLocationsQuerySchema, 'query'), getRegionExperienceLocations);
 
 // List experiences with filtering
 router.get('/', publicReadLimiter, validate(experienceListQuerySchema, 'query'), listExperiences);

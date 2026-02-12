@@ -689,6 +689,112 @@ export async function getVisitedIds(req: AuthenticatedRequest, res: Response): P
 }
 
 // =============================================================================
+// Batch Location Fetching (eliminates N+1 for experience lists/markers)
+// =============================================================================
+
+/**
+ * Get all locations for all experiences in a region (batch)
+ * GET /api/experiences/by-region/:regionId/locations
+ *
+ * Single query returning all locations grouped by experience_id.
+ * Used by ExperienceMarkers and ExperienceList to avoid N+1 calls.
+ */
+export async function getRegionExperienceLocations(req: Request, res: Response): Promise<void> {
+  const regionId = parseInt(String(req.params.regionId));
+  const includeChildren = req.query.includeChildren !== 'false';
+
+  let query: string;
+  const params: number[] = [regionId];
+
+  if (includeChildren) {
+    query = `
+      WITH RECURSIVE descendant_regions AS (
+        SELECT id FROM regions WHERE id = $1
+        UNION ALL
+        SELECT r.id FROM regions r
+        JOIN descendant_regions dr ON r.parent_region_id = dr.id
+      )
+      SELECT
+        el.id,
+        el.experience_id,
+        el.name,
+        el.external_ref,
+        el.ordinal,
+        ST_X(el.location) as longitude,
+        ST_Y(el.location) as latitude,
+        el.created_at,
+        EXISTS(
+          SELECT 1 FROM experience_location_regions elr
+          WHERE elr.location_id = el.id AND elr.region_id IN (SELECT id FROM descendant_regions)
+        ) as in_region
+      FROM experience_locations el
+      JOIN experiences e ON e.id = el.experience_id
+      WHERE e.id IN (
+        SELECT DISTINCT er.experience_id FROM experience_regions er
+        WHERE er.region_id IN (SELECT id FROM descendant_regions)
+      )
+      ORDER BY el.experience_id, el.ordinal
+    `;
+  } else {
+    query = `
+      SELECT
+        el.id,
+        el.experience_id,
+        el.name,
+        el.external_ref,
+        el.ordinal,
+        ST_X(el.location) as longitude,
+        ST_Y(el.location) as latitude,
+        el.created_at,
+        EXISTS(
+          SELECT 1 FROM experience_location_regions elr
+          WHERE elr.location_id = el.id AND elr.region_id = $1
+        ) as in_region
+      FROM experience_locations el
+      JOIN experiences e ON e.id = el.experience_id
+      JOIN experience_regions er ON er.experience_id = e.id
+      WHERE er.region_id = $1
+      ORDER BY el.experience_id, el.ordinal
+    `;
+  }
+
+  const result = await pool.query(query, params);
+
+  // Group by experience_id
+  const locationsByExperience: Record<number, Array<{
+    id: number;
+    experience_id: number;
+    name: string | null;
+    external_ref: string | null;
+    ordinal: number;
+    longitude: number;
+    latitude: number;
+    created_at: string;
+    in_region: boolean;
+  }>> = {};
+
+  for (const row of result.rows) {
+    const expId = row.experience_id;
+    if (!locationsByExperience[expId]) {
+      locationsByExperience[expId] = [];
+    }
+    locationsByExperience[expId].push({
+      id: row.id,
+      experience_id: row.experience_id,
+      name: row.name,
+      external_ref: row.external_ref,
+      ordinal: row.ordinal,
+      longitude: parseFloat(row.longitude),
+      latitude: parseFloat(row.latitude),
+      created_at: row.created_at,
+      in_region: row.in_region,
+    });
+  }
+
+  res.json({ locationsByExperience });
+}
+
+// =============================================================================
 // Multi-Location Support
 // =============================================================================
 

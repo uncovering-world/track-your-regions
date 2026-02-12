@@ -225,6 +225,10 @@ export const experienceLocationsQuerySchema = z.object({
   regionId: z.coerce.number().int().positive().optional(),
 });
 
+export const regionLocationsQuerySchema = z.object({
+  includeChildren: booleanStringSchema.default('true'),
+});
+
 // Curation schemas
 export const rejectExperienceBodySchema = z.object({
   regionId: z.number().int().positive(),
