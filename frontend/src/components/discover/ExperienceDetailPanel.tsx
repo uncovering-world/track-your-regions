@@ -46,11 +46,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 
-const categoryColors: Record<string, { bg: string; text: string }> = {
-  cultural: { bg: '#EDE9FE', text: '#7C3AED' },
-  natural: { bg: '#D1FAE5', text: '#059669' },
-  mixed: { bg: '#FEF3C7', text: '#D97706' },
-};
+import { CATEGORY_COLORS } from '../../utils/categoryColors';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 const CONTENTS_COLLAPSE_THRESHOLD = 15;
@@ -108,7 +104,8 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
   const { viewedIds, markViewed, unmarkViewed } = useViewedTreasures(experience.id);
 
   const imageUrl = extractImageUrl(experience.image_url);
-  const catStyle = categoryColors[experience.category || ''] || { bg: '#E0E7FF', text: '#4F46E5' };
+  const colors = CATEGORY_COLORS[experience.category || ''];
+  const catStyle = colors ? { bg: colors.bg, text: colors.text } : { bg: '#E0E7FF', text: '#4F46E5' };
 
   const totalLocations = locationsData?.totalLocations || 0;
   const isMultiLocation = totalLocations > 1;
