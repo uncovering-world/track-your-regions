@@ -50,7 +50,7 @@ Level 3 requirements are tracked but optional for now.
 | ORM | Drizzle ORM + parameterized `pool.query()` |
 | Headers | Helmet (CSP, X-Frame-Options, etc.) |
 | CORS | Restricted to FRONTEND_URL origin |
-| Rate limiting | express-rate-limit on auth + search + geocode endpoints |
+| Rate limiting | express-rate-limit on all endpoint tiers (auth, search, public read, authenticated user). See [rate-limiting.md](../tech/rate-limiting.md) |
 | Email verification | nodemailer with console fallback; 24h tokens, anti-enumeration |
 | Password breach check | HIBP k-Anonymity API on register + password change |
 | SAST | Semgrep via Docker (`npm run security:scan`) — p/owasp-top-ten, p/nodejs, p/react, p/secrets rulesets |

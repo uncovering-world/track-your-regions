@@ -31,6 +31,7 @@ docs/
 | [hull-geometry.md](tech/hull-geometry.md) | Archipelago visualization, concave hull generation |
 | [gadm-mapping.md](tech/gadm-mapping.md) | GADM database structure and integration |
 | [STATE-MANAGEMENT.md](tech/STATE-MANAGEMENT.md) | Frontend state: React Query, localStorage, Zustand considerations |
+| [rate-limiting.md](tech/rate-limiting.md) | Rate limiting tiers, per-endpoint strategy, adding limiters to new routes |
 | [hacking.md](tech/hacking.md) | Practical engineering guide for local debugging and safe changes |
 
 ## Tech — Planning

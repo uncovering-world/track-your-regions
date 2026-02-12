@@ -6,7 +6,6 @@
  */
 
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
 import {
   listExperiences,
   getExperience,
@@ -26,6 +25,7 @@ import {
   getCurationLog,
 } from '../controllers/experience/index.js';
 import { requireAuth, requireCurator, optionalAuth } from '../middleware/auth.js';
+import { publicReadLimiter, searchLimiter } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/errorHandler.js';
 import {
   experienceSearchQuerySchema,
@@ -45,14 +45,6 @@ import {
 
 const router = Router();
 
-const searchLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30, // 30 searches per minute per IP
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many search requests, please try again later' },
-});
-
 // =============================================================================
 // Public Experience Routes
 // =============================================================================
@@ -61,16 +53,16 @@ const searchLimiter = rateLimit({
 router.get('/search', searchLimiter, validate(experienceSearchQuerySchema, 'query'), searchExperiences);
 
 // List experience categories
-router.get('/categories', listCategories);
+router.get('/categories', publicReadLimiter, listCategories);
 
 // Get experience counts per region per category (for Discover page tree)
-router.get('/region-counts', validate(experienceRegionCountsQuerySchema, 'query'), getExperienceRegionCounts);
+router.get('/region-counts', publicReadLimiter, validate(experienceRegionCountsQuerySchema, 'query'), getExperienceRegionCounts);
 
 // Get experiences by region (optionalAuth to support curator rejection visibility)
-router.get('/by-region/:regionId', validate(regionIdParamSchema, 'params'), validate(experiencesByRegionQuerySchema, 'query'), optionalAuth, getExperiencesByRegion);
+router.get('/by-region/:regionId', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(experiencesByRegionQuerySchema, 'query'), optionalAuth, getExperiencesByRegion);
 
 // List experiences with filtering
-router.get('/', validate(experienceListQuerySchema, 'query'), listExperiences);
+router.get('/', publicReadLimiter, validate(experienceListQuerySchema, 'query'), listExperiences);
 
 // =============================================================================
 // Curation Routes (require curator auth)
@@ -102,12 +94,12 @@ router.delete('/:id/assign/:regionId', validate(idAndRegionIdParamSchema, 'param
 router.delete('/:id/remove-from-region/:regionId', validate(idAndRegionIdParamSchema, 'params'), requireAuth, requireCurator, removeExperienceFromRegion);
 
 // Get single experience
-router.get('/:id', validate(idParamSchema, 'params'), getExperience);
+router.get('/:id', publicReadLimiter, validate(idParamSchema, 'params'), getExperience);
 
 // Get locations for an experience (multi-location support)
-router.get('/:id/locations', validate(idParamSchema, 'params'), validate(experienceLocationsQuerySchema, 'query'), getExperienceLocations);
+router.get('/:id/locations', publicReadLimiter, validate(idParamSchema, 'params'), validate(experienceLocationsQuerySchema, 'query'), getExperienceLocations);
 
 // Get treasures (artworks, artifacts) for an experience
-router.get('/:id/treasures', validate(idParamSchema, 'params'), getExperienceTreasures);
+router.get('/:id/treasures', publicReadLimiter, validate(idParamSchema, 'params'), getExperienceTreasures);
 
 export default router;
