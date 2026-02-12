@@ -1,12 +1,168 @@
-# Review Dependabot PRs
+# Review Dependabot PRs & Alerts
 
-Analyze open Dependabot PRs, assess risk of each dependency update, and recommend whether to merge or flag concerns.
+Analyze open Dependabot PRs and/or Dependabot security alerts. Assess risk, recommend actions.
 
 ## Arguments
 
-$ARGUMENTS — optional: PR number for a specific Dependabot PR. If not provided, review all open Dependabot PRs.
+$ARGUMENTS — optional:
+- `alerts` — triage Dependabot security alerts (vulnerability advisories) instead of PRs
+- `alerts <number>` — triage a specific Dependabot alert by number
+- `<PR number>` — review a specific Dependabot PR
+- *(no argument)* — review all open Dependabot PRs
 
 ## Instructions
+
+### Mode selection
+
+If $ARGUMENTS starts with `alerts`, follow the **Alert Triage** workflow (Section A) below. Otherwise, follow the **PR Review** workflow (Section B).
+
+---
+
+## Section A: Alert Triage
+
+Investigate, classify, and resolve Dependabot security alerts (vulnerable dependency advisories).
+
+### A1. Fetch alerts
+
+Extract owner/repo:
+```bash
+gh repo view --json nameWithOwner --jq '.nameWithOwner'
+```
+
+If $ARGUMENTS is `alerts <number>`, fetch that specific alert:
+```bash
+gh api repos/{owner}/{repo}/dependabot/alerts/{number}
+```
+
+If $ARGUMENTS is just `alerts`, fetch all open alerts:
+```bash
+gh api repos/{owner}/{repo}/dependabot/alerts --paginate --jq '.[] | select(.state == "open")'
+```
+
+If there are no open alerts, tell the user and stop.
+
+### A2. Group and summarize
+
+Group alerts by package name and ecosystem. For each group, show:
+- Package name and ecosystem (npm, pip, etc.)
+- Advisory ID (GHSA) and any CVE IDs
+- Severity level (critical, high, medium, low)
+- Vulnerable version range
+- Patched version (if available)
+- Manifest file path (which `package.json` is affected)
+
+Present a summary table to orient the triage.
+
+### A3. Investigate each alert
+
+For each alert (or the specific alert from $ARGUMENTS):
+
+#### a. Check if a fix is available
+- Is there a patched version?
+- Is there already a Dependabot PR open for this? Check: `gh pr list --author "app/dependabot" --state open --json number,title`
+- If a PR exists, mention it and suggest using the PR review workflow instead
+
+#### b. Assess the vulnerability
+- Read the advisory description and affected functionality
+- What kind of vulnerability is it? (RCE, XSS, ReDoS, prototype pollution, path traversal, etc.)
+- What's the attack vector? (network, local, requires auth, etc.)
+
+#### c. Check how the package is used in our codebase
+
+Search for imports/requires of the package:
+```bash
+# Use Grep tool to search for the package name in source files
+```
+
+Determine:
+- Is it a **direct dependency** or **transitive dependency**?
+- Is it a **runtime** dependency or **dev/build** only?
+- How is it used? Does our usage touch the vulnerable code path?
+- Is the vulnerable functionality reachable from user input?
+
+#### d. Classify each alert
+
+| Classification | When to use | Action |
+|---|---|---|
+| **Real risk** | Vulnerable code path is reachable in our usage | Update the dependency |
+| **Low risk** | Vulnerability exists but our usage doesn't hit the vulnerable path | Update if easy, otherwise accept risk |
+| **Dev-only** | Only in devDependencies, not in production | Update when convenient |
+| **No fix available** | No patched version exists yet | Monitor, consider workarounds |
+
+### A4. Present the triage plan
+
+```
+## Dependabot Alert Triage
+
+### Critical / High — Fix Now
+| Alert | Package | Severity | CVE | Vulnerable | Fix version | Our usage |
+|-------|---------|----------|-----|------------|-------------|-----------|
+| #N | pkg-name | critical | CVE-XXXX-XXXXX | <1.2.4 | 1.2.4 | Direct, runtime, reachable |
+
+### Medium / Low — Plan to Fix
+| Alert | Package | Severity | Advisory | Risk assessment |
+|-------|---------|----------|----------|-----------------|
+| #N | pkg-name | medium | GHSA-xxxx | Dev dependency, not reachable |
+
+### No Fix Available
+| Alert | Package | Severity | Advisory | Recommendation |
+|-------|---------|----------|----------|----------------|
+| #N | pkg-name | high | GHSA-xxxx | Monitor; workaround: {description} |
+
+### Details for Critical/High Alerts
+
+#### Alert #N: pkg-name (severity)
+**Advisory:** {GHSA-xxxx} — {description}
+**Vulnerable path:** {direct or transitive dependency chain}
+**Our usage:** {how we use this package, whether vulnerable path is reachable}
+**Fix:** Update to {version} — run `npm update pkg-name` in `{backend|frontend}/`
+**Breaking changes (if major bump):** {any API changes to watch for}
+```
+
+### A5. Ask before acting
+
+Present the full triage plan and ask the user which actions to take:
+- Which alerts to fix by updating the dependency
+- Which alerts to dismiss (with reasons)
+- Which to monitor for now
+
+Do NOT update or dismiss anything without user confirmation.
+
+### A6. Execute approved actions
+
+#### Updating dependencies:
+```bash
+cd {backend|frontend} && npm update {package-name}
+# or for major bumps:
+cd {backend|frontend} && npm install {package-name}@{version}
+```
+
+After updating:
+- Run `npm run check` to verify nothing broke
+- Do NOT commit automatically — let the user decide via `/commit`
+
+#### Dismissing alerts:
+```bash
+gh api repos/{owner}/{repo}/dependabot/alerts/{number} \
+  -X PATCH \
+  -f state=dismissed \
+  -f dismissed_reason="{fix_started|inaccurate|no_bandwidth|not_used|tolerable_risk}" \
+  -f dismissed_comment="{justification}"
+```
+
+Valid dismissed_reason values: `fix_started`, `inaccurate`, `no_bandwidth`, `not_used`, `tolerable_risk`.
+
+### A7. Report results
+
+After all actions:
+- Summary of updated packages
+- Summary of dismissed alerts (count by reason)
+- Remaining open alerts (if any)
+- Whether `docs/security/asvs-checklist.yaml` needs updating
+
+---
+
+## Section B: PR Review
 
 ### 1. Find Dependabot PRs
 
