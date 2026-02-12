@@ -38,6 +38,7 @@ import {
   type ExperienceCategory,
   type SyncStatus,
 } from '../../api/admin';
+import { formatDateTime } from '../../utils/dateFormat';
 
 export function SyncPanel() {
   const queryClient = useQueryClient();
@@ -241,10 +242,6 @@ function SourceCard({ source }: SourceCardProps) {
     return <Chip label="Never synced" color="default" size="small" />;
   };
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return 'Never';
-    return new Date(dateStr).toLocaleString();
-  };
 
   return (
     <Card>
@@ -263,7 +260,7 @@ function SourceCard({ source }: SourceCardProps) {
         </Box>
 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Last synced: {formatDate(source.last_sync_at)}
+          Last synced: {formatDateTime(source.last_sync_at)}
         </Typography>
 
         {isRunning && status && (

@@ -34,6 +34,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { getSyncLogs, getSyncLogDetails, type SyncLog } from '../../api/admin';
+import { formatDateTime } from '../../utils/dateFormat';
 
 export function SyncHistoryPanel() {
   const [page, setPage] = useState(0);
@@ -146,9 +147,6 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString();
-  };
 
   const formatDuration = (start: string, end: string | null) => {
     if (!end) return '-';
@@ -162,7 +160,7 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
     <TableRow hover>
       <TableCell>{getStatusChip()}</TableCell>
       <TableCell>{log.category_name}</TableCell>
-      <TableCell>{formatDate(log.started_at)}</TableCell>
+      <TableCell>{formatDateTime(log.started_at)}</TableCell>
       <TableCell>{formatDuration(log.started_at, log.completed_at)}</TableCell>
       <TableCell align="right">{log.total_fetched.toLocaleString()}</TableCell>
       <TableCell align="right">{log.total_created.toLocaleString()}</TableCell>

@@ -71,12 +71,7 @@ function isNewExperience(createdAt?: string): boolean {
   return created > cutoff;
 }
 
-// Category colors matching ExperienceMarkers
-const categoryColors: Record<string, string> = {
-  cultural: '#8B5CF6',
-  natural: '#10B981',
-  mixed: '#F59E0B',
-};
+import { getCategoryPrimaryColor } from '../utils/categoryColors';
 
 interface ExperienceGroup {
   categoryName: string;
@@ -529,7 +524,7 @@ function ExperienceListItem({
   onRemoveFromRegion,
   isRejected,
 }: ExperienceListItemProps) {
-  const color = categoryColors[experience.category || ''] || '#6366F1';
+  const color = getCategoryPrimaryColor(experience.category);
 
   // Fetch locations to show count in title
   const { data: locationsData } = useQuery({

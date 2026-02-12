@@ -20,37 +20,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AddIcon from '@mui/icons-material/Add';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { RegionExperienceCount, ExperienceCategory } from '../../api/experiences';
-
-/**
- * Auto-assign colors from a palette for any number of sources.
- * Deterministic: same source always gets the same color.
- */
-const SOURCE_PALETTE = [
-  '#0d9488', // teal
-  '#7C3AED', // purple
-  '#D97706', // amber
-  '#2563EB', // blue
-  '#DC2626', // red
-  '#059669', // emerald
-  '#9333EA', // violet
-  '#CA8A04', // yellow
-  '#0891B2', // cyan
-  '#BE185D', // pink
-  '#4F46E5', // indigo
-  '#EA580C', // orange
-];
-
-function getCategoryColor(categoryId: number): string {
-  return SOURCE_PALETTE[categoryId % SOURCE_PALETTE.length];
-}
-
-/** Short display name — strips common long prefixes for compact display */
-function shortSourceName(name: string): string {
-  return name
-    .replace('UNESCO World Heritage Sites', 'UNESCO')
-    .replace('Top Museums', 'Museums')
-    .replace('Public Art & Monuments', 'Art');
-}
+import { getSourceColor, shortSourceName } from '../../utils/categoryColors';
 
 interface DiscoverRegionListProps {
   regions: RegionExperienceCount[];
@@ -194,7 +164,7 @@ export function DiscoverRegionList({
                 {sortedSourceEntries.map(({ categoryId, count }) => {
                   const source = categoryById.get(categoryId);
                   if (!source) return null;
-                  const color = getCategoryColor(categoryId);
+                  const color = getSourceColor(categoryId);
                   const label = shortSourceName(source.name);
 
                   return (

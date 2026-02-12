@@ -10,13 +10,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TuneIcon from '@mui/icons-material/Tune';
 import BlockIcon from '@mui/icons-material/Block';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
+import { CATEGORY_COLORS } from '../../utils/categoryColors';
 import type { Experience } from '../../api/experiences';
-
-const categoryColors: Record<string, { bg: string; text: string; border: string }> = {
-  cultural: { bg: '#EDE9FE', text: '#7C3AED', border: '#8B5CF6' },
-  natural: { bg: '#D1FAE5', text: '#059669', border: '#10B981' },
-  mixed: { bg: '#FEF3C7', text: '#D97706', border: '#F59E0B' },
-};
 
 interface ExperienceCardProps {
   experience: Experience;
@@ -53,11 +48,10 @@ export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
   ) {
     const isRejected = experience.is_rejected;
     const imageUrl = extractImageUrl(experience.image_url);
-    const catStyle = categoryColors[experience.category || ''] || {
-      bg: '#E0E7FF',
-      text: '#4F46E5',
-      border: '#6366F1',
-    };
+    const colors = CATEGORY_COLORS[experience.category || ''];
+    const catStyle = colors
+      ? { bg: colors.bg, text: colors.text, border: colors.primary }
+      : { bg: '#E0E7FF', text: '#4F46E5', border: '#6366F1' };
 
     if (compact) {
       return (

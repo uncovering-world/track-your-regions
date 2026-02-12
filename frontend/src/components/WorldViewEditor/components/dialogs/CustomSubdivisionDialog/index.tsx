@@ -32,6 +32,7 @@ import {
   fetchDivisionGeometry,
 } from '@/api';
 import { useQueryClient } from '@tanstack/react-query';
+import { formatRelativeTime } from '../../../../../utils/dateFormat';
 import type { ImageOverlaySettings } from './ImageOverlayDialog';
 
 export type { SubdivisionGroup } from './types';
@@ -490,16 +491,6 @@ export function CustomSubdivisionDialog({
 
   const aiTabDisabled = aiAvailable === false;
 
-  const formatSavedTime = (isoString: string) => {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-
-    if (diff < 60000) return 'just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return date.toLocaleDateString();
-  };
 
   return (
     <>
@@ -521,7 +512,7 @@ export function CustomSubdivisionDialog({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Chip
                   icon={<SaveIcon />}
-                  label={`Saved ${formatSavedTime(lastSavedAt)}`}
+                  label={`Saved ${formatRelativeTime(lastSavedAt)}`}
                   size="small"
                   color="success"
                   variant="outlined"

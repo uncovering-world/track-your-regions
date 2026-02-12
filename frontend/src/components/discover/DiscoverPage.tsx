@@ -32,25 +32,10 @@ import { ExperienceDetailPanel } from './ExperienceDetailPanel';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+import { getSourceColor, shortSourceName } from '../../utils/categoryColors';
+
 const LEFT_PANEL_WIDTH = 380;
 const DETAIL_PANEL_WIDTH = 480;
-
-/** Auto-assign colors for source summary chips (same palette as DiscoverRegionList) */
-const SOURCE_PALETTE = [
-  '#0d9488', '#7C3AED', '#D97706', '#2563EB', '#DC2626', '#059669',
-  '#9333EA', '#CA8A04', '#0891B2', '#BE185D', '#4F46E5', '#EA580C',
-];
-
-function getCategoryColor(categoryId: number): string {
-  return SOURCE_PALETTE[categoryId % SOURCE_PALETTE.length];
-}
-
-function shortSourceName(name: string): string {
-  return name
-    .replace('UNESCO World Heritage Sites', 'UNESCO')
-    .replace('Top Museums', 'Museums')
-    .replace('Public Art & Monuments', 'Art');
-}
 
 export function DiscoverPage() {
   const {
@@ -234,7 +219,7 @@ export function DiscoverPage() {
             {activeCategories.map(source => {
               const count = levelTotals[source.id] || 0;
               if (!count) return null;
-              const color = getCategoryColor(source.id);
+              const color = getSourceColor(source.id);
               return (
                 <Chip
                   key={source.id}
