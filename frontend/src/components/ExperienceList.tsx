@@ -46,15 +46,16 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useExperienceContext, extractImageUrl, toThumbnailUrl } from '../hooks/useExperienceContext';
 import { useAuth } from '../hooks/useAuth';
-import { useVisitedExperiences, useVisitedLocations, useExperienceVisitedStatus, useViewedTreasures } from '../hooks/useVisitedExperiences';
+import { useVisitedExperiences, useVisitedLocations, useViewedTreasures } from '../hooks/useVisitedExperiences';
+import { useRegionLocations } from '../hooks/useRegionLocations';
 import {
   fetchExperience,
-  fetchExperienceLocations,
   fetchExperienceTreasures,
   fetchExperienceCategories,
   unrejectExperience,
   removeExperienceFromRegion,
   type Experience,
+  type ExperienceLocation,
   type VisitedStatus,
 } from '../api/experiences';
 import { useNavigation } from '../hooks/useNavigation';
@@ -109,7 +110,11 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     unmarkAllLocations,
     isMarking: isMarkingLocation,
     isUnmarking: isUnmarkingLocation,
+    isLocationVisited,
   } = useVisitedLocations();
+
+  // Batch-fetch all locations for all experiences in the region (single request)
+  const { locationsByExperience } = useRegionLocations(regionId);
 
   // Curator state
   const [curationTarget, setCurationTarget] = useState<Experience | null>(null);
@@ -307,7 +312,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     >
       <ExperienceListItem
         experience={exp}
-        regionId={regionId}
+        locations={locationsByExperience[exp.id]}
+        isLocationVisited={isLocationVisited}
         isHovered={hoveredExperienceId === exp.id}
         isSelected={selectedExperienceId === exp.id}
         hoveredLocationId={hoveredLocationId}
@@ -485,7 +491,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
 interface ExperienceListItemProps {
   experience: Experience;
-  regionId: number | null;
+  locations?: ExperienceLocation[];
+  isLocationVisited: (locationId: number) => boolean;
   isHovered: boolean;
   isSelected: boolean;
   hoveredLocationId: number | null;
@@ -506,7 +513,8 @@ interface ExperienceListItemProps {
 
 function ExperienceListItem({
   experience,
-  regionId,
+  locations,
+  isLocationVisited,
   isHovered,
   isSelected,
   hoveredLocationId,
@@ -526,40 +534,25 @@ function ExperienceListItem({
 }: ExperienceListItemProps) {
   const color = getCategoryPrimaryColor(experience.category);
 
-  // Fetch locations to show count in title
-  const { data: locationsData } = useQuery({
-    queryKey: ['experience-locations', experience.id, regionId],
-    queryFn: () => fetchExperienceLocations(experience.id, regionId ?? undefined),
-    staleTime: 300000,
-  });
-
-  // Get visited status for this experience (location-level breakdown)
-  const { locations: locationsWithVisitedStatus } = useExperienceVisitedStatus(experience.id);
-
-  // Count locations and in-region locations
-  const totalLocations = locationsData?.totalLocations ?? 0;
+  // Use batch locations from parent (shared hook) — no per-item fetch
+  const totalLocations = locations?.length ?? (experience.location_count ?? 0);
   const inRegionLocations = useMemo(() => {
-    if (!locationsData?.locations) return [];
-    return locationsData.locations.filter(l => l.in_region !== false);
-  }, [locationsData?.locations]);
+    if (!locations) return [];
+    return locations.filter(l => l.in_region !== false);
+  }, [locations]);
   const inRegionCount = inRegionLocations.length;
   const isMultiLocation = totalLocations > 1;
 
-  // Compute IN-REGION visited status (not global)
-  // This is what the root checkbox should reflect
+  // Compute IN-REGION visited status using global isLocationVisited
   const inRegionVisitedStatus = useMemo((): 'not_visited' | 'partial' | 'visited' => {
     if (inRegionCount === 0) return 'not_visited';
 
-    // Match in-region locations with their visited status
-    const inRegionVisitedCount = inRegionLocations.filter(loc => {
-      const visitedLoc = locationsWithVisitedStatus.find(v => v.id === loc.id);
-      return visitedLoc?.isVisited;
-    }).length;
+    const inRegionVisitedCount = inRegionLocations.filter(loc => isLocationVisited(loc.id)).length;
 
     if (inRegionVisitedCount === 0) return 'not_visited';
     if (inRegionVisitedCount >= inRegionCount) return 'visited';
     return 'partial';
-  }, [inRegionLocations, inRegionCount, locationsWithVisitedStatus]);
+  }, [inRegionLocations, inRegionCount, isLocationVisited]);
 
   // Derive checkbox state from in-region locations
   const isPartiallyVisited = inRegionVisitedStatus === 'partial';
@@ -703,7 +696,8 @@ function ExperienceListItem({
       <Collapse in={isSelected} timeout="auto" unmountOnExit>
         <ExperienceExpandedDetails
           experience={experience}
-          regionId={regionId}
+          locations={locations}
+          isLocationVisited={isLocationVisited}
           isFullyVisited={isFullyVisited}
           hoveredLocationId={hoveredLocationId}
           locationRefs={locationRefs}
@@ -727,7 +721,8 @@ function ExperienceListItem({
 
 interface ExperienceExpandedDetailsProps {
   experience: Experience;
-  regionId: number | null;
+  locations?: ExperienceLocation[];
+  isLocationVisited: (locationId: number) => boolean;
   isFullyVisited: boolean;
   hoveredLocationId: number | null;
   locationRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
@@ -743,7 +738,8 @@ interface ExperienceExpandedDetailsProps {
 
 function ExperienceExpandedDetails({
   experience,
-  regionId,
+  locations,
+  isLocationVisited,
   isFullyVisited,
   hoveredLocationId,
   locationRefs,
@@ -765,13 +761,6 @@ function ExperienceExpandedDetails({
     staleTime: 300000,
   });
 
-  // Fetch locations with region filtering
-  const { data: locationsData } = useQuery({
-    queryKey: ['experience-locations', experience.id, regionId],
-    queryFn: () => fetchExperienceLocations(experience.id, regionId ?? undefined),
-    staleTime: 300000,
-  });
-
   // Fetch contents (artworks) - only if experience has contents
   const { data: contentsData } = useQuery({
     queryKey: ['experience-contents', experience.id],
@@ -779,48 +768,34 @@ function ExperienceExpandedDetails({
     staleTime: 300000,
   });
 
-  // Get visited status with location details
-  const {
-    visitedStatus,
-    visitedLocations,
-    locations: locationsWithStatus,
-  } = useExperienceVisitedStatus(experience.id);
+  // Use batch locations from parent + global isLocationVisited
+  const totalLocations = locations?.length ?? (experience.location_count ?? 0);
 
-  const totalLocations = locationsData?.totalLocations ?? 0;
-
-  // Merge location data with visited status and in_region info
-  // Use public locations as base, overlay visited status when authenticated
+  // Build location display data with visited + in_region info from shared data
   const locationsWithRegionInfo = useMemo(() => {
-    const publicLocs = locationsData?.locations || [];
-    if (publicLocs.length === 0) return [];
-
-    if (locationsWithStatus.length > 0) {
-      // Auth data available — merge with public location data for in_region info
-      return locationsWithStatus.map(loc => {
-        const locationData = publicLocs.find(l => l.id === loc.id);
-        return {
-          ...loc,
-          ordinal: locationData?.ordinal ?? 1,
-          inRegion: locationData?.in_region ?? true,
-        };
-      });
-    }
-
-    // Not authenticated — use public locations with isVisited: false
-    return publicLocs.map(loc => ({
+    if (!locations || locations.length === 0) return [];
+    return locations.map(loc => ({
       id: loc.id,
       name: loc.name,
       ordinal: loc.ordinal,
       longitude: loc.longitude,
       latitude: loc.latitude,
-      isVisited: false,
-      inRegion: loc.in_region ?? true,
+      isVisited: isLocationVisited(loc.id),
+      inRegion: loc.in_region !== false,
     }));
-  }, [locationsWithStatus, locationsData]);
+  }, [locations, isLocationVisited]);
 
   // Count in-region locations
   const inRegionCount = locationsWithRegionInfo.filter(l => l.inRegion).length;
   const inRegionVisitedCount = locationsWithRegionInfo.filter(l => l.inRegion && l.isVisited).length;
+
+  // Compute visited status for multi-location badge
+  const visitedLocations = locationsWithRegionInfo.filter(l => l.isVisited).length;
+  const visitedStatus: VisitedStatus = visitedLocations === 0
+    ? 'not_visited'
+    : visitedLocations >= totalLocations
+      ? 'visited'
+      : 'partial';
 
   const imageUrl = extractImageUrl(experience.image_url);
   const isMultiLocation = totalLocations > 1;
