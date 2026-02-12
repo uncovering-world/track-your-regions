@@ -39,7 +39,9 @@ npm run db:mark-golden
 - Core world-view/region logic: `backend/src/controllers/worldView/*`
 - Experience browse + visit logic: `backend/src/controllers/experience/experienceController.ts`
 - Experience curation logic: `backend/src/controllers/experience/curationController.ts`
+- Sync shared utils: `backend/src/services/sync/wikidataUtils.ts` (SPARQL), `backend/src/services/sync/syncUtils.ts` (upsert, sync log, cleanup)
 - Frontend map/navigation shell: `frontend/src/components/MainDisplay.tsx`
+- Frontend shared utils: `frontend/src/utils/` (categoryColors, dateFormat, imageUrl, coordinateParser, mapUtils)
 - Discover UI: `frontend/src/components/discover/*`
 - World View editor: `frontend/src/components/WorldViewEditor/*`
 
@@ -55,7 +57,9 @@ npm run db:mark-golden
 ### Add a new experience category
 
 1. Seed category in `experience_categories`.
-2. Implement sync service under `backend/src/services/sync/`.
+2. Implement sync service under `backend/src/services/sync/`. Reuse shared utilities:
+   - `wikidataUtils.ts` for SPARQL queries (if Wikidata-sourced)
+   - `syncUtils.ts` for `upsertExperienceRecord()`, `createSyncLog()`/`updateSyncLog()`, `cleanupCategoryData()`
 3. Wire sync controller/admin route behavior.
 4. Confirm category appears via `/api/experiences/categories`.
 

@@ -55,6 +55,13 @@ Treasures are independently trackable things inside venue experiences. Currently
 
 Each source has a dedicated sync service in `backend/src/services/sync/`. All follow the same pattern: `syncX()`, `getXSyncStatus()`, `cancelXSync()`. In-memory progress is tracked via the `runningSyncs` Map; `finally` blocks use a captured `thisProgress` reference to avoid timer race conditions.
 
+### Shared modules
+
+Common sync logic lives in two shared utility files:
+
+- **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
+- **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location upsert (`upsertSingleLocation()`), sync log CRUD (`createSyncLog()`, `updateSyncLog()`), and FK-ordered category data cleanup cascade (`cleanupCategoryData()`). Used by all three services. Museum service calls its own treasure cleanup before invoking the shared cascade.
+
 ### UNESCO (`unescoSyncService.ts`)
 
 - Fetches the full UNESCO World Heritage list via the UNESCO API
@@ -86,10 +93,12 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 
 ### Shared patterns
 
-- Proper `User-Agent` header required by Wikimedia policy
-- 429 + `Retry-After` header handling
+- Proper `User-Agent` header required by Wikimedia policy (constant in `wikidataUtils.ts`)
+- SPARQL retries with exponential backoff, 429 + `Retry-After` header handling, 120s server-side + 130s client-side timeouts (all in `sparqlQuery()`)
 - 1.5s delay between image downloads
-- `curated_fields` JSONB on `experiences` protects curator edits during sync upserts — each field is checked individually in the `ON CONFLICT` clause
+- `curated_fields` JSONB on `experiences` protects curator edits during sync upserts — each field is checked individually in the `ON CONFLICT` clause (implemented in `upsertExperienceRecord()`)
+- Sync log lifecycle: `createSyncLog()` → processing → `updateSyncLog()` (also updates `experience_categories.last_sync_*`)
+- Force-sync cleanup via `cleanupCategoryData()`: deletes in FK order (visited locations → visited experiences → auto-assigned location regions → auto-assigned experience regions → locations → experiences), preserving manual curator assignments
 - Startup cleanup in `index.ts` marks orphaned `running` sync logs as `failed`
 
 ## Assignment Model
