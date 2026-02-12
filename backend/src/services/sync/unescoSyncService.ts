@@ -6,7 +6,8 @@
  */
 
 import { pool } from '../../db/index.js';
-import { upsertExperienceRecord, createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
+import { upsertExperienceRecord } from './syncUtils.js';
+import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type {
   SyncProgress,
   UnescoApiRecord,
@@ -14,7 +15,6 @@ import type {
   ProcessedExperience,
   ParsedLocation,
 } from './types.js';
-import { runningSyncs } from './types.js';
 
 const UNESCO_CATEGORY_ID = 1; // Seeded in migration
 const PAGE_SIZE = 100;
@@ -101,7 +101,7 @@ async function fetchAllUnescoRecords(
  * Fetch Wikipedia article URLs for all UNESCO sites from Wikidata.
  * Uses property P757 (UNESCO World Heritage Site ID) to match sites,
  * then schema:about + schema:isPartOf to get English Wikipedia URLs.
- * Returns a Map from UNESCO id_no (string) → Wikipedia article URL.
+ * Returns a Map from UNESCO id_no (string) -> Wikipedia article URL.
  */
 async function fetchWikipediaUrls(): Promise<Map<string, string>> {
   const query = `
@@ -344,159 +344,54 @@ async function upsertExperienceLocations(experienceId: number, exp: ProcessedExp
   }
 }
 
+// =============================================================================
+// Public API
+// =============================================================================
 
 /**
  * Main sync function - fetches UNESCO data and upserts to database
  * @param triggeredBy - User ID who triggered the sync
  * @param force - If true, delete all existing data before syncing
  */
-export async function syncUnescoSites(triggeredBy: number | null, force: boolean = false): Promise<void> {
-  // Check if already running
-  const existing = runningSyncs.get(UNESCO_CATEGORY_ID);
-  if (existing && existing.status !== 'complete' && existing.status !== 'failed' && existing.status !== 'cancelled') {
-    throw new Error('UNESCO sync already in progress');
-  }
+export function syncUnescoSites(triggeredBy: number | null, force: boolean = false): Promise<void> {
+  // Shared state between fetchItems and processItem via closure
+  let wikipediaUrls: Map<string, string>;
 
-  // Initialize progress
-  const progress: SyncProgress = {
-    cancel: false,
-    status: 'fetching',
-    statusMessage: 'Initializing...',
-    progress: 0,
-    total: 0,
-    created: 0,
-    updated: 0,
-    errors: 0,
-    currentItem: '',
-    logId: null,
-  };
-  runningSyncs.set(UNESCO_CATEGORY_ID, progress);
+  return orchestrateSync<UnescoApiRecord>({
+    categoryId: UNESCO_CATEGORY_ID,
+    logPrefix: '[UNESCO Sync]',
+    fetchItems: async (progress) => {
+      const records = await fetchAllUnescoRecords(progress);
+      console.log(`[UNESCO Sync] Fetched ${records.length} total records`);
 
-  const errorDetails: { externalId: string; error: string }[] = [];
+      // Fetch Wikipedia URLs from Wikidata (fails open -- sync continues without them)
+      progress.statusMessage = 'Fetching Wikipedia URLs from Wikidata...';
+      wikipediaUrls = await fetchWikipediaUrls();
 
-  try {
-    // Create sync log entry
-    progress.logId = await createSyncLog(UNESCO_CATEGORY_ID, triggeredBy);
-    console.log(`[UNESCO Sync] Started sync (log ID: ${progress.logId})${force ? ' [FORCE MODE]' : ''}`);
-
-    // If force mode, clean up all existing data first
-    if (force) {
-      progress.statusMessage = 'Cleaning up existing data...';
-      await cleanupCategoryData(UNESCO_CATEGORY_ID, '[UNESCO Sync]', progress);
-    }
-
-    // Fetch all records from API
-    const records = await fetchAllUnescoRecords(progress);
-    console.log(`[UNESCO Sync] Fetched ${records.length} total records`);
-
-    // Fetch Wikipedia URLs from Wikidata (fails open — sync continues without them)
-    progress.statusMessage = 'Fetching Wikipedia URLs from Wikidata...';
-    const wikipediaUrls = await fetchWikipediaUrls();
-
-    // Process records
-    progress.status = 'processing';
-    progress.progress = 0;
-    progress.total = records.length;
-
-    for (let i = 0; i < records.length; i++) {
-      if (progress.cancel) {
-        throw new Error('Sync cancelled');
+      return { items: records, fetchedCount: records.length };
+    },
+    processItem: async (record) => {
+      const processed = transformRecord(record, wikipediaUrls.get(String(record.id_no)));
+      if (!processed) {
+        throw new Error('No valid coordinates');
       }
-
-      const record = records[i];
-      progress.currentItem = record.name_en || `Site ${record.id_no}`;
-      progress.statusMessage = `Processing ${i + 1}/${records.length}: ${progress.currentItem}`;
-
-      try {
-        const processed = transformRecord(record, wikipediaUrls.get(String(record.id_no)));
-        if (processed) {
-          const result = await upsertExperience(processed);
-          if (result === 'created') {
-            progress.created++;
-          } else {
-            progress.updated++;
-          }
-        } else {
-          progress.errors++;
-          errorDetails.push({
-            externalId: String(record.id_no),
-            error: 'No valid coordinates',
-          });
-        }
-      } catch (err) {
-        progress.errors++;
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        errorDetails.push({
-          externalId: String(record.id_no),
-          error: errorMsg,
-        });
-        console.error(`[UNESCO Sync] Error processing ${record.id_no}:`, errorMsg);
-      }
-
-      progress.progress = i + 1;
-    }
-
-    // Determine final status
-    const finalStatus = progress.errors > 0 && progress.created + progress.updated === 0
-      ? 'failed'
-      : progress.errors > 0
-      ? 'partial'
-      : 'success';
-
-    progress.status = 'complete';
-    progress.statusMessage = `Complete: ${progress.created} created, ${progress.updated} updated, ${progress.errors} errors`;
-
-    await updateSyncLog(UNESCO_CATEGORY_ID, progress.logId, finalStatus, {
-      fetched: records.length,
-      created: progress.created,
-      updated: progress.updated,
-      errors: progress.errors,
-    }, errorDetails.length > 0 ? errorDetails : undefined);
-
-    console.log(`[UNESCO Sync] Complete: created=${progress.created}, updated=${progress.updated}, errors=${progress.errors}`);
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    progress.status = progress.cancel ? 'cancelled' : 'failed';
-    progress.statusMessage = errorMsg;
-
-    if (progress.logId) {
-      await updateSyncLog(UNESCO_CATEGORY_ID, progress.logId, progress.status, {
-        fetched: progress.progress,
-        created: progress.created,
-        updated: progress.updated,
-        errors: progress.errors,
-      }, [{ externalId: 'system', error: errorMsg }]);
-    }
-
-    console.error(`[UNESCO Sync] Failed:`, errorMsg);
-    throw err;
-  } finally {
-    // Clean up after delay, but only if this sync's progress is still current
-    const thisProgress = progress;
-    setTimeout(() => {
-      if (runningSyncs.get(UNESCO_CATEGORY_ID) === thisProgress) {
-        runningSyncs.delete(UNESCO_CATEGORY_ID);
-      }
-    }, 30000);
-  }
+      return upsertExperience(processed);
+    },
+    getItemName: (record) => record.name_en || `Site ${record.id_no}`,
+    getItemId: (record) => String(record.id_no),
+  }, triggeredBy, force);
 }
 
 /**
  * Get current sync status
  */
-export function getUnescoSyncStatus(): SyncProgress | null {
-  return runningSyncs.get(UNESCO_CATEGORY_ID) || null;
+export function getUnescoSyncStatus() {
+  return getSyncStatus(UNESCO_CATEGORY_ID);
 }
 
 /**
  * Cancel running sync
  */
-export function cancelUnescoSync(): boolean {
-  const progress = runningSyncs.get(UNESCO_CATEGORY_ID);
-  if (progress && progress.status !== 'complete' && progress.status !== 'failed') {
-    progress.cancel = true;
-    progress.statusMessage = 'Cancelling...';
-    return true;
-  }
-  return false;
+export function cancelUnescoSync() {
+  return cancelSync(UNESCO_CATEGORY_ID);
 }

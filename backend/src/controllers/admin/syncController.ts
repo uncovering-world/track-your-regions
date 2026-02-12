@@ -8,16 +8,12 @@ import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 import {
   syncUnescoSites,
-  getUnescoSyncStatus,
-  cancelUnescoSync,
   syncMuseums,
-  getMuseumSyncStatus,
-  cancelMuseumSync,
   fixMuseumImages,
   syncLandmarks,
-  getLandmarkSyncStatus,
-  cancelLandmarkSync,
   runningSyncs,
+  getSyncStatus as getServiceSyncStatus,
+  cancelSync as cancelServiceSync,
   assignExperiencesToRegions,
   getAssignmentStatus,
   cancelAssignment,
@@ -25,9 +21,14 @@ import {
 } from '../../services/sync/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
-const UNESCO_CATEGORY_ID = 1;
 const MUSEUM_CATEGORY_ID = 2;
-const LANDMARK_CATEGORY_ID = 3;
+
+/** Registry mapping category IDs to their sync functions */
+const syncRegistry: Record<number, (triggeredBy: number | null, force: boolean) => Promise<void>> = {
+  1: syncUnescoSites,
+  2: syncMuseums,
+  3: syncLandmarks,
+};
 
 /**
  * Start sync for a source
@@ -66,22 +67,15 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   const force = req.body.force === true;
 
   // Start sync based on source type
-  if (categoryId === UNESCO_CATEGORY_ID) {
-    syncUnescoSites(triggeredBy, force).catch((err) => {
-      console.error('[Sync Controller] UNESCO sync error:', err);
-    });
-  } else if (categoryId === MUSEUM_CATEGORY_ID) {
-    syncMuseums(triggeredBy, force).catch((err) => {
-      console.error('[Sync Controller] Museum sync error:', err);
-    });
-  } else if (categoryId === LANDMARK_CATEGORY_ID) {
-    syncLandmarks(triggeredBy, force).catch((err) => {
-      console.error('[Sync Controller] Landmark sync error:', err);
-    });
-  } else {
+  const syncFn = syncRegistry[categoryId];
+  if (!syncFn) {
     res.status(400).json({ error: `Sync not implemented for source: ${source.rows[0].name}` });
     return;
   }
+
+  syncFn(triggeredBy, force).catch((err) => {
+    console.error(`[Sync Controller] Sync error for category ${categoryId}:`, err);
+  });
 
   res.json({
     started: true,
@@ -101,15 +95,8 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
 export async function getSyncStatus(req: Request, res: Response): Promise<void> {
   const categoryId = parseInt(String(req.params.categoryId));
 
-  // Get in-memory sync status for known sources
-  let status: ReturnType<typeof getUnescoSyncStatus> = null;
-  if (categoryId === UNESCO_CATEGORY_ID) {
-    status = getUnescoSyncStatus();
-  } else if (categoryId === MUSEUM_CATEGORY_ID) {
-    status = getMuseumSyncStatus();
-  } else if (categoryId === LANDMARK_CATEGORY_ID) {
-    status = getLandmarkSyncStatus();
-  }
+  // Get in-memory sync status (generic for all categories)
+  const status = getServiceSyncStatus(categoryId);
 
   if (status) {
     const isRunning = !['complete', 'failed', 'cancelled'].includes(status.status);
@@ -154,17 +141,16 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
 export async function cancelSync(req: Request, res: Response): Promise<void> {
   const categoryId = parseInt(String(req.params.categoryId));
 
-  let cancelled = false;
-  if (categoryId === UNESCO_CATEGORY_ID) {
-    cancelled = cancelUnescoSync();
-  } else if (categoryId === MUSEUM_CATEGORY_ID) {
-    cancelled = cancelMuseumSync();
-  } else if (categoryId === LANDMARK_CATEGORY_ID) {
-    cancelled = cancelLandmarkSync();
-  } else {
-    res.status(400).json({ error: 'Cancel not implemented for this source' });
+  const source = await pool.query(
+    'SELECT id FROM experience_categories WHERE id = $1',
+    [categoryId]
+  );
+  if (source.rows.length === 0) {
+    res.status(404).json({ error: 'Source not found' });
     return;
   }
+
+  const cancelled = cancelServiceSync(categoryId);
   res.json({ cancelled });
 }
 

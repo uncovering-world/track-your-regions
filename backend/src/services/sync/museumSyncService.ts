@@ -11,7 +11,8 @@
  */
 
 import { pool } from '../../db/index.js';
-import { upsertExperienceRecord, upsertSingleLocation, createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
+import { upsertExperienceRecord, upsertSingleLocation, cleanupCategoryData } from './syncUtils.js';
+import { orchestrateSync, getSyncStatus, cancelSync, type ErrorDetail } from './syncOrchestrator.js';
 import type {
   SyncProgress,
   WikidataArtwork,
@@ -420,231 +421,149 @@ async function cleanupMuseumData(progress: SyncProgress): Promise<void> {
 }
 
 /**
+ * Fetch, group, enrich, and filter museums from Wikidata.
+ * Encapsulates the multi-phase SPARQL pipeline (artworks → group → details → resolve → filter).
+ */
+async function fetchMuseumItems(
+  progress: SyncProgress,
+  errorDetails: ErrorDetail[],
+): Promise<{ items: CollectedMuseum[]; fetchedCount: number }> {
+  // Phase 1: Fetch artworks
+  if (progress.cancel) throw new Error('Sync cancelled');
+  const paintings = await fetchArtworks('Q3305213', 'painting', progress);
+  await delay(SPARQL_DELAY_MS);
+
+  if (progress.cancel) throw new Error('Sync cancelled');
+  const sculptures = await fetchArtworks('Q860861', 'sculpture', progress);
+  await delay(SPARQL_DELAY_MS);
+
+  // Phase 2: Merge and sort all artworks by sitelinks
+  const allArtworks = [...paintings, ...sculptures].sort((a, b) => b.sitelinks - a.sitelinks);
+  console.log(`[Museum Sync] Total artworks: ${allArtworks.length} (${paintings.length} paintings, ${sculptures.length} sculptures)`);
+
+  // Phase 3: Collect top museums by iterating artworks top-down
+  progress.statusMessage = 'Identifying top museums...';
+  const museumMap = new Map<string, CollectedMuseum>();
+
+  for (const artwork of allArtworks) {
+    let museum = museumMap.get(artwork.collectionQid);
+    if (!museum) {
+      if (museumMap.size >= TARGET_MUSEUM_COUNT) {
+        continue;
+      }
+      museum = {
+        qid: artwork.collectionQid,
+        label: artwork.collectionLabel,
+        artworks: [],
+      };
+      museumMap.set(artwork.collectionQid, museum);
+    }
+
+    museum.artworks.push({
+      externalId: artwork.artworkQid,
+      name: artwork.artworkLabel,
+      treasureType: artwork.artworkType,
+      artist: artwork.creatorLabel,
+      year: artwork.year,
+      imageUrl: artwork.imageUrl,
+      sitelinksCount: artwork.sitelinks,
+    });
+  }
+
+  console.log(`[Museum Sync] Identified ${museumMap.size} unique museums`);
+
+  // Phase 4: Fetch museum details
+  if (progress.cancel) throw new Error('Sync cancelled');
+  progress.statusMessage = 'Fetching museum details from Wikidata...';
+  const museumQids = Array.from(museumMap.keys());
+  const museumDetails = await fetchMuseumDetails(museumQids);
+  await delay(SPARQL_DELAY_MS);
+
+  for (const [qid, museum] of museumMap) {
+    museum.details = museumDetails.get(qid);
+  }
+
+  // Phase 5: Resolve departments without coordinates
+  const noCoordQids = museumQids.filter((qid) => {
+    const details = museumDetails.get(qid);
+    return !details?.lat || !details?.lon;
+  });
+
+  if (noCoordQids.length > 0) {
+    if (progress.cancel) throw new Error('Sync cancelled');
+    progress.statusMessage = `Resolving ${noCoordQids.length} department collections...`;
+    console.log(`[Museum Sync] Resolving ${noCoordQids.length} collections without coordinates`);
+
+    const resolved = await resolveDepartments(noCoordQids);
+    await delay(SPARQL_DELAY_MS);
+
+    for (const [collectionQid, parent] of resolved) {
+      const museum = museumMap.get(collectionQid);
+      if (museum && museum.details) {
+        museum.details.lat = parent.lat;
+        museum.details.lon = parent.lon;
+        if (!museum.details.museumLabel || museum.details.museumLabel === 'Unknown Museum') {
+          museum.details.museumLabel = parent.museumLabel;
+        }
+      }
+    }
+  }
+
+  // Filter to museums with valid coordinates and cap at 100
+  const validMuseums = Array.from(museumMap.values())
+    .filter((m) => {
+      if (!m.details?.lat || !m.details?.lon) {
+        console.log(`[Museum Sync] Skipping ${m.qid} (${m.label}) - no coordinates`);
+        errorDetails.push({ externalId: m.qid, error: 'No valid coordinates after resolution' });
+        return false;
+      }
+      return true;
+    })
+    .slice(0, 100);
+
+  return { items: validMuseums, fetchedCount: allArtworks.length };
+}
+
+/**
+ * Process a single museum: upsert experience + treasures
+ */
+async function processMuseum(museum: CollectedMuseum): Promise<'created' | 'updated'> {
+  const { experienceId, isCreated } = await upsertMuseumExperience(museum);
+  await upsertMuseumTreasures(experienceId, museum.artworks);
+  return isCreated ? 'created' : 'updated';
+}
+
+// =============================================================================
+// Public API
+// =============================================================================
+
+/**
  * Main sync function - fetches top museums from Wikidata and upserts to database
  */
-export async function syncMuseums(triggeredBy: number | null, force: boolean = false): Promise<void> {
-  // Check if already running
-  const existing = runningSyncs.get(MUSEUM_CATEGORY_ID);
-  if (existing && existing.status !== 'complete' && existing.status !== 'failed' && existing.status !== 'cancelled') {
-    throw new Error('Museum sync already in progress');
-  }
-
-  // Initialize progress
-  const progress: SyncProgress = {
-    cancel: false,
-    status: 'fetching',
-    statusMessage: 'Initializing...',
-    progress: 0,
-    total: 0,
-    created: 0,
-    updated: 0,
-    errors: 0,
-    currentItem: '',
-    logId: null,
-  };
-  runningSyncs.set(MUSEUM_CATEGORY_ID, progress);
-
-  const errorDetails: { externalId: string; error: string }[] = [];
-
-  try {
-    progress.logId = await createSyncLog(MUSEUM_CATEGORY_ID, triggeredBy);
-    console.log(`[Museum Sync] Started sync (log ID: ${progress.logId})${force ? ' [FORCE MODE]' : ''}`);
-
-    if (force) {
-      await cleanupMuseumData(progress);
-    }
-
-    // Phase 1: Fetch artworks
-    if (progress.cancel) throw new Error('Sync cancelled');
-    const paintings = await fetchArtworks('Q3305213', 'painting', progress);
-    await delay(SPARQL_DELAY_MS);
-
-    if (progress.cancel) throw new Error('Sync cancelled');
-    const sculptures = await fetchArtworks('Q860861', 'sculpture', progress);
-    await delay(SPARQL_DELAY_MS);
-
-    // Phase 2: Merge and sort all artworks by sitelinks
-    const allArtworks = [...paintings, ...sculptures].sort((a, b) => b.sitelinks - a.sitelinks);
-    console.log(`[Museum Sync] Total artworks: ${allArtworks.length} (${paintings.length} paintings, ${sculptures.length} sculptures)`);
-
-    // Phase 3: Collect top museums by iterating artworks top-down
-    progress.statusMessage = 'Identifying top museums...';
-    const museumMap = new Map<string, CollectedMuseum>();
-
-    for (const artwork of allArtworks) {
-      // Get or create museum entry
-      let museum = museumMap.get(artwork.collectionQid);
-      if (!museum) {
-        if (museumMap.size >= TARGET_MUSEUM_COUNT) {
-          continue; // Already have enough museums, skip artworks for new museums
-        }
-        museum = {
-          qid: artwork.collectionQid,
-          label: artwork.collectionLabel,
-          artworks: [],
-        };
-        museumMap.set(artwork.collectionQid, museum);
-      }
-
-      museum.artworks.push({
-        externalId: artwork.artworkQid,
-        name: artwork.artworkLabel,
-        treasureType: artwork.artworkType,
-        artist: artwork.creatorLabel,
-        year: artwork.year,
-        imageUrl: artwork.imageUrl,
-        sitelinksCount: artwork.sitelinks,
-      });
-    }
-
-    console.log(`[Museum Sync] Identified ${museumMap.size} unique museums`);
-
-    // Phase 4: Fetch museum details
-    if (progress.cancel) throw new Error('Sync cancelled');
-    progress.statusMessage = 'Fetching museum details from Wikidata...';
-    const museumQids = Array.from(museumMap.keys());
-    const museumDetails = await fetchMuseumDetails(museumQids);
-    await delay(SPARQL_DELAY_MS);
-
-    // Apply details to museums
-    for (const [qid, museum] of museumMap) {
-      museum.details = museumDetails.get(qid);
-    }
-
-    // Phase 5: Resolve departments without coordinates
-    const noCoordQids = museumQids.filter((qid) => {
-      const details = museumDetails.get(qid);
-      return !details?.lat || !details?.lon;
-    });
-
-    if (noCoordQids.length > 0) {
-      if (progress.cancel) throw new Error('Sync cancelled');
-      progress.statusMessage = `Resolving ${noCoordQids.length} department collections...`;
-      console.log(`[Museum Sync] Resolving ${noCoordQids.length} collections without coordinates`);
-
-      const resolved = await resolveDepartments(noCoordQids);
-      await delay(SPARQL_DELAY_MS);
-
-      for (const [collectionQid, parent] of resolved) {
-        const museum = museumMap.get(collectionQid);
-        if (museum && museum.details) {
-          // Update coordinates from parent museum
-          museum.details.lat = parent.lat;
-          museum.details.lon = parent.lon;
-          // If the museum name is just a department, use parent name
-          if (!museum.details.museumLabel || museum.details.museumLabel === 'Unknown Museum') {
-            museum.details.museumLabel = parent.museumLabel;
-          }
-        }
-      }
-    }
-
-    // Phase 6: Upsert museums and their contents (cap at 100)
-    progress.status = 'processing';
-    const validMuseums = Array.from(museumMap.values())
-      .filter((m) => {
-        if (!m.details?.lat || !m.details?.lon) {
-          console.log(`[Museum Sync] Skipping ${m.qid} (${m.label}) - no coordinates`);
-          errorDetails.push({ externalId: m.qid, error: 'No valid coordinates after resolution' });
-          return false;
-        }
-        return true;
-      })
-      .slice(0, 100); // Cap at exactly 100 museums
-
-    progress.total = validMuseums.length;
-    progress.progress = 0;
-
-    for (let i = 0; i < validMuseums.length; i++) {
-      if (progress.cancel) throw new Error('Sync cancelled');
-
-      const museum = validMuseums[i];
-      progress.currentItem = museum.details!.museumLabel;
-      progress.statusMessage = `Processing ${i + 1}/${validMuseums.length}: ${museum.details!.museumLabel}`;
-
-      try {
-        const { experienceId, isCreated } = await upsertMuseumExperience(museum);
-        await upsertMuseumTreasures(experienceId, museum.artworks);
-
-        if (isCreated) {
-          progress.created++;
-        } else {
-          progress.updated++;
-        }
-      } catch (err) {
-        progress.errors++;
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        errorDetails.push({ externalId: museum.qid, error: errorMsg });
-        console.error(`[Museum Sync] Error processing ${museum.qid}:`, errorMsg);
-      }
-
-      progress.progress = i + 1;
-    }
-
-    // Determine final status
-    const totalProcessed = progress.created + progress.updated;
-    const finalStatus = progress.errors > 0 && totalProcessed === 0
-      ? 'failed'
-      : progress.errors > 0
-      ? 'partial'
-      : 'success';
-
-    progress.status = 'complete';
-    progress.statusMessage = `Complete: ${progress.created} created, ${progress.updated} updated, ${progress.errors} errors`;
-
-    await updateSyncLog(MUSEUM_CATEGORY_ID, progress.logId, finalStatus, {
-      fetched: allArtworks.length,
-      created: progress.created,
-      updated: progress.updated,
-      errors: progress.errors,
-    }, errorDetails.length > 0 ? errorDetails : undefined);
-
-    console.log(`[Museum Sync] Complete: created=${progress.created}, updated=${progress.updated}, errors=${progress.errors}`);
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    progress.status = progress.cancel ? 'cancelled' : 'failed';
-    progress.statusMessage = errorMsg;
-
-    if (progress.logId) {
-      await updateSyncLog(MUSEUM_CATEGORY_ID, progress.logId, progress.status, {
-        fetched: progress.progress,
-        created: progress.created,
-        updated: progress.updated,
-        errors: progress.errors,
-      }, [{ externalId: 'system', error: errorMsg }]);
-    }
-
-    console.error(`[Museum Sync] Failed:`, errorMsg);
-    throw err;
-  } finally {
-    // Clean up after delay, but only if this sync's progress is still current
-    const thisProgress = progress;
-    setTimeout(() => {
-      if (runningSyncs.get(MUSEUM_CATEGORY_ID) === thisProgress) {
-        runningSyncs.delete(MUSEUM_CATEGORY_ID);
-      }
-    }, 30000);
-  }
+export function syncMuseums(triggeredBy: number | null, force: boolean = false): Promise<void> {
+  return orchestrateSync<CollectedMuseum>({
+    categoryId: MUSEUM_CATEGORY_ID,
+    logPrefix: LOG_PREFIX,
+    fetchItems: fetchMuseumItems,
+    processItem: processMuseum,
+    getItemName: (m) => m.details?.museumLabel || m.label,
+    getItemId: (m) => m.qid,
+    cleanup: cleanupMuseumData,
+  }, triggeredBy, force);
 }
 
 /**
  * Get current museum sync status
  */
-export function getMuseumSyncStatus(): SyncProgress | null {
-  return runningSyncs.get(MUSEUM_CATEGORY_ID) || null;
+export function getMuseumSyncStatus() {
+  return getSyncStatus(MUSEUM_CATEGORY_ID);
 }
 
 /**
  * Cancel running museum sync
  */
-export function cancelMuseumSync(): boolean {
-  const progress = runningSyncs.get(MUSEUM_CATEGORY_ID);
-  if (progress && progress.status !== 'complete' && progress.status !== 'failed') {
-    progress.cancel = true;
-    progress.statusMessage = 'Cancelling...';
-    return true;
-  }
-  return false;
+export function cancelMuseumSync() {
+  return cancelSync(MUSEUM_CATEGORY_ID);
 }
 
 /**
