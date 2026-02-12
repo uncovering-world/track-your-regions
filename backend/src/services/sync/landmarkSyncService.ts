@@ -6,9 +6,9 @@
  * No grouping, no treasures — simpler than museums.
  */
 
-import { upsertExperienceRecord, upsertSingleLocation, createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
+import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
-import { runningSyncs } from './types.js';
+import { orchestrateSync, getSyncStatus, cancelSync, type ErrorDetail } from './syncOrchestrator.js';
 import {
   sparqlQuery,
   extractQid,
@@ -179,7 +179,7 @@ async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[
  */
 async function upsertLandmarkExperience(
   landmark: WikidataLandmark
-): Promise<{ experienceId: number; isCreated: boolean }> {
+): Promise<'created' | 'updated'> {
   const metadata = {
     wikidataQid: landmark.qid,
     creator: landmark.creatorLabel,
@@ -211,196 +211,108 @@ async function upsertLandmarkExperience(
 
   await upsertSingleLocation(experienceId, landmark.qid, landmark.lon, landmark.lat);
 
-  return { experienceId, isCreated };
+  return isCreated ? 'created' : 'updated';
 }
 
+/**
+ * Fetch, merge, deduplicate, and disambiguate landmarks from Wikidata.
+ */
+async function fetchLandmarkItems(
+  progress: SyncProgress,
+  errorDetails: ErrorDetail[],
+): Promise<{ items: WikidataLandmark[]; fetchedCount: number }> {
+  // Phase 1-2: Fetch source datasets (continue if one source fails)
+  let sculptures: WikidataLandmark[] = [];
+  let monuments: WikidataLandmark[] = [];
+
+  if (progress.cancel) throw new Error('Sync cancelled');
+  try {
+    sculptures = await fetchSculptures(progress);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    progress.errors++;
+    errorDetails.push({ externalId: 'fetch-sculptures', error: message });
+    console.warn(`[Landmark Sync] Sculpture fetch failed: ${message}`);
+  }
+
+  await delay(SPARQL_DELAY_MS);
+
+  if (progress.cancel) throw new Error('Sync cancelled');
+  try {
+    monuments = await fetchMonuments(progress);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    progress.errors++;
+    errorDetails.push({ externalId: 'fetch-monuments', error: message });
+    console.warn(`[Landmark Sync] Monument fetch failed: ${message}`);
+  }
+
+  if (sculptures.length === 0 && monuments.length === 0) {
+    throw new Error('Landmark sync failed: no data fetched from Wikidata');
+  }
+
+  // Phase 3: Merge, deduplicate by QID, sort by sitelinks DESC
+  const seen = new Set<string>();
+  const allLandmarks: WikidataLandmark[] = [];
+  for (const item of [...sculptures, ...monuments].sort((a, b) => b.sitelinks - a.sitelinks)) {
+    if (!seen.has(item.qid)) {
+      seen.add(item.qid);
+      allLandmarks.push(item);
+    }
+  }
+
+  console.log(`[Landmark Sync] Total after dedup: ${allLandmarks.length} (${sculptures.length} sculptures, ${monuments.length} monuments)`);
+
+  // Take top TARGET_COUNT
+  const landmarks = allLandmarks.slice(0, TARGET_COUNT);
+  console.log(`[Landmark Sync] Processing top ${landmarks.length} landmarks`);
+
+  // Phase 3b: Disambiguate duplicate names by appending description snippet
+  const nameCounts = new Map<string, number>();
+  for (const lm of landmarks) {
+    nameCounts.set(lm.label, (nameCounts.get(lm.label) || 0) + 1);
+  }
+  for (const lm of landmarks) {
+    if ((nameCounts.get(lm.label) || 0) > 1 && lm.description) {
+      // Extract a short location hint from the description (e.g., "in Berlin-Tiergarten")
+      const match = lm.description.match(/\bin\s+(.+?)(?:,|\.|$)/i);
+      if (match) {
+        lm.label = `${lm.label} (${match[1].trim()})`;
+      }
+    }
+  }
+
+  return { items: landmarks, fetchedCount: allLandmarks.length };
+}
+
+// =============================================================================
+// Public API
+// =============================================================================
 
 /**
  * Main sync function — fetches outdoor sculptures and monuments from Wikidata
  */
-export async function syncLandmarks(triggeredBy: number | null, force: boolean = false): Promise<void> {
-  const existing = runningSyncs.get(LANDMARK_CATEGORY_ID);
-  if (existing && existing.status !== 'complete' && existing.status !== 'failed' && existing.status !== 'cancelled') {
-    throw new Error('Landmark sync already in progress');
-  }
-
-  const progress: SyncProgress = {
-    cancel: false,
-    status: 'fetching',
-    statusMessage: 'Initializing...',
-    progress: 0,
-    total: 0,
-    created: 0,
-    updated: 0,
-    errors: 0,
-    currentItem: '',
-    logId: null,
-  };
-  runningSyncs.set(LANDMARK_CATEGORY_ID, progress);
-
-  const errorDetails: { externalId: string; error: string }[] = [];
-
-  try {
-    progress.logId = await createSyncLog(LANDMARK_CATEGORY_ID, triggeredBy);
-    console.log(`[Landmark Sync] Started sync (log ID: ${progress.logId})${force ? ' [FORCE MODE]' : ''}`);
-
-    if (force) {
-      progress.statusMessage = 'Cleaning up existing landmark data...';
-      await cleanupCategoryData(LANDMARK_CATEGORY_ID, LOG_PREFIX, progress);
-    }
-
-    // Phase 1-2: Fetch source datasets (continue if one source fails)
-    let sculptures: WikidataLandmark[] = [];
-    let monuments: WikidataLandmark[] = [];
-
-    if (progress.cancel) throw new Error('Sync cancelled');
-    try {
-      sculptures = await fetchSculptures(progress);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      progress.errors++;
-      errorDetails.push({ externalId: 'fetch-sculptures', error: message });
-      console.warn(`[Landmark Sync] Sculpture fetch failed: ${message}`);
-    }
-
-    await delay(SPARQL_DELAY_MS);
-
-    if (progress.cancel) throw new Error('Sync cancelled');
-    try {
-      monuments = await fetchMonuments(progress);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      progress.errors++;
-      errorDetails.push({ externalId: 'fetch-monuments', error: message });
-      console.warn(`[Landmark Sync] Monument fetch failed: ${message}`);
-    }
-
-    if (sculptures.length === 0 && monuments.length === 0) {
-      throw new Error('Landmark sync failed: no data fetched from Wikidata');
-    }
-
-    // Phase 3: Merge, deduplicate by QID, sort by sitelinks DESC
-    const seen = new Set<string>();
-    const allLandmarks: WikidataLandmark[] = [];
-    for (const item of [...sculptures, ...monuments].sort((a, b) => b.sitelinks - a.sitelinks)) {
-      if (!seen.has(item.qid)) {
-        seen.add(item.qid);
-        allLandmarks.push(item);
-      }
-    }
-
-    console.log(`[Landmark Sync] Total after dedup: ${allLandmarks.length} (${sculptures.length} sculptures, ${monuments.length} monuments)`);
-
-    // Take top TARGET_COUNT
-    const landmarks = allLandmarks.slice(0, TARGET_COUNT);
-    console.log(`[Landmark Sync] Processing top ${landmarks.length} landmarks`);
-
-    // Phase 3b: Disambiguate duplicate names by appending description snippet
-    const nameCounts = new Map<string, number>();
-    for (const lm of landmarks) {
-      nameCounts.set(lm.label, (nameCounts.get(lm.label) || 0) + 1);
-    }
-    for (const lm of landmarks) {
-      if ((nameCounts.get(lm.label) || 0) > 1 && lm.description) {
-        // Extract a short location hint from the description (e.g., "in Berlin-Tiergarten")
-        const match = lm.description.match(/\bin\s+(.+?)(?:,|\.|$)/i);
-        if (match) {
-          lm.label = `${lm.label} (${match[1].trim()})`;
-        }
-      }
-    }
-
-    // Phase 4: Upsert each as experience + experience_location
-    progress.status = 'processing';
-    progress.total = landmarks.length;
-    progress.progress = 0;
-
-    for (let i = 0; i < landmarks.length; i++) {
-      if (progress.cancel) throw new Error('Sync cancelled');
-
-      const landmark = landmarks[i];
-      progress.currentItem = landmark.label;
-      progress.statusMessage = `Processing ${i + 1}/${landmarks.length}: ${landmark.label}`;
-
-      try {
-        const { isCreated } = await upsertLandmarkExperience(landmark);
-        if (isCreated) {
-          progress.created++;
-        } else {
-          progress.updated++;
-        }
-      } catch (err) {
-        progress.errors++;
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        errorDetails.push({ externalId: landmark.qid, error: errorMsg });
-        console.error(`[Landmark Sync] Error processing ${landmark.qid}:`, errorMsg);
-      }
-
-      progress.progress = i + 1;
-    }
-
-    // Determine final status
-    const totalProcessed = progress.created + progress.updated;
-    const finalStatus = progress.errors > 0 && totalProcessed === 0
-      ? 'failed'
-      : progress.errors > 0
-      ? 'partial'
-      : 'success';
-
-    progress.status = 'complete';
-    progress.statusMessage = `Complete: ${progress.created} created, ${progress.updated} updated, ${progress.errors} errors`;
-
-    await updateSyncLog(LANDMARK_CATEGORY_ID, progress.logId, finalStatus, {
-      fetched: allLandmarks.length,
-      created: progress.created,
-      updated: progress.updated,
-      errors: progress.errors,
-    }, errorDetails.length > 0 ? errorDetails : undefined);
-
-    console.log(`[Landmark Sync] Complete: created=${progress.created}, updated=${progress.updated}, errors=${progress.errors}`);
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    progress.status = progress.cancel ? 'cancelled' : 'failed';
-    progress.statusMessage = errorMsg;
-
-    if (progress.logId) {
-      await updateSyncLog(LANDMARK_CATEGORY_ID, progress.logId, progress.status, {
-        fetched: progress.progress,
-        created: progress.created,
-        updated: progress.updated,
-        errors: progress.errors,
-      }, [{ externalId: 'system', error: errorMsg }]);
-    }
-
-    console.error(`[Landmark Sync] Failed:`, errorMsg);
-    throw err;
-  } finally {
-    // Clean up after delay, but only if this sync's progress is still current
-    const thisProgress = progress;
-    setTimeout(() => {
-      if (runningSyncs.get(LANDMARK_CATEGORY_ID) === thisProgress) {
-        runningSyncs.delete(LANDMARK_CATEGORY_ID);
-      }
-    }, 30000);
-  }
+export function syncLandmarks(triggeredBy: number | null, force: boolean = false): Promise<void> {
+  return orchestrateSync<WikidataLandmark>({
+    categoryId: LANDMARK_CATEGORY_ID,
+    logPrefix: LOG_PREFIX,
+    fetchItems: fetchLandmarkItems,
+    processItem: upsertLandmarkExperience,
+    getItemName: (lm) => lm.label,
+    getItemId: (lm) => lm.qid,
+  }, triggeredBy, force);
 }
 
 /**
  * Get current landmark sync status
  */
-export function getLandmarkSyncStatus(): SyncProgress | null {
-  return runningSyncs.get(LANDMARK_CATEGORY_ID) || null;
+export function getLandmarkSyncStatus() {
+  return getSyncStatus(LANDMARK_CATEGORY_ID);
 }
 
 /**
  * Cancel running landmark sync
  */
-export function cancelLandmarkSync(): boolean {
-  const progress = runningSyncs.get(LANDMARK_CATEGORY_ID);
-  if (progress && progress.status !== 'complete' && progress.status !== 'failed') {
-    progress.cancel = true;
-    progress.statusMessage = 'Cancelling...';
-    return true;
-  }
-  return false;
+export function cancelLandmarkSync() {
+  return cancelSync(LANDMARK_CATEGORY_ID);
 }

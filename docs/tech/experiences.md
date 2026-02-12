@@ -55,10 +55,22 @@ Treasures are independently trackable things inside venue experiences. Currently
 
 Each source has a dedicated sync service in `backend/src/services/sync/`. All follow the same pattern: `syncX()`, `getXSyncStatus()`, `cancelXSync()`. In-memory progress is tracked via the `runningSyncs` Map; `finally` blocks use a captured `thisProgress` reference to avoid timer race conditions.
 
+### Sync orchestrator
+
+The generic sync lifecycle (progress init, already-running check, sync log creation, force cleanup, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`. Each service provides a `SyncServiceConfig<T>` with domain-specific callbacks:
+
+- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount }`. Can append pre-processing errors (e.g., museums without coordinates) to `errorDetails`.
+- **`processItem(item, progress)`** — Process a single item, return `'created'` or `'updated'`. Throw to count as error.
+- **`getItemName(item)`** / **`getItemId(item)`** — Display name and external ID for progress messages and error reporting.
+- **`cleanup?(progress)`** — Optional custom cleanup for force sync (replaces default `cleanupCategoryData`). Museum uses this for treasure pre-cleanup.
+
+Generic `getSyncStatus(categoryId)` and `cancelSync(categoryId)` replace per-service status/cancel functions. The controller dispatches via a registry map instead of if-else chains.
+
 ### Shared modules
 
-Common sync logic lives in two shared utility files:
+Common sync logic lives in three shared utility files:
 
+- **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by category ID.
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
 - **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location upsert (`upsertSingleLocation()`), sync log CRUD (`createSyncLog()`, `updateSyncLog()`), and FK-ordered category data cleanup cascade (`cleanupCategoryData()`). Used by all three services. Museum service calls its own treasure cleanup before invoking the shared cascade.
 
