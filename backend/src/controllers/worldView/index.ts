@@ -32,18 +32,12 @@ export {
   deleteRegion,
 } from './regionCrud.js';
 
-// Region Members
-export {
-  getRegionMembers,
-  getRegionMemberGeometries,
-  addDivisionsToRegion,
-  removeDivisionsFromRegion,
-  moveMemberToRegion,
-  addChildDivisionsAsSubregions,
-  flattenSubregion,
-  expandToSubregions,
-  getDivisionUsageCounts,
-} from './regionMembers.js';
+// Region Member Queries
+export { getRegionMembers, getRegionMemberGeometries } from './regionMemberQueries.js';
+// Region Member Mutations
+export { addDivisionsToRegion, removeDivisionsFromRegion, moveMemberToRegion } from './regionMemberMutations.js';
+// Region Member Operations
+export { addChildDivisionsAsSubregions, flattenSubregion, expandToSubregions, getDivisionUsageCounts } from './regionMemberOperations.js';
 
 // Geometry Read Operations
 export {
