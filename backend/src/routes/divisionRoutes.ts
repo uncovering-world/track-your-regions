@@ -7,7 +7,6 @@
 import { Router } from 'express';
 import { validate } from '../middleware/errorHandler.js';
 import {
-  getWorldViews,
   getRootDivisions,
   getDivisionById,
   getSubdivisions,
@@ -18,6 +17,7 @@ import {
   getSubdivisionGeometries,
   getRootGeometries,
 } from '../controllers/division/index.js';
+import { getWorldViews } from '../controllers/worldView/index.js';
 import {
   getSubdivisionsQuerySchema,
   getGeometryQuerySchema,

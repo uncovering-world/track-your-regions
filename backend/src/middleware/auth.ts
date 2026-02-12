@@ -110,31 +110,6 @@ export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: Ne
 }
 
 // =============================================================================
-// Helper: Check Role
-// =============================================================================
-/**
- * Checks if user has any of the specified roles.
- */
-export function hasRole(req: AuthenticatedRequest, ...roles: UserRole[]): boolean {
-  if (!req.user) return false;
-  return roles.includes(req.user.role);
-}
-
-/**
- * Checks if user is an admin.
- */
-export function isAdmin(req: AuthenticatedRequest): boolean {
-  return hasRole(req, 'admin');
-}
-
-/**
- * Checks if user is a curator (or admin).
- */
-export function isCurator(req: AuthenticatedRequest): boolean {
-  return hasRole(req, 'curator', 'admin');
-}
-
-// =============================================================================
 // Middleware: requireCurator
 // =============================================================================
 /**

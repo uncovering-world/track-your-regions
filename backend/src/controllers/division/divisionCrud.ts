@@ -5,27 +5,9 @@
 import { Request, Response } from 'express';
 import { eq, isNull } from 'drizzle-orm';
 import { db, pool } from '../../db/index.js';
-import { administrativeDivisions, worldViews } from '../../db/schema.js';
+import { administrativeDivisions } from '../../db/schema.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type { AdministrativeDivision } from './types.js';
-
-/**
- * Get all available World Views
- */
-export async function getWorldViews(_req: Request, res: Response): Promise<void> {
-  const result = await db.select()
-    .from(worldViews)
-    .where(eq(worldViews.isActive, true));
-
-  const worldViewList = result.map(w => ({
-    id: w.id,
-    name: w.name,
-    description: w.description,
-    isDefault: w.isDefault,
-  }));
-
-  res.json(worldViewList);
-}
 
 /**
  * Get root divisions (no parent)

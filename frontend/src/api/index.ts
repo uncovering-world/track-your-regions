@@ -43,13 +43,7 @@ export {
 // Re-export Views API
 export {
   fetchViews,
-  fetchView,
-  createView,
-  updateView,
-  deleteView,
   fetchViewDivisions,
-  addDivisionsToView,
-  removeDivisionsFromView,
 } from './views.js';
 
 // Re-export Regions API

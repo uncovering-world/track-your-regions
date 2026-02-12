@@ -36,15 +36,6 @@ export interface RegisterCredentials {
   displayName: string;
 }
 
-export interface CuratorScope {
-  id: number;
-  scopeType: 'global' | 'region' | 'category';
-  regionId: number | null;
-  regionName: string | null;
-  categoryId: number | null;
-  categoryName: string | null;
-}
-
 export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;

@@ -9,7 +9,6 @@ export type { AdministrativeDivision, AdministrativeDivisionWithPath } from './t
 
 // CRUD operations
 export {
-  getWorldViews,
   getRootDivisions,
   getDivisionById,
   getSubdivisions,
