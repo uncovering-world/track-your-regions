@@ -512,7 +512,7 @@ export function CustomSubdivisionDialog({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Chip
                   icon={<SaveIcon />}
-                  label={`Saved ${formatRelativeTime(lastSavedAt)}`}
+                  label={`Saved ${formatRelativeTime(lastSavedAt, 24 * 60 * 60 * 1000)}`}
                   size="small"
                   color="success"
                   variant="outlined"
