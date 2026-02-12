@@ -37,8 +37,7 @@ npm run db:mark-golden
 
 - API routes: `backend/src/routes/*`
 - Core world-view/region logic: `backend/src/controllers/worldView/*`
-- Experience browse + visit logic: `backend/src/controllers/experience/experienceController.ts`
-- Experience curation logic: `backend/src/controllers/experience/curationController.ts`
+- Experience controllers: `backend/src/controllers/experience/` (query, visit, location, treasure + curation)
 - Sync shared utils: `backend/src/services/sync/wikidataUtils.ts` (SPARQL), `backend/src/services/sync/syncUtils.ts` (upsert, sync log, cleanup)
 - Frontend map/navigation shell: `frontend/src/components/MainDisplay.tsx`
 - Frontend shared utils: `frontend/src/utils/` (categoryColors, dateFormat, imageUrl, coordinateParser, mapUtils)
