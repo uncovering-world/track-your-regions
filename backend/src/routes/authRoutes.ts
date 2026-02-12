@@ -1,7 +1,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import passport from 'passport';
-import rateLimit from 'express-rate-limit';
+import {
+  loginLimiter,
+  registerLimiter,
+  refreshLimiter,
+  verifyEmailLimiter,
+  exchangeCodeLimiter,
+  resendLimiter,
+} from '../middleware/rateLimiter.js';
 import {
   hashPassword,
   verifyPassword,
@@ -32,50 +39,6 @@ import { registerSchema, loginSchema, changePasswordSchema, verifyEmailSchema, r
 const router = Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-
-// =============================================================================
-// Rate Limiters
-// =============================================================================
-
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 attempts per window
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many login attempts, please try again later' },
-});
-
-const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // 5 registrations per hour per IP
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many registration attempts, please try again later' },
-});
-
-const refreshLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30, // 30 refreshes per minute
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later' },
-});
-
-const verifyEmailLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // 10 attempts per minute per IP
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later' },
-});
-
-const exchangeCodeLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // 10 attempts per minute per IP
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later' },
-});
 
 // =============================================================================
 // Refresh Token Cookie Helpers
@@ -260,14 +223,6 @@ router.post('/login', loginLimiter, validate(loginSchema), (req: Request, res: R
 // =============================================================================
 // Email Verification
 // =============================================================================
-
-const resendLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3, // 3 resend attempts per hour per IP
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later' },
-});
 
 /**
  * POST /api/auth/verify-email

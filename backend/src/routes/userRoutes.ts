@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { pool } from '../db/index.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { authenticatedLimiter } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/errorHandler.js';
 import {
   regionIdParamSchema,
@@ -38,6 +39,9 @@ import {
 } from '../controllers/experience/index.js';
 
 const router = Router();
+
+// Rate limit all user endpoints (60 req/min per IP)
+router.use(authenticatedLimiter);
 
 /**
  * GET /api/users/me
