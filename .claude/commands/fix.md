@@ -6,6 +6,10 @@ Work on a bug fix from a GitHub issue. This is a streamlined workflow for bugs �
 
 $ARGUMENTS — required: GitHub issue number.
 
+## Prerequisites
+
+Before starting, read `docs/tech/development-guide.md` — it defines the project's code organization conventions, file size rules, reuse-first principle, commit format, and documentation requirements. All work must follow these rules.
+
 ## Instructions
 
 ### 1. Load the issue
@@ -53,7 +57,8 @@ Ask the user to confirm before proceeding with the fix.
 ### 6. Implement the fix
 
 - Make the minimal change needed to fix the bug
-- Follow existing code patterns and style
+- Follow existing code patterns and the conventions in `docs/tech/development-guide.md`
+- **Search for existing utilities** before writing new helper code — reuse shared code
 - Do NOT refactor surrounding code or add unrelated improvements
 - Update any relevant tests
 
@@ -75,7 +80,10 @@ If the fix changes user-facing behavior:
 
 ### 9. Commit and summarize
 
-Commit the fix (follow the git commit protocol from system instructions).
+Commit the fix following the conventions in `docs/tech/development-guide.md`:
+- **Title + body** — every commit needs an imperative title and a body explaining what and why
+- **Granular commits** — if the fix touches multiple layers, split into separate commits
+- **Docs in dedicated commits** — documentation updates are separate from code commits
 
 Then summarize what was done and suggest:
 - **To create a PR**: run `/commit` or use `gh pr create`
