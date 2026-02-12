@@ -6,6 +6,10 @@ Review uncommitted changes, organize them into atomic commits on an appropriate 
 
 $ARGUMENTS — optional: branch name or short description of the change. If not provided, infer from the changes.
 
+## Prerequisites
+
+Follow the commit conventions defined in `docs/tech/development-guide.md` — specifically the "Commits and Branches" section (granular commits, title+body format, branch discipline, docs in dedicated commits).
+
 ## Instructions
 
 ### 1. Assess current state
@@ -47,10 +51,11 @@ If you find suspicious files, **skip them** and mention it in the summary.
 Analyze the staged-worthy changes and group them by purpose. Each commit should contain **only** changes that belong together:
 
 - A bug fix is one commit — don't mix in unrelated refactoring
-- A new feature is one commit (or a small series if it has distinct layers: schema, backend, frontend)
-- Documentation updates related to a code change go in the **same commit** as the code
-- Unrelated documentation fixes get their own commit
+- A new feature should be split into **multiple granular commits** when it has distinct layers (e.g., backend endpoint, frontend hook, frontend wiring — each gets its own commit)
+- **Documentation updates always get their own dedicated commit** — never mix docs with code changes
 - Config changes get their own commit unless directly tied to a feature
+- Each commit must compile and pass lint on its own
+- If a commit diff is hard to review in one sitting, it's too big — split it
 
 **Do NOT create a commit that mixes unrelated changes.** If changes span multiple unrelated topics, they need separate commits (and potentially separate branches — see step 2).
 
