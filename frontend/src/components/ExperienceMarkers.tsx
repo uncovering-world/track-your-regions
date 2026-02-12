@@ -16,14 +16,15 @@
  *   - Click list item      → fly-to marker location(s)
  */
 
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { useMap, Source, Layer } from 'react-map-gl/maplibre';
 import { Box } from '@mui/material';
 import maplibregl from 'maplibre-gl';
 import type { LayerProps } from 'react-map-gl/maplibre';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { useNavigation } from '../hooks/useNavigation';
-import { fetchExperienceLocations, type Experience, type ExperienceLocation } from '../api/experiences';
+import { useRegionLocations } from '../hooks/useRegionLocations';
+import type { Experience } from '../api/experiences';
 
 // Source IDs
 const SOURCE_MARKERS = 'exp-markers';
@@ -228,8 +229,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     setHoverPreview,
   } = useExperienceContext();
 
-  // Track locations with region membership info
-  const [locationsByExperience, setLocationsByExperience] = useState<Record<number, ExperienceLocation[]>>({});
+  // Batch-fetch all locations for all experiences in the region (single request)
+  const { locationsByExperience } = useRegionLocations(regionId);
 
   // Hover source data (updated by event handlers and list hover)
   const [hoverData, setHoverData] = useState<GeoJSON.FeatureCollection>(EMPTY_FC);
@@ -245,55 +246,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   // Popup ref for cleanup
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const pendingMarkerFitExperienceIdRef = useRef<number | null>(null);
-
-  // ── Fetch locations for all experiences when region changes ──
-  useEffect(() => {
-    if (experiences.length === 0 || !regionId) return;
-
-    let cancelled = false;
-
-    const fetchAllLocations = async () => {
-      const toFetch = experiences.filter(exp => !locationsByExperience[exp.id]);
-      if (toFetch.length === 0) return;
-
-      const results = await Promise.allSettled(
-        toFetch.map(async exp => {
-          const response = await fetchExperienceLocations(exp.id, regionId);
-          return { experienceId: exp.id, locations: response.locations };
-        })
-      );
-
-      if (cancelled) return;
-
-      const successfulResults = results
-        .filter((r): r is PromiseFulfilledResult<{ experienceId: number; locations: ExperienceLocation[] }> =>
-          r.status === 'fulfilled'
-        )
-        .map(r => r.value);
-
-      if (successfulResults.length > 0) {
-        setLocationsByExperience(prev => {
-          const next = { ...prev };
-          successfulResults.forEach(r => {
-            next[r.experienceId] = r.locations;
-          });
-          return next;
-        });
-      }
-    };
-
-    fetchAllLocations();
-
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- locationsByExperience intentionally omitted
-  }, [experiences, regionId]);
-
-  // Clear locations cache when region changes
-  useEffect(() => {
-    setLocationsByExperience({});
-  }, [regionId]);
 
   // ── One marker per experience (primary in-region location), filtered by expanded groups ──
   // Multi-location experiences show all locations via the highlight layer when selected.

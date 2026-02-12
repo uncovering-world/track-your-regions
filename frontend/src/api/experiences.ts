@@ -90,6 +90,13 @@ export interface ExperienceLocationsResponse {
   totalLocations: number;
 }
 
+/**
+ * Batch response: all locations for all experiences in a region
+ */
+export interface RegionExperienceLocationsResponse {
+  locationsByExperience: Record<string, ExperienceLocation[]>;
+}
+
 export interface ExperienceDetail extends Experience {
   category_id: number;
   name_local: Record<string, string> | null;
@@ -226,6 +233,22 @@ export async function fetchExperienceLocations(
 ): Promise<ExperienceLocationsResponse> {
   const params = regionId ? `?regionId=${regionId}` : '';
   return fetchJson<ExperienceLocationsResponse>(`${API_URL}/api/experiences/${experienceId}/locations${params}`);
+}
+
+/**
+ * Get all locations for all experiences in a region (batch)
+ * Eliminates N+1 individual location fetches
+ */
+export async function fetchRegionExperienceLocations(
+  regionId: number,
+  options?: { includeChildren?: boolean }
+): Promise<RegionExperienceLocationsResponse> {
+  const params = new URLSearchParams();
+  if (options?.includeChildren === false) params.set('includeChildren', 'false');
+  const query = params.toString();
+  return fetchJson<RegionExperienceLocationsResponse>(
+    `${API_URL}/api/experiences/by-region/${regionId}/locations${query ? `?${query}` : ''}`
+  );
 }
 
 /**
