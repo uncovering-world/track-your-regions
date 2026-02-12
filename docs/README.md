@@ -33,6 +33,7 @@ docs/
 | [STATE-MANAGEMENT.md](tech/STATE-MANAGEMENT.md) | Frontend state: React Query, localStorage, Zustand considerations |
 | [rate-limiting.md](tech/rate-limiting.md) | Rate limiting tiers, per-endpoint strategy, adding limiters to new routes |
 | [hacking.md](tech/hacking.md) | Practical engineering guide for local debugging and safe changes |
+| [development-guide.md](tech/development-guide.md) | Code organization conventions, splitting patterns, commit hygiene |
 
 ## Tech — Planning
 
