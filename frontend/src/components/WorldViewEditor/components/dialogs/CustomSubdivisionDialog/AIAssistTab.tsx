@@ -8,6 +8,12 @@
  * - Batch process all regions
  * - Auto-assign high-confidence suggestions
  * - Visual indicators for split suggestions
+ *
+ * Extracted modules:
+ * - aiAssistTypes.ts — UsageStats, LastOperation, RegionSuggestion interfaces
+ * - useAIModelManager.ts — model selection, provider config, status checking
+ * - useAIUsageTracking.ts — usage stat helpers (totalStats, getPercentage, resetStats)
+ * - AIUsagePopover.tsx — usage statistics popover display
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -34,7 +40,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Popover,
   Checkbox,
   FormControlLabel,
   TextField,
@@ -57,39 +62,17 @@ import type { Region, RegionMember } from '@/types';
 import type { SubdivisionGroup } from './types';
 import { GROUP_COLORS } from './types';
 import {
-  checkAIStatus,
   suggestGroupForRegion,
   suggestGroupsForMultipleRegions,
   generateGroupDescriptions,
-  setAIModel,
-  setWebSearchModel,
-  getAIModels,
-  type GroupSuggestion,
-  type AIModel,
 } from '@/api';
+import type { UsageStats, LastOperation, RegionSuggestion } from './aiAssistTypes';
+import { useAIModelManager } from './useAIModelManager';
+import { useAIUsageTracking } from './useAIUsageTracking';
+import { AIUsagePopover } from './AIUsagePopover';
 
-// Exported types for persistence
-export interface UsageStats {
-  tokens: number;
-  inputCost: number;
-  outputCost: number;
-  webSearchCost: number;
-  totalCost: number;
-  requests: number;
-  regionsProcessed: number;
-}
-
-export interface LastOperation {
-  type: 'single' | 'batch';
-  tokens: number;
-  inputCost: number;
-  outputCost: number;
-  webSearchCost: number;
-  totalCost: number;
-  regionsCount: number;
-  model: string;
-  timestamp: Date;
-}
+// Re-export types for consumer compatibility
+export type { UsageStats, LastOperation, RegionSuggestion } from './aiAssistTypes';
 
 interface AIAssistTabProps {
   selectedRegion: Region | null;
@@ -110,13 +93,6 @@ interface AIAssistTabProps {
   setLastOperation: React.Dispatch<React.SetStateAction<LastOperation | null>>;
 }
 
-export interface RegionSuggestion {
-  division: RegionMember;
-  suggestion: GroupSuggestion | null;
-  loading: boolean;
-  error: string | null;
-}
-
 export function AIAssistTab({
   selectedRegion,
   worldViewDescription,
@@ -134,18 +110,33 @@ export function AIAssistTab({
   lastOperation,
   setLastOperation,
 }: AIAssistTabProps) {
-  const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
-  const [aiMessage, setAiMessage] = useState<string>('');
-  const [checkingStatus, setCheckingStatus] = useState(true);
+  // Extracted hooks
+  const {
+    aiAvailable,
+    aiMessage,
+    checkingStatus,
+    currentModel,
+    availableModels,
+    webSearchModelId,
+    webSearchModels,
+    changingModel,
+    handleModelChange,
+    handleWebSearchModelChange,
+    refreshModels,
+  } = useAIModelManager();
+
+  const { totalStats, resetStats } = useAIUsageTracking({
+    singleRequestStats,
+    setSingleRequestStats,
+    batchRequestStats,
+    setBatchRequestStats,
+    setLastOperation,
+  });
+
   const [batchProcessing, setBatchProcessing] = useState(false);
   const [expandedDivisions, setExpandedDivisions] = useState<Set<number>>(new Set());
   const [autoAssignCount, setAutoAssignCount] = useState(0);
   const [quotaError, setQuotaError] = useState<string | null>(null);
-  const [currentModel, setCurrentModel] = useState<string>('gpt-4.1');
-  const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
-  const [webSearchModelId, setWebSearchModelId] = useState<string>('gpt-4.1');
-  const [webSearchModels, setWebSearchModels] = useState<AIModel[]>([]);
-  const [changingModel, setChangingModel] = useState(false);
 
   const [usagePopoverAnchor, setUsagePopoverAnchor] = useState<HTMLElement | null>(null);
 
@@ -240,106 +231,6 @@ export function AIAssistTab({
       ...prev,
       [groupName]: description,
     }));
-  };
-
-  // Helper to create empty stats
-  const emptyStats = (): UsageStats => ({ tokens: 0, inputCost: 0, outputCost: 0, webSearchCost: 0, totalCost: 0, requests: 0, regionsProcessed: 0 });
-
-  // Helper to get total stats
-  const getTotalStats = () => ({
-    tokens: singleRequestStats.tokens + batchRequestStats.tokens,
-    inputCost: singleRequestStats.inputCost + batchRequestStats.inputCost,
-    outputCost: singleRequestStats.outputCost + batchRequestStats.outputCost,
-    webSearchCost: (singleRequestStats.webSearchCost || 0) + (batchRequestStats.webSearchCost || 0),
-    totalCost: singleRequestStats.totalCost + batchRequestStats.totalCost,
-    requests: singleRequestStats.requests + batchRequestStats.requests,
-    regionsProcessed: (singleRequestStats.regionsProcessed || 0) + (batchRequestStats.regionsProcessed || 0),
-  });
-
-  // Calculate percentage
-  const getPercentage = (part: number, total: number): string => {
-    if (total === 0) return '0';
-    return ((part / total) * 100).toFixed(0);
-  };
-
-  // Reset all stats
-  const resetStats = () => {
-    setSingleRequestStats(emptyStats());
-    setBatchRequestStats(emptyStats());
-    setLastOperation(null);
-  };
-
-
-  // Check AI availability on mount
-  useEffect(() => {
-    const checkStatus = async () => {
-      setCheckingStatus(true);
-      try {
-        const status = await checkAIStatus();
-        setAiAvailable(status.available);
-        setAiMessage(status.message);
-        if (status.currentModel) {
-          setCurrentModel(status.currentModel);
-        }
-        if (status.availableModels) {
-          setAvailableModels(status.availableModels);
-        }
-        if (status.webSearchModel) {
-          setWebSearchModelId(status.webSearchModel);
-        }
-        if (status.webSearchModels) {
-          setWebSearchModels(status.webSearchModels);
-        }
-      } catch {
-        setAiAvailable(false);
-        setAiMessage('Failed to connect to AI service');
-      } finally {
-        setCheckingStatus(false);
-      }
-    };
-    checkStatus();
-  }, []);
-
-  // Handle model change
-  const handleModelChange = async (modelId: string) => {
-    setChangingModel(true);
-    try {
-      const result = await setAIModel(modelId);
-      setCurrentModel(result.currentModel);
-    } catch (error) {
-      console.error('Failed to change model:', error);
-    } finally {
-      setChangingModel(false);
-    }
-  };
-
-  // Handle web search model change
-  const handleWebSearchModelChange = async (modelId: string) => {
-    setChangingModel(true);
-    try {
-      const result = await setWebSearchModel(modelId);
-      setWebSearchModelId(result.webSearchModel);
-    } catch (error) {
-      console.error('Failed to change web search model:', error);
-    } finally {
-      setChangingModel(false);
-    }
-  };
-
-  // Refresh available models
-  const refreshModels = async () => {
-    setChangingModel(true);
-    try {
-      const result = await getAIModels();
-      setCurrentModel(result.currentModel);
-      setAvailableModels(result.availableModels);
-      setWebSearchModelId(result.webSearchModel);
-      setWebSearchModels(result.webSearchModels);
-    } catch (error) {
-      console.error('Failed to refresh models:', error);
-    } finally {
-      setChangingModel(false);
-    }
   };
 
   // Get all divisions (unassigned + assigned to groups)
@@ -868,10 +759,10 @@ export function AIAssistTab({
             <IconButton
               size="small"
               onClick={(e) => setUsagePopoverAnchor(e.currentTarget)}
-              color={getTotalStats().tokens > 0 ? 'primary' : 'default'}
+              color={totalStats.tokens > 0 ? 'primary' : 'default'}
             >
               <Badge
-                badgeContent={getTotalStats().requests > 0 ? getTotalStats().requests : undefined}
+                badgeContent={totalStats.requests > 0 ? totalStats.requests : undefined}
                 color="info"
                 max={99}
               >
@@ -881,157 +772,15 @@ export function AIAssistTab({
           </Tooltip>
 
           {/* Usage popover */}
-          <Popover
-            open={Boolean(usagePopoverAnchor)}
+          <AIUsagePopover
             anchorEl={usagePopoverAnchor}
             onClose={() => setUsagePopoverAnchor(null)}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-          >
-            <Paper sx={{ p: 2, minWidth: 320, maxWidth: 400 }}>
-              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                💰 AI Usage Statistics
-              </Typography>
-
-              {/* Last Operation */}
-              {lastOperation && (
-                <>
-                  <Paper variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: 'action.hover' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Last Operation
-                    </Typography>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box>
-                        <Chip
-                          label={lastOperation.type === 'batch' ? 'Batch' : 'Single'}
-                          size="small"
-                          color={lastOperation.type === 'batch' ? 'primary' : 'default'}
-                          sx={{ mr: 1 }}
-                        />
-                        <Typography variant="body2" component="span">
-                          {lastOperation.regionsCount} region{lastOperation.regionsCount > 1 ? 's' : ''}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="body2" fontWeight="bold" color="primary">
-                          ${lastOperation.totalCost.toFixed(4)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {lastOperation.tokens.toLocaleString()} tokens
-                        </Typography>
-                      </Box>
-                    </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      {lastOperation.model} • In: {getPercentage(lastOperation.inputCost, lastOperation.totalCost)}% / Out: {getPercentage(lastOperation.outputCost, lastOperation.totalCost)}%{lastOperation.webSearchCost > 0 ? ` / 🌐: ${getPercentage(lastOperation.webSearchCost, lastOperation.totalCost)}%` : ''}
-                    </Typography>
-                  </Paper>
-                </>
-              )}
-
-              <Divider sx={{ my: 1.5 }} />
-
-              {/* Stats by Type */}
-              <Typography variant="subtitle2" gutterBottom>
-                Session Totals
-              </Typography>
-
-              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                {/* Single Requests */}
-                <Paper variant="outlined" sx={{ p: 1.5, flex: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    Single Requests
-                  </Typography>
-                  <Typography variant="h6" color="text.primary">
-                    {singleRequestStats.requests}
-                  </Typography>
-                  <Typography variant="body2">
-                    {singleRequestStats.regionsProcessed || 0} region{(singleRequestStats.regionsProcessed || 0) !== 1 ? 's' : ''}
-                  </Typography>
-                  <Typography variant="body2" color="primary" fontWeight="medium">
-                    ${singleRequestStats.totalCost.toFixed(4)}
-                  </Typography>
-                  {(singleRequestStats.regionsProcessed || 0) > 0 && (
-                    <Typography variant="caption" color="success.main" fontWeight="medium">
-                      Avg: ${(singleRequestStats.totalCost / (singleRequestStats.regionsProcessed || 1)).toFixed(6)}/region
-                    </Typography>
-                  )}
-                  {singleRequestStats.totalCost > 0 && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      In: {getPercentage(singleRequestStats.inputCost, singleRequestStats.totalCost)}% / Out: {getPercentage(singleRequestStats.outputCost, singleRequestStats.totalCost)}%
-                    </Typography>
-                  )}
-                </Paper>
-
-                {/* Batch Requests */}
-                <Paper variant="outlined" sx={{ p: 1.5, flex: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    Batch Requests
-                  </Typography>
-                  <Typography variant="h6" color="text.primary">
-                    {batchRequestStats.requests}
-                  </Typography>
-                  <Typography variant="body2">
-                    {batchRequestStats.regionsProcessed || 0} region{(batchRequestStats.regionsProcessed || 0) !== 1 ? 's' : ''}
-                  </Typography>
-                  <Typography variant="body2" color="primary" fontWeight="medium">
-                    ${batchRequestStats.totalCost.toFixed(4)}
-                  </Typography>
-                  {(batchRequestStats.regionsProcessed || 0) > 0 && (
-                    <Typography variant="caption" color="success.main" fontWeight="medium">
-                      Avg: ${(batchRequestStats.totalCost / (batchRequestStats.regionsProcessed || 1)).toFixed(6)}/region
-                    </Typography>
-                  )}
-                  {batchRequestStats.totalCost > 0 && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      In: {getPercentage(batchRequestStats.inputCost, batchRequestStats.totalCost)}% / Out: {getPercentage(batchRequestStats.outputCost, batchRequestStats.totalCost)}%
-                    </Typography>
-                  )}
-                </Paper>
-              </Box>
-
-              {/* Grand Total */}
-              <Paper
-                variant="outlined"
-                sx={{ p: 1.5, bgcolor: 'primary.main', color: 'primary.contrastText' }}
-              >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Box>
-                    <Typography variant="body2">
-                      Total: {getTotalStats().requests} request{getTotalStats().requests !== 1 ? 's' : ''}, {getTotalStats().regionsProcessed || 0} region{(getTotalStats().regionsProcessed || 0) !== 1 ? 's' : ''}
-                    </Typography>
-                    <Typography variant="caption">
-                      {getTotalStats().tokens.toLocaleString()} tokens
-                    </Typography>
-                    {(getTotalStats().regionsProcessed || 0) > 0 && (
-                      <Typography variant="caption" sx={{ display: 'block' }}>
-                        Avg: ${(getTotalStats().totalCost / (getTotalStats().regionsProcessed || 1)).toFixed(6)}/region
-                      </Typography>
-                    )}
-                    {getTotalStats().totalCost > 0 && (
-                      <Typography variant="caption" sx={{ display: 'block' }}>
-                        In: {getPercentage(getTotalStats().inputCost, getTotalStats().totalCost)}% / Out: {getPercentage(getTotalStats().outputCost, getTotalStats().totalCost)}%
-                      </Typography>
-                    )}
-                  </Box>
-                  <Typography variant="h5" fontWeight="bold">
-                    ${getTotalStats().totalCost.toFixed(4)}
-                  </Typography>
-                </Box>
-              </Paper>
-
-
-              {getTotalStats().requests > 0 && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={resetStats}
-                  sx={{ mt: 1.5, width: '100%' }}
-                >
-                  Reset Statistics
-                </Button>
-              )}
-            </Paper>
-          </Popover>
+            lastOperation={lastOperation}
+            singleRequestStats={singleRequestStats}
+            batchRequestStats={batchRequestStats}
+            totalStats={totalStats}
+            onResetStats={resetStats}
+          />
       </Box>
 
       {/* Auto-assign success message */}
