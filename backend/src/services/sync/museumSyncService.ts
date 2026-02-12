@@ -11,6 +11,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { upsertExperienceRecord, upsertSingleLocation, createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
 import type {
   SyncProgress,
   WikidataArtwork,
@@ -19,95 +20,20 @@ import type {
   CollectedMuseum,
 } from './types.js';
 import { runningSyncs } from './types.js';
+import {
+  sparqlQuery,
+  extractQid,
+  parseWktPoint,
+  delay,
+  SPARQL_DELAY_MS,
+  type SparqlBinding,
+} from './wikidataUtils.js';
 // Museums use remote Wikimedia URLs, no local image storage
 
 const MUSEUM_CATEGORY_ID = 2;
 const TARGET_MUSEUM_COUNT = 115; // Overshoot: some collections lack coordinates
-const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
-const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
-const SPARQL_DELAY_MS = 1000;
-const SPARQL_TIMEOUT_MS = 130000; // Client-side abort — slightly above server-side limit
-const SPARQL_SERVER_TIMEOUT_MS = 120000; // Ask Wikidata for 120s server-side timeout
-const SPARQL_MAX_RETRIES = 4;
 
-type SparqlBinding = Record<string, { value: string } | undefined>;
-
-/**
- * Delay helper for rate limiting
- */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Execute a SPARQL query against Wikidata with retry for transient errors
- */
-async function sparqlQuery(query: string, retries: number = SPARQL_MAX_RETRIES): Promise<SparqlBinding[]> {
-  const maxAttempts = retries + 1;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), SPARQL_TIMEOUT_MS);
-
-    try {
-      const response = await fetch(WIKIDATA_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/sparql-results+json',
-          'User-Agent': USER_AGENT,
-        },
-        body: `query=${encodeURIComponent(query)}&timeout=${SPARQL_SERVER_TIMEOUT_MS}`,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        const retriable = response.status >= 500 || response.status === 429;
-        if (attempt < retries && retriable) {
-          const retryAfter = Number(response.headers.get('retry-after'));
-          const backoff = Number.isFinite(retryAfter) && retryAfter > 0
-            ? retryAfter * 1000
-            : Math.min(30000, 5000 * Math.pow(2, attempt));
-          console.warn(
-            `[Museum Sync] SPARQL ${response.status}, retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`
-          );
-          await delay(backoff);
-          continue;
-        }
-        throw new Error(`Wikidata SPARQL error ${response.status}: ${text.substring(0, 500)}`);
-      }
-
-      const data = await response.json() as {
-        results: { bindings: Record<string, { type: string; value: string }>[] };
-      };
-      return data.results.bindings;
-    } catch (error) {
-      const isAbort = error instanceof Error && error.name === 'AbortError';
-      if (attempt < retries && (isAbort || error instanceof TypeError)) {
-        const backoff = Math.min(30000, 5000 * Math.pow(2, attempt));
-        console.warn(
-          `[Museum Sync] SPARQL ${isAbort ? 'timeout' : 'network error'}, retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`
-        );
-        await delay(backoff);
-        continue;
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Wikidata SPARQL request failed: ${message}`);
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  throw new Error('SPARQL query failed after all retries');
-}
-
-/**
- * Extract QID from Wikidata entity URI (e.g., "http://www.wikidata.org/entity/Q12418" -> "Q12418")
- */
-function extractQid(uri: string): string {
-  return uri.replace('http://www.wikidata.org/entity/', '');
-}
+const LOG_PREFIX = '[Museum Sync]';
 
 /**
  * Check if a string is a valid Wikidata QID (e.g., "Q12418")
@@ -115,18 +41,6 @@ function extractQid(uri: string): string {
  */
 function isValidQid(qid: string): boolean {
   return /^Q\d+$/.test(qid);
-}
-
-/**
- * Parse WKT Point coordinates: "Point(lon lat)" -> { lat, lon }
- */
-function parseWktPoint(wkt: string): { lat: number; lon: number } | null {
-  const match = wkt.match(/Point\(([-\d.]+)\s+([-\d.]+)\)/i);
-  if (!match) return null;
-  const lon = parseFloat(match[1]);
-  const lat = parseFloat(match[2]);
-  if (isNaN(lat) || isNaN(lon)) return null;
-  return { lat, lon };
 }
 
 /**
@@ -194,7 +108,7 @@ async function fetchArtworks(
 
   // Try the full query first
   try {
-    const bindings = await sparqlQuery(buildArtworkQuery(typeQid, 10, limit));
+    const bindings = await sparqlQuery(buildArtworkQuery(typeQid, 10, limit), LOG_PREFIX);
     const artworks = parseArtworkBindings(bindings, typeName);
     console.log(`[Museum Sync] Fetched ${artworks.length} ${typeName}s from Wikidata`);
     return artworks;
@@ -215,7 +129,7 @@ async function fetchArtworks(
     try {
       await delay(SPARQL_DELAY_MS * 2); // Extra delay between fallback queries
       progress.statusMessage = `Fetching ${typeName}s (fallback, sitelinks>${range.min})...`;
-      const bindings = await sparqlQuery(buildArtworkQuery(typeQid, range.min, range.limit), 2);
+      const bindings = await sparqlQuery(buildArtworkQuery(typeQid, range.min, range.limit), LOG_PREFIX, 2);
       successCount++;
       for (const b of bindings) {
         const key = b.artwork?.value;
@@ -263,7 +177,7 @@ async function fetchMuseumDetails(qids: string[]): Promise<Map<string, WikidataM
       }
     `;
 
-    const bindings = await sparqlQuery(query);
+    const bindings = await sparqlQuery(query, LOG_PREFIX);
 
     // Deduplicate: first row per QID wins (Map.set skips if already present)
     for (const b of bindings) {
@@ -320,7 +234,7 @@ async function resolveDepartments(
       }
     `;
 
-    const bindings = await sparqlQuery(query);
+    const bindings = await sparqlQuery(query, LOG_PREFIX);
 
     for (const b of bindings) {
       if (!b.collection || !b.coord) continue;
@@ -365,7 +279,7 @@ async function resolveDepartments(
         }
       `;
 
-      const bindings = await sparqlQuery(query);
+      const bindings = await sparqlQuery(query, LOG_PREFIX);
 
       for (const b of bindings) {
         if (!b.collection || !b.coord) continue;
@@ -414,61 +328,24 @@ async function upsertMuseumExperience(
   // Store remote Wikimedia URL directly (thumbnailing handled by frontend)
   const imageUrl = details.imageUrl || null;
 
-  const result = await pool.query(
-    `INSERT INTO experiences (
-      category_id, external_id, name, name_local, description, short_description,
-      category, tags, location, country_codes, country_names, image_url, metadata,
-      created_at, updated_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8,
-      ST_SetSRID(ST_MakePoint($9, $10), 4326),
-      $11, $12, $13, $14, NOW(), NOW()
-    )
-    ON CONFLICT (category_id, external_id) DO UPDATE SET
-      name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
-      name_local = CASE WHEN experiences.curated_fields ? 'name_local' THEN experiences.name_local ELSE EXCLUDED.name_local END,
-      description = CASE WHEN experiences.curated_fields ? 'description' THEN experiences.description ELSE EXCLUDED.description END,
-      short_description = CASE WHEN experiences.curated_fields ? 'short_description' THEN experiences.short_description ELSE EXCLUDED.short_description END,
-      category = CASE WHEN experiences.curated_fields ? 'category' THEN experiences.category ELSE EXCLUDED.category END,
-      tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
-      location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location ELSE EXCLUDED.location END,
-      country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
-      country_names = CASE WHEN experiences.curated_fields ? 'country_names' THEN experiences.country_names ELSE EXCLUDED.country_names END,
-      image_url = CASE WHEN experiences.curated_fields ? 'image_url' THEN experiences.image_url ELSE EXCLUDED.image_url END,
-      metadata = CASE WHEN experiences.curated_fields ? 'metadata' THEN experiences.metadata ELSE EXCLUDED.metadata END,
-      updated_at = NOW()
-    RETURNING id, (xmax = 0) AS inserted`,
-    [
-      MUSEUM_CATEGORY_ID,
-      museum.qid,
-      details.museumLabel,
-      JSON.stringify({ en: details.museumLabel }),
-      details.description,
-      null, // short_description
-      'cultural',
-      JSON.stringify(['museum']),
-      details.lon, // ST_MakePoint(lon, lat)
-      details.lat,
-      details.countryLabel ? [] : [],
-      details.countryLabel ? [details.countryLabel] : [],
-      imageUrl,
-      JSON.stringify(metadata),
-    ]
-  );
+  const { experienceId, isCreated } = await upsertExperienceRecord({
+    categoryId: MUSEUM_CATEGORY_ID,
+    externalId: museum.qid,
+    name: details.museumLabel,
+    nameLocal: { en: details.museumLabel },
+    description: details.description,
+    shortDescription: null,
+    category: 'cultural',
+    tags: ['museum'],
+    lon: details.lon!,
+    lat: details.lat!,
+    countryCodes: details.countryLabel ? [] : [],
+    countryNames: details.countryLabel ? [details.countryLabel] : [],
+    imageUrl,
+    metadata,
+  });
 
-  const experienceId = result.rows[0].id;
-  const isCreated = result.rows[0].inserted;
-
-  // Upsert single location for the museum
-  await pool.query(
-    `DELETE FROM experience_locations WHERE experience_id = $1`,
-    [experienceId]
-  );
-  await pool.query(
-    `INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location)
-     VALUES ($1, NULL, $2, 1, ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
-    [experienceId, museum.qid, details.lon, details.lat]
-  );
+  await upsertSingleLocation(experienceId, museum.qid, details.lon!, details.lat!);
 
   return { experienceId, isCreated };
 }
@@ -522,113 +399,24 @@ async function upsertMuseumTreasures(
 }
 
 /**
- * Create a sync log entry
- */
-async function createSyncLog(triggeredBy: number | null): Promise<number> {
-  const result = await pool.query(
-    `INSERT INTO experience_sync_logs (category_id, triggered_by, status)
-     VALUES ($1, $2, 'running')
-     RETURNING id`,
-    [MUSEUM_CATEGORY_ID, triggeredBy]
-  );
-  return result.rows[0].id;
-}
-
-/**
- * Update sync log with final status
- */
-async function updateSyncLog(
-  logId: number,
-  status: string,
-  stats: { fetched: number; created: number; updated: number; errors: number },
-  errorDetails?: unknown[]
-): Promise<void> {
-  await pool.query(
-    `UPDATE experience_sync_logs SET
-      completed_at = NOW(),
-      status = $2,
-      total_fetched = $3,
-      total_created = $4,
-      total_updated = $5,
-      total_errors = $6,
-      error_details = $7
-     WHERE id = $1`,
-    [logId, status, stats.fetched, stats.created, stats.updated, stats.errors,
-     errorDetails ? JSON.stringify(errorDetails) : null]
-  );
-
-  await pool.query(
-    `UPDATE experience_categories SET
-      last_sync_at = NOW(),
-      last_sync_status = $2,
-      last_sync_error = $3
-     WHERE id = $1`,
-    [MUSEUM_CATEGORY_ID, status, status === 'failed' ? 'See sync log for details' : null]
-  );
-}
-
-/**
- * Delete all museum data (for force sync)
+ * Delete all museum data (for force sync).
+ * Museums need extra treasure cleanup before the standard cascade.
  */
 async function cleanupMuseumData(progress: SyncProgress): Promise<void> {
   progress.statusMessage = 'Cleaning up existing museum data...';
 
-  // Delete in correct order due to foreign key constraints
-  // Delete treasure links and orphaned treasures
+  // Museum-specific: delete treasure links and orphaned treasures first
   await pool.query(`
     DELETE FROM experience_treasures
     WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
   `, [MUSEUM_CATEGORY_ID]);
-
-  // Delete orphaned treasures (not linked to any experience)
   await pool.query(`
     DELETE FROM treasures
     WHERE id NOT IN (SELECT DISTINCT treasure_id FROM experience_treasures)
   `);
 
-  await pool.query(`
-    DELETE FROM user_visited_locations
-    WHERE location_id IN (
-      SELECT el.id FROM experience_locations el
-      JOIN experiences e ON el.experience_id = e.id
-      WHERE e.category_id = $1
-    )
-  `, [MUSEUM_CATEGORY_ID]);
-
-  await pool.query(`
-    DELETE FROM user_visited_experiences
-    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [MUSEUM_CATEGORY_ID]);
-
-  await pool.query(`
-    DELETE FROM experience_location_regions
-    WHERE assignment_type = 'auto'
-      AND location_id IN (
-        SELECT el.id FROM experience_locations el
-        JOIN experiences e ON el.experience_id = e.id
-        WHERE e.category_id = $1
-      )
-  `, [MUSEUM_CATEGORY_ID]);
-
-  await pool.query(`
-    DELETE FROM experience_regions
-    WHERE assignment_type = 'auto'
-      AND experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [MUSEUM_CATEGORY_ID]);
-
-  await pool.query(`
-    DELETE FROM experience_locations
-    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [MUSEUM_CATEGORY_ID]);
-
-  const result = await pool.query(`
-    DELETE FROM experiences WHERE category_id = $1
-  `, [MUSEUM_CATEGORY_ID]);
-
-  // No need to clear images from disk — museums use remote Wikimedia URLs
-
-  console.log(`[Museum Sync] Cleaned up ${result.rowCount} existing museums`);
-  progress.statusMessage = `Cleaned up ${result.rowCount} existing museums`;
+  // Standard cascade for the rest
+  await cleanupCategoryData(MUSEUM_CATEGORY_ID, LOG_PREFIX, progress);
 }
 
 /**
@@ -659,7 +447,7 @@ export async function syncMuseums(triggeredBy: number | null, force: boolean = f
   const errorDetails: { externalId: string; error: string }[] = [];
 
   try {
-    progress.logId = await createSyncLog(triggeredBy);
+    progress.logId = await createSyncLog(MUSEUM_CATEGORY_ID, triggeredBy);
     console.log(`[Museum Sync] Started sync (log ID: ${progress.logId})${force ? ' [FORCE MODE]' : ''}`);
 
     if (force) {
@@ -804,7 +592,7 @@ export async function syncMuseums(triggeredBy: number | null, force: boolean = f
     progress.status = 'complete';
     progress.statusMessage = `Complete: ${progress.created} created, ${progress.updated} updated, ${progress.errors} errors`;
 
-    await updateSyncLog(progress.logId, finalStatus, {
+    await updateSyncLog(MUSEUM_CATEGORY_ID, progress.logId, finalStatus, {
       fetched: allArtworks.length,
       created: progress.created,
       updated: progress.updated,
@@ -818,7 +606,7 @@ export async function syncMuseums(triggeredBy: number | null, force: boolean = f
     progress.statusMessage = errorMsg;
 
     if (progress.logId) {
-      await updateSyncLog(progress.logId, progress.status, {
+      await updateSyncLog(MUSEUM_CATEGORY_ID, progress.logId, progress.status, {
         fetched: progress.progress,
         created: progress.created,
         updated: progress.updated,

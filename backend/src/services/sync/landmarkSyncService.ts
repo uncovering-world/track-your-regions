@@ -6,97 +6,23 @@
  * No grouping, no treasures — simpler than museums.
  */
 
-import { pool } from '../../db/index.js';
+import { upsertExperienceRecord, upsertSingleLocation, createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
 import { runningSyncs } from './types.js';
+import {
+  sparqlQuery,
+  extractQid,
+  parseWktPoint,
+  delay,
+  SPARQL_DELAY_MS,
+  SPARQL_MAX_RETRIES,
+  type SparqlBinding,
+} from './wikidataUtils.js';
 
 const LANDMARK_CATEGORY_ID = 3;
-const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
-const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
-const SPARQL_DELAY_MS = 1000;
-const SPARQL_TIMEOUT_MS = 130000; // Client-side abort — slightly above server-side limit
-const SPARQL_SERVER_TIMEOUT_MS = 120000; // Ask Wikidata for 120s server-side timeout
-const SPARQL_MAX_RETRIES = 4;
 const TARGET_COUNT = 200;
 
-type SparqlBinding = Record<string, { value: string } | undefined>;
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function sparqlQuery(query: string, retries: number = 2): Promise<SparqlBinding[]> {
-  const maxAttempts = retries + 1;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), SPARQL_TIMEOUT_MS);
-
-    try {
-      const response = await fetch(WIKIDATA_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/sparql-results+json',
-          'User-Agent': USER_AGENT,
-        },
-        body: `query=${encodeURIComponent(query)}&timeout=${SPARQL_SERVER_TIMEOUT_MS}`,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        const retriable = response.status >= 500 || response.status === 429;
-        if (attempt < retries && retriable) {
-          const retryAfter = Number(response.headers.get('retry-after'));
-          const backoff = Number.isFinite(retryAfter) && retryAfter > 0
-            ? retryAfter * 1000
-            : Math.min(30000, 5000 * Math.pow(2, attempt));
-          console.warn(
-            `[Landmark Sync] SPARQL ${response.status}, retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`
-          );
-          await delay(backoff);
-          continue;
-        }
-        throw new Error(`Wikidata SPARQL error ${response.status}: ${text.substring(0, 500)}`);
-      }
-
-      const data = await response.json() as {
-        results: { bindings: Record<string, { type: string; value: string }>[] };
-      };
-      return data.results.bindings;
-    } catch (error) {
-      const isAbort = error instanceof Error && error.name === 'AbortError';
-      if (attempt < retries && (isAbort || error instanceof TypeError)) {
-        const backoff = Math.min(30000, 5000 * Math.pow(2, attempt));
-        console.warn(
-          `[Landmark Sync] SPARQL ${isAbort ? 'timeout' : 'network error'}, retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`
-        );
-        await delay(backoff);
-        continue;
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Wikidata SPARQL request failed: ${message}`);
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  throw new Error('SPARQL query failed after all retries');
-}
-
-function extractQid(uri: string): string {
-  return uri.replace('http://www.wikidata.org/entity/', '');
-}
-
-function parseWktPoint(wkt: string): { lat: number; lon: number } | null {
-  const match = wkt.match(/Point\(([-\d.]+)\s+([-\d.]+)\)/i);
-  if (!match) return null;
-  const lon = parseFloat(match[1]);
-  const lat = parseFloat(match[2]);
-  if (isNaN(lat) || isNaN(lon)) return null;
-  return { lat, lon };
-}
+const LOG_PREFIX = '[Landmark Sync]';
 
 function bindingsToLandmarks(bindings: SparqlBinding[], type: 'sculpture' | 'monument'): WikidataLandmark[] {
   const landmarks: WikidataLandmark[] = [];
@@ -153,7 +79,7 @@ async function fetchSculptures(progress: SyncProgress): Promise<WikidataLandmark
     LIMIT 300
   `;
 
-  const bindings = await sparqlQuery(query, SPARQL_MAX_RETRIES);
+  const bindings = await sparqlQuery(query, LOG_PREFIX, SPARQL_MAX_RETRIES);
   const landmarks = bindingsToLandmarks(bindings, 'sculpture');
 
   console.log(`[Landmark Sync] Fetched ${landmarks.length} outdoor sculptures from Wikidata`);
@@ -188,7 +114,7 @@ async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[
   `;
 
   try {
-    const bindings = await sparqlQuery(queryPrimary, SPARQL_MAX_RETRIES);
+    const bindings = await sparqlQuery(queryPrimary, LOG_PREFIX, SPARQL_MAX_RETRIES);
     const landmarks = bindingsToLandmarks(bindings, 'monument');
     console.log(`[Landmark Sync] Fetched ${landmarks.length} monuments from Wikidata`);
     return landmarks;
@@ -221,7 +147,7 @@ async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[
       `;
 
       try {
-        const bindings = await sparqlQuery(fallbackQuery, 2);
+        const bindings = await sparqlQuery(fallbackQuery, LOG_PREFIX, 2);
         successfulFallbackQueries++;
         for (const b of bindings) {
           const key = b.item?.value;
@@ -266,153 +192,28 @@ async function upsertLandmarkExperience(
 
   const imageUrl = landmark.imageUrl || null;
 
-  const category = landmark.type;
-  const tags = JSON.stringify(['outdoor', landmark.type]);
+  const { experienceId, isCreated } = await upsertExperienceRecord({
+    categoryId: LANDMARK_CATEGORY_ID,
+    externalId: landmark.qid,
+    name: landmark.label,
+    nameLocal: { en: landmark.label },
+    description: landmark.description,
+    shortDescription: null,
+    category: landmark.type,
+    tags: ['outdoor', landmark.type],
+    lon: landmark.lon,
+    lat: landmark.lat,
+    countryCodes: [],
+    countryNames: landmark.countryLabel ? [landmark.countryLabel] : [],
+    imageUrl,
+    metadata,
+  });
 
-  const result = await pool.query(
-    `INSERT INTO experiences (
-      category_id, external_id, name, name_local, description, short_description,
-      category, tags, location, country_codes, country_names, image_url, metadata,
-      created_at, updated_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8,
-      ST_SetSRID(ST_MakePoint($9, $10), 4326),
-      $11, $12, $13, $14, NOW(), NOW()
-    )
-    ON CONFLICT (category_id, external_id) DO UPDATE SET
-      name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
-      name_local = CASE WHEN experiences.curated_fields ? 'name_local' THEN experiences.name_local ELSE EXCLUDED.name_local END,
-      description = CASE WHEN experiences.curated_fields ? 'description' THEN experiences.description ELSE EXCLUDED.description END,
-      short_description = CASE WHEN experiences.curated_fields ? 'short_description' THEN experiences.short_description ELSE EXCLUDED.short_description END,
-      category = CASE WHEN experiences.curated_fields ? 'category' THEN experiences.category ELSE EXCLUDED.category END,
-      tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
-      location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location ELSE EXCLUDED.location END,
-      country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
-      country_names = CASE WHEN experiences.curated_fields ? 'country_names' THEN experiences.country_names ELSE EXCLUDED.country_names END,
-      image_url = CASE WHEN experiences.curated_fields ? 'image_url' THEN experiences.image_url ELSE EXCLUDED.image_url END,
-      metadata = CASE WHEN experiences.curated_fields ? 'metadata' THEN experiences.metadata ELSE EXCLUDED.metadata END,
-      updated_at = NOW()
-    RETURNING id, (xmax = 0) AS inserted`,
-    [
-      LANDMARK_CATEGORY_ID,
-      landmark.qid,
-      landmark.label,
-      JSON.stringify({ en: landmark.label }),
-      landmark.description,
-      null,
-      category,
-      tags,
-      landmark.lon,
-      landmark.lat,
-      [],
-      landmark.countryLabel ? [landmark.countryLabel] : [],
-      imageUrl,
-      JSON.stringify(metadata),
-    ]
-  );
-
-  const experienceId = result.rows[0].id;
-  const isCreated = result.rows[0].inserted;
-
-  // Upsert single location
-  await pool.query(
-    `DELETE FROM experience_locations WHERE experience_id = $1`,
-    [experienceId]
-  );
-  await pool.query(
-    `INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location)
-     VALUES ($1, NULL, $2, 1, ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
-    [experienceId, landmark.qid, landmark.lon, landmark.lat]
-  );
+  await upsertSingleLocation(experienceId, landmark.qid, landmark.lon, landmark.lat);
 
   return { experienceId, isCreated };
 }
 
-async function createSyncLog(triggeredBy: number | null): Promise<number> {
-  const result = await pool.query(
-    `INSERT INTO experience_sync_logs (category_id, triggered_by, status)
-     VALUES ($1, $2, 'running')
-     RETURNING id`,
-    [LANDMARK_CATEGORY_ID, triggeredBy]
-  );
-  return result.rows[0].id;
-}
-
-async function updateSyncLog(
-  logId: number,
-  status: string,
-  stats: { fetched: number; created: number; updated: number; errors: number },
-  errorDetails?: unknown[]
-): Promise<void> {
-  await pool.query(
-    `UPDATE experience_sync_logs SET
-      completed_at = NOW(),
-      status = $2,
-      total_fetched = $3,
-      total_created = $4,
-      total_updated = $5,
-      total_errors = $6,
-      error_details = $7
-     WHERE id = $1`,
-    [logId, status, stats.fetched, stats.created, stats.updated, stats.errors,
-     errorDetails ? JSON.stringify(errorDetails) : null]
-  );
-
-  await pool.query(
-    `UPDATE experience_categories SET
-      last_sync_at = NOW(),
-      last_sync_status = $2,
-      last_sync_error = $3
-     WHERE id = $1`,
-    [LANDMARK_CATEGORY_ID, status, status === 'failed' ? 'See sync log for details' : null]
-  );
-}
-
-async function cleanupLandmarkData(progress: SyncProgress): Promise<void> {
-  progress.statusMessage = 'Cleaning up existing landmark data...';
-
-  await pool.query(`
-    DELETE FROM user_visited_locations
-    WHERE location_id IN (
-      SELECT el.id FROM experience_locations el
-      JOIN experiences e ON el.experience_id = e.id
-      WHERE e.category_id = $1
-    )
-  `, [LANDMARK_CATEGORY_ID]);
-
-  await pool.query(`
-    DELETE FROM user_visited_experiences
-    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [LANDMARK_CATEGORY_ID]);
-
-  await pool.query(`
-    DELETE FROM experience_location_regions
-    WHERE assignment_type = 'auto'
-      AND location_id IN (
-        SELECT el.id FROM experience_locations el
-        JOIN experiences e ON el.experience_id = e.id
-        WHERE e.category_id = $1
-      )
-  `, [LANDMARK_CATEGORY_ID]);
-
-  await pool.query(`
-    DELETE FROM experience_regions
-    WHERE assignment_type = 'auto'
-      AND experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [LANDMARK_CATEGORY_ID]);
-
-  await pool.query(`
-    DELETE FROM experience_locations
-    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [LANDMARK_CATEGORY_ID]);
-
-  const result = await pool.query(`
-    DELETE FROM experiences WHERE category_id = $1
-  `, [LANDMARK_CATEGORY_ID]);
-
-  console.log(`[Landmark Sync] Cleaned up ${result.rowCount} existing landmarks`);
-  progress.statusMessage = `Cleaned up ${result.rowCount} existing landmarks`;
-}
 
 /**
  * Main sync function — fetches outdoor sculptures and monuments from Wikidata
@@ -440,11 +241,12 @@ export async function syncLandmarks(triggeredBy: number | null, force: boolean =
   const errorDetails: { externalId: string; error: string }[] = [];
 
   try {
-    progress.logId = await createSyncLog(triggeredBy);
+    progress.logId = await createSyncLog(LANDMARK_CATEGORY_ID, triggeredBy);
     console.log(`[Landmark Sync] Started sync (log ID: ${progress.logId})${force ? ' [FORCE MODE]' : ''}`);
 
     if (force) {
-      await cleanupLandmarkData(progress);
+      progress.statusMessage = 'Cleaning up existing landmark data...';
+      await cleanupCategoryData(LANDMARK_CATEGORY_ID, LOG_PREFIX, progress);
     }
 
     // Phase 1-2: Fetch source datasets (continue if one source fails)
@@ -548,7 +350,7 @@ export async function syncLandmarks(triggeredBy: number | null, force: boolean =
     progress.status = 'complete';
     progress.statusMessage = `Complete: ${progress.created} created, ${progress.updated} updated, ${progress.errors} errors`;
 
-    await updateSyncLog(progress.logId, finalStatus, {
+    await updateSyncLog(LANDMARK_CATEGORY_ID, progress.logId, finalStatus, {
       fetched: allLandmarks.length,
       created: progress.created,
       updated: progress.updated,
@@ -562,7 +364,7 @@ export async function syncLandmarks(triggeredBy: number | null, force: boolean =
     progress.statusMessage = errorMsg;
 
     if (progress.logId) {
-      await updateSyncLog(progress.logId, progress.status, {
+      await updateSyncLog(LANDMARK_CATEGORY_ID, progress.logId, progress.status, {
         fetched: progress.progress,
         created: progress.created,
         updated: progress.updated,

@@ -6,6 +6,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { upsertExperienceRecord, createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
 import type {
   SyncProgress,
   UnescoApiRecord,
@@ -276,50 +277,22 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
  * Upsert a single experience into the database
  */
 async function upsertExperience(exp: ProcessedExperience): Promise<'created' | 'updated'> {
-  const result = await pool.query(
-    `INSERT INTO experiences (
-      category_id, external_id, name, name_local, description, short_description,
-      category, tags, location, country_codes, country_names, image_url, metadata,
-      created_at, updated_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8,
-      ST_SetSRID(ST_MakePoint($9, $10), 4326),
-      $11, $12, $13, $14, NOW(), NOW()
-    )
-    ON CONFLICT (category_id, external_id) DO UPDATE SET
-      name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
-      name_local = CASE WHEN experiences.curated_fields ? 'name_local' THEN experiences.name_local ELSE EXCLUDED.name_local END,
-      description = CASE WHEN experiences.curated_fields ? 'description' THEN experiences.description ELSE EXCLUDED.description END,
-      short_description = CASE WHEN experiences.curated_fields ? 'short_description' THEN experiences.short_description ELSE EXCLUDED.short_description END,
-      category = CASE WHEN experiences.curated_fields ? 'category' THEN experiences.category ELSE EXCLUDED.category END,
-      tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
-      location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location ELSE EXCLUDED.location END,
-      country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
-      country_names = CASE WHEN experiences.curated_fields ? 'country_names' THEN experiences.country_names ELSE EXCLUDED.country_names END,
-      image_url = CASE WHEN experiences.curated_fields ? 'image_url' THEN experiences.image_url ELSE EXCLUDED.image_url END,
-      metadata = CASE WHEN experiences.curated_fields ? 'metadata' THEN experiences.metadata ELSE EXCLUDED.metadata END,
-      updated_at = NOW()
-    RETURNING id, (xmax = 0) AS inserted`,
-    [
-      exp.categoryId,
-      exp.externalId,
-      exp.name,
-      JSON.stringify(exp.nameLocal),
-      exp.description,
-      exp.shortDescription,
-      exp.category,
-      JSON.stringify(exp.tags),
-      exp.lon, // ST_MakePoint takes (lon, lat)
-      exp.lat,
-      exp.countryCodes,
-      exp.countryNames,
-      exp.imageUrl,
-      JSON.stringify(exp.metadata),
-    ]
-  );
-
-  const experienceId = result.rows[0].id;
-  const isCreated = result.rows[0].inserted;
+  const { experienceId, isCreated } = await upsertExperienceRecord({
+    categoryId: exp.categoryId,
+    externalId: exp.externalId,
+    name: exp.name,
+    nameLocal: exp.nameLocal,
+    description: exp.description,
+    shortDescription: exp.shortDescription,
+    category: exp.category,
+    tags: exp.tags,
+    lon: exp.lon,
+    lat: exp.lat,
+    countryCodes: exp.countryCodes,
+    countryNames: exp.countryNames,
+    imageUrl: exp.imageUrl,
+    metadata: exp.metadata,
+  });
 
   // Upsert locations
   await upsertExperienceLocations(experienceId, exp);
@@ -371,119 +344,6 @@ async function upsertExperienceLocations(experienceId: number, exp: ProcessedExp
   }
 }
 
-/**
- * Create a sync log entry
- */
-async function createSyncLog(triggeredBy: number | null): Promise<number> {
-  const result = await pool.query(
-    `INSERT INTO experience_sync_logs (category_id, triggered_by, status)
-     VALUES ($1, $2, 'running')
-     RETURNING id`,
-    [UNESCO_CATEGORY_ID, triggeredBy]
-  );
-  return result.rows[0].id;
-}
-
-/**
- * Update sync log with final status
- */
-async function updateSyncLog(
-  logId: number,
-  status: string,
-  stats: { fetched: number; created: number; updated: number; errors: number },
-  errorDetails?: unknown[]
-): Promise<void> {
-  await pool.query(
-    `UPDATE experience_sync_logs SET
-      completed_at = NOW(),
-      status = $2,
-      total_fetched = $3,
-      total_created = $4,
-      total_updated = $5,
-      total_errors = $6,
-      error_details = $7
-     WHERE id = $1`,
-    [
-      logId,
-      status,
-      stats.fetched,
-      stats.created,
-      stats.updated,
-      stats.errors,
-      errorDetails ? JSON.stringify(errorDetails) : null,
-    ]
-  );
-
-  // Also update the source's last sync info
-  await pool.query(
-    `UPDATE experience_categories SET
-      last_sync_at = NOW(),
-      last_sync_status = $2,
-      last_sync_error = $3
-     WHERE id = $1`,
-    [
-      UNESCO_CATEGORY_ID,
-      status,
-      status === 'failed' ? 'See sync log for details' : null,
-    ]
-  );
-}
-
-/**
- * Delete all data for UNESCO source (for force sync)
- */
-async function cleanupUnescoData(progress: SyncProgress): Promise<void> {
-  progress.statusMessage = 'Cleaning up existing data...';
-
-  // Delete in correct order due to foreign key constraints
-  // 1. Delete user visited locations for UNESCO experiences
-  await pool.query(`
-    DELETE FROM user_visited_locations
-    WHERE location_id IN (
-      SELECT el.id FROM experience_locations el
-      JOIN experiences e ON el.experience_id = e.id
-      WHERE e.category_id = $1
-    )
-  `, [UNESCO_CATEGORY_ID]);
-
-  // 2. Delete user visited experiences
-  await pool.query(`
-    DELETE FROM user_visited_experiences
-    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [UNESCO_CATEGORY_ID]);
-
-  // 3. Delete experience location regions (auto-assigned only, preserve manual curator assignments)
-  await pool.query(`
-    DELETE FROM experience_location_regions
-    WHERE assignment_type = 'auto'
-      AND location_id IN (
-        SELECT el.id FROM experience_locations el
-        JOIN experiences e ON el.experience_id = e.id
-        WHERE e.category_id = $1
-      )
-  `, [UNESCO_CATEGORY_ID]);
-
-  // 4. Delete experience regions (auto-assigned only, preserve manual curator assignments)
-  await pool.query(`
-    DELETE FROM experience_regions
-    WHERE assignment_type = 'auto'
-      AND experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [UNESCO_CATEGORY_ID]);
-
-  // 5. Delete experience locations
-  await pool.query(`
-    DELETE FROM experience_locations
-    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [UNESCO_CATEGORY_ID]);
-
-  // 6. Delete experiences
-  const result = await pool.query(`
-    DELETE FROM experiences WHERE category_id = $1
-  `, [UNESCO_CATEGORY_ID]);
-
-  console.log(`[UNESCO Sync] Cleaned up ${result.rowCount} existing experiences`);
-  progress.statusMessage = `Cleaned up ${result.rowCount} existing experiences`;
-}
 
 /**
  * Main sync function - fetches UNESCO data and upserts to database
@@ -516,12 +376,13 @@ export async function syncUnescoSites(triggeredBy: number | null, force: boolean
 
   try {
     // Create sync log entry
-    progress.logId = await createSyncLog(triggeredBy);
+    progress.logId = await createSyncLog(UNESCO_CATEGORY_ID, triggeredBy);
     console.log(`[UNESCO Sync] Started sync (log ID: ${progress.logId})${force ? ' [FORCE MODE]' : ''}`);
 
     // If force mode, clean up all existing data first
     if (force) {
-      await cleanupUnescoData(progress);
+      progress.statusMessage = 'Cleaning up existing data...';
+      await cleanupCategoryData(UNESCO_CATEGORY_ID, '[UNESCO Sync]', progress);
     }
 
     // Fetch all records from API
@@ -585,7 +446,7 @@ export async function syncUnescoSites(triggeredBy: number | null, force: boolean
     progress.status = 'complete';
     progress.statusMessage = `Complete: ${progress.created} created, ${progress.updated} updated, ${progress.errors} errors`;
 
-    await updateSyncLog(progress.logId, finalStatus, {
+    await updateSyncLog(UNESCO_CATEGORY_ID, progress.logId, finalStatus, {
       fetched: records.length,
       created: progress.created,
       updated: progress.updated,
@@ -599,7 +460,7 @@ export async function syncUnescoSites(triggeredBy: number | null, force: boolean
     progress.statusMessage = errorMsg;
 
     if (progress.logId) {
-      await updateSyncLog(progress.logId, progress.status, {
+      await updateSyncLog(UNESCO_CATEGORY_ID, progress.logId, progress.status, {
         fetched: progress.progress,
         created: progress.created,
         updated: progress.updated,
