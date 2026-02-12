@@ -70,6 +70,9 @@ deployment/
 # Playwright MCP
 .playwright-mcp/
 
+# Inbox (local scratchpad, not for version control)
+docs/inbox/
+
 # Debug screenshots
 *.png
 

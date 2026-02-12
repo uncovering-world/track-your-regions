@@ -54,6 +54,8 @@ Analyze the staged-worthy changes and group them by purpose. Each commit should 
 
 **Do NOT create a commit that mixes unrelated changes.** If changes span multiple unrelated topics, they need separate commits (and potentially separate branches — see step 2).
 
+**CRITICAL: Each branch/PR must be single-purpose.** A branch exists to deliver ONE feature, fix, or improvement. Do not sneak in unrelated changes — no matter how small — into a branch that serves a different purpose. Inbox notes, unrelated doc edits, minor refactors, or "while I'm here" fixes must go on their own branch or be left uncommitted. A PR reviewer should never see a diff that makes them ask "why is this here?"
+
 ### 5. Create commits
 
 For each atomic group, stage the specific files and commit:
