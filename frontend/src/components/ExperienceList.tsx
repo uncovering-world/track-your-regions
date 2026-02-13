@@ -19,7 +19,6 @@ import {
   ListItemIcon,
   Checkbox,
   Collapse,
-  CircularProgress,
   IconButton,
   Button,
   Chip,
@@ -72,7 +71,10 @@ function isNewExperience(createdAt?: string): boolean {
   return created > cutoff;
 }
 
-import { getCategoryPrimaryColor } from '../utils/categoryColors';
+import { getCategoryPrimaryColor, VISITED_GREEN, PARTIAL_AMBER } from '../utils/categoryColors';
+import { scrollToCenter, scrollToTop } from '../utils/scrollUtils';
+import { invalidateExperiences } from '../utils/queryInvalidation';
+import { LoadingSpinner } from './shared/LoadingSpinner';
 
 interface ExperienceGroup {
   categoryName: string;
@@ -150,7 +152,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     mutationFn: ({ experienceId, rId }: { experienceId: number; rId: number }) =>
       unrejectExperience(experienceId, rId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['experiences', 'by-region', regionId] });
+      invalidateExperiences(queryClient, { regionId });
     },
   });
 
@@ -158,8 +160,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     mutationFn: ({ experienceId, rId }: { experienceId: number; rId: number }) =>
       removeExperienceFromRegion(experienceId, rId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['experiences', 'by-region', regionId] });
-      queryClient.invalidateQueries({ queryKey: ['discover-region-counts'] });
+      invalidateExperiences(queryClient, { regionId });
     },
   });
 
@@ -227,16 +228,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       }
 
       if (element) {
-        // Calculate position to center the element in the container
-        const elementRect = element.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        const elementRelativeTop = elementRect.top - containerRect.top + container.scrollTop;
-        const scrollTarget = elementRelativeTop - (container.clientHeight / 2) + (element.offsetHeight / 2);
-
-        container.scrollTo({
-          top: Math.max(0, scrollTarget),
-          behavior: 'smooth'
-        });
+        scrollToCenter(container, element);
       }
     }
   }, [hoveredExperienceId, hoveredLocationId, hoverSource, scrollContainerRef]);
@@ -251,16 +243,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       const timeoutId = setTimeout(() => {
         const element = itemRefs.current.get(selectedExperienceId);
         if (element && container) {
-          const elementRect = element.getBoundingClientRect();
-          const containerRect = container.getBoundingClientRect();
-          const elementRelativeTop = elementRect.top - containerRect.top + container.scrollTop;
-          // Scroll to put the item at the top with a small padding
-          const scrollTarget = elementRelativeTop - 8;
-
-          container.scrollTo({
-            top: Math.max(0, scrollTarget),
-            behavior: 'smooth'
-          });
+          scrollToTop(container, element);
         }
       }, 350);
 
@@ -282,11 +265,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   };
 
   if (experiencesLoading) {
-    return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <CircularProgress size={24} />
-      </Box>
-    );
+    return <LoadingSpinner size={24} />;
   }
 
   if (activeExperiences.length === 0 && rejectedExperiences.length === 0) {
@@ -606,8 +585,8 @@ function ExperienceListItem({
               onClick={handleRootCheckboxClick}
               sx={{
                 color: color,
-                '&.Mui-checked': { color: '#10B981' },
-                '&.MuiCheckbox-indeterminate': { color: '#F59E0B' }, // Amber for partial
+                '&.Mui-checked': { color: VISITED_GREEN },
+                '&.MuiCheckbox-indeterminate': { color: PARTIAL_AMBER }, // Amber for partial
               }}
             />
             {/* Batch buttons when partial - mark all / unmark all */}
@@ -951,7 +930,7 @@ function ExperienceExpandedDetails({
                           disabled={!isInRegion}
                           onChange={() => isInRegion && onLocationVisitedToggle(loc.id, loc.isVisited)}
                           sx={{
-                            '&.Mui-checked': { color: '#10B981' },
+                            '&.Mui-checked': { color: VISITED_GREEN },
                           }}
                         />
                       ) : undefined
@@ -1158,7 +1137,7 @@ function ArtworksList({ contents, total, experienceId }: { contents: import('../
                   sx={{
                     p: 0.25,
                     flexShrink: 0,
-                    '&.Mui-checked': { color: '#10B981' },
+                    '&.Mui-checked': { color: VISITED_GREEN },
                   }}
                 />
               )}
