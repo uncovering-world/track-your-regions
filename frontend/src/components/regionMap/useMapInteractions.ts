@@ -11,6 +11,8 @@ import { fetchDivision, fetchDivisionGeometry } from '../../api';
 import { smartFitBounds } from '../../utils/mapUtils';
 import type { Region } from '../../types';
 
+const REGIONS_SOURCE_LAYER = 'regions';
+
 interface UseMapInteractionsOptions {
   mapRef: React.RefObject<MapRef | null>;
   mapLoaded: boolean;
@@ -25,6 +27,7 @@ interface UseMapInteractionsOptions {
   }>;
   sourceLayerName: string;
   viewingRegionId: 'all-leaf' | number;
+  contextLayerCount: number;
 }
 
 export function useMapInteractions({
@@ -33,6 +36,7 @@ export function useMapInteractions({
   metadataById,
   sourceLayerName,
   viewingRegionId,
+  contextLayerCount,
 }: UseMapInteractionsOptions) {
   const {
     selectedDivision,
@@ -173,30 +177,45 @@ export function useMapInteractions({
 
     const features = event.features;
     if (features && features.length > 0) {
-      const clickedFeature = features[0];
+      // Prefer main tile features (region-fill, region-hull) over context layer
+      // features when both exist at the click point. Context layers cover entire
+      // ancestor areas, so without this preference a click on a child region
+      // would match the ancestor polygon from the context layer instead.
+      const clickedFeature = features.find(f => !f.layer?.id?.startsWith('context-')) ?? features[0];
       const id = isCustomWorldView
         ? clickedFeature.properties?.region_id as number | undefined
         : clickedFeature.properties?.division_id as number | undefined;
 
       if (id) {
-        lastMapClickIdRef.current = id;
         const meta = metadataById[id];
+
+        // Detect if click came from an ancestor context layer
+        const fromContextLayer = clickedFeature.layer?.id?.startsWith('context-');
 
         console.log('[RegionMapVT] Click:', {
           id,
           meta,
           featureProperties: clickedFeature.properties,
           viewingRegionId,
+          fromContextLayer,
         });
 
         if (mapRef.current) {
           if (meta?.focusBbox) {
+            // Current-level region with known focus data — fly immediately
+            lastMapClickIdRef.current = id;
             smartFitBounds(mapRef.current, meta.focusBbox, {
               padding: 60,
               duration: 400,
               anchorPoint: meta.anchorPoint,
             });
+          } else if (fromContextLayer) {
+            // Context layer click — tile functions don't include focusBbox.
+            // Don't fly immediately from imprecise tile geometry; let the
+            // ancestors API enrich selectedRegion with proper focusBbox, which
+            // triggers the fly-to effect with accurate bounds.
           } else if (clickedFeature.geometry) {
+            lastMapClickIdRef.current = id;
             try {
               const featureGeojson: GeoJSON.FeatureCollection = {
                 type: 'FeatureCollection',
@@ -211,9 +230,13 @@ export function useMapInteractions({
         }
 
         if (isCustomWorldView && selectedWorldView) {
-          const parentRegionId = viewingRegionId === 'all-leaf'
-            ? (clickedFeature.properties?.parent_region_id ?? meta?.parentRegionId ?? null)
-            : viewingRegionId;
+          // For context layer clicks, parent comes from the feature's own parent_region_id
+          // (not viewingRegionId, which is the currently selected non-leaf region)
+          const parentRegionId = fromContextLayer
+            ? (clickedFeature.properties?.parent_region_id ?? null)
+            : (viewingRegionId === 'all-leaf'
+              ? (clickedFeature.properties?.parent_region_id ?? meta?.parentRegionId ?? null)
+              : viewingRegionId);
 
           const newRegion: Region = {
             id,
@@ -261,9 +284,13 @@ export function useMapInteractions({
 
     const features = event.features;
     if (features && features.length > 0) {
+      // Prefer main tile features over context layers (same logic as click handler).
+      // Context layers cover entire ancestor areas, so without this preference
+      // hovering a child would resolve to the ancestor's region_id.
+      const preferred = features.find(f => !f.layer?.id?.startsWith('context-')) ?? features[0];
       const id = isCustomWorldView
-        ? features[0].properties?.region_id as number | undefined
-        : features[0].properties?.division_id as number | undefined;
+        ? preferred.properties?.region_id as number | undefined
+        : preferred.properties?.division_id as number | undefined;
       setHoveredRegionId(id ?? null);
       if (mapRef.current) {
         mapRef.current.getCanvas().style.cursor = 'pointer';
@@ -282,6 +309,17 @@ export function useMapInteractions({
       mapRef.current.getCanvas().style.cursor = '';
     }
   }, [setHoveredRegionId, mapRef]);
+
+  // Clear hover when cursor leaves the map container entirely.
+  // react-map-gl's onMouseLeave only fires when leaving interactive layers,
+  // not when the cursor exits the map canvas — so hover can get stuck.
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current) return;
+    const container = mapRef.current.getMap().getContainer();
+    const onLeave = () => setHoveredRegionId(null);
+    container.addEventListener('mouseleave', onLeave);
+    return () => container.removeEventListener('mouseleave', onLeave);
+  }, [mapLoaded, setHoveredRegionId, mapRef]);
 
   // Navigate to parent
   const handleGoToParent = useCallback(async () => {
@@ -313,11 +351,35 @@ export function useMapInteractions({
     }
   }, [selectedDivision, selectedWorldView, setSelectedDivision, isCustomWorldView, selectedRegion, setSelectedRegion, regionBreadcrumbs]);
 
-  // Get hovered region name from metadata
+  // Get hovered region name from metadata, falling back to tile feature properties
+  // (for siblings not in current-level metadata)
   const hoveredRegionName = useMemo(() => {
     if (!hoveredRegionId) return null;
-    return metadataById[hoveredRegionId]?.name ?? null;
-  }, [hoveredRegionId, metadataById]);
+    if (metadataById[hoveredRegionId]?.name) return metadataById[hoveredRegionId].name;
+    // Fall back: query tile features for the name
+    if (mapRef.current) {
+      const map = mapRef.current.getMap();
+      // Check context sources, main source, and root overlay
+      const sourceIds = [
+        ...Array.from({ length: contextLayerCount }, (_, i) => `context-${i}-vt`),
+        'regions-vt',
+        'root-regions-vt',
+      ];
+      for (const sourceId of sourceIds) {
+        if (!map.getSource(sourceId)) continue;
+        const sourceLayer = sourceId === 'regions-vt' ? sourceLayerName : REGIONS_SOURCE_LAYER;
+        // Filter by promoted feature ID to avoid scanning all loaded tile features
+        const features = map.querySourceFeatures(sourceId, {
+          sourceLayer,
+          filter: ['==', ['id'], hoveredRegionId],
+        });
+        if (features.length > 0 && features[0].properties?.name) {
+          return features[0].properties.name as string;
+        }
+      }
+    }
+    return null;
+  }, [hoveredRegionId, metadataById, mapRef, mapLoaded, sourceLayerName, contextLayerCount]);
 
   const hoverPreviewImage = useMemo(() => {
     if (!hoverPreview) return null;
@@ -345,9 +407,12 @@ export function useMapInteractions({
     const layers = ['region-fill', 'region-hull'];
     if (isCustomWorldView) {
       layers.push('island-fill');
+      for (let i = 0; i < contextLayerCount; i++) {
+        layers.push(`context-${i}-fill`);
+      }
     }
     return layers;
-  }, [isCustomWorldView]);
+  }, [isCustomWorldView, contextLayerCount]);
 
   return {
     handleMapClick,
