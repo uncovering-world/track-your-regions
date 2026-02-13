@@ -11,10 +11,10 @@ import {
   Checkbox,
   FormControlLabel,
   Alert,
-  CircularProgress,
 } from '@mui/material';
 import DrawIcon from '@mui/icons-material/Draw';
 import type { AdministrativeDivision, Region } from '../../../../types';
+import { LoadingSpinner } from '../../../shared/LoadingSpinner';
 import { CustomBoundaryDialog } from '../../../CustomBoundaryDialog';
 import { fetchDivisionGeometry } from '../../../../api';
 
@@ -119,7 +119,7 @@ export function SingleDivisionCustomDialog({
         <Dialog open={!!division} onClose={handleClose} maxWidth="sm" fullWidth>
           <DialogContent>
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-              <CircularProgress />
+              <LoadingSpinner />
             </Box>
           </DialogContent>
         </Dialog>

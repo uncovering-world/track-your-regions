@@ -34,7 +34,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { getSyncLogs, getSyncLogDetails, type SyncLog } from '../../api/admin';
-import { formatDateTime } from '../../utils/dateFormat';
+import { formatDateTime, formatDuration } from '../../utils/dateFormat';
+import { LoadingSpinner } from '../shared/LoadingSpinner';
 
 export function SyncHistoryPanel() {
   const [page, setPage] = useState(0);
@@ -56,11 +57,7 @@ export function SyncHistoryPanel() {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingSpinner padding={4} />;
   }
 
   return (
@@ -148,14 +145,6 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
   };
 
 
-  const formatDuration = (start: string, end: string | null) => {
-    if (!end) return '-';
-    const ms = new Date(end).getTime() - new Date(start).getTime();
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${(ms / 60000).toFixed(1)}m`;
-  };
-
   return (
     <TableRow hover>
       <TableCell>{getStatusChip()}</TableCell>
@@ -199,9 +188,7 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
       <DialogTitle>Sync Log Details</DialogTitle>
       <DialogContent>
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-            <CircularProgress />
-          </Box>
+          <LoadingSpinner padding={4} />
         ) : log ? (
           <Box>
             <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: '1fr 1fr', mb: 3 }}>
@@ -215,13 +202,11 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Started</Typography>
-                <Typography>{new Date(log.started_at).toLocaleString()}</Typography>
+                <Typography>{formatDateTime(log.started_at)}</Typography>
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Completed</Typography>
-                <Typography>
-                  {log.completed_at ? new Date(log.completed_at).toLocaleString() : '-'}
-                </Typography>
+                <Typography>{formatDateTime(log.completed_at ?? null)}</Typography>
               </Box>
             </Box>
 

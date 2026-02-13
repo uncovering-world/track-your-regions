@@ -28,7 +28,6 @@ import {
   Select,
   MenuItem,
   Collapse,
-  CircularProgress,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import BlockIcon from '@mui/icons-material/Block';
@@ -48,6 +47,9 @@ import {
   type Experience,
   type CurationLogEntry,
 } from '../../api/experiences';
+import { formatRelativeTime } from '../../utils/dateFormat';
+import { invalidateExperiences } from '../../utils/queryInvalidation';
+import { LoadingSpinner } from './LoadingSpinner';
 
 interface CurationDialogProps {
   /** The experience to curate — null means dialog is closed */
@@ -96,8 +98,6 @@ function formatLogDetails(entry: CurationLogEntry): string | null {
 
   return null;
 }
-
-import { formatRelativeTime } from '../../utils/dateFormat';
 
 export function CurationDialog({ experience, regionId, onClose }: CurationDialogProps) {
   const queryClient = useQueryClient();
@@ -158,14 +158,10 @@ export function CurationDialog({ experience, regionId, onClose }: CurationDialog
   });
 
   const invalidateCaches = () => {
-    if (regionId) {
-      queryClient.invalidateQueries({ queryKey: ['experiences', 'by-region', regionId] });
-    }
-    queryClient.invalidateQueries({ queryKey: ['discover-experiences'] });
-    if (experience) {
-      queryClient.invalidateQueries({ queryKey: ['experience', experience.id] });
-      queryClient.invalidateQueries({ queryKey: ['curation-log', experience.id] });
-    }
+    invalidateExperiences(queryClient, {
+      regionId,
+      experienceId: experience?.id,
+    });
   };
 
   // Edit mutation
@@ -474,9 +470,7 @@ export function CurationDialog({ experience, regionId, onClose }: CurationDialog
         <Collapse in={historyOpen}>
           <Box sx={{ maxHeight: 240, overflowY: 'auto' }}>
             {logQuery.isLoading && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-                <CircularProgress size={20} />
-              </Box>
+              <LoadingSpinner size={20} padding="8px 0" />
             )}
             {logQuery.isError && (
               <Alert severity="error" sx={{ py: 0 }}>

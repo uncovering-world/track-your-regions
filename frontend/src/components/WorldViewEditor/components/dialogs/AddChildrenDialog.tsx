@@ -9,7 +9,6 @@ import {
   Typography,
   Checkbox,
   FormControlLabel,
-  CircularProgress,
   Alert,
   Paper,
   List,
@@ -21,6 +20,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { LoadingSpinner } from '../../../shared/LoadingSpinner';
 import FolderCopyIcon from '@mui/icons-material/FolderCopy';
 import type { RegionMember, Region } from '../../../../types';
 import { fetchSubdivisions, fetchDivisionUsageCounts } from '../../../../api';
@@ -132,7 +132,7 @@ export function AddChildrenDialog({
       <DialogContent>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-            <CircularProgress />
+            <LoadingSpinner />
           </Box>
         ) : childrenToAdd.length === 0 ? (
           <Alert severity="info">No children found for this division.</Alert>

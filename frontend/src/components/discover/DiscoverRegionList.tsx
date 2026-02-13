@@ -10,7 +10,6 @@ import { useRef, useMemo } from 'react';
 import {
   Box,
   Typography,
-  CircularProgress,
   Tooltip,
   IconButton,
 } from '@mui/material';
@@ -21,6 +20,8 @@ import AddIcon from '@mui/icons-material/Add';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { RegionExperienceCount, ExperienceCategory } from '../../api/experiences';
 import { getSourceColor, shortSourceName } from '../../utils/categoryColors';
+import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { EmptyState } from '../shared/EmptyState';
 
 interface DiscoverRegionListProps {
   regions: RegionExperienceCount[];
@@ -61,21 +62,11 @@ export function DiscoverRegionList({
   });
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-        <CircularProgress size={28} />
-      </Box>
-    );
+    return <LoadingSpinner size={28} padding="24px 0" />;
   }
 
   if (regions.length === 0) {
-    return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography variant="body2" color="text.secondary">
-          No regions with experiences at this level.
-        </Typography>
-      </Box>
-    );
+    return <EmptyState message="No regions with experiences at this level." />;
   }
 
   return (

@@ -15,7 +15,6 @@ import {
   LinearProgress,
   Chip,
   Alert,
-  CircularProgress,
   FormControlLabel,
   Checkbox,
 } from '@mui/material';
@@ -39,6 +38,7 @@ import {
   type SyncStatus,
 } from '../../api/admin';
 import { formatDateTime } from '../../utils/dateFormat';
+import { LoadingSpinner } from '../shared/LoadingSpinner';
 
 export function SyncPanel() {
   const queryClient = useQueryClient();
@@ -91,11 +91,7 @@ export function SyncPanel() {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingSpinner padding={4} />;
   }
 
   // Check if any source needs region assignment
