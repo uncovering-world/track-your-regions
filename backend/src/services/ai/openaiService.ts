@@ -294,6 +294,7 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
     let promptTokens = 0;
     let completionTokens = 0;
     let totalTokensUsed = 0;
+    let webSearchWasUsed = false;
 
     // Use webSearchModel when web search is enabled
     const modelToUse = shouldUseWebSearch ? webSearchModel : currentModel;
@@ -319,6 +320,7 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
         completionTokens = response.usage?.output_tokens ?? 0;
         totalTokensUsed = promptTokens + completionTokens;
 
+        webSearchWasUsed = true;
         console.log(`   🌐 Web search completed successfully`);
       } catch (webSearchError) {
         console.log(`   ⚠️ Web search failed, falling back to standard API:`, webSearchError instanceof Error ? webSearchError.message : webSearchError);
@@ -348,7 +350,6 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
     }
 
     // Capture token usage and calculate cost (including web search cost if used)
-    const webSearchWasUsed = shouldUseWebSearch && content !== null;
     const costResult = calculateCost(promptTokens, completionTokens, modelToUse, webSearchWasUsed);
 
     const usage: TokenUsage = {
@@ -513,6 +514,7 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
       let promptTokens = 0;
       let completionTokens = 0;
       let totalTokens = 0;
+      let webSearchWasUsed = false;
 
       // Use webSearchModel when web search is enabled
       const modelToUse = useWebSearch ? webSearchModel : currentModel;
@@ -533,6 +535,7 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
           completionTokens = response.usage?.output_tokens ?? 0;
           totalTokens = promptTokens + completionTokens;
 
+          webSearchWasUsed = true;
           console.log(`   🌐 Web search completed successfully`);
         } catch (webSearchError) {
           console.log(`   ⚠️ Web search failed, falling back to standard API:`, webSearchError instanceof Error ? webSearchError.message : webSearchError);
@@ -568,7 +571,6 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
       // Capture token usage for this batch and calculate cost
       const batchPromptTokens = promptTokens;
       const batchCompletionTokens = completionTokens;
-      const webSearchWasUsed = useWebSearch && content !== null;
       const batchCost = calculateCost(batchPromptTokens, batchCompletionTokens, modelToUse, webSearchWasUsed);
 
       totalUsage.promptTokens += batchPromptTokens;
@@ -687,6 +689,7 @@ Return a JSON object where keys are the exact group names and values are the des
   let promptTokens = 0;
   let completionTokens = 0;
   let totalTokensUsed = 0;
+  let webSearchWasUsed = false;
   const modelToUse = useWebSearch ? webSearchModel : currentModel;
 
   if (useWebSearch) {
@@ -704,6 +707,7 @@ Return a JSON object where keys are the exact group names and values are the des
       completionTokens = response.usage?.output_tokens ?? 0;
       totalTokensUsed = promptTokens + completionTokens;
 
+      webSearchWasUsed = true;
       console.log(`   🌐 Web search completed successfully`);
     } catch (webSearchError) {
       console.log(`   ⚠️ Web search failed, falling back to standard API:`, webSearchError instanceof Error ? webSearchError.message : webSearchError);
@@ -731,7 +735,6 @@ Return a JSON object where keys are the exact group names and values are the des
   if (!content) throw new Error('Empty response from OpenAI');
 
   // Calculate usage (including web search cost if used)
-  const webSearchWasUsed = useWebSearch && content !== null;
   const costResult = calculateCost(promptTokens, completionTokens, modelToUse, webSearchWasUsed);
 
   const usage: TokenUsage = {

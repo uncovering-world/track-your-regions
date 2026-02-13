@@ -193,7 +193,7 @@ export function HierarchySwitcher() {
       </Box>
 
       {/* World View Editor Dialog */}
-      {selectedWorldView && isCustomWorldView && (
+      {isCustomWorldView && (
         <WorldViewEditor
           open={editorOpen}
           onClose={() => {
