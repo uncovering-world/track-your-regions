@@ -9,6 +9,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TuneIcon from '@mui/icons-material/Tune';
 import BlockIcon from '@mui/icons-material/Block';
+import PlaceIcon from '@mui/icons-material/Place';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
 import type { Experience } from '../../api/experiences';
@@ -144,21 +145,36 @@ export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
 
           {/* Text content */}
           <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.25 }}>
-            <Typography
-              variant="body2"
-              sx={{
-                fontWeight: 600,
-                fontSize: '0.8rem',
-                lineHeight: 1.3,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                textDecoration: isRejected ? 'line-through' : isVisited ? 'line-through' : 'none',
-                color: isRejected ? 'error.main' : isVisited ? 'text.secondary' : 'text.primary',
-              }}
-            >
-              {experience.name}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+              <Typography
+                variant="body2"
+                noWrap
+                sx={{
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  lineHeight: 1.3,
+                  textDecoration: isRejected ? 'line-through' : isVisited ? 'line-through' : 'none',
+                  color: isRejected ? 'error.main' : isVisited ? 'text.secondary' : 'text.primary',
+                }}
+              >
+                {experience.name}
+              </Typography>
+              {(experience.location_count ?? 0) > 1 && (
+                <Chip
+                  icon={<PlaceIcon sx={{ fontSize: '0.6rem !important' }} />}
+                  label={experience.location_count}
+                  size="small"
+                  sx={{
+                    height: 16,
+                    fontSize: '0.55rem',
+                    fontWeight: 600,
+                    '& .MuiChip-label': { px: 0.5 },
+                    '& .MuiChip-icon': { ml: 0.25 },
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+            </Box>
             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
               {isRejected && (
                 <Chip
