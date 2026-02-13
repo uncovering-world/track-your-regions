@@ -46,9 +46,31 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id IN (SELECT id FROM descendant_regions)
-        ) as in_region
+        ) as in_region,
+        leaf_r.region_path
       FROM experience_locations el
       JOIN experiences e ON e.id = el.experience_id
+      LEFT JOIN LATERAL (
+        WITH RECURSIVE
+        leaf AS (
+          SELECT r.id, r.name, r.parent_region_id
+          FROM experience_location_regions elr
+          JOIN regions r ON elr.region_id = r.id
+          WHERE elr.location_id = el.id
+            AND r.is_leaf = true
+            AND r.world_view_id = (SELECT world_view_id FROM regions WHERE id = $1)
+          LIMIT 1
+        ),
+        ancestors AS (
+          SELECT id, name, parent_region_id, 0 as depth FROM leaf
+          UNION ALL
+          SELECT r.id, r.name, r.parent_region_id, a.depth + 1
+          FROM regions r
+          JOIN ancestors a ON r.id = a.parent_region_id
+        )
+        SELECT string_agg(name, ' > ' ORDER BY depth DESC) as region_path
+        FROM ancestors
+      ) leaf_r ON true
       WHERE e.id IN (
         SELECT DISTINCT er.experience_id FROM experience_regions er
         WHERE er.region_id IN (SELECT id FROM descendant_regions)
@@ -69,9 +91,31 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id = $1
-        ) as in_region
+        ) as in_region,
+        leaf_r.region_path
       FROM experience_locations el
       JOIN experiences e ON e.id = el.experience_id
+      LEFT JOIN LATERAL (
+        WITH RECURSIVE
+        leaf AS (
+          SELECT r.id, r.name, r.parent_region_id
+          FROM experience_location_regions elr
+          JOIN regions r ON elr.region_id = r.id
+          WHERE elr.location_id = el.id
+            AND r.is_leaf = true
+            AND r.world_view_id = (SELECT world_view_id FROM regions WHERE id = $1)
+          LIMIT 1
+        ),
+        ancestors AS (
+          SELECT id, name, parent_region_id, 0 as depth FROM leaf
+          UNION ALL
+          SELECT r.id, r.name, r.parent_region_id, a.depth + 1
+          FROM regions r
+          JOIN ancestors a ON r.id = a.parent_region_id
+        )
+        SELECT string_agg(name, ' > ' ORDER BY depth DESC) as region_path
+        FROM ancestors
+      ) leaf_r ON true
       JOIN experience_regions er ON er.experience_id = e.id
       WHERE er.region_id = $1
       ORDER BY el.experience_id, el.ordinal
@@ -91,6 +135,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
     latitude: number;
     created_at: string;
     in_region: boolean;
+    region_path: string | null;
   }>> = {};
 
   for (const row of result.rows) {
@@ -108,6 +153,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
       latitude: parseFloat(row.latitude),
       created_at: row.created_at,
       in_region: row.in_region,
+      region_path: row.region_path,
     });
   }
 
