@@ -62,6 +62,7 @@ import { CurationDialog } from './shared/CurationDialog';
 import { AddExperienceDialog } from './shared/AddExperienceDialog';
 
 const NEW_BADGE_DAYS = 7;
+const OUT_OF_REGION_INITIAL = 3;
 
 function isNewExperience(createdAt?: string): boolean {
   if (!createdAt) return false;
@@ -761,12 +762,49 @@ function ExperienceExpandedDetails({
       latitude: loc.latitude,
       isVisited: isLocationVisited(loc.id),
       inRegion: loc.in_region !== false,
+      regionPath: loc.region_path ?? null,
     }));
   }, [locations, isLocationVisited]);
 
+  // Split into in-region and out-of-region
+  const inRegionLocs = useMemo(
+    () => locationsWithRegionInfo.filter(l => l.inRegion),
+    [locationsWithRegionInfo],
+  );
+  const outOfRegionLocs = useMemo(
+    () => locationsWithRegionInfo.filter(l => !l.inRegion),
+    [locationsWithRegionInfo],
+  );
+  const [outOfRegionExpanded, setOutOfRegionExpanded] = useState(false);
+
+  // Compute display paths: strip common prefix segments shared by all out-of-region locations
+  const outOfRegionDisplayPaths = useMemo(() => {
+    const paths = outOfRegionLocs.map(l => l.regionPath);
+    if (paths.length <= 1) {
+      // Single location or none — show full path
+      return new Map(outOfRegionLocs.map(l => [l.id, l.regionPath]));
+    }
+    // Split into segments and find common prefix length
+    const segmented = paths.map(p => p?.split(' > ') ?? []);
+    const firstSegs = segmented[0];
+    let commonLen = 0;
+    for (let i = 0; i < firstSegs.length; i++) {
+      if (segmented.every(s => s[i] === firstSegs[i])) {
+        commonLen = i + 1;
+      } else {
+        break;
+      }
+    }
+    return new Map(outOfRegionLocs.map((l, idx) => {
+      const segs = segmented[idx];
+      const trimmed = segs.slice(commonLen).join(' > ');
+      return [l.id, trimmed || l.regionPath];
+    }));
+  }, [outOfRegionLocs]);
+
   // Count in-region locations
-  const inRegionCount = locationsWithRegionInfo.filter(l => l.inRegion).length;
-  const inRegionVisitedCount = locationsWithRegionInfo.filter(l => l.inRegion && l.isVisited).length;
+  const inRegionCount = inRegionLocs.length;
+  const inRegionVisitedCount = inRegionLocs.filter(l => l.isVisited).length;
 
   // Compute visited status for multi-location badge
   const visitedLocations = locationsWithRegionInfo.filter(l => l.isVisited).length;
@@ -894,8 +932,8 @@ function ExperienceExpandedDetails({
             sx={{ bgcolor: 'white', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
             onMouseLeave={() => onLocationHover(null)}
           >
-            {locationsWithRegionInfo.map((loc) => {
-              const isInRegion = loc.inRegion;
+            {/* In-region locations (always shown) */}
+            {inRegionLocs.map((loc) => {
               const isLocationHovered = hoveredLocationId === loc.id;
               return (
                 <Box
@@ -912,23 +950,19 @@ function ExperienceExpandedDetails({
                     dense
                     sx={{
                       py: 0.5,
-                      opacity: isInRegion ? 1 : 0.4,
-                      bgcolor: isLocationHovered
-                        ? 'primary.100'
-                        : isInRegion ? 'transparent' : 'grey.100',
-                      cursor: isInRegion ? 'pointer' : 'default',
-                      '&:hover': isInRegion ? { bgcolor: 'action.hover' } : {},
+                      bgcolor: isLocationHovered ? 'primary.100' : 'transparent',
+                      cursor: 'pointer',
+                      '&:hover': { bgcolor: 'action.hover' },
                       transition: 'background-color 0.15s ease',
                     }}
-                    onMouseEnter={() => isInRegion && onLocationHover(loc.id)}
+                    onMouseEnter={() => onLocationHover(loc.id)}
                     secondaryAction={
                       isAuthenticated && showCheckbox ? (
                         <Checkbox
                           edge="end"
                           checked={loc.isVisited}
                           size="small"
-                          disabled={!isInRegion}
-                          onChange={() => isInRegion && onLocationVisitedToggle(loc.id, loc.isVisited)}
+                          onChange={() => onLocationVisitedToggle(loc.id, loc.isVisited)}
                           sx={{
                             '&.Mui-checked': { color: VISITED_GREEN },
                           }}
@@ -939,33 +973,93 @@ function ExperienceExpandedDetails({
                     <ListItemIcon sx={{ minWidth: 28 }}>
                       <LocationIcon
                         fontSize="small"
-                        color={isLocationHovered ? 'primary' : isInRegion ? 'action' : 'disabled'}
+                        color={isLocationHovered ? 'primary' : 'action'}
                       />
                     </ListItemIcon>
                     <ListItemText
                       primary={loc.name || `Location ${loc.ordinal + 1}`}
-                      secondary={!isInRegion ? 'Outside region' : null}
                       primaryTypographyProps={{
                         variant: 'body2',
                         sx: {
                           textDecoration: loc.isVisited ? 'line-through' : 'none',
                           color: isLocationHovered
                             ? 'primary.main'
-                            : isInRegion
-                              ? (loc.isVisited ? 'text.secondary' : 'text.primary')
-                              : 'text.disabled',
+                            : loc.isVisited ? 'text.secondary' : 'text.primary',
                           fontWeight: isLocationHovered ? 600 : 400,
                         },
-                      }}
-                      secondaryTypographyProps={{
-                        variant: 'caption',
-                        sx: { fontSize: '0.65rem' },
                       }}
                     />
                   </ListItem>
                 </Box>
               );
             })}
+
+            {/* Out-of-region locations (collapsible) */}
+            {outOfRegionLocs.length > 0 && (
+              <>
+                <Box sx={{ px: 1.5, py: 0.5, bgcolor: 'grey.100', borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                    {outOfRegionLocs.length} outside region
+                  </Typography>
+                </Box>
+                {(outOfRegionExpanded ? outOfRegionLocs : outOfRegionLocs.slice(0, OUT_OF_REGION_INITIAL)).map((loc) => (
+                  <Box
+                    key={loc.id}
+                    ref={(el: HTMLDivElement | null) => {
+                      if (el) {
+                        locationRefs.current.set(loc.id, el);
+                      } else {
+                        locationRefs.current.delete(loc.id);
+                      }
+                    }}
+                  >
+                    <ListItem
+                      dense
+                      sx={{
+                        py: 0.5,
+                        opacity: 0.4,
+                        bgcolor: 'grey.100',
+                        cursor: 'default',
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 28 }}>
+                        <LocationIcon fontSize="small" color="disabled" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={loc.name || `Location ${loc.ordinal + 1}`}
+                        secondary={outOfRegionDisplayPaths.get(loc.id) || 'Outside region'}
+                        primaryTypographyProps={{
+                          variant: 'body2',
+                          sx: { color: 'text.disabled' },
+                        }}
+                        secondaryTypographyProps={{
+                          variant: 'caption',
+                          sx: { fontSize: '0.65rem' },
+                        }}
+                      />
+                    </ListItem>
+                  </Box>
+                ))}
+                {outOfRegionLocs.length > OUT_OF_REGION_INITIAL && (
+                  <Box
+                    sx={{
+                      textAlign: 'center',
+                      py: 0.5,
+                      bgcolor: 'grey.100',
+                      cursor: 'pointer',
+                      '&:hover': { bgcolor: 'grey.200' },
+                    }}
+                    onClick={() => setOutOfRegionExpanded(!outOfRegionExpanded)}
+                  >
+                    <Typography variant="caption" color="primary">
+                      {outOfRegionExpanded
+                        ? 'Show less'
+                        : `Show ${outOfRegionLocs.length - OUT_OF_REGION_INITIAL} more`}
+                    </Typography>
+                  </Box>
+                )}
+              </>
+            )}
           </List>
         </Box>
       )}
