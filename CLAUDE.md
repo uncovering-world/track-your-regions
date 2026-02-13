@@ -89,6 +89,13 @@ Reusable UI components live in `frontend/src/components/shared/`. When building 
 - `DiscoverExperienceView.tsx` has its own inline map style with glyphs URL (separate from shared `MAP_STYLE`)
 - `ExperienceMarkers.tsx` uses 3 declarative `<Source>` components (clustered markers, highlight, hover) with circle + symbol layers
 
+### Refactoring Hygiene
+When modifying code, always clean up leftovers from the change:
+- **Remove unused imports** after deleting or moving code that used them
+- **Remove unused variables** after replacing logic (e.g., old variable superseded by a new one)
+- **Update downstream checks** after adding guards — if a null guard throws/returns early, remove now-redundant null checks below it
+- **Remove redundant conditionals** in JSX after adding early returns that guarantee truthiness
+
 ## Security Standards
 
 This project follows OWASP ASVS 5.0 Level 2.
