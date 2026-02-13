@@ -6,7 +6,6 @@ import {
   ListItemIcon,
   Paper,
   Typography,
-  CircularProgress,
   Box,
   IconButton,
   Tooltip,
@@ -18,6 +17,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNavigation } from '../hooks/useNavigation';
 import { useVisitedRegions } from '../hooks/useVisitedRegions';
 import { fetchRootDivisions, fetchSubdivisions, fetchViewDivisions, fetchSubregions, fetchRootRegions } from '../api';
+import { LoadingSpinner } from './shared/LoadingSpinner';
 import type { AdministrativeDivision, Region } from '../types';
 
 export function RegionList() {
@@ -124,11 +124,7 @@ export function RegionList() {
   }, [setSelectedRegion]);
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingSpinner />;
   }
 
   // Show message if no items

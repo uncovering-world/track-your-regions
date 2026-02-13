@@ -47,7 +47,10 @@ import {
 } from '../../api/experiences';
 import { searchPlaces, suggestImageUrl } from '../../api/geocode';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
+import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LocationPicker } from './LocationPicker';
+import { LoadingSpinner } from './LoadingSpinner';
+import { EmptyState } from './EmptyState';
 
 interface AddExperienceDialogProps {
   open: boolean;
@@ -76,10 +79,7 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
   const assignMutation = useMutation({
     mutationFn: (experienceId: number) => assignExperienceToRegion(experienceId, regionId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['experiences', 'by-region', regionId] });
-      queryClient.invalidateQueries({ queryKey: ['discover-experiences'] });
-      queryClient.invalidateQueries({ queryKey: ['discover-region-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['experiences'] });
+      invalidateExperiences(queryClient, { regionId });
     },
   });
 
@@ -280,10 +280,7 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
   const createMutation = useMutation({
     mutationFn: (data: Parameters<typeof createManualExperience>[0]) => createManualExperience(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['experiences', 'by-region', regionId] });
-      queryClient.invalidateQueries({ queryKey: ['discover-experiences'] });
-      queryClient.invalidateQueries({ queryKey: ['discover-region-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['experiences'] });
+      invalidateExperiences(queryClient, { regionId });
       // Reset form state
       setNewName('');
       setNewDescription('');
@@ -569,15 +566,11 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
             />
 
             {isFetching && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-                <CircularProgress size={24} />
-              </Box>
+              <LoadingSpinner size={24} padding="8px 0" />
             )}
 
             {searchResults && !isFetching && searchResults.results.length === 0 && searchQuery.length >= 2 && (
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
-                No experiences found.
-              </Typography>
+              <EmptyState message="No experiences found." padding="8px 0" />
             )}
 
             {searchResults && searchResults.results.length > 0 && (

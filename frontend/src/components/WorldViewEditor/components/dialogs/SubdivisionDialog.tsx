@@ -10,7 +10,6 @@ import {
   TextField,
   Checkbox,
   FormControlLabel,
-  CircularProgress,
   Paper,
   List,
   ListItem,
@@ -24,6 +23,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import type { AdministrativeDivision, Region } from '../../../../types';
+import { LoadingSpinner } from '../../../shared/LoadingSpinner';
 import type { SubregionNode } from '../../types';
 import { fetchSubdivisions, fetchDivisionUsageCounts } from '../../../../api';
 
@@ -348,7 +348,7 @@ export function SubdivisionDialog({
 
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-            <CircularProgress />
+            <LoadingSpinner />
           </Box>
         ) : tree.length === 0 ? (
           <Typography color="text.secondary">No subdivisions found.</Typography>

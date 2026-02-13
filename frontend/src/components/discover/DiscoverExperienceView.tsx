@@ -34,6 +34,8 @@ import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { CurationDialog } from '../shared/CurationDialog';
 import { AddExperienceDialog } from '../shared/AddExperienceDialog';
+import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { EmptyState } from '../shared/EmptyState';
 
 const SOURCE_ID = 'experience-markers';
 const HIGHLIGHT_SOURCE_ID = 'highlight-markers';
@@ -914,15 +916,9 @@ export function DiscoverExperienceView({
           {/* Scrollable experience list */}
           <Box ref={listContainerRef} sx={{ flex: 1, overflowY: 'auto' }}>
             {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress size={24} />
-              </Box>
+              <LoadingSpinner size={24} padding="16px 0" />
             ) : filteredExperiences.length === 0 ? (
-              <Box sx={{ p: 3, textAlign: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  {search ? 'No experiences match your filter.' : 'No experiences found.'}
-                </Typography>
-              </Box>
+              <EmptyState message={search ? 'No experiences match your filter.' : 'No experiences found.'} />
             ) : (
               filteredExperiences.map((exp) => (
                 <ExperienceCard

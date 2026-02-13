@@ -16,10 +16,10 @@ import {
   IconButton,
   Tooltip,
   Alert,
-  CircularProgress,
 } from '@mui/material';
 import DrawIcon from '@mui/icons-material/Draw';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { LoadingSpinner } from '../../../shared/LoadingSpinner';
 import * as turf from '@turf/turf';
 import type { Region, RegionMember } from '../../../../types';
 import { CustomBoundaryDialog } from '../../../CustomBoundaryDialog';
@@ -217,7 +217,7 @@ export function SplitDivisionDialog({
         <DialogContent>
           {loadingGeometry ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-              <CircularProgress />
+              <LoadingSpinner />
             </Box>
           ) : (
             <>

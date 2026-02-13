@@ -22,7 +22,6 @@ import {
   FormControl,
   InputLabel,
   Alert,
-  CircularProgress,
   Tooltip,
   Dialog,
   DialogTitle,
@@ -58,6 +57,8 @@ import {
 import { fetchWorldViews } from '../../api/worldViews';
 import { searchRegions, type RegionSearchResult } from '../../api/regions';
 import type { CuratorInfo, CuratorScope, CuratorActivityEntry } from '../../api/admin';
+import { formatDateTime } from '../../utils/dateFormat';
+import { LoadingSpinner } from '../shared/LoadingSpinner';
 
 // =============================================================================
 // Main Panel
@@ -81,11 +82,7 @@ export function CuratorPanel() {
   });
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingSpinner padding="16px 0" />;
   }
 
   return (
@@ -528,9 +525,7 @@ function ActivityDialog({
       <DialogTitle>Curator Activity Log</DialogTitle>
       <DialogContent>
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-            <CircularProgress size={24} />
-          </Box>
+          <LoadingSpinner size={24} padding="12px 0" />
         ) : !data?.activity.length ? (
           <Typography color="text.secondary" sx={{ py: 2 }}>
             No curation activity recorded yet.
@@ -611,7 +606,7 @@ function ActivityRow({
         </TableCell>
         <TableCell>
           <Typography variant="caption">
-            {new Date(entry.created_at).toLocaleDateString()}
+            {formatDateTime(entry.created_at)}
           </Typography>
         </TableCell>
         <TableCell>
