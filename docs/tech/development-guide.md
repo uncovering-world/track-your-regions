@@ -298,6 +298,20 @@ When adding a new endpoint:
 - Don't create deep directory nesting. Two levels max (`components/feature/file.ts`).
 - Don't scatter extracted files across unrelated directories.
 
+## Refactoring Hygiene
+
+When modifying existing code, always clean up leftovers from the change. These are the most common sources of CodeQL quality findings:
+
+| Leftover | How it happens | Fix |
+|----------|---------------|-----|
+| **Unused imports** | You delete or move code that used a module | Remove the import |
+| **Unused variables** | You replace logic with a new approach but leave the old variable | Delete both the declaration and all assignments |
+| **Redundant null checks** | You add an early-return guard (`if (!x) return`) but leave `x !== null` checks below it | Remove the now-always-true checks |
+| **Redundant JSX conditionals** | You add an early return that guarantees a value is truthy, but leave `{value && ...}` in JSX | Simplify to just the inner expression |
+| **Always-true/false conditions** | You narrow a type upstream but a downstream comparison still tests the old broader type | Remove or simplify the condition |
+
+**Rule of thumb:** after every edit, scan the surrounding code for anything that's now dead or redundant because of your change.
+
 ## Commits and Branches
 
 ### Commit Messages
