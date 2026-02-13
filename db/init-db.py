@@ -15,7 +15,6 @@ Usage:
 """
 
 import argparse
-import math
 import os
 import sqlite3
 import sys
@@ -23,7 +22,7 @@ import time
 from datetime import timedelta
 
 import psycopg2
-from psycopg2.extras import execute_values, execute_batch
+from psycopg2.extras import execute_batch
 from dotenv import load_dotenv
 
 try:
@@ -99,7 +98,6 @@ class ProgressTracker:
 
     def __init__(self, total_items, item_name="items"):
         self.start_time = time.perf_counter()
-        self.last_print_time = self.start_time
         self.total_items = total_items
         self.item_name = item_name
         self.current = 0

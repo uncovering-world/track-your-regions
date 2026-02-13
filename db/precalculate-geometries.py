@@ -220,7 +220,6 @@ def precalculate_all_geometries(conn, cursor, batch_size=100):
     updated = 0
     bar_width = 40
     print_interval = 0.5  # Print every 0.5 seconds
-    speed = 999  # Initialize speed high
     smoothed_speed = None  # Exponential moving average of speed
     alpha = 0.3  # Smoothing factor (higher = more weight on recent speed)
 
@@ -321,7 +320,6 @@ def precalculate_all_geometries(conn, cursor, batch_size=100):
                 else:
                     smoothed_speed = alpha * instant_speed + (1 - alpha) * smoothed_speed
 
-                speed = smoothed_speed
                 last_print_time = current_time
                 last_processed = processed
 
