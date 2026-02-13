@@ -18,6 +18,7 @@ interface UseMapFeatureStateOptions {
   sourceLayerName: string;
   tileUrl: string | null;
   viewingRegionId: 'all-leaf' | number;
+  contextLayerCount: number;
 }
 
 export function useMapFeatureState({
@@ -30,6 +31,7 @@ export function useMapFeatureState({
   sourceLayerName,
   tileUrl,
   viewingRegionId,
+  contextLayerCount,
 }: UseMapFeatureStateOptions) {
   const [tilesReady, setTilesReady] = useState(false);
   const [rootOverlayEnabled, setRootOverlayEnabled] = useState(false);
@@ -159,7 +161,13 @@ export function useMapFeatureState({
     const map = mapRef.current.getMap();
     if (!map.getSource('regions-vt')) return;
 
-    // Clear previous hover state on main source
+    // Build list of overlay source IDs (root + ancestor context layers)
+    const overlaySources = [
+      'root-regions-vt',
+      ...Array.from({ length: contextLayerCount }, (_, i) => `context-${i}-vt`),
+    ];
+
+    // Clear previous hover state on main source + overlays
     if (prevHoveredIdRef.current !== null) {
       try {
         map.setFeatureState(
@@ -169,19 +177,21 @@ export function useMapFeatureState({
       } catch {
         // Feature might not exist anymore
       }
-      if (map.getSource('root-regions-vt')) {
-        try {
-          map.setFeatureState(
-            { source: 'root-regions-vt', sourceLayer: REGIONS_SOURCE_LAYER, id: prevHoveredIdRef.current },
-            { hovered: false }
-          );
-        } catch {
-          // Feature might not exist
+      for (const overlaySource of overlaySources) {
+        if (map.getSource(overlaySource)) {
+          try {
+            map.setFeatureState(
+              { source: overlaySource, sourceLayer: REGIONS_SOURCE_LAYER, id: prevHoveredIdRef.current },
+              { hovered: false }
+            );
+          } catch {
+            // Feature might not exist
+          }
         }
       }
     }
 
-    // Set new hover state on main source (but NOT when exploring)
+    // Set new hover state on main source + overlays (but NOT when exploring)
     if (hoveredRegionId !== null && !isExploring) {
       try {
         map.setFeatureState(
@@ -191,34 +201,39 @@ export function useMapFeatureState({
       } catch {
         // Feature might not be loaded yet
       }
-      if (map.getSource('root-regions-vt')) {
-        try {
-          map.setFeatureState(
-            { source: 'root-regions-vt', sourceLayer: REGIONS_SOURCE_LAYER, id: hoveredRegionId },
-            { hovered: true }
-          );
-        } catch {
-          // Feature might not be loaded yet
+      for (const overlaySource of overlaySources) {
+        if (map.getSource(overlaySource)) {
+          try {
+            map.setFeatureState(
+              { source: overlaySource, sourceLayer: REGIONS_SOURCE_LAYER, id: hoveredRegionId },
+              { hovered: true }
+            );
+          } catch {
+            // Feature might not be loaded yet
+          }
         }
       }
       prevHoveredIdRef.current = hoveredRegionId;
     } else {
       prevHoveredIdRef.current = null;
     }
-  }, [mapLoaded, hoveredRegionId, sourceLayerName, isExploring, mapRef]);
+  }, [mapLoaded, hoveredRegionId, sourceLayerName, isExploring, contextLayerCount, mapRef]);
 
   // Hide region layers when exploring
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
     const map = mapRef.current.getMap();
-    const layerIds = ['region-hull', 'region-fill', 'region-outline', 'island-fill', 'island-outline', 'root-region-border'];
+    const layerIds = [
+      'region-hull', 'region-fill', 'island-fill', 'island-outline', 'root-region-border',
+      ...Array.from({ length: contextLayerCount }, (_, i) => [`context-${i}-fill`, `context-${i}-outline`]).flat(),
+    ];
     const visibility = isExploring ? 'none' : 'visible';
     for (const id of layerIds) {
       if (map.getLayer(id)) {
         map.setLayoutProperty(id, 'visibility', visibility);
       }
     }
-  }, [mapLoaded, isExploring, mapRef]);
+  }, [mapLoaded, isExploring, contextLayerCount, mapRef]);
 
   return { tilesReady, rootOverlayEnabled };
 }
