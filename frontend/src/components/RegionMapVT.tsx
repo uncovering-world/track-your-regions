@@ -33,11 +33,15 @@ import { useMapFeatureState } from './regionMap/useMapFeatureState';
 import { useMapInteractions } from './regionMap/useMapInteractions';
 import {
   hullFillPaint,
+  hullOutlinePaint,
   regionFillPaint,
   regionOutlinePaint,
+  contextFillPaint,
+  contextOutlinePaint,
   islandFillPaint,
   islandOutlinePaint,
   rootRegionBorderPaint,
+  type ExploringParams,
 } from './regionMap/layerStyles';
 
 // Layer source name in Martin tiles
@@ -55,6 +59,7 @@ export function RegionMapVT() {
     isCustomWorldView,
     selectedRegion,
     hoveredRegionId,
+    regionBreadcrumbs,
   } = useNavigation();
 
   // Visited regions tracking (only for custom world views)
@@ -83,12 +88,22 @@ export function RegionMapVT() {
       ? selectedRegion.id
       : (selectedRegion.parentRegionId ?? 'all-leaf' as const);
 
+  // Exploration params for outline paint styling
+  const exploringParams: ExploringParams | undefined = isExploring
+    ? { active: true, hasSubregions: selectedRegion?.hasSubregions === true }
+    : undefined;
+
   // Source layer name based on view type
   const sourceLayerName = isCustomWorldView ? REGIONS_SOURCE_LAYER : DIVISIONS_SOURCE_LAYER;
 
   // Extracted hooks
   const { metadata, metadataLoading, metadataById } = useRegionMetadata(viewingRegionId, viewingParentId);
-  const { tileUrl, islandTileUrl, rootRegionsBorderUrl } = useTileUrls(viewingRegionId, viewingParentId);
+  const { tileUrl, islandTileUrl, rootRegionsBorderUrl, contextLayers } = useTileUrls(
+    viewingRegionId,
+    viewingParentId,
+    regionBreadcrumbs.length > 0 ? regionBreadcrumbs : undefined,
+    selectedRegion?.hasSubregions === true,
+  );
 
   const { tilesReady, rootOverlayEnabled } = useMapFeatureState({
     mapRef,
@@ -100,6 +115,7 @@ export function RegionMapVT() {
     sourceLayerName,
     tileUrl,
     viewingRegionId,
+    contextLayerCount: contextLayers.length,
   });
 
   const {
@@ -118,6 +134,7 @@ export function RegionMapVT() {
     metadataById,
     sourceLayerName,
     viewingRegionId,
+    contextLayerCount: contextLayers.length,
   });
 
   const handleMapLoad = useCallback(() => {
@@ -233,6 +250,30 @@ export function RegionMapVT() {
       >
         <NavigationControl position="top-right" showCompass={false} />
 
+        {/* Ancestor context layers (dimmed ancestor-level tiles behind children) */}
+        {isCustomWorldView && contextLayers.map((layer, i) => (
+          <Source
+            key={`context-${i}:${layer.url}`}
+            id={`context-${i}-vt`}
+            type="vector"
+            tiles={[layer.url]}
+            promoteId="region_id"
+          >
+            <Layer
+              id={`context-${i}-fill`}
+              type="fill"
+              source-layer={REGIONS_SOURCE_LAYER}
+              paint={contextFillPaint(layer.highlightId)}
+            />
+            <Layer
+              id={`context-${i}-outline`}
+              type="line"
+              source-layer={REGIONS_SOURCE_LAYER}
+              paint={contextOutlinePaint(layer.highlightId)}
+            />
+          </Source>
+        ))}
+
         {/* Main regions/divisions vector tile source */}
         {tileUrl && (
           <Source
@@ -261,7 +302,14 @@ export function RegionMapVT() {
               type="line"
               source-layer={sourceLayerName}
               filter={['!=', ['get', 'using_ts_hull'], true]}
-              paint={regionOutlinePaint(selectedRegion?.id)}
+              paint={regionOutlinePaint(selectedRegion?.id, exploringParams)}
+            />
+            <Layer
+              id="hull-outline"
+              type="line"
+              source-layer={sourceLayerName}
+              filter={['==', ['get', 'using_ts_hull'], true]}
+              paint={hullOutlinePaint(selectedRegion?.id, exploringParams)}
             />
           </Source>
         )}
@@ -293,7 +341,7 @@ export function RegionMapVT() {
         {/* Root regions border overlay (for hover highlighting at root level) */}
         {rootRegionsBorderUrl && isCustomWorldView && rootOverlayEnabled && (
           <Source
-            key={rootRegionsBorderUrl}
+            key={`root-regions:${rootRegionsBorderUrl}`}
             id="root-regions-vt"
             type="vector"
             tiles={[rootRegionsBorderUrl]}
