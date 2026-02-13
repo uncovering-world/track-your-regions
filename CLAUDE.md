@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm run check              # Lint + typecheck (run before committing)
+TEST_REPORT_LOCAL=1 npm test  # Unit tests without Docker (run before committing)
 npm run security:all       # Semgrep SAST + npm audit (run before committing)
 npm run dev                # Start all services via Docker Compose
 npm run dev:backend        # Start backend only (local, no Docker)
@@ -83,12 +84,6 @@ Reusable UI components live in `frontend/src/components/shared/`, shared utiliti
 - Rejection filtering: `getExperiencesByRegion` excludes rejected items (descendant-aware for `includeChildren`), `getExperienceRegionCounts` excludes from tree counts
 - `requireCurator` middleware checks role; admins have implicit curator powers
 
-### MapLibre Gotchas
-- Symbol layers with broken glyph URLs silently stall the entire GeoJSON source rendering pipeline
-- Glyph server: `fonts.openmaptiles.org` — supports `Open Sans Regular/Bold/Semibold` only (NOT Noto Sans)
-- `DiscoverExperienceView.tsx` has its own inline map style with glyphs URL (separate from shared `MAP_STYLE`)
-- `ExperienceMarkers.tsx` uses 3 declarative `<Source>` components (clustered markers, highlight, hover) with circle + symbol layers
-
 ### Refactoring Hygiene
 When modifying code, always clean up leftovers from the change:
 - **Remove unused imports** after deleting or moving code that used them
@@ -146,3 +141,18 @@ When working on this codebase, keep docs in sync:
 - **Completing a plan** → trim the planning doc to only unimplemented ideas/improvements. Remove fully implemented sections
 - **Pure idea or concept** → add to `docs/vision/`
 - **Unsorted** → drop in `docs/inbox/`, categorize later
+
+## Required Reading by Area
+
+Before working in a specific area, read the relevant docs. Start from the area guide, drill into detail docs as needed.
+
+| Area | Start here | Details |
+|------|-----------|---------|
+| **Code conventions** (any area) | `docs/tech/development-guide.md` | Splitting patterns, commit hygiene, refactoring rules |
+| **Map rendering, tile layers, map interactions** | `docs/tech/development-guide.md` § MapLibre Gotchas | `docs/tech/maplibre-patterns.md` — overlapping layers, MVT gaps, feature IDs, paint priority, fonts |
+| **Map UI behavior** (markers, hover, selection) | `docs/tech/experience-map-ui.md` | Marker model, hover cards, context layers, exploration outlines |
+| **Shared frontend components/utils** | `docs/tech/shared-frontend-patterns.md` | Full inventory with "use this, not that" table |
+| **Experience system** | `docs/tech/experiences.md` | Sources, sync, region assignment, API |
+| **Security** | `docs/security/SECURITY.md` | `docs/security/asvs-checklist.yaml` — per-requirement status |
+| **Auth flows** | `docs/tech/authentication.md` | JWT, OAuth, tokens, email verification |
+| **Product vision** (user-facing changes) | `docs/vision/vision.md` | Role-specific capabilities, design principles |
