@@ -73,7 +73,7 @@ Everything a curator can do (implicitly, without needing explicit curator assign
 
 Experiences are the atomic units of travel engagement — anything a user can discover, learn about, or do in connection with a region. Three experience categories are live: UNESCO World Heritage Sites (~1,250), Museums (~100 top art museums), and Public Art & Monuments (~200). Plans to expand into books, films, food, festivals, wildlife, and many more categories.
 
-Users browse experiences in two views: **Map mode** (select a region, see grouped experiences below) and **Discover mode** (tree-based navigation with map + card list). Curators maintain content quality through rejection, editing, and manual creation with AI-assisted lookup.
+Users browse experiences in two views: **Map mode** (select a region, see grouped experiences below) and **Discover mode** (tree-based navigation with map + card list). Multi-location experiences (e.g. serial UNESCO nominations) show in-region locations first, with out-of-region locations collapsed behind a "Show N more" toggle and labeled with their region path (common prefix stripped for brevity). Curators maintain content quality through rejection, editing, and manual creation with AI-assisted lookup.
 
 For the complete experience vision — categories, classification, user interaction, quiz system, context layers, gamification, and implementation phases — see [`EXPERIENCES-OVERVIEW.md`](EXPERIENCES-OVERVIEW.md). For implementation details, see [`experiences.md`](../tech/experiences.md)
 
