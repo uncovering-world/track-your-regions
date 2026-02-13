@@ -157,10 +157,7 @@ components/
 │   ├── useTileUrls.ts
 │   ├── useMapFeatureState.ts
 │   └── useMapInteractions.ts
-├── shared/                   ← reusable across features
-│   ├── AddExperienceDialog.tsx
-│   ├── CurationDialog.tsx
-│   └── LocationPicker.tsx
+├── shared/                   ← reusable across features (see shared-frontend-patterns.md)
 ├── discover/                 ← Discover mode UI
 ├── WorldViewEditor/          ← admin world-view editing
 │   └── components/
@@ -234,19 +231,31 @@ Hooks in `frontend/src/hooks/` are app-wide concerns shared across many componen
 
 Shared utilities live in `frontend/src/utils/`, one module per concern:
 
-| Module | Contents |
-|--------|----------|
-| `categoryColors.ts` | Category color mapping |
-| `dateFormat.ts` | `formatRelativeTime` and date formatters |
-| `imageUrl.ts` | `toThumbnailUrl`, `extractImageUrl` |
+| Module | Purpose |
+|--------|---------|
+| `categoryColors.ts` | Category color mapping, shared color constants |
+| `dateFormat.ts` | Date/time formatting helpers |
+| `imageUrl.ts` | Thumbnail URL generation |
+| `queryInvalidation.ts` | TanStack Query cache invalidation helpers |
+| `scrollUtils.ts` | Programmatic scroll-to-element |
 | `coordinateParser.ts` | Coordinate string parsing |
 | `mapUtils.ts` | Map helper functions |
+
+For detailed exports and usage guidance, see [shared-frontend-patterns.md](shared-frontend-patterns.md).
 
 **Rules:**
 
 1. **One concern per file.** Don't create a `helpers.ts` grab bag.
 2. **Extract when used in 2+ files.** If you're about to copy-paste a utility function, extract it here first.
 3. **Co-locate tests.** `coordinateParser.test.ts` sits next to `coordinateParser.ts`.
+
+### Shared UI Patterns
+
+Before writing any inline UI pattern, check `frontend/src/components/shared/` and `frontend/src/utils/`. If a shared solution exists, use it. If you're writing something that 2+ components will need, extract it to shared before duplicating.
+
+For example: use `<LoadingSpinner />` instead of writing another centered `CircularProgress`, or `VISITED_GREEN` from `categoryColors` instead of hardcoding a hex color.
+
+The full inventory of shared components and utilities — including a "use this, not that" reference table — is in [shared-frontend-patterns.md](shared-frontend-patterns.md). Keep that doc updated when extracting new shared code.
 
 ### API Layer
 
@@ -312,6 +321,16 @@ When modifying existing code, always clean up leftovers from the change. These a
 
 **Rule of thumb:** after every edit, scan the surrounding code for anything that's now dead or redundant because of your change.
 
+## Post-Refactoring Prevention Check
+
+After completing any refactoring, verify that docs have rules **preventing the same duplication from recurring**. The goal: new code should use the shared abstraction from the start, not rediscover it years later.
+
+Ask yourself: "If someone writes new code tomorrow that needs this pattern, will the docs guide them to the shared solution?" If not, update:
+- **[shared-frontend-patterns.md](shared-frontend-patterns.md)** — add the new component/utility and a "use this, not that" row
+- **CLAUDE.md** — if the extraction changes the architectural narrative
+
+Use `/refactor-check` to automate this verification.
+
 ## Commits and Branches
 
 ### Commit Messages
@@ -368,6 +387,7 @@ Bad: one giant commit "Add batch location fetching" with all of the above mixed 
 
 - **One purpose per branch/PR.** A branch delivers ONE feature, fix, or improvement.
 - Don't sneak in unrelated changes — no "while I'm here" fixes, no inbox notes, no drive-by refactors.
+- **Never commit `docs/inbox/`** — inbox is a local scratch space, not tracked in git.
 - Branch naming: `feature/NNN-short-slug`, `fix/NNN-short-slug`, or descriptive kebab-case (`add-development-guide`).
 
 ## Security
@@ -416,13 +436,15 @@ The project has slash commands (in `.claude/commands/`) that automate common wor
 | `/security-audit` | Full OWASP ASVS 5.0 audit with report generation |
 | `/security-alerts` | Triage GitHub code scanning alerts (CodeQL, etc.) |
 | `/quality-alerts` | Triage code quality alerts |
+| `/refactor-check` | Post-refactoring prevention check — verify dev guide has rules preventing the old pattern from recurring |
 | `/issues` | Browse and work with GitHub issues |
 | `/issue-create` | Create a new GitHub issue |
 | `/issue-upload` | Batch-create issues from a markdown file |
 | `/review-dependabot` | Review Dependabot PRs and security alerts |
 
-### Typical workflow
+### Typical workflows
 
+**Feature development:**
 ```
 /feature 267          # start feature from issue
   ... implement ...
@@ -435,4 +457,14 @@ npm run check         # verify
   ... fix issues ...
 /pr-changes-amend     # fold fixes into original commits
 /pr-comments-reply    # reply to reviewers
+```
+
+**Refactoring:**
+```
+  ... refactor (extract shared components, consolidate utils, etc.) ...
+npm run check         # verify
+/security-check       # security scan
+/refactor-check       # verify dev guide prevents the old pattern from recurring
+/commit               # atomic commits + push
+/pr-create            # create PR
 ```
