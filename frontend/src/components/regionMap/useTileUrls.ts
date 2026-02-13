@@ -6,9 +6,23 @@ import { useMemo } from 'react';
 import { useNavigation } from '../../hooks/useNavigation';
 import { MARTIN_URL } from '../../api';
 
+export interface ContextLayer {
+  /** Tile URL for this ancestor's siblings (= parent's children) */
+  url: string;
+  /** Region ID to highlight as "selected" in this layer (the ancestor itself) */
+  highlightId: number;
+}
+
+interface BreadcrumbEntry {
+  id: number;
+  parentRegionId?: number | null;
+}
+
 export function useTileUrls(
   viewingRegionId: 'all-leaf' | number,
   viewingParentId: 'root' | number,
+  breadcrumbs?: BreadcrumbEntry[],
+  hasSubregions?: boolean,
 ) {
   const {
     selectedWorldView,
@@ -63,5 +77,43 @@ export function useTileUrls(
     return `${MARTIN_URL}/tile_world_view_root_regions/{z}/{x}/{y}?world_view_id=${selectedWorldViewId}&_v=${tileVersion}`;
   }, [isCustomWorldView, selectedWorldViewId, viewingRegionId, tileVersion]);
 
-  return { tileUrl, islandTileUrl, rootRegionsBorderUrl };
+  // Context layers — one per ancestor level, showing each ancestor's siblings.
+  // For non-leaf regions: all breadcrumbs (children are in main tiles, context shows ancestors).
+  // For leaf regions: breadcrumbs minus the last entry (siblings already in main tiles).
+  // Ordered root-to-leaf (outermost first, matching breadcrumb order).
+  const contextLayers = useMemo((): ContextLayer[] => {
+    if (!isCustomWorldView || !selectedWorldViewId) return [];
+    if (!breadcrumbs || breadcrumbs.length === 0) return [];
+
+    // For leaf regions, exclude the last breadcrumb (the leaf itself) —
+    // its siblings are already visible in the main tile source.
+    const crumbs = hasSubregions === true
+      ? breadcrumbs
+      : breadcrumbs.slice(0, -1);
+
+    if (crumbs.length === 0) return [];
+
+    const versionParam = `&_v=${tileVersion}`;
+    // selectedWorldViewId is guaranteed non-null by the early return above
+    const wvId = selectedWorldViewId;
+    const layers: ContextLayer[] = [];
+
+    for (const crumb of crumbs) {
+      if (crumb.parentRegionId == null) {
+        layers.push({
+          url: `${MARTIN_URL}/tile_world_view_root_regions/{z}/{x}/{y}?world_view_id=${wvId}${versionParam}`,
+          highlightId: crumb.id,
+        });
+      } else {
+        layers.push({
+          url: `${MARTIN_URL}/tile_region_subregions/{z}/{x}/{y}?parent_id=${crumb.parentRegionId}${versionParam}`,
+          highlightId: crumb.id,
+        });
+      }
+    }
+
+    return layers;
+  }, [isCustomWorldView, selectedWorldViewId, breadcrumbs, hasSubregions, tileVersion]);
+
+  return { tileUrl, islandTileUrl, rootRegionsBorderUrl, contextLayers };
 }
