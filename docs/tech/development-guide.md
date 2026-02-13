@@ -268,9 +268,25 @@ When adding a new endpoint:
 
 ### MapLibre Gotchas
 
+**Fonts and symbols:**
 - Symbol layers with broken glyph URLs silently stall the entire GeoJSON source rendering pipeline.
 - Glyph server: `fonts.openmaptiles.org` — supports `Open Sans Regular/Bold/Semibold` only (NOT Noto Sans).
 - `DiscoverExperienceView.tsx` has its own inline map style with glyphs URL (separate from shared `MAP_STYLE`) — update both when changing fonts.
+
+**Overlapping interactive layers — prefer main tiles:**
+- When multiple interactive layers overlap at the same point (e.g., ancestor context layers behind main children tiles), `event.features` returns features from ALL layers — and the first element is NOT guaranteed to be from the topmost visible layer.
+- **Apply the same fix to ALL event handlers.** If a click handler needs to prefer main tile features over context features, the hover handler needs the same logic. These share the same `event.features` source — fixing only one leaves the other broken.
+- Pattern: `const preferred = features.find(f => !f.layer?.id?.startsWith('context-')) ?? features[0]`
+
+**MVT tiles expose a subset of DB columns:**
+- Martin tile functions select specific columns — NOT everything from the table. In particular, `focus_bbox` and `anchor_point` are NOT in MVT properties (they're large and rarely needed for rendering).
+- When building state objects from tile click data, expect missing fields. Don't fly-to using imprecise tile geometry when the API can provide accurate `focusBbox` shortly after.
+- Pattern: skip immediate action for data you know is missing, let an API response enrich the state, then react to the enriched state.
+
+**Feature ID expressions:**
+- Use `['id']` (MVT feature ID), NOT `['get', 'id']` (property lookup). PostGIS `ST_AsMVT(..., 'id')` strips the `id` column from properties when used as `feature_id_name`.
+
+For the full reference with examples, see [maplibre-patterns.md](maplibre-patterns.md).
 
 ## Splitting Patterns — When and How
 

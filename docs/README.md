@@ -35,6 +35,7 @@ docs/
 | [hacking.md](tech/hacking.md) | Practical engineering guide for local debugging and safe changes |
 | [development-guide.md](tech/development-guide.md) | Code organization conventions, splitting patterns, commit hygiene |
 | [shared-frontend-patterns.md](tech/shared-frontend-patterns.md) | Shared UI components and utilities — full inventory with "use this, not that" reference |
+| [maplibre-patterns.md](tech/maplibre-patterns.md) | MapLibre + react-map-gl patterns and pitfalls — overlapping layers, MVT properties, feature IDs, fonts, paint priority |
 
 ## Tech — Planning
 
@@ -48,6 +49,8 @@ docs/
 | [e2e-fresh-db-strategy.md](tech/planning/e2e-fresh-db-strategy.md) | Full-fidelity E2E approach with fresh DB + GADM + UI-driven flows | In progress (default isolated test environment; full fresh-GADM workflow pending) |
 | [deployment.md](tech/planning/deployment.md) | Production deployment (PaaS options, DigitalOcean setup) | Planned |
 | [mobile-planning.md](tech/planning/mobile-planning.md) | Mobile app strategy (React Native vs native) | Planned |
+| [region-metadata-layers.md](tech/planning/region-metadata-layers.md) | Groupings, disputed territories, changes since visit, historical countries — overview | Planned |
+| [groupings.md](tech/planning/groupings.md) | Groupings/Tags detailed plan — data model, API, UI, seed data, phases | Planned |
 | [ENV-PLAN.md](tech/planning/ENV-PLAN.md) | Database bootstrap and current command workflow | Implemented |
 
 ## Vision

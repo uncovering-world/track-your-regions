@@ -99,9 +99,11 @@ Custom hierarchical groupings layered on top of GADM divisions. A world view mig
 
 Vector tiles served by Martin (PostGIS-native tile server). The frontend uses MapLibre GL with react-map-gl for:
 
-- Choropleth coloring of regions (visited/unvisited)
+- Choropleth coloring of regions (visited/unvisited) with clear visual hierarchy — selected, hovered, visited, and default states each have distinct fill and outline intensities
 - Drill-down navigation (click a region to see sub-regions)
+- Ancestor context layers — when drilling into a region hierarchy, all ancestor levels remain faintly visible as dimmed background layers (root siblings, parent siblings, grandparent siblings, etc.), providing full spatial orientation and clickable navigation back to any level
 - Experience markers with clustering (GeoJSON source with circle + symbol layers)
+- Region outline persists during exploration mode as a subtle geographic border, giving spatial context alongside experience markers
 - Antimeridian-aware camera positioning for regions that cross the date line
 
 ---
