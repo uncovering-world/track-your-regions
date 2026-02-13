@@ -10,7 +10,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TuneIcon from '@mui/icons-material/Tune';
 import BlockIcon from '@mui/icons-material/Block';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
-import { CATEGORY_COLORS } from '../../utils/categoryColors';
+import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
 import type { Experience } from '../../api/experiences';
 
 interface ExperienceCardProps {
@@ -134,7 +134,7 @@ export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
                   bottom: 1,
                   right: 1,
                   fontSize: 14,
-                  color: '#22c55e',
+                  color: VISITED_GREEN,
                   bgcolor: 'white',
                   borderRadius: '50%',
                 }}
@@ -278,7 +278,7 @@ export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
             </Box>
           )}
           {isVisited && (
-            <CheckCircleIcon sx={{ position: 'absolute', top: 8, right: 8, color: '#22c55e', fontSize: 28, bgcolor: 'white', borderRadius: '50%' }} />
+            <CheckCircleIcon sx={{ position: 'absolute', top: 8, right: 8, color: VISITED_GREEN, fontSize: 28, bgcolor: 'white', borderRadius: '50%' }} />
           )}
         </Box>
         <Box sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>

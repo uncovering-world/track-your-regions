@@ -46,7 +46,8 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 
-import { CATEGORY_COLORS } from '../../utils/categoryColors';
+import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
+import { EmptyState } from '../shared/EmptyState';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 const CONTENTS_COLLAPSE_THRESHOLD = 15;
@@ -535,11 +536,7 @@ function LocationsSection({
               })}
             </Box>
           ) : (
-            <Box sx={{ p: 2, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                No locations match your filter
-              </Typography>
-            </Box>
+            <EmptyState message="No locations match your filter" padding={2} />
           )}
         </Box>
       </Collapse>
@@ -701,7 +698,7 @@ function ContentsSection({
                       top: 2,
                       right: 2,
                       fontSize: 16,
-                      color: '#22c55e',
+                      color: VISITED_GREEN,
                       bgcolor: 'white',
                       borderRadius: '50%',
                     }}
