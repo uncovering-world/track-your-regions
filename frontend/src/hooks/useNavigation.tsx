@@ -157,6 +157,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, [ancestorData, selectedDivision]);
 
   // Update region breadcrumbs from ancestors query (for custom world views)
+  // Also enrich selectedRegion with full data (focusBbox, anchorPoint) from the
+  // API response — tile features don't include these, so context layer clicks
+  // create a selectedRegion without focus data. The last breadcrumb entry is
+  // the selectedRegion itself, returned by the ancestors API with full data.
   useEffect(() => {
     if (regionAncestors) {
       setRegionBreadcrumbs(prev => {
@@ -165,6 +169,18 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         }
         return regionAncestors;
       });
+      // Enrich selectedRegion with full API data if it was missing focusBbox
+      const lastAncestor = regionAncestors[regionAncestors.length - 1];
+      if (lastAncestor && selectedRegion && lastAncestor.id === selectedRegion.id) {
+        if (!selectedRegion.focusBbox && lastAncestor.focusBbox) {
+          setSelectedRegion({
+            ...selectedRegion,
+            focusBbox: lastAncestor.focusBbox,
+            anchorPoint: lastAncestor.anchorPoint,
+            hasSubregions: lastAncestor.hasSubregions,
+          });
+        }
+      }
     } else if (!selectedRegion) {
       setRegionBreadcrumbs(prev => prev.length === 0 ? prev : []);
     }
