@@ -75,7 +75,7 @@ Two triggers fire on region geometry changes: `update_region_metadata()` (area, 
 UNESCO/landmarks: download locally to `/data/images`. Museums/artworks: remote Wikimedia URLs. Thumbnails via `Special:FilePath/X.jpg?width=N` (CDN-cached sizes: 120, 250, 330, 500, 960, 1280px). Wikimedia requires proper User-Agent, 429+Retry-After handling, 1.5s delay between downloads.
 
 ### Shared Components
-Reusable UI components live in `frontend/src/components/shared/`. When building features, check shared components before creating inline implementations. If a new component could be useful elsewhere, place it in `shared/` from the start.
+Reusable UI components live in `frontend/src/components/shared/`, shared utilities in `frontend/src/utils/`. Always check these before writing inline equivalents. See `docs/tech/shared-frontend-patterns.md` for the full inventory with usage guidance.
 
 ### Curation System
 - **Shared dialogs**: `CurationDialog` (edit + reject/unreject) and `AddExperienceDialog` (search+assign / create new) in `frontend/src/components/shared/`
