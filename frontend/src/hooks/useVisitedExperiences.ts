@@ -6,6 +6,7 @@ import { useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { authFetchJson } from '../api/fetchUtils';
+import { invalidateVisitedStatus } from '../utils/queryInvalidation';
 import type { VisitedStatus, ExperienceVisitedStatusResponse } from '../api/experiences';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -52,8 +53,7 @@ export function useVisitedExperiences(categoryId?: number) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visited-experiences'] });
-      queryClient.invalidateQueries({ queryKey: ['visited-locations'] });
+      invalidateVisitedStatus(queryClient);
     },
   });
 
@@ -65,8 +65,7 @@ export function useVisitedExperiences(categoryId?: number) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visited-experiences'] });
-      queryClient.invalidateQueries({ queryKey: ['visited-locations'] });
+      invalidateVisitedStatus(queryClient);
     },
   });
 
@@ -118,9 +117,7 @@ export function useVisitedLocations(experienceId?: number) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visited-locations'] });
-      queryClient.invalidateQueries({ queryKey: ['visited-experiences'] });
-      queryClient.invalidateQueries({ queryKey: ['experience-visited-status'] });
+      invalidateVisitedStatus(queryClient);
     },
   });
 
@@ -132,9 +129,7 @@ export function useVisitedLocations(experienceId?: number) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visited-locations'] });
-      queryClient.invalidateQueries({ queryKey: ['visited-experiences'] });
-      queryClient.invalidateQueries({ queryKey: ['experience-visited-status'] });
+      invalidateVisitedStatus(queryClient);
     },
   });
 
@@ -147,9 +142,7 @@ export function useVisitedLocations(experienceId?: number) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visited-locations'] });
-      queryClient.invalidateQueries({ queryKey: ['visited-experiences'] });
-      queryClient.invalidateQueries({ queryKey: ['experience-visited-status'] });
+      invalidateVisitedStatus(queryClient);
     },
   });
 
@@ -162,9 +155,7 @@ export function useVisitedLocations(experienceId?: number) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visited-locations'] });
-      queryClient.invalidateQueries({ queryKey: ['visited-experiences'] });
-      queryClient.invalidateQueries({ queryKey: ['experience-visited-status'] });
+      invalidateVisitedStatus(queryClient);
     },
   });
 
@@ -232,9 +223,7 @@ export function useViewedTreasures(experienceId?: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['viewed-treasures'] });
-      queryClient.invalidateQueries({ queryKey: ['visited-experiences'] });
-      queryClient.invalidateQueries({ queryKey: ['visited-locations'] });
-      queryClient.invalidateQueries({ queryKey: ['experience-visited-status'] });
+      invalidateVisitedStatus(queryClient);
     },
   });
 
