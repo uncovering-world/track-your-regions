@@ -47,6 +47,7 @@ export interface ExperienceLocation {
   latitude: number;
   created_at: string;
   in_region?: boolean; // Whether this location is in the queried region
+  region_path?: string | null; // Full region path (e.g. "Europe > France > Paris") for out-of-region display
 }
 
 /**
