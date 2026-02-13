@@ -321,6 +321,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
           experienceId: m.experienceId,
           locationId: m.locationId,
           name: m.locationName || m.experience.name,
+          experienceName: m.experience.name,
           category: m.experience.category || '',
           locationCount: m.locationCount,
         },
@@ -419,7 +420,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
           // Show popup
           popup
             .setLngLat(coords)
-            .setHTML(`<strong>${feature.properties?.name || ''}</strong>`)
+            .setHTML(`<strong>${feature.properties?.experienceName || feature.properties?.name || ''}</strong>`)
             .addTo(map);
 
           // Notify React context
