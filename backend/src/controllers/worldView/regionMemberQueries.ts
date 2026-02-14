@@ -36,18 +36,18 @@ export async function getRegionMembers(req: Request, res: Response): Promise<voi
     WITH RECURSIVE division_path AS (
       -- Start with the member admin divisions
       SELECT
-        cgm.id as member_row_id,
+        rm.id as member_row_id,
         ad.id as member_id,
         ad.id as current_id,
-        COALESCE(cgm.custom_name, ad.name) as name,
+        COALESCE(rm.custom_name, ad.name) as name,
         ad.parent_id,
         ad.has_children,
-        COALESCE(cgm.custom_name, ad.name)::text as path,
+        COALESCE(rm.custom_name, ad.name)::text as path,
         1 as depth,
-        cgm.custom_geom IS NOT NULL as has_custom_geom
-      FROM region_members cgm
-      JOIN administrative_divisions ad ON cgm.division_id = ad.id
-      WHERE cgm.region_id = $1
+        rm.custom_geom IS NOT NULL as has_custom_geom
+      FROM region_members rm
+      JOIN administrative_divisions ad ON rm.division_id = ad.id
+      WHERE rm.region_id = $1
 
       UNION ALL
 
@@ -98,25 +98,25 @@ export async function getRegionMemberGeometries(req: Request, res: Response): Pr
 
   const result = await pool.query(`
     SELECT
-      cgm.id as member_row_id,
+      rm.id as member_row_id,
       ad.id as division_id,
-      COALESCE(cgm.custom_name, ad.name) as name,
+      COALESCE(rm.custom_name, ad.name) as name,
       ST_AsGeoJSON(
         ST_Simplify(
           CASE
             -- Custom cut geometries may be invalid and need normalization
-            WHEN cgm.custom_geom IS NOT NULL THEN ST_MakeValid(cgm.custom_geom)
+            WHEN rm.custom_geom IS NOT NULL THEN ST_MakeValid(rm.custom_geom)
             -- Administrative boundaries are preloaded and should not pay ST_MakeValid cost per row
             ELSE ad.geom
           END,
           0.001
         )
       )::json as geometry,
-      cgm.custom_geom IS NOT NULL as has_custom_geom
-    FROM region_members cgm
-    JOIN administrative_divisions ad ON cgm.division_id = ad.id
-    WHERE cgm.region_id = $1
-      AND (cgm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
+      rm.custom_geom IS NOT NULL as has_custom_geom
+    FROM region_members rm
+    JOIN administrative_divisions ad ON rm.division_id = ad.id
+    WHERE rm.region_id = $1
+      AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
   `, [regionId]);
 
   const features = result.rows
