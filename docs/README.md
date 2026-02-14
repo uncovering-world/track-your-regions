@@ -27,8 +27,7 @@ docs/
 | [experience-map-ui.md](tech/experience-map-ui.md) | Map Mode + Discover Mode marker layers, hover/selection sync, multi-location behavior |
 | [world-views.md](tech/world-views.md) | Custom regional hierarchies, geometry computation |
 | [custom-subdivision-map-tools.md](tech/custom-subdivision-map-tools.md) | Create Subregions map tab internals (`assign/split/cut`), geometry loading, pagination |
-| [geometry-columns.md](tech/geometry-columns.md) | LOD simplification tiers, SRID 4326 vs 3857 |
-| [hull-geometry.md](tech/hull-geometry.md) | Archipelago visualization, concave hull generation |
+| [geometry-columns.md](tech/geometry-columns.md) | Geometry system reference — lifecycle, schema, triggers, tile functions, hull generation, antimeridian handling |
 | [gadm-mapping.md](tech/gadm-mapping.md) | GADM database structure and integration |
 | [STATE-MANAGEMENT.md](tech/STATE-MANAGEMENT.md) | Frontend state: React Query, localStorage, Zustand considerations |
 | [rate-limiting.md](tech/rate-limiting.md) | Rate limiting tiers, per-endpoint strategy, adding limiters to new routes |
