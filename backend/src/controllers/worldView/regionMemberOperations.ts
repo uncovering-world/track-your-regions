@@ -300,10 +300,10 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
 
   // Get all GADM division members (not subregions)
   const members = await pool.query(`
-    SELECT cgm.division_id, ad.name
-    FROM region_members cgm
-    JOIN administrative_divisions ad ON cgm.division_id = ad.id
-    WHERE cgm.region_id = $1
+    SELECT rm.division_id, ad.name
+    FROM region_members rm
+    JOIN administrative_divisions ad ON rm.division_id = ad.id
+    WHERE rm.region_id = $1
   `, [regionId]);
 
   if (members.rows.length === 0) {
@@ -369,13 +369,13 @@ export async function getDivisionUsageCounts(req: Request, res: Response): Promi
   // Query to count how many groups each division belongs to within this hierarchy
   const result = await pool.query(`
     SELECT
-      cgm.division_id,
-      COUNT(DISTINCT cgm.region_id) as usage_count
-    FROM region_members cgm
-    JOIN regions cg ON cgm.region_id = cg.id
+      rm.division_id,
+      COUNT(DISTINCT rm.region_id) as usage_count
+    FROM region_members rm
+    JOIN regions cg ON rm.region_id = cg.id
     WHERE cg.world_view_id = $1
-      AND cgm.division_id = ANY($2::int[])
-    GROUP BY cgm.division_id
+      AND rm.division_id = ANY($2::int[])
+    GROUP BY rm.division_id
   `, [worldViewId, ids]);
 
   const usageCounts: Record<number, number> = {};

@@ -450,10 +450,10 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
     // Find GADM division(s) with the same name that are members of the old parent
     if (oldParentId !== null) {
       const divisionMembers = await pool.query(`
-        SELECT cgm.division_id
-        FROM region_members cgm
-        JOIN administrative_divisions ad ON cgm.division_id = ad.id
-        WHERE cgm.region_id = $1 AND ad.name = $2
+        SELECT rm.division_id
+        FROM region_members rm
+        JOIN administrative_divisions ad ON rm.division_id = ad.id
+        WHERE rm.region_id = $1 AND ad.name = $2
       `, [oldParentId, regionName]);
 
       // Move these division memberships to the new parent (if there is one)

@@ -117,13 +117,13 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
     logStep('Checking complexity...');
     const complexityCheck = await client.query(`
       SELECT 
-        COALESCE(SUM(ST_NPoints(COALESCE(cgm.custom_geom, ad.geom))), 0) as member_points,
+        COALESCE(SUM(ST_NPoints(COALESCE(rm.custom_geom, ad.geom))), 0) as member_points,
         COALESCE((SELECT SUM(ST_NPoints(geom)) FROM regions WHERE parent_region_id = $1 AND geom IS NOT NULL), 0) as child_points,
         (SELECT COUNT(*) FROM regions WHERE parent_region_id = $1 AND geom IS NOT NULL) as child_count,
         (SELECT COUNT(*) FROM region_members WHERE region_id = $1) as member_count
-      FROM region_members cgm
-      LEFT JOIN administrative_divisions ad ON cgm.division_id = ad.id
-      WHERE cgm.region_id = $1
+      FROM region_members rm
+      LEFT JOIN administrative_divisions ad ON rm.division_id = ad.id
+      WHERE rm.region_id = $1
     `, [regionId]);
 
     const memberPoints = parseInt(complexityCheck.rows[0]?.member_points || '0');
@@ -153,13 +153,13 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
       WITH direct_member_geoms AS (
         SELECT 
           CASE WHEN $2 THEN 
-            ST_SimplifyPreserveTopology(ST_MakeValid(COALESCE(cgm.custom_geom, ad.geom)), 0.005)
+            ST_SimplifyPreserveTopology(ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)), 0.005)
           ELSE 
-            ST_MakeValid(COALESCE(cgm.custom_geom, ad.geom))
+            ST_MakeValid(COALESCE(rm.custom_geom, ad.geom))
           END as geom
-        FROM region_members cgm
-        JOIN administrative_divisions ad ON cgm.division_id = ad.id
-        WHERE cgm.region_id = $1 AND (cgm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
+        FROM region_members rm
+        JOIN administrative_divisions ad ON rm.division_id = ad.id
+        WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
       ),
       child_group_geoms AS (
         SELECT 
@@ -429,11 +429,9 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
         UPDATE regions
         SET ts_hull_geom = NULL,
             ts_hull_geom_3857 = NULL,
-            display_geom = NULL,
-            display_geom_3857 = NULL,
             ts_hull_params = NULL
         WHERE id = $1
-          AND (ts_hull_geom IS NOT NULL OR display_geom IS NOT NULL)
+          AND ts_hull_geom IS NOT NULL
         RETURNING id
       `, [regionId]);
 

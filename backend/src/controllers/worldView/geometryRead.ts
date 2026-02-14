@@ -6,21 +6,19 @@ import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 
 /**
- * Get display geometry status for a world view
- * Returns counts of regions with/without display geometries
+ * Get geometry status for a world view
+ * Returns counts of regions with/without geometries
  */
 export async function getDisplayGeometryStatus(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
-  console.log(`[DisplayGeom] Getting status for worldView ${worldViewId}`);
 
   const result = await pool.query(`
     SELECT
       COUNT(*) as total,
       COUNT(CASE WHEN geom IS NOT NULL THEN 1 END) as with_geom,
-      COUNT(CASE WHEN display_geom IS NOT NULL THEN 1 END) as with_display_geom,
       COUNT(CASE WHEN anchor_point IS NOT NULL THEN 1 END) as with_anchor,
       COUNT(CASE WHEN is_archipelago = true THEN 1 END) as archipelagos,
-      COUNT(CASE WHEN geom IS NOT NULL AND display_geom IS NULL THEN 1 END) as needs_display_geom
+      COUNT(CASE WHEN ts_hull_geom IS NOT NULL THEN 1 END) as with_hull
     FROM regions
     WHERE world_view_id = $1
   `, [worldViewId]);
@@ -29,13 +27,11 @@ export async function getDisplayGeometryStatus(req: Request, res: Response): Pro
   const status = {
     total: parseInt(row.total),
     withGeom: parseInt(row.with_geom),
-    withDisplayGeom: parseInt(row.with_display_geom),
     withAnchor: parseInt(row.with_anchor),
     archipelagos: parseInt(row.archipelagos),
-    needsDisplayGeom: parseInt(row.needs_display_geom),
-    complete: parseInt(row.needs_display_geom) === 0 && parseInt(row.with_geom) > 0,
+    withHull: parseInt(row.with_hull),
+    complete: parseInt(row.with_geom) > 0,
   };
-  console.log(`[DisplayGeom] Status for worldView ${worldViewId}:`, status);
   res.json(status);
 }
 
@@ -76,46 +72,9 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
 
   // For detail levels:
   // - high (default): return real geometry
-  // - display: return user-customized display geometry if available
   // - ts_hull: return TypeScript-generated hull (handles dateline properly)
   // - anchor: return anchor point only
-  if (detail === 'display') {
-    // Return display geometry if available, otherwise real geometry
-    const displayResult = await pool.query(
-      `SELECT
-         ST_AsGeoJSON(display_geom)::json as geometry
-       FROM regions
-       WHERE id = $1 AND display_geom IS NOT NULL`,
-      [regionId]
-    );
-
-    if (displayResult.rows.length > 0 && displayResult.rows[0].geometry) {
-      res.json({
-        type: 'Feature',
-        properties: {
-          id: regionId,
-          isCustomBoundary: isCustomBoundary || false,
-          isArchipelago: isArchipelago || false,
-          anchorPoint,
-          displayMode: 'display',
-        },
-        geometry: displayResult.rows[0].geometry,
-      });
-    } else {
-      // Fallback to real geometry
-      res.json({
-        type: 'Feature',
-        properties: {
-          id: regionId,
-          isCustomBoundary: isCustomBoundary || false,
-          isArchipelago: isArchipelago || false,
-          anchorPoint,
-          displayMode: 'real',
-        },
-        geometry: result.rows[0].geometry,
-      });
-    }
-  } else if (detail === 'ts_hull') {
+  if (detail === 'ts_hull') {
     // Return TypeScript-generated hull (handles dateline properly)
     const tsHullResult = await pool.query(
       `SELECT
@@ -146,12 +105,7 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
         geometry: tsHullResult.rows[0].geometry,
       });
     } else {
-      // Fallback to display geom, then real geometry
-      const displayResult = await pool.query(
-        `SELECT ST_AsGeoJSON(display_geom)::json as geometry
-         FROM regions WHERE id = $1 AND display_geom IS NOT NULL`,
-        [regionId]
-      );
+      // Fallback to real geometry
       res.json({
         type: 'Feature',
         properties: {
@@ -159,9 +113,9 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
           isCustomBoundary: isCustomBoundary || false,
           isArchipelago: isArchipelago || false,
           anchorPoint,
-          displayMode: displayResult.rows[0]?.geometry ? 'display' : 'real',
+          displayMode: 'real',
         },
-        geometry: displayResult.rows[0]?.geometry || result.rows[0].geometry,
+        geometry: result.rows[0].geometry,
       });
     }
   } else if (detail === 'anchor') {
@@ -252,9 +206,9 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
       // Count geometries to merge: direct member regions + child groups with geometry
       const countResult = await pool.query(`
         SELECT (
-          (SELECT COUNT(*) FROM region_members cgm
-           JOIN administrative_divisions ad ON cgm.division_id = ad.id
-           WHERE cgm.region_id = $1 AND ad.geom IS NOT NULL)
+          (SELECT COUNT(*) FROM region_members rm
+           JOIN administrative_divisions ad ON rm.division_id = ad.id
+           WHERE rm.region_id = $1 AND ad.geom IS NOT NULL)
           +
           (SELECT COUNT(*) FROM regions
            WHERE parent_region_id = $1 AND geom IS NOT NULL)
@@ -270,10 +224,10 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
         // Only 1 geometry source - just copy it directly (no merge needed)
         const singleResult = await pool.query(`
           SELECT COALESCE(
-            (SELECT ST_AsGeoJSON(ad.geom)::json
-             FROM region_members cgm
-             JOIN administrative_divisions ad ON cgm.division_id = ad.id
-             WHERE cgm.region_id = $1 AND ad.geom IS NOT NULL
+            (SELECT ST_AsGeoJSON(COALESCE(rm.custom_geom, ad.geom))::json
+             FROM region_members rm
+             JOIN administrative_divisions ad ON rm.division_id = ad.id
+             WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
              LIMIT 1),
             (SELECT ST_AsGeoJSON(geom)::json
              FROM regions
@@ -296,10 +250,10 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
         // Multiple geometries - need to merge direct members + child group geometries
         const mergedResult = await pool.query(`
           WITH direct_member_geoms AS (
-            SELECT ad.geom
-            FROM region_members cgm
-            JOIN administrative_divisions ad ON cgm.division_id = ad.id
-            WHERE cgm.region_id = $1 AND ad.geom IS NOT NULL
+            SELECT COALESCE(rm.custom_geom, ad.geom) AS geom
+            FROM region_members rm
+            JOIN administrative_divisions ad ON rm.division_id = ad.id
+            WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
           ),
           child_group_geoms AS (
             SELECT geom
@@ -389,13 +343,12 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
   // Support both new (regionId) and legacy (groupId) param names
   const regionId = parseInt(String(req.params.regionId || req.params.groupId));
 
-  // Query param: useDisplay=true to use display geometries (atlas-style) for archipelagos
-  // For archipelagos: ts_hull_geom as main geometry
+  // Query param: useDisplay=true to use hull geometries (atlas-style) for archipelagos
   const useDisplayGeom = req.query.useDisplay === 'true';
 
   // Get all subregions (including those without cached geometry)
   // For archipelagos when useDisplay=true:
-  // - Main geometry: ts_hull_geom (or fallback to display_geom, then geom)
+  // - Main geometry: ts_hull_geom (or fallback to geom)
   // - Real geometry: actual island boundaries for detailed rendering
   const groups = await pool.query(`
     SELECT
@@ -406,32 +359,27 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
       ST_X(cg.anchor_point) as "anchorLng",
       ST_Y(cg.anchor_point) as "anchorLat",
       (SELECT COUNT(*) FROM regions WHERE parent_region_id = cg.id) > 0 as "hasSubregions",
-      -- Main geometry: prioritize ts_hull_geom for archipelagos, then fallback chain
+      -- Main geometry: prioritize ts_hull_geom for archipelagos
       ST_AsGeoJSON(
         CASE
           WHEN $2 AND cg.is_archipelago AND cg.ts_hull_geom IS NOT NULL
           THEN cg.ts_hull_geom
-          WHEN $2 AND cg.is_archipelago AND cg.display_geom IS NOT NULL
-          THEN cg.display_geom
           ELSE cg.geom
         END
       )::json as geometry,
       -- Also include real geometry for archipelagos (lightly simplified) so we can draw island boundaries
       CASE
-        WHEN $2 AND cg.is_archipelago AND (cg.ts_hull_geom IS NOT NULL OR cg.display_geom IS NOT NULL) AND cg.geom IS NOT NULL
+        WHEN $2 AND cg.is_archipelago AND cg.ts_hull_geom IS NOT NULL AND cg.geom IS NOT NULL
         THEN ST_AsGeoJSON(
           CASE
             WHEN ST_NPoints(cg.geom) > 50000 THEN ST_SimplifyPreserveTopology(cg.geom, 0.005)
             WHEN ST_NPoints(cg.geom) > 10000 THEN ST_SimplifyPreserveTopology(cg.geom, 0.002)
-            ELSE cg.geom  -- No simplification for smaller geometries
+            ELSE cg.geom
           END
         )::json
         ELSE NULL
       END as "realGeometry",
-      -- Flag indicating we're using TS hull (preferred method)
-      ($2 AND cg.is_archipelago AND cg.ts_hull_geom IS NOT NULL) as "usingTsHull",
-      -- Flag indicating we're using display geom - fallback
-      ($2 AND cg.is_archipelago AND cg.display_geom IS NOT NULL AND cg.ts_hull_geom IS NULL) as "usingDisplayGeom"
+      ($2 AND cg.is_archipelago AND cg.ts_hull_geom IS NOT NULL) as "usingTsHull"
     FROM regions cg
     WHERE cg.parent_region_id = $1
   `, [regionId, useDisplayGeom]);
@@ -449,9 +397,9 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
       // Count geometries to merge: direct member regions + child groups with geometry
       const countResult = await pool.query(`
         SELECT (
-          (SELECT COUNT(*) FROM region_members cgm
-           JOIN administrative_divisions ad ON cgm.division_id = ad.id
-           WHERE cgm.region_id = $1 AND ad.geom IS NOT NULL)
+          (SELECT COUNT(*) FROM region_members rm
+           JOIN administrative_divisions ad ON rm.division_id = ad.id
+           WHERE rm.region_id = $1 AND ad.geom IS NOT NULL)
           +
           (SELECT COUNT(*) FROM regions
            WHERE parent_region_id = $1 AND geom IS NOT NULL)
@@ -467,10 +415,10 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
         // Only 1 geometry source - just copy it directly (no merge needed)
         const singleResult = await pool.query(`
           SELECT COALESCE(
-            (SELECT ST_AsGeoJSON(ad.geom)::json
-             FROM region_members cgm
-             JOIN administrative_divisions ad ON cgm.division_id = ad.id
-             WHERE cgm.region_id = $1 AND ad.geom IS NOT NULL
+            (SELECT ST_AsGeoJSON(COALESCE(rm.custom_geom, ad.geom))::json
+             FROM region_members rm
+             JOIN administrative_divisions ad ON rm.division_id = ad.id
+             WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
              LIMIT 1),
             (SELECT ST_AsGeoJSON(geom)::json
              FROM regions
@@ -493,10 +441,10 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
         // Multiple geometries - need to merge direct members + child group geometries
         const mergedResult = await pool.query(`
           WITH direct_member_geoms AS (
-            SELECT ad.geom
-            FROM region_members cgm
-            JOIN administrative_divisions ad ON cgm.division_id = ad.id
-            WHERE cgm.region_id = $1 AND ad.geom IS NOT NULL
+            SELECT COALESCE(rm.custom_geom, ad.geom) AS geom
+            FROM region_members rm
+            JOIN administrative_divisions ad ON rm.division_id = ad.id
+            WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
           ),
           child_group_geoms AS (
             SELECT geom
@@ -560,7 +508,6 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
         hasSubgroups: group.hasSubgroups,
         isArchipelago: group.isArchipelago || false,
         usingTsHull: group.usingTsHull || false,
-        usingDisplayGeom: group.usingDisplayGeom || false,
         anchorPoint: group.anchorLng != null && group.anchorLat != null
           ? [group.anchorLng, group.anchorLat]
           : null,
