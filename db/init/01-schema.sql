@@ -37,8 +37,6 @@ CREATE TABLE IF NOT EXISTS administrative_divisions (
     -- Pre-simplified geometries for different zoom levels
     geom_simplified_low GEOMETRY(MultiPolygon, 4326),
     geom_simplified_medium GEOMETRY(MultiPolygon, 4326),
-    -- User-customizable display geometry (manually editable in UI)
-    display_geom GEOMETRY(MultiPolygon, 4326),
     anchor_point GEOMETRY(Point, 4326),
     geom_area_km2 DOUBLE PRECISION,
     is_archipelago BOOLEAN DEFAULT false,
@@ -54,7 +52,6 @@ CREATE INDEX IF NOT EXISTS idx_admin_divisions_name_trgm ON administrative_divis
 CREATE INDEX IF NOT EXISTS idx_admin_divisions_geom ON administrative_divisions USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_admin_divisions_geom_low ON administrative_divisions USING GIST(geom_simplified_low);
 CREATE INDEX IF NOT EXISTS idx_admin_divisions_geom_medium ON administrative_divisions USING GIST(geom_simplified_medium);
-CREATE INDEX IF NOT EXISTS idx_admin_div_display_geom ON administrative_divisions USING GIST(display_geom);
 CREATE INDEX IF NOT EXISTS idx_admin_div_anchor_point ON administrative_divisions USING GIST(anchor_point);
 
 -- =============================================================================
@@ -96,8 +93,6 @@ CREATE TABLE IF NOT EXISTS regions (
     -- Geometry (merged from member divisions or custom-drawn)
     geom GEOMETRY(MultiPolygon, 4326),
     is_custom_boundary BOOLEAN DEFAULT false,
-    -- User-customizable display geometry (manually editable in UI)
-    display_geom GEOMETRY(MultiPolygon, 4326),
     anchor_point GEOMETRY(Point, 4326),
     geom_area_km2 DOUBLE PRECISION,
     is_archipelago BOOLEAN DEFAULT false,
@@ -117,7 +112,6 @@ CREATE TABLE IF NOT EXISTS regions (
 CREATE INDEX IF NOT EXISTS idx_regions_world_view ON regions(world_view_id);
 CREATE INDEX IF NOT EXISTS idx_regions_parent ON regions(parent_region_id);
 CREATE INDEX IF NOT EXISTS idx_regions_geom ON regions USING GIST(geom);
-CREATE INDEX IF NOT EXISTS idx_regions_display_geom ON regions USING GIST(display_geom);
 CREATE INDEX IF NOT EXISTS idx_regions_anchor_point ON regions USING GIST(anchor_point);
 CREATE INDEX IF NOT EXISTS idx_regions_ts_hull_geom ON regions USING GIST(ts_hull_geom);
 CREATE INDEX IF NOT EXISTS idx_regions_is_leaf ON regions(is_leaf) WHERE is_leaf = true;
@@ -160,7 +154,6 @@ CREATE TRIGGER trg_update_is_leaf
   FOR EACH ROW EXECUTE FUNCTION update_is_leaf();
 
 -- Comments
-COMMENT ON COLUMN regions.display_geom IS 'User-customizable display geometry (manually editable in UI)';
 COMMENT ON COLUMN regions.ts_hull_geom IS 'TypeScript-generated concave hull with proper dateline handling';
 COMMENT ON COLUMN regions.ts_hull_params IS 'Hull generation parameters (bufferKm, concavity, simplifyTolerance) - preserved when regenerating';
 
@@ -187,6 +180,35 @@ CREATE TABLE IF NOT EXISTS region_members (
 CREATE INDEX IF NOT EXISTS idx_region_members_region ON region_members(region_id);
 CREATE INDEX IF NOT EXISTS idx_region_members_division ON region_members(division_id);
 CREATE INDEX IF NOT EXISTS idx_region_members_custom_geom ON region_members USING GIST(custom_geom) WHERE custom_geom IS NOT NULL;
+
+-- =============================================================================
+-- Geometry Resolution Views
+-- =============================================================================
+-- Centralize geometry logic to prevent bugs from scattered COALESCE patterns.
+
+-- Effective geometry for each region member (custom_geom if drawn, otherwise division geom)
+CREATE OR REPLACE VIEW region_member_effective_geom AS
+SELECT rm.id, rm.region_id, rm.division_id,
+       COALESCE(rm.custom_geom, ad.geom) AS geom,
+       rm.custom_geom IS NOT NULL AS is_partial,
+       COALESCE(rm.custom_name, ad.name) AS name,
+       ad.name AS division_name
+FROM region_members rm
+JOIN administrative_divisions ad ON rm.division_id = ad.id;
+
+-- Render geometry for each region (hull for archipelagos, raw geom otherwise)
+CREATE OR REPLACE VIEW region_render_geom AS
+SELECT r.id, r.world_view_id,
+       CASE
+         WHEN r.is_archipelago AND r.ts_hull_geom IS NOT NULL THEN r.ts_hull_geom
+         ELSE r.geom
+       END AS render_geom,
+       r.geom AS real_geom,
+       r.is_archipelago,
+       r.is_custom_boundary,
+       r.anchor_point,
+       r.focus_bbox
+FROM regions r;
 
 -- Comments
 COMMENT ON TABLE region_members IS 'Maps administrative divisions to regions. A division can appear multiple times in the same region if each has a different custom_geom (for splitting divisions into parts).';
@@ -487,7 +509,6 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 -- =============================================================================
 -- Trigger: Update metadata for regions when geom changes
 -- =============================================================================
--- NOTE: display_geom is user-controlled and NOT auto-generated
 -- is_archipelago is auto-detected ONLY on INSERT, preserved on UPDATE
 
 CREATE OR REPLACE FUNCTION update_region_metadata()
@@ -527,8 +548,7 @@ CREATE TRIGGER trigger_region_metadata
 CREATE OR REPLACE FUNCTION update_region_focus_data()
 RETURNS TRIGGER AS $$
 DECLARE
-  effective_geom geometry;  -- for lat bounds (visual extent)
-  bbox_geom geometry;       -- for lng bounds (antimeridian-safe)
+  effective_geom geometry;  -- hull or raw geom for bounds calculation
   min_lat double precision;
   max_lat double precision;
   -- Normal [-180,180] bbox
@@ -551,32 +571,26 @@ DECLARE
   child_min_lat double precision;
   child_max_lat double precision;
 BEGIN
-  -- Visual extent geometry (for lat bounds)
-  effective_geom := COALESCE(NEW.display_geom, NEW.ts_hull_geom, NEW.geom);
-  -- Antimeridian-safe geometry: use hull or raw geom (display_geom spans globe for archipelagos)
-  bbox_geom := COALESCE(NEW.ts_hull_geom, NEW.geom);
+  -- Use hull for archipelagos, otherwise raw geometry
+  effective_geom := COALESCE(NEW.ts_hull_geom, NEW.geom);
 
   IF effective_geom IS NOT NULL THEN
-    -- Latitude bounds from visual extent (same either way)
+    -- Latitude bounds
     min_lat := ST_YMin(effective_geom);
     max_lat := ST_YMax(effective_geom);
     center_lat := (min_lat + max_lat) / 2;
 
-    -- Compute normal bbox from effective_geom
+    -- Compute normal bbox
     norm_west := ST_XMin(effective_geom);
     norm_east := ST_XMax(effective_geom);
     norm_span := norm_east - norm_west;
 
-    -- Compute shifted bbox from bbox_geom (hull/geom, not display_geom)
+    -- Compute shifted bbox for antimeridian detection
     -- ST_ShiftLongitude moves negative coords to [180,360] range
-    IF bbox_geom IS NOT NULL THEN
-      shifted_geom := ST_ShiftLongitude(bbox_geom);
-      shift_west := ST_XMin(shifted_geom);
-      shift_east := ST_XMax(shifted_geom);
-      shift_span := shift_east - shift_west;
-    ELSE
-      shift_span := norm_span + 1; -- ensure normal wins
-    END IF;
+    shifted_geom := ST_ShiftLongitude(effective_geom);
+    shift_west := ST_XMin(shifted_geom);
+    shift_east := ST_XMax(shifted_geom);
+    shift_span := shift_east - shift_west;
 
     IF norm_span > 350 THEN
       -- Full-globe region (e.g. Oceania): geometry spans nearly all longitudes.
@@ -639,7 +653,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trigger_update_region_focus_data ON regions;
 CREATE TRIGGER trigger_update_region_focus_data
-  BEFORE INSERT OR UPDATE OF geom, ts_hull_geom, display_geom ON regions
+  BEFORE INSERT OR UPDATE OF geom, ts_hull_geom ON regions
   FOR EACH ROW
   EXECUTE FUNCTION update_region_focus_data();
 
@@ -737,7 +751,6 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 -- Add 3857 geometry columns to regions table
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_3857 geometry(MultiPolygon, 3857);
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS ts_hull_geom_3857 geometry(MultiPolygon, 3857);
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS display_geom_3857 geometry(MultiPolygon, 3857);
 
 -- Add simplified geometry columns for low zoom levels (zoom 0-4)
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_simplified_low geometry(MultiPolygon, 3857);
@@ -810,7 +823,6 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 -- Create spatial indexes on the new columns
 CREATE INDEX IF NOT EXISTS idx_regions_geom_3857 ON regions USING GIST(geom_3857);
 CREATE INDEX IF NOT EXISTS idx_regions_ts_hull_geom_3857 ON regions USING GIST(ts_hull_geom_3857);
-CREATE INDEX IF NOT EXISTS idx_regions_display_geom_3857 ON regions USING GIST(display_geom_3857);
 CREATE INDEX IF NOT EXISTS idx_regions_geom_simplified_low ON regions USING GIST(geom_simplified_low);
 CREATE INDEX IF NOT EXISTS idx_regions_geom_simplified_medium ON regions USING GIST(geom_simplified_medium);
 
@@ -830,14 +842,11 @@ DECLARE
     effective_geom geometry;
     geom_changed boolean;
     ts_hull_changed boolean;
-    display_changed boolean;
 BEGIN
     geom_changed := (TG_OP = 'INSERT' AND NEW.geom IS NOT NULL)
                     OR (TG_OP = 'UPDATE' AND NEW.geom IS DISTINCT FROM OLD.geom);
     ts_hull_changed := (TG_OP = 'INSERT' AND NEW.ts_hull_geom IS NOT NULL)
                        OR (TG_OP = 'UPDATE' AND NEW.ts_hull_geom IS DISTINCT FROM OLD.ts_hull_geom);
-    display_changed := (TG_OP = 'INSERT' AND NEW.display_geom IS NOT NULL)
-                       OR (TG_OP = 'UPDATE' AND NEW.display_geom IS DISTINCT FROM OLD.display_geom);
 
     -- Transform changed geometries to 3857
     IF geom_changed AND NEW.geom IS NOT NULL THEN
@@ -846,13 +855,10 @@ BEGIN
     IF ts_hull_changed AND NEW.ts_hull_geom IS NOT NULL THEN
         NEW.ts_hull_geom_3857 := ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Transform(NEW.ts_hull_geom, 3857)), 3));
     END IF;
-    IF display_changed AND NEW.display_geom IS NOT NULL THEN
-        NEW.display_geom_3857 := ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Transform(NEW.display_geom, 3857)), 3));
-    END IF;
 
     -- Update simplified geometries when any source geometry changes
-    IF geom_changed OR ts_hull_changed OR display_changed THEN
-        effective_geom := COALESCE(NEW.ts_hull_geom_3857, NEW.display_geom_3857, NEW.geom_3857);
+    IF geom_changed OR ts_hull_changed THEN
+        effective_geom := COALESCE(NEW.ts_hull_geom_3857, NEW.geom_3857);
         IF effective_geom IS NOT NULL THEN
             NEW.geom_simplified_low := simplify_for_zoom(effective_geom, 5000, 0, 0);
             NEW.geom_simplified_medium := simplify_for_zoom(effective_geom, 1000, 0, 0);
@@ -908,14 +914,13 @@ CREATE TRIGGER trg_admin_div_geom_3857
 
 COMMENT ON COLUMN regions.geom_3857 IS 'Pre-computed geometry in SRID 3857 for fast MVT generation';
 COMMENT ON COLUMN regions.ts_hull_geom_3857 IS 'Pre-computed TS hull in SRID 3857 for fast MVT generation';
-COMMENT ON COLUMN regions.display_geom_3857 IS 'Pre-computed display geometry in SRID 3857 for fast MVT generation';
 COMMENT ON COLUMN administrative_divisions.geom_3857 IS 'Pre-computed geometry in SRID 3857 for fast MVT generation';
 
 -- =============================================================================
 -- Martin Vector Tile Functions
 -- =============================================================================
 -- These functions generate MVT tiles for the RegionMap component.
--- They implement smart geometry selection (ts_hull > display_geom > geom)
+-- They implement smart geometry selection (ts_hull > geom for archipelagos)
 -- and proper simplification based on zoom level.
 
 -- Drop old functions if they exist (with different signatures)
@@ -960,7 +965,6 @@ BEGIN
             r.is_archipelago,
             EXISTS(SELECT 1 FROM regions c WHERE c.parent_region_id = r.id LIMIT 1) as has_subregions,
             (r.is_archipelago AND r.ts_hull_geom IS NOT NULL) as using_ts_hull,
-            (r.is_archipelago AND r.display_geom IS NOT NULL AND r.ts_hull_geom IS NULL) as using_display_geom,
             ST_AsMVTGeom(
                 CASE
                     WHEN z <= 2 AND r.geom_simplified_low IS NOT NULL
@@ -968,7 +972,6 @@ BEGIN
                     WHEN z <= 4 AND r.geom_simplified_low IS NOT NULL THEN r.geom_simplified_low
                     WHEN z <= 8 AND r.geom_simplified_medium IS NOT NULL THEN r.geom_simplified_medium
                     WHEN r.is_archipelago AND r.ts_hull_geom_3857 IS NOT NULL THEN r.ts_hull_geom_3857
-                    WHEN r.is_archipelago AND r.display_geom_3857 IS NOT NULL THEN r.display_geom_3857
                     ELSE r.geom_3857
                 END,
                 bounds, 4096, 64, true
@@ -1027,7 +1030,6 @@ BEGIN
             r.is_archipelago,
             EXISTS(SELECT 1 FROM regions c WHERE c.parent_region_id = r.id LIMIT 1) as has_subregions,
             (r.is_archipelago AND r.ts_hull_geom IS NOT NULL) as using_ts_hull,
-            (r.is_archipelago AND r.display_geom IS NOT NULL AND r.ts_hull_geom IS NULL) as using_display_geom,
             ST_AsMVTGeom(
                 CASE
                     WHEN z <= 2 AND r.geom_simplified_low IS NOT NULL
@@ -1035,7 +1037,6 @@ BEGIN
                     WHEN z <= 4 AND r.geom_simplified_low IS NOT NULL THEN r.geom_simplified_low
                     WHEN z <= 8 AND r.geom_simplified_medium IS NOT NULL THEN r.geom_simplified_medium
                     WHEN r.is_archipelago AND r.ts_hull_geom_3857 IS NOT NULL THEN r.ts_hull_geom_3857
-                    WHEN r.is_archipelago AND r.display_geom_3857 IS NOT NULL THEN r.display_geom_3857
                     ELSE r.geom_3857
                 END,
                 bounds, 4096, 64, true
@@ -1193,7 +1194,7 @@ BEGIN
             ST_AsMVTGeom(r.geom_3857, bounds, 4096, 64, true) AS geom
         FROM regions r
         WHERE r.is_archipelago = true
-          AND (r.ts_hull_geom IS NOT NULL OR r.display_geom IS NOT NULL)
+          AND r.ts_hull_geom IS NOT NULL
           AND r.geom_3857 IS NOT NULL
           AND (p_parent_id IS NULL OR r.parent_region_id = p_parent_id)
           AND r.geom_3857 && bounds
@@ -1241,7 +1242,6 @@ BEGIN
             r.is_archipelago,
             false as has_subregions,
             (r.is_archipelago AND r.ts_hull_geom IS NOT NULL) as using_ts_hull,
-            (r.is_archipelago AND r.display_geom IS NOT NULL AND r.ts_hull_geom IS NULL) as using_display_geom,
             ST_AsMVTGeom(
                 CASE
                     WHEN z <= 2 AND r.geom_simplified_low IS NOT NULL
@@ -1249,7 +1249,6 @@ BEGIN
                     WHEN z <= 4 AND r.geom_simplified_low IS NOT NULL THEN r.geom_simplified_low
                     WHEN z <= 8 AND r.geom_simplified_medium IS NOT NULL THEN r.geom_simplified_medium
                     WHEN r.is_archipelago AND r.ts_hull_geom_3857 IS NOT NULL THEN r.ts_hull_geom_3857
-                    WHEN r.is_archipelago AND r.display_geom_3857 IS NOT NULL THEN r.display_geom_3857
                     ELSE r.geom_3857
                 END,
                 bounds, 4096, 64, true
