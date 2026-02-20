@@ -52,6 +52,7 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
   const parentColor = regionInfo.rows[0].color || '#3388ff';
   const colorToUse = inheritColor ? parentColor : '#3388ff';
   const createdRegions: { id: number; name: string; divisionId: number }[] = [];
+  const affectedRegionIds = new Set<number>();
 
   // Insert all division mappings
   for (const divisionId of ids) {
@@ -114,6 +115,7 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
               [subregionId, divisionId]
             );
           }
+          affectedRegionIds.add(subregionId);
         }
 
         // If includeChildren is true and division has children, add them as subregions too
@@ -167,6 +169,7 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
                 [childSubregionId, child.id]
               );
             }
+            affectedRegionIds.add(childSubregionId);
           }
         } else if (hasSelectedChildren) {
           // Add selected children as simple members of the subregion (not creating new subregions for them)
@@ -182,10 +185,12 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
               );
             }
           }
+          affectedRegionIds.add(subregionId);
         }
       }
     } else {
       // Normal case: add divisions directly to this region (no subregion creation)
+      affectedRegionIds.add(regionId);
       const hasSelectedChildren = Array.isArray(childIds) && childIds.length > 0;
 
       if (hasSelectedChildren) {
@@ -208,7 +213,7 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
         if (customGeometry) {
           await pool.query(
             `INSERT INTO region_members (region_id, division_id, custom_geom, custom_name)
-             VALUES ($1, $2, ST_Multi(ST_GeomFromGeoJSON($3)), $4)`,
+             VALUES ($1, $2, validate_multipolygon(ST_GeomFromGeoJSON($3)), $4)`,
             [regionId, divisionId, JSON.stringify(customGeometry), customRegionName || null]
           );
         } else {

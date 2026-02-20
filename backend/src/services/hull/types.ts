@@ -41,7 +41,7 @@ export interface PreviewHullResult {
 
 export interface RegionData {
   points: Point[];
-  isArchipelago: boolean;
+  usesHull: boolean;
   name: string;
   savedHullParams: HullParams | null;
 }

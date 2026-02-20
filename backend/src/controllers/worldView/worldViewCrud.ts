@@ -11,7 +11,8 @@ import { notFound } from '../../middleware/errorHandler.js';
  */
 export async function getWorldViews(_req: Request, res: Response): Promise<void> {
   const result = await pool.query(`
-    SELECT id, name, description, source, is_default as "isDefault"
+    SELECT id, name, description, source, is_default as "isDefault",
+           COALESCE(tile_version, 0) as "tileVersion"
     FROM world_views
     WHERE is_active = true
     ORDER BY is_default DESC, name

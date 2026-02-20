@@ -17,8 +17,8 @@ export async function getDisplayGeometryStatus(req: Request, res: Response): Pro
       COUNT(*) as total,
       COUNT(CASE WHEN geom IS NOT NULL THEN 1 END) as with_geom,
       COUNT(CASE WHEN anchor_point IS NOT NULL THEN 1 END) as with_anchor,
-      COUNT(CASE WHEN is_archipelago = true THEN 1 END) as archipelagos,
-      COUNT(CASE WHEN ts_hull_geom IS NOT NULL THEN 1 END) as with_hull
+      COUNT(CASE WHEN uses_hull = true THEN 1 END) as hull_regions,
+      COUNT(CASE WHEN hull_geom IS NOT NULL THEN 1 END) as with_hull
     FROM regions
     WHERE world_view_id = $1
   `, [worldViewId]);
@@ -28,7 +28,7 @@ export async function getDisplayGeometryStatus(req: Request, res: Response): Pro
     total: parseInt(row.total),
     withGeom: parseInt(row.with_geom),
     withAnchor: parseInt(row.with_anchor),
-    archipelagos: parseInt(row.archipelagos),
+    hullRegions: parseInt(row.hull_regions),
     withHull: parseInt(row.with_hull),
     complete: parseInt(row.with_geom) > 0,
   };
@@ -39,7 +39,7 @@ export async function getDisplayGeometryStatus(req: Request, res: Response): Pro
  * Get geometry for a region
  * Query params:
  * - detail: 'high' (real geom - default), 'display' (user-customized display geom),
- *           'ts_hull' (TypeScript hull with dateline handling), 'anchor' (anchor point only)
+ *           'hull' (hull with dateline handling), 'anchor' (anchor point only)
  * Returns the cached/stored geometry if it exists, otherwise returns 204 No Content
  * Does NOT auto-compute geometry - use computeWorldViewGeometries for that
  */
@@ -53,7 +53,7 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
     `SELECT
        ST_AsGeoJSON(geom)::json as geometry,
        is_custom_boundary as "isCustomBoundary",
-       is_archipelago as "isArchipelago",
+       uses_hull as "usesHull",
        ST_X(anchor_point) as "anchorLng",
        ST_Y(anchor_point) as "anchorLat"
      FROM regions
@@ -67,29 +67,29 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
     return;
   }
 
-  const { isCustomBoundary, isArchipelago, anchorLng, anchorLat } = result.rows[0];
+  const { isCustomBoundary, usesHull, anchorLng, anchorLat } = result.rows[0];
   const anchorPoint = anchorLng != null && anchorLat != null ? [anchorLng, anchorLat] : null;
 
   // For detail levels:
   // - high (default): return real geometry
-  // - ts_hull: return TypeScript-generated hull (handles dateline properly)
+  // - hull: return hull geometry (handles dateline properly)
   // - anchor: return anchor point only
-  if (detail === 'ts_hull') {
-    // Return TypeScript-generated hull (handles dateline properly)
-    const tsHullResult = await pool.query(
+  if (detail === 'hull') {
+    // Return hull geometry (handles dateline properly)
+    const hullResult = await pool.query(
       `SELECT
-         ST_AsGeoJSON(ts_hull_geom)::json as geometry,
-         ST_XMin(ts_hull_geom) as min_lng,
-         ST_XMax(ts_hull_geom) as max_lng
+         ST_AsGeoJSON(hull_geom)::json as geometry,
+         ST_XMin(hull_geom) as min_lng,
+         ST_XMax(hull_geom) as max_lng
        FROM regions
-       WHERE id = $1 AND ts_hull_geom IS NOT NULL`,
+       WHERE id = $1 AND hull_geom IS NOT NULL`,
       [regionId]
     );
 
-    if (tsHullResult.rows.length > 0 && tsHullResult.rows[0].geometry) {
+    if (hullResult.rows.length > 0 && hullResult.rows[0].geometry) {
       // Check if this is a dateline-crossing geometry (MultiPolygon with parts at both ±180)
-      const minLng = tsHullResult.rows[0].min_lng;
-      const maxLng = tsHullResult.rows[0].max_lng;
+      const minLng = hullResult.rows[0].min_lng;
+      const maxLng = hullResult.rows[0].max_lng;
       const crossesDateline = (maxLng - minLng) > 180 || (minLng < -170 && maxLng > 170);
 
       res.json({
@@ -97,12 +97,12 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
         properties: {
           id: regionId,
           isCustomBoundary: isCustomBoundary || false,
-          isArchipelago: isArchipelago || false,
+          usesHull: usesHull || false,
           anchorPoint,
-          displayMode: 'ts_hull',
+          displayMode: 'hull',
           crossesDateline,
         },
-        geometry: tsHullResult.rows[0].geometry,
+        geometry: hullResult.rows[0].geometry,
       });
     } else {
       // Fallback to real geometry
@@ -111,7 +111,7 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
         properties: {
           id: regionId,
           isCustomBoundary: isCustomBoundary || false,
-          isArchipelago: isArchipelago || false,
+          usesHull: usesHull || false,
           anchorPoint,
           displayMode: 'real',
         },
@@ -133,7 +133,7 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
         properties: {
           id: regionId,
           isCustomBoundary: isCustomBoundary || false,
-          isArchipelago: isArchipelago || false,
+          usesHull: usesHull || false,
           anchorPoint,
         },
         geometry: anchorResult.rows[0].geometry,
@@ -151,7 +151,7 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
         properties: {
           id: regionId,
           isCustomBoundary: isCustomBoundary || false,
-          isArchipelago: isArchipelago || false,
+          usesHull: usesHull || false,
           anchorPoint,
         },
         geometry: centroidResult.rows[0]?.geometry || { type: 'Point', coordinates: [0, 0] },
@@ -164,7 +164,7 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
       properties: {
         id: regionId,
         isCustomBoundary: isCustomBoundary || false,
-        isArchipelago: isArchipelago || false,
+        usesHull: usesHull || false,
         anchorPoint,
       },
       geometry: result.rows[0].geometry,
@@ -242,7 +242,7 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
           // Cache for next time — trigger handles 3857 + simplified columns
           pool.query(`
             UPDATE regions
-            SET geom = ST_GeomFromGeoJSON($1)
+            SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1))
             WHERE id = $2
           `, [JSON.stringify(geometry), group.id]).catch(() => {});
         }
@@ -266,33 +266,12 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
             SELECT geom FROM child_group_geoms
           ),
           merged AS (
-            SELECT ST_Multi(ST_Union(ST_MakeValid(geom))) as merged_geom
+            SELECT validate_multipolygon(ST_Union(ST_MakeValid(geom))) as merged_geom
             FROM all_geoms
-          ),
-          validated AS (
-            SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(merged_geom), 3)) as merged_geom
-            FROM merged
-          ),
-          with_tolerance AS (
-            SELECT
-              merged_geom,
-              -- Simple tolerance based on point count only (like Python script)
-              CASE
-                WHEN ST_NPoints(merged_geom) < 5000 THEN 0
-                WHEN ST_NPoints(merged_geom) < 20000 THEN 0.0005
-                WHEN ST_NPoints(merged_geom) < 50000 THEN 0.001
-                WHEN ST_NPoints(merged_geom) < 100000 THEN 0.005
-                ELSE 0.01
-              END as tolerance
-            FROM validated
           )
-          SELECT ST_AsGeoJSON(
-            CASE
-              WHEN tolerance = 0 THEN merged_geom
-              ELSE ST_SimplifyPreserveTopology(merged_geom, tolerance)
-            END
-          )::json as geometry
-          FROM with_tolerance
+          SELECT ST_AsGeoJSON(merged_geom)::json as geometry
+          FROM merged
+          WHERE merged_geom IS NOT NULL
         `, [group.id]);
 
         if (mergedResult.rows.length > 0 && mergedResult.rows[0].geometry) {
@@ -301,7 +280,7 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
           // Cache for next time — trigger handles 3857 + simplified columns
           pool.query(`
             UPDATE regions
-            SET geom = ST_Multi(ST_CollectionExtract(ST_GeomFromGeoJSON($1), 3))
+            SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1))
             WHERE id = $2
           `, [JSON.stringify(geometry), group.id]).catch(() => {});
         }
@@ -343,33 +322,33 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
   // Support both new (regionId) and legacy (groupId) param names
   const regionId = parseInt(String(req.params.regionId || req.params.groupId));
 
-  // Query param: useDisplay=true to use hull geometries (atlas-style) for archipelagos
+  // Query param: useDisplay=true to use hull geometries (atlas-style) for hull regions
   const useDisplayGeom = req.query.useDisplay === 'true';
 
   // Get all subregions (including those without cached geometry)
-  // For archipelagos when useDisplay=true:
-  // - Main geometry: ts_hull_geom (or fallback to geom)
+  // For hull regions when useDisplay=true:
+  // - Main geometry: hull_geom (or fallback to geom)
   // - Real geometry: actual island boundaries for detailed rendering
   const groups = await pool.query(`
     SELECT
       cg.id,
       cg.name,
       cg.color,
-      cg.is_archipelago as "isArchipelago",
+      cg.uses_hull as "usesHull",
       ST_X(cg.anchor_point) as "anchorLng",
       ST_Y(cg.anchor_point) as "anchorLat",
       (SELECT COUNT(*) FROM regions WHERE parent_region_id = cg.id) > 0 as "hasSubregions",
-      -- Main geometry: prioritize ts_hull_geom for archipelagos
+      -- Main geometry: prioritize hull_geom for hull regions
       ST_AsGeoJSON(
         CASE
-          WHEN $2 AND cg.is_archipelago AND cg.ts_hull_geom IS NOT NULL
-          THEN cg.ts_hull_geom
+          WHEN $2 AND cg.uses_hull AND cg.hull_geom IS NOT NULL
+          THEN cg.hull_geom
           ELSE cg.geom
         END
       )::json as geometry,
-      -- Also include real geometry for archipelagos (lightly simplified) so we can draw island boundaries
+      -- Also include real geometry for hull regions (lightly simplified) so we can draw island boundaries
       CASE
-        WHEN $2 AND cg.is_archipelago AND cg.ts_hull_geom IS NOT NULL AND cg.geom IS NOT NULL
+        WHEN $2 AND cg.uses_hull AND cg.hull_geom IS NOT NULL AND cg.geom IS NOT NULL
         THEN ST_AsGeoJSON(
           CASE
             WHEN ST_NPoints(cg.geom) > 50000 THEN ST_SimplifyPreserveTopology(cg.geom, 0.005)
@@ -379,7 +358,7 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
         )::json
         ELSE NULL
       END as "realGeometry",
-      ($2 AND cg.is_archipelago AND cg.ts_hull_geom IS NOT NULL) as "usingTsHull"
+      ($2 AND cg.uses_hull AND cg.hull_geom IS NOT NULL) as "usingHull"
     FROM regions cg
     WHERE cg.parent_region_id = $1
   `, [regionId, useDisplayGeom]);
@@ -433,7 +412,7 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
           // Cache for next time — trigger handles 3857 + simplified columns
           pool.query(`
             UPDATE regions
-            SET geom = ST_GeomFromGeoJSON($1)
+            SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1))
             WHERE id = $2
           `, [JSON.stringify(geometry), group.id]).catch(() => {});
         }
@@ -457,33 +436,12 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
             SELECT geom FROM child_group_geoms
           ),
           merged AS (
-            SELECT ST_Multi(ST_Union(ST_MakeValid(geom))) as merged_geom
+            SELECT validate_multipolygon(ST_Union(ST_MakeValid(geom))) as merged_geom
             FROM all_geoms
-          ),
-          validated AS (
-            SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(merged_geom), 3)) as merged_geom
-            FROM merged
-          ),
-          with_tolerance AS (
-            SELECT
-              merged_geom,
-              -- Simple tolerance based on point count only (like Python script)
-              CASE
-                WHEN ST_NPoints(merged_geom) < 5000 THEN 0
-                WHEN ST_NPoints(merged_geom) < 20000 THEN 0.0005
-                WHEN ST_NPoints(merged_geom) < 50000 THEN 0.001
-                WHEN ST_NPoints(merged_geom) < 100000 THEN 0.005
-                ELSE 0.01
-              END as tolerance
-            FROM validated
           )
-          SELECT ST_AsGeoJSON(
-            CASE
-              WHEN tolerance = 0 THEN merged_geom
-              ELSE ST_SimplifyPreserveTopology(merged_geom, tolerance)
-            END
-          )::json as geometry
-          FROM with_tolerance
+          SELECT ST_AsGeoJSON(merged_geom)::json as geometry
+          FROM merged
+          WHERE merged_geom IS NOT NULL
         `, [group.id]);
 
         if (mergedResult.rows.length > 0 && mergedResult.rows[0].geometry) {
@@ -492,7 +450,7 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
           // Cache for next time — trigger handles 3857 + simplified columns
           pool.query(`
             UPDATE regions
-            SET geom = ST_Multi(ST_CollectionExtract(ST_GeomFromGeoJSON($1), 3))
+            SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1))
             WHERE id = $2
           `, [JSON.stringify(geometry), group.id]).catch(() => {});
         }
@@ -506,12 +464,12 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
         name: group.name,
         color: group.color,
         hasSubgroups: group.hasSubgroups,
-        isArchipelago: group.isArchipelago || false,
-        usingTsHull: group.usingTsHull || false,
+        usesHull: group.usesHull || false,
+        usingHull: group.usingHull || false,
         anchorPoint: group.anchorLng != null && group.anchorLat != null
           ? [group.anchorLng, group.anchorLat]
           : null,
-        // Include real geometry for archipelagos so island boundaries can be drawn on top
+        // Include real geometry for hull regions so island boundaries can be drawn on top
         realGeometry: group.realGeometry || null,
       },
       geometry,

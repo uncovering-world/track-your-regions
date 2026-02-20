@@ -6,7 +6,7 @@ import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 import { runningComputations } from './types.js';
 import type { ComputationProgress } from './types.js';
-import { computeRegionGeometryCore } from './geometryCompute.js';
+import { computeRegionGeometryCore } from './geometryComputeSingle.js';
 
 /**
  * Get status of geometry computation for a hierarchy
@@ -205,7 +205,36 @@ export async function computeWorldViewGeometries(req: Request, res: Response): P
       progressState.progress++;
     }
 
+    // Post-compute: coverage-aware simplification for gap-free borders between siblings
     if (!progressState.cancel) {
+      progressState.status = 'Applying coverage simplification...';
+      console.log(`[Geometry] Running coverage simplification for gap-free borders...`);
+
+      const parentIds = await pool.query(`
+        SELECT DISTINCT parent_region_id
+        FROM regions
+        WHERE world_view_id = $1 AND parent_region_id IS NOT NULL AND geom_3857 IS NOT NULL
+        GROUP BY parent_region_id
+        HAVING COUNT(*) >= 2
+      `, [worldViewId]);
+
+      let coverageCount = 0;
+      for (const row of parentIds.rows) {
+        if (progressState.cancel) break;
+        await pool.query('SELECT simplify_coverage_regions($1::integer)', [row.parent_region_id]);
+        coverageCount++;
+      }
+      console.log(`[Geometry] Coverage simplification complete: ${coverageCount} parent groups processed`);
+    }
+
+    if (!progressState.cancel) {
+      // Bump tile_version for cache busting
+      if (progressState.computed > 0) {
+        await pool.query(
+          'UPDATE world_views SET tile_version = COALESCE(tile_version, 0) + 1 WHERE id = $1',
+          [worldViewId]
+        );
+      }
       progressState.status = 'Complete';
       progressState.currentGroup = '';
       console.log(`[Geometry] Computation complete for hierarchy ${worldViewId}: computed=${progressState.computed}, skipped=${progressState.skipped}, errors=${progressState.errors}`);

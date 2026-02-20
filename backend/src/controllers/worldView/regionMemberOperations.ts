@@ -96,17 +96,19 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
   }
 
   const createdRegions: { id: number; name: string; divisionId: number }[] = [];
+  const affectedRegionIds = new Set<number>();
 
   if (shouldCreateAsSubregions) {
-    // Create subregions for each child (original behavior)
+    // Create subregions for each child (or assign to existing regions)
     for (const child of childrenToAdd) {
-      // Check if a region with this name already exists under this parent region
+      let childSubregionId: number;
+
+      // Check for existing region with matching name (accent/case-insensitive)
       const existingRegion = await pool.query(
-        'SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2 AND name = $3',
+        `SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2
+         AND lower(immutable_unaccent(name)) = lower(immutable_unaccent($3))`,
         [worldViewId, userRegionId, child.name]
       );
-
-      let childSubregionId: number;
 
       if (existingRegion.rows.length === 0) {
         // Create new region as child of current region
@@ -138,6 +140,7 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
           [childSubregionId, child.id]
         );
       }
+      affectedRegionIds.add(childSubregionId);
     }
   } else {
     // Just add children as GADM members directly to this region (flat structure)
@@ -153,6 +156,7 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
         );
       }
     }
+    affectedRegionIds.add(userRegionId);
     console.log(`[AddChildren] Added ${childrenToAdd.length} children as direct GADM members (no subregions)`);
   }
 

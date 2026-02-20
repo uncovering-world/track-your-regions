@@ -72,7 +72,7 @@ export async function recomputeRegionGeometry(regionId: number): Promise<{ compu
       FROM all_geoms
     )
     UPDATE regions r
-    SET geom = m.merged_geom
+    SET geom = validate_multipolygon(m.merged_geom)
     FROM merged m
     WHERE r.id = $1
       AND r.is_custom_boundary IS NOT TRUE

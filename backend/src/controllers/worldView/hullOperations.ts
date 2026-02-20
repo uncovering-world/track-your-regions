@@ -99,7 +99,7 @@ export async function getSavedHullParams(req: Request, res: Response): Promise<v
 
   try {
     const result = await pool.query(
-      'SELECT ts_hull_params FROM regions WHERE id = $1',
+      'SELECT hull_params FROM regions WHERE id = $1',
       [regionId]
     );
 
@@ -109,7 +109,7 @@ export async function getSavedHullParams(req: Request, res: Response): Promise<v
     }
 
     res.json({
-      params: result.rows[0].ts_hull_params || null,
+      params: result.rows[0].hull_params || null,
     });
   } catch (e) {
     console.error(`[Hull] Error fetching params:`, e);

@@ -28,9 +28,9 @@ async function fetchRegionPoints(regionId: number): Promise<RegionData | null> {
     SELECT
       r.id,
       r.name,
-      r.is_archipelago,
+      r.uses_hull,
       r.is_custom_boundary,
-      r.ts_hull_params,
+      r.hull_params,
       (
         SELECT json_agg(json_build_object(
           'lng', ST_X(pt.geom),
@@ -73,9 +73,9 @@ async function fetchRegionPoints(regionId: number): Promise<RegionData | null> {
 
   // Parse saved hull params if available
   let savedHullParams: HullParams | null = null;
-  if (row.ts_hull_params) {
+  if (row.hull_params) {
     try {
-      savedHullParams = row.ts_hull_params as HullParams;
+      savedHullParams = row.hull_params as HullParams;
     } catch {
       savedHullParams = null;
     }
@@ -83,7 +83,7 @@ async function fetchRegionPoints(regionId: number): Promise<RegionData | null> {
 
   return {
     points: (row.points || []) as Point[],
-    isArchipelago: row.is_archipelago,
+    usesHull: row.uses_hull,
     name: row.name,
     savedHullParams,
   };
@@ -98,8 +98,8 @@ async function saveHullGeometry(regionId: number, geometry: GeoJSON.Geometry, pa
   const paramsJson = JSON.stringify(params);
   await pool.query(`
     UPDATE regions
-    SET ts_hull_geom = ST_Multi(ST_GeomFromGeoJSON($1)),
-        ts_hull_params = $2::jsonb
+    SET hull_geom = validate_multipolygon(ST_GeomFromGeoJSON($1)),
+        hull_params = $2::jsonb
     WHERE id = $3
   `, [geojson, paramsJson, regionId]);
 }
@@ -120,9 +120,9 @@ export async function generateSingleHull(
     return { generated: false, error: 'Region not found or has no geometry' };
   }
 
-  if (!regionData.isArchipelago) {
-    console.log(`[Hull TS] Region ${regionId} is not an archipelago, skipping`);
-    return { generated: false, error: 'Region is not an archipelago' };
+  if (!regionData.usesHull) {
+    console.log(`[Hull TS] Region ${regionId} does not use hull, skipping`);
+    return { generated: false, error: 'Region does not use hull' };
   }
 
   const { points, name, savedHullParams } = regionData;
@@ -187,8 +187,8 @@ export async function previewHull(
     return { geometry: null, pointCount: 0, crossesDateline: false, error: 'Region not found or has no geometry' };
   }
 
-  if (!regionData.isArchipelago) {
-    return { geometry: null, pointCount: 0, crossesDateline: false, error: 'Region is not an archipelago' };
+  if (!regionData.usesHull) {
+    return { geometry: null, pointCount: 0, crossesDateline: false, error: 'Region does not use hull' };
   }
 
   const { points, name } = regionData;
