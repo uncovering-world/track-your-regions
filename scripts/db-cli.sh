@@ -397,6 +397,31 @@ cmd_shell() {
     psql_cmd -d "$active" "$@"
 }
 
+cmd_make_admin() {
+    local active=$(get_active_db)
+    local email="$1"
+
+    if [[ -z "$active" ]]; then
+        echo -e "${RED}Error: No active database. Use 'npm run db:use <name>' first.${NC}"
+        exit 1
+    fi
+
+    if [[ -z "$email" ]]; then
+        echo -e "${RED}Usage: npm run db:make-admin <email>${NC}"
+        exit 1
+    fi
+
+    local result
+    result=$(psql_cmd -d "$active" -t -A --set "email=$email" -c "UPDATE users SET role = 'admin' WHERE email = :'email' RETURNING email, display_name;")
+
+    if [[ -z "$result" ]]; then
+        echo -e "${RED}No user found with email: $email${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}Promoted to admin: $result${NC}"
+}
+
 cmd_dump() {
     local active=$(get_active_db)
     local dump_file="$1"
@@ -691,6 +716,9 @@ case "$command" in
     shell)
         cmd_shell
         ;;
+    make-admin)
+        cmd_make_admin "$@"
+        ;;
     status)
         cmd_status
         ;;
@@ -715,6 +743,7 @@ case "$command" in
         echo "  mark-golden     Mark current DB as protected"
         echo "  unmark-golden   Remove golden protection"
         echo "  load-gadm       Load GADM data into current DB"
+        echo "  make-admin <email>  Promote a user to admin"
         echo "  shell           Open psql to current DB"
         echo "  status          Show current DB info and row counts"
         echo "  dump [file]     Dump current DB to file (default: dbname_timestamp.dump)"

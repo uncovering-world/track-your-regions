@@ -1,0 +1,39 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml",
+    "compress": true,
+    "directoryStructure": true,
+    "fileSummary": true,
+    "removeComments": true,
+    "removeEmptyLines": true,
+    "showLineNumbers": false,
+    "git": {
+      "sortByChanges": true
+    }
+  },
+  "include": [
+    "CLAUDE.md",
+    "package.json",
+    ".env.example",
+    "docker-compose.yml",
+    "backend/package.json",
+    "backend/src/**/*.ts",
+    "frontend/package.json",
+    "frontend/src/**/*.{ts,tsx}",
+    "db/init/01-schema.sql",
+    "docs/vision/**/*.md",
+    "docs/tech/development-guide.md",
+    "martin/config.yaml"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/package-lock.json"
+    ]
+  }
+}
