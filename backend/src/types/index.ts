@@ -390,6 +390,80 @@ export const adminUserSearchQuerySchema = z.object({
 });
 
 // =============================================================================
+// Wikivoyage extraction schemas
+// =============================================================================
+
+export const wvExtractStartSchema = z.object({
+  name: z.string().min(1).max(255).default('Wikivoyage Regions'),
+  useCache: z.boolean().default(true),
+});
+
+// =============================================================================
+// WorldView import schemas
+// =============================================================================
+
+/** Recursive schema for ImportTreeNode */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
+  z.object({
+    name: z.string().min(1).max(500),
+    regionMapUrl: z.string().url().max(2000).optional(),
+    mapImageCandidates: z.array(z.string().url().max(2000)).max(20).optional(),
+    wikidataId: z.string().regex(/^Q\d+$/).optional(),
+    sourceUrl: z.string().url().max(2000).optional(),
+    children: z.array(importTreeNodeSchema).default([]),
+  }),
+);
+
+export const wvImportBodySchema = z.object({
+  name: z.string().min(1).max(255),
+  tree: importTreeNodeSchema,
+  matchingPolicy: z.enum(['country-based', 'none']).default('country-based'),
+});
+
+export const wvImportAcceptMatchSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  divisionId: z.coerce.number().int().positive(),
+});
+
+export const wvImportAcceptBatchSchema = z.object({
+  assignments: z.array(z.object({
+    regionId: z.coerce.number().int().positive(),
+    divisionId: z.coerce.number().int().positive(),
+  })).min(1).max(1000),
+});
+
+export const wvImportRegionIdSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+});
+
+export const wvImportMarkManualFixSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  needsManualFix: z.boolean(),
+  fixNote: z.string().max(500).optional(),
+});
+
+export const wvImportSelectMapImageSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  imageUrl: z.string().url().nullable(),
+});
+
+export const wikidataIdParamSchema = z.object({
+  wikidataId: z.string().regex(/^Q\d+$/),
+});
+
+export const divisionIdBodySchema = z.object({
+  divisionId: z.coerce.number().int().positive(),
+});
+
+export const wvImportApproveCoverageSchema = z.object({
+  divisionId: z.coerce.number().int().positive(),
+  regionId: z.coerce.number().int().positive(),
+  action: z.enum(['add_member', 'create_region']),
+  gapName: z.string().max(255).optional(),
+});
+
+// =============================================================================
 // World View schemas
 // =============================================================================
 

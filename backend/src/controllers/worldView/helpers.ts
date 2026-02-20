@@ -44,6 +44,53 @@ export async function invalidateRegionGeometry(regionId: number): Promise<void> 
 }
 
 /**
+ * Sync match_status in region_import_state after member changes.
+ *
+ * When members are added/removed via the Editor, the match_status
+ * must reflect the actual state of region_members:
+ * - Has members → 'manual_matched'
+ * - No members, has suggestions → 'needs_review'
+ * - No members, no suggestions → 'no_candidates'
+ *
+ * No-op for non-imported regions (no row in region_import_state).
+ */
+export async function syncImportMatchStatus(regionId: number): Promise<void> {
+  // Check if this is an imported region
+  const risResult = await pool.query(
+    `SELECT match_status FROM region_import_state WHERE region_id = $1`,
+    [regionId]
+  );
+  if (risResult.rows.length === 0) return;
+
+  const currentStatus = risResult.rows[0].match_status as string;
+
+  const countResult = await pool.query(
+    'SELECT COUNT(*) FROM region_members WHERE region_id = $1',
+    [regionId]
+  );
+  const memberCount = parseInt(countResult.rows[0].count as string);
+
+  let newStatus: string;
+  if (memberCount > 0) {
+    newStatus = 'manual_matched';
+  } else {
+    const suggestionCount = await pool.query(
+      'SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = false',
+      [regionId]
+    );
+    const hasSuggestions = parseInt(suggestionCount.rows[0].count as string) > 0;
+    newStatus = hasSuggestions ? 'needs_review' : 'no_candidates';
+  }
+
+  if (currentStatus !== newStatus) {
+    await pool.query(
+      `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
+      [newStatus, regionId]
+    );
+  }
+}
+
+/**
  * Recompute geometry for a single region from its members and children
  * Does NOT recurse to ancestors - use for targeted recomputation only
  * Skips regions with is_custom_boundary = true

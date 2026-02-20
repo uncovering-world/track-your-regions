@@ -6,7 +6,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { invalidateRegionGeometry } from './helpers.js';
+import { invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
 
 /**
  * Add all GADM children (subdivisions) of a division as subregions
@@ -103,7 +103,7 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
     for (const child of childrenToAdd) {
       let childSubregionId: number;
 
-      // Check for existing region with matching name (accent/case-insensitive)
+      // Check if a region with this name already exists under the parent (accent/case-insensitive)
       const existingRegion = await pool.query(
         `SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2
          AND lower(immutable_unaccent(name)) = lower(immutable_unaccent($3))`,
@@ -172,6 +172,11 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
 
   // Invalidate geometry for this region and all ancestors
   await invalidateRegionGeometry(userRegionId);
+
+  // Sync import match status for all affected regions
+  for (const rid of affectedRegionIds) {
+    await syncImportMatchStatus(rid);
+  }
 
   res.status(201).json({
     added: childrenToAdd.length,
@@ -273,6 +278,9 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
   // Invalidate geometry for parent
   await invalidateRegionGeometry(parentRegionId);
 
+  // Sync import match status for the parent (which now has the divisions)
+  await syncImportMatchStatus(parentRegionId);
+
   res.status(200).json({
     movedDivisions: movedCount,
     deletedRegion: true,
@@ -347,6 +355,12 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
 
   // Invalidate geometry for parent and new subregions
   await invalidateRegionGeometry(regionId);
+
+  // Sync import match status — parent lost members, new subregions gained them
+  await syncImportMatchStatus(regionId);
+  for (const cr of createdRegions) {
+    await syncImportMatchStatus(cr.id);
+  }
 
   res.status(200).json({
     createdRegions,

@@ -8,6 +8,7 @@ export interface ImportTreeNode {
   regionMapUrl?: string;
   mapImageCandidates?: string[];
   wikidataId?: string;
+  sourceUrl?: string;
   children: ImportTreeNode[];
 }
 

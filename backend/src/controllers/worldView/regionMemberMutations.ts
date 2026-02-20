@@ -6,7 +6,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { invalidateRegionGeometry } from './helpers.js';
+import { invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
 
 /**
  * Add administrative divisions to a region
@@ -236,6 +236,11 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
   // Invalidate geometry for this region and all ancestors
   await invalidateRegionGeometry(regionId);
 
+  // Sync match status for all imported regions that received members
+  for (const rid of affectedRegionIds) {
+    await syncImportMatchStatus(rid);
+  }
+
   res.status(201).json({
     added: ids.length,
     createdRegions: shouldCreateAsSubregions ? createdRegions : undefined,
@@ -266,6 +271,7 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
     }
     // Invalidate geometry after removing members
     await invalidateRegionGeometry(regionId);
+    await syncImportMatchStatus(regionId);
     res.status(200).json({ removed: memberRowIds.length });
     return;
   }
@@ -286,6 +292,7 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
 
   // Invalidate geometry for this region and all ancestors
   await invalidateRegionGeometry(regionId);
+  await syncImportMatchStatus(regionId);
 
   res.status(200).json({ removed: ids.length });
 }
@@ -317,6 +324,10 @@ export async function moveMemberToRegion(req: Request, res: Response): Promise<v
   // Invalidate geometry for both regions
   await invalidateRegionGeometry(fromRegionId);
   await invalidateRegionGeometry(toRegionId);
+
+  // Sync match status for both regions
+  await syncImportMatchStatus(fromRegionId);
+  await syncImportMatchStatus(toRegionId);
 
   res.status(200).json({ moved: true, member: result.rows[0] });
 }
