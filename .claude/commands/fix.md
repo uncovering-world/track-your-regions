@@ -39,6 +39,17 @@ Use a short slug derived from the issue title (e.g., `fix/42-login-crash`).
 
 ### 4. Investigate
 
+- **Read area-specific docs** for the affected area before diving into code:
+
+  | Area | Read |
+  |------|------|
+  | Map rendering, tiles, interactions | `docs/tech/maplibre-patterns.md` |
+  | Map UI (markers, hover, selection) | `docs/tech/experience-map-ui.md` |
+  | Geometry, triggers, simplification | `docs/tech/geometry-columns.md` |
+  | Shared frontend components/utils | `docs/tech/shared-frontend-patterns.md` |
+  | Experience system (sync, sources) | `docs/tech/experiences.md` |
+  | Auth flows (JWT, OAuth, tokens) | `docs/tech/authentication.md` |
+
 - Search the codebase for the relevant code based on the issue description
 - Read the files involved to understand the current behavior
 - Identify the root cause of the bug

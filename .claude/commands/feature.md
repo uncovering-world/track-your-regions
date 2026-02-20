@@ -42,6 +42,21 @@ Use a short slug derived from the issue title (e.g., `feature/200-dark-mode`).
 This is a feature — it requires proper planning. Enter plan mode to:
 
 - **Read `docs/tech/development-guide.md`** to understand where new code should live and how to organize it
+- **Read area-specific docs** based on what the feature touches:
+
+  | Area | Read |
+  |------|------|
+  | Map rendering, tile layers, map interactions | `docs/tech/maplibre-patterns.md` |
+  | Map UI (markers, hover, selection, context layers) | `docs/tech/experience-map-ui.md` |
+  | Geometry, triggers, simplification, hull | `docs/tech/geometry-columns.md` |
+  | Shared frontend components/utils | `docs/tech/shared-frontend-patterns.md` |
+  | Experience system (sync, sources, assignment) | `docs/tech/experiences.md` |
+  | Auth flows (JWT, OAuth, tokens, email) | `docs/tech/authentication.md` |
+  | Security (new endpoints, input surfaces) | `docs/security/SECURITY.md` |
+
+  Read **all** docs that apply — most features touch 2-3 areas. Skip only areas that are clearly irrelevant.
+
+- **Check `docs/decisions/`** for existing ADRs that apply to this feature — mention them in the plan ("This follows ADR-0004")
 - Explore the relevant parts of the codebase
 - Understand existing patterns and architecture
 - **Search for existing code to reuse** — check shared utilities, hooks, and components before planning new ones (see "Reuse Before You Create" in the development guide)
@@ -51,6 +66,7 @@ This is a feature — it requires proper planning. Enter plan mode to:
 - Design the implementation approach
 - Identify files to create/modify — **flag any file that would exceed ~500 lines** and plan how to split it
 - Consider edge cases and security implications
+- **If the feature involves an architectural choice** (new library, schema pattern, API convention, or hard-to-reverse decision) — include a new ADR in the plan (see `CLAUDE.md` § Architecture Decision Records)
 
 Present the plan to the user for approval before writing any code.
 
@@ -85,6 +101,7 @@ Features always require doc updates:
 - **`docs/vision/vision.md`** — update if the feature is user-facing
 - **`docs/tech/planning/`** — if there was an existing plan, trim it to only remaining ideas
 - **`docs/security/`** — update if the feature touches auth, new endpoints, or input surfaces
+- **`docs/decisions/`** — if the plan included a new ADR, create the file and update the index
 
 ### 8. Commit and summarize
 

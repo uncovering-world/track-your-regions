@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm run check              # Lint + typecheck (run before committing)
+npm run knip               # Find unused files + dependencies (run before committing)
 TEST_REPORT_LOCAL=1 npm test  # Unit tests without Docker (run before committing)
 npm run security:all       # Semgrep SAST + npm audit (run before committing)
 npm run dev                # Start all services via Docker Compose
@@ -20,6 +21,15 @@ npm run help               # Full command reference
 ```
 
 Backend runs on port 3001, frontend on port 5173, Martin tile server on port 3000.
+
+### Mandatory Pre-Commit Checks
+
+After every code change, run all four before committing:
+
+1. `npm run check` — lint + typecheck
+2. `npm run knip` — unused files + dependencies
+3. `npm run security:all` — Semgrep SAST + npm audit
+4. `/security-check` — Claude Code security review of changed files
 
 ## Architecture
 
@@ -120,6 +130,7 @@ Docs live in `docs/` with this structure:
 
 ```
 docs/
+├── decisions/        ← Architecture Decision Records (immutable)
 ├── inbox/            ← unsorted docs awaiting categorization
 ├── security/         ← OWASP ASVS security profile, checklist, audit reports
 ├── tech/             ← technical details of implemented features
@@ -140,7 +151,30 @@ When working on this codebase, keep docs in sync:
 - **Security-relevant change** → update `docs/security/SECURITY.md` (profile, known gaps) and/or `docs/security/asvs-checklist.yaml` (requirement status). This applies to new auth flows, new API endpoints, new input surfaces, file handling changes, new roles/permissions, or changes to token/session handling
 - **Completing a plan** → trim the planning doc to only unimplemented ideas/improvements. Remove fully implemented sections
 - **Pure idea or concept** → add to `docs/vision/`
+- **Architectural decision** → create an ADR in `docs/decisions/` (see below)
 - **Unsorted** → drop in `docs/inbox/`, categorize later
+
+### Architecture Decision Records (ADRs)
+
+ADRs live in `docs/decisions/`. They are **immutable** — only `Status` can change. Never delete an ADR; mark it `Superseded by ADR-XXXX` and create a new one.
+
+**When to create an ADR** — before implementing any change that involves:
+- Choosing a library, framework, or external service
+- Changing database schema design patterns or API conventions
+- Choosing between fundamentally different technical approaches
+- Any decision that would be surprising or hard to reverse later
+
+Do **not** create an ADR for: bug fixes, routine feature additions, styling changes, or anything that follows already-established patterns.
+
+**When to read ADRs** — before proposing any architectural change, check `docs/decisions/` for existing decisions. Either follow them or explicitly propose superseding with a new ADR.
+
+**Linking in code** — add a short comment at the relevant entry point:
+```typescript
+// ADR-0004: Drizzle ORM over raw SQL
+const result = await db.select().from(regions).where(eq(regions.id, id));
+```
+
+See `docs/decisions/README.md` for the full process, template, and index.
 
 ## Required Reading by Area
 
@@ -155,4 +189,19 @@ Before working in a specific area, read the relevant docs. Start from the area g
 | **Experience system** | `docs/tech/experiences.md` | Sources, sync, region assignment, API |
 | **Security** | `docs/security/SECURITY.md` | `docs/security/asvs-checklist.yaml` — per-requirement status |
 | **Auth flows** | `docs/tech/authentication.md` | JWT, OAuth, tokens, email verification |
+| **Architecture decisions** | `docs/decisions/README.md` | ADR index, when/how to create, template |
 | **Product vision** (user-facing changes) | `docs/vision/vision.md` | Role-specific capabilities, design principles |
+
+## Skill Integration Rules
+
+When executing **any** skill workflow (brainstorming, writing-plans, debugging, TDD, code review, etc.), the following project rules always apply **in addition to** the skill's own instructions:
+
+1. **Read area docs first** — consult the "Required Reading by Area" table above before exploring code or proposing changes
+2. **Reuse before creating** — search `frontend/src/components/shared/`, `frontend/src/utils/`, and existing services before writing new code
+3. **Docs alongside code** — update `docs/tech/` for implementation details and `docs/vision/vision.md` for any user-facing change, in the same step as the code change (never as a follow-up)
+4. **ADRs for architecture** — check `docs/decisions/` before proposing architectural choices; create a new ADR if one is needed
+5. **Security standards** — follow OWASP ASVS 5.0 Level 2 rules (see Security Standards section above)
+6. **Pre-commit checks** — run `npm run check`, `npm run knip`, `npm run security:all`, `TEST_REPORT_LOCAL=1 npm test`, and `/security-check` before committing
+7. **Design docs path** — save design documents and plans to `docs/tech/planning/` (not `docs/plans/`)
+8. **Development guide** — follow all conventions in `docs/tech/development-guide.md` (file size limits, commit format, refactoring hygiene)
+9. **Refactoring cleanup** — after any code change, remove unused imports, dead variables, and now-redundant checks
