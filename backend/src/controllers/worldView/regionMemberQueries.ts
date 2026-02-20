@@ -137,3 +137,64 @@ export async function getRegionMemberGeometries(req: Request, res: Response): Pr
     features,
   });
 }
+
+/**
+ * Get geometries for all division members of descendant regions (children, grandchildren, etc.)
+ * Returns a GeoJSON FeatureCollection for read-only context display in the map.
+ * Uses more aggressive simplification (0.005) since these are context-only.
+ */
+export async function getDescendantMemberGeometries(req: Request, res: Response): Promise<void> {
+  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+
+  const result = await pool.query(`
+    WITH RECURSIVE descendant_regions AS (
+      SELECT id, name, id as root_ancestor_id FROM regions WHERE parent_region_id = $1
+      UNION ALL
+      SELECT r.id, r.name, dr.root_ancestor_id FROM regions r
+      JOIN descendant_regions dr ON r.parent_region_id = dr.id
+    )
+    SELECT
+      rm.id as member_row_id,
+      ad.id as division_id,
+      COALESCE(rm.custom_name, ad.name) as name,
+      r.name as region_name,
+      rm.region_id,
+      dr.root_ancestor_id,
+      ST_AsGeoJSON(
+        ST_Simplify(
+          CASE
+            WHEN rm.custom_geom IS NOT NULL THEN ST_MakeValid(rm.custom_geom)
+            ELSE ad.geom
+          END,
+          0.005
+        )
+      )::json as geometry,
+      rm.custom_geom IS NOT NULL as has_custom_geom
+    FROM descendant_regions dr
+    JOIN region_members rm ON rm.region_id = dr.id
+    JOIN administrative_divisions ad ON rm.division_id = ad.id
+    JOIN regions r ON r.id = rm.region_id
+    WHERE (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
+  `, [regionId]);
+
+  const features = result.rows
+    .filter(row => row.geometry)
+    .map(row => ({
+      type: 'Feature',
+      properties: {
+        memberRowId: row.member_row_id,
+        divisionId: row.division_id,
+        name: row.name,
+        regionName: row.region_name,
+        regionId: row.region_id,
+        rootAncestorId: row.root_ancestor_id,
+        hasCustomGeom: row.has_custom_geom,
+      },
+      geometry: row.geometry,
+    }));
+
+  res.json({
+    type: 'FeatureCollection',
+    features,
+  });
+}

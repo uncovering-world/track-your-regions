@@ -33,7 +33,7 @@ export {
 } from './regionCrud.js';
 
 // Region Member Queries
-export { getRegionMembers, getRegionMemberGeometries } from './regionMemberQueries.js';
+export { getRegionMembers, getRegionMemberGeometries, getDescendantMemberGeometries } from './regionMemberQueries.js';
 // Region Member Mutations
 export { addDivisionsToRegion, removeDivisionsFromRegion, moveMemberToRegion } from './regionMemberMutations.js';
 // Region Member Operations

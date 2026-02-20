@@ -15,6 +15,7 @@ import {
   deleteRegion,
   getRegionMembers,
   getRegionMemberGeometries,
+  getDescendantMemberGeometries,
   addDivisionsToRegion,
   removeDivisionsFromRegion,
   moveMemberToRegion,
@@ -125,6 +126,7 @@ router.delete('/groups/:groupId', validate(deleteRegionQuerySchema, 'query'), re
 // =============================================================================
 router.get('/regions/:regionId/members', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getRegionMembers);
 router.get('/regions/:regionId/members/geometries', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getRegionMemberGeometries);
+router.get('/regions/:regionId/members/descendant-geometries', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getDescendantMemberGeometries);
 router.post('/regions/:regionId/members', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(addDivisionsToRegionBodySchema), addDivisionsToRegion);
 router.delete('/regions/:regionId/members', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(removeDivisionsFromRegionBodySchema), removeDivisionsFromRegion);
 router.post('/regions/:regionId/members/move', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(moveMemberBodySchema), moveMemberToRegion);
