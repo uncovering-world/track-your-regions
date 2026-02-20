@@ -19,7 +19,7 @@ export interface ExploringParams {
 }
 
 /**
- * Hull fill paint (for archipelagos using TS hull geometries)
+ * Hull fill paint (for regions using hull geometries)
  */
 export function hullFillPaint(selectedId: number | undefined): FillPaint {
   return {
@@ -150,7 +150,7 @@ export function regionOutlinePaint(
 }
 
 /**
- * Hull outline paint (for archipelago hull boundaries).
+ * Hull outline paint (for hull region boundaries).
  * Mirrors regionOutlinePaint logic for hull features.
  */
 export function hullOutlinePaint(
@@ -220,7 +220,7 @@ export function contextOutlinePaint(selectedId: number | undefined): LinePaint {
 }
 
 /**
- * Island fill paint (archipelago detail boundaries)
+ * Island fill paint (hull region detail boundaries)
  */
 export const islandFillPaint: FillPaint = {
   'fill-color': [

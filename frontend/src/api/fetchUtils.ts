@@ -2,6 +2,8 @@
  * Fetch utility for API calls
  */
 
+import { jwtDecode } from 'jwt-decode';
+
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 export const MARTIN_URL = import.meta.env.VITE_MARTIN_URL || 'http://localhost:3000';
 
@@ -16,6 +18,53 @@ export function setAccessToken(token: string | null): void {
 }
 
 export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+/**
+ * Ensure the access token is fresh (not expired or expiring within 60s).
+ * Used before SSE connections where EventSource can't handle 401 retry.
+ */
+export async function ensureFreshToken(): Promise<string | null> {
+  if (!accessToken) return null;
+
+  // Decode JWT payload to check expiry (no verification needed — server validates)
+  try {
+    const payload = jwtDecode<{ exp?: number }>(accessToken);
+    const nowSec = Math.floor(Date.now() / 1000);
+    // Refresh if token expires within 60 seconds
+    if (payload.exp && payload.exp - nowSec > 60) {
+      return accessToken; // Still fresh
+    }
+  } catch {
+    // Can't decode — try refresh anyway
+  }
+
+  // Token expired or expiring soon — refresh via cookie.
+  // Reuse pendingRefresh to deduplicate concurrent calls (e.g. multiple SSE connections).
+  if (!pendingRefresh) {
+    pendingRefresh = (async () => {
+      try {
+        const refreshResponse = await fetch(`${API_URL}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        });
+        if (refreshResponse.ok) {
+          const data = await refreshResponse.json();
+          accessToken = data.accessToken;
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      } finally {
+        pendingRefresh = null;
+      }
+    })();
+  }
+
+  await pendingRefresh;
   return accessToken;
 }
 

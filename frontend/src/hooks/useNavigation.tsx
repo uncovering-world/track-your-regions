@@ -129,6 +129,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
       if (worldView) {
         setSelectedWorldView(worldView);
+        setTileVersion(worldView.tileVersion ?? 0);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only depend on length to avoid re-selecting on every fetch
@@ -188,6 +189,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   const handleSetSelectedWorldView = useCallback((worldView: WorldView) => {
     setSelectedWorldView(worldView);
+    setTileVersion(worldView.tileVersion ?? 0);
     setSelectedDivision(null);
     setSelectedRegion(null);
     setSelectedView(null);

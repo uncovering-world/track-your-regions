@@ -56,7 +56,7 @@ export function useTileUrls(
     return url;
   }, [selectedWorldViewId, selectedWorldView, isCustomWorldView, viewingRegionId, viewingParentId, tileVersion]);
 
-  // Island boundaries tile URL (for archipelagos)
+  // Island boundaries tile URL (for hull regions)
   const islandTileUrl = useMemo(() => {
     if (!isCustomWorldView || !selectedWorldViewId) return null;
 

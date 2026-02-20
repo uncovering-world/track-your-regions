@@ -190,9 +190,9 @@ function DraggableRegionItem({
                   <DrawIcon sx={{ fontSize: 9 }} /> custom
                 </Box>
               )}
-              {region.isArchipelago && (
+              {region.usesHull && (
                 <Box component="span" sx={{ ...sxTokens.darkBadge, bgcolor: 'rgba(255, 183, 77, 0.15)', color: P.accent.warning }}>
-                  arch
+                  hull
                 </Box>
               )}
             </Box>

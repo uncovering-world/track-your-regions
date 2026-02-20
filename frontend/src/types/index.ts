@@ -38,6 +38,7 @@ export interface WorldView {
   description: string | null;
   source: string | null;
   isDefault: boolean;
+  tileVersion?: number;
 }
 
 // =============================================================================
@@ -57,8 +58,8 @@ export interface Region {
   color: string | null;
   hasSubregions?: boolean;
   isCustomBoundary?: boolean;
-  isArchipelago?: boolean;
-  hasArchipelagoChildren?: boolean;
+  usesHull?: boolean;
+  hasHullChildren?: boolean;
   // Pre-computed bounding box [west, south, east, north] for instant fitBounds. West > east = antimeridian crossing.
   focusBbox?: [number, number, number, number] | null;
   // Pre-computed anchor point [lng, lat] - centroid, used for antimeridian-crossing regions

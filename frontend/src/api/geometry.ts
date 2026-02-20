@@ -2,7 +2,7 @@
  * Geometry and Hull API
  */
 
-import { API_URL, authFetchJson, getAccessToken } from './fetchUtils.js';
+import { API_URL, authFetchJson, ensureFreshToken } from './fetchUtils.js';
 import type {
   HullParams,
   ComputationStatus,
@@ -34,7 +34,7 @@ export async function computeRegionGeometry(regionId: number, force?: boolean): 
   points?: number;
   message?: string;
   childrenComputed?: number;
-  isArchipelago?: boolean;
+  usesHull?: boolean;
   crossesDateline?: boolean;
 }> {
   const url = force
@@ -45,7 +45,7 @@ export async function computeRegionGeometry(regionId: number, force?: boolean): 
     points?: number;
     message?: string;
     childrenComputed?: number;
-    isArchipelago?: boolean;
+    usesHull?: boolean;
     crossesDateline?: boolean;
   }>(url, { method: 'POST' });
 }
@@ -68,37 +68,39 @@ export function computeRegionGeometryWithProgress(
     const params = new URLSearchParams();
     if (force) params.append('force', 'true');
     if (skipSnapping) params.append('skipSnapping', 'true');
-    // EventSource cannot send custom headers, so pass JWT as query parameter
-    const token = getAccessToken();
-    if (token) params.append('token', token);
-    const finalQuery = params.toString();
-    const url = `${API_URL}/api/world-views/regions/${regionId}/geometry/compute-stream${finalQuery ? '?' + finalQuery : ''}`;
 
-    const eventSource = new EventSource(url);
+    // Ensure fresh token before opening EventSource (can't retry 401 on SSE)
+    ensureFreshToken().then(token => {
+      if (token) params.append('token', token);
+      const finalQuery = params.toString();
+      const url = `${API_URL}/api/world-views/regions/${regionId}/geometry/compute-stream${finalQuery ? '?' + finalQuery : ''}`;
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as ComputeProgressEvent;
-        onProgress(data);
+      const eventSource = new EventSource(url);
 
-        if (data.type === 'complete' || data.type === 'error') {
-          eventSource.close();
-          if (data.type === 'error') {
-            reject(new Error(data.message || 'Computation failed'));
-          } else {
-            resolve(data);
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as ComputeProgressEvent;
+          onProgress(data);
+
+          if (data.type === 'complete' || data.type === 'error') {
+            eventSource.close();
+            if (data.type === 'error') {
+              reject(new Error(data.message || 'Computation failed'));
+            } else {
+              resolve(data);
+            }
           }
+        } catch (e) {
+          console.error('Failed to parse SSE event:', e);
         }
-      } catch (e) {
-        console.error('Failed to parse SSE event:', e);
-      }
-    };
+      };
 
-    eventSource.onerror = (e) => {
-      console.error('SSE error:', e);
-      eventSource.close();
-      reject(new Error('Connection to server lost'));
-    };
+      eventSource.onerror = (e) => {
+        console.error('SSE error:', e);
+        eventSource.close();
+        reject(new Error('Connection to server lost'));
+      };
+    }).catch(reject);
   });
 }
 
