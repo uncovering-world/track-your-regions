@@ -37,6 +37,8 @@ docs/
 | [development-guide.md](tech/development-guide.md) | Code organization conventions, splitting patterns, commit hygiene |
 | [shared-frontend-patterns.md](tech/shared-frontend-patterns.md) | Shared UI components and utilities — full inventory with "use this, not that" reference |
 | [maplibre-patterns.md](tech/maplibre-patterns.md) | MapLibre + react-map-gl patterns and pitfalls — overlapping layers, MVT properties, feature IDs, fonts, paint priority |
+| [world-view-import.md](tech/world-view-import.md) | WorldView Import — matching algorithm, API endpoints, admin UI |
+| [world-view-import-format.md](tech/world-view-import-format.md) | WorldView Import JSON format specification for source-agnostic imports |
 
 ## Tech — Planning
 
@@ -70,6 +72,12 @@ docs/
 | [user-stories-regions-listing.md](vision/user-stories-regions-listing.md) | Browse and search regions |
 | [user-stories-journey-planning.md](vision/user-stories-journey-planning.md) | Trip planning and journey creation |
 | [user-stories-ai-interview.md](vision/user-stories-ai-interview.md) | AI-assisted travel reflection |
+
+## Decisions
+
+| Document | Topic |
+|----------|-------|
+| [README.md](decisions/README.md) | ADR index, process guide, and template |
 
 ## Security
 
