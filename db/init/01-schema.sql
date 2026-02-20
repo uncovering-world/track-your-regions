@@ -1831,5 +1831,76 @@ CREATE INDEX IF NOT EXISTS idx_experience_rejections_region ON experience_reject
 COMMENT ON TABLE experience_rejections IS 'Experiences rejected from specific regions by curators (hidden from regular users)';
 
 -- =============================================================================
+-- WorldView Import System (source-agnostic region import + GADM matching)
+-- =============================================================================
+-- Supports importing region hierarchies from any source (Wikivoyage, OSM, etc.)
+-- and matching leaf regions to GADM administrative divisions.
+
+-- Import run tracking (one per import operation)
+CREATE TABLE IF NOT EXISTS import_runs (
+    id SERIAL PRIMARY KEY,
+    world_view_id INTEGER REFERENCES world_views(id) ON DELETE CASCADE,
+    source_type VARCHAR(50) NOT NULL,  -- 'wikivoyage', 'osm', etc.
+    status VARCHAR(20) DEFAULT 'running',  -- running, matching, reviewing, finalized, failed
+    data_path TEXT,  -- filesystem path to raw JSON (/data/imports/{id}.json)
+    stats JSONB,
+    started_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_runs_wv ON import_runs(world_view_id);
+
+COMMENT ON TABLE import_runs IS 'Tracks WorldView import operations from external sources';
+COMMENT ON COLUMN import_runs.source_type IS 'Import source identifier: wikivoyage, osm, natural_earth, etc.';
+COMMENT ON COLUMN import_runs.data_path IS 'Filesystem path to the raw import JSON file';
+
+-- Region import state (1:1 with region, only for imported regions)
+CREATE TABLE IF NOT EXISTS region_import_state (
+    region_id INTEGER PRIMARY KEY REFERENCES regions(id) ON DELETE CASCADE,
+    import_run_id INTEGER REFERENCES import_runs(id) ON DELETE SET NULL,
+    source_url TEXT,
+    source_external_id TEXT,  -- wikidata ID, etc.
+    match_status VARCHAR(30) NOT NULL DEFAULT 'no_candidates',
+    needs_manual_fix BOOLEAN DEFAULT FALSE,
+    fix_note TEXT,
+    region_map_url TEXT,
+    map_image_reviewed BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ris_status ON region_import_state(match_status);
+CREATE INDEX IF NOT EXISTS idx_ris_run ON region_import_state(import_run_id);
+
+COMMENT ON TABLE region_import_state IS 'Import metadata for regions created via WorldView Import (1:1 with region)';
+COMMENT ON COLUMN region_import_state.match_status IS 'Match lifecycle: no_candidates, needs_review, auto_matched, manual_matched, children_matched, suggested';
+COMMENT ON COLUMN region_import_state.source_external_id IS 'External identifier from import source (e.g. Wikidata QID)';
+
+-- Match suggestions (1:N per region, replaces metadata.suggestions + rejectedDivisionIds)
+CREATE TABLE IF NOT EXISTS region_match_suggestions (
+    id SERIAL PRIMARY KEY,
+    region_id INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    division_id INTEGER NOT NULL REFERENCES administrative_divisions(id),
+    name TEXT NOT NULL,
+    path TEXT,
+    score INTEGER DEFAULT 0,
+    rejected BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_rms_region ON region_match_suggestions(region_id);
+
+COMMENT ON TABLE region_match_suggestions IS 'GADM division match suggestions for imported regions (1:N per region)';
+COMMENT ON COLUMN region_match_suggestions.rejected IS 'True if admin rejected this suggestion (prevents re-suggestion)';
+
+-- Map image candidates (1:N per region, replaces metadata.mapImageCandidates)
+CREATE TABLE IF NOT EXISTS region_map_images (
+    id SERIAL PRIMARY KEY,
+    region_id INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    image_url TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rmi_region ON region_map_images(region_id);
+
+COMMENT ON TABLE region_map_images IS 'Candidate map images for imported regions (from Wikimedia Commons etc.)';
+
+-- =============================================================================
 -- Schema Complete
 -- =============================================================================
