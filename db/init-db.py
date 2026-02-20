@@ -6,11 +6,9 @@ This script loads GADM administrative divisions into the database.
 It creates the administrative_divisions table with pre-simplified geometries
 for different zoom levels.
 
-Usage:
-    # With Docker (schema already created by 01-schema.sql):
-    python init-db.py -s /path/to/gadm_410.gpkg -g --skip-schema
+Requires schema from 01-schema.sql to be loaded first (Docker handles this automatically).
 
-    # Standalone (creates schema):
+Usage:
     python init-db.py -s /path/to/gadm_410.gpkg -g
 """
 
@@ -27,6 +25,7 @@ from dotenv import load_dotenv
 
 try:
     from osgeo import ogr
+    ogr.UseExceptions()
     HAS_GDAL = True
 except ImportError:
     HAS_GDAL = False
@@ -73,7 +72,7 @@ class DatabaseConnectionManager:
                 sys.exit(1)
             print("done.")
 
-        return self.cur_pg, self.cur_sqlite
+        return self.conn_pg, self.cur_pg, self.cur_sqlite
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
@@ -142,119 +141,6 @@ def get_db_credentials():
     return db_name, db_user, db_password, db_host
 
 
-def create_schema(cursor):
-    """Create the database schema with PostGIS extensions.
-
-    Note: When using Docker, the schema is created by 01-schema.sql automatically.
-    Use --skip-schema flag in that case. This function is for standalone use.
-    """
-    print("\nCreating database schema...")
-
-    # Enable PostGIS
-    print("  Enabling PostGIS extension...", end=" ")
-    cursor.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
-    print("done.")
-
-    # Enable pg_trgm for similarity search
-    print("  Enabling pg_trgm extension...", end=" ")
-    cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
-    print("done.")
-
-    # Drop existing tables for clean start
-    print("  Dropping existing tables...", end=" ")
-    cursor.execute("""
-        DROP TABLE IF EXISTS view_division_mapping CASCADE;
-        DROP TABLE IF EXISTS views CASCADE;
-        DROP TABLE IF EXISTS administrative_divisions CASCADE;
-    """)
-    print("done.")
-
-    # Create administrative_divisions table with simplified geometry columns
-    print("  Creating administrative_divisions table...", end=" ")
-    cursor.execute("""
-        CREATE TABLE administrative_divisions (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            parent_id INTEGER REFERENCES administrative_divisions(id) ON DELETE SET NULL,
-            has_children BOOLEAN NOT NULL DEFAULT false,
-            gadm_uid INTEGER,
-            geom GEOMETRY(MultiPolygon, 4326),
-            geom_simplified_low GEOMETRY(MultiPolygon, 4326),
-            geom_simplified_medium GEOMETRY(MultiPolygon, 4326),
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
-    """)
-    print("done.")
-
-    # Create views table
-    print("  Creating views table...", end=" ")
-    cursor.execute("""
-        CREATE TABLE views (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            description TEXT,
-            is_active BOOLEAN DEFAULT true,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
-    """)
-    print("done.")
-
-    # Create view_division_mapping table
-    print("  Creating view_division_mapping table...", end=" ")
-    cursor.execute("""
-        CREATE TABLE view_division_mapping (
-            id SERIAL PRIMARY KEY,
-            view_id INTEGER NOT NULL REFERENCES views(id) ON DELETE CASCADE,
-            division_id INTEGER NOT NULL REFERENCES administrative_divisions(id) ON DELETE CASCADE,
-            UNIQUE(view_id, division_id)
-        );
-    """)
-    print("done.")
-
-    # Create indexes
-    print("  Creating indexes...", end=" ")
-    cursor.execute("""
-        CREATE INDEX idx_admin_divisions_parent ON administrative_divisions(parent_id);
-        CREATE INDEX idx_admin_divisions_name ON administrative_divisions(name);
-        CREATE INDEX idx_admin_divisions_name_trgm ON administrative_divisions USING GIN(name gin_trgm_ops);
-        CREATE INDEX idx_admin_divisions_geom ON administrative_divisions USING GIST(geom);
-        CREATE INDEX idx_admin_divisions_geom_low ON administrative_divisions USING GIST(geom_simplified_low);
-        CREATE INDEX idx_admin_divisions_geom_medium ON administrative_divisions USING GIST(geom_simplified_medium);
-        CREATE INDEX idx_view_mapping_view ON view_division_mapping(view_id);
-        CREATE INDEX idx_view_mapping_division ON view_division_mapping(division_id);
-    """)
-    print("done.")
-
-    # Create function to update simplified geometries
-    print("  Creating geometry simplification trigger...", end=" ")
-    cursor.execute("""
-        CREATE OR REPLACE FUNCTION update_simplified_geometries()
-        RETURNS TRIGGER AS $$
-        BEGIN
-            IF NEW.geom IS NOT NULL THEN
-                -- Low detail: ~0.1 degree tolerance (good for world view)
-                NEW.geom_simplified_low := ST_SimplifyPreserveTopology(NEW.geom, 0.1);
-                -- Medium detail: ~0.01 degree tolerance (good for country view)
-                NEW.geom_simplified_medium := ST_SimplifyPreserveTopology(NEW.geom, 0.01);
-            END IF;
-            NEW.updated_at := NOW();
-            RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        DROP TRIGGER IF EXISTS trigger_simplify_geom ON administrative_divisions;
-        CREATE TRIGGER trigger_simplify_geom
-            BEFORE INSERT OR UPDATE OF geom ON administrative_divisions
-            FOR EACH ROW
-            EXECUTE FUNCTION update_simplified_geometries();
-    """)
-    print("done.")
-
-    print("Schema creation complete.")
-
-
 class Division:
     """Represents an administrative division with metadata for optimization."""
     def __init__(self, name, division_id, parent_id, parent_path, parent_name, path):
@@ -281,9 +167,13 @@ class GADMProcessor:
     )
     PROPERTIES = GEO_LEVELS + ["UID"]
 
-    def __init__(self, pg_cursor, sqlite_cursor, gadm_file, include_geometry=True, postprocess=True):
+    # Commit every N records during bulk import to limit transaction size
+    COMMIT_INTERVAL = 10000
+
+    def __init__(self, pg_cursor, sqlite_cursor, pg_conn, gadm_file, include_geometry=True, postprocess=True):
         self.pg_cursor = pg_cursor
         self.sqlite_cursor = sqlite_cursor
+        self.pg_conn = pg_conn
         self.gadm_file = gadm_file
         self.include_geometry = include_geometry and HAS_GDAL
         self.postprocess = postprocess
@@ -341,8 +231,27 @@ class GADMProcessor:
         ds = None  # Close dataset
 
     def process_records(self):
-        """Process all GADM records and insert into database."""
+        """Process all GADM records and insert into database.
+
+        Disables simplification and 3857 triggers during bulk insert to avoid
+        5 expensive PostGIS operations per row. These get computed in a single
+        batch pass afterward (and then overwritten by coverage-aware
+        simplification in precalculate-geometries.py).
+        """
         print("\nProcessing GADM records...")
+
+        # Disable triggers that fire on each INSERT — huge speedup for bulk import.
+        # Each leaf INSERT would otherwise trigger:
+        #   trigger_simplify_geom: 2 simplification ops (4326)
+        #   trg_admin_div_geom_3857: 1 transform + 2 simplification ops (3857)
+        # These results get overwritten by precalculate-geometries.py anyway.
+        if self.include_geometry:
+            print("  Disabling geometry triggers for bulk import...")
+            self.pg_cursor.execute("""
+                ALTER TABLE administrative_divisions DISABLE TRIGGER trigger_simplify_geom;
+                ALTER TABLE administrative_divisions DISABLE TRIGGER trg_admin_div_geom_3857;
+            """)
+            self.pg_conn.commit()
 
         cols = ", ".join(self.PROPERTIES)
         self.sqlite_cursor.execute(f'SELECT {cols} FROM "{self.table_name}"')
@@ -353,7 +262,29 @@ class GADMProcessor:
             self._process_row(dict(zip(self.PROPERTIES, row)))
             progress.update()
 
+            # Periodic commits to limit transaction size and memory
+            if progress.current % self.COMMIT_INTERVAL == 0:
+                self.pg_conn.commit()
+
+        self.pg_conn.commit()
         progress.finish()
+
+        if self.include_geometry:
+            # Batch-compute 3857 transforms and per-row simplification
+            # while triggers are still disabled. Much faster than per-row
+            # trigger execution: single UPDATE pass instead of 356K triggers.
+            # Note: precalculate-geometries.py overwrites simplified columns
+            # with coverage-aware versions, but we need the per-row fallback
+            # for divisions that don't get coverage simplification.
+            self._batch_compute_derived_columns()
+
+            # Re-enable triggers for subsequent operations
+            print("  Re-enabling geometry triggers...")
+            self.pg_cursor.execute("""
+                ALTER TABLE administrative_divisions ENABLE TRIGGER trigger_simplify_geom;
+                ALTER TABLE administrative_divisions ENABLE TRIGGER trg_admin_div_geom_3857;
+            """)
+            self.pg_conn.commit()
 
     def _process_row(self, record):
         """Process a single GADM record."""
@@ -393,7 +324,7 @@ class GADMProcessor:
                     self.pg_cursor.execute("""
                         UPDATE administrative_divisions
                         SET gadm_uid = %s,
-                            geom = CASE WHEN %s IS NULL THEN geom ELSE ST_Multi(ST_GeomFromWKB(%s, 4326)) END,
+                            geom = CASE WHEN %s IS NULL THEN geom ELSE validate_multipolygon(ST_GeomFromWKB(%s, 4326)) END,
                             has_children = FALSE
                         WHERE id = %s
                     """, (uid, geom, geom, last_parent_id))
@@ -464,7 +395,7 @@ class GADMProcessor:
         if geom and self.include_geometry:
             self.pg_cursor.execute("""
                 INSERT INTO administrative_divisions (name, parent_id, has_children, gadm_uid, geom)
-                VALUES (%s, %s, %s, %s, ST_Multi(ST_GeomFromWKB(%s, 4326)))
+                VALUES (%s, %s, %s, %s, validate_multipolygon(ST_GeomFromWKB(%s, 4326)))
                 RETURNING id
             """, (name, parent_id, has_children, gadm_uid, geom))
         else:
@@ -475,6 +406,78 @@ class GADMProcessor:
             """, (name, parent_id, has_children, gadm_uid))
 
         return self.pg_cursor.fetchone()[0]
+
+    def _batch_compute_derived_columns(self):
+        """Batch-compute all derived geometry columns after bulk import.
+
+        Runs as a single pass over all divisions with geometry, computing:
+        1. geom_simplified_low/medium (4326 simplification)
+        2. geom_3857 (transform to Web Mercator)
+        3. geom_simplified_low_3857/medium_3857 (3857 simplification)
+
+        Much faster than per-row trigger execution during INSERT.
+        """
+        # Count divisions needing computation
+        self.pg_cursor.execute("""
+            SELECT COUNT(*) FROM administrative_divisions
+            WHERE geom IS NOT NULL AND geom_3857 IS NULL
+        """)
+        count = self.pg_cursor.fetchone()[0]
+        if count == 0:
+            print("  All derived columns already computed.")
+            return
+
+        print(f"\n  Computing derived geometry columns for {count:,} divisions...")
+        start = time.perf_counter()
+
+        # Step 1: 4326 simplification (same as trigger_simplify_geom)
+        print("    Step 1/3: Simplifying geometries (4326)...", end=" ", flush=True)
+        self.pg_cursor.execute("""
+            UPDATE administrative_divisions
+            SET geom_simplified_low = validate_multipolygon(
+                    ST_SimplifyPreserveTopology(geom, 0.1)),
+                geom_simplified_medium = validate_multipolygon(
+                    ST_SimplifyPreserveTopology(geom, 0.01)),
+                updated_at = NOW()
+            WHERE geom IS NOT NULL AND geom_simplified_low IS NULL
+        """)
+        self.pg_conn.commit()
+        print(f"done ({time.perf_counter() - start:.1f}s)")
+
+        # Step 2: Transform to 3857 (with polar clipping fallback)
+        step2_start = time.perf_counter()
+        print("    Step 2/3: Transforming to Web Mercator (3857)...", end=" ", flush=True)
+        self.pg_cursor.execute("""
+            UPDATE administrative_divisions
+            SET geom_3857 = validate_multipolygon(
+                ST_Transform(
+                    CASE
+                        WHEN ST_YMin(geom) < -85.06 OR ST_YMax(geom) > 85.06
+                        THEN ST_Intersection(geom, ST_MakeEnvelope(-180, -85.06, 180, 85.06, 4326))
+                        ELSE geom
+                    END,
+                    3857
+                )
+            )
+            WHERE geom IS NOT NULL AND geom_3857 IS NULL
+        """)
+        self.pg_conn.commit()
+        print(f"done ({time.perf_counter() - step2_start:.1f}s)")
+
+        # Step 3: 3857 simplification
+        step3_start = time.perf_counter()
+        print("    Step 3/3: Simplifying geometries (3857)...", end=" ", flush=True)
+        self.pg_cursor.execute("""
+            UPDATE administrative_divisions
+            SET geom_simplified_low_3857 = simplify_for_zoom(geom_3857, 5000, 0, 0),
+                geom_simplified_medium_3857 = simplify_for_zoom(geom_3857, 1000, 0, 0)
+            WHERE geom_3857 IS NOT NULL AND geom_simplified_low_3857 IS NULL
+        """)
+        self.pg_conn.commit()
+        print(f"done ({time.perf_counter() - step3_start:.1f}s)")
+
+        elapsed = time.perf_counter() - start
+        print(f"  Derived columns complete for {count:,} divisions ({elapsed:.1f}s)")
 
     def merge_single_children(self):
         """
@@ -601,11 +604,6 @@ def main():
         action="store_true",
         help="Fast mode - skip postprocessing optimizations"
     )
-    parser.add_argument(
-        "--skip-schema",
-        action="store_true",
-        help="Skip schema creation (use existing tables)"
-    )
     args = parser.parse_args()
 
     if not os.path.exists(args.source):
@@ -614,14 +612,12 @@ def main():
 
     db_name, db_user, db_password, db_host = get_db_credentials()
 
-    with DatabaseConnectionManager(db_host, db_name, db_user, db_password, args.source) as (pg_cur, sqlite_cur):
-
-        if not args.skip_schema:
-            create_schema(pg_cur)
+    with DatabaseConnectionManager(db_host, db_name, db_user, db_password, args.source) as (pg_conn, pg_cur, sqlite_cur):
 
         processor = GADMProcessor(
             pg_cursor=pg_cur,
             sqlite_cursor=sqlite_cur,
+            pg_conn=pg_conn,
             gadm_file=args.source,
             include_geometry=args.geometry,
             postprocess=not args.fast

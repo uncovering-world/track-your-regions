@@ -16,6 +16,7 @@ import os
 import signal
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 
 import psycopg2
@@ -62,11 +63,11 @@ def get_db_credentials():
     return db_name, db_user, db_password, db_host
 
 
-def get_non_leaf_divisions_without_geom(cursor):
-    """Get all non-leaf administrative divisions that don't have geometry yet.
+def get_non_leaf_divisions_by_depth(cursor):
+    """Get all non-leaf administrative divisions without geometry, grouped by depth.
 
-    Orders by depth (deepest first) so we process divisions with fewer
-    descendants first - these are much faster to compute.
+    Returns a list of (depth, divisions) tuples, deepest first.
+    Within a depth level, divisions are independent and can be parallelized.
     """
     print("  Finding non-leaf divisions without geometry (ordered by depth)...", end=" ", flush=True)
     cursor.execute("""
@@ -89,8 +90,16 @@ def get_non_leaf_divisions_without_geom(cursor):
         ORDER BY dd.depth DESC
     """)
     result = cursor.fetchall()
-    print(f"found {len(result):,}")
-    return [(r[0], r[1]) for r in result]
+
+    # Group by depth level
+    from collections import OrderedDict
+    levels = OrderedDict()
+    for div_id, name, depth in result:
+        levels.setdefault(depth, []).append((div_id, name))
+
+    total = len(result)
+    print(f"found {total:,} across {len(levels)} depth levels")
+    return total, levels
 
 
 def calculate_merged_geometry(cursor, division_id, debug=False):
@@ -99,9 +108,11 @@ def calculate_merged_geometry(cursor, division_id, debug=False):
     Since we process bottom-up (deepest first), all children already have
     their geometry computed, so we just need to merge direct children.
 
-    Simplification is adaptive based on:
-    - Point density (points per square degree) - keeps detail where it matters
-    - Target: aim for ~5000-10000 points per division for good balance
+    Rule 1: geom is sacred — no simplification applied to source geometry.
+    Full-resolution geometry is stored; triggers handle simplified columns.
+
+    Uses ST_CoverageUnion when possible (faster for valid coverages),
+    falls back to ST_Union(ST_MakeValid()) on error.
     """
     if debug:
         # Get debug info
@@ -120,226 +131,261 @@ def calculate_merged_geometry(cursor, division_id, debug=False):
 
     start = time.perf_counter()
 
-    # Merge children and apply adaptive simplification
-    # The tolerance is calculated to reduce complex geometries while preserving simple ones
-    # ST_MakeValid fixes any topology errors before processing
-    # ST_CollectionExtract(geom, 3) extracts only polygons (type 3) to avoid GeometryCollection errors
-    cursor.execute("""
-        WITH merged AS (
-            SELECT ST_Multi(ST_Union(ST_MakeValid(geom))) as merged_geom
-            FROM administrative_divisions
-            WHERE parent_id = %s
-              AND geom IS NOT NULL
-        ),
-        validated AS (
-            SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(merged_geom), 3)) as merged_geom
+    # Try ST_CoverageUnion first (faster for valid coverages, removes shared edges)
+    # Fall back to ST_Union(ST_MakeValid()) if it fails
+    used_coverage_union = False
+    cursor.execute("SAVEPOINT try_coverage_union")
+    try:
+        cursor.execute("""
+            WITH merged AS (
+                SELECT ST_CoverageUnion(geom) as merged_geom
+                FROM administrative_divisions
+                WHERE parent_id = %s
+                  AND geom IS NOT NULL
+            )
+            UPDATE administrative_divisions
+            SET geom = validate_multipolygon(merged.merged_geom)
             FROM merged
-        ),
-        analyzed AS (
-            SELECT
-                merged_geom,
-                ST_NPoints(merged_geom) as point_count,
-                -- Area in square degrees (approximate)
-                ST_Area(merged_geom::geography) / 1000000000 as area_sq_deg,
-                -- Bounding box diagonal for reference
-                CASE
-                    WHEN merged_geom IS NOT NULL THEN
-                        GREATEST(
-                            ST_XMax(merged_geom) - ST_XMin(merged_geom),
-                            ST_YMax(merged_geom) - ST_YMin(merged_geom)
-                        )
-                    ELSE 0
-                END as bbox_size
-            FROM validated
-        ),
-        tolerance_calc AS (
-            SELECT
-                merged_geom,
-                point_count,
-                area_sq_deg,
-                bbox_size,
-                -- Target: ~5000 points is a good balance
-                -- Calculate tolerance to achieve roughly this target
-                -- More points = higher tolerance needed
-                CASE
-                    -- Already simple enough, no simplification
-                    WHEN point_count < 5000 THEN 0
-                    -- Moderate complexity: light simplification
-                    WHEN point_count < 20000 THEN 0.0005
-                    -- High complexity: medium simplification
-                    WHEN point_count < 50000 THEN 0.001
-                    -- Very high complexity: stronger simplification
-                    WHEN point_count < 100000 THEN 0.005
-                    -- Extremely complex: heavy simplification
-                    ELSE 0.01
-                END as tolerance
-            FROM analyzed
-        )
-        UPDATE administrative_divisions
-        SET
-            geom = CASE
-                WHEN tolerance_calc.tolerance = 0 THEN tolerance_calc.merged_geom
-                ELSE ST_SimplifyPreserveTopology(tolerance_calc.merged_geom, tolerance_calc.tolerance)
-            END
-        FROM tolerance_calc
-        WHERE administrative_divisions.id = %s
-          AND tolerance_calc.merged_geom IS NOT NULL
-    """, (division_id, division_id))
+            WHERE administrative_divisions.id = %s
+              AND merged.merged_geom IS NOT NULL
+        """, (division_id, division_id))
+        cursor.execute("RELEASE SAVEPOINT try_coverage_union")
+        used_coverage_union = True
+    except Exception:
+        cursor.execute("ROLLBACK TO SAVEPOINT try_coverage_union")
+        cursor.execute("""
+            WITH merged AS (
+                SELECT ST_Union(ST_MakeValid(geom)) as merged_geom
+                FROM administrative_divisions
+                WHERE parent_id = %s
+                  AND geom IS NOT NULL
+            )
+            UPDATE administrative_divisions
+            SET geom = validate_multipolygon(merged.merged_geom)
+            FROM merged
+            WHERE administrative_divisions.id = %s
+              AND merged.merged_geom IS NOT NULL
+        """, (division_id, division_id))
 
     if debug:
         elapsed = time.perf_counter() - start
-        # Also show resulting point count
         cursor.execute("SELECT ST_NPoints(geom) FROM administrative_divisions WHERE id = %s", (division_id,))
         result = cursor.fetchone()
         result_points = result[0] if result and result[0] else 0
-        print(f" -> {result_points:,} pts ({elapsed:.2f}s)", end="", flush=True)
+        method = "CovUnion" if used_coverage_union else "Union"
+        print(f" -> {result_points:,} pts ({method}, {elapsed:.2f}s)", end="", flush=True)
 
     return cursor.rowcount > 0
 
 
-def precalculate_all_geometries(conn, cursor, batch_size=100):
-    """Pre-calculate merged geometries for all non-leaf administrative divisions."""
-    divisions = get_non_leaf_divisions_without_geom(cursor)
-    total = len(divisions)
+def _merge_worker(division_ids, db_params):
+    """Worker thread: merge geometry for a batch of divisions using its own DB connection."""
+    conn = psycopg2.connect(**db_params)
+    conn.autocommit = False
+    cursor = conn.cursor()
+    results = []
+
+    for division_id, name in division_ids:
+        start = time.perf_counter()
+
+        # Get child info
+        cursor.execute("""
+            SELECT
+                (SELECT COUNT(*) FROM administrative_divisions WHERE parent_id = %s),
+                (SELECT SUM(ST_NPoints(geom)) FROM administrative_divisions WHERE parent_id = %s AND geom IS NOT NULL)
+        """, (division_id, division_id))
+        info = cursor.fetchone()
+        child_count = info[0] if info else 0
+        points_before = info[1] if info and info[1] else 0
+
+        # Try ST_CoverageUnion first, fall back to ST_Union
+        used_coverage = False
+        cursor.execute("SAVEPOINT try_cov")
+        try:
+            cursor.execute("""
+                WITH merged AS (
+                    SELECT ST_CoverageUnion(geom) as merged_geom
+                    FROM administrative_divisions
+                    WHERE parent_id = %s AND geom IS NOT NULL
+                )
+                UPDATE administrative_divisions
+                SET geom = validate_multipolygon(merged.merged_geom)
+                FROM merged
+                WHERE administrative_divisions.id = %s AND merged.merged_geom IS NOT NULL
+            """, (division_id, division_id))
+            cursor.execute("RELEASE SAVEPOINT try_cov")
+            used_coverage = True
+        except Exception:
+            cursor.execute("ROLLBACK TO SAVEPOINT try_cov")
+            cursor.execute("""
+                WITH merged AS (
+                    SELECT ST_Union(ST_MakeValid(geom)) as merged_geom
+                    FROM administrative_divisions
+                    WHERE parent_id = %s AND geom IS NOT NULL
+                )
+                UPDATE administrative_divisions
+                SET geom = validate_multipolygon(merged.merged_geom)
+                FROM merged
+                WHERE administrative_divisions.id = %s AND merged.merged_geom IS NOT NULL
+            """, (division_id, division_id))
+
+        # Commit so other workers can see this division's geometry
+        conn.commit()
+
+        # Get result points
+        cursor.execute("SELECT ST_NPoints(geom) FROM administrative_divisions WHERE id = %s", (division_id,))
+        result = cursor.fetchone()
+        points_after = result[0] if result and result[0] else 0
+        elapsed = time.perf_counter() - start
+
+        results.append((name, child_count, points_before, points_after, elapsed))
+
+    cursor.close()
+    conn.close()
+    return results
+
+
+def _get_db_params():
+    """Get DB connection params from environment."""
+    return dict(
+        dbname=os.environ.get("DB_NAME", "track_regions"),
+        user=os.environ.get("DB_USER", "postgres"),
+        password=os.environ.get("DB_PASSWORD", "postgres"),
+        host=os.environ.get("DB_HOST", "localhost"),
+        port=int(os.environ.get("DB_PORT", 5432)),
+    )
+
+
+def precalculate_all_geometries(conn, cursor, workers=8):
+    """Pre-calculate merged geometries for all non-leaf administrative divisions.
+
+    Processes depth levels bottom-up (deepest first). Within each level,
+    divisions are independent and run in parallel across worker threads.
+    """
+    total, levels = get_non_leaf_divisions_by_depth(cursor)
 
     if total == 0:
         print("\nAll non-leaf divisions already have geometries. Nothing to do.")
         return
 
-    print(f"\nComputing merged geometries for {total:,} non-leaf divisions...")
-    print(f"(Committing every {batch_size} divisions - safe to interrupt with Ctrl+C)")
-    print()
-    print("=" * 70)
-    print("Recent regions:")
-    print("-" * 70)
+    print(f"\nComputing merged geometries for {total:,} non-leaf divisions with {workers} workers...")
+    print(f"(Processing {len(levels)} depth levels bottom-up)")
 
     start_time = time.perf_counter()
-    last_print_time = start_time
-    last_processed = 0
     processed = 0
-    updated = 0
-    bar_width = 40
-    print_interval = 0.5  # Print every 0.5 seconds
-    smoothed_speed = None  # Exponential moving average of speed
-    alpha = 0.3  # Smoothing factor (higher = more weight on recent speed)
-
-    # Keep track of recent regions for display
-    recent_regions = []  # List of (name, children, points_before, points_after, time)
-    max_recent = 10
-
-    def render_display():
-        """Render the display with recent regions and progress bar."""
-        nonlocal smoothed_speed
-
-        # Calculate how many lines to go up (regions + progress bar)
-        lines_to_clear = max_recent + 2
-
-        # Move cursor up and clear
-        sys.stdout.write(f"\033[{lines_to_clear}A")
-
-        # Print recent regions (pad to max_recent lines)
-        display_regions = recent_regions[-max_recent:]
-        for i in range(max_recent):
-            sys.stdout.write("\033[K")  # Clear line
-            if i < len(display_regions):
-                name, children, pts_before, pts_after, elapsed = display_regions[i]
-                if pts_before > 0:
-                    reduction = (1 - pts_after / pts_before) * 100 if pts_before > pts_after else 0
-                    sys.stdout.write(f"  {name}: {children} children, {pts_before:,} → {pts_after:,} pts (-{reduction:.0f}%) [{elapsed:.2f}s]\n")
-                else:
-                    sys.stdout.write(f"  {name}: {children} children, no geometry\n")
-            else:
-                sys.stdout.write("\n")
-
-        # Print separator and progress bar
-        sys.stdout.write("\033[K")  # Clear line
-        sys.stdout.write("-" * 70 + "\n")
-
-        sys.stdout.write("\033[K")  # Clear line
-        pct = processed / total if total > 0 else 0
-        remaining = total - processed
-        eta = remaining / smoothed_speed if smoothed_speed and smoothed_speed > 0 else 0
-        filled = int(bar_width * pct)
-        bar = "█" * filled + "░" * (bar_width - filled)
-        sys.stdout.write(f"  [{bar}] {pct*100:5.1f}% {processed:,}/{total:,} "
-              f"{smoothed_speed or 0:.0f}/s ETA:{timedelta(seconds=int(eta))}\n")
-        sys.stdout.flush()
-
-    # Print initial empty lines to reserve space for the display area
-    for _ in range(max_recent):
-        print()
-    print("-" * 70)
-    print()
+    db_params = _get_db_params()
 
     try:
-        for division_id, name in divisions:
-            division_start = time.perf_counter()
+        for depth, divisions in levels.items():
+            level_start = time.perf_counter()
+            level_count = len(divisions)
 
-            # Get info before processing
-            cursor.execute("""
-                SELECT
-                    (SELECT COUNT(*) FROM administrative_divisions WHERE parent_id = %s) as child_count,
-                    (SELECT SUM(ST_NPoints(geom)) FROM administrative_divisions WHERE parent_id = %s AND geom IS NOT NULL) as total_points
-            """, (division_id, division_id))
-            info = cursor.fetchone()
-            child_count = info[0] if info else 0
-            points_before = info[1] if info and info[1] else 0
+            actual_workers = min(workers, level_count)
 
-            if calculate_merged_geometry(cursor, division_id, debug=False):
-                updated += 1
-            processed += 1
+            print(f"\n  Depth {depth}: {level_count:,} divisions ({actual_workers} workers)...")
 
-            # Get resulting points
-            cursor.execute("SELECT ST_NPoints(geom) FROM administrative_divisions WHERE id = %s", (division_id,))
-            result = cursor.fetchone()
-            points_after = result[0] if result and result[0] else 0
-
-            division_elapsed = time.perf_counter() - division_start
-
-            # Add to recent divisions
-            recent_regions.append((name, child_count, points_before, points_after, division_elapsed))
-            if len(recent_regions) > max_recent * 2:  # Keep some buffer
-                recent_regions = recent_regions[-max_recent:]
-
-            # Commit in batches - this saves progress and allows interruption
-            if processed % batch_size == 0:
+            if actual_workers == 1:
+                # Sequential on main connection
+                for division_id, name in divisions:
+                    calculate_merged_geometry(cursor, division_id, debug=(level_count <= 20))
+                    processed += 1
                 conn.commit()
+            else:
+                # Parallel with thread pool
+                chunk_size = (level_count + actual_workers - 1) // actual_workers
+                chunks = [divisions[i:i + chunk_size] for i in range(0, level_count, chunk_size)]
 
-            # Update display periodically
-            current_time = time.perf_counter()
-            if current_time - last_print_time >= print_interval or processed == total:
-                interval_elapsed = current_time - last_print_time
-                interval_processed = processed - last_processed
+                with ThreadPoolExecutor(max_workers=actual_workers) as executor:
+                    futures = [executor.submit(_merge_worker, chunk, db_params) for chunk in chunks]
+                    for future in as_completed(futures):
+                        results = future.result()
+                        processed += len(results)
+                        # Show notable regions (>1s or >100K points)
+                        for name, children, pts_before, pts_after, elapsed in results:
+                            if elapsed > 1.0 or pts_before > 100_000:
+                                print(f"    {name}: {children} children, {pts_before:,} → {pts_after:,} pts [{elapsed:.1f}s]")
 
-                # Calculate instant speed for this interval
-                instant_speed = interval_processed / interval_elapsed if interval_elapsed > 0 else 0
+            level_elapsed = time.perf_counter() - level_start
+            total_elapsed = time.perf_counter() - start_time
+            print(f"    Level {depth} done ({level_count:,} divisions in {level_elapsed:.1f}s) — {processed:,}/{total:,} total ({total_elapsed:.0f}s)")
 
-                # Update smoothed speed (exponential moving average)
-                if smoothed_speed is None:
-                    smoothed_speed = instant_speed
-                else:
-                    smoothed_speed = alpha * instant_speed + (1 - alpha) * smoothed_speed
-
-                last_print_time = current_time
-                last_processed = processed
-
-                render_display()
-
-        # Final commit
-        conn.commit()
-
+        # Final
         elapsed = time.perf_counter() - start_time
-        print()
-        print("=" * 70)
-        print(f"  ✓ Completed in {timedelta(seconds=int(elapsed))}")
-        print(f"  ✓ Updated {updated:,} divisions with merged geometries")
+        print(f"\n{'=' * 70}")
+        print(f"  Completed {total:,} divisions in {timedelta(seconds=int(elapsed))}")
+
+        # Apply coverage-aware simplification for gap-free borders
+        run_coverage_simplification(conn, cursor, workers=workers)
 
     except KeyboardInterrupt:
-        print(f"\n\n⚠️  Interrupted! Committing current batch...")
-        conn.commit()
-        print(f"  ✓ Saved progress: {processed:,}/{total:,} processed, {updated:,} updated")
+        print(f"\n\n  Interrupted! Progress: {processed:,}/{total:,} processed")
         print(f"  Run the script again to continue from where you left off.")
         sys.exit(0)
+
+
+def _simplify_worker(parent_ids_chunk, db_params):
+    """Worker thread: simplify a chunk of parent groups using its own DB connection."""
+    conn = psycopg2.connect(**db_params)
+    conn.autocommit = True
+    cursor = conn.cursor()
+    failed = 0
+    for parent_id in parent_ids_chunk:
+        try:
+            cursor.execute("SELECT simplify_coverage_siblings(%s)", (parent_id,))
+        except Exception:
+            failed += 1
+    cursor.close()
+    conn.close()
+    return len(parent_ids_chunk), failed
+
+
+def run_coverage_simplification(conn, cursor, workers=8):
+    """Apply coverage-aware simplification to sibling divisions.
+
+    Uses ST_CoverageSimplify (PostGIS 3.6+) to create gap-free simplified
+    versions of adjacent divisions that share borders. This replaces the
+    per-row trigger-based simplification with topology-preserving results.
+
+    Runs in parallel with multiple DB connections since each group is independent.
+    """
+    print("\nApplying coverage-aware simplification to sibling groups...")
+
+    cursor.execute("""
+        SELECT DISTINCT parent_id
+        FROM administrative_divisions
+        WHERE parent_id IS NOT NULL
+          AND geom IS NOT NULL
+        ORDER BY parent_id
+    """)
+    parent_ids = [row[0] for row in cursor.fetchall()]
+    conn.commit()  # Release read lock before spawning parallel workers
+
+    total = len(parent_ids)
+    db_params = _get_db_params()
+    print(f"  Processing {total:,} parent groups with {workers} workers...")
+    start = time.perf_counter()
+
+    # Split into chunks — one per worker
+    chunk_size = (total + workers - 1) // workers
+    chunks = [parent_ids[i:i + chunk_size] for i in range(0, total, chunk_size)]
+
+    completed = 0
+    total_failed = 0
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(_simplify_worker, chunk, db_params) for chunk in chunks]
+        for future in as_completed(futures):
+            done, failed = future.result()
+            completed += done
+            total_failed += failed
+            elapsed = time.perf_counter() - start
+            print(f"    {completed:,}/{total:,} groups ({elapsed:.1f}s)")
+
+    if total_failed > 0:
+        print(f"  Warning: {total_failed} groups failed (per-row trigger simplification used as fallback)")
+
+    elapsed = time.perf_counter() - start
+    print(f"  Coverage simplification complete for {total:,} groups ({elapsed:.1f}s)")
 
 
 def print_stats(cursor):
