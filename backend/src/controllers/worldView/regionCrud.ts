@@ -33,7 +33,10 @@ export async function getRegions(req: Request, res: Response): Promise<void> {
       END as "anchorPoint",
       (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id) as "hasSubregions",
       (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND uses_hull = true) as "hasHullChildren",
+      ris.source_url as "sourceUrl",
+      ris.region_map_url as "regionMapUrl"
     FROM regions cg
+    LEFT JOIN region_import_state ris ON ris.region_id = cg.id
     WHERE cg.world_view_id = $1
     ORDER BY cg.name
   `, [worldViewId]);
@@ -67,7 +70,10 @@ export async function getRootRegions(req: Request, res: Response): Promise<void>
       END as "anchorPoint",
       (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id) as "hasSubregions",
       (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND uses_hull = true) as "hasHullChildren",
+      ris.source_url as "sourceUrl",
+      ris.region_map_url as "regionMapUrl"
     FROM regions cg
+    LEFT JOIN region_import_state ris ON ris.region_id = cg.id
     WHERE cg.world_view_id = $1 AND cg.parent_region_id IS NULL
     ORDER BY cg.name
   `, [worldViewId]);
@@ -101,7 +107,10 @@ export async function getSubregions(req: Request, res: Response): Promise<void> 
       END as "anchorPoint",
       (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id) as "hasSubregions",
       (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND uses_hull = true) as "hasHullChildren",
+      ris.source_url as "sourceUrl",
+      ris.region_map_url as "regionMapUrl"
     FROM regions cg
+    LEFT JOIN region_import_state ris ON ris.region_id = cg.id
     WHERE cg.parent_region_id = $1
     ORDER BY cg.name
   `, [regionId]);

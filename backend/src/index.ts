@@ -55,7 +55,7 @@ app.use((req, res, next) => {
 
 // Body & cookie parsing
 app.use(cookieParser());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true })); // Needed for Apple OAuth callback
 
 // Serve cached experience images with long cache headers
@@ -87,6 +87,15 @@ const startServer = async () => {
   );
   if (staleResult.rowCount && staleResult.rowCount > 0) {
     console.log(`🧹 Marked ${staleResult.rowCount} stale sync log(s) as failed`);
+  }
+
+  // Mark any orphaned import_runs as failed (e.g., from a previous server crash)
+  const staleImportResult = await pool.query(
+    `UPDATE import_runs SET status = 'failed', completed_at = NOW()
+     WHERE status IN ('running', 'matching')`,
+  );
+  if (staleImportResult.rowCount && staleImportResult.rowCount > 0) {
+    console.log(`🧹 Marked ${staleImportResult.rowCount} stale import run(s) as failed`);
   }
 
   // Schedule periodic cleanup of expired/revoked tokens (every 6 hours)
