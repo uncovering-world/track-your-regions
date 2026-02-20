@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -18,12 +18,14 @@ import {
   Divider,
   IconButton,
   Tooltip,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { LoadingSpinner } from '../../../shared/LoadingSpinner';
 import FolderCopyIcon from '@mui/icons-material/FolderCopy';
 import type { RegionMember, Region } from '../../../../types';
-import { fetchSubdivisions, fetchDivisionUsageCounts } from '../../../../api';
+import { fetchSubdivisions, fetchDivisionUsageCounts, fetchRegionMembers } from '../../../../api';
 
 export interface ChildToAdd {
   id: number;
@@ -36,11 +38,13 @@ export interface AddChildrenResult {
   childIds?: number[];
   asSubregions: boolean;
   inheritColor: boolean;
+  assignments?: Array<{ gadmChildId: number; existingRegionId: number }>;
 }
 
 interface AddChildrenDialogProps {
   member: RegionMember | null;
   selectedRegion: Region | null;
+  existingChildren: Region[];
   inheritColor: boolean;
   onInheritColorChange: (value: boolean) => void;
   worldViewId: number;
@@ -49,9 +53,12 @@ interface AddChildrenDialogProps {
   isPending: boolean;
 }
 
+const NEW_REGION_VALUE = '__new__';
+
 export function AddChildrenDialog({
   member,
   selectedRegion,
+  existingChildren,
   inheritColor,
   onInheritColorChange,
   worldViewId,
@@ -59,18 +66,22 @@ export function AddChildrenDialog({
   onConfirm,
   isPending,
 }: AddChildrenDialogProps) {
-  // Internal state — previously lifted to parent
   const [childrenToAdd, setChildrenToAdd] = useState<ChildToAdd[]>([]);
   const [loading, setLoading] = useState(false);
   const [asSubregions, setAsSubregions] = useState(true);
   const [usageCounts, setUsageCounts] = useState<Record<number, number>>({});
+  // Maps GADM child ID → existing region ID (or NEW_REGION_VALUE for new region)
+  const [assignments, setAssignments] = useState<Record<number, string>>({});
 
-  // Fetch subdivisions when dialog opens (member changes from null to a value)
+  const hasExistingChildren = existingChildren.length > 0;
+
+  // Fetch subdivisions + existing region members when dialog opens
   useEffect(() => {
     if (!member) return;
 
     let cancelled = false;
     setLoading(true);
+    setAssignments({});
 
     (async () => {
       try {
@@ -83,6 +94,29 @@ export function AddChildrenDialog({
           const counts = await fetchDivisionUsageCounts(worldViewId, childIds);
           if (!cancelled) setUsageCounts(counts);
         }
+
+        // If there are existing child regions, fetch their members to find pre-existing assignments
+        if (existingChildren.length > 0) {
+          const childIdSet = new Set(childIds);
+          const memberResults = await Promise.all(
+            existingChildren.map(async (region) => {
+              const members = await fetchRegionMembers(region.id);
+              return { regionId: region.id, members };
+            })
+          );
+          if (cancelled) return;
+
+          // Build pre-assignment map: divisionId → regionId
+          const preAssignments: Record<number, string> = {};
+          for (const { regionId, members } of memberResults) {
+            for (const m of members) {
+              if (!m.isSubregion && childIdSet.has(m.id)) {
+                preAssignments[m.id] = String(regionId);
+              }
+            }
+          }
+          setAssignments(preAssignments);
+        }
       } catch (e) {
         console.error('Failed to fetch children:', e);
         if (!cancelled) setChildrenToAdd([]);
@@ -92,7 +126,25 @@ export function AddChildrenDialog({
     })();
 
     return () => { cancelled = true; };
-  }, [member, worldViewId]);
+  }, [member, worldViewId, existingChildren]);
+
+  // Track which existing regions are already used in assignments
+  const usedRegionIds = useMemo(() => {
+    const used = new Set<string>();
+    for (const regionId of Object.values(assignments)) {
+      if (regionId !== NEW_REGION_VALUE) used.add(regionId);
+    }
+    return used;
+  }, [assignments]);
+
+  // Count unassigned existing regions
+  const unassignedExistingRegions = useMemo(() => {
+    return existingChildren.filter(r => !usedRegionIds.has(String(r.id)));
+  }, [existingChildren, usedRegionIds]);
+
+  const handleAssignmentChange = useCallback((childId: number, value: string) => {
+    setAssignments(prev => ({ ...prev, [childId]: value }));
+  }, []);
 
   // Confirm handler — build result and pass to parent
   const handleConfirm = useCallback(() => {
@@ -104,28 +156,43 @@ export function AddChildrenDialog({
       return;
     }
 
+    // Build explicit assignments array (only for selected children assigned to existing regions)
+    const explicitAssignments: Array<{ gadmChildId: number; existingRegionId: number }> = [];
+    if (hasExistingChildren && asSubregions) {
+      for (const childId of selectedChildIds) {
+        const regionId = assignments[childId];
+        if (regionId && regionId !== NEW_REGION_VALUE) {
+          explicitAssignments.push({ gadmChildId: childId, existingRegionId: parseInt(regionId) });
+        }
+      }
+    }
+
     onConfirm({
       divisionId: member.id,
       childIds: selectedChildIds.length === childrenToAdd.length ? undefined : selectedChildIds,
       asSubregions,
       inheritColor: asSubregions && inheritColor,
+      assignments: explicitAssignments.length > 0 ? explicitAssignments : undefined,
     });
-  }, [member, childrenToAdd, asSubregions, inheritColor, onClose, onConfirm]);
+  }, [member, childrenToAdd, asSubregions, inheritColor, assignments, hasExistingChildren, onClose, onConfirm]);
 
   const selectedCount = childrenToAdd.filter(c => c.selected).length;
+  const showAssignments = hasExistingChildren && asSubregions;
 
   return (
     <Dialog
       open={!!member}
       onClose={onClose}
-      maxWidth="sm"
+      maxWidth={showAssignments ? 'md' : 'sm'}
       fullWidth
     >
       <DialogTitle>
         {asSubregions ? 'Add Children as Subregions' : 'Split into Divisions'}
         <Typography variant="body2" color="text.secondary">
           {asSubregions
-            ? `Select which children of "${member?.name}" to add as subregions`
+            ? showAssignments
+              ? `Assign children of "${member?.name}" to existing regions or create new ones`
+              : `Select which children of "${member?.name}" to add as subregions`
             : `Replace "${member?.name}" with selected divisions`}
         </Typography>
       </DialogTitle>
@@ -213,11 +280,12 @@ export function AddChildrenDialog({
                 </Button>
               </Box>
             </Box>
-            <Paper variant="outlined" sx={{ maxHeight: 250, overflow: 'auto' }}>
+            <Paper variant="outlined" sx={{ maxHeight: 350, overflow: 'auto' }}>
               <List dense>
                 {childrenToAdd.map((child) => {
                   const usageCount = usageCounts[child.id] || 0;
                   const isUsed = usageCount > 0;
+                  const assignedTo = assignments[child.id] || NEW_REGION_VALUE;
 
                   return (
                     <ListItem key={child.id} disablePadding>
@@ -225,6 +293,7 @@ export function AddChildrenDialog({
                         onClick={() => setChildrenToAdd(prev =>
                           prev.map(c => c.id === child.id ? { ...c, selected: !c.selected } : c)
                         )}
+                        sx={{ gap: 0.5 }}
                       >
                         <Checkbox
                           edge="start"
@@ -254,12 +323,54 @@ export function AddChildrenDialog({
                             </Box>
                           }
                         />
+                        {/* Region assignment dropdown */}
+                        {showAssignments && child.selected && (
+                          <Select
+                            size="small"
+                            value={assignedTo}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleAssignmentChange(child.id, e.target.value);
+                            }}
+                            sx={{ minWidth: 180, fontSize: '0.8rem', height: 30 }}
+                          >
+                            <MenuItem value={NEW_REGION_VALUE}>
+                              <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                                new region
+                              </Typography>
+                            </MenuItem>
+                            {existingChildren.map((region) => {
+                              const isUsedElsewhere = usedRegionIds.has(String(region.id)) && assignedTo !== String(region.id);
+                              return (
+                                <MenuItem
+                                  key={region.id}
+                                  value={String(region.id)}
+                                  disabled={isUsedElsewhere}
+                                >
+                                  {region.name}
+                                </MenuItem>
+                              );
+                            })}
+                          </Select>
+                        )}
                       </ListItemButton>
                     </ListItem>
                   );
                 })}
               </List>
             </Paper>
+
+            {/* Unassigned existing regions info */}
+            {showAssignments && unassignedExistingRegions.length > 0 && (
+              <Alert severity="info" sx={{ mt: 1 }}>
+                <Typography variant="caption">
+                  {unassignedExistingRegions.length} existing region{unassignedExistingRegions.length > 1 ? 's' : ''} without assignment:{' '}
+                  {unassignedExistingRegions.map(r => r.name).join(', ')}
+                </Typography>
+              </Alert>
+            )}
+
             {asSubregions && (
               <FormControlLabel
                 control={

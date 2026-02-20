@@ -62,6 +62,7 @@ export {
   fetchRegionGeometry,
   fetchRegionMembers,
   fetchRegionMemberGeometries,
+  fetchDescendantMemberGeometries,
   addDivisionsToRegion,
   removeDivisionsFromRegion,
   moveMemberToRegion,

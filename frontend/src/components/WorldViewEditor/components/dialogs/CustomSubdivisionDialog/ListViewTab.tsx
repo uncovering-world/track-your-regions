@@ -456,20 +456,25 @@ export function ListViewTab({
                         inputProps={{ style: { fontSize: '0.875rem', fontWeight: 'bold' } }}
                       />
                     ) : (
-                      <Typography
-                        variant="subtitle2"
-                        fontWeight="bold"
-                        onClick={() => {
-                          setEditingGroupIdx(groupIdx);
-                          setEditingGroupName(group.name);
-                        }}
-                        sx={{
-                          cursor: 'pointer',
-                          '&:hover': { textDecoration: 'underline' },
-                        }}
-                      >
-                        {group.name}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography
+                          variant="subtitle2"
+                          fontWeight="bold"
+                          onClick={() => {
+                            setEditingGroupIdx(groupIdx);
+                            setEditingGroupName(group.name);
+                          }}
+                          sx={{
+                            cursor: 'pointer',
+                            '&:hover': { textDecoration: 'underline' },
+                          }}
+                        >
+                          {group.name}
+                        </Typography>
+                        {group.existingRegionId && (
+                          <Chip size="small" label="existing" variant="outlined" color="info" sx={{ height: 18, fontSize: '0.65rem' }} />
+                        )}
+                      </Box>
                     )}
                     <Box>
                       <Chip size="small" label={`${group.members.length}`} sx={{ mr: 0.5 }} />
