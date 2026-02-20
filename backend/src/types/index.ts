@@ -420,7 +420,7 @@ export const updateRegionBodySchema = z.object({
   parentRegionId: z.number().int().positive().nullable().optional(),
   parentGroupId: z.number().int().positive().nullable().optional(),
   color: z.string().max(50).nullable().optional(),
-  isArchipelago: z.boolean().optional(),
+  usesHull: z.boolean().optional(),
 });
 
 export const deleteRegionQuerySchema = z.object({
@@ -490,7 +490,7 @@ export const hullSaveBodySchema = z.object({
 export const updateGeometryBodySchema = z.object({
   geometry: z.any(),
   isCustomBoundary: z.boolean().default(true),
-  tsHullGeometry: z.any().optional(),
+  hullGeometry: z.any().optional(),
 });
 
 export const subregionGeometriesQuerySchema = z.object({
@@ -507,12 +507,16 @@ export const computeSSEQuerySchema = z.object({
   token: z.string().optional(), // JWT passed as query param (EventSource can't send headers)
 });
 
+export const coverageSSEQuerySchema = z.object({
+  token: z.string().optional(), // JWT passed as query param (EventSource can't send headers)
+});
+
 export const regenerateDisplayQuerySchema = z.object({
   regionId: z.coerce.number().int().positive().optional(),
 });
 
 export const regionGeometryDetailQuerySchema = z.object({
-  detail: z.enum(['high', 'display', 'ts_hull', 'anchor']).optional(),
+  detail: z.enum(['high', 'display', 'hull', 'anchor']).optional(),
 });
 
 // =============================================================================

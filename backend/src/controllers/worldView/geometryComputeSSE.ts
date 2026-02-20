@@ -102,6 +102,12 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
         }
       }
       logStep(`Pre-step complete: ${childrenComputed}/${childrenWithoutGeom.rows.length} children computed`);
+
+      // Coverage-simplify children for gap-free borders between siblings
+      if (childrenComputed >= 2) {
+        await pool.query('SELECT simplify_coverage_regions($1::integer)', [regionId]);
+        logStep('Coverage simplification applied to children');
+      }
     }
 
     // Query timeout (5 minutes)
@@ -406,38 +412,77 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
     logStep('Step 6/6: Saving to database...');
     const updateResult = await client.query(`
       UPDATE regions
-      SET geom = $2
+      SET geom = validate_multipolygon($2)
       WHERE id = $1
-      RETURNING ST_NPoints(geom) as points, is_archipelago
+      RETURNING ST_NPoints(geom) as points, uses_hull
     `, [regionId, cleanedGeom]);
 
     await client.query('RESET statement_timeout');
 
     const finalPoints = updateResult.rows[0]?.points;
-    const isArchipelago = updateResult.rows[0]?.is_archipelago;
+    const usesHull = updateResult.rows[0]?.uses_hull;
     logStep('Step 6/6: Complete', { finalPoints });
 
-    // Generate hull for archipelagos OR clear stale hull data for non-archipelagos
-    let tsHullResult = null;
-    if (isArchipelago) {
-      logStep('Generating TS Hull for archipelago...');
-      tsHullResult = await generateSingleHull(regionId);
-      logStep('TS Hull complete', { generated: tsHullResult.generated });
+    // Generate hull for hull regions OR clear stale hull data for non-hull regions
+    let hullResult = null;
+    if (usesHull) {
+      logStep('Generating hull...');
+      hullResult = await generateSingleHull(regionId);
+      logStep('Hull complete', { generated: hullResult.generated });
     } else {
-      // Not an archipelago - clear any stale hull data
+      // Does not use hull - clear any stale hull data
       const clearResult = await client.query(`
         UPDATE regions
-        SET ts_hull_geom = NULL,
-            ts_hull_geom_3857 = NULL,
-            ts_hull_params = NULL
+        SET hull_geom = NULL,
+            hull_geom_3857 = NULL,
+            hull_params = NULL
         WHERE id = $1
-          AND ts_hull_geom IS NOT NULL
+          AND hull_geom IS NOT NULL
         RETURNING id
       `, [regionId]);
 
       if (clearResult.rowCount && clearResult.rowCount > 0) {
-        logStep('Cleared stale hull data (not an archipelago)');
+        logStep('Cleared stale hull data (does not use hull)');
       }
+    }
+
+    // Coverage-simplify this region's siblings for gap-free borders
+    const parentResult = await pool.query(
+      'SELECT parent_region_id FROM regions WHERE id = $1',
+      [regionId]
+    );
+    const parentRegionId = parentResult.rows[0]?.parent_region_id;
+    if (parentRegionId) {
+      const coverageResult = await pool.query('SELECT simplify_coverage_regions($1::integer)', [parentRegionId]);
+      const coverageCount = coverageResult.rows[0]?.simplify_coverage_regions ?? 0;
+      if (coverageCount > 0) {
+        logStep('Coverage simplification applied to siblings', { siblings: coverageCount });
+      }
+    }
+
+    // Fetch updated focus data (trigger-computed after geom/hull change)
+    const focusResult = await pool.query(`
+      SELECT
+        focus_bbox,
+        CASE WHEN anchor_point IS NOT NULL
+          THEN json_build_array(ST_X(anchor_point), ST_Y(anchor_point))
+          ELSE NULL
+        END as anchor_point,
+        world_view_id
+      FROM regions WHERE id = $1
+    `, [regionId]);
+    const focusBbox = focusResult.rows[0]?.focus_bbox ?? null;
+    const anchorPoint = focusResult.rows[0]?.anchor_point ?? null;
+
+    // Bump tile_version for cache busting
+    const worldViewId = focusResult.rows[0]?.world_view_id;
+    let tileVersion = 0;
+    if (worldViewId) {
+      const tvResult = await pool.query(
+        'UPDATE world_views SET tile_version = COALESCE(tile_version, 0) + 1 WHERE id = $1 RETURNING tile_version',
+        [worldViewId]
+      );
+      tileVersion = tvResult.rows[0]?.tile_version ?? 0;
     }
 
     sendEvent({
@@ -446,10 +491,13 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
       data: {
         computed: true,
         points: finalPoints,
-        isArchipelago,
-        tsHullGenerated: tsHullResult?.generated,
+        usesHull,
+        hullGenerated: hullResult?.generated,
         numPolygons,
         numHoles,
+        focusBbox,
+        anchorPoint,
+        tileVersion,
       },
     });
 

@@ -22,7 +22,7 @@ export async function getRegions(req: Request, res: Response): Promise<void> {
       cg.parent_region_id as "parentRegionId",
       cg.color,
       cg.is_custom_boundary as "isCustomBoundary",
-      cg.is_archipelago as "isArchipelago",
+      cg.uses_hull as "usesHull",
       CASE WHEN cg.focus_bbox IS NOT NULL 
         THEN json_build_array(cg.focus_bbox[1], cg.focus_bbox[2], cg.focus_bbox[3], cg.focus_bbox[4])
         ELSE NULL 
@@ -32,7 +32,7 @@ export async function getRegions(req: Request, res: Response): Promise<void> {
         ELSE NULL
       END as "anchorPoint",
       (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id) as "hasSubregions",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND is_archipelago = true) as "hasArchipelagoChildren"
+      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND uses_hull = true) as "hasHullChildren",
     FROM regions cg
     WHERE cg.world_view_id = $1
     ORDER BY cg.name
@@ -56,7 +56,7 @@ export async function getRootRegions(req: Request, res: Response): Promise<void>
       cg.parent_region_id as "parentRegionId",
       cg.color,
       cg.is_custom_boundary as "isCustomBoundary",
-      cg.is_archipelago as "isArchipelago",
+      cg.uses_hull as "usesHull",
       CASE WHEN cg.focus_bbox IS NOT NULL 
         THEN json_build_array(cg.focus_bbox[1], cg.focus_bbox[2], cg.focus_bbox[3], cg.focus_bbox[4])
         ELSE NULL 
@@ -66,7 +66,7 @@ export async function getRootRegions(req: Request, res: Response): Promise<void>
         ELSE NULL
       END as "anchorPoint",
       (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id) as "hasSubregions",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND is_archipelago = true) as "hasArchipelagoChildren"
+      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND uses_hull = true) as "hasHullChildren",
     FROM regions cg
     WHERE cg.world_view_id = $1 AND cg.parent_region_id IS NULL
     ORDER BY cg.name
@@ -90,7 +90,7 @@ export async function getSubregions(req: Request, res: Response): Promise<void> 
       cg.parent_region_id as "parentRegionId",
       cg.color,
       cg.is_custom_boundary as "isCustomBoundary",
-      cg.is_archipelago as "isArchipelago",
+      cg.uses_hull as "usesHull",
       CASE WHEN cg.focus_bbox IS NOT NULL 
         THEN json_build_array(cg.focus_bbox[1], cg.focus_bbox[2], cg.focus_bbox[3], cg.focus_bbox[4])
         ELSE NULL 
@@ -100,7 +100,7 @@ export async function getSubregions(req: Request, res: Response): Promise<void> 
         ELSE NULL
       END as "anchorPoint",
       (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id) as "hasSubregions",
-      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND is_archipelago = true) as "hasArchipelagoChildren"
+      (SELECT COUNT(*) > 0 FROM regions WHERE parent_region_id = cg.id AND uses_hull = true) as "hasHullChildren",
     FROM regions cg
     WHERE cg.parent_region_id = $1
     ORDER BY cg.name
@@ -125,7 +125,7 @@ export async function getLeafRegions(req: Request, res: Response): Promise<void>
       cg.parent_region_id as "parentRegionId",
       cg.color,
       cg.is_custom_boundary as "isCustomBoundary",
-      cg.is_archipelago as "isArchipelago",
+      cg.uses_hull as "usesHull",
       CASE WHEN cg.focus_bbox IS NOT NULL
         THEN json_build_array(cg.focus_bbox[1], cg.focus_bbox[2], cg.focus_bbox[3], cg.focus_bbox[4])
         ELSE NULL
@@ -153,11 +153,11 @@ export async function getRegionAncestors(req: Request, res: Response): Promise<v
   const result = await pool.query(`
     WITH RECURSIVE ancestors AS (
       SELECT id, parent_region_id, name, world_view_id, color,
-             is_archipelago, focus_bbox, anchor_point, 1 as depth
+             uses_hull, focus_bbox, anchor_point, 1 as depth
       FROM regions WHERE id = $1
       UNION ALL
       SELECT r.id, r.parent_region_id, r.name, r.world_view_id, r.color,
-             r.is_archipelago, r.focus_bbox, r.anchor_point, a.depth + 1
+             r.uses_hull, r.focus_bbox, r.anchor_point, a.depth + 1
       FROM regions r
       INNER JOIN ancestors a ON r.id = a.parent_region_id
     )
@@ -167,7 +167,7 @@ export async function getRegionAncestors(req: Request, res: Response): Promise<v
       a.name,
       a.parent_region_id as "parentRegionId",
       a.color,
-      a.is_archipelago as "isArchipelago",
+      a.uses_hull as "usesHull",
       CASE WHEN a.focus_bbox IS NOT NULL
         THEN json_build_array(a.focus_bbox[1], a.focus_bbox[2], a.focus_bbox[3], a.focus_bbox[4])
         ELSE NULL
@@ -268,7 +268,7 @@ export async function searchRegions(req: Request, res: Response): Promise<void> 
           r.parent_region_id,
           r.description,
           r.color,
-          r.is_archipelago,
+          r.uses_hull,
           r.focus_bbox,
           r.anchor_point,
           (
@@ -290,7 +290,7 @@ export async function searchRegions(req: Request, res: Response): Promise<void> 
         parent_region_id as "parentRegionId",
         description,
         color,
-        is_archipelago as "isArchipelago",
+        uses_hull as "usesHull",
         CASE WHEN focus_bbox IS NOT NULL
           THEN json_build_array(focus_bbox[1], focus_bbox[2], focus_bbox[3], focus_bbox[4])
           ELSE NULL
@@ -345,7 +345,7 @@ export async function createRegion(req: Request, res: Response): Promise<void> {
     try {
       result = await pool.query(`
         INSERT INTO regions (world_view_id, name, description, parent_region_id, color, geom, is_custom_boundary)
-        VALUES ($1, $2, $3, $4, $5, ST_Multi(ST_MakeValid(ST_GeomFromGeoJSON($6))), true)
+        VALUES ($1, $2, $3, $4, $5, validate_multipolygon(ST_GeomFromGeoJSON($6)), true)
         RETURNING id, world_view_id as "worldViewId", name, description,
                   parent_region_id as "parentRegionId", color, is_custom_boundary as "isCustomBoundary",
                   geom IS NOT NULL as "hasGeom", ST_NPoints(geom) as "geomPoints"
@@ -375,7 +375,7 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
   // Support both new (regionId) and legacy (groupId) param names
   const regionId = parseInt(String(req.params.regionId || req.params.groupId));
   // Support both new (parentRegionId) and legacy (parentGroupId) param names
-  const { name, description, parentRegionId, parentGroupId, color, isArchipelago } = req.body;
+  const { name, description, parentRegionId, parentGroupId, color, usesHull } = req.body;
   const newParentId = parentRegionId ?? parentGroupId;
 
   // Get current region info before update (needed for parent change logic)
@@ -414,9 +414,9 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
     updates.push(`color = $${paramIndex++}`);
     values.push(color);
   }
-  if (isArchipelago !== undefined) {
-    updates.push(`is_archipelago = $${paramIndex++}`);
-    values.push(isArchipelago);
+  if (usesHull !== undefined) {
+    updates.push(`uses_hull = $${paramIndex++}`);
+    values.push(usesHull);
   }
 
   if (updates.length === 0) {
@@ -437,7 +437,7 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
     WHERE id = $${paramIndex}
     RETURNING id, world_view_id as "worldViewId", name, description,
               parent_region_id as "parentRegionId", color,
-              is_archipelago as "isArchipelago"
+              uses_hull as "usesHull"
   `, values);
 
   if (result.rows.length === 0) {
