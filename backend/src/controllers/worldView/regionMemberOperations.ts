@@ -34,9 +34,17 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
     ? parseInt(String(req.params.regionId))
     : parseInt(String(req.params.divisionId));
 
-  const { childIds, removeOriginal = true, inheritColor = true, createAsSubregions, createAsSubgroups = true } = req.body || {};
+  const { childIds, removeOriginal = true, inheritColor = true, createAsSubregions, createAsSubgroups = true, assignments } = req.body || {};
   // Support both new (createAsSubregions) and legacy (createAsSubgroups) param names
   const shouldCreateAsSubregions = createAsSubregions ?? createAsSubgroups;
+
+  // Build explicit assignment map: GADM child ID → existing region ID
+  const assignmentMap = new Map<number, number>();
+  if (Array.isArray(assignments)) {
+    for (const a of assignments as Array<{ gadmChildId: number; existingRegionId: number }>) {
+      assignmentMap.set(a.gadmChildId, a.existingRegionId);
+    }
+  }
 
   console.log(`[AddChildren] Request: userRegionId=${userRegionId}, gadmDivisionId=${gadmDivisionId}, childIds=${childIds ? childIds.length : 'all'}, removeOriginal=${removeOriginal}, inheritColor=${inheritColor}, createAsSubregions=${shouldCreateAsSubregions}`);
 
@@ -103,30 +111,46 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
     for (const child of childrenToAdd) {
       let childSubregionId: number;
 
-      // Check if a region with this name already exists under the parent (accent/case-insensitive)
-      const existingRegion = await pool.query(
-        `SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2
-         AND lower(immutable_unaccent(name)) = lower(immutable_unaccent($3))`,
-        [worldViewId, userRegionId, child.name]
-      );
-
-      if (existingRegion.rows.length === 0) {
-        // Create new region as child of current region
-        const newRegion = await pool.query(`
-          INSERT INTO regions (world_view_id, name, parent_region_id, color)
-          VALUES ($1, $2, $3, $4)
-          RETURNING id, name
-        `, [worldViewId, child.name, userRegionId, colorToUse]);
-
-        childSubregionId = newRegion.rows[0].id;
-
-        createdRegions.push({
-          id: newRegion.rows[0].id,
-          name: newRegion.rows[0].name,
-          divisionId: child.id,
-        });
+      // Check explicit assignment first (from frontend UI)
+      const explicitRegionId = assignmentMap.get(child.id);
+      if (explicitRegionId) {
+        // Verify the assigned region exists, belongs to this world view, and is a child of the current region
+        const verify = await pool.query(
+          'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2 AND parent_region_id = $3',
+          [explicitRegionId, worldViewId, userRegionId]
+        );
+        if (verify.rows.length > 0) {
+          childSubregionId = explicitRegionId;
+        } else {
+          console.warn(`[AddChildren] Explicit assignment to region ${explicitRegionId} failed — not a child of region ${userRegionId} in world view ${worldViewId}`);
+          continue;
+        }
       } else {
-        childSubregionId = existingRegion.rows[0].id;
+        // Fall back to accent/case-insensitive name matching
+        const existingRegion = await pool.query(
+          `SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2
+           AND lower(immutable_unaccent(name)) = lower(immutable_unaccent($3))`,
+          [worldViewId, userRegionId, child.name]
+        );
+
+        if (existingRegion.rows.length === 0) {
+          // Create new region as child of current region
+          const newRegion = await pool.query(`
+            INSERT INTO regions (world_view_id, name, parent_region_id, color)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, name
+          `, [worldViewId, child.name, userRegionId, colorToUse]);
+
+          childSubregionId = newRegion.rows[0].id;
+
+          createdRegions.push({
+            id: newRegion.rows[0].id,
+            name: newRegion.rows[0].name,
+            divisionId: child.id,
+          });
+        } else {
+          childSubregionId = existingRegion.rows[0].id;
+        }
       }
 
       // Add this child division as a member of the subregion

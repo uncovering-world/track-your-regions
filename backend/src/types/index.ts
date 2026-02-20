@@ -537,6 +537,11 @@ export const addChildDivisionsBodySchema = z.object({
   inheritColor: z.boolean().default(true),
   createAsSubregions: z.boolean().default(true),
   createAsSubgroups: z.boolean().default(true),
+  /** Explicit GADM child → existing region assignments (skips name-match, skips create) */
+  assignments: z.array(z.object({
+    gadmChildId: z.number().int().positive(),
+    existingRegionId: z.number().int().positive(),
+  })).optional(),
 });
 
 export const expandToSubregionsBodySchema = z.object({
