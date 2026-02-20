@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignore": ["src/dev/**"],
+  "ignoreDependencies": ["@react-buddy/ide-toolbox", "globals", "@vitest/coverage-v8"],
+  "ignoreExportsUsedInFile": true
+}
