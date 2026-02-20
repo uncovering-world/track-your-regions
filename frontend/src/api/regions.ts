@@ -137,6 +137,14 @@ export async function fetchRegionMemberGeometries(regionId: number): Promise<Geo
   }
 }
 
+export async function fetchDescendantMemberGeometries(regionId: number): Promise<GeoJSON.FeatureCollection | null> {
+  try {
+    return await authFetchJson<GeoJSON.FeatureCollection>(`${API_URL}/api/world-views/regions/${regionId}/members/descendant-geometries`);
+  } catch {
+    return null;
+  }
+}
+
 export async function addDivisionsToRegion(
   regionId: number,
   divisionIds: number[],
@@ -202,6 +210,7 @@ export async function addChildDivisionsAsSubregions(
     removeOriginal?: boolean;
     inheritColor?: boolean;
     createAsSubregions?: boolean;
+    assignments?: Array<{ gadmChildId: number; existingRegionId: number }>;
   }
 ): Promise<{ added: number; removedOriginal: boolean; createdRegions?: { id: number; name: string; divisionId: number }[] }> {
   return authFetchJson<{ added: number; removedOriginal: boolean; createdRegions?: { id: number; name: string; divisionId: number }[] }>(
@@ -214,6 +223,7 @@ export async function addChildDivisionsAsSubregions(
         removeOriginal: options?.removeOriginal,
         inheritColor: options?.inheritColor,
         createAsSubregions: options?.createAsSubregions,
+        assignments: options?.assignments,
       }),
     }
   );

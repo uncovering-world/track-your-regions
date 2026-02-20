@@ -252,15 +252,16 @@ export function useRegionMutations({
 
   // Add child divisions as subregions mutation
   const addChildrenMutation = useMutation({
-    mutationFn: ({ regionId, divisionId, childIds, removeOriginal, inheritColor, createAsSubregions }: {
+    mutationFn: ({ regionId, divisionId, childIds, removeOriginal, inheritColor, createAsSubregions, assignments }: {
       regionId: number;
       divisionId: number;
       childIds?: number[];
       removeOriginal?: boolean;
       inheritColor?: boolean;
       createAsSubregions?: boolean;
+      assignments?: Array<{ gadmChildId: number; existingRegionId: number }>;
     }) =>
-      addChildDivisionsAsSubregions(regionId, divisionId, { childIds, removeOriginal, inheritColor, createAsSubregions }),
+      addChildDivisionsAsSubregions(regionId, divisionId, { childIds, removeOriginal, inheritColor, createAsSubregions, assignments }),
     onSuccess: (data, variables) => {
       const regionsCreated = data.createdRegions && data.createdRegions.length > 0;
       invalidateWorldViewQueries({

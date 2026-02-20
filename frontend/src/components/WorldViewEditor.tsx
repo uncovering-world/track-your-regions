@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Dialog,
   Box,
@@ -111,6 +111,12 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
     selectedRegion,
     debouncedSearch,
   });
+
+  // Memoize existing children to avoid re-creating the array on every render
+  const existingChildren = useMemo(
+    () => regions.filter(r => r.parentRegionId === selectedRegion?.id),
+    [regions, selectedRegion?.id],
+  );
 
   // Sync selectedRegion with fresh data from regions query (e.g. after focusBbox/anchorPoint update)
   useEffect(() => {
@@ -341,6 +347,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
       removeOriginal: true,
       inheritColor: result.inheritColor,
       createAsSubregions: result.asSubregions,
+      assignments: result.assignments,
     });
   }, [selectedRegion, addChildrenMutation]);
 
@@ -691,6 +698,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
       <AddChildrenDialog
         member={addChildrenDialogMember}
         selectedRegion={selectedRegion}
+        existingChildren={existingChildren}
         inheritColor={inheritColorOnAddChildren}
         onInheritColorChange={setInheritColorOnAddChildren}
         worldViewId={worldView.id}
@@ -735,6 +743,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
         open={customSubdivisionDialogOpen}
         selectedRegion={selectedRegion}
         regionMembers={regionMembers}
+        existingChildren={existingChildren}
         worldViewId={worldView.id}
         worldViewDescription={worldView.description || undefined}
         worldViewSource={worldView.source || undefined}

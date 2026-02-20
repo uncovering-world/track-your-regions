@@ -239,39 +239,39 @@ export function ActionStrip({
       flexShrink: 0,
       minHeight: 36,
     }}>
+      {(hasDivisionMembers || hasChildRegions) && (
+        <Tooltip title="Create custom subregion groups">
+          <Button
+            size="small" variant="outlined"
+            onClick={onOpenCustomSubdivision}
+            startIcon={<UnfoldMoreIcon sx={{ fontSize: '14px !important' }} />}
+            sx={stripBtnSx}
+          >
+            Group
+          </Button>
+        </Tooltip>
+      )}
       {hasDivisionMembers && (
-        <>
-          <Tooltip title="Create custom subregion groups">
+        <Tooltip title={
+          isSplittingAllMembers && splitAllProgress
+            ? `Splitting ${splitAllProgress.current}/${splitAllProgress.total}`
+            : 'Replace each division with its GADM children'
+        }>
+          <span>
             <Button
               size="small" variant="outlined"
-              onClick={onOpenCustomSubdivision}
-              startIcon={<UnfoldMoreIcon sx={{ fontSize: '14px !important' }} />}
-              sx={stripBtnSx}
+              onClick={onSplitAllMembers}
+              disabled={isSplittingAllMembers || addChildrenPending}
+              startIcon={isSplittingAllMembers
+                ? <CircularProgress size={12} sx={{ color: P.accent.primary }} />
+                : <AccountTreeIcon sx={{ fontSize: '14px !important' }} />
+              }
+              sx={accentBtnSx}
             >
-              Group
+              Split All
             </Button>
-          </Tooltip>
-          <Tooltip title={
-            isSplittingAllMembers && splitAllProgress
-              ? `Splitting ${splitAllProgress.current}/${splitAllProgress.total}`
-              : 'Replace each division with its GADM children'
-          }>
-            <span>
-              <Button
-                size="small" variant="outlined"
-                onClick={onSplitAllMembers}
-                disabled={isSplittingAllMembers || addChildrenPending}
-                startIcon={isSplittingAllMembers
-                  ? <CircularProgress size={12} sx={{ color: P.accent.primary }} />
-                  : <AccountTreeIcon sx={{ fontSize: '14px !important' }} />
-                }
-                sx={accentBtnSx}
-              >
-                Split All
-              </Button>
-            </span>
-          </Tooltip>
-        </>
+          </span>
+        </Tooltip>
       )}
       {hasSubregionMembers && (
         <Tooltip title="Move divisions from subregions back to parent">

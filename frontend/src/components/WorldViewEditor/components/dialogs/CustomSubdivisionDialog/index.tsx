@@ -122,23 +122,27 @@ const memberExistsInStored = (dbMember: RegionMember, stored: SavedDialogState):
 
 /**
  * Validate stored state against actual DB members.
+ * Only division members (not subregions) belong in the dialog.
  */
 const validateStoredState = (
   stored: SavedDialogState,
   dbMembers: RegionMember[]
 ): SavedDialogState => {
+  // Only divisions belong in the dialog — subregions are child regions shown as target groups
+  const divisionMembers = dbMembers.filter(m => !m.isSubregion);
+
   const validUnassigned = stored.unassignedDivisions
-    .filter(d => memberExistsInDb(d, dbMembers))
-    .map(d => updateMemberFromDb(d, dbMembers));
+    .filter(d => memberExistsInDb(d, divisionMembers))
+    .map(d => updateMemberFromDb(d, divisionMembers));
 
   const validGroups = stored.subdivisionGroups.map(group => ({
     ...group,
     members: group.members
-      .filter(m => memberExistsInDb(m, dbMembers))
-      .map(m => updateMemberFromDb(m, dbMembers)),
+      .filter(m => memberExistsInDb(m, divisionMembers))
+      .map(m => updateMemberFromDb(m, divisionMembers)),
   }));
 
-  const newMembers = dbMembers.filter(db => !memberExistsInStored(db, stored));
+  const newMembers = divisionMembers.filter(db => !memberExistsInStored(db, stored));
   const finalUnassigned = [...validUnassigned, ...newMembers];
 
   const storedCount = stored.unassignedDivisions.length +
@@ -177,6 +181,7 @@ interface CustomSubdivisionDialogProps {
   open: boolean;
   selectedRegion: Region | null;
   regionMembers: RegionMember[];
+  existingChildren: Region[];
   worldViewId: number;
   worldViewDescription?: string;
   worldViewSource?: string;
@@ -189,6 +194,7 @@ export function CustomSubdivisionDialog({
   open,
   selectedRegion,
   regionMembers,
+  existingChildren,
   worldViewId,
   worldViewDescription,
   worldViewSource,
@@ -339,7 +345,6 @@ export function CustomSubdivisionDialog({
     // Initialize unassigned from regionMembers
     const divisions = regionMembers.filter(m => !m.isSubregion);
     setUnassignedDivisions(divisions);
-    setSubdivisionGroups([]);
 
     // Check if there's saved state for this region and restore it (with validation)
     const key = getStorageKey();
@@ -354,7 +359,22 @@ export function CustomSubdivisionDialog({
             state = validateStoredState(state, dbMembers);
 
             setUnassignedDivisions(state.unassignedDivisions);
-            setSubdivisionGroups(state.subdivisionGroups);
+
+            // Merge saved groups with existing child regions:
+            // - Restore saved groups (preserving assignments)
+            // - Add any existing child regions not already represented
+            const restoredGroups = state.subdivisionGroups;
+            if (existingChildren.length > 0) {
+              const existingRegionIds = new Set(restoredGroups.map(g => g.existingRegionId).filter(Boolean));
+              const missingChildren = existingChildren.filter(r => !existingRegionIds.has(r.id));
+              setSubdivisionGroups([
+                ...restoredGroups,
+                ...missingChildren.map(r => ({ name: r.name, members: [], existingRegionId: r.id })),
+              ]);
+            } else {
+              setSubdivisionGroups(restoredGroups);
+            }
+
             setAiSuggestions(new Map(state.aiSuggestions));
             setImageOverlaySettings(state.imageOverlaySettings);
             setActiveTab(state.activeTab);
@@ -377,11 +397,39 @@ export function CustomSubdivisionDialog({
           console.error('Failed to fetch DB members for validation:', e);
           restoreState();
         });
+    } else {
+      // No saved state — pre-populate groups from existing child regions (e.g., from WorldView import)
+      if (existingChildren.length > 0) {
+        setSubdivisionGroups(existingChildren.map(r => ({
+          name: r.name,
+          members: [],
+          existingRegionId: r.id,
+        })));
+      } else {
+        setSubdivisionGroups([]);
+      }
     }
 
     setLastRestoredRegionId(selectedRegion.id);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- regionMembers changes on every render; we only want to init on open/region change
   }, [open, selectedRegion, lastRestoredRegionId, getStorageKey, restoreState]);
+
+  // When existingChildren arrive (async regions query), inject them as groups if missing
+  const existingChildrenIds = existingChildren.map(r => r.id).join(',');
+  useEffect(() => {
+    if (!open || existingChildren.length === 0) return;
+
+    setSubdivisionGroups(prev => {
+      const existingIds = new Set(prev.map(g => g.existingRegionId).filter(Boolean));
+      const missing = existingChildren.filter(r => !existingIds.has(r.id));
+      if (missing.length === 0) return prev; // no change needed
+      return [
+        ...prev,
+        ...missing.map(r => ({ name: r.name, members: [] as RegionMember[], existingRegionId: r.id })),
+      ];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- existingChildrenIds is a stable string derived from existingChildren
+  }, [open, existingChildrenIds]);
 
   // Reset tracking when dialog closes
   useEffect(() => {
@@ -455,22 +503,29 @@ export function CustomSubdivisionDialog({
       for (const group of subdivisionGroups) {
         if (group.members.length === 0) continue;
 
-        const newRegion = await createRegion(worldViewId, {
-          name: group.name,
-          parentRegionId: selectedRegion.id,
-          color: selectedRegion.color || undefined,
-        });
+        // Use existing region or create a new one
+        let targetRegionId: number;
+        if (group.existingRegionId) {
+          targetRegionId = group.existingRegionId;
+        } else {
+          const newRegion = await createRegion(worldViewId, {
+            name: group.name,
+            parentRegionId: selectedRegion.id,
+            color: selectedRegion.color || undefined,
+          });
+          targetRegionId = newRegion.id;
+        }
 
         for (const member of group.members) {
           const lookupKey = `${member.id}-${member.name}`;
           const realMemberRowId = memberLookup.get(lookupKey);
 
           if (realMemberRowId && realMemberRowId > 0) {
-            await moveMemberToRegion(selectedRegion.id, realMemberRowId, newRegion.id);
+            await moveMemberToRegion(selectedRegion.id, realMemberRowId, targetRegionId);
           } else if (member.memberRowId && member.memberRowId > 0) {
-            await moveMemberToRegion(selectedRegion.id, member.memberRowId, newRegion.id);
+            await moveMemberToRegion(selectedRegion.id, member.memberRowId, targetRegionId);
           } else {
-            await addDivisionsToRegion(newRegion.id, [member.id]);
+            await addDivisionsToRegion(targetRegionId, [member.id]);
             await removeDivisionsFromRegion(selectedRegion.id, [member.id]);
           }
         }
@@ -579,6 +634,7 @@ export function CustomSubdivisionDialog({
               onSplitsApplied={onSplitsApplied}
               imageOverlaySettings={imageOverlaySettings}
               setImageOverlaySettings={setImageOverlaySettings}
+              regionMapUrl={selectedRegion?.regionMapUrl}
             />
           )}
 
@@ -607,13 +663,15 @@ export function CustomSubdivisionDialog({
             Cancel
           </Button>
           <Tooltip title="Create one subregion per division (each division becomes its own subregion)">
-            <Button
-              variant="outlined"
-              disabled={isCreating || isQuickExpanding}
-              onClick={handleQuickExpand}
-            >
-              {isQuickExpanding ? 'Expanding...' : 'Quick Expand (1:1)'}
-            </Button>
+            <span>
+              <Button
+                variant="outlined"
+                disabled={isCreating || isQuickExpanding || (unassignedDivisions.length + subdivisionGroups.reduce((sum, g) => sum + g.members.length, 0)) === 0}
+                onClick={handleQuickExpand}
+              >
+                {isQuickExpanding ? 'Expanding...' : 'Quick Expand (1:1)'}
+              </Button>
+            </span>
           </Tooltip>
           <Button
             variant="contained"

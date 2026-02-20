@@ -60,7 +60,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import PaidIcon from '@mui/icons-material/Paid';
 import type { Region, RegionMember } from '@/types';
 import type { SubdivisionGroup } from './types';
-import { GROUP_COLORS } from './types';
+import { getGroupColor } from './types';
 import {
   suggestGroupForRegion,
   suggestGroupsForMultipleRegions,
@@ -517,10 +517,10 @@ export function AIAssistTab({
     }
   };
 
-  // Get group color
-  const getGroupColor = (groupName: string) => {
+  // Get group color by name (for suggestion badges)
+  const getGroupColorByName = (groupName: string) => {
     const index = groupNames.indexOf(groupName);
-    return index >= 0 ? GROUP_COLORS[index % GROUP_COLORS.length] : '#666';
+    return index >= 0 ? getGroupColor(subdivisionGroups[index], index) : '#666';
   };
 
   // Count high-confidence suggestions for auto-assign button
@@ -803,8 +803,8 @@ export function AIAssistTab({
             label={`${group.name} (${group.members.length})`}
             size="small"
             sx={{
-              bgcolor: GROUP_COLORS[idx % GROUP_COLORS.length] + '30',
-              borderColor: GROUP_COLORS[idx % GROUP_COLORS.length],
+              bgcolor: getGroupColor(group, idx) + '30',
+              borderColor: getGroupColor(group, idx),
               border: '1px solid',
             }}
           />
@@ -852,8 +852,8 @@ export function AIAssistTab({
                   sx={{
                     mt: 0.5,
                     minWidth: 100,
-                    bgcolor: GROUP_COLORS[idx % GROUP_COLORS.length] + '30',
-                    borderColor: GROUP_COLORS[idx % GROUP_COLORS.length],
+                    bgcolor: getGroupColor(group, idx) + '30',
+                    borderColor: getGroupColor(group, idx),
                     border: '1px solid',
                   }}
                 />
@@ -929,8 +929,8 @@ export function AIAssistTab({
                             sx={{
                               height: 20,
                               fontSize: '0.7rem',
-                              bgcolor: getGroupColor(currentGroup) + '30',
-                              borderColor: getGroupColor(currentGroup),
+                              bgcolor: getGroupColorByName(currentGroup) + '30',
+                              borderColor: getGroupColorByName(currentGroup),
                               border: '1px solid',
                             }}
                           />
@@ -1111,34 +1111,37 @@ export function AIAssistTab({
                         <Typography variant="caption" color="text.secondary" sx={{ mr: 1, alignSelf: 'center' }}>
                           Assign to:
                         </Typography>
-                        {groupNames.map((groupName, idx) => (
-                          <Button
-                            key={groupName}
-                            size="small"
-                            variant={
-                              suggestionData?.suggestion?.suggestedGroup === groupName
-                                ? 'contained'
-                                : 'outlined'
-                            }
-                            sx={{
-                              fontSize: '0.7rem',
-                              py: 0.25,
-                              borderColor: GROUP_COLORS[idx % GROUP_COLORS.length],
-                              color: suggestionData?.suggestion?.suggestedGroup === groupName
-                                ? 'white'
-                                : GROUP_COLORS[idx % GROUP_COLORS.length],
-                              bgcolor: suggestionData?.suggestion?.suggestedGroup === groupName
-                                ? GROUP_COLORS[idx % GROUP_COLORS.length]
-                                : 'transparent',
-                              '&:hover': {
-                                bgcolor: GROUP_COLORS[idx % GROUP_COLORS.length] + '30',
-                              },
-                            }}
-                            onClick={() => assignToGroup(division, groupName)}
-                          >
-                            {groupName}
-                          </Button>
-                        ))}
+                        {groupNames.map((groupName, idx) => {
+                          const gc = getGroupColor(subdivisionGroups[idx], idx);
+                          return (
+                            <Button
+                              key={groupName}
+                              size="small"
+                              variant={
+                                suggestionData?.suggestion?.suggestedGroup === groupName
+                                  ? 'contained'
+                                  : 'outlined'
+                              }
+                              sx={{
+                                fontSize: '0.7rem',
+                                py: 0.25,
+                                borderColor: gc,
+                                color: suggestionData?.suggestion?.suggestedGroup === groupName
+                                  ? 'white'
+                                  : gc,
+                                bgcolor: suggestionData?.suggestion?.suggestedGroup === groupName
+                                  ? gc
+                                  : 'transparent',
+                                '&:hover': {
+                                  bgcolor: gc + '30',
+                                },
+                              }}
+                              onClick={() => assignToGroup(division, groupName)}
+                            >
+                              {groupName}
+                            </Button>
+                          );
+                        })}
                       </Box>
                     )}
 
