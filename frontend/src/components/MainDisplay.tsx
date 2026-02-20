@@ -3,7 +3,9 @@ import { Box, Typography, IconButton, Tooltip } from '@mui/material';
 import { ChevronLeft as OpenPanelIcon } from '@mui/icons-material';
 import { RegionMapVT } from './RegionMapVT';
 import { RegionDescriptionSection } from './RegionDescriptionSection';
+import { SetupInstructions } from './SetupInstructions';
 import { useNavigation } from '../hooks/useNavigation';
+import { useAuth } from '../hooks/useAuth';
 import { ExperienceProvider } from '../hooks/useExperienceContext';
 
 // Notify App.tsx about exploration mode changes
@@ -13,7 +15,8 @@ export function setExplorationModeListener(listener: (exploring: boolean) => voi
 }
 
 export function MainDisplay() {
-  const { selectedRegion, isLoading } = useNavigation();
+  const { selectedRegion, worldViews, isLoading } = useNavigation();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [isExploring, setIsExploring] = useState(false);
 
   // Reset exploration mode when region changes
@@ -25,6 +28,11 @@ export function MainDisplay() {
   useEffect(() => {
     onExplorationModeChange?.(isExploring);
   }, [isExploring]);
+
+  // Fresh installation: no custom world views — show setup steps
+  if (!authLoading && !isLoading && worldViews.length === 0) {
+    return <SetupInstructions isAuthenticated={isAuthenticated} />;
+  }
 
   if (isLoading) {
     return (
