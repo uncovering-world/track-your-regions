@@ -19,6 +19,8 @@ A visitor can:
 - **See what exists** — understand the breadth of experiences available in any region, with counts, categories, images, and descriptions
 - **Switch world views** — see the world organized in different ways (standard GADM administrative boundaries, or custom regional groupings)
 
+On a fresh installation (no custom world views yet), the main content area shows a **Getting Started** card with setup steps: register an account, promote to admin via `npm run db:make-admin`, create a world view, and run experience syncs. This replaces the empty map and disappears automatically once the first custom world view is created.
+
 The visitor experience is designed to inspire curiosity and make the case for signing up — "look at all the things you could track."
 
 ### Authenticated User
