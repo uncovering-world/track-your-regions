@@ -23,6 +23,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | `scrollUtils.ts` | `scrollToCenter(container, el)`, `scrollToTop(container, el)` |
 | `coordinateParser.ts` | Coordinate string parsing |
 | `mapUtils.ts` | Map helper functions |
+| `fetchUtils.ts` | `ensureFreshToken()` — proactive JWT refresh before SSE connections |
 
 ## Pattern Table: Use This, Not That
 

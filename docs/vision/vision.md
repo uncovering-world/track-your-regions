@@ -95,7 +95,7 @@ Custom hierarchical groupings layered on top of GADM divisions. A world view mig
 
 - **Default world view** — mirrors the GADM hierarchy directly
 - **Custom world views** — user-created groupings. A region can contain whole divisions, specific sub-divisions, or custom-drawn boundaries
-- **Computed geometry** — region boundaries are automatically computed from their member divisions, with hull algorithms for archipelago display
+- **Computed geometry** — region boundaries are automatically computed from their member divisions, with hull algorithms for scattered geography display
 
 ### Map Rendering
 

@@ -1,50 +1,40 @@
-# Archipelago Geometry (TS Hull)
+# Hull Geometry
 
-This document describes how archipelago visualization works in the current codebase.
+This document describes how hull visualization works for scattered/island regions.
 
-## Geometry Columns Used
+For the full geometry system reference (columns, triggers, functions, pipeline rules), see [geometry-columns.md](geometry-columns.md).
 
-`regions` stores multiple geometry forms:
+## Overview
 
-- `geom`: merged real member geometry (authoritative)
-- `ts_hull_geom`: TypeScript-generated hull for archipelagos
-- `focus_bbox`, `anchor_point`: camera/label helpers
+Regions with scattered geography (island groups, small isolated territories) use a concave hull for overview rendering at low zoom levels (z0-8), while real coastline geometry is shown at higher zoom levels (z9+).
 
-3857 derivatives and simplifications are trigger-maintained (`*_3857`, `geom_simplified_*`).
+## Key Concepts
 
-## Render Geometry Selection
+- **`uses_hull`** flag on `regions` — controls hull display in tile functions and simplified column derivation. Auto-detected on INSERT via `should_use_hull()`, preserved across geometry recomputation, manually editable.
+- **`hull_geom`** — concave hull generated for hull regions, providing territorial extent.
+- **`hull_params`** — JSONB parameters used to generate the hull (buffer, concavity, simplify tolerance).
 
-The render geometry for a region is determined by a simple rule:
+## Display Modes
 
-```
-IF archipelago AND ts_hull_geom IS NOT NULL → ts_hull_geom
-ELSE → geom
-```
-
-This logic is centralized in the `region_render_geom` database view.
-
-## Current Display Modes
-
-In the World View editor, display mode is:
+In the World View editor geometry panel:
 
 - `real` — shows the authoritative `geom` (union of member geometries)
-- `ts_hull` — shows the concave hull for archipelagos
+- `hull` — shows the concave hull
 
 ## Generation Flow
 
 1. Region geometry is computed/updated (`geom`)
-2. Archipelago detection (`is_archipelago`) is maintained in DB metadata
-3. TS hull can be previewed/saved via API
-4. Triggers keep projection/simplified columns in sync
-
-Non-archipelago recompute paths clear stale hull fields.
+2. `uses_hull` auto-detected on INSERT by `should_use_hull()` trigger
+3. Hull can be previewed/saved via API
+4. Triggers keep 3857 projection and simplified columns in sync
+5. Post-batch: `refresh_uses_hull_flags()` re-checks detection after all siblings are computed
 
 ## API Endpoints
 
 - `POST /api/world-views/regions/:regionId/hull/preview`
 - `POST /api/world-views/regions/:regionId/hull/save`
 - `GET /api/world-views/regions/:regionId/hull/params`
-- `GET /api/world-views/regions/:regionId/geometry?detail=high|ts_hull|anchor`
+- `GET /api/world-views/regions/:regionId/geometry?detail=high|hull|anchor`
 
 ## Where It Is Used
 
@@ -55,6 +45,6 @@ Non-archipelago recompute paths clear stale hull fields.
 
 ## Practical Notes
 
-- Use `ts_hull` for island groups where raw polygons are visually noisy at low zoom
-- Keep `real` mode for exact geography and boundary editing tasks
+- Use hull mode for island groups where raw polygons are visually noisy at low zoom
+- Keep real mode for exact geography and boundary editing tasks
 - Use region `focus_bbox` when fitting map bounds; it is antimeridian-aware and preferred over raw bbox computation

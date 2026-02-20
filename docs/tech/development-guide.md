@@ -58,8 +58,13 @@ controllers/
 │   ├── regionMemberMutations.ts
 │   ├── regionMemberOperations.ts
 │   ├── geometryRead.ts
-│   ├── geometryCompute.ts
-│   └── ...
+│   ├── geometryCompute.ts            ← CRUD: update, reset, regenerate
+│   ├── geometryComputeSingle.ts      ← computation: core algorithm + HTTP handler
+│   ├── geometryComputeSSE.ts         ← SSE streaming for single region compute
+│   ├── computationProgress.ts        ← batch computation with progress tracking
+│   ├── hullOperations.ts
+│   ├── helpers.ts                    ← invalidate/recompute region geometry
+│   └── types.ts
 ├── division/
 └── sync/
 ```
@@ -163,12 +168,22 @@ components/
 │   └── components/
 │       └── dialogs/
 │           └── CustomSubdivisionDialog/
+│               ├── MapViewTab.tsx             ← map-based subdivision UI (hooks below)
+│               ├── useGeometryLoading.ts      ← geometry fetch, fit-bounds, feature building
+│               ├── useDivisionOperations.ts   ← split/cut/assign/moveToParent tools
+│               ├── useImageColorPicker.ts     ← eyedropper color sampling from reference image
 │               ├── AIAssistTab.tsx
 │               ├── aiAssistTypes.ts
 │               ├── useAIModelManager.ts
 │               ├── useAIUsageTracking.ts
 │               └── AIUsagePopover.tsx
 └── admin/
+    ├── WorldViewImportTree.tsx    ← main tree component + mutations
+    ├── TreeNodeRow.tsx            ← row orchestrator (expand, name, delegates to below)
+    ├── TreeNodeActions.tsx        ← match-status chips + action buttons
+    ├── TreeNodeContent.tsx        ← division lists, suggestions, shadow rows
+    ├── importTreeUtils.ts         ← pure tree-walking helpers (no React deps)
+    └── treeNodeShared.tsx         ← shared Tooltip wrapper + ShadowInsertion type
 ```
 
 **Rules:**
@@ -425,6 +440,13 @@ Run before every commit:
 
 ```bash
 npm run check          # lint + typecheck for both packages
+npm run knip           # detect unused files + dependencies
+```
+
+For periodic cleanup (includes exports/types, ~30-40% false positive rate on exports):
+
+```bash
+npm run knip:full      # full knip scan including exports/types
 ```
 
 For security-sensitive changes, also run:
