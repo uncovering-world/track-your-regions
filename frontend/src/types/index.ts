@@ -64,6 +64,9 @@ export interface Region {
   focusBbox?: [number, number, number, number] | null;
   // Pre-computed anchor point [lng, lat] - centroid, used for antimeridian-crossing regions
   anchorPoint?: [number, number] | null;
+  // Import source metadata (present on regions imported from external sources)
+  sourceUrl?: string | null;
+  regionMapUrl?: string | null;
 }
 
 export interface RegionWithMembers extends Region {

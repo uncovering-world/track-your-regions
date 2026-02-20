@@ -30,16 +30,18 @@ import {
   Menu as MenuIcon,
   ArrowBack as ArrowBackIcon,
   SupervisorAccount as CuratorIcon,
+  Public as PublicIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../hooks/useAuth';
 import { SyncPanel } from './SyncPanel';
 import { SyncHistoryPanel } from './SyncHistoryPanel';
 import { AssignmentPanel } from './AssignmentPanel';
 import { CuratorPanel } from './CuratorPanel';
+import { WorldViewImportPanel } from './WorldViewImportPanel';
 
 const DRAWER_WIDTH = 240;
 
-type AdminSection = 'overview' | 'sync' | 'assignment' | 'history' | 'curators';
+type AdminSection = 'overview' | 'sync' | 'assignment' | 'history' | 'curators' | 'wvImport';
 
 export function AdminDashboard() {
   const { isAdmin, isLoading } = useAuth();
@@ -83,6 +85,7 @@ export function AdminDashboard() {
     { id: 'assignment', label: 'Region Assignment', icon: <MapIcon /> },
     { id: 'history', label: 'Sync History', icon: <HistoryIcon /> },
     { id: 'curators', label: 'Curators', icon: <CuratorIcon /> },
+    { id: 'wvImport', label: 'Import WorldView', icon: <PublicIcon /> },
   ];
 
   const drawerContent = (
@@ -132,6 +135,8 @@ export function AdminDashboard() {
         return <SyncHistoryPanel />;
       case 'curators':
         return <CuratorPanel />;
+      case 'wvImport':
+        return <WorldViewImportPanel />;
       default:
         return null;
     }
