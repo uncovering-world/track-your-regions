@@ -12,7 +12,7 @@ export interface RegionSearchResult {
   parentRegionId: number | null;
   description: string | null;
   color: string | null;
-  isArchipelago: boolean;
+  usesHull: boolean;
   focusBbox: [number, number, number, number] | null;
   anchorPoint: [number, number] | null;
   hasSubregions: boolean;
@@ -79,7 +79,7 @@ export async function createRegion(
 
 export async function updateRegion(
   regionId: number,
-  data: { name?: string; description?: string; color?: string; parentRegionId?: number | null; isArchipelago?: boolean }
+  data: { name?: string; description?: string; color?: string; parentRegionId?: number | null; usesHull?: boolean }
 ): Promise<Region> {
   return authFetchJson<Region>(`${API_URL}/api/world-views/regions/${regionId}`, {
     method: 'PUT',
@@ -88,7 +88,7 @@ export async function updateRegion(
       description: data.description,
       color: data.color,
       parentRegionId: data.parentRegionId,
-      isArchipelago: data.isArchipelago,
+      usesHull: data.usesHull,
     }),
   });
 }
@@ -97,11 +97,11 @@ export async function updateRegionGeometry(
   regionId: number,
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon,
   isCustomBoundary: boolean = true,
-  tsHullGeometry?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null
+  hullGeometry?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null
 ): Promise<void> {
   await authFetchJson<void>(`${API_URL}/api/world-views/regions/${regionId}/geometry`, {
     method: 'PUT',
-    body: JSON.stringify({ geometry, isCustomBoundary, tsHullGeometry }),
+    body: JSON.stringify({ geometry, isCustomBoundary, hullGeometry }),
   });
 }
 
@@ -112,7 +112,7 @@ export async function deleteRegion(regionId: number, options?: { moveChildrenToP
   });
 }
 
-export async function fetchRegionGeometry(regionId: number, detail?: 'high' | 'display' | 'ts_hull' | 'anchor'): Promise<GeoJSONFeature | null> {
+export async function fetchRegionGeometry(regionId: number, detail?: 'high' | 'display' | 'hull' | 'anchor'): Promise<GeoJSONFeature | null> {
   try {
     const params = detail ? `?detail=${detail}` : '';
     return await authFetchJson<GeoJSONFeature>(`${API_URL}/api/world-views/regions/${regionId}/geometry${params}`);

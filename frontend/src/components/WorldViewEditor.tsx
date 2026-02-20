@@ -112,6 +112,18 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
     debouncedSearch,
   });
 
+  // Sync selectedRegion with fresh data from regions query (e.g. after focusBbox/anchorPoint update)
+  useEffect(() => {
+    if (!selectedRegion || !regions.length) return;
+    const fresh = regions.find(r => r.id === selectedRegion.id);
+    if (!fresh) return;
+    const bboxChanged = JSON.stringify(fresh.focusBbox) !== JSON.stringify(selectedRegion.focusBbox);
+    const anchorChanged = JSON.stringify(fresh.anchorPoint) !== JSON.stringify(selectedRegion.anchorPoint);
+    if (bboxChanged || anchorChanged || fresh.usesHull !== selectedRegion.usesHull) {
+      setSelectedRegion(prev => prev ? { ...prev, focusBbox: fresh.focusBbox, anchorPoint: fresh.anchorPoint, usesHull: fresh.usesHull } : null);
+    }
+  }, [regions, selectedRegion]);
+
   // Clear selected member if it no longer exists in regionMembers
   useEffect(() => {
     if (!selectedMember) return;
@@ -222,9 +234,9 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
               parentRegionId: newRegion.parentRegionId,
               color: newRegion.color,
               isCustomBoundary: true,
-              isArchipelago: false,
+              usesHull: false,
               hasSubregions: false,
-              hasArchipelagoChildren: false,
+              hasHullChildren: false,
             });
             queryClient.invalidateQueries({ queryKey: ['regionGeometry', newRegion.id] });
           }
@@ -483,9 +495,9 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
                     queryClient.invalidateQueries({ queryKey: ['regions', worldView.id] });
                   }
                 }}
-                onToggleArchipelago={(region) => updateRegionMutation.mutate({
+                onToggleHull={(region) => updateRegionMutation.mutate({
                   regionId: region.id,
-                  data: { isArchipelago: !region.isArchipelago },
+                  data: { usesHull: !region.usesHull },
                 })}
               />
             </Box>

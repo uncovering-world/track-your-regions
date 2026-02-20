@@ -48,8 +48,8 @@ export interface DisplayGeometryStatus {
   withGeom: number;
   withDisplayGeom: number;
   withAnchor: number;
-  archipelagos: number;
-  withTsHull?: number;
+  hullRegions: number;
+  withHull?: number;
 }
 
 export interface RegenerateDisplayGeometriesResult {

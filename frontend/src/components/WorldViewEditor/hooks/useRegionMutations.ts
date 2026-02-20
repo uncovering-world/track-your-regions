@@ -146,19 +146,19 @@ export function useRegionMutations({
 
   // Update region mutation
   const updateRegionMutation = useMutation({
-    mutationFn: ({ regionId, data }: { regionId: number; data: { name?: string; color?: string; parentRegionId?: number | null; isArchipelago?: boolean } }) =>
+    mutationFn: ({ regionId, data }: { regionId: number; data: { name?: string; color?: string; parentRegionId?: number | null; usesHull?: boolean } }) =>
       updateRegion(regionId, data),
     onSuccess: (updatedRegion, variables) => {
       // If parent changed, invalidate ALL members (region moved between parents)
       const parentChanged = variables.data.parentRegionId !== undefined;
       // If color changed, invalidate members too (subregion colors are shown in member list)
       const colorChanged = variables.data.color !== undefined;
-      // If archipelago status changed, invalidate geometries (extent box needs to be generated)
-      const archipelagoChanged = variables.data.isArchipelago !== undefined;
+      // If hull status changed, invalidate geometries (hull needs to be generated)
+      const hullChanged = variables.data.usesHull !== undefined;
       invalidateWorldViewQueries({
         regionsChanged: true,
         membersChanged: parentChanged || colorChanged,  // Invalidate members if parent or color changed
-        geometriesChanged: parentChanged || archipelagoChanged,  // Invalidate geometries if parent or archipelago status changed
+        geometriesChanged: parentChanged || hullChanged,  // Invalidate geometries if parent or hull status changed
       });
 
       // Update selectedRegion if it was the one being edited

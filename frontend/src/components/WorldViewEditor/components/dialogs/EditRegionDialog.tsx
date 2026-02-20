@@ -27,7 +27,7 @@ interface EditRegionDialogProps {
     name: string;
     color?: string;
     parentRegionId: number | null;
-    isArchipelago?: boolean;
+    usesHull?: boolean;
   }) => void;
 }
 
@@ -69,7 +69,7 @@ export function EditRegionDialog({
         name: editedRegion.name,
         color: editedRegion.color || undefined,
         parentRegionId: editedRegion.parentRegionId,
-        isArchipelago: editedRegion.isArchipelago,
+        usesHull: editedRegion.usesHull,
       });
     }
   };
@@ -202,22 +202,22 @@ export function EditRegionDialog({
           )}
         </Box>
 
-        {/* Archipelago toggle */}
+        {/* Hull toggle */}
         <Box sx={{ mt: 2 }}>
           <FormControlLabel
             control={
               <Checkbox
-                checked={editedRegion?.isArchipelago || false}
+                checked={editedRegion?.usesHull || false}
                 onChange={(e) =>
-                  setEditedRegion((prev) => (prev ? { ...prev, isArchipelago: e.target.checked } : null))
+                  setEditedRegion((prev) => (prev ? { ...prev, usesHull: e.target.checked } : null))
                 }
               />
             }
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="body2">Archipelago (island group)</Typography>
+                <Typography variant="body2">Uses Hull</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Uses extent box for map display
+                  Uses hull envelope for map display
                 </Typography>
               </Box>
             }

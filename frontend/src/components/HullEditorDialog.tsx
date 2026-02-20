@@ -75,7 +75,7 @@ export function HullEditorDialog({
 
     Promise.all([
       fetchRegionGeometry(regionId),
-      fetchRegionGeometry(regionId, 'ts_hull'),
+      fetchRegionGeometry(regionId, 'hull'),
       fetchSavedHullParams(regionId),
     ]).then(([realGeom, hullGeom, savedParams]) => {
       if (cancelled) return;
@@ -140,7 +140,7 @@ export function HullEditorDialog({
       setSaveSuccess(true);
       setPreviewGeometry(null);
       // Refetch hull to show the newly saved one
-      const hullGeom = await fetchRegionGeometry(regionId, 'ts_hull');
+      const hullGeom = await fetchRegionGeometry(regionId, 'hull');
       setSavedHullGeometry(hullGeom?.geometry as GeoJSON.Geometry ?? null);
       onSaved();
     } catch (e) {

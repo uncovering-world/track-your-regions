@@ -287,34 +287,34 @@ export function RegionMapVT() {
               id="region-hull"
               type="fill"
               source-layer={sourceLayerName}
-              filter={['==', ['get', 'using_ts_hull'], true]}
+              filter={['==', ['get', 'using_hull'], true]}
               paint={hullFillPaint(selectedRegion?.id)}
             />
             <Layer
               id="region-fill"
               type="fill"
               source-layer={sourceLayerName}
-              filter={['!=', ['get', 'using_ts_hull'], true]}
+              filter={['!=', ['get', 'using_hull'], true]}
               paint={regionFillPaint(selectedRegion?.id)}
             />
             <Layer
               id="region-outline"
               type="line"
               source-layer={sourceLayerName}
-              filter={['!=', ['get', 'using_ts_hull'], true]}
+              filter={['!=', ['get', 'using_hull'], true]}
               paint={regionOutlinePaint(selectedRegion?.id, exploringParams)}
             />
             <Layer
               id="hull-outline"
               type="line"
               source-layer={sourceLayerName}
-              filter={['==', ['get', 'using_ts_hull'], true]}
+              filter={['==', ['get', 'using_hull'], true]}
               paint={hullOutlinePaint(selectedRegion?.id, exploringParams)}
             />
           </Source>
         )}
 
-        {/* Island boundaries vector tile source (for archipelagos) */}
+        {/* Island boundaries vector tile source (for hull regions) */}
         {islandTileUrl && isCustomWorldView && (
           <Source
             key={islandTileUrl}

@@ -1,7 +1,7 @@
 import type { WorldView, RegionMember } from '../../types';
 
-// Display mode for archipelago visualization
-export type DisplayMode = 'real' | 'ts_hull';
+// Display mode for hull visualization
+export type DisplayMode = 'real' | 'hull';
 
 // Subregion tree node for hierarchical selection
 export interface SubregionNode {

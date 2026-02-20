@@ -49,12 +49,12 @@ export interface GeometryMapPanelProps {
   regions: Region[];
   onSelectedRegionChange: (region: Region) => void;
   onInvalidateQueries: (opts: { regionGeometryId?: number; regions?: boolean }) => void;
-  onToggleArchipelago: (region: Region) => void;
+  onToggleHull: (region: Region) => void;
 }
 
 export function GeometryMapPanel({
   selectedRegion, worldView, open, regions,
-  onSelectedRegionChange, onInvalidateQueries, onToggleArchipelago,
+  onSelectedRegionChange, onInvalidateQueries, onToggleHull,
 }: GeometryMapPanelProps) {
   const { P } = useAppTheme();
   const [displayMode, setDisplayMode] = useState<DisplayMode>('real');
@@ -63,7 +63,7 @@ export function GeometryMapPanel({
   const { data: selectedRegionGeometry, isLoading: geometryLoading } = useQuery({
     queryKey: ['regionGeometry', selectedRegion?.id, displayMode],
     queryFn: () => selectedRegion
-      ? fetchRegionGeometry(selectedRegion.id, displayMode === 'real' ? undefined : displayMode)
+      ? fetchRegionGeometry(selectedRegion.id, displayMode === 'real' ? undefined : 'hull')
       : null,
     enabled: !!selectedRegion,
     staleTime: 30000,
@@ -164,9 +164,19 @@ export function GeometryMapPanel({
         (event) => setComputeProgressLogs(prev => [...prev, event]),
         skipSnapping,
       );
-      const data = result.data as { isArchipelago?: boolean } | undefined;
-      if (data?.isArchipelago !== undefined) {
-        onSelectedRegionChange({ ...selectedRegion, isArchipelago: data.isArchipelago, isCustomBoundary: false });
+      const data = result.data as {
+        usesHull?: boolean;
+        focusBbox?: [number, number, number, number] | null;
+        anchorPoint?: [number, number] | null;
+      } | undefined;
+      if (data) {
+        onSelectedRegionChange({
+          ...selectedRegion,
+          isCustomBoundary: false,
+          ...(data.usesHull !== undefined && { usesHull: data.usesHull }),
+          ...(data.focusBbox !== undefined && { focusBbox: data.focusBbox }),
+          ...(data.anchorPoint !== undefined && { anchorPoint: data.anchorPoint }),
+        });
       }
       onInvalidateQueries({ regionGeometryId: selectedRegion.id, regions: true });
     } catch (e) {
@@ -255,10 +265,10 @@ export function GeometryMapPanel({
                 </Typography>
                 <Chip
                   size="small"
-                  label="Archipelago"
-                  variant={selectedRegion.isArchipelago ? 'filled' : 'outlined'}
-                  color={selectedRegion.isArchipelago ? 'warning' : 'default'}
-                  onClick={() => onToggleArchipelago(selectedRegion)}
+                  label="Hull"
+                  variant={selectedRegion.usesHull ? 'filled' : 'outlined'}
+                  color={selectedRegion.usesHull ? 'warning' : 'default'}
+                  onClick={() => onToggleHull(selectedRegion)}
                   sx={{ height: 20, fontSize: '0.65rem', cursor: 'pointer' }}
                 />
                 {selectedRegion.isCustomBoundary && <Chip size="small" label="Custom" sx={{ height: 20, fontSize: '0.65rem' }} color="info" />}
@@ -305,8 +315,8 @@ export function GeometryMapPanel({
                 </Tooltip>
               )}
 
-              {/* Display mode + hull editor for archipelagos */}
-              {selectedRegion.isArchipelago && (
+              {/* Display mode + hull editor for hull regions */}
+              {selectedRegion.usesHull && (
                 <>
                   <ToggleButtonGroup
                     size="small"
@@ -319,7 +329,7 @@ export function GeometryMapPanel({
                       <Tooltip title="Show actual island polygons"><LayersIcon sx={{ fontSize: 16 }} /></Tooltip>
                       <Typography sx={{ fontSize: '0.65rem', fontFamily: P.font.ui, textTransform: 'none' }}>Islands</Typography>
                     </ToggleButton>
-                    <ToggleButton value="ts_hull" sx={{ py: 0.25, px: 0.75, gap: 0.5 }}>
+                    <ToggleButton value="hull" sx={{ py: 0.25, px: 0.75, gap: 0.5 }}>
                       <Tooltip title="Show convex hull envelope"><HubIcon sx={{ fontSize: 16 }} /></Tooltip>
                       <Typography sx={{ fontSize: '0.65rem', fontFamily: P.font.ui, textTransform: 'none' }}>Hull</Typography>
                     </ToggleButton>
@@ -379,7 +389,7 @@ export function GeometryMapPanel({
             display: 'flex', gap: 2, alignItems: 'center',
             flexShrink: 0,
           }}>
-            <Tooltip title="Recompute TS hull even if one already exists">
+            <Tooltip title="Recompute hull even if one already exists">
               <FormControlLabel
                 control={<Checkbox size="small" checked={forceRecompute} onChange={(e) => setForceRecompute(e.target.checked)} />}
                 label={<Typography sx={{ fontSize: '0.72rem', fontFamily: P.font.ui }}>Regenerate hull</Typography>}
@@ -396,7 +406,7 @@ export function GeometryMapPanel({
             {displayGeomStatus && (
               <Typography sx={{ fontFamily: P.font.mono, fontSize: '0.65rem', color: P.light.textMuted, ml: 'auto' }}>
                 Display geoms: {displayGeomStatus.withDisplayGeom}/{displayGeomStatus.withGeom}
-                {displayGeomStatus.archipelagos > 0 && ` | ${displayGeomStatus.archipelagos} arch`}
+                {displayGeomStatus.hullRegions > 0 && ` | ${displayGeomStatus.hullRegions} hull`}
               </Typography>
             )}
           </Box>
@@ -556,7 +566,7 @@ export function GeometryMapPanel({
         title={`Redefine Boundaries for "${selectedRegion?.name || 'Region'}"`}
       />
 
-      {/* Hull Editor Dialog (archipelagos only) */}
+      {/* Hull Editor Dialog (hull regions only) */}
       {selectedRegion && (
         <HullEditorDialog
           open={hullEditorOpen}
@@ -564,7 +574,7 @@ export function GeometryMapPanel({
           regionId={selectedRegion.id}
           focusBbox={selectedRegion.focusBbox}
           anchorPoint={selectedRegion.anchorPoint}
-          onSaved={() => onInvalidateQueries({ regionGeometryId: selectedRegion.id })}
+          onSaved={() => onInvalidateQueries({ regionGeometryId: selectedRegion.id, regions: true })}
         />
       )}
     </>

@@ -50,7 +50,7 @@ export function Search() {
       parentRegionId: region.parentRegionId,
       color: region.color,
       hasSubregions: region.hasSubregions,
-      isArchipelago: region.isArchipelago,
+      usesHull: region.usesHull,
       focusBbox: region.focusBbox,
       anchorPoint: region.anchorPoint,
     });
