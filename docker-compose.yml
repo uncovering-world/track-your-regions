@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgis/postgis:${POSTGIS_VERSION:-16-3.4}
+    image: postgis/postgis:17-3.5-alpine  # Alpine has GEOS 3.12+; Debian has 3.9 which lacks ST_CoverageSimplify
     container_name: ${STACK_NAME:-tyr-ng}-db
     environment:
       POSTGRES_DB: ${DB_NAME:-track_regions}
