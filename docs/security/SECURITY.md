@@ -11,7 +11,7 @@ Level 3 requirements are tracked but optional for now.
 - **Type**: Web application (travel/region tracking with user accounts)
 - **Auth**: Email/password + Google OAuth 2.0 (Apple Sign-In planned)
 - **Data sensitivity**: User travel history, visited regions, location preferences
-- **APIs**: REST API (Express)
+- **APIs**: REST API (Express). Public read endpoint: `GET /api/world-views/regions/:regionId/members/descendant-geometries` (optionalAuth, publicReadLimiter)
 - **File handling**: Server-side image downloads from Wikimedia/UNESCO (no user uploads currently)
 - **Frontend**: MapLibre GL (WebGL) map rendering, SPA with React + MUI
 - **Sessions**: JWT access tokens (15min, in-memory) + refresh tokens (httpOnly cookie, hashed in DB)

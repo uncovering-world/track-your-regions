@@ -32,7 +32,7 @@ This applies beyond context layers — any time two interactive fill layers over
 
 Martin tile functions (`tile_world_view_root_regions`, `tile_region_subregions`, etc.) SELECT specific columns for rendering performance. They do NOT include every column from the `regions` table. In particular:
 
-**Included:** `id`, `region_id`, `name`, `parent_region_id`, `color`, `is_archipelago`, `has_subregions`, `using_ts_hull`
+**Included:** `id`, `region_id`, `name`, `parent_region_id`, `color`, `uses_hull`, `has_subregions`, `using_hull`
 
 **NOT included:** `focus_bbox`, `anchor_point`, `description`, `area_km2`, and most other metadata
 
