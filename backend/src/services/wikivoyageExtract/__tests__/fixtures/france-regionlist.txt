@@ -1,0 +1,23 @@
+{{Regionlist
+| regionmap=France_regions_map_(new).svg
+| regionmaptext=Regions of France
+| regionmapsize=400px
+
+| region1name=[[Île-de-France]]
+| region1color=#71b37b
+| region1items=[[Paris]], [[Versailles]], [[Fontainebleau]]
+| region1description=The capital region
+
+| region2name=[[Provence]]
+| region2color=#b5d29b
+| region2items=[[Marseille]], [[Aix-en-Provence]], [[Avignon]]
+| region2description=Lavender fields and Mediterranean coast
+
+| region3name=[[Brittany]]
+| region3color=#d5a6bd
+| region3items=[[Rennes]], [[Saint-Malo]]
+| region3description=Celtic heritage and rugged coastline
+}}
+
+* [[Corsica]] — an island in the Mediterranean
+* [[French Riviera]] — glamorous coastal strip

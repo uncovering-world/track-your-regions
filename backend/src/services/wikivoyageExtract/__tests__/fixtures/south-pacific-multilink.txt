@@ -1,0 +1,21 @@
+{{Regionlist
+| regionmap=Pacific_Culture_Areas.svg
+
+| region1name=[[Melanesia]]
+| region1items=[[Papua New Guinea]], [[Fiji]], [[Solomon Islands]]
+
+| region2name=[[France]] and [[Monaco]]
+| region2items=[[Nice]], [[Cannes]], [[Monte Carlo]]
+
+| region3name=[[Russia]]'s [[North Caucasus]]
+| region3items=[[Sochi]], [[Nalchik]]
+
+| region4name=[[Baker Island|Baker]] and [[Howland Island]]s ([[USA]])
+| region4items=
+
+| region5name=[[Falster]] ([[Gedser]], [[Marielyst]])
+| region5items=
+
+| region6name=Italian Peninsula
+| region6items=[[Italy]], [[Malta]], [[San Marino]]
+}}
