@@ -78,3 +78,6 @@ docs/inbox/
 
 # Binary artifacts
 *.dmg
+
+# Repomix output
+repomix-output.*
