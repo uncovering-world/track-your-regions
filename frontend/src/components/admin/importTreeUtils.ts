@@ -1,13 +1,19 @@
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
 
 /**
- * Is a node truly unresolved? NOT blocking when any ancestor is matched
- * (has assigned divisions that cover this node's territory).
+ * Is a node blocking the Coverage Check?
+ * Matches the backend blocking definitions:
+ * - needs_review/suggested: always blocking (not covered by ancestor)
+ * - no_candidates: blocking when not covered AND has unresolved leaves
+ *   (leaf itself counts as unresolved, container only if subtree is unresolved)
  */
-export function isUnresolved(node: MatchTreeNode, ancestorIsMatched: boolean): boolean {
-  if (ancestorIsMatched) return false;
+export function isUnresolved(node: MatchTreeNode, ancestorHasMembers: boolean): boolean {
+  if (ancestorHasMembers) return false;
   if (node.matchStatus === 'needs_review' || node.matchStatus === 'suggested') return true;
-  if (node.matchStatus === 'no_candidates') return true;
+  if (node.matchStatus === 'no_candidates') {
+    if (node.children.length === 0) return true;
+    return !isNodeResolved(node, ancestorHasMembers);
+  }
   return false;
 }
 
@@ -43,13 +49,15 @@ export function countDirectChildrenResolved(children: MatchTreeNode[], ancestorH
   return { resolved, total: children.length };
 }
 
-/** Collect IDs of all ancestors on the path to truly unresolved nodes */
-export function collectAncestorsOfUnresolved(nodes: MatchTreeNode[], ancestorIsMatched = false): Set<number> {
+/** Collect IDs of all ancestors on the path to blocking nodes */
+export function collectAncestorsOfUnresolved(nodes: MatchTreeNode[]): Set<number> {
   const ids = new Set<number>();
-  function walk(node: MatchTreeNode, covered: boolean): boolean {
-    let hasUnresolved = isUnresolved(node, covered);
-    const nodeIsMatched = node.matchStatus === 'auto_matched' || node.matchStatus === 'manual_matched' || node.matchStatus === 'children_matched';
-    const childCovered = covered || nodeIsMatched || node.memberCount > 0;
+  function walk(node: MatchTreeNode, ancestorHasMembers: boolean): boolean {
+    let hasUnresolved = isUnresolved(node, ancestorHasMembers);
+    // Only direct matches count as ancestor coverage (they have region_members).
+    // children_matched has no direct assignments — its children need their own matching.
+    const nodeIsMatched = node.matchStatus === 'auto_matched' || node.matchStatus === 'manual_matched';
+    const childCovered = ancestorHasMembers || nodeIsMatched || node.memberCount > 0;
     for (const child of node.children) {
       if (walk(child, childCovered)) hasUnresolved = true;
     }
@@ -58,7 +66,7 @@ export function collectAncestorsOfUnresolved(nodes: MatchTreeNode[], ancestorIsM
     }
     return hasUnresolved;
   }
-  for (const root of nodes) walk(root, ancestorIsMatched);
+  for (const root of nodes) walk(root, false);
   return ids;
 }
 
