@@ -277,6 +277,10 @@ export async function getMatchStats(req: AuthenticatedRequest, res: Response): P
       COUNT(*) FILTER (WHERE ris.match_status = 'auto_matched') AS auto_matched,
       COUNT(*) FILTER (WHERE ris.match_status = 'children_matched') AS children_matched,
       COUNT(*) FILTER (WHERE ris.match_status = 'needs_review') AS needs_review,
+      COUNT(*) FILTER (
+        WHERE ris.match_status = 'needs_review'
+          AND r.id NOT IN (SELECT region_id FROM covered_by_ancestor)
+      ) AS needs_review_blocking,
       COUNT(*) FILTER (WHERE ris.match_status = 'no_candidates') AS no_candidates,
       COUNT(*) FILTER (
         WHERE ris.match_status = 'no_candidates'
@@ -2188,11 +2192,32 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
       FROM ancestor_walk aw
       JOIN region_members rm ON rm.region_id = aw.ancestor_id
       WHERE aw.ancestor_id IS NOT NULL
+    ),
+    unresolved_leaves AS (
+      SELECT r2.id AS region_id
+      FROM regions r2
+      JOIN region_import_state ris2 ON ris2.region_id = r2.id
+      WHERE r2.world_view_id = $1
+        AND r2.is_leaf = true
+        AND ris2.match_status NOT IN ('auto_matched', 'manual_matched', 'children_matched')
+        AND r2.id NOT IN (SELECT region_id FROM covered_by_ancestor)
+    ),
+    has_unresolved_desc AS (
+      SELECT ul.region_id FROM unresolved_leaves ul
+      UNION
+      SELECT r2.parent_region_id
+      FROM has_unresolved_desc hud
+      JOIN regions r2 ON r2.id = hud.region_id
+      WHERE r2.parent_region_id IS NOT NULL
     )
-    SELECT COUNT(*) FILTER (WHERE ris.match_status = 'needs_review') AS needs_review,
+    SELECT COUNT(*) FILTER (
+             WHERE ris.match_status = 'needs_review'
+               AND r.id NOT IN (SELECT region_id FROM covered_by_ancestor)
+           ) AS needs_review,
            COUNT(*) FILTER (
              WHERE ris.match_status = 'no_candidates'
                AND r.id NOT IN (SELECT region_id FROM covered_by_ancestor)
+               AND r.id IN (SELECT region_id FROM has_unresolved_desc)
            ) AS no_candidates
     FROM regions r
     LEFT JOIN region_import_state ris ON ris.region_id = r.id
