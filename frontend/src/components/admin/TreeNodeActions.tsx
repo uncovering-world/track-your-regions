@@ -58,17 +58,19 @@ function SearchActionButtons({ nodeId, nodeGeocodeMsg, isMutating, geocodeMatchi
   return (
     <>
       <Tooltip title={nodeGeocodeMsg ?? 'Geocode match'}>
-        <IconButton
-          size="small"
-          onClick={() => onGeocodeMatch(nodeId)}
-          disabled={isMutating || geocodeMatchingRegionId !== null || dbSearchingRegionId !== null || aiMatchingRegionId !== null}
-          sx={{ p: 0.25 }}
-        >
-          {geocodeMatchingRegionId === nodeId
-            ? <CircularProgress size={14} />
-            : <GeocodeIcon sx={{ fontSize: 16 }} />
-          }
-        </IconButton>
+        <span>
+          <IconButton
+            size="small"
+            onClick={() => onGeocodeMatch(nodeId)}
+            disabled={isMutating || geocodeMatchingRegionId !== null || dbSearchingRegionId !== null || aiMatchingRegionId !== null}
+            sx={{ p: 0.25 }}
+          >
+            {geocodeMatchingRegionId === nodeId
+              ? <CircularProgress size={14} />
+              : <GeocodeIcon sx={{ fontSize: 16 }} />
+            }
+          </IconButton>
+        </span>
       </Tooltip>
       {nodeGeocodeMsg && (
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', ml: -0.5 }}>
@@ -76,30 +78,34 @@ function SearchActionButtons({ nodeId, nodeGeocodeMsg, isMutating, geocodeMatchi
         </Typography>
       )}
       <Tooltip title="DB search">
-        <IconButton
-          size="small"
-          onClick={() => onDBSearch(nodeId)}
-          disabled={isMutating || dbSearchingRegionId !== null || aiMatchingRegionId !== null}
-          sx={{ p: 0.25 }}
-        >
-          {dbSearchingRegionId === nodeId
-            ? <CircularProgress size={14} />
-            : <SearchIcon sx={{ fontSize: 16 }} />
-          }
-        </IconButton>
+        <span>
+          <IconButton
+            size="small"
+            onClick={() => onDBSearch(nodeId)}
+            disabled={isMutating || dbSearchingRegionId !== null || aiMatchingRegionId !== null}
+            sx={{ p: 0.25 }}
+          >
+            {dbSearchingRegionId === nodeId
+              ? <CircularProgress size={14} />
+              : <SearchIcon sx={{ fontSize: 16 }} />
+            }
+          </IconButton>
+        </span>
       </Tooltip>
       <Tooltip title="AI match">
-        <IconButton
-          size="small"
-          onClick={() => onAIMatch(nodeId)}
-          disabled={isMutating || aiMatchingRegionId !== null || dbSearchingRegionId !== null}
-          sx={{ p: 0.25 }}
-        >
-          {aiMatchingRegionId === nodeId
-            ? <CircularProgress size={14} />
-            : <AIIcon sx={{ fontSize: 16 }} />
-          }
-        </IconButton>
+        <span>
+          <IconButton
+            size="small"
+            onClick={() => onAIMatch(nodeId)}
+            disabled={isMutating || aiMatchingRegionId !== null || dbSearchingRegionId !== null}
+            sx={{ p: 0.25 }}
+          >
+            {aiMatchingRegionId === nodeId
+              ? <CircularProgress size={14} />
+              : <AIIcon sx={{ fontSize: 16 }} />
+            }
+          </IconButton>
+        </span>
       </Tooltip>
     </>
   );
@@ -178,17 +184,19 @@ export function TreeNodeActions({
       {/* Dismiss subregions button */}
       {hasUnmatchedChildren && (
         <Tooltip title="Dismiss subregions (make leaf)">
-          <IconButton
-            size="small"
-            onClick={() => onDismissChildren(node.id)}
-            disabled={isMutating || dismissingRegionId !== null}
-            sx={{ p: 0.25 }}
-          >
-            {dismissingRegionId === node.id
-              ? <CircularProgress size={14} />
-              : <DismissChildrenIcon sx={{ fontSize: 16 }} />
-            }
-          </IconButton>
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onDismissChildren(node.id)}
+              disabled={isMutating || dismissingRegionId !== null}
+              sx={{ p: 0.25 }}
+            >
+              {dismissingRegionId === node.id
+                ? <CircularProgress size={14} />
+                : <DismissChildrenIcon sx={{ fontSize: 16 }} />
+              }
+            </IconButton>
+          </span>
         </Tooltip>
       )}
 
@@ -242,17 +250,19 @@ export function TreeNodeActions({
       {/* Drill into children — match them independently */}
       {hasChildren && node.matchStatus != null && node.matchStatus !== 'children_matched' && (
         <Tooltip title="Match children independently (drill down)">
-          <IconButton
-            size="small"
-            onClick={() => onHandleAsGrouping(node.id)}
-            disabled={isMutating || groupingRegionId !== null}
-            sx={{ p: 0.25 }}
-          >
-            {groupingRegionId === node.id
-              ? <CircularProgress size={14} />
-              : <GroupingIcon sx={{ fontSize: 16 }} />
-            }
-          </IconButton>
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onHandleAsGrouping(node.id)}
+              disabled={isMutating || groupingRegionId !== null}
+              sx={{ p: 0.25 }}
+            >
+              {groupingRegionId === node.id
+                ? <CircularProgress size={14} />
+                : <GroupingIcon sx={{ fontSize: 16 }} />
+              }
+            </IconButton>
+          </span>
         </Tooltip>
       )}
 
@@ -281,28 +291,32 @@ export function TreeNodeActions({
       {/* Reset match state */}
       {node.matchStatus != null && (
         <Tooltip title="Reset match (clear suggestions & rejections)">
-          <IconButton
-            size="small"
-            onClick={() => onResetMatch(node.id)}
-            disabled={isMutating}
-            sx={{ p: 0.25 }}
-          >
-            <ResetIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
-          </IconButton>
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onResetMatch(node.id)}
+              disabled={isMutating}
+              sx={{ p: 0.25 }}
+            >
+              <ResetIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+            </IconButton>
+          </span>
         </Tooltip>
       )}
 
       {/* Manual fix flag */}
       {node.matchStatus != null && (
         <Tooltip title={node.needsManualFix ? (node.fixNote ?? 'Needs manual fix — click to clear') : 'Mark as needing manual fix'}>
-          <IconButton
-            size="small"
-            onClick={() => onManualFix(node.id, !node.needsManualFix)}
-            disabled={isMutating}
-            sx={{ p: 0.25 }}
-          >
-            <ManualFixIcon sx={{ fontSize: 16, color: node.needsManualFix ? 'error.main' : 'text.disabled' }} />
-          </IconButton>
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onManualFix(node.id, !node.needsManualFix)}
+              disabled={isMutating}
+              sx={{ p: 0.25 }}
+            >
+              <ManualFixIcon sx={{ fontSize: 16, color: node.needsManualFix ? 'error.main' : 'text.disabled' }} />
+            </IconButton>
+          </span>
         </Tooltip>
       )}
       {node.needsManualFix && node.fixNote && (

@@ -215,7 +215,7 @@ export function WorldViewImportPanel() {
             <Stack spacing={1}>
               {importedWorldViews.map(wv => (
                 <Box key={wv.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" sx={{ flex: 1 }}>
+                  <Typography variant="body2" component="span" sx={{ flex: 1 }}>
                     {wv.name} (ID: {wv.id})
                     {wv.sourceType && (
                       <Chip
