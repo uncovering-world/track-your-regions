@@ -33,6 +33,7 @@ export interface MatchStats {
   auto_matched: string;
   children_matched: string;
   needs_review: string;
+  needs_review_blocking: string;
   no_candidates: string;
   no_candidates_blocking: string;
   manual_matched: string;

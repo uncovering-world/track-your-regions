@@ -187,17 +187,17 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const rematchRunning = rematchStatus?.status === 'matching';
 
   const matchingDone = stats
-    && parseInt(stats.needs_review) === 0
+    && parseInt(stats.needs_review_blocking) === 0
     && parseInt(stats.no_candidates_blocking) === 0;
   const coveragePassed = coverageData != null && !coverageStale && coverageData.gaps.length === 0;
 
   const coverageBlockerTooltip = useMemo(() => {
     if (!stats || matchingDone) return '';
     const parts: string[] = [];
-    const needsReview = parseInt(stats.needs_review);
+    const needsReview = parseInt(stats.needs_review_blocking);
     const noCandidates = parseInt(stats.no_candidates_blocking);
     if (needsReview > 0) parts.push(`${needsReview} need review`);
-    if (noCandidates > 0) parts.push(`${noCandidates} have no candidates (unblocked)`);
+    if (noCandidates > 0) parts.push(`${noCandidates} have no candidates`);
     return `Resolve first: ${parts.join(', ')}`;
   }, [stats, matchingDone]);
 
@@ -248,7 +248,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const closeReviewTooltip = useMemo(() => {
     if (!stats) return '';
     const blockers: string[] = [];
-    if (parseInt(stats.needs_review) > 0) blockers.push(`${stats.needs_review} need review`);
+    if (parseInt(stats.needs_review_blocking) > 0) blockers.push(`${stats.needs_review_blocking} need review`);
     if (parseInt(stats.no_candidates_blocking) > 0) blockers.push(`${stats.no_candidates_blocking} have no candidates`);
     if (blockers.length > 0) return blockers.join(', ');
     if (!coverageData) return 'Run coverage check first';
@@ -310,7 +310,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
           <CardContent>
             <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
               <Chip label={`${stats.auto_matched} auto-matched`} color="success" />
-              <Chip label={`${stats.needs_review} needs review`} color="warning" />
+              <Chip label={`${stats.needs_review_blocking} needs review`} color="warning" />
               <Chip label={`${stats.no_candidates_blocking} no candidates`} />
               <Chip label={`${stats.manual_matched} manually matched`} color="info" />
               {parseInt(stats.suggested) > 0 && (
