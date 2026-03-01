@@ -2,6 +2,70 @@
  * Types for Wikivoyage extraction service
  */
 
+/** Region preview shown to admin during AI question review */
+export interface RegionPreview {
+  name: string;
+  isLink: boolean;
+  children: string[];
+  /** Whether this region has a real Wikivoyage page */
+  pageExists?: boolean;
+  /** Page existence for children (name → exists) */
+  childPageExists?: Record<string, boolean>;
+}
+
+/** Structured interview question with options (HITL pattern) */
+export interface InterviewQuestionData {
+  text: string;
+  options: Array<{ label: string; value: string }>;
+  /** Index of the recommended option (AI's suggestion) */
+  recommended: number | null;
+  /** Existing rules relevant to this question (for admin to review/manage) */
+  relatedRules?: Array<{ id: number; text: string }>;
+}
+
+/** A queued AI question — extraction continues, admin reviews at their pace */
+export interface PendingAIQuestion {
+  id: number;
+  pageTitle: string;
+  sourceUrl: string;
+  /** Raw AI questions (kept for context in interview) */
+  rawQuestions: string[];
+  /** Structured interview question with options (null if interview not yet started) */
+  currentQuestion: InterviewQuestionData | null;
+  extractedRegions: RegionPreview[];
+  resolved: boolean;
+  /** Internal: re-run AI with admin feedback, returns updated preview (not serialized) */
+  reExtract: (feedback: string) => Promise<{ regions: RegionPreview[]; questions: string[] }>;
+  /** Internal: formulate next interview question (not serialized) */
+  formulateNextQuestion: () => Promise<InterviewQuestionData>;
+  /** Internal: process answer and get rule + guidance (not serialized) */
+  processAnswer: (question: InterviewQuestionData, answer: string) => Promise<{
+    rule: string | null;
+    canProceed: boolean;
+    reExtractGuidance: string | null;
+  }>;
+}
+
+/** Who made an extraction decision (for decision logging summary) */
+export type DecisionMaker =
+  | 'city_districts'    // hardcoded Parent/District shortcut
+  | 'dead_end_filter'   // dropped dead-ends resolved ambiguity
+  | 'plain_text_linked' // all plain-text entries had real pages
+  | 'ai_empty'          // AI returned empty regions
+  | 'ai_confident'      // AI extracted regions with no questions
+  | 'coverage_gate'     // <50% coverage hard gate cleared regions
+  | 'admin_answer'      // admin answered the question
+  | 'no_ai'             // AI unavailable, used parser output as-is
+  | 'country_depth';    // country-aware depth limit applied
+
+/** A logged extraction decision for the Phase 1 summary */
+export interface DecisionEntry {
+  page: string;
+  decision: 'leaf' | 'split' | 'drop_children';
+  decidedBy: DecisionMaker;
+  detail: string;
+}
+
 /** Progress for the full extraction → import → matching pipeline */
 export interface ExtractionProgress {
   cancel: boolean;
@@ -15,7 +79,7 @@ export interface ExtractionProgress {
     | 'cancelled';
   statusMessage: string;
   regionsFetched: number;
-  estimatedTotal: number; // ~4500
+  estimatedTotal: number;
   currentPage: string;
   apiRequests: number;
   cacheHits: number;
@@ -28,6 +92,17 @@ export interface ExtractionProgress {
   subdivisionsDrilled: number;
   noCandidates: number;
   worldViewId: number | null;
+  // AI extraction stats
+  aiApiCalls: number;
+  aiPromptTokens: number;
+  aiCompletionTokens: number;
+  aiTotalCost: number;
+  // Stacked AI questions (non-blocking — extraction continues)
+  pendingQuestions: PendingAIQuestion[];
+  /** Auto-incrementing question ID */
+  nextQuestionId: number;
+  /** Decision log for Phase 1 summary */
+  decisions: DecisionEntry[];
 }
 
 /** Configuration for a Wikivoyage extraction run */
@@ -43,7 +118,7 @@ export function createInitialExtractionProgress(): ExtractionProgress {
     status: 'extracting',
     statusMessage: 'Starting extraction...',
     regionsFetched: 0,
-    estimatedTotal: 4500,
+    estimatedTotal: 5700,
     currentPage: '',
     apiRequests: 0,
     cacheHits: 0,
@@ -55,6 +130,13 @@ export function createInitialExtractionProgress(): ExtractionProgress {
     subdivisionsDrilled: 0,
     noCandidates: 0,
     worldViewId: null,
+    aiApiCalls: 0,
+    aiPromptTokens: 0,
+    aiCompletionTokens: 0,
+    aiTotalCost: 0,
+    pendingQuestions: [],
+    nextQuestionId: 1,
+    decisions: [],
   };
 }
 
@@ -65,7 +147,20 @@ export interface TreeNode {
   mapImageCandidates?: string[];
   wikidataId?: string;
   sourceUrl?: string;
+  warnings?: string[];
   children: TreeNode[];
+}
+
+/** Country context for depth-aware extraction */
+export interface CountryContext {
+  /** Country name (for logging) */
+  name: string;
+  /** Country area in km² (from AI classification) */
+  area: number;
+  /** Maximum allowed depth below this country */
+  maxSubDepth: number;
+  /** Current depth within the country (0 = direct children) */
+  currentSubDepth: number;
 }
 
 /** Result from get_page_data: parsed page information */
@@ -75,6 +170,10 @@ export interface PageData {
   mapImage: string | null;
   mapImageCandidates: string[];
   regions: RegionEntry[];
+  /** True when regions have ambiguity that AI should resolve */
+  needsAI?: boolean;
+  /** Raw Regions section wikitext for AI fallback */
+  rawWikitext?: string;
 }
 
 /** A single region entry from a Regionlist template */
