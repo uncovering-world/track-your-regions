@@ -174,6 +174,11 @@ export const worldViewIdParamSchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
 });
 
+export const worldViewRegionIdParamSchema = z.object({
+  worldViewId: z.coerce.number().int().positive(),
+  regionId: z.coerce.number().int().positive(),
+});
+
 export const experienceIdParamSchema = z.object({
   experienceId: z.coerce.number().int().positive(),
 });
@@ -395,7 +400,16 @@ export const adminUserSearchQuerySchema = z.object({
 
 export const wvExtractStartSchema = z.object({
   name: z.string().min(1).max(255).default('Wikivoyage Regions'),
-  useCache: z.boolean().default(true),
+  cacheFile: z.string().nullable().optional(),
+});
+
+export const wvExtractAnswerSchema = z.object({
+  questionId: z.number().int().positive(),
+  action: z.enum(['accept', 'skip', 'answer', 'delete_rule']),
+  /** Selected option value or custom text (for 'answer' action) */
+  answer: z.string().max(10000).optional(),
+  /** Rule ID to delete (for 'delete_rule' action) */
+  ruleId: z.number().int().positive().optional(),
 });
 
 // =============================================================================
@@ -411,6 +425,7 @@ const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
     mapImageCandidates: z.array(z.string().url().max(2000)).max(20).optional(),
     wikidataId: z.string().regex(/^Q\d+$/).optional(),
     sourceUrl: z.string().url().max(2000).optional(),
+    warnings: z.array(z.string().max(500)).max(50).optional(),
     children: z.array(importTreeNodeSchema).default([]),
   }),
 );
@@ -431,6 +446,52 @@ export const wvImportAcceptBatchSchema = z.object({
     regionId: z.coerce.number().int().positive(),
     divisionId: z.coerce.number().int().positive(),
   })).min(1).max(1000),
+});
+
+export const wvImportUnionGeometrySchema = z.object({
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(100),
+  regionId: z.coerce.number().int().positive().optional(),
+});
+
+export const wvImportSplitDeeperSchema = z.object({
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(100),
+  wikidataId: z.string().regex(/^Q\d+$/),
+  regionId: z.coerce.number().int().positive(),
+});
+
+export const wvImportVisionMatchSchema = z.object({
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(200),
+  regionId: z.coerce.number().int().positive(),
+  imageUrl: z.string().url(),
+});
+
+export const wvImportColorMatchSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  token: z.string().optional(),
+});
+
+// Guided CV Match — seed point schemas
+const guidedMatchPointSchema = z.object({
+  x: z.number().nonnegative(),
+  y: z.number().nonnegative(),
+});
+
+const guidedMatchRegionSeedSchema = guidedMatchPointSchema.extend({
+  regionId: z.coerce.number().int().positive(),
+});
+
+export const guidedMatchPrepareBodySchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  seeds: z.object({
+    waterPoints: z.array(guidedMatchPointSchema).default([]),
+    parkPoints: z.array(guidedMatchPointSchema).default([]),
+    regionSeeds: z.array(guidedMatchRegionSeedSchema).min(1),
+  }),
+});
+
+export const guidedMatchStreamSchema = z.object({
+  sessionId: z.string().uuid(),
+  token: z.string().optional(),
 });
 
 export const wvImportRegionIdSchema = z.object({
@@ -454,6 +515,27 @@ export const wikidataIdParamSchema = z.object({
 
 export const divisionIdBodySchema = z.object({
   divisionId: z.coerce.number().int().positive(),
+});
+
+export const wvImportAddChildSchema = z.object({
+  parentRegionId: z.coerce.number().int().positive(),
+  name: z.string().min(1).max(500),
+});
+
+export const wvImportRemoveRegionSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  reparentChildren: z.boolean(),
+  reparentDivisions: z.boolean().optional(),
+});
+
+export const wvImportRenameRegionSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  name: z.string().min(1).max(500),
+});
+
+export const wvImportReparentRegionSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  newParentId: z.coerce.number().int().positive().nullable(),
 });
 
 export const wvImportApproveCoverageSchema = z.object({
@@ -588,6 +670,11 @@ export const computeSSEQuerySchema = z.object({
 
 export const coverageSSEQuerySchema = z.object({
   token: z.string().optional(), // JWT passed as query param (EventSource can't send headers)
+});
+
+export const childrenCoverageQuerySchema = z.object({
+  regionId: z.coerce.number().int().positive().optional(),
+  onlyId: z.coerce.number().int().positive().optional(),
 });
 
 export const regenerateDisplayQuerySchema = z.object({
