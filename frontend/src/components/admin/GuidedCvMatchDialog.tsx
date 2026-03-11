@@ -218,14 +218,33 @@ export default function GuidedCvMatchDialog({
     const img = e.currentTarget;
     setImgNaturalWidth(img.naturalWidth);
     setImgNaturalHeight(img.naturalHeight);
-    // Draw image onto hidden canvas for pixel color sampling
+    // Try to draw onto canvas for color sampling.
+    // First attempt: draw the displayed <img> directly (works for same-origin).
+    // If tainted (cross-origin), re-fetch via a CORS-enabled Image element.
     const canvas = document.createElement('canvas');
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.drawImage(img, 0, 0);
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    try {
+      ctx.getImageData(0, 0, 1, 1); // test if canvas is tainted
       canvasRef.current = canvas;
+    } catch {
+      // Canvas tainted — re-fetch with CORS
+      const corsImg = new Image();
+      corsImg.crossOrigin = 'anonymous';
+      corsImg.onload = () => {
+        const c2 = document.createElement('canvas');
+        c2.width = corsImg.naturalWidth;
+        c2.height = corsImg.naturalHeight;
+        const ctx2 = c2.getContext('2d');
+        if (ctx2) {
+          ctx2.drawImage(corsImg, 0, 0);
+          canvasRef.current = c2;
+        }
+      };
+      corsImg.src = img.src;
     }
   }, []);
 
@@ -386,7 +405,6 @@ export default function GuidedCvMatchDialog({
             <Box
               component="img"
               src={regionMapUrl}
-              crossOrigin="anonymous"
               alt={`Map of ${regionName}`}
               onLoad={handleImageLoad}
               onClick={isClickable ? handleImageClick : undefined}
