@@ -300,7 +300,7 @@ export default function GuidedCvMatchDialog({
       onClose={step === 'matching' ? undefined : onClose}
       maxWidth="lg"
       fullWidth
-      TransitionProps={{ onEnter: handleEnter }}
+      slotProps={{ transition: { onEnter: handleEnter } }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'space-between' }}>
         <Box>
