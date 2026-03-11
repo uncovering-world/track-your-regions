@@ -9,7 +9,7 @@
  * 5. Done — calls onComplete(result)
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -36,6 +36,7 @@ import {
 interface Point {
   x: number;
   y: number;
+  color: string; // hex color sampled from the map image at click point
 }
 
 interface RegionSeed extends Point {
@@ -57,15 +58,6 @@ export interface GuidedCvMatchDialogProps {
 }
 
 // =============================================================================
-// Color palette for region dots (HSL with evenly spaced hues)
-// =============================================================================
-
-function getRegionColor(index: number, total: number): string {
-  const hue = Math.round((index / Math.max(total, 1)) * 360);
-  return `hsl(${hue}, 80%, 50%)`;
-}
-
-// =============================================================================
 // Dot overlay component
 // =============================================================================
 
@@ -75,10 +67,9 @@ interface DotOverlayProps {
   regionSeeds: RegionSeed[];
   imgNaturalWidth: number;
   imgNaturalHeight: number;
-  totalRegions: number;
 }
 
-function DotOverlay({ waterPoints, parkPoints, regionSeeds, imgNaturalWidth, imgNaturalHeight, totalRegions }: DotOverlayProps) {
+function DotOverlay({ waterPoints, parkPoints, regionSeeds, imgNaturalWidth, imgNaturalHeight }: DotOverlayProps) {
   if (imgNaturalWidth === 0 || imgNaturalHeight === 0) return null;
 
   return (
@@ -91,11 +82,11 @@ function DotOverlay({ waterPoints, parkPoints, regionSeeds, imgNaturalWidth, img
             left: `${(pt.x / imgNaturalWidth) * 100}%`,
             top: `${(pt.y / imgNaturalHeight) * 100}%`,
             transform: 'translate(-50%, -50%)',
-            width: 10,
-            height: 10,
+            width: 12,
+            height: 12,
             borderRadius: '50%',
-            bgcolor: '#1565c0',
-            border: '2px solid #fff',
+            bgcolor: pt.color,
+            border: '2px solid #1565c0',
             boxShadow: '0 1px 3px rgba(0,0,0,0.5)',
             pointerEvents: 'none',
             zIndex: 2,
@@ -110,11 +101,11 @@ function DotOverlay({ waterPoints, parkPoints, regionSeeds, imgNaturalWidth, img
             left: `${(pt.x / imgNaturalWidth) * 100}%`,
             top: `${(pt.y / imgNaturalHeight) * 100}%`,
             transform: 'translate(-50%, -50%)',
-            width: 10,
-            height: 10,
+            width: 12,
+            height: 12,
             borderRadius: '50%',
-            bgcolor: '#2e7d32',
-            border: '2px solid #fff',
+            bgcolor: pt.color,
+            border: '2px solid #2e7d32',
             boxShadow: '0 1px 3px rgba(0,0,0,0.5)',
             pointerEvents: 'none',
             zIndex: 2,
@@ -122,7 +113,6 @@ function DotOverlay({ waterPoints, parkPoints, regionSeeds, imgNaturalWidth, img
         />
       ))}
       {regionSeeds.map((seed, i) => {
-        const color = getRegionColor(i, totalRegions);
         return (
           <Box
             key={`region-${seed.regionId}-${i}`}
@@ -143,7 +133,7 @@ function DotOverlay({ waterPoints, parkPoints, regionSeeds, imgNaturalWidth, img
                 width: 12,
                 height: 12,
                 borderRadius: '50%',
-                bgcolor: color,
+                bgcolor: seed.color,
                 border: '2px solid #fff',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.5)',
                 flexShrink: 0,
@@ -193,6 +183,22 @@ export default function GuidedCvMatchDialog({
   const [error, setError] = useState<string | null>(null);
   const [imgNaturalWidth, setImgNaturalWidth] = useState(0);
   const [imgNaturalHeight, setImgNaturalHeight] = useState(0);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Sample pixel color from the hidden canvas at natural image coordinates
+  const sampleColor = useCallback((x: number, y: number): string => {
+    const canvas = canvasRef.current;
+    if (!canvas) return '#888888';
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '#888888';
+    try {
+      const [r, g, b] = ctx.getImageData(x, y, 1, 1).data;
+      return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    } catch {
+      // Canvas tainted by cross-origin image — fall back to gray
+      return '#888888';
+    }
+  }, []);
 
   // Reset state when dialog opens
   const handleEnter = useCallback(() => {
@@ -205,12 +211,22 @@ export default function GuidedCvMatchDialog({
     setError(null);
     setImgNaturalWidth(0);
     setImgNaturalHeight(0);
+    canvasRef.current = null;
   }, []);
 
   const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     setImgNaturalWidth(img.naturalWidth);
     setImgNaturalHeight(img.naturalHeight);
+    // Draw image onto hidden canvas for pixel color sampling
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(img, 0, 0);
+      canvasRef.current = canvas;
+    }
   }, []);
 
   const handleImageClick = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
@@ -220,21 +236,22 @@ export default function GuidedCvMatchDialog({
     const rect = img.getBoundingClientRect();
     const x = Math.round((e.clientX - rect.left) / rect.width * img.naturalWidth);
     const y = Math.round((e.clientY - rect.top) / rect.height * img.naturalHeight);
+    const color = sampleColor(x, y);
 
     if (step === 'water') {
-      setWaterPoints(prev => [...prev, { x, y }]);
+      setWaterPoints(prev => [...prev, { x, y, color }]);
     } else if (step === 'parks') {
-      setParkPoints(prev => [...prev, { x, y }]);
+      setParkPoints(prev => [...prev, { x, y, color }]);
     } else if (step === 'regions') {
       if (currentRegionIdx >= childRegions.length) return;
       const region = childRegions[currentRegionIdx];
-      setRegionSeeds(prev => [...prev, { x, y, regionId: region.id, regionName: region.name }]);
+      setRegionSeeds(prev => [...prev, { x, y, color, regionId: region.id, regionName: region.name }]);
       // Auto-advance to next region
       if (currentRegionIdx < childRegions.length - 1) {
         setCurrentRegionIdx(prev => prev + 1);
       }
     }
-  }, [step, currentRegionIdx, childRegions]);
+  }, [step, currentRegionIdx, childRegions, sampleColor]);
 
   // undo last region seed
   const handleUndo = useCallback(() => {
@@ -369,19 +386,17 @@ export default function GuidedCvMatchDialog({
             <Box
               component="img"
               src={regionMapUrl}
+              crossOrigin="anonymous"
               alt={`Map of ${regionName}`}
               onLoad={handleImageLoad}
               onClick={isClickable ? handleImageClick : undefined}
               sx={{
-                maxWidth: '100%',
                 width: '100%',
                 height: 'auto',
                 display: 'block',
                 cursor: isClickable ? 'crosshair' : 'default',
                 userSelect: 'none',
                 borderRadius: 1,
-                border: '1px solid',
-                borderColor: 'divider',
               }}
             />
             <DotOverlay
@@ -390,7 +405,6 @@ export default function GuidedCvMatchDialog({
               regionSeeds={regionSeeds}
               imgNaturalWidth={imgNaturalWidth}
               imgNaturalHeight={imgNaturalHeight}
-              totalRegions={childRegions.length}
             />
           </Box>
         )}
@@ -406,7 +420,7 @@ export default function GuidedCvMatchDialog({
             {childRegions.map((r, i) => {
               const isMarked = i < regionSeeds.length;
               const isCurrent = i === currentRegionIdx && !allRegionsMarked;
-              const color = isMarked ? getRegionColor(i, childRegions.length) : undefined;
+              const color = isMarked ? regionSeeds[i]?.color : undefined;
               return (
                 <Chip
                   key={r.id}
