@@ -79,7 +79,6 @@ import { searchDivisions } from '../../api/divisions';
 import { runHierarchyReview, type HierarchyReviewResult, type ReviewAction } from '../../api/adminAI';
 import { MapImagePickerDialog } from './MapImagePickerDialog';
 import { SmartFlattenPreviewDialog } from './SmartFlattenPreviewDialog';
-import GuidedCvMatchDialog from './GuidedCvMatchDialog';
 import { type ShadowInsertion } from './treeNodeShared';
 import { TreeNodeRow } from './TreeNodeRow';
 import {
@@ -596,14 +595,6 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     };
   } | null>(null);
   const [highlightClusterId, setHighlightClusterId] = useState<number | null>(null);
-
-  // Guided CV match dialog state
-  const [guidedMatchDialog, setGuidedMatchDialog] = useState<{
-    regionId: number;
-    regionName: string;
-    regionMapUrl: string;
-    childRegions: Array<{ id: number; name: string }>;
-  } | null>(null);
 
   // Manual division search dialog state
   const [divisionSearchDialog, setDivisionSearchDialog] = useState<{
@@ -1404,27 +1395,6 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     }
   }, [worldViewId, tree]);
 
-  // Guided CV match handler — opens the step-by-step wizard dialog
-  const handleGuidedCVMatch = useCallback((regionId: number) => {
-    const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
-      for (const n of nodes) {
-        if (n.id === regionId) return n;
-        const found = findNode(n.children);
-        if (found) return found;
-      }
-      return null;
-    };
-    const node = tree ? findNode(tree) : null;
-    if (!node?.regionMapUrl) return;
-    const childRegions = (node.children || []).map(c => ({ id: c.id, name: c.name }));
-    setGuidedMatchDialog({
-      regionId,
-      regionName: node.name,
-      regionMapUrl: node.regionMapUrl,
-      childRegions,
-    });
-  }, [tree]);
-
   // Mapshape match handler — fetches Kartographer mapshape data from Wikivoyage page,
   // maps to GADM divisions, and opens the same dialog as CV match
   const handleMapshapeMatch = useCallback(async (regionId: number) => {
@@ -1754,8 +1724,6 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     onViewMap={onViewMap}
                     onCVMatch={handleCVMatch}
                     cvMatchingRegionId={cvMatchingRegionId}
-                    onGuidedCVMatch={handleGuidedCVMatch}
-                    guidedCVMatchingRegionId={guidedMatchDialog?.regionId ?? null}
                     onMapshapeMatch={handleMapshapeMatch}
                     mapshapeMatchingRegionId={mapshapeMatchingRegionId}
                     onClearMembers={(regionId) => clearMembersMutation.mutate(regionId)}
@@ -1855,34 +1823,6 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
         onConfirm={(regionId, reparentChildren, reparentDivisions) => removeMutation.mutate({ regionId, reparentChildren, reparentDivisions })}
         isPending={removeMutation.isPending}
       />
-      {/* Guided CV match wizard dialog */}
-      {guidedMatchDialog && (
-        <GuidedCvMatchDialog
-          open={!!guidedMatchDialog}
-          onClose={() => setGuidedMatchDialog(null)}
-          worldViewId={worldViewId}
-          regionId={guidedMatchDialog.regionId}
-          regionName={guidedMatchDialog.regionName}
-          regionMapUrl={guidedMatchDialog.regionMapUrl}
-          childRegions={guidedMatchDialog.childRegions}
-          onComplete={(result) => {
-            setCVMatchDialog({
-              title: `Guided Match — ${guidedMatchDialog.regionName}`,
-              progressText: '',
-              progressColor: 'success.main',
-              debugImages: result.debugImages ?? [],
-              clusters: result.clusters,
-              childRegions: result.childRegions ?? guidedMatchDialog.childRegions,
-              outOfBounds: result.outOfBounds ?? [],
-              regionId: guidedMatchDialog.regionId,
-              regionMapUrl: guidedMatchDialog.regionMapUrl,
-              done: true,
-              geoPreview: result.geoPreview,
-            });
-            setGuidedMatchDialog(null);
-          }}
-        />
-      )}
       {/* CV color match dialog with SSE progress + suggestions */}
       <Dialog
         open={cvMatchDialog != null}

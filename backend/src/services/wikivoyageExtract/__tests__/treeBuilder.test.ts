@@ -161,12 +161,13 @@ describe('buildTree', () => {
     );
 
     const tree = result as TreeNode;
-    // Missing page is skipped, only Exists remains
-    expect(tree.children).toHaveLength(1);
-    expect(tree.children[0].name).toBe('Exists');
+    // Missing page is skipped. Only "Exists" (a leaf) remains, so the
+    // single-leaf-child optimization collapses it — Root becomes a leaf.
+    expect(tree.children).toHaveLength(0);
   });
 
   it('respects maxDepth', async () => {
+    // Need 2+ children to avoid single-subregion leaf optimization
     const responses: Record<string, Record<string, unknown>> = {
       [key({ action: 'parse', page: 'A', prop: 'sections', redirects: '1' })]:
         sectionsResponse('A', [{ index: '1', line: 'Regions' }]),
@@ -174,6 +175,8 @@ describe('buildTree', () => {
         wikitextResponse('A', `{{Regionlist
 | region1name=[[B]]
 | region1items=
+| region2name=[[C]]
+| region2items=
 }}`),
       [key({ action: 'parse', page: 'A', prop: 'wikitext' })]:
         wikitextResponse('A', ''),
@@ -187,10 +190,12 @@ describe('buildTree', () => {
 
     const tree = result as TreeNode;
     expect(tree.name).toBe('A');
-    // B reached maxDepth so it's a leaf with no further fetching
-    expect(tree.children).toHaveLength(1);
+    // B and C reached maxDepth so they're leaves with no further fetching
+    expect(tree.children).toHaveLength(2);
     expect(tree.children[0].name).toBe('B');
     expect(tree.children[0].children).toHaveLength(0);
+    expect(tree.children[1].name).toBe('C');
+    expect(tree.children[1].children).toHaveLength(0);
   });
 
   it('handles grouping nodes', async () => {
@@ -268,6 +273,53 @@ describe('buildTree', () => {
     const tree = result as TreeNode;
     // Tree should be incomplete (cancelled before processing children)
     expect(tree.name).toBe('Root');
+  });
+});
+
+describe('decision logging', () => {
+  let progress: ExtractionProgress;
+
+  beforeEach(() => {
+    progress = createInitialExtractionProgress();
+  });
+
+  it('createInitialExtractionProgress includes empty decisions array', () => {
+    const progress = createInitialExtractionProgress();
+    expect(progress.decisions).toEqual([]);
+  });
+
+  it('logs city_districts decision when page has district subpages', async () => {
+    const responses: Record<string, Record<string, unknown>> = {
+      [key({ action: 'parse', page: 'CityX', prop: 'sections', redirects: '1' })]:
+        sectionsResponse('CityX', [{ index: '1', line: 'Regions' }]),
+      [key({ action: 'parse', page: 'CityX', prop: 'wikitext', section: '1' })]:
+        wikitextResponse('CityX', `{{Regionlist
+| region1name=[[CityX/Central]]
+| region1items=
+| region2name=[[CityX/North]]
+| region2items=
+}}`),
+      [key({ action: 'parse', page: 'CityX', prop: 'wikitext' })]:
+        wikitextResponse('CityX', ''),
+    };
+
+    const fetcher = createMockFetcher(responses);
+    const result = await buildTree(
+      fetcher as unknown as Parameters<typeof buildTree>[0],
+      'CityX', 3, progress,
+    );
+
+    expect(result).not.toBe('missing');
+    const tree = result as TreeNode;
+    expect(tree.children).toHaveLength(0);
+
+    expect(progress.decisions).toContainEqual(
+      expect.objectContaining({
+        page: 'CityX',
+        decision: 'leaf',
+        decidedBy: 'city_districts',
+      }),
+    );
   });
 });
 

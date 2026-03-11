@@ -7,6 +7,9 @@
 
 import OpenAI from 'openai';
 import { calculateCost, loadPricing } from './pricingService.js';
+import { logAIUsage } from './aiUsageLogger.js';
+import { getModelForFeature } from './aiSettingsService.js';
+import { chatCompletion } from './chatCompletion.js';
 
 // Initialize OpenAI client (will be null if no API key)
 let openai: OpenAI | null = null;
@@ -180,7 +183,7 @@ export interface TokenUsage {
 
 /**
  * Escalation level for AI requests
- * - 'fast': Cheap model, low temperature, only answer if super confident
+ * - 'fast': Cheap model, only answer if super confident
  * - 'reasoning': More expensive model with reasoning, still strict confidence
  * - 'reasoning_search': Reasoning + web search for maximum accuracy
  */
@@ -299,11 +302,6 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
     // Use webSearchModel when web search is enabled
     const modelToUse = shouldUseWebSearch ? webSearchModel : currentModel;
 
-    // Temperature based on escalation level
-    // fast = very low (deterministic), reasoning = slightly higher for creativity
-    const temperature = escalationLevel === 'fast' ? 0.1 : 0.3;
-    const topP = escalationLevel === 'fast' ? 0.9 : 0.95;
-
     if (shouldUseWebSearch) {
       try {
         console.log(`   🌐 Using web search model: ${webSearchModel}`);
@@ -329,10 +327,11 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
 
     // Standard chat completions (or fallback if web search failed)
     if (!content) {
-      const response = await openai.chat.completions.create({
+      const temperature = escalationLevel === 'fast' ? 0.1 : 0.3;
+      const response = await chatCompletion(openai!, {
         model: modelToUse,
         temperature,
-        top_p: topP,
+        top_p: escalationLevel === 'fast' ? 0.9 : 0.95,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -369,6 +368,17 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
     console.log(`   💰 Tokens: ${usage.promptTokens} prompt + ${usage.completionTokens} completion = ${usage.totalTokens} total`);
     console.log(`   💵 Cost: $${usage.cost.totalCost.toFixed(6)} (input: $${usage.cost.inputCost.toFixed(6)}, output: $${usage.cost.outputCost.toFixed(6)}${webSearchWasUsed ? `, search: $${usage.cost.webSearchCost.toFixed(6)}` : ''})`);
     console.log(`   📊 Avg per region: $${usage.cost.totalCost.toFixed(6)} (1 region)`);
+
+    // Log usage to database
+    logAIUsage({
+      feature: 'subdivision_assist',
+      model: modelToUse,
+      description: `Group suggestion: "${regionName}" → "${parentRegion}"`,
+      apiCalls: 1,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      totalCost: usage.cost.totalCost,
+    }).catch(err => console.warn('[OpenAI] Failed to log usage:', err instanceof Error ? err.message : err));
 
     // Extract JSON from response (handle markdown code blocks)
     let jsonStr = content;
@@ -544,10 +554,9 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
 
       // Standard chat completions (or fallback if web search failed)
       if (!content) {
-        const response = await openai.chat.completions.create({
+        const response = await chatCompletion(openai!, {
           model: modelToUse,
-          temperature: 0.2, // Low temperature for consistent results
-          top_p: 0.9,
+          temperature: 0.1,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
@@ -618,6 +627,18 @@ ${groupDescriptions && Object.keys(groupDescriptions).length ? `\nGroup descript
   console.log(`   💰 Total tokens: ${totalUsage.promptTokens} prompt + ${totalUsage.completionTokens} completion = ${totalUsage.totalTokens} total`);
   console.log(`   💵 Total cost: $${totalUsage.cost.totalCost.toFixed(6)}`);
   console.log(`   📊 Avg per region: $${(totalUsage.cost.totalCost / regions.length).toFixed(6)} (${regions.length} regions)`);
+
+  // Log batch usage to database
+  logAIUsage({
+    feature: 'subdivision_assist',
+    model: modelForCosts,
+    description: `Batch group suggestion: ${regions.length} regions for "${parentRegion}" (${apiRequestsCount} API calls)`,
+    apiCalls: apiRequestsCount,
+    promptTokens: totalUsage.promptTokens,
+    completionTokens: totalUsage.completionTokens,
+    totalCost: totalUsage.cost.totalCost,
+  }).catch(err => console.warn('[OpenAI] Failed to log batch usage:', err instanceof Error ? err.message : err));
+
   return { suggestions: allResults, totalUsage, apiRequestsCount };
 }
 
@@ -716,10 +737,9 @@ Return a JSON object where keys are the exact group names and values are the des
 
   // Standard chat completions (or fallback)
   if (!content) {
-    const response = await openai.chat.completions.create({
+    const response = await chatCompletion(openai!, {
       model: modelToUse,
-      temperature: 0.1, // Lower temperature for more factual responses
-      top_p: 0.9,
+      temperature: 0.1,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -754,6 +774,17 @@ Return a JSON object where keys are the exact group names and values are the des
   console.log(`   💰 Tokens: ${promptTokens} prompt + ${completionTokens} completion = ${usage.totalTokens} total`);
   console.log(`   💵 Cost: $${usage.cost.totalCost.toFixed(6)}${webSearchWasUsed ? ` (incl. search: $${usage.cost.webSearchCost.toFixed(6)})` : ''}`);
 
+  // Log usage to database
+  logAIUsage({
+    feature: 'subdivision_assist',
+    model: modelToUse,
+    description: `Group descriptions: ${groups.length} groups`,
+    apiCalls: 1,
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    totalCost: usage.cost.totalCost,
+  }).catch(err => console.warn('[OpenAI] Failed to log description usage:', err instanceof Error ? err.message : err));
+
   let jsonStr = content;
   const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) jsonStr = jsonMatch[1];
@@ -787,7 +818,7 @@ Respond with valid JSON only, no markdown. Format:
 - "medium" = likely correct but could be ambiguous
 - "low" = best guess, uncertain`;
 
-  const response = await openai.chat.completions.create({
+  const response = await chatCompletion(openai!, {
     model: currentModel,
     temperature: 0.1,
     messages: [
@@ -804,4 +835,156 @@ Respond with valid JSON only, no markdown. Format:
   if (jsonMatch) jsonStr = jsonMatch[1];
 
   return JSON.parse(jsonStr.trim()) as AIGeocodeResult;
+}
+
+// =============================================================================
+// Vision-based division matching
+// =============================================================================
+
+export interface VisionMatchDivision {
+  id: number;
+  name: string;
+}
+
+export interface VisionMatchResult {
+  suggestedIds: number[];
+  rejectedIds: number[];
+  unclearIds: number[];
+  reasoning: string;
+  usage: TokenUsage;
+}
+
+/**
+ * Use GPT-4o vision to identify which GADM divisions fall within a region,
+ * given the region's map image and a numbered SVG map of candidate divisions.
+ *
+ * Two images are sent:
+ * 1. Wikivoyage/Wikipedia region map (shows labeled, color-coded regions)
+ * 2. Server-generated SVG with numbered division boundaries
+ *
+ * The AI visually compares the two maps to identify which numbered divisions
+ * fall within the target region's colored area.
+ */
+export async function matchDivisionsByVision(
+  regionName: string,
+  imageUrl: string,
+  divisionsSvgBase64: string,
+  divisions: VisionMatchDivision[],
+): Promise<VisionMatchResult> {
+  if (!openai) {
+    throw new Error('OpenAI API is not configured. Please set OPENAI_API_KEY in .env');
+  }
+
+  // Vision requires models with strong image analysis — override non-vision models
+  const VISION_CAPABLE = ['gpt-4o', 'gpt-4.1', 'gpt-5'];
+  const configuredModel = await getModelForFeature('vision_match');
+  const visionModel = VISION_CAPABLE.some(v => configuredModel.startsWith(v))
+    ? configuredModel
+    : 'gpt-4o';
+
+  const systemPrompt = `You are a geography expert comparing two maps to identify which administrative divisions belong to a specific region.
+
+YOU WILL RECEIVE TWO IMAGES:
+1. IMAGE 1 (first): A color-coded region map (from Wikivoyage/Wikipedia) where each region has a DISTINCT COLOR and a TEXT LABEL
+2. IMAGE 2 (second): A numbered map showing GADM administrative division boundaries — each division has a NUMBER label inside it
+
+YOUR TASK:
+1. On Image 1, find the region labeled "${regionName}" (or similar) — note its COLOR and BOUNDARIES
+2. On Image 2, identify which NUMBERED divisions fall within that same geographic area
+3. The two maps show the same geographic area from different perspectives — match by position and shape
+
+RULES:
+- Classify EVERY division number (1 to ${divisions.length}) into exactly one of three categories: inside, outside, or unclear
+- "inside": clearly falls within "${regionName}"'s colored area on Image 1
+- "outside": clearly falls outside "${regionName}"'s area
+- "unclear": on the border or hard to tell from the images
+- Be conservative: if unsure, put it in "unclear" rather than "inside"
+- "${regionName}" is ONE of several regions — typically 10-40% of the ${divisions.length} divisions belong to it
+- Respond with valid JSON only, no markdown`;
+
+  const userPrompt = `Region to find: "${regionName}"
+
+Image 1: Region map — find "${regionName}", note its color and area.
+Image 2: Numbered divisions (1 to ${divisions.length}) — classify each number.
+
+Respond with JSON:
+{"inside": [numbers inside "${regionName}"], "outside": [numbers outside], "unclear": [numbers on the border or hard to tell], "reasoning": "Identified ${regionName} as [color] area on Image 1. [brief explanation]"}`;
+
+  console.log(`\n🤖 AI Vision Request:`);
+  console.log(`   Model: ${visionModel}`);
+  console.log(`   Region: "${regionName}"`);
+  console.log(`   Image 1: ${imageUrl}`);
+  console.log(`   Image 2: SVG divisions map (${divisions.length} divisions)`);
+
+  const response = await chatCompletion(openai!, {
+    model: visionModel,
+    temperature: 0.1,
+    max_completion_tokens: 2000,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
+          { type: 'image_url', image_url: { url: divisionsSvgBase64, detail: 'high' } },
+          { type: 'text', text: userPrompt },
+        ],
+      },
+    ],
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error('Empty response from vision model');
+
+  const promptTokens = response.usage?.prompt_tokens ?? 0;
+  const completionTokens = response.usage?.completion_tokens ?? 0;
+  const totalTokensUsed = response.usage?.total_tokens ?? 0;
+  const costResult = calculateCost(promptTokens, completionTokens, visionModel, false);
+
+  const usage: TokenUsage = {
+    promptTokens,
+    completionTokens,
+    totalTokens: totalTokensUsed,
+    cost: {
+      inputCost: costResult.inputCost,
+      outputCost: costResult.outputCost,
+      webSearchCost: 0,
+      totalCost: costResult.totalCost,
+    },
+    model: visionModel,
+  };
+
+  console.log(`✅ AI Vision Response:`, content);
+  console.log(`   💰 Tokens: ${usage.promptTokens} prompt + ${usage.completionTokens} completion = ${usage.totalTokens} total`);
+  console.log(`   💵 Cost: $${usage.cost.totalCost.toFixed(6)}`);
+
+  // Log usage
+  logAIUsage({
+    feature: 'vision_match',
+    model: visionModel,
+    description: `Vision match: ${regionName} (${divisions.length} candidates)`,
+    apiCalls: 1,
+    promptTokens,
+    completionTokens,
+    totalCost: costResult.totalCost,
+  });
+
+  let jsonStr = content;
+  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) jsonStr = jsonMatch[1];
+
+  const parsed = JSON.parse(jsonStr.trim()) as {
+    inside: number[]; outside: number[]; unclear: number[]; reasoning: string;
+  };
+
+  const toIds = (nums: number[]) =>
+    (nums || []).filter(n => n >= 1 && n <= divisions.length).map(n => divisions[n - 1].id);
+
+  return {
+    suggestedIds: toIds(parsed.inside),
+    rejectedIds: toIds(parsed.outside),
+    unclearIds: toIds(parsed.unclear),
+    reasoning: parsed.reasoning,
+    usage,
+  };
 }

@@ -138,11 +138,17 @@ async function insertRegion(
 
   const sourceUrl = node.sourceUrl ?? null;
 
+  // Flag grouping nodes (no Wikivoyage page) for hierarchy review
+  const warnings = [...(node.warnings ?? [])];
+  if (!sourceUrl && node.children.length > 0) {
+    warnings.push('Grouping: no Wikivoyage page (parsed from items list)');
+  }
+
   // Insert region_import_state
   await client.query(
-    `INSERT INTO region_import_state (region_id, import_run_id, source_url, source_external_id, region_map_url)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [regionId, importRunId, sourceUrl, node.wikidataId || null, node.regionMapUrl || null],
+    `INSERT INTO region_import_state (region_id, import_run_id, source_url, source_external_id, region_map_url, hierarchy_warnings)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [regionId, importRunId, sourceUrl, node.wikidataId || null, node.regionMapUrl || null, warnings],
   );
 
   // Insert map image candidates

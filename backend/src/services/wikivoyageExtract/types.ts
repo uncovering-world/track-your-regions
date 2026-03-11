@@ -36,8 +36,8 @@ export interface PendingAIQuestion {
   resolved: boolean;
   /** Internal: re-run AI with admin feedback, returns updated preview (not serialized) */
   reExtract: (feedback: string) => Promise<{ regions: RegionPreview[]; questions: string[] }>;
-  /** Internal: formulate next interview question (not serialized) */
-  formulateNextQuestion: () => Promise<InterviewQuestionData>;
+  /** Internal: formulate next interview question or auto-resolve (not serialized) */
+  formulateNextQuestion: () => Promise<InterviewQuestionData | 'auto_resolved'>;
   /** Internal: process answer and get rule + guidance (not serialized) */
   processAnswer: (question: InterviewQuestionData, answer: string) => Promise<{
     rule: string | null;
@@ -54,6 +54,7 @@ export type DecisionMaker =
   | 'ai_empty'          // AI returned empty regions
   | 'ai_confident'      // AI extracted regions with no questions
   | 'coverage_gate'     // <50% coverage hard gate cleared regions
+  | 'interview_auto'    // interview auto-resolved by learned rule
   | 'admin_answer'      // admin answered the question
   | 'no_ai'             // AI unavailable, used parser output as-is
   | 'country_depth';    // country-aware depth limit applied
@@ -181,6 +182,13 @@ export interface RegionEntry {
   name: string;
   items: string[];
   hasLink: boolean;
+}
+
+/** A mapshape entry from {{mapshape}} template (Kartographer region overlay) */
+export interface MapshapeEntry {
+  title: string;
+  color: string;
+  wikidataIds: string[];
 }
 
 /** Section info from the MediaWiki parse API */

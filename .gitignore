@@ -81,3 +81,5 @@ docs/inbox/
 
 # Repomix output
 repomix-output.*
+data/cache/
+data/cache/

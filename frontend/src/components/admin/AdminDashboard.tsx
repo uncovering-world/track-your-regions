@@ -31,6 +31,8 @@ import {
   ArrowBack as ArrowBackIcon,
   SupervisorAccount as CuratorIcon,
   Public as PublicIcon,
+  SmartToy as AIIcon,
+  Gavel as RulesIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../hooks/useAuth';
 import { SyncPanel } from './SyncPanel';
@@ -38,10 +40,12 @@ import { SyncHistoryPanel } from './SyncHistoryPanel';
 import { AssignmentPanel } from './AssignmentPanel';
 import { CuratorPanel } from './CuratorPanel';
 import { WorldViewImportPanel } from './WorldViewImportPanel';
+import { AISettingsPanel } from './AISettingsPanel';
+import { ExtractionRulesPanel } from './ExtractionRulesPanel';
 
 const DRAWER_WIDTH = 240;
 
-type AdminSection = 'overview' | 'sync' | 'assignment' | 'history' | 'curators' | 'wvImport';
+type AdminSection = 'overview' | 'sync' | 'assignment' | 'history' | 'curators' | 'ai' | 'extractionRules' | 'wvImport';
 
 export function AdminDashboard() {
   const { isAdmin, isLoading } = useAuth();
@@ -85,6 +89,8 @@ export function AdminDashboard() {
     { id: 'assignment', label: 'Region Assignment', icon: <MapIcon /> },
     { id: 'history', label: 'Sync History', icon: <HistoryIcon /> },
     { id: 'curators', label: 'Curators', icon: <CuratorIcon /> },
+    { id: 'ai', label: 'AI Settings', icon: <AIIcon /> },
+    { id: 'extractionRules', label: 'Learned Rules', icon: <RulesIcon /> },
     { id: 'wvImport', label: 'Import WorldView', icon: <PublicIcon /> },
   ];
 
@@ -135,6 +141,10 @@ export function AdminDashboard() {
         return <SyncHistoryPanel />;
       case 'curators':
         return <CuratorPanel />;
+      case 'ai':
+        return <AISettingsPanel />;
+      case 'extractionRules':
+        return <ExtractionRulesPanel />;
       case 'wvImport':
         return <WorldViewImportPanel />;
       default:

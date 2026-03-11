@@ -118,6 +118,57 @@ export class WikivoyageFetcher {
     return { error: { code: 'fetch_failed' } };
   }
 
+  /**
+   * Batch-check which page titles exist on Wikivoyage.
+   * Uses the query API (up to 50 titles per request). Results are cached.
+   * @param parentTitle — if provided, titles that redirect back to this page are treated as non-existent
+   */
+  async checkPagesExist(titles: string[], parentTitle?: string): Promise<Map<string, boolean>> {
+    if (titles.length === 0) return new Map();
+
+    const result = new Map<string, boolean>();
+    // MediaWiki API accepts up to 50 titles per query
+    for (let i = 0; i < titles.length; i += 50) {
+      const batch = titles.slice(i, i + 50);
+      const data = await this.apiGet({
+        action: 'query',
+        titles: batch.join('|'),
+        redirects: '1',
+      });
+
+      const query = data['query'] as Record<string, unknown> | undefined;
+      if (!query) continue;
+
+      // Collect redirected titles
+      const redirectMap = new Map<string, string>();
+      const redirects = query['redirects'] as Array<{ from: string; to: string }> | undefined;
+      if (redirects) {
+        for (const r of redirects) redirectMap.set(r.from, r.to);
+      }
+
+      const pages = query['pages'] as Record<string, { title: string; missing?: string }> | undefined;
+      if (pages) {
+        // Build a set of existing page titles
+        const existingTitles = new Set<string>();
+        for (const page of Object.values(pages)) {
+          if (!('missing' in page)) {
+            existingTitles.add(page.title);
+          }
+        }
+        // Map original titles to existence (following redirects)
+        // A redirect back to the parent page means this isn't a real subregion page
+        for (const title of batch) {
+          const resolvedTitle = redirectMap.get(title) ?? title;
+          const exists = existingTitles.has(resolvedTitle);
+          const redirectsToParent = parentTitle && redirectMap.has(title) && resolvedTitle === parentTitle;
+          result.set(title, exists && !redirectsToParent);
+        }
+      }
+    }
+
+    return result;
+  }
+
   /** Save cache to disk */
   save(): void {
     this.cache.save();

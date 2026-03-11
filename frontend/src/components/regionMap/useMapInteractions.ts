@@ -379,7 +379,7 @@ export function useMapInteractions({
       }
     }
     return null;
-  }, [hoveredRegionId, metadataById, mapRef, mapLoaded, sourceLayerName, contextLayerCount]);
+  }, [hoveredRegionId, metadataById, mapRef, sourceLayerName, contextLayerCount]);
 
   const hoverPreviewImage = useMemo(() => {
     if (!hoverPreview) return null;

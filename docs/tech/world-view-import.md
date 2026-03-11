@@ -4,7 +4,7 @@ Import a source-agnostic region hierarchy into a WorldView with automatic GADM d
 
 ## Overview
 
-The WorldView import feature lets admins create a WorldView from an external region hierarchy. The primary import source is English Wikivoyage — the admin clicks "Fetch from Wikivoyage" in the admin panel, and a TypeScript backend service (`backend/src/services/wikivoyageExtract/`) crawls the MediaWiki API to build a region hierarchy (~4,500 regions). Alternatively, admins can upload a pre-generated JSON file. The system:
+The WorldView import feature lets admins create a WorldView from an external region hierarchy. The primary import source is English Wikivoyage — the admin clicks "Fetch from Wikivoyage" in the admin panel, and a TypeScript backend service (`backend/src/services/wikivoyageExtract/`) crawls the MediaWiki API to build a region hierarchy (~5,700 regions). Alternatively, admins can upload a pre-generated JSON file. The system:
 
 1. Creates a WorldView with all regions (hierarchical)
 2. Matches countries to GADM administrative divisions (with optional subdivision drill-down)
@@ -35,7 +35,7 @@ Option B: JSON file upload (for non-Wikivoyage sources)
 Import state is stored in dedicated relational tables (not JSONB):
 
 - **`import_runs`** — tracks each import operation (world_view_id, source_type, status, data_path, stats, timestamps)
-- **`region_import_state`** — 1:1 with region (region_id PK, import_run_id, source_url, source_external_id, match_status, needs_manual_fix, fix_note, region_map_url, map_image_reviewed)
+- **`region_import_state`** — 1:1 with region (region_id PK, import_run_id, source_url, source_external_id, match_status, needs_manual_fix, fix_note, region_map_url, map_image_reviewed, hierarchy_warnings, hierarchy_reviewed)
 - **`region_match_suggestions`** — 1:N per region (division_id, name, path, score, rejected flag)
 - **`region_map_images`** — 1:N per region (image_url candidates)
 - **`world_views.source_type`** (VARCHAR) — `'manual'` (default), `'wikivoyage'`/`'imported'` (import in review), or `'wikivoyage_done'`/`'imported_done'` (review finalized)
@@ -122,7 +122,11 @@ The matcher identifies countries in the Wikivoyage tree by name-matching against
 
 4. **Multi-division countries**: Some countries span multiple continents in GADM (e.g., Spain has divisions under both Europe and Africa). When multiple GADM divisions match a single country name, all are suggested with `needs_review` status. The tree view lists each GADM division with its hierarchy path (e.g., "Europe > Spain" vs "Africa > Spain"), each with map preview, accept, and reject buttons. The admin can accept any combination — accepting one removes it from suggestions and adds it as an assigned division while keeping remaining suggestions visible. Rejecting dismisses a suggestion without assigning it
 
-5. **Unmatched countries**: If a country name doesn't match any GADM country, it's marked as `needs_review` or `no_candidates`
+5. **Unmatched leaf nodes** (two-phase fallback):
+   - **Phase 1**: Exact variant matching against ALL GADM divisions (in-memory). This catches territories/dependencies like Réunion, Guadeloupe, Puerto Rico that are subdivisions in GADM but standalone in the import source
+   - **Phase 2**: If Phase 1 finds nothing, a **trigram similarity search** (DB query via `pg_trgm`) runs with similarity > 0.3. This catches fuzzy name mismatches like "Ivory Coast" ↔ "Côte d'Ivoire", "Timor-Leste" ↔ "East Timor". Trigram results are always suggested for review (`needs_review`), never auto-matched
+
+6. **Unmatched containers**: If a non-leaf node doesn't match any GADM country, the matcher recurses into its children (treating it as a grouping like a continent or sub-region)
 
 ### Scoring
 
@@ -130,13 +134,14 @@ In-memory name matching with normalization:
 - **Exact match** (normalized): score 700
 - **Variant-to-variant match**: score 650 (e.g., "Bayern" ↔ "Bavaria" via name variants)
 - **Prefix match**: score 650 — catches cases where one name is a prefix of the other (e.g., "Ingushetia" ↔ "Ingush", "Kabardino-Balkaria" ↔ "Kabardin-Balkar"). Requires minimum 4 chars and 60% length ratio. For hyphenated names, checks each part independently
+- **Trigram similarity**: score = `similarity * 1000` (e.g., 0.45 similarity → score 450). Always triggers `needs_review` since fuzzy matches need human verification
 - **Subdivision drill-down threshold**: score >= 700 (all children must have exact normalized matches)
 
 Name normalization strips accents, common geographic suffixes (Province, State, Prefecture, Oblast, etc.), and parenthetical annotations from Wikivoyage names.
 
 ### Performance
 
-All matching happens in-memory after the initial GADM data load. The country-level approach processes ~200 countries instead of ~3,500 leaves, completing in seconds.
+Most matching happens in-memory after the initial GADM data load. The country-level approach processes ~200 countries instead of ~3,500 leaves. Trigram DB queries only fire for unmatched leaf nodes where exact matching failed, keeping the total runtime under a minute.
 
 ### Editor Integration
 
@@ -242,14 +247,16 @@ backend/src/services/wikivoyageExtract/
 ├── cache.ts              — File-based JSON cache (atomic write via tmp + rename)
 ├── fetcher.ts            — WikivoyageFetcher: HTTP + rate limiting + retry + cache
 ├── parser.ts             — Pure wikitext parsing (Regionlist, map images, bullet links)
-├── treeBuilder.ts        — Recursive tree builder using fetcher + parser
+├── treeBuilder.ts        — Recursive tree builder using fetcher + parser + AI fallback
+├── aiRegionParser.ts     — AI-based extraction for ambiguous pages (OpenAI)
+├── aiInterviewer.ts      — HITL interview: structured questions, rule extraction from answers
 ├── wikidataEnricher.ts   — Batch Wikidata ID fetch + tree enrichment
 └── index.ts              — Service entry: start/status/cancel + full pipeline
 ```
 
 ### Pipeline Phases
 
-1. **Extraction** (`status='extracting'`) — recursive tree build from `en.wikivoyage.org` API. Rate-limited (350ms between requests), cached to disk, retries with exponential backoff
+1. **Extraction** (`status='extracting'`) — recursive tree build from `en.wikivoyage.org` API. Rate-limited (350ms between requests), cached to disk, retries with exponential backoff. Pages with genuinely ambiguous region entries (plain-text entries with no items — not standard grouping nodes which are handled by the parser) are sent to AI (`aiRegionParser.ts`) for structured extraction when OpenAI is configured. Plain-text Regionlist entries that group linked items (e.g., "Bechar Province" → items: ["Béchar"]) are standard grouping nodes processed directly by the tree builder without AI. Page existence is batch-checked against the MediaWiki API; if fewer than 50% of suggested subregions have actual pages, the region is auto-resolved as a leaf (no split) without queuing a question. When the extraction AI has uncertainties that survive auto-resolution, questions are queued (non-blocking) for admin review using a HITL interview system (`aiInterviewer.ts`): a separate (configurable) model formulates one structured question at a time with clickable options and a recommendation — always starting with the high-level "should this be split at all?" question before drilling into specifics. Admin answers are processed to generate **generic rules** that improve ALL future extractions via the learned rules system. The interview AI checks existing rules **before** formulating questions: if a rule already answers the uncertainty, the question is auto-resolved without bothering the admin. When a question is shown, any related rules are displayed so the admin can delete problematic ones (the question is then re-formulated with the rule removed). Rules are injected into the extraction prompt without page-specific context, and the interview AI checks existing rules before generating new ones to avoid duplicates/contradictions. AI usage is accumulated and logged per-call via `ai_usage_log`
 2. **Enrichment** (`status='enriching'`) — batch Wikidata ID fetch (`action=query&prop=pageprops`) in groups of 50 titles, with redirect/normalization chain handling (5-hop). IDs stored as `wikidataId` on each node
 3. **Import** (`status='importing'`) — calls `importTree()` directly from `worldViewImport/importer.ts`
 4. **Matching** (`status='matching'`) — calls `matchCountryLevel()` directly from `worldViewImport/matcher.ts`
@@ -268,7 +275,6 @@ All parsing logic is in `parser.ts` as pure functions:
 | `extractFileMapImage(wikitext)` | Three-pass map image detection (strong → weak → SVG fallback) |
 | `extractImageCandidates(wikitext)` | Collect up to 15 plausible map candidates |
 | `parseBulletLinks(wikitext)` | Extract links from `* [[Link]] — desc` format |
-| `classifyMultiLink(links, rawText)` | Classify conjunction / possessive / parenthetical patterns |
 
 ### Region map extraction
 
@@ -318,6 +324,20 @@ After import, each instance is a separate region in the database. Match decision
 
 Some Wikivoyage pages list themselves as sub-regions (e.g. Moldova lists "Moldova" + "Transnistria"). Others redirect to the parent (e.g. "Coastal Eritrea" → Eritrea). The script detects both patterns and includes these as leaf nodes representing "the rest of" the parent territory.
 
+### Hierarchy Review
+
+During extraction, the tree builder emits **parsing warnings** on parent nodes when children are dropped — either because a linked page doesn't exist (`processLinked` returns null) or a grouping node has no linked sub-pages (`buildGroupingNode` returns null). These warnings are stored as `TreeNode.warnings` and persisted to `region_import_state.hierarchy_warnings` during import.
+
+After import, the match review UI shows:
+- **Warning banner** — count of regions with unreviewed hierarchy warnings
+- **Warning navigation** — prev/next toolbar buttons (amber) to navigate flagged nodes
+- **Warning icon** — amber `WarningAmber` icon on flagged tree nodes (tooltip shows warning text)
+- **AI Review button** — reads cached Wikivoyage page content, sends to OpenAI (gpt-4.1-mini) to identify missing sub-regions
+- **Add Child button** — manually add a child region to fill a gap
+- **Dismiss button** — mark warnings as reviewed (sets `hierarchy_reviewed = true`)
+
+The hierarchy review is a **soft gate** — match review and coverage check remain functional, but warnings are prominently visible. DB columns: `hierarchy_warnings TEXT[] DEFAULT '{}'`, `hierarchy_reviewed BOOLEAN DEFAULT FALSE`.
+
 ## API Endpoints
 
 ### Wikivoyage Extraction (`/api/admin/wv-extract/`)
@@ -363,6 +383,9 @@ All require admin auth.
 | POST | `/matches/:worldViewId/dismiss-gap` | Dismiss a GADM division from coverage checks (body: `{ divisionId }`) |
 | POST | `/matches/:worldViewId/undismiss-gap` | Restore a dismissed GADM division to active gaps (body: `{ divisionId }`) |
 | POST | `/matches/:worldViewId/approve-coverage` | Approve coverage suggestion — add member or create new region (body: `{ divisionId, regionId, action, gapName? }`) |
+| POST | `/matches/:worldViewId/ai-review-hierarchy` | AI review — reads cached Wikivoyage page, suggests missing children (body: `{ regionId }`) |
+| POST | `/matches/:worldViewId/add-child-region` | Add child region during hierarchy review (body: `{ parentRegionId, name }`) |
+| POST | `/matches/:worldViewId/dismiss-hierarchy-warnings` | Mark hierarchy warnings as reviewed (body: `{ regionId }`) |
 | POST | `/matches/:worldViewId/finalize` | Close review — appends `'_done'` to current `source_type` |
 | POST | `/matches/:worldViewId/rematch` | Reset all matches and re-run country-level matcher |
 | GET | `/matches/:worldViewId/rematch/status` | Poll re-match progress |
@@ -376,7 +399,9 @@ backend/src/services/wikivoyageExtract/
 ├── cache.ts              — File-based JSON cache (atomic write)
 ├── fetcher.ts            — WikivoyageFetcher: HTTP + rate limiting + retry + cache
 ├── parser.ts             — Pure wikitext parsing (Regionlist, map images, bullet links)
-├── treeBuilder.ts        — Recursive tree builder using fetcher + parser
+├── treeBuilder.ts        — Recursive tree builder using fetcher + parser + AI fallback
+├── aiRegionParser.ts     — AI-based extraction for ambiguous pages (OpenAI)
+├── aiInterviewer.ts      — HITL interview: structured questions, rule extraction from answers
 ├── wikidataEnricher.ts   — Batch Wikidata ID fetch + tree enrichment
 └── index.ts              — Service entry: start/status/cancel + full pipeline
 
@@ -387,6 +412,15 @@ backend/src/services/worldViewImport/
 ├── aiMatcher.ts  — AI-assisted re-matching via OpenAI
 └── index.ts      — Exports, in-memory progress management
 
+backend/src/services/ai/
+├── aiSettingsService.ts  — Per-feature model selection with 60s in-memory cache
+├── aiUsageLogger.ts      — Per-session usage logging with cost tracking
+├── chatCompletion.ts     — Model-agnostic chat completion with param negotiation
+├── learnedRulesService.ts — User-provided rules injected into AI prompts
+├── openaiService.ts      — OpenAI client management + subdivision assist
+├── pricingService.ts     — Model pricing from CSV for cost calculation
+└── pricing.csv           — Model pricing data
+
 backend/src/controllers/admin/wikivoyageExtractController.ts — Extraction endpoints
 backend/src/controllers/admin/worldViewImportController.ts   — Import + match review endpoints
 ```
@@ -395,7 +429,7 @@ backend/src/controllers/admin/worldViewImportController.ts   — Import + match 
 
 Admin panel section "WorldView Import" (`WorldViewImportPanel.tsx`) with these views:
 
-1. **Primary action** — "Fetch from Wikivoyage" button runs the full extraction → enrichment → import → matching pipeline. Multi-phase progress UI shows extraction counts, API requests/cache hits, import progress, and matching progress. A "Use cached data" checkbox (with cache size/age) lets admins skip re-fetching unchanged pages or force a clean fetch
+1. **Primary action** — "Fetch from Wikivoyage" button runs the full extraction → enrichment → import → matching pipeline. Multi-phase progress UI shows extraction counts, API requests/cache hits, import progress, and matching progress. A cache selector lets admins reuse cached data, choose a previous snapshot, or force a clean fetch. During extraction, AI interview questions appear as cards with one structured question, clickable option buttons (highlighted recommendation), region preview with page-existence indicators, and "Accept as-is" / "Skip" quick actions. Answers are processed by the interview AI to generate generic rules
 2. **Secondary action** — file upload in a collapsed accordion ("Or upload from file") for non-Wikivoyage sources. Includes a matching policy dropdown (country-based or none)
 3. **Existing WorldViews** — if imported world views exist in DB, shows source type badge (`wikivoyage` or `imported`), "Review Matches" button for active reviews, and a "Review complete" badge for finalized ones (persists across sessions/relogins)
 3. **Match review** (`WorldViewImportReview.tsx`) — two view modes:

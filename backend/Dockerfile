@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+# Fonts for sharp SVG text rendering
+RUN apk add --no-cache fontconfig ttf-dejavu
+
 WORKDIR /app
 
 # Install dependencies

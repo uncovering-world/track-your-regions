@@ -16,6 +16,7 @@ import {
   Menu,
   ListItemIcon,
   ListItemText,
+  CircularProgress,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
@@ -27,6 +28,8 @@ import { useNavigation } from '../hooks/useNavigation';
 import { useAuth } from '../hooks/useAuth';
 import { WorldViewEditor } from './WorldViewEditor';
 import { createWorldView, updateWorldView, deleteWorldView } from '../api';
+import { getDeleteImpact } from '../api/worldViews';
+import type { DeleteImpact } from '../api/worldViews';
 
 export function HierarchySwitcher() {
   const { worldViews, selectedWorldView, setSelectedWorldView, invalidateTileCache } = useNavigation();
@@ -41,6 +44,8 @@ export function HierarchySwitcher() {
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [adminMenuEl, setAdminMenuEl] = useState<HTMLElement | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<DeleteImpact | null>(null);
+  const [loadingImpact, setLoadingImpact] = useState(false);
 
   const createMutation = useMutation({
     mutationFn: (data: { name: string; description?: string }) => createWorldView(data),
@@ -268,9 +273,17 @@ export function HierarchySwitcher() {
               variant="outlined"
               color="error"
               startIcon={<DeleteIcon />}
-              onClick={() => {
+              onClick={async () => {
                 setSettingsDialogOpen(false);
                 setDeleteDialogOpen(true);
+                setDeleteImpact(null);
+                setLoadingImpact(true);
+                try {
+                  const impact = await getDeleteImpact(selectedWorldView!.id);
+                  setDeleteImpact(impact);
+                } finally {
+                  setLoadingImpact(false);
+                }
               }}
             >
               Delete World View
@@ -294,11 +307,42 @@ export function HierarchySwitcher() {
         <DialogTitle>Delete World View?</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete "{selectedWorldView?.name}"?
+            Are you sure you want to delete &quot;{selectedWorldView?.name}&quot;?
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            This will permanently delete this world view and all its custom regions. This action cannot be undone.
-          </Typography>
+          {loadingImpact && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+              <CircularProgress size={16} />
+              <Typography variant="body2" color="text.secondary">Loading impact data...</Typography>
+            </Box>
+          )}
+          {deleteImpact && !loadingImpact && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                This will permanently delete:
+              </Typography>
+              <Typography variant="body2">
+                &bull; {deleteImpact.regionCount} region{deleteImpact.regionCount !== 1 ? 's' : ''}
+              </Typography>
+              {deleteImpact.experienceAssignmentCount > 0 && (
+                <Typography variant="body2" color="warning.main">
+                  &bull; {deleteImpact.experienceAssignmentCount} experience-to-region assignment{deleteImpact.experienceAssignmentCount !== 1 ? 's' : ''}
+                </Typography>
+              )}
+              {deleteImpact.userVisitCount > 0 && (
+                <Typography variant="body2" color="error.main">
+                  &bull; {deleteImpact.userVisitCount} user visit record{deleteImpact.userVisitCount !== 1 ? 's' : ''}
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Experiences themselves are not deleted, only their region assignments. This action cannot be undone.
+              </Typography>
+            </Box>
+          )}
+          {!loadingImpact && !deleteImpact && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              This will permanently delete this world view and all its custom regions. This action cannot be undone.
+            </Typography>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
@@ -306,7 +350,7 @@ export function HierarchySwitcher() {
             variant="contained"
             color="error"
             onClick={handleDeleteWorldView}
-            disabled={deleteMutation.isPending}
+            disabled={loadingImpact || deleteMutation.isPending}
           >
             {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
           </Button>

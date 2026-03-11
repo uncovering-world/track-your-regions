@@ -15,6 +15,7 @@
 
 import { pool } from '../../db/index.js';
 import type { ImportProgress, MatchSuggestion, MatchStatus } from './types.js';
+import { computeGeoSimilarityForRegion } from './geoshapeCache.js';
 
 // ─── Shared utilities ──────────────────────────────────────────────────────────
 
@@ -439,13 +440,19 @@ export async function matchCountryLevel(
    * Fallback: search ALL GADM divisions by name for unmatched leaf nodes.
    * Catches territories/dependencies like Réunion, Guadeloupe, Puerto Rico
    * that are standalone in the import source but subdivisions in GADM.
+   *
+   * Two phases:
+   * 1. Exact variant matching (in-memory, fast)
+   * 2. Trigram similarity search (DB query, catches fuzzy matches like
+   *    "Ivory Coast"↔"Côte d'Ivoire", "Timor-Leste"↔"East Timor")
    */
-  function tryFallbackMatch(name: string): MatchSuggestion[] {
+  async function tryFallbackMatch(name: string): Promise<MatchSuggestion[]> {
     const cleaned = cleanWvName(name);
     const variants = getNameVariants(cleaned);
     const seen = new Set<number>();
     const suggestions: MatchSuggestion[] = [];
 
+    // Phase 1: Exact name variant matching (in-memory)
     for (const variant of variants) {
       const matches = gadm.divisionsByNormalizedName.get(variant);
       if (matches) {
@@ -453,22 +460,48 @@ export async function matchCountryLevel(
           if (seen.has(entry.id)) continue;
           seen.add(entry.id);
           const path = getPath(entry.id, gadm.pathCache, gadm.divisionsById);
-          // Score: 700 for single match, lower if ambiguous (multiple results)
           suggestions.push({ divisionId: entry.id, name: entry.name, path, score: 700 });
         }
       }
     }
 
-    // If multiple matches, lower score to force review
     if (suggestions.length > 1) {
       for (const s of suggestions) s.score = 500;
+    }
+
+    if (suggestions.length > 0) {
+      return suggestions.slice(0, 5);
+    }
+
+    // Phase 2: Trigram similarity search (DB fallback)
+    const normalized = normalizeName(cleaned);
+    const trigramResult = await pool.query(`
+      SELECT id, name, similarity(name_normalized, $1) AS sim
+      FROM administrative_divisions
+      WHERE name_normalized % $1
+        AND similarity(name_normalized, $1) > 0.3
+      ORDER BY sim DESC
+      LIMIT 5
+    `, [normalized]);
+
+    for (const row of trigramResult.rows) {
+      const id = row.id as number;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const path = getPath(id, gadm.pathCache, gadm.divisionsById);
+      suggestions.push({
+        divisionId: id,
+        name: row.name as string,
+        path,
+        score: Math.round((row.sim as number) * 1000),
+      });
     }
 
     return suggestions.slice(0, 5);
   }
 
   /** Recursively walk the WV tree to find country-level nodes */
-  function walkAndMatch(nodes: WvTreeNode[]): void {
+  async function walkAndMatch(nodes: WvTreeNode[]): Promise<void> {
     for (const node of nodes) {
       if (progress.cancel) return;
 
@@ -513,12 +546,12 @@ export async function matchCountryLevel(
         // Not a country — check if it's a container or a leaf territory
         if (node.children.length > 0) {
           // Container (continent, sub-region grouping) — recurse into children
-          walkAndMatch(node.children);
+          await walkAndMatch(node.children);
         } else {
           // Leaf node that didn't match a country — try matching against ALL divisions.
           // This catches territories/dependencies that are standalone in the import source
           // but subdivisions in GADM (e.g. Réunion, Guadeloupe, Puerto Rico).
-          const fallbackSuggestions = tryFallbackMatch(node.name);
+          const fallbackSuggestions = await tryFallbackMatch(node.name);
           if (fallbackSuggestions.length > 0) {
             progress.totalCountries++;
             if (fallbackSuggestions.length === 1 && fallbackSuggestions[0].score >= 700) {
@@ -549,7 +582,7 @@ export async function matchCountryLevel(
     }
   }
 
-  walkAndMatch(wvRoots);
+  await walkAndMatch(wvRoots);
 
   const matchTime = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`[WV Matcher] Matching complete in ${matchTime}s. ${progress.totalCountries} countries found, ${progress.countriesMatched} matched (${progress.subdivisionsDrilled} with subdivision drill-down). Writing ${updates.length} results...`);
@@ -591,6 +624,27 @@ export async function matchCountryLevel(
     throw err;
   } finally {
     client.release();
+  }
+
+  // Geo comparison — runs AFTER match transaction commits so failures don't roll back matches.
+  // Only for regions with multiple suggestions (needs_review/suggested).
+  const geoUpdates = updates.filter(u =>
+    u.suggestions.length > 1 && (u.matchStatus === 'needs_review' || u.matchStatus === 'suggested'),
+  );
+  if (geoUpdates.length > 0) {
+    const geoClient = await pool.connect();
+    try {
+      for (let i = 0; i < geoUpdates.length; i++) {
+        progress.statusMessage = `Computing geo similarity (${i + 1}/${geoUpdates.length})...`;
+        try {
+          await computeGeoSimilarityForRegion(geoClient, geoUpdates[i].id, geoUpdates[i].suggestions);
+        } catch (err) {
+          console.warn(`[WV Matcher] Geo similarity failed for region ${geoUpdates[i].id}:`, err instanceof Error ? err.message : err);
+        }
+      }
+    } finally {
+      geoClient.release();
+    }
   }
 
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -729,6 +783,8 @@ export async function matchChildrenAsCountries(
       // No country match — try fallback against all divisions
       const seen = new Set<number>();
       const fallbackSuggestions: MatchSuggestion[] = [];
+
+      // Phase 1: Exact name variant matching (in-memory)
       for (const variant of variants) {
         const matches = gadm.divisionsByNormalizedName.get(variant);
         if (matches) {
@@ -742,6 +798,32 @@ export async function matchChildrenAsCountries(
       }
       if (fallbackSuggestions.length > 1) {
         for (const s of fallbackSuggestions) s.score = 500;
+      }
+
+      // Phase 2: Trigram similarity search (DB fallback)
+      if (fallbackSuggestions.length === 0) {
+        const normalized = normalizeName(cleanWvName(childName));
+        const trigramResult = await pool.query(`
+          SELECT id, name, similarity(name_normalized, $1) AS sim
+          FROM administrative_divisions
+          WHERE name_normalized % $1
+            AND similarity(name_normalized, $1) > 0.3
+          ORDER BY sim DESC
+          LIMIT 5
+        `, [normalized]);
+
+        for (const row of trigramResult.rows) {
+          const id = row.id as number;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          const path = getPath(id, gadm.pathCache, gadm.divisionsById);
+          fallbackSuggestions.push({
+            divisionId: id,
+            name: row.name as string,
+            path,
+            score: Math.round((row.sim as number) * 1000),
+          });
+        }
       }
 
       if (fallbackSuggestions.length === 1 && fallbackSuggestions[0].score >= 700) {
@@ -806,6 +888,7 @@ export async function matchChildrenAsCountries(
           [update.id, update.divisionId],
         );
       }
+
     }
 
     await client.query('COMMIT');
@@ -814,6 +897,25 @@ export async function matchChildrenAsCountries(
     throw err;
   } finally {
     client.release();
+  }
+
+  // Geo comparison — runs after match transaction commits
+  const geoUpdates = updates.filter(u =>
+    u.suggestions.length > 1 && (u.matchStatus === 'needs_review' || u.matchStatus === 'suggested'),
+  );
+  if (geoUpdates.length > 0) {
+    const geoClient = await pool.connect();
+    try {
+      for (const update of geoUpdates) {
+        try {
+          await computeGeoSimilarityForRegion(geoClient, update.id, update.suggestions);
+        } catch (err) {
+          console.warn(`[WV Matcher] Geo similarity failed for region ${update.id}:`, err instanceof Error ? err.message : err);
+        }
+      }
+    } finally {
+      geoClient.release();
+    }
   }
 
   console.log(`[WV Matcher] matchChildrenAsCountries: region ${regionId} — ${matched}/${childResult.rows.length} children matched`);
@@ -959,6 +1061,7 @@ export async function matchLeafRegions(
           [update.id, update.divisionId],
         );
       }
+
     }
 
     await client.query('COMMIT');
@@ -967,6 +1070,25 @@ export async function matchLeafRegions(
     throw err;
   } finally {
     client.release();
+  }
+
+  // Geo comparison — runs after match transaction commits
+  const geoUpdates = updates.filter(u =>
+    u.suggestions.length > 1 && (u.matchStatus === 'needs_review' || u.matchStatus === 'suggested'),
+  );
+  if (geoUpdates.length > 0) {
+    const geoClient = await pool.connect();
+    try {
+      for (const update of geoUpdates) {
+        try {
+          await computeGeoSimilarityForRegion(geoClient, update.id, update.suggestions);
+        } catch (err) {
+          console.warn(`[WV Matcher] Geo similarity failed for region ${update.id}:`, err instanceof Error ? err.message : err);
+        }
+      }
+    } finally {
+      geoClient.release();
+    }
   }
 
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);

@@ -194,48 +194,43 @@ describe('extractImageCandidates', () => {
   });
 });
 
-// ─── classifyMultiLink ──────────────────────────────────────────────────────
+// ─── classifyMultiLink ─────────────────────────────────────────────────────
 
 describe('classifyMultiLink', () => {
-  it('single link returns linked', () => {
-    // This is tested via parseRegionlist, but let's verify directly
-    const result = classifyMultiLink(['France'], '[[France]]');
-    // With 1 link, this falls to grouping since there's no possessive/parenthetical
-    expect(result.type).toBe('grouping');
-  });
-
-  it('conjunction returns grouping', () => {
-    const result = classifyMultiLink(
-      ['France', 'Monaco'],
-      '[[France]] and [[Monaco]]',
-    );
-    expect(result.type).toBe('grouping');
-    if (result.type === 'grouping') {
-      expect(result.name).toBe('France and Monaco');
-      expect(result.children).toEqual(['France', 'Monaco']);
-    }
-  });
-
-  it('possessive returns last link', () => {
+  it('detects possessive pattern', () => {
     const result = classifyMultiLink(
       ['Russia', 'North Caucasus'],
       "[[Russia]]'s [[North Caucasus]]",
     );
-    expect(result.type).toBe('linked');
-    if (result.type === 'linked') {
-      expect(result.target).toBe('North Caucasus');
-    }
+    expect(result).toEqual({ type: 'linked', target: 'North Caucasus' });
   });
 
-  it('parenthetical returns first link', () => {
+  it('detects parenthetical pattern', () => {
     const result = classifyMultiLink(
       ['Falster', 'Gedser', 'Marielyst'],
       '[[Falster]] ([[Gedser]], [[Marielyst]])',
     );
-    expect(result.type).toBe('linked');
-    if (result.type === 'linked') {
-      expect(result.target).toBe('Falster');
-    }
+    expect(result).toEqual({ type: 'linked', target: 'Falster' });
+  });
+
+  it('detects conjunction as grouping', () => {
+    const result = classifyMultiLink(
+      ['France', 'Monaco'],
+      '[[France]] and [[Monaco]]',
+    );
+    expect(result).toEqual({
+      type: 'grouping',
+      name: 'France and Monaco',
+      children: ['France', 'Monaco'],
+    });
+  });
+
+  it('handles display-text wikilinks', () => {
+    const result = classifyMultiLink(
+      ['Baker Island', 'Howland Island'],
+      '[[Baker Island|Baker]] and [[Howland Island]]s',
+    );
+    expect(result.type).toBe('grouping');
   });
 });
 

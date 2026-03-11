@@ -51,6 +51,7 @@ services:
       - "${BACKEND_PORT:-3001}:3001"
     volumes:
       - ./backend/src:/app/src:ro
+      - ./data:/app/data
     depends_on:
       db:
         condition: service_healthy

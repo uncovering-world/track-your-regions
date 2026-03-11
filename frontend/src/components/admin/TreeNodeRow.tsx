@@ -94,8 +94,6 @@ export interface TreeNodeRowProps {
   onViewMap?: (regionId: number, context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string; divisionIds: number[] }) => void;
   onCVMatch?: (regionId: number) => void;
   cvMatchingRegionId?: number | null;
-  onGuidedCVMatch?: (regionId: number) => void;
-  guidedCVMatchingRegionId?: number | null;
   onMapshapeMatch?: (regionId: number) => void;
   mapshapeMatchingRegionId?: number | null;
   onClearMembers?: (regionId: number) => void;
@@ -164,7 +162,6 @@ function arePropsEqual(prev: TreeNodeRowProps, next: TreeNodeRowProps): boolean 
   if ((prev.reparentingRegionId === id) !== (next.reparentingRegionId === id)) return false;
   if ((prev.aiSuggestingRegionId === id) !== (next.aiSuggestingRegionId === id)) return false;
   if ((prev.cvMatchingRegionId === id) !== (next.cvMatchingRegionId === id)) return false;
-  if ((prev.guidedCVMatchingRegionId === id) !== (next.guidedCVMatchingRegionId === id)) return false;
   if ((prev.mapshapeMatchingRegionId === id) !== (next.mapshapeMatchingRegionId === id)) return false;
   if ((prev.clearingMembersRegionId === id) !== (next.clearingMembersRegionId === id)) return false;
 
@@ -195,7 +192,7 @@ function arePropsEqual(prev: TreeNodeRowProps, next: TreeNodeRowProps): boolean 
   return true;
 }
 
-export const TreeNodeRow = memo(function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAcceptAndRejectRest, onReject, onDBSearch, onAIMatch, onDismissChildren, onSync, onHandleAsGrouping, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onResetMatch, onRejectRemaining, onAcceptAll, onPreviewUnion, onAcceptSelected, onAcceptSelectedRejectRest, onRejectSelected, onPreview, onOpenMapPicker, onManualFix, isMutating, dbSearchingRegionId, aiMatchingRegionId, dismissingRegionId, syncingRegionId, groupingRegionId, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, parentRegionMapUrl, parentRegionMapName, geocodeProgress, duplicateUrls, syncedUrls, shadowsByRegionId, onApproveShadow, onRejectShadow, ancestorIsMatched, highlightedRegionId, onMergeChild, mergingRegionId, onSmartFlatten, flatteningRegionId, onDismissHierarchyWarnings, onAddChild, onRemoveRegion, removingRegionId, onCollapseToParent, collapsingRegionId, onAutoResolve, autoResolvingRegionId, onReviewSubtree, reviewingRegionId, onRename, renamingRegionId, onReparent, reparentingRegionId, onAISuggestChildren, aiSuggestingRegionId, onManualDivisionSearch, onPruneToLeaves, pruningRegionId, onViewMap, onCVMatch, cvMatchingRegionId, onGuidedCVMatch, guidedCVMatchingRegionId, onMapshapeMatch, mapshapeMatchingRegionId, onClearMembers, clearingMembersRegionId, coverageData, coverageLoading, coverageDirtyIds, onCoverageClick }: TreeNodeRowProps) {
+export const TreeNodeRow = memo(function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAcceptAndRejectRest, onReject, onDBSearch, onAIMatch, onDismissChildren, onSync, onHandleAsGrouping, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onResetMatch, onRejectRemaining, onAcceptAll, onPreviewUnion, onAcceptSelected, onAcceptSelectedRejectRest, onRejectSelected, onPreview, onOpenMapPicker, onManualFix, isMutating, dbSearchingRegionId, aiMatchingRegionId, dismissingRegionId, syncingRegionId, groupingRegionId, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, parentRegionMapUrl, parentRegionMapName, geocodeProgress, duplicateUrls, syncedUrls, shadowsByRegionId, onApproveShadow, onRejectShadow, ancestorIsMatched, highlightedRegionId, onMergeChild, mergingRegionId, onSmartFlatten, flatteningRegionId, onDismissHierarchyWarnings, onAddChild, onRemoveRegion, removingRegionId, onCollapseToParent, collapsingRegionId, onAutoResolve, autoResolvingRegionId, onReviewSubtree, reviewingRegionId, onRename, renamingRegionId, onReparent, reparentingRegionId, onAISuggestChildren, aiSuggestingRegionId, onManualDivisionSearch, onPruneToLeaves, pruningRegionId, onViewMap, onCVMatch, cvMatchingRegionId, onMapshapeMatch, mapshapeMatchingRegionId, onClearMembers, clearingMembersRegionId, coverageData, coverageLoading, coverageDirtyIds, onCoverageClick }: TreeNodeRowProps) {
   const isExpanded = expanded.has(node.id);
   const hasChildren = node.children.length > 0;
   const role = getNodeRole(node);
@@ -424,8 +421,6 @@ export const TreeNodeRow = memo(function TreeNodeRow({ node, depth, expanded, on
           onViewMap={onViewMap ? handleViewMap : undefined}
           onCVMatch={onCVMatch}
           cvMatchingRegionId={cvMatchingRegionId}
-          onGuidedCVMatch={onGuidedCVMatch}
-          guidedCVMatchingRegionId={guidedCVMatchingRegionId}
           onMapshapeMatch={onMapshapeMatch}
           mapshapeMatchingRegionId={mapshapeMatchingRegionId}
           onClearMembers={onClearMembers}

@@ -16,6 +16,7 @@ export {
   getWorldViews,
   createWorldView,
   updateWorldView,
+  getDeleteImpact,
   deleteWorldView,
 } from './worldViewCrud.js';
 

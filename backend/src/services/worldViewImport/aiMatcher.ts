@@ -330,7 +330,7 @@ async function tryTrigramMatch(
  * Search GADM divisions by trigram similarity.
  * Returns multiple candidates sorted by similarity.
  */
-async function trigramSearch(
+export async function trigramSearch(
   regionName: string,
   limit = 5,
 ): Promise<Array<{ divisionId: number; name: string; path: string; similarity: number }>> {

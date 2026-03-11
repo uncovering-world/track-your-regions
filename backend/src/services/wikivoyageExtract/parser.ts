@@ -6,7 +6,8 @@
  * re.findall → matchAll().
  */
 
-import type { WikiSection, RegionEntry } from './types.js';
+/* eslint-disable security/detect-non-literal-regexp, security/detect-unsafe-regex -- patterns built from static keyword arrays, not user input */
+import type { WikiSection, RegionEntry, MapshapeEntry } from './types.js';
 
 const COMMONS_FILE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
 
@@ -14,7 +15,7 @@ const COMMONS_FILE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
 const REGION_SECTION_PREFIXES = [
   'regions', 'countries', 'states', 'provinces', 'districts',
   'islands', 'prefectures', 'counties', 'subregions', 'cantons',
-  'municipalities',
+  'municipalities', 'departments', 'territories', 'federal subjects',
 ];
 
 // ─── Section detection ──────────────────────────────────────────────────────
@@ -203,6 +204,37 @@ export function extractImageCandidates(wikitext: string, maxCandidates = 15): st
   return candidates;
 }
 
+// ─── Mapshape parsing ───────────────────────────────────────────────────────
+
+/**
+ * Parse {{mapshape}} templates from wikitext.
+ *
+ * These templates define color-coded geographic regions on Kartographer maps,
+ * referencing Wikidata entities for geoshape boundaries.
+ *
+ * Example: {{mapshape|type=geoshape|fill=#cfd48c|title=Coast and Mayombe|wikidata=Q223920,Q855327}}
+ */
+export function parseMapshapes(wikitext: string): MapshapeEntry[] {
+  const cleanText = stripHtmlComments(wikitext);
+  const results: MapshapeEntry[] = [];
+  const regex = /\{\{mapshape\|([^}]+)\}\}/gi;
+  let match;
+  while ((match = regex.exec(cleanText)) !== null) {
+    const params = match[1];
+    const fill = params.match(/fill\s*=\s*([#\w]+)/i)?.[1] ?? '';
+    const title = params.match(/title\s*=\s*([^|]+)/i)?.[1]?.trim() ?? '';
+    const wikidata = params.match(/wikidata\s*=\s*([^|]+)/i)?.[1]?.trim() ?? '';
+    if (title && wikidata) {
+      results.push({
+        title,
+        color: fill,
+        wikidataIds: wikidata.split(',').map(id => id.trim()).filter(Boolean),
+      });
+    }
+  }
+  return results;
+}
+
 // ─── Multi-link classification ──────────────────────────────────────────────
 
 /**
@@ -273,8 +305,10 @@ export function parseRegionlist(wikitext: string): {
   // Match regionNname parameters
   const namePattern = /region(\d+)name\s*=\s*(\[\[[^\]]*\]\](?:[^|\n}]*\[\[[^\]]*\]\])*|[^|\n}]+)/g;
 
-  // Match regionNitems parameters
-  const itemsPattern = /region(\d+)items\s*=\s*(.+?)(?=\s*\n\s*\|?\s*region|\s*\n\s*\}|\s*\|\s*region)/gs;
+  // Match regionNitems parameters — capture only the same line.
+  // Using [^\n]* (not .*) to avoid leaking into regionNdescription fields
+  // (e.g., [[São Vicente]] in Cape Verde's description text).
+  const itemsPattern = /region(\d+)items\s*=[ \t]*([^\n]*)/g;
 
   // Build items lookup
   const itemsByNum = new Map<string, string[]>();
@@ -306,24 +340,22 @@ export function parseRegionlist(wikitext: string): {
     if (coreLinks.length === 1) {
       // Single wikilink — normal linked child
       regions.push({ name: coreLinks[0], items, hasLink: true });
+    } else if (coreLinks.length === 2 && /\]\]'s\s*\[\[/.test(strippedParens)) {
+      // Possessive pattern: [[A]]'s [[B]] → B is the actual region (A is context)
+      regions.push({ name: coreLinks[1], items, hasLink: true });
     } else if (coreLinks.length > 1) {
-      // Multiple wikilinks — detect pattern
-      const classified = classifyMultiLink(coreLinks, strippedParens);
-      if (classified.type === 'linked') {
-        regions.push({ name: classified.target, items, hasLink: true });
-      } else {
-        // Grouping node — items are the children (the wikilinks)
-        regions.push({
-          name: classified.name,
-          items: classified.children,
-          hasLink: false,
-        });
-      }
+      // Multiple wikilinks — emit as unlinked so AI extraction handles it
+      let cleanName = strippedParens.replace(/\[\[([^|\]]+)\|[^\]]*\]\]/g, '$1');
+      cleanName = cleanName.replace(/\[\[|\]\]/g, '').trim();
+      regions.push({ name: cleanName, items: coreLinks, hasLink: false });
     } else {
-      // Plain text — strip bold markers, stray brackets, and templates
+      // Plain text — strip bold markers, stray brackets, templates, and external links
       let link = nameText.replace(/\{\{[^}]*\}\}/g, ''); // remove {{...}}
       link = link.replace(/\{\{.*/g, ''); // remove unclosed {{...
-      link = link.replace(/'''?|\[\[|\]\]/g, '').trim();
+      // Convert external links [http://url.com/ Text] → Text
+      link = link.replace(/\[https?:\/\/\S+\s+([^\]]+)\]/g, '$1');
+      link = link.replace(/'''?|\[\[|\]\]/g, '');
+      link = link.replace(/https?:\/\/\S+/g, '').trim(); // strip bare URLs
       if (!link) continue;
       regions.push({ name: link, items, hasLink: false });
     }

@@ -1,10 +1,11 @@
 /**
  * Pricing Service for OpenAI API costs
  *
- * Loads pricing information from CSV file and provides cost calculation
+ * Loads pricing information from CSV file and provides cost calculation.
+ * Can auto-update from litellm's community-maintained pricing database.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -164,4 +165,102 @@ export function calculateCost(
 export function getAllPricing(): ModelPricing[] {
   loadPricing();
   return Array.from(pricingCache.values());
+}
+
+// ─── Remote pricing update ──────────────────────────────────────────────────
+
+const LITELLM_PRICING_URL =
+  'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
+
+interface LiteLLMEntry {
+  input_cost_per_token?: number;
+  output_cost_per_token?: number;
+  cache_read_input_token_cost?: number;
+  litellm_provider?: string;
+  mode?: string;
+}
+
+/**
+ * Fetch latest OpenAI pricing from litellm's community-maintained database,
+ * update the local CSV, and reload the in-memory cache.
+ *
+ * Returns { modelsUpdated, modelsAdded } counts.
+ */
+export async function updatePricingFromRemote(): Promise<{
+  modelsUpdated: number;
+  modelsAdded: number;
+  totalModels: number;
+}> {
+  const response = await fetch(LITELLM_PRICING_URL);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch pricing: ${response.status} ${response.statusText}`);
+  }
+
+  const data = (await response.json()) as Record<string, LiteLLMEntry>;
+
+  // Extract OpenAI text models
+  const openaiModels: Array<{
+    model: string;
+    inputPer1M: number;
+    cachedInputPer1M: number | null;
+    outputPer1M: number;
+  }> = [];
+
+  for (const [key, entry] of Object.entries(data)) {
+    if (entry.litellm_provider !== 'openai') continue;
+    if (entry.mode !== 'chat' && entry.mode !== 'completion') continue;
+    if (!entry.input_cost_per_token || !entry.output_cost_per_token) continue;
+    // Skip dated model variants (e.g., gpt-4o-2024-05-13) — keep only base names
+    if (/\d{4}-\d{2}-\d{2}/.test(key)) continue;
+
+    openaiModels.push({
+      model: key,
+      inputPer1M: Math.round(entry.input_cost_per_token * 1_000_000 * 1000) / 1000,
+      cachedInputPer1M: entry.cache_read_input_token_cost
+        ? Math.round(entry.cache_read_input_token_cost * 1_000_000 * 1000) / 1000
+        : null,
+      outputPer1M: Math.round(entry.output_cost_per_token * 1_000_000 * 1000) / 1000,
+    });
+  }
+
+  if (openaiModels.length === 0) {
+    throw new Error('No OpenAI models found in remote pricing data');
+  }
+
+  // Build CSV content (same format as existing file)
+  const header = 'category,service_tier,model,unit,input_usd_per_1M,cached_input_usd_per_1M,output_usd_per_1M';
+  const lines = [header];
+  for (const m of openaiModels.sort((a, b) => a.model.localeCompare(b.model))) {
+    const cached = m.cachedInputPer1M !== null ? m.cachedInputPer1M.toString() : '';
+    lines.push(`text_tokens,standard,${m.model},USD_per_1M_tokens,${m.inputPer1M},${cached},${m.outputPer1M}`);
+  }
+
+  // Write CSV
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const csvPath = join(__dirname, '..', '..', 'data', 'openai_api_model_costs.csv');
+  writeFileSync(csvPath, lines.join('\n') + '\n', 'utf-8');
+
+  // Count changes
+  const oldCount = pricingCache.size;
+  const oldModels = new Set(pricingCache.keys());
+
+  // Reload cache
+  pricingLoaded = false;
+  pricingCache.clear();
+  loadPricing();
+
+  const newModels = new Set(pricingCache.keys());
+  let added = 0;
+  for (const m of newModels) {
+    if (!oldModels.has(m)) added++;
+  }
+
+  console.log(`💰 Pricing updated: ${pricingCache.size} models (was ${oldCount}, +${added} new)`);
+
+  return {
+    modelsUpdated: pricingCache.size,
+    modelsAdded: added,
+    totalModels: pricingCache.size,
+  };
 }

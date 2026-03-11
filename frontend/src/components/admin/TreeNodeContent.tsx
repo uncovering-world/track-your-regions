@@ -1,5 +1,9 @@
+import { useState, useCallback, useEffect } from 'react';
 import {
   Box,
+  Checkbox,
+  Chip,
+  CircularProgress,
   Typography,
   IconButton,
   Button,
@@ -42,20 +46,40 @@ function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }:
 }
 
 /** Render a suggestion with accept + reject + preview buttons */
-function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, onReject, onPreview, isMutating }: {
-  suggestion: { divisionId: number; name: string; path: string; score: number };
+function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, onReject, onPreview, isMutating, checked, onToggle }: {
+  suggestion: { divisionId: number; name: string; path: string; score: number; geoSimilarity?: number | null };
   regionId: number;
   onAccept: (regionId: number, divisionId: number) => void;
   onAcceptAndRejectRest: (regionId: number, divisionId: number) => void;
   onReject: (regionId: number, divisionId: number) => void;
   onPreview: (divisionId: number, name: string, path?: string) => void;
   isMutating: boolean;
+  checked?: boolean;
+  onToggle?: (divisionId: number) => void;
 }) {
+  const geo = suggestion.geoSimilarity;
+  const geoColor = geo != null ? (geo >= 0.7 ? 'success.main' : geo >= 0.5 ? 'warning.main' : 'text.disabled') : undefined;
+
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      {onToggle && (
+        <Checkbox
+          size="small"
+          checked={checked ?? false}
+          onChange={() => onToggle(suggestion.divisionId)}
+          sx={{ p: 0, '& .MuiSvgIcon-root': { fontSize: 16 } }}
+        />
+      )}
       <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
         {suggestion.path || suggestion.name}
       </Typography>
+      {geo != null ? (
+        <Typography variant="caption" sx={{ color: geoColor, fontWeight: geo >= 0.5 ? 600 : 400, flexShrink: 0 }}>
+          {Math.round(geo * 100)}%
+        </Typography>
+      ) : (
+        <Typography variant="caption" color="text.disabled" sx={{ flexShrink: 0 }}>—</Typography>
+      )}
       <Tooltip title="Preview on map">
         <IconButton size="small" onClick={() => onPreview(suggestion.divisionId, suggestion.name, suggestion.path)} sx={{ p: 0.25 }}>
           <MapIcon sx={{ fontSize: 16 }} />
@@ -134,7 +158,21 @@ interface TreeNodeContentProps {
   handlePreviewSuggestion: (divisionId: number, name: string, path?: string) => void;
   onApproveShadow?: (insertion: ShadowInsertion) => void;
   onRejectShadow?: (insertion: ShadowInsertion) => void;
+  onPreviewUnion?: (regionId: number, divisionIds: number[]) => void;
+  onAcceptSelected?: (regionId: number, divisionIds: number[]) => void;
+  onAcceptSelectedRejectRest?: (regionId: number, divisionIds: number[]) => void;
+  onRejectSelected?: (regionId: number, divisionIds: number[]) => void;
   isMutating: boolean;
+  /** Children coverage percentage (0-1) for container nodes */
+  coveragePercent?: number;
+  /** Geoshape coverage percentage (0-1) — how well assigned divisions cover the source geoshape */
+  geoshapeCoveragePercent?: number;
+  /** Whether coverage data is still loading for the first time */
+  coverageLoading?: boolean;
+  /** Whether coverage data is being refetched for this node */
+  coverageFetching?: boolean;
+  /** Callback when coverage chip is clicked */
+  onCoverageClick?: (regionId: number) => void;
 }
 
 export function TreeNodeContent({
@@ -152,16 +190,83 @@ export function TreeNodeContent({
   handlePreviewSuggestion,
   onApproveShadow,
   onRejectShadow,
+  onPreviewUnion,
+  onAcceptSelected,
+  onAcceptSelectedRejectRest,
+  onRejectSelected,
   isMutating,
+  coveragePercent,
+  geoshapeCoveragePercent,
+  coverageLoading,
+  coverageFetching,
+  onCoverageClick,
 }: TreeNodeContentProps) {
+  const [selectedDivIds, setSelectedDivIds] = useState<Set<number>>(new Set());
+  const showCheckboxes = node.suggestions.length > 1;
+
+  const toggleSelection = useCallback((divisionId: number) => {
+    setSelectedDivIds(prev => {
+      const next = new Set(prev);
+      if (next.has(divisionId)) next.delete(divisionId);
+      else next.add(divisionId);
+      return next;
+    });
+  }, []);
+
+  // Clear selection when suggestions change (accept/reject)
+  useEffect(() => {
+    setSelectedDivIds(new Set());
+  }, [node.suggestions.length]);
+
   return (
     <>
+      {/* Children coverage info — always visible for container nodes */}
+      {hasChildren && coverageLoading && (
+        <Box sx={{ pl: depth * 3 + 4.5, pb: 0.3 }}>
+          <Chip
+            size="small"
+            icon={<CircularProgress size={12} />}
+            label="Calculating coverage…"
+            variant="outlined"
+            sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' } }}
+          />
+        </Box>
+      )}
+      {hasChildren && !coverageLoading && coveragePercent != null && (
+        <Box sx={{ pl: depth * 3 + 4.5, pb: 0.3 }}>
+          <Chip
+            size="small"
+            icon={coverageFetching ? <CircularProgress size={12} color="inherit" /> : undefined}
+            label={coverageFetching
+              ? 'Recalculating…'
+              : `Children cover ${(coveragePercent * 100).toFixed(2)}%`}
+            color={coveragePercent >= 0.9 ? 'success' : coveragePercent >= 0.5 ? 'warning' : 'error'}
+            variant="outlined"
+            onClick={onCoverageClick && !coverageFetching ? () => onCoverageClick(node.id) : undefined}
+            sx={{ height: 20, cursor: onCoverageClick && !coverageFetching ? 'pointer' : 'default', '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' } }}
+          />
+        </Box>
+      )}
+
       {/* Division list for matched countries */}
       {role === 'country' && (node.matchStatus === 'auto_matched' || node.matchStatus === 'manual_matched') && node.assignedDivisions.length > 0 && (
         <Box sx={{ pl: depth * 3 + 4.5, pb: 0.3 }}>
           {node.assignedDivisions.map((div) => (
             <AssignedDivisionRow key={div.divisionId} div={div} regionId={node.id} onReject={onReject} onPreview={handlePreviewAssigned} isMutating={isMutating} />
           ))}
+          {geoshapeCoveragePercent != null && (
+            <Chip
+              size="small"
+              variant="outlined"
+              label={coverageFetching
+                ? 'Recalculating…'
+                : `Geoshape ${(geoshapeCoveragePercent * 100).toFixed(1)}%`}
+              icon={coverageFetching ? <CircularProgress size={12} color="inherit" /> : undefined}
+              color={geoshapeCoveragePercent >= 0.9 ? 'success' : geoshapeCoveragePercent >= 0.5 ? 'warning' : 'error'}
+              onClick={onCoverageClick && !coverageFetching ? () => onCoverageClick(node.id) : undefined}
+              sx={{ height: 18, mt: 0.25, cursor: onCoverageClick && !coverageFetching ? 'pointer' : 'default', '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' } }}
+            />
+          )}
         </Box>
       )}
 
@@ -190,6 +295,8 @@ export function TreeNodeContent({
               onReject={onReject}
               onPreview={handlePreviewSuggestion}
               isMutating={isMutating}
+              checked={selectedDivIds.has(suggestion.divisionId)}
+              onToggle={showCheckboxes ? toggleSelection : undefined}
             />
           ))}
           {node.suggestions.length > 1 && (
@@ -215,6 +322,45 @@ export function TreeNodeContent({
             >
               Reject {node.assignedDivisions.length > 0 ? 'remaining ' : 'all '}{node.suggestions.length} suggestion{node.suggestions.length > 1 ? 's' : ''}
             </Button>
+          )}
+          {selectedDivIds.size > 0 && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25, pl: 0.25 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                {selectedDivIds.size} selected
+              </Typography>
+              {onPreviewUnion && (
+                <Button size="small" variant="text" color="info"
+                  onClick={() => onPreviewUnion(node.id, [...selectedDivIds])}
+                  disabled={isMutating}
+                  sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}>
+                  Preview union
+                </Button>
+              )}
+              {onAcceptSelected && (
+                <Button size="small" variant="text" color="success"
+                  onClick={() => onAcceptSelected(node.id, [...selectedDivIds])}
+                  disabled={isMutating}
+                  sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}>
+                  Accept {selectedDivIds.size}
+                </Button>
+              )}
+              {onAcceptSelectedRejectRest && (
+                <Button size="small" variant="text" color="success"
+                  onClick={() => onAcceptSelectedRejectRest(node.id, [...selectedDivIds])}
+                  disabled={isMutating}
+                  sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}>
+                  Accept {selectedDivIds.size} + reject rest
+                </Button>
+              )}
+              {onRejectSelected && (
+                <Button size="small" variant="text" color="error"
+                  onClick={() => onRejectSelected(node.id, [...selectedDivIds])}
+                  disabled={isMutating}
+                  sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}>
+                  Reject {selectedDivIds.size}
+                </Button>
+              )}
+            </Box>
           )}
         </Box>
       )}

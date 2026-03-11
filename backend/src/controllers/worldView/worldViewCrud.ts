@@ -63,6 +63,41 @@ export async function updateWorldView(req: Request, res: Response): Promise<void
 }
 
 /**
+ * Get impact summary for deleting a World View.
+ * Returns counts of what would be cascade-deleted.
+ */
+export async function getDeleteImpact(req: Request, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+
+  const check = await pool.query(
+    'SELECT is_default FROM world_views WHERE id = $1',
+    [worldViewId],
+  );
+  if (check.rows.length === 0) {
+    throw notFound(`World View ${worldViewId} not found`);
+  }
+
+  const result = await pool.query(`
+    SELECT
+      (SELECT COUNT(*) FROM regions WHERE world_view_id = $1)::int AS region_count,
+      (SELECT COUNT(*) FROM experience_regions er
+       JOIN regions r ON r.id = er.region_id
+       WHERE r.world_view_id = $1)::int AS experience_assignment_count,
+      (SELECT COUNT(*) FROM user_visited_regions uvr
+       JOIN regions r ON r.id = uvr.region_id
+       WHERE r.world_view_id = $1)::int AS user_visit_count
+  `, [worldViewId]);
+
+  const row = result.rows[0];
+  res.json({
+    regionCount: row.region_count,
+    experienceAssignmentCount: row.experience_assignment_count,
+    userVisitCount: row.user_visit_count,
+    isDefault: check.rows[0].is_default,
+  });
+}
+
+/**
  * Delete a World View
  */
 export async function deleteWorldView(req: Request, res: Response): Promise<void> {

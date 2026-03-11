@@ -32,7 +32,6 @@ import {
   Palette as CVMatchIcon,
   Layers as MapshapeMatchIcon,
   ClearAll as ClearAssignedIcon,
-  GpsFixed as GuidedMatchIcon,
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
 import { Tooltip } from './treeNodeShared';
@@ -91,8 +90,6 @@ interface TreeNodeActionsProps {
   onViewMap?: (regionId: number) => void;
   onCVMatch?: (regionId: number) => void;
   cvMatchingRegionId?: number | null;
-  onGuidedCVMatch?: (regionId: number) => void;
-  guidedCVMatchingRegionId?: number | null;
   onMapshapeMatch?: (regionId: number) => void;
   mapshapeMatchingRegionId?: number | null;
   onClearMembers?: (regionId: number) => void;
@@ -260,8 +257,6 @@ export function TreeNodeActions({
   onViewMap,
   onCVMatch,
   cvMatchingRegionId,
-  onGuidedCVMatch,
-  guidedCVMatchingRegionId,
   onMapshapeMatch,
   mapshapeMatchingRegionId,
   onClearMembers,
@@ -344,24 +339,6 @@ export function TreeNodeActions({
               {cvMatchingRegionId === node.id
                 ? <CircularProgress size={16} />
                 : <CVMatchIcon sx={{ fontSize: 16, color: 'secondary.main' }} />}
-            </IconButton>
-          </span>
-        </Tooltip>
-      )}
-
-      {/* Guided CV match — interactive wizard: click water, parks, regions on map */}
-      {onGuidedCVMatch && hasChildren && node.regionMapUrl && (
-        <Tooltip title="Guided CV match (click water, parks, regions on map)">
-          <span>
-            <IconButton
-              size="small"
-              onClick={() => onGuidedCVMatch(node.id)}
-              disabled={isMutating || guidedCVMatchingRegionId === node.id}
-              sx={{ p: 0.25 }}
-            >
-              {guidedCVMatchingRegionId === node.id
-                ? <CircularProgress size={16} />
-                : <GuidedMatchIcon sx={{ fontSize: 16, color: 'info.main' }} />}
             </IconButton>
           </span>
         </Tooltip>

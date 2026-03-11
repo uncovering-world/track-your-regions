@@ -47,8 +47,6 @@ import {
   wvImportReparentRegionSchema,
   coverageSSEQuerySchema,
   childrenCoverageQuerySchema,
-  guidedMatchPrepareBodySchema,
-  guidedMatchStreamSchema,
 } from '../types/index.js';
 import {
   startSync,
@@ -74,54 +72,19 @@ import {
   startWorldViewImport,
   getWorldViewImportStatus,
   cancelWorldViewImport,
+  getGeoshape,
+} from '../controllers/admin/wvImportLifecycleController.js';
+import {
   getMatchStats,
   getMatchTree,
   acceptMatch,
   rejectMatch,
-  acceptBatchMatches,
-  startAIMatch,
-  getAIMatchStatus,
-  cancelAIMatchEndpoint,
-  dbSearchOneRegion,
-  geocodeMatch,
-  geoshapeMatch,
-  pointMatch,
-  resetMatch,
   rejectRemaining,
-  aiMatchOneRegion,
-  dismissChildren,
-  pruneToLeaves,
-  smartFlatten,
-  smartFlattenPreview,
-  syncInstances,
-  handleAsGrouping,
-  undoLastOperation,
+  clearMembers,
+  acceptAndRejectRest,
+  acceptBatchMatches,
   selectMapImage,
   markManualFix,
-  mergeChildIntoParent,
-  acceptAndRejectRest,
-  clearMembers,
-  getCoverage,
-  getCoverageSSE,
-  geoSuggestGap,
-  dismissCoverageGap,
-  undismissCoverageGap,
-  approveCoverageSuggestion,
-  finalizeReview,
-  rematchWorldView,
-  getRematchStatus,
-  getGeoshape,
-  addChildRegion,
-  dismissHierarchyWarnings,
-  removeRegionFromImport,
-  collapseToParent,
-  autoResolveChildrenPreview,
-  autoResolveChildren,
-  aiSuggestChildren,
-  getChildrenCoverage,
-  getCoverageGeometry,
-  analyzeCoverageGaps,
-  getChildrenRegionGeometry,
   getUnionGeometry,
   splitDivisionsDeeper,
   visionMatchDivisions,
@@ -132,8 +95,57 @@ import {
   getParkCropImage,
   resolveClusterReview,
   getClusterPreviewImage,
-  mapshapeMatchDivisions,
-} from '../controllers/admin/worldViewImportController.js';
+} from '../controllers/admin/wvImportMatchController.js';
+import {
+  startAIMatch,
+  getAIMatchStatus,
+  cancelAIMatchEndpoint,
+  dbSearchOneRegion,
+  geocodeMatch,
+  geoshapeMatch,
+  pointMatch,
+  resetMatch,
+  aiMatchOneRegion,
+  aiSuggestChildren,
+} from '../controllers/admin/wvImportAIController.js';
+import {
+  mergeChildIntoParent,
+  removeRegionFromImport,
+  dismissChildren,
+  pruneToLeaves,
+} from '../controllers/admin/wvImportTreeOpsController.js';
+import {
+  collapseToParent,
+  smartFlattenPreview,
+  smartFlatten,
+  syncInstances,
+  handleAsGrouping,
+} from '../controllers/admin/wvImportFlattenController.js';
+import {
+  undoLastOperation,
+  autoResolveChildrenPreview,
+  autoResolveChildren,
+} from '../controllers/admin/wvImportHierarchyController.js';
+import {
+  getCoverage,
+  getCoverageSSE,
+  geoSuggestGap,
+  dismissCoverageGap,
+  undismissCoverageGap,
+  approveCoverageSuggestion,
+  finalizeReview,
+  rematchWorldView,
+  getRematchStatus,
+  addChildRegion,
+  dismissHierarchyWarnings,
+} from '../controllers/admin/wvImportCoverageController.js';
+import {
+  getChildrenCoverage,
+  getCoverageGeometry,
+  analyzeCoverageGaps,
+  getChildrenRegionGeometry,
+} from '../controllers/admin/wvImportCoverageCompareController.js';
+import { mapshapeMatchDivisions } from '../controllers/admin/wvImportMapshapeController.js';
 import {
   startWikivoyageExtraction,
   getWikivoyageExtractionStatus,
@@ -157,10 +169,6 @@ import {
   reparentRegion,
 } from '../controllers/admin/wvImportRenameController.js';
 import { hierarchyReview } from '../controllers/admin/aiHierarchyReviewController.js';
-import {
-  prepareGuidedMatch,
-  guidedMatchDivisionsSSE,
-} from '../controllers/admin/wvImportGuidedMatchController.js';
 
 const router = Router();
 
@@ -307,18 +315,6 @@ router.post('/wv-import/matches/:worldViewId/vision-match', validate(worldViewId
 
 // Local CV color-based division matching (SSE stream)
 router.get('/wv-import/matches/:worldViewId/color-match-stream', validate(worldViewIdParamSchema, 'params'), validate(wvImportColorMatchSchema, 'query'), colorMatchDivisionsSSE);
-
-// Guided CV match — user-provided seed points (POST prepare → GET SSE stream)
-router.post('/wv-import/matches/:worldViewId/guided-match-prepare',
-  validate(worldViewIdParamSchema, 'params'),
-  validate(guidedMatchPrepareBodySchema, 'body'),
-  prepareGuidedMatch,
-);
-router.get('/wv-import/matches/:worldViewId/guided-match-stream',
-  validate(worldViewIdParamSchema, 'params'),
-  validate(guidedMatchStreamSchema, 'query'),
-  guidedMatchDivisionsSSE,
-);
 
 // Water review callback (user approves/rejects/mixes water components during CV match)
 router.post('/wv-import/water-review/:reviewId', (req: AuthenticatedRequest, res: Response) => {
