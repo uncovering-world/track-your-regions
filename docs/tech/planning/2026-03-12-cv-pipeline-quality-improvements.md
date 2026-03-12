@@ -1,7 +1,7 @@
 # CV Pipeline Quality Improvements — Design Spec
 
 **Date**: 2026-03-12
-**Status**: Draft
+**Status**: Implemented
 
 ## Problem
 
