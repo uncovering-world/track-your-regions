@@ -3264,6 +3264,54 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         console.log(`  [K-means] BFS propagated labels to ${bfsFilled} text pixels`);
       }
 
+      // Spatial mode filter: clean up salt-and-pepper noise from BFS seams and line residue.
+      // For each pixel, if the majority of its neighborhood has a different label AND the
+      // pixel's color is reasonably close to the majority's centroid, relabel it.
+      const MODE_R = pxS(5); // radius in pixels (8 at TW=800)
+      let modeRelabeled = 0;
+      const newLabels = new Uint8Array(pixelLabels); // copy — don't modify during iteration
+      for (let i = 0; i < tp; i++) {
+        if (!countryMask[i] || pixelLabels[i] === 255) continue;
+        const ix = i % TW, iy = Math.floor(i / TW);
+        const votes = new Map<number, number>();
+        for (let dy = -MODE_R; dy <= MODE_R; dy++) {
+          const ny = iy + dy;
+          if (ny < 0 || ny >= TH) continue;
+          for (let dx = -MODE_R; dx <= MODE_R; dx++) {
+            const nx = ix + dx;
+            if (nx < 0 || nx >= TW) continue;
+            const ni = ny * TW + nx;
+            if (pixelLabels[ni] !== 255) votes.set(pixelLabels[ni], (votes.get(pixelLabels[ni]) || 0) + 1);
+          }
+        }
+        const myLabel = pixelLabels[i];
+        let bestLabel = myLabel, bestCount = 0;
+        for (const [lbl, cnt] of votes) {
+          if (cnt > bestCount) { bestCount = cnt; bestLabel = lbl; }
+        }
+        if (bestLabel === myLabel) continue;
+        // Guard: only relabel if pixel's color is close enough to majority centroid
+        const nL = (labBuf[i * 3] - meanL) * wL;
+        const nA = (labBuf[i * 3 + 1] - meanA) * wA;
+        const nB = (labBuf[i * 3 + 2] - meanB) * wB;
+        const distOwn = (nL - colorCentroids[myLabel][0]) ** 2 + (nA - colorCentroids[myLabel][1]) ** 2 + (nB - colorCentroids[myLabel][2]) ** 2;
+        const distMaj = (nL - colorCentroids[bestLabel][0]) ** 2 + (nA - colorCentroids[bestLabel][1]) ** 2 + (nB - colorCentroids[bestLabel][2]) ** 2;
+        if (distMaj < distOwn * 2.0) {
+          newLabels[i] = bestLabel;
+          modeRelabeled++;
+        }
+      }
+      // Apply relabeling
+      if (modeRelabeled > 0) {
+        for (let i = 0; i < tp; i++) pixelLabels[i] = newLabels[i];
+        // Recount
+        clusterCounts.fill(0);
+        for (let i = 0; i < tp; i++) {
+          if (countryMask[i] && pixelLabels[i] < 255) clusterCounts[pixelLabels[i]]++;
+        }
+        console.log(`  [Mode filter] Relabeled ${modeRelabeled} noisy pixels to neighborhood majority`);
+      }
+
       // Log K-means results before processing
       console.log(`  [K-means] ${CK} clusters, countrySize=${countrySize}:`);
       for (let k = 0; k < CK; k++) {
