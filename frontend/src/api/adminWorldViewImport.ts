@@ -902,6 +902,7 @@ export interface ClusterReviewCluster {
 export interface ClusterReviewDecision {
   merges: Record<number, number>;
   excludes?: number[];
+  recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' };
 }
 
 /** URL for cluster preview image (served from backend memory, like water/park crops) */

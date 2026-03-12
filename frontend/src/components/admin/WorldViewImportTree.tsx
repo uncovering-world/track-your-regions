@@ -2165,6 +2165,40 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     >
                       Confirm clusters
                     </Button>
+                    {/* Re-cluster options */}
+                    <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+                      {([
+                        { preset: 'more_clusters' as const, label: 'More clusters' },
+                        { preset: 'different_seed' as const, label: 'Different seed' },
+                        { preset: 'boost_chroma' as const, label: 'Boost colors' },
+                      ]).map(opt => (
+                        <Button
+                          key={opt.preset}
+                          size="small"
+                          variant="outlined"
+                          color="warning"
+                          sx={{ fontSize: '0.7rem', py: 0.25, px: 0.75 }}
+                          title={opt.label}
+                          onClick={async () => {
+                            setCVMatchDialog(prev => prev ? {
+                              ...prev,
+                              clusterReview: undefined,
+                              progressText: `Re-clustering (${opt.label.toLowerCase()})...`,
+                            } : prev);
+                            try {
+                              await respondToClusterReview(cr.reviewId, {
+                                merges: {},
+                                recluster: { preset: opt.preset },
+                              });
+                            } catch (e) {
+                              console.error('[Recluster] POST failed:', e);
+                            }
+                          }}
+                        >
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </Box>
                   </Box>
                 );
               })()}
