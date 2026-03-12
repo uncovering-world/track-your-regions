@@ -11,7 +11,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { parseMarkers, parseGeoTag } from '../../services/wikivoyageExtract/markerParser.js';
 import { resolveMarkerCoordinates } from '../../services/worldViewImport/pointMatcher.js';
 import { matchDivisionsByVision } from '../../services/ai/openaiService.js';
-import { matchDivisionsFromClusters } from './wvImportMatchShared.js';
+import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatchShared.js';
 
 // OpenCV WASM — eagerly initialized at module load to avoid tsx/esbuild overhead during requests.
 // tsx transforms every dynamic import() through esbuild, which takes 30s+ for the 10MB opencv.js.
@@ -120,6 +120,8 @@ interface ClusterReviewDecision {
   merges: Record<number, number>;
   /** Cluster labels to exclude entirely (not a real region — set to background) */
   excludes?: number[];
+  /** Request re-clustering with modified parameters */
+  recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' };
 }
 export const pendingClusterReviews = new Map<string, (decision: ClusterReviewDecision) => void>();
 
@@ -3137,6 +3139,15 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         }
       }
 
+      // Recluster loop: re-run K-means with modified params when user requests
+      let reclusterAttempt = 0;
+      const MAX_RECLUSTER = 3;
+      let ckOverride: number | null = null;
+      let chromaBoost = 1.0;
+      let randomSeed = false;
+
+      let reclusterResult: ReclusterSignal | void;
+      do {
       await logStep('K-means color clustering...');
 
       // Convert clean color buffer to CIELAB for perceptually-accurate K-means
@@ -3165,13 +3176,13 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       const stdL = rawStdL < 0.01 ? 1.0 : rawStdL;
       const stdA = rawStdA < 0.01 ? 1.0 : rawStdA;
       const stdB = rawStdB < 0.01 ? 1.0 : rawStdB;
-      const wL = 0.5 / stdL, wA = 1.0 / stdA, wB = 1.0 / stdB;
+      const wL = 0.5 / stdL, wA = chromaBoost / stdA, wB = chromaBoost / stdB;
       console.log(`  [Lab] mean=(${meanL.toFixed(1)},${meanA.toFixed(1)},${meanB.toFixed(1)}) std=(${stdL.toFixed(1)},${stdA.toFixed(1)},${stdB.toFixed(1)})`);
 
       // K-means: use ~3x expected region count for enough color resolution
       // to separate similar-but-distinct regions. The merge step consolidates
       // truly redundant clusters afterward. Cap at 32, floor at 8.
-      const CK = Math.max(8, Math.min(expectedRegionCount * 3, 32));
+      const CK = ckOverride ?? Math.max(8, Math.min(expectedRegionCount * 3, 32));
       console.log(`  [K-means] CK=${CK} (expectedRegions=${expectedRegionCount})`);
       // Exclude text pixels from K-means centroids — their BFS-filled colors are
       // from nearest neighbors and may be wrong at region boundaries.
@@ -3195,7 +3206,10 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       }
 
       // K-means++ initialization: probabilistic distance-weighted sampling
-      const colorCentroids: Array<[number, number, number]> = [countryPixels[Math.floor(countryPixels.length / 2)]];
+      const firstIdx = randomSeed
+          ? Math.floor(Math.random() * countryPixels.length)
+          : Math.floor(countryPixels.length / 2);
+      const colorCentroids: Array<[number, number, number]> = [countryPixels[firstIdx]];
       for (let c = 1; c < CK; c++) {
         const d2 = new Float64Array(countryPixels.length);
         let totalD2 = 0;
@@ -3372,7 +3386,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
 
 
       // ── Spatial split through complete event: delegated to shared function ──
-      await matchDivisionsFromClusters({
+      reclusterResult = await matchDivisionsFromClusters({
         worldViewId, regionId,
         knownDivisionIds,
         buf, mapBuffer, countryMask, waterGrown, pixelLabels, colorCentroids: rgbCentroids,
@@ -3382,6 +3396,36 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         logStep, pushDebugImage, debugImages,
         startTime,
       });
+
+        if (reclusterResult?.recluster) {
+          reclusterAttempt++;
+          if (reclusterAttempt >= MAX_RECLUSTER) {
+            console.log(`  [Recluster] Max attempts (${MAX_RECLUSTER}) reached, proceeding with current clusters`);
+            await matchDivisionsFromClusters({
+              worldViewId, regionId, knownDivisionIds,
+              buf, mapBuffer, countryMask, waterGrown, pixelLabels, colorCentroids: rgbCentroids,
+              TW, TH, origW, origH,
+              skipClusterReview: true,
+              sendEvent: sendEvent as (event: Record<string, unknown>) => void,
+              logStep, pushDebugImage, debugImages, startTime,
+            });
+            break;
+          }
+          const preset = reclusterResult.preset;
+          if (preset === 'more_clusters') {
+            const baseCK = ckOverride ?? Math.max(8, Math.min(expectedRegionCount * 3, 32));
+            ckOverride = Math.min(baseCK + 4, 32);
+            console.log(`  [Recluster] More clusters: CK → ${ckOverride}`);
+          } else if (preset === 'different_seed') {
+            randomSeed = true;
+            console.log(`  [Recluster] Different seed: randomizing K-means++ init`);
+          } else if (preset === 'boost_chroma') {
+            chromaBoost = 1.5;
+            console.log(`  [Recluster] Boost chroma: a*/b* weight → ${chromaBoost}`);
+          }
+          await logStep(`Re-clustering (attempt ${reclusterAttempt + 1})...`);
+        }
+      } while (reclusterResult?.recluster);
 
     } else {
       console.log(`  Source map fetch failed: ${mapResponse.status}`);

@@ -421,8 +421,13 @@ router.post('/wv-import/cluster-review/:reviewId', (req: AuthenticatedRequest, r
     }
   }
   const excludes: number[] = Array.isArray(req.body?.excludes) ? req.body.excludes.map(Number) : [];
-  console.log(`  [Cluster Review POST] reviewId=${reviewId} merges=${JSON.stringify(merges)} excludes=[${excludes}]`);
-  const found = resolveClusterReview(reviewId, { merges, excludes });
+  const validPresets = new Set(['more_clusters', 'different_seed', 'boost_chroma']);
+  const rawPreset = req.body?.recluster?.preset;
+  const recluster = typeof rawPreset === 'string' && validPresets.has(rawPreset)
+    ? { preset: rawPreset as 'more_clusters' | 'different_seed' | 'boost_chroma' }
+    : undefined;
+  console.log(`  [Cluster Review POST] reviewId=${reviewId} merges=${JSON.stringify(merges)} excludes=[${excludes}]${recluster ? ` recluster=${recluster.preset}` : ''}`);
+  const found = resolveClusterReview(reviewId, { merges, excludes, recluster });
   if (found) {
     res.json({ ok: true });
   } else {

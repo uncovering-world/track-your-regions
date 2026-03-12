@@ -101,13 +101,19 @@ export interface MatchDivisionsParams {
   startTime: number;
 }
 
+export interface ReclusterSignal {
+  recluster: true;
+  preset: 'more_clusters' | 'different_seed' | 'boost_chroma';
+}
+
 /**
  * Run the spatial-split → merge → cluster-review → ICP → rasterization →
  * division-voting → recursive-split → OCR → geo-preview pipeline.
  *
  * Sends `complete` event via `sendEvent` at the end.
+ * Returns a ReclusterSignal if the user requests re-clustering during review.
  */
-export async function matchDivisionsFromClusters(params: MatchDivisionsParams): Promise<void> {
+export async function matchDivisionsFromClusters(params: MatchDivisionsParams): Promise<ReclusterSignal | void> {
   const {
     worldViewId, regionId, knownDivisionIds,
     buf, mapBuffer, countryMask, waterGrown: _waterGrown,
@@ -522,6 +528,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       interface ClusterReviewDecision {
         merges: Record<number, number>;
         excludes?: number[];
+        recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' };
       }
 
       const decision = await new Promise<ClusterReviewDecision>((resolve) => {
@@ -534,6 +541,12 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
           }
         }, 180000);
       });
+
+      // Check for recluster request
+      if (decision.recluster) {
+        console.log(`  [Cluster Review] Recluster requested: ${decision.recluster.preset}`);
+        return { recluster: true, preset: decision.recluster.preset };
+      }
 
       // Apply excludes
       const excludeLabels = (decision.excludes ?? []).map(Number).filter(l => finalLabels.has(l));
