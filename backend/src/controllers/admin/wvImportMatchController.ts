@@ -2438,6 +2438,17 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         if (bgCnts[k] / edgePx.length > 0.10) activeBg.push(bgCentroids[k]);
       }
 
+      // Convert active BG centroids to Lab for chrominance-weighted distance
+      const activeBgLab: Array<[number, number, number]> = activeBg.map(bg => {
+        const px = new cv.Mat(1, 1, cv.CV_8UC3);
+        px.data[0] = bg[0]; px.data[1] = bg[1]; px.data[2] = bg[2];
+        const lab = new cv.Mat();
+        cv.cvtColor(px, lab, cv.COLOR_RGB2Lab);
+        const result: [number, number, number] = [lab.data[0], lab.data[1], lab.data[2]];
+        px.delete(); lab.delete();
+        return result;
+      });
+
       // ── Coastal band: the water detector found the coastline with a fine border.
       // Pixels adjacent to detected water on the land side are guaranteed foreground —
       // use this to protect thin coastal strips from being erased by bg detection.
@@ -2464,19 +2475,20 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       //  1. textExcluded: text was detected there → on top of the map region, not background
       //  2. coastalBand: adjacent to detected water → land side of coastline
       const fgMask = new Uint8Array(tp);
-      const BG_DIST_SQ = 35 * 35; // RGB distance threshold from background colors
-      const MIN_FG_SAT = 25; // OpenCV S range 0-255; actual map regions have S>30
+      const BG_DE_SQ = 12 * 12; // Chrominance-weighted Lab ΔE² threshold
+      const MIN_FG_SAT = 25;
       for (let i = 0; i < tp; i++) {
         if (waterGrown[i]) continue;
-        // Forced foreground: text areas and coastal band survive regardless of color
         if (textExcluded[i] || coastalBand[i]) { fgMask[i] = 1; continue; }
         const sat = hsvBuf[i * 3 + 1];
         let isBg = false;
-        for (const bg of activeBg) {
-          const dr = buf[i * 3] - bg[0], dg = buf[i * 3 + 1] - bg[1], db = buf[i * 3 + 2] - bg[2];
-          if (dr * dr + dg * dg + db * db <= BG_DIST_SQ) { isBg = true; break; }
+        const pL = labBufEarly[i * 3], pA = labBufEarly[i * 3 + 1], pB = labBufEarly[i * 3 + 2];
+        for (const bg of activeBgLab) {
+          const dL = (pL - bg[0]) * 0.5; // de-weight luminance
+          const dA = pA - bg[1];
+          const dB = pB - bg[2];
+          if (dL * dL + dA * dA + dB * dB <= BG_DE_SQ) { isBg = true; break; }
         }
-        // Foreground: far from background, or has meaningful color saturation
         if (!isBg || sat > MIN_FG_SAT) fgMask[i] = 1;
       }
 
