@@ -1894,6 +1894,38 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       cv.cvtColor(cvInpainted, cvHsvClean, cv.COLOR_RGB2HSV);
       const hsvClean = Buffer.from(cvHsvClean.data);
       cvHsvClean.delete();
+
+      // Adaptive water thresholds: sample edge pixels to find actual water color
+      const edgeHsvSamples: Array<[number, number, number]> = [];
+      for (let x = 0; x < TW; x++) {
+        for (let band = 0; band < 5; band++) {
+          for (const idx of [band * TW + x, (TH - 1 - band) * TW + x]) {
+            const h = hsvClean[idx * 3], s = hsvClean[idx * 3 + 1], v = hsvClean[idx * 3 + 2];
+            if (h >= 70 && h <= 140 && s > 8) edgeHsvSamples.push([h, s, v]);
+          }
+        }
+      }
+      for (let y = 0; y < TH; y++) {
+        for (let band = 0; band < 5; band++) {
+          for (const idx of [y * TW + band, y * TW + TW - 1 - band]) {
+            const h = hsvClean[idx * 3], s = hsvClean[idx * 3 + 1], v = hsvClean[idx * 3 + 2];
+            if (h >= 70 && h <= 140 && s > 8) edgeHsvSamples.push([h, s, v]);
+          }
+        }
+      }
+      const totalEdgePx = (TW + TH) * 2 * 5;
+      const useAdaptiveWater = edgeHsvSamples.length > totalEdgePx * 0.03;
+      let adaptiveH = 0, adaptiveS = 0, adaptiveV = 0;
+      if (useAdaptiveWater) {
+        edgeHsvSamples.sort((a, b) => a[0] - b[0]);
+        adaptiveH = edgeHsvSamples[Math.floor(edgeHsvSamples.length / 2)][0];
+        edgeHsvSamples.sort((a, b) => a[1] - b[1]);
+        adaptiveS = edgeHsvSamples[Math.floor(edgeHsvSamples.length / 2)][1];
+        edgeHsvSamples.sort((a, b) => a[2] - b[2]);
+        adaptiveV = edgeHsvSamples[Math.floor(edgeHsvSamples.length / 2)][2];
+        console.log(`  [Water] Adaptive: ${edgeHsvSamples.length} edge samples (${(edgeHsvSamples.length / totalEdgePx * 100).toFixed(1)}%), median HSV=(${adaptiveH},${adaptiveS},${adaptiveV})`);
+      }
+
       // ── Multi-signal water detection with voting ──
       // Three independent signals vote on each pixel. A pixel is water if ≥2 agree.
       // This handles boundary blur (median + inpainting smears water↔land edges) and
@@ -1903,11 +1935,16 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       // Signal B: HSV thresholds on original image (sharp boundaries, text still present)
       // Signal C: Color proximity to known-water centroid (fills text gaps by color)
 
-      // Helper: does pixel pass water tier thresholds?
+      // Helper: does pixel pass water tier thresholds? Adaptive when edge water is found.
       const passesWaterTier = (h: number, s: number, v: number, r: number, g: number, b: number): boolean => {
-        // Tier 1: vivid blue (deep water, rivers)
+        if (useAdaptiveWater) {
+          // Adaptive tiers centered on sampled water color
+          if (Math.abs(h - adaptiveH) <= 20 && s > adaptiveS * 0.5 && v > adaptiveV * 0.5 && b > g) return true;
+          if (Math.abs(h - adaptiveH) <= 30 && s > Math.max(adaptiveS * 0.25, 8) && v > adaptiveV * 0.6) return true;
+          return false;
+        }
+        // Fallback: hardcoded tiers (for landlocked countries with no edge water)
         if (h >= 90 && h <= 120 && s > 40 && v > 90 && b > g + 12) return true;
-        // Tier 2: bright cyan (oceans) — high V separates from dark teal land
         if (h >= 80 && h <= 110 && s > 18 && s < 80 && v > 190 && b > r + 15) return true;
         return false;
       };
