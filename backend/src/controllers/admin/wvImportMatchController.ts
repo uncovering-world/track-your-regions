@@ -3071,6 +3071,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         sumL2 += L * L; sumA2 += a * a; sumB2 += b * b;
         statCount++;
       }
+      if (statCount === 0) throw new Error('No country pixels remaining after text exclusion — cannot cluster');
       const meanL = sumL / statCount, meanA = sumA / statCount, meanB = sumB / statCount;
       const rawStdL = Math.sqrt(Math.max(0, sumL2 / statCount - meanL * meanL));
       const rawStdA = Math.sqrt(Math.max(0, sumA2 / statCount - meanA * meanA));
