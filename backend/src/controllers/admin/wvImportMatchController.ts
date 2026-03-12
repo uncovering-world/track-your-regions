@@ -1849,6 +1849,43 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         console.log(`  [Color] BFS text removal on colorBuf: ${replaced} pixels filled with nearest neighbor color`);
       }
 
+      // Convert colorBuf to Lab for seam detection and later BG detection
+      const cvBufForSeam = new cv.Mat(TH, TW, cv.CV_8UC3);
+      cvBufForSeam.data.set(colorBuf);
+      const cvLabSeam = new cv.Mat();
+      cv.cvtColor(cvBufForSeam, cvLabSeam, cv.COLOR_RGB2Lab);
+      const labBufEarly = Buffer.from(cvLabSeam.data);
+      cvBufForSeam.delete(); cvLabSeam.delete();
+
+      // Extend textExcluded at BFS seam boundaries: where two different fill colors meet,
+      // the boundary pixels may have been assigned the wrong side's color. Mark the
+      // immediate neighbors of high-ΔE transitions as excluded too.
+      const SEAM_DE_SQ = 8 * 8;
+      let seamExtended = 0;
+      const seamMark = new Uint8Array(tp);
+      for (let i = 0; i < tp; i++) {
+        if (!textExcluded[i]) continue;
+        const L1 = labBufEarly[i * 3], a1 = labBufEarly[i * 3 + 1], b1 = labBufEarly[i * 3 + 2];
+        for (const n of [i - TW, i + TW, i - 1, i + 1]) {
+          if (n < 0 || n >= tp || !textExcluded[n]) continue;
+          const dL = L1 - labBufEarly[n * 3], dA = a1 - labBufEarly[n * 3 + 1], dB = b1 - labBufEarly[n * 3 + 2];
+          if (dL * dL + dA * dA + dB * dB > SEAM_DE_SQ) { seamMark[i] = 1; seamMark[n] = 1; break; }
+        }
+      }
+      // Extend exclusion: mark non-excluded neighbors of seam pixels
+      for (let i = 0; i < tp; i++) {
+        if (!seamMark[i]) continue;
+        for (const n of [i - TW, i + TW, i - 1, i + 1]) {
+          if (n >= 0 && n < tp && !textExcluded[n]) {
+            textExcluded[n] = 1;
+            seamExtended++;
+          }
+        }
+      }
+      if (seamExtended > 0) {
+        console.log(`  [Seam] Extended textExcluded by ${seamExtended} pixels around ${[...seamMark].filter(Boolean).length} seam pixels`);
+      }
+
       // --- Step B: Detect water on CLEAN inpainted image (sharp, no blur yet) ---
       // Running after text removal so blue text labels don't get detected as water
       await logStep('Detecting water (on clean sharp image, after text removal)...');
