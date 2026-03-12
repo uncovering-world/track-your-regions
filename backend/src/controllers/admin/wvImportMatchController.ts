@@ -3052,10 +3052,39 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       }
 
       await logStep('K-means color clustering...');
-      // K-means: use ~2x expected region count for enough color resolution
+
+      // Convert clean color buffer to CIELAB for perceptually-accurate K-means
+      const cvBufForLab = new cv.Mat(TH, TW, cv.CV_8UC3);
+      cvBufForLab.data.set(buf);
+      const cvLabMat = new cv.Mat();
+      cv.cvtColor(cvBufForLab, cvLabMat, cv.COLOR_RGB2Lab);
+      const labBuf = Buffer.from(cvLabMat.data);
+      cvBufForLab.delete(); cvLabMat.delete();
+
+      // Per-channel stats for z-score normalization (amplifies chromatic differences)
+      let sumL = 0, sumA = 0, sumB = 0, sumL2 = 0, sumA2 = 0, sumB2 = 0;
+      let statCount = 0;
+      for (let i = 0; i < tp; i++) {
+        if (!countryMask[i] || textExcluded[i]) continue;
+        const L = labBuf[i * 3], a = labBuf[i * 3 + 1], b = labBuf[i * 3 + 2];
+        sumL += L; sumA += a; sumB += b;
+        sumL2 += L * L; sumA2 += a * a; sumB2 += b * b;
+        statCount++;
+      }
+      const meanL = sumL / statCount, meanA = sumA / statCount, meanB = sumB / statCount;
+      const rawStdL = Math.sqrt(Math.max(0, sumL2 / statCount - meanL * meanL));
+      const rawStdA = Math.sqrt(Math.max(0, sumA2 / statCount - meanA * meanA));
+      const rawStdB = Math.sqrt(Math.max(0, sumB2 / statCount - meanB * meanB));
+      const stdL = rawStdL < 0.01 ? 1.0 : rawStdL;
+      const stdA = rawStdA < 0.01 ? 1.0 : rawStdA;
+      const stdB = rawStdB < 0.01 ? 1.0 : rawStdB;
+      const wL = 0.5 / stdL, wA = 1.0 / stdA, wB = 1.0 / stdB;
+      console.log(`  [Lab] mean=(${meanL.toFixed(1)},${meanA.toFixed(1)},${meanB.toFixed(1)}) std=(${stdL.toFixed(1)},${stdA.toFixed(1)},${stdB.toFixed(1)})`);
+
+      // K-means: use ~3x expected region count for enough color resolution
       // to separate similar-but-distinct regions. The merge step consolidates
-      // truly redundant clusters afterward. Cap at 16, floor at 6.
-      const CK = Math.max(6, Math.min(expectedRegionCount * 2, 16));
+      // truly redundant clusters afterward. Cap at 32, floor at 8.
+      const CK = Math.max(8, Math.min(expectedRegionCount * 3, 32));
       console.log(`  [K-means] CK=${CK} (expectedRegions=${expectedRegionCount})`);
       // Exclude text pixels from K-means centroids — their BFS-filled colors are
       // from nearest neighbors and may be wrong at region boundaries.
@@ -3066,7 +3095,11 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       for (let i = 0; i < tp; i++) {
         if (countryMask[i]) {
           if (textExcluded[i]) { textExcludedCount++; continue; }
-          countryPixels.push([buf[i * 3], buf[i * 3 + 1], buf[i * 3 + 2]]);
+          countryPixels.push([
+            (labBuf[i * 3] - meanL) * wL,
+            (labBuf[i * 3 + 1] - meanA) * wA,
+            (labBuf[i * 3 + 2] - meanB) * wB,
+          ]);
           countryIndices.push(i);
         }
       }
@@ -3074,20 +3107,41 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         console.log(`  [K-means] Excluded ${textExcludedCount} text pixels from centroid computation (${(textExcludedCount / countrySize * 100).toFixed(1)}% of country)`);
       }
 
+      // K-means++ initialization: probabilistic distance-weighted sampling
       const colorCentroids: Array<[number, number, number]> = [countryPixels[Math.floor(countryPixels.length / 2)]];
       for (let c = 1; c < CK; c++) {
-        let maxDist = 0, bestIdx = 0;
+        const d2 = new Float64Array(countryPixels.length);
+        let totalD2 = 0;
         for (let i = 0; i < countryPixels.length; i++) {
           let minDist = Infinity;
           for (const ct of colorCentroids) {
             const d = (countryPixels[i][0] - ct[0]) ** 2 + (countryPixels[i][1] - ct[1]) ** 2 + (countryPixels[i][2] - ct[2]) ** 2;
             if (d < minDist) minDist = d;
           }
-          if (minDist > maxDist) { maxDist = minDist; bestIdx = i; }
+          d2[i] = minDist;
+          totalD2 += minDist;
         }
-        colorCentroids.push([...countryPixels[bestIdx]]);
+        let target = Math.random() * totalD2;
+        let chosen = 0;
+        for (let i = 0; i < countryPixels.length; i++) {
+          target -= d2[i];
+          if (target <= 0) { chosen = i; break; }
+        }
+        let retries = 0;
+        while (retries < 5) {
+          const p = countryPixels[chosen];
+          let tooClose = false;
+          for (const ct of colorCentroids) {
+            if ((p[0] - ct[0]) ** 2 + (p[1] - ct[1]) ** 2 + (p[2] - ct[2]) ** 2 < 4) { tooClose = true; break; }
+          }
+          if (!tooClose) break;
+          chosen = Math.floor(Math.random() * countryPixels.length);
+          retries++;
+        }
+        colorCentroids.push([...countryPixels[chosen]]);
       }
-      for (let iter = 0; iter < 40; iter++) {
+      const MAX_ITER = 40;
+      for (let iter = 0; iter < MAX_ITER; iter++) {
         const sums = colorCentroids.map(() => [0, 0, 0, 0]);
         for (const px of countryPixels) {
           let bestDist = Infinity, bestK = 0;
@@ -3097,16 +3151,37 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
           }
           sums[bestK][0] += px[0]; sums[bestK][1] += px[1]; sums[bestK][2] += px[2]; sums[bestK][3]++;
         }
+        let totalMovement = 0;
         for (let k = 0; k < CK; k++) {
           if (sums[k][3] > 0) {
-            colorCentroids[k] = [
-              Math.round(sums[k][0] / sums[k][3]),
-              Math.round(sums[k][1] / sums[k][3]),
-              Math.round(sums[k][2] / sums[k][3]),
+            const newC: [number, number, number] = [
+              sums[k][0] / sums[k][3],
+              sums[k][1] / sums[k][3],
+              sums[k][2] / sums[k][3],
             ];
+            totalMovement += Math.abs(newC[0] - colorCentroids[k][0]) + Math.abs(newC[1] - colorCentroids[k][1]) + Math.abs(newC[2] - colorCentroids[k][2]);
+            colorCentroids[k] = newC;
           }
         }
+        if (totalMovement < 1.0) {
+          console.log(`  [K-means] Converged at iteration ${iter + 1}`);
+          break;
+        }
       }
+
+      // Convert centroids: normalized Lab → original Lab → RGB (for debug viz + shared pipeline)
+      const rgbCentroids: Array<[number, number, number]> = colorCentroids.map(c => {
+        const oL = Math.round(Math.min(255, Math.max(0, c[0] / wL + meanL)));
+        const oA = Math.round(Math.min(255, Math.max(0, c[1] / wA + meanA)));
+        const oB = Math.round(Math.min(255, Math.max(0, c[2] / wB + meanB)));
+        const labPx = new cv.Mat(1, 1, cv.CV_8UC3);
+        labPx.data[0] = oL; labPx.data[1] = oA; labPx.data[2] = oB;
+        const rgbPx = new cv.Mat();
+        cv.cvtColor(labPx, rgbPx, cv.COLOR_Lab2RGB);
+        const rgb: [number, number, number] = [rgbPx.data[0], rgbPx.data[1], rgbPx.data[2]];
+        labPx.delete(); rgbPx.delete();
+        return rgb;
+      });
 
       // Two-phase label assignment using colorBuf (lightly filtered, accurate colors):
       // Phase 1: Assign labels to clean (non-excluded) country pixels by nearest centroid.
@@ -3115,13 +3190,15 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       // Excluded pixels get labels from spatial neighbors, preserving connectivity.
       const pixelLabels = new Uint8Array(tp).fill(255);
       const clusterCounts = new Array(CK).fill(0);
-      // Phase 1: color-based assignment for clean pixels only
+      // Phase 1: color-based assignment for clean pixels only (normalized Lab)
       for (let i = 0; i < tp; i++) {
         if (!countryMask[i] || textExcluded[i]) continue;
-        const r = buf[i * 3], g = buf[i * 3 + 1], b = buf[i * 3 + 2];
+        const nL = (labBuf[i * 3] - meanL) * wL;
+        const nA = (labBuf[i * 3 + 1] - meanA) * wA;
+        const nB = (labBuf[i * 3 + 2] - meanB) * wB;
         let bestDist = Infinity, bestK = 0;
         for (let k = 0; k < CK; k++) {
-          const d = (r - colorCentroids[k][0]) ** 2 + (g - colorCentroids[k][1]) ** 2 + (b - colorCentroids[k][2]) ** 2;
+          const d = (nL - colorCentroids[k][0]) ** 2 + (nA - colorCentroids[k][1]) ** 2 + (nB - colorCentroids[k][2]) ** 2;
           if (d < bestDist) { bestDist = d; bestK = k; }
         }
         pixelLabels[i] = bestK;
@@ -3154,7 +3231,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       for (let k = 0; k < CK; k++) {
         if (clusterCounts[k] === 0) continue;
         const pct = (clusterCounts[k] / countrySize * 100).toFixed(1);
-        const c = colorCentroids[k];
+        const c = rgbCentroids[k];
         console.log(`    cluster ${k}: RGB(${c[0]},${c[1]},${c[2]}) ${clusterCounts[k]}px (${pct}%)`);
       }
 
@@ -3163,7 +3240,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       await matchDivisionsFromClusters({
         worldViewId, regionId,
         knownDivisionIds,
-        buf, mapBuffer, countryMask, waterGrown, pixelLabels, colorCentroids,
+        buf, mapBuffer, countryMask, waterGrown, pixelLabels, colorCentroids: rgbCentroids,
         TW, TH, origW, origH,
         skipClusterReview: false,
         sendEvent: sendEvent as (event: Record<string, unknown>) => void,
