@@ -23,6 +23,7 @@ import {
   storeParkCrops,
   type ParkReviewDecision,
 } from './wvImportMatchReview.js';
+import { detectText } from './wvImportMatchText.js';
 
 // OpenCV WASM — eagerly initialized at module load to avoid tsx/esbuild overhead during requests.
 // tsx transforms every dynamic import() through esbuild, which takes 30s+ for the 10MB opencv.js.
@@ -507,110 +508,38 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       );
 
       // --- Step A: Detect text/symbols for exclusion (no colorBuf modification) ---
-      // Key insight: we do NOT need to remove text from colorBuf. Every downstream step
-      // already handles text via textExcluded:
-      //  - K-means: skips text pixels, BFS label propagation fills their labels spatially
-      //  - BG detection: forces text as foreground
-      //  - Park detection: text is unsaturated (sat ≈ 0), fails park criterion
-      // Modifying colorBuf is destructive on thin regions where text covers 50%+ of pixels.
-      // Detection uses rawBuf (median-filtered) — conservative, preserves coastal strips.
-      await logStep('Text detection (BlackHat + dark spots)...');
-      const cvRaw = new cv.Mat(TH, TW, cv.CV_8UC3);
-      cvRaw.data.set(rawBuf);
-      // HSV of rawBuf for dark spot detection + ocean buffer
-      const cvHsvRaw = new cv.Mat();
-      cv.cvtColor(cvRaw, cvHsvRaw, cv.COLOR_RGB2HSV);
-      const hsvSharp = Buffer.from(cvHsvRaw.data);
-      cvHsvRaw.delete();
-      // Black Hat = closing - original: highlights dark thin features on lighter bg
-      const cvGray = new cv.Mat();
-      cv.cvtColor(cvRaw, cvGray, cv.COLOR_RGB2GRAY);
-      const bhSize = oddK(11);
-      const bhKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(bhSize, bhSize));
-      const cvBlackHat = new cv.Mat();
-      cv.morphologyEx(cvGray, cvBlackHat, cv.MORPH_BLACKHAT, bhKernel);
-      bhKernel.delete();
-      const textMask = new cv.Mat();
-      cv.threshold(cvBlackHat, textMask, 25, 255, cv.THRESH_BINARY);
-      cvBlackHat.delete(); cvGray.delete();
-      // Dark spot detection: city dots/symbols (V < 50, small CCs)
-      const darkMask = new cv.Mat(TH, TW, cv.CV_8UC1, new cv.Scalar(0));
-      for (let i = 0; i < tp; i++) {
-        if (hsvSharp[i * 3 + 2] < 50) darkMask.data[i] = 255;
-      }
-      const darkLabels = new cv.Mat();
-      const darkStats = new cv.Mat();
-      const darkCents = new cv.Mat();
-      const numDarkCC = cv.connectedComponentsWithStats(darkMask, darkLabels, darkStats, darkCents);
-      darkCents.delete();
-      const maxDarkSize = Math.round(tp * 0.005);
-      const darkLabelData = darkLabels.data32S;
-      for (let c = 1; c < numDarkCC; c++) {
-        if (darkStats.intAt(c, cv.CC_STAT_AREA) <= maxDarkSize) {
-          for (let i = 0; i < tp; i++) {
-            if (darkLabelData[i] === c) textMask.data[i] = 255;
-          }
-        }
-      }
-      darkMask.delete(); darkLabels.delete(); darkStats.delete();
-      // Dilate text mask to cover anti-aliased text edges
-      const textDilateK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
-      const textMaskDilated = new cv.Mat();
-      cv.dilate(textMask, textMaskDilated, textDilateK);
-      textMask.delete(); textDilateK.delete();
-
-      // textExcluded: marks text pixels for K-means exclusion + forced foreground
-      const textExcluded = new Uint8Array(tp);
-      for (let i = 0; i < tp; i++) if (textMaskDilated.data[i]) textExcluded[i] = 1;
-
-      // --- Ocean buffer + Telea inpaint on rawBuf for water detection only ---
-      const INPAINT_R = pxS(8);
-      const inpaintMask = new cv.Mat();
-      textMaskDilated.copyTo(inpaintMask);
-      const OCEAN_BUF_R = pxS(3);
-      const obSize = OCEAN_BUF_R * 2 + 1;
-      const oceanBufK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(obSize, obSize));
-      const textNear = new cv.Mat();
-      cv.dilate(textMaskDilated, textNear, oceanBufK);
-      oceanBufK.delete();
-      let oceanBuffered = 0;
-      for (let i = 0; i < tp; i++) {
-        if (textMaskDilated.data[i]) continue;
-        if (!textNear.data[i]) continue;
-        if (hsvSharp[i * 3 + 1] < 15) { inpaintMask.data[i] = 255; oceanBuffered++; }
-      }
-      textNear.delete();
-      if (oceanBuffered > 0) console.log(`  [Text] Ocean buffer: masked ${oceanBuffered} bg pixels adjacent to text`);
-
-      const cvInpainted = new cv.Mat();
-      cv.inpaint(cvRaw, inpaintMask, cvInpainted, INPAINT_R, cv.INPAINT_TELEA);
-      cvRaw.delete();
-      inpaintMask.delete();
-
-      // Debug: text mask
-      const textMaskPng = await sharp(Buffer.from(textMaskDilated.data), {
-        raw: { width: TW, height: TH, channels: 1 },
-      }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
-      await pushDebugImage(
-        'Text mask (white = detected text/symbols — excluded from K-means, NOT removed from image)',
-        `data:image/png;base64,${textMaskPng.toString('base64')}`,
-      );
-      textMaskDilated.delete();
-
-      // Convert colorBuf to Lab for later BG detection
-      const cvBufForSeam = new cv.Mat(TH, TW, cv.CV_8UC3);
-      cvBufForSeam.data.set(colorBuf);
-      const cvLabSeam = new cv.Mat();
-      cv.cvtColor(cvBufForSeam, cvLabSeam, cv.COLOR_RGB2Lab);
-      const labBufEarly = Buffer.from(cvLabSeam.data);
-      cvBufForSeam.delete(); cvLabSeam.delete();
+      const ctx: PipelineContext = {
+        cv, regionId, worldViewId, regionName,
+        knownDivisionIds,
+        expectedRegionCount: 0, mapBuffer,
+        TW, TH, tp, origW, origH, RES_SCALE,
+        origDownBuf, rawBuf, colorBuf,
+        hsvSharp: Buffer.alloc(0), labBufEarly: Buffer.alloc(0),
+        hsvBuf: Buffer.alloc(0), inpaintedBuf: null,
+        textExcluded: new Uint8Array(0), waterGrown: new Uint8Array(0),
+        countryMask: new Uint8Array(0), countrySize: 0,
+        coastalBand: new Uint8Array(0),
+        pixelLabels: new Uint8Array(0),
+        colorCentroids: [], clusterCounts: [],
+        ckOverride: null, chromaBoost: 0, randomSeed: false,
+        sendEvent: sendEvent as PipelineContext['sendEvent'],
+        logStep, pushDebugImage, debugImages, startTime,
+        oddK, pxS,
+      };
+      await detectText(ctx);
+      const hsvSharp = ctx.hsvSharp;
+      const textExcluded = ctx.textExcluded;
+      const inpaintedBuf = ctx.inpaintedBuf!;
+      const labBufEarly = ctx.labBufEarly;
 
       // --- Step B: Detect water on CLEAN inpainted image (sharp, no blur yet) ---
       // Running after text removal so blue text labels don't get detected as water
       await logStep('Detecting water (on clean sharp image, after text removal)...');
-      const inpaintedBuf = Buffer.from(cvInpainted.data);
+      const cvInpaintedForHsv = new cv.Mat(TH, TW, cv.CV_8UC3);
+      cvInpaintedForHsv.data.set(inpaintedBuf);
       const cvHsvClean = new cv.Mat();
-      cv.cvtColor(cvInpainted, cvHsvClean, cv.COLOR_RGB2HSV);
+      cv.cvtColor(cvInpaintedForHsv, cvHsvClean, cv.COLOR_RGB2HSV);
+      cvInpaintedForHsv.delete();
       const hsvClean = Buffer.from(cvHsvClean.data);
       cvHsvClean.delete();
 
@@ -753,8 +682,6 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       // Text pixels are handled via textExcluded (K-means exclusion + forced foreground).
       // No bilateral/median/mean-shift = zero cross-boundary contamination.
       // Used for: foreground detection, park detection, K-means, debug visualization.
-      cvInpainted.delete(); // no longer needed — water detection already consumed it
-
       // Debug: show clean colorBuf (text NOT removed — excluded from K-means instead)
       const colorBufPng = await sharp(Buffer.from(colorBuf), {
         raw: { width: TW, height: TH, channels: 3 },
