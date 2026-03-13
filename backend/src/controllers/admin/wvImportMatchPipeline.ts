@@ -1,8 +1,9 @@
 /**
  * WorldView Import Match — CV Pipeline Orchestrator
  *
- * Contains the monolithic colorMatchDivisionsSSE function (moved from controller).
- * Future tasks will extract individual phases into separate modules.
+ * SSE-streaming CV pipeline: data prep → text detection → water detection →
+ * background extraction → park removal → K-means clustering → division matching.
+ * Each phase lives in its own module; this file orchestrates the sequence.
  */
 
 import { Response } from 'express';
