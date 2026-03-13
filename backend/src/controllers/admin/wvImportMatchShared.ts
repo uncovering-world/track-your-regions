@@ -11,7 +11,7 @@ import { pool } from '../../db/index.js';
 import {
   pendingClusterReviews,
   clusterPreviewImages,
-} from './wvImportMatchController.js';
+} from './wvImportMatchReview.js';
 
 // =============================================================================
 // Shared SVG helpers (also used by wvImportMatchController for pre-3230 code)
@@ -473,6 +473,66 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
   }
   if (patchMergeCount > 0) console.log(`  [Patch] ${patchMergeCount} small patches relabeled (threshold: ${MIN_PATCH}px)`);
 
+  // Auto-exclude noise clusters: desaturated (gray/dark), very small, or boundary fragments.
+  // These are background remnants, text residue, or boundary artifacts — not real regions.
+  // Same logic ICP uses to clean its silhouette, applied earlier so cluster review is clean.
+  const NOISE_MIN_SAT = 25;       // HSV saturation threshold (0-255 scale)
+  const NOISE_MIN_VAL = 60;       // HSV value threshold — very dark clusters
+  const NOISE_TINY_PCT = 0.5;     // any cluster under this % → noise regardless of color
+  {
+    const preCounts = new Map<number, number>();
+    for (let i = 0; i < tp; i++) {
+      if (pixelLabels[i] < 255) preCounts.set(pixelLabels[i], (preCounts.get(pixelLabels[i]) || 0) + 1);
+    }
+    const noiseIds: number[] = [];
+    const validIds: number[] = [];
+    for (const [lbl, cnt] of preCounts) {
+      const c = colorCentroids[lbl];
+      if (!c) { noiseIds.push(lbl); continue; }
+      const pct = cnt / countrySize * 100;
+      const maxC = Math.max(c[0], c[1], c[2]);
+      const minC = Math.min(c[0], c[1], c[2]);
+      const sat = maxC > 0 ? ((maxC - minC) / maxC) * 255 : 0;
+      const val = maxC;
+      // Ultra-small clusters: colorful ones use a lower threshold (small regions like
+      // narrow coastal strips are legitimate), gray/dark ones use the normal threshold
+      // (boundary artifacts, text residue).
+      const isColorful = sat >= NOISE_MIN_SAT && val >= NOISE_MIN_VAL;
+      const tinyThreshold = isColorful ? 0.15 : NOISE_TINY_PCT;
+      if (pct < tinyThreshold) { noiseIds.push(lbl); continue; }
+      // Gray/dark clusters at any size are noise (background remnants) — real map
+      // regions always have color. Only protect very large gray clusters (>15%)
+      // in case of unusual monochromatic maps.
+      if ((sat < NOISE_MIN_SAT || val < NOISE_MIN_VAL) && pct < 15) {
+        noiseIds.push(lbl); continue;
+      }
+      validIds.push(lbl);
+    }
+    if (noiseIds.length > 0 && validIds.length >= 3) {
+      // Reassign noise pixels to nearest valid cluster
+      let reassigned = 0;
+      for (let i = 0; i < tp; i++) {
+        if (!noiseIds.includes(pixelLabels[i])) continue;
+        let bestDist = Infinity, bestLbl = pixelLabels[i];
+        const r = buf[i * 3], g = buf[i * 3 + 1], b = buf[i * 3 + 2];
+        for (const vl of validIds) {
+          const vc = colorCentroids[vl];
+          if (!vc) continue;
+          const d = (r - vc[0]) ** 2 + (g - vc[1]) ** 2 + (b - vc[2]) ** 2;
+          if (d < bestDist) { bestDist = d; bestLbl = vl; }
+        }
+        pixelLabels[i] = bestLbl;
+        reassigned++;
+      }
+      console.log(`  [Noise] Auto-excluded ${noiseIds.length} noise cluster(s) (${reassigned} px reassigned to nearest valid cluster)`);
+      for (const nl of noiseIds) {
+        const c = colorCentroids[nl];
+        const cnt = preCounts.get(nl) || 0;
+        console.log(`    excluded ${nl}: RGB(${c?.[0]},${c?.[1]},${c?.[2]}) ${cnt}px (${(cnt / countrySize * 100).toFixed(1)}%)`);
+      }
+    }
+  }
+
   // Count final clusters
   const finalLabels = new Set<number>();
   for (let i = 0; i < tp; i++) if (pixelLabels[i] < 255) finalLabels.add(pixelLabels[i]);
@@ -482,6 +542,20 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
     for (let i = 0; i < tp; i++) if (pixelLabels[i] === lbl) cnt++;
     const c = colorCentroids[lbl];
     console.log(`    cluster ${lbl}: RGB(${c?.[0]},${c?.[1]},${c?.[2]}) ${cnt}px (${(cnt / countrySize * 100).toFixed(1)}%)`);
+  }
+
+  // ── Always push a cluster visualization as debug image ──
+  {
+    const vizBuf = Buffer.alloc(tp * 3, 220);
+    for (let i = 0; i < tp; i++) {
+      if (pixelLabels[i] !== 255 && colorCentroids[pixelLabels[i]]) {
+        const c = colorCentroids[pixelLabels[i]]!;
+        vizBuf[i * 3] = c[0]; vizBuf[i * 3 + 1] = c[1]; vizBuf[i * 3 + 2] = c[2];
+      }
+    }
+    const vizPng = await sharp(vizBuf, { raw: { width: TW, height: TH, channels: 3 } })
+      .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+    await pushDebugImage(`Clusters (${finalLabels.size} final)`, `data:image/png;base64,${vizPng.toString('base64')}`);
   }
 
   // ── Interactive cluster review ──

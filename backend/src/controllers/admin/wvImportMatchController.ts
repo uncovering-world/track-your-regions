@@ -12,6 +12,26 @@ import { parseMarkers, parseGeoTag } from '../../services/wikivoyageExtract/mark
 import { resolveMarkerCoordinates } from '../../services/worldViewImport/pointMatcher.js';
 import { matchDivisionsByVision } from '../../services/ai/openaiService.js';
 import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatchShared.js';
+import {
+  pendingWaterReviews,
+  storeWaterCrops,
+  type WaterReviewDecision,
+  pendingParkReviews,
+  storeParkCrops,
+  type ParkReviewDecision,
+} from './wvImportMatchReview.js';
+
+// Re-export review API for adminRoutes (keeps existing import path working)
+export {
+  resolveWaterReview,
+  getWaterCropImage,
+  resolveParkReview,
+  getParkCropImage,
+  resolveClusterReview,
+  getClusterPreviewImage,
+  pendingClusterReviews,
+  clusterPreviewImages,
+} from './wvImportMatchReview.js';
 
 // OpenCV WASM — eagerly initialized at module load to avoid tsx/esbuild overhead during requests.
 // tsx transforms every dynamic import() through esbuild, which takes 30s+ for the 10MB opencv.js.
@@ -38,106 +58,6 @@ if (!G.__cvReady) {
       console.error('OpenCV WASM load error:', err);
     }
   })();
-}
-// Water review decision: approved components + mix (sub-clustered) components
-interface WaterReviewDecision {
-  approvedIds: number[];
-  mixDecisions: Array<{ componentId: number; approvedSubClusters: number[] }>;
-}
-// Pending water review callbacks — SSE handler pauses here, POST handler resolves
-const pendingWaterReviews = new Map<string, (decision: WaterReviewDecision) => void>();
-
-/** Resolve a pending water review (called from POST endpoint) */
-export function resolveWaterReview(reviewId: string, decision: WaterReviewDecision): boolean {
-  const resolve = pendingWaterReviews.get(reviewId);
-  if (!resolve) return false;
-  pendingWaterReviews.delete(reviewId);
-  resolve(decision);
-  return true;
-}
-
-// Water crop image storage — crops served via GET endpoint (avoids SSE bloat)
-// Key: "reviewId/componentId/subCluster" → base64 data URL
-const waterCropImages = new Map<string, string>();
-
-/** Store water crop images for a review session */
-function storeWaterCrops(reviewId: string, components: Array<{ id: number; cropDataUrl: string; subClusters: Array<{ idx: number; cropDataUrl: string }> }>) {
-  for (const wc of components) {
-    waterCropImages.set(`${reviewId}/${wc.id}/-1`, wc.cropDataUrl);
-    for (const sc of wc.subClusters) {
-      waterCropImages.set(`${reviewId}/${wc.id}/${sc.idx}`, sc.cropDataUrl);
-    }
-  }
-  // Auto-cleanup after 10 minutes
-  setTimeout(() => {
-    for (const key of [...waterCropImages.keys()]) {
-      if (key.startsWith(`${reviewId}/`)) waterCropImages.delete(key);
-    }
-  }, 600000);
-}
-
-/** Get a stored water crop image (called from GET endpoint) */
-export function getWaterCropImage(reviewId: string, componentId: number, subCluster: number): string | undefined {
-  return waterCropImages.get(`${reviewId}/${componentId}/${subCluster}`);
-}
-
-// Park review — similar to water review but for national park/reserve overlays
-interface ParkReviewDecision {
-  /** Component IDs confirmed as parks (will be inpainted out) */
-  confirmedIds: number[];
-}
-const pendingParkReviews = new Map<string, (decision: ParkReviewDecision) => void>();
-
-export function resolveParkReview(reviewId: string, decision: ParkReviewDecision): boolean {
-  const resolve = pendingParkReviews.get(reviewId);
-  if (!resolve) return false;
-  pendingParkReviews.delete(reviewId);
-  resolve(decision);
-  return true;
-}
-
-// Park crop images — served via same GET endpoint pattern
-const parkCropImages = new Map<string, string>();
-
-function storeParkCrops(reviewId: string, components: Array<{ id: number; cropDataUrl: string }>) {
-  for (const pc of components) {
-    parkCropImages.set(`${reviewId}/${pc.id}`, pc.cropDataUrl);
-  }
-  setTimeout(() => {
-    for (const key of [...parkCropImages.keys()]) {
-      if (key.startsWith(`${reviewId}/`)) parkCropImages.delete(key);
-    }
-  }, 600000);
-}
-
-export function getParkCropImage(reviewId: string, componentId: number): string | undefined {
-  return parkCropImages.get(`${reviewId}/${componentId}`);
-}
-
-// Cluster review — let user merge small artifact clusters into real ones
-interface ClusterReviewDecision {
-  /** Map from small cluster label → target cluster label to merge into */
-  merges: Record<number, number>;
-  /** Cluster labels to exclude entirely (not a real region — set to background) */
-  excludes?: number[];
-  /** Request re-clustering with modified parameters */
-  recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' };
-}
-export const pendingClusterReviews = new Map<string, (decision: ClusterReviewDecision) => void>();
-
-// Cluster preview images — served via GET endpoint (avoids SSE bloat like water/park crops)
-export const clusterPreviewImages = new Map<string, string>();
-
-export function getClusterPreviewImage(reviewId: string): string | undefined {
-  return clusterPreviewImages.get(reviewId);
-}
-
-export function resolveClusterReview(reviewId: string, decision: ClusterReviewDecision): boolean {
-  const resolve = pendingClusterReviews.get(reviewId);
-  if (!resolve) return false;
-  pendingClusterReviews.delete(reviewId);
-  resolve(decision);
-  return true;
 }
 
 // =============================================================================
@@ -1725,11 +1645,18 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         `data:image/png;base64,${noiseRemovedPng.toString('base64')}`,
       );
 
-      // --- Step A: Detect text/symbols mask → inpaint with surrounding colors ---
-      await logStep('Text detection + inpainting...');
+      // --- Step A: Detect text/symbols for exclusion (no colorBuf modification) ---
+      // Key insight: we do NOT need to remove text from colorBuf. Every downstream step
+      // already handles text via textExcluded:
+      //  - K-means: skips text pixels, BFS label propagation fills their labels spatially
+      //  - BG detection: forces text as foreground
+      //  - Park detection: text is unsaturated (sat ≈ 0), fails park criterion
+      // Modifying colorBuf is destructive on thin regions where text covers 50%+ of pixels.
+      // Detection uses rawBuf (median-filtered) — conservative, preserves coastal strips.
+      await logStep('Text detection (BlackHat + dark spots)...');
       const cvRaw = new cv.Mat(TH, TW, cv.CV_8UC3);
       cvRaw.data.set(rawBuf);
-      // HSV of raw image (for dark spot detection)
+      // HSV of rawBuf for dark spot detection + ocean buffer
       const cvHsvRaw = new cv.Mat();
       cv.cvtColor(cvRaw, cvHsvRaw, cv.COLOR_RGB2HSV);
       const hsvSharp = Buffer.from(cvHsvRaw.data);
@@ -1745,8 +1672,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       const textMask = new cv.Mat();
       cv.threshold(cvBlackHat, textMask, 25, 255, cv.THRESH_BINARY);
       cvBlackHat.delete(); cvGray.delete();
-      // Also detect city dots/symbols: very dark spots (V < 50), but only small ones
-      // to avoid catching large dark title boxes (like "Cameroon" banner)
+      // Dark spot detection: city dots/symbols (V < 50, small CCs)
       const darkMask = new cv.Mat(TH, TW, cv.CV_8UC1, new cv.Scalar(0));
       for (let i = 0; i < tp; i++) {
         if (hsvSharp[i * 3 + 2] < 50) darkMask.data[i] = 255;
@@ -1766,24 +1692,17 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         }
       }
       darkMask.delete(); darkLabels.delete(); darkStats.delete();
-      // Dilate text mask to cover anti-aliased text edges.
-      // Fixed 5×5 kernel: anti-aliased edges are always ~1-2px regardless of resolution.
-      // Scaling this would over-dilate on thin coastal strips, eating all clean pixels.
+      // Dilate text mask to cover anti-aliased text edges
       const textDilateK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
       const textMaskDilated = new cv.Mat();
       cv.dilate(textMask, textMaskDilated, textDilateK);
       textMask.delete(); textDilateK.delete();
 
-      // Save text mask for K-means exclusion (text pixels get unreliable colors after inpainting)
+      // textExcluded: marks text pixels for K-means exclusion + forced foreground
       const textExcluded = new Uint8Array(tp);
       for (let i = 0; i < tp; i++) if (textMaskDilated.data[i]) textExcluded[i] = 1;
 
-      // --- Ocean buffer: prevent water/background colors from bleeding into coastal text ---
-      // Telea inpainting samples all non-masked pixels within its radius. On thin coastal
-      // strips, this includes ocean pixels, creating dirty mixed colors. Fix: also mask
-      // clearly-background pixels directly adjacent to text so Telea fills from land side.
-      // Conservative: only immediate neighbors (3px dilation), only very low saturation
-      // (S < 15 = truly gray background, not desaturated land like desert/olive).
+      // --- Ocean buffer + Telea inpaint on rawBuf for water detection only ---
       const INPAINT_R = pxS(8);
       const inpaintMask = new cv.Mat();
       textMaskDilated.copyTo(inpaintMask);
@@ -1795,98 +1714,35 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       oceanBufK.delete();
       let oceanBuffered = 0;
       for (let i = 0; i < tp; i++) {
-        if (textMaskDilated.data[i]) continue; // already masked as text
-        if (!textNear.data[i]) continue;        // not adjacent to text
-        if (hsvSharp[i * 3 + 1] < 15) {         // S < 15 → truly gray background only
-          inpaintMask.data[i] = 255;
-          oceanBuffered++;
-        }
+        if (textMaskDilated.data[i]) continue;
+        if (!textNear.data[i]) continue;
+        if (hsvSharp[i * 3 + 1] < 15) { inpaintMask.data[i] = 255; oceanBuffered++; }
       }
       textNear.delete();
-      if (oceanBuffered > 0) {
-        console.log(`  [Text] Ocean buffer: masked ${oceanBuffered} bg pixels adjacent to text`);
-      }
+      if (oceanBuffered > 0) console.log(`  [Text] Ocean buffer: masked ${oceanBuffered} bg pixels adjacent to text`);
 
-      // Inpaint: fill masked pixels with surrounding colors (Telea algorithm)
       const cvInpainted = new cv.Mat();
       cv.inpaint(cvRaw, inpaintMask, cvInpainted, INPAINT_R, cv.INPAINT_TELEA);
-      cvRaw.delete(); inpaintMask.delete();
+      cvRaw.delete();
+      inpaintMask.delete();
 
       // Debug: text mask
       const textMaskPng = await sharp(Buffer.from(textMaskDilated.data), {
         raw: { width: TW, height: TH, channels: 1 },
       }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
       await pushDebugImage(
-        'Text mask (white = detected text/symbols to inpaint)',
+        'Text mask (white = detected text/symbols — excluded from K-means, NOT removed from image)',
         `data:image/png;base64,${textMaskPng.toString('base64')}`,
       );
       textMaskDilated.delete();
 
-      // --- BFS color propagation on colorBuf (Photoshop-style text removal) ---
-      // Each text pixel gets the color of its NEAREST non-text neighbor.
-      // Unlike Telea inpainting (fills from ALL boundary pixels including ocean →
-      // dirty mixed colors on thin strips), BFS copies from the nearest clean pixel
-      // on the SAME side of the region boundary. On a thin blue strip with text:
-      // non-text blue edge pixels → BFS fills text inward with blue → pink never leaks in.
-      {
-        const bfsQ: number[] = [];
-        const filled = new Uint8Array(tp);
-        for (let i = 0; i < tp; i++) {
-          if (!textExcluded[i]) { filled[i] = 1; bfsQ.push(i); }
-        }
-        let h = 0, replaced = 0;
-        while (h < bfsQ.length) {
-          const p = bfsQ[h++];
-          for (const n of [p - TW, p + TW, p - 1, p + 1]) {
-            if (n >= 0 && n < tp && !filled[n]) {
-              filled[n] = 1;
-              colorBuf[n * 3] = colorBuf[p * 3];
-              colorBuf[n * 3 + 1] = colorBuf[p * 3 + 1];
-              colorBuf[n * 3 + 2] = colorBuf[p * 3 + 2];
-              bfsQ.push(n);
-              replaced++;
-            }
-          }
-        }
-        console.log(`  [Color] BFS text removal on colorBuf: ${replaced} pixels filled with nearest neighbor color`);
-      }
-
-      // Convert colorBuf to Lab for seam detection and later BG detection
+      // Convert colorBuf to Lab for later BG detection
       const cvBufForSeam = new cv.Mat(TH, TW, cv.CV_8UC3);
       cvBufForSeam.data.set(colorBuf);
       const cvLabSeam = new cv.Mat();
       cv.cvtColor(cvBufForSeam, cvLabSeam, cv.COLOR_RGB2Lab);
       const labBufEarly = Buffer.from(cvLabSeam.data);
       cvBufForSeam.delete(); cvLabSeam.delete();
-
-      // Extend textExcluded at BFS seam boundaries: where two different fill colors meet,
-      // the boundary pixels may have been assigned the wrong side's color. Mark the
-      // immediate neighbors of high-ΔE transitions as excluded too.
-      const SEAM_DE_SQ = 8 * 8;
-      let seamExtended = 0;
-      const seamMark = new Uint8Array(tp);
-      for (let i = 0; i < tp; i++) {
-        if (!textExcluded[i]) continue;
-        const L1 = labBufEarly[i * 3], a1 = labBufEarly[i * 3 + 1], b1 = labBufEarly[i * 3 + 2];
-        for (const n of [i - TW, i + TW, i - 1, i + 1]) {
-          if (n < 0 || n >= tp || !textExcluded[n]) continue;
-          const dL = L1 - labBufEarly[n * 3], dA = a1 - labBufEarly[n * 3 + 1], dB = b1 - labBufEarly[n * 3 + 2];
-          if (dL * dL + dA * dA + dB * dB > SEAM_DE_SQ) { seamMark[i] = 1; seamMark[n] = 1; break; }
-        }
-      }
-      // Extend exclusion: mark non-excluded neighbors of seam pixels
-      for (let i = 0; i < tp; i++) {
-        if (!seamMark[i]) continue;
-        for (const n of [i - TW, i + TW, i - 1, i + 1]) {
-          if (n >= 0 && n < tp && !textExcluded[n]) {
-            textExcluded[n] = 1;
-            seamExtended++;
-          }
-        }
-      }
-      if (seamExtended > 0) {
-        console.log(`  [Seam] Extended textExcluded by ${seamExtended} pixels around ${[...seamMark].filter(Boolean).length} seam pixels`);
-      }
 
       // --- Step B: Detect water on CLEAN inpainted image (sharp, no blur yet) ---
       // Running after text removal so blue text labels don't get detected as water
@@ -1899,11 +1755,15 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
 
       // Adaptive water thresholds: sample edge pixels to find actual water color
       const edgeHsvSamples: Array<[number, number, number]> = [];
+      const edgeRgbSamples: Array<[number, number, number]> = [];
       for (let x = 0; x < TW; x++) {
         for (let band = 0; band < 5; band++) {
           for (const idx of [band * TW + x, (TH - 1 - band) * TW + x]) {
             const h = hsvClean[idx * 3], s = hsvClean[idx * 3 + 1], v = hsvClean[idx * 3 + 2];
-            if (h >= 70 && h <= 140 && s > 8) edgeHsvSamples.push([h, s, v]);
+            if (h >= 70 && h <= 140 && s > 8) {
+              edgeHsvSamples.push([h, s, v]);
+              edgeRgbSamples.push([inpaintedBuf[idx * 3], inpaintedBuf[idx * 3 + 1], inpaintedBuf[idx * 3 + 2]]);
+            }
           }
         }
       }
@@ -1911,13 +1771,17 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         for (let band = 0; band < 5; band++) {
           for (const idx of [y * TW + band, y * TW + TW - 1 - band]) {
             const h = hsvClean[idx * 3], s = hsvClean[idx * 3 + 1], v = hsvClean[idx * 3 + 2];
-            if (h >= 70 && h <= 140 && s > 8) edgeHsvSamples.push([h, s, v]);
+            if (h >= 70 && h <= 140 && s > 8) {
+              edgeHsvSamples.push([h, s, v]);
+              edgeRgbSamples.push([inpaintedBuf[idx * 3], inpaintedBuf[idx * 3 + 1], inpaintedBuf[idx * 3 + 2]]);
+            }
           }
         }
       }
       const totalEdgePx = (TW + TH) * 2 * 5;
       const useAdaptiveWater = edgeHsvSamples.length > totalEdgePx * 0.03;
       let adaptiveH = 0, adaptiveS = 0, adaptiveV = 0;
+      let adaptiveR = 0, adaptiveG = 0, adaptiveB = 0;
       if (useAdaptiveWater) {
         edgeHsvSamples.sort((a, b) => a[0] - b[0]);
         adaptiveH = edgeHsvSamples[Math.floor(edgeHsvSamples.length / 2)][0];
@@ -1925,7 +1789,11 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         adaptiveS = edgeHsvSamples[Math.floor(edgeHsvSamples.length / 2)][1];
         edgeHsvSamples.sort((a, b) => a[2] - b[2]);
         adaptiveV = edgeHsvSamples[Math.floor(edgeHsvSamples.length / 2)][2];
-        console.log(`  [Water] Adaptive: ${edgeHsvSamples.length} edge samples (${(edgeHsvSamples.length / totalEdgePx * 100).toFixed(1)}%), median HSV=(${adaptiveH},${adaptiveS},${adaptiveV})`);
+        // Median RGB of edge water (for RGB-proximity supplement)
+        edgeRgbSamples.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
+        const mid = edgeRgbSamples[Math.floor(edgeRgbSamples.length / 2)];
+        adaptiveR = mid[0]; adaptiveG = mid[1]; adaptiveB = mid[2];
+        console.log(`  [Water] Adaptive: ${edgeHsvSamples.length} edge samples (${(edgeHsvSamples.length / totalEdgePx * 100).toFixed(1)}%), median HSV=(${adaptiveH},${adaptiveS},${adaptiveV}), median RGB=(${adaptiveR},${adaptiveG},${adaptiveB})`);
       }
 
       // ── Multi-signal water detection with voting ──
@@ -1937,17 +1805,23 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       // Signal B: HSV thresholds on original image (sharp boundaries, text still present)
       // Signal C: Color proximity to known-water centroid (fills text gaps by color)
 
-      // Helper: does pixel pass water tier thresholds? Adaptive when edge water is found.
+      // Helper: does pixel pass water tier thresholds?
+      // Always use hardcoded tiers (reliable for standard Wikivoyage blue/teal water).
+      // When edge water sampling found water, supplement with a tight adaptive tier
+      // that only catches vivid pixels very close to the sampled water color.
       const passesWaterTier = (h: number, s: number, v: number, r: number, g: number, b: number): boolean => {
-        if (useAdaptiveWater) {
-          // Adaptive tiers centered on sampled water color
-          if (Math.abs(h - adaptiveH) <= 20 && s > adaptiveS * 0.5 && v > adaptiveV * 0.5 && b > g) return true;
-          if (Math.abs(h - adaptiveH) <= 30 && s > Math.max(adaptiveS * 0.25, 8) && v > adaptiveV * 0.6) return true;
-          return false;
-        }
-        // Fallback: hardcoded tiers (for landlocked countries with no edge water)
-        if (h >= 90 && h <= 120 && s > 40 && v > 90 && b > g + 12) return true;
+        // Hardcoded tiers — always active.
+        // Saturation cap (s < 210): map water is always pastel/soft (S typically 50-180).
+        // Deeply saturated pixels (S > 210) are colored land regions, not water — e.g.
+        // Morocco's blue coastal strip at S=255 has ocean-like hue but is a land region.
+        if (h >= 90 && h <= 120 && s > 40 && s < 210 && v > 90 && b > g + 12) return true;
         if (h >= 80 && h <= 110 && s > 18 && s < 80 && v > 190 && b > r + 15) return true;
+        // Tight adaptive supplement — RGB proximity to edge-sampled water color.
+        // Catches water with unusual hue (e.g. teal where g > b) that hardcoded HSV tiers miss.
+        if (useAdaptiveWater) {
+          const dr = r - adaptiveR, dg = g - adaptiveG, db = b - adaptiveB;
+          if (dr * dr + dg * dg + db * db <= 35 * 35) return true;
+        }
         return false;
       };
 
@@ -2014,17 +1888,18 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       console.log(`  [Water] Voting: A=${countA} B=${countB} C=${countC} seeds(A∩B)=${seedCnt} → final=${waterRawCount} (${(waterRawCount / tp * 100).toFixed(1)}%)`);
 
       // --- Step C: colorBuf is the single clean buffer for all downstream processing ---
-      // Pipeline: origDownBuf (no spatial filter) → line removal → BFS text fill.
+      // Pipeline: origDownBuf (no spatial filter) → line removal. No text removal from colorBuf.
+      // Text pixels are handled via textExcluded (K-means exclusion + forced foreground).
       // No bilateral/median/mean-shift = zero cross-boundary contamination.
       // Used for: foreground detection, park detection, K-means, debug visualization.
       cvInpainted.delete(); // no longer needed — water detection already consumed it
 
-      // Debug: show clean colorBuf (text removed, no spatial blur)
+      // Debug: show clean colorBuf (text NOT removed — excluded from K-means instead)
       const colorBufPng = await sharp(Buffer.from(colorBuf), {
         raw: { width: TW, height: TH, channels: 3 },
       }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
       await pushDebugImage(
-        'Clean image (text BFS-filled, no spatial filter — used for all downstream)',
+        '🔴 Clean image (no text removal, no spatial filter — text excluded from K-means)',
         `data:image/png;base64,${colorBufPng.toString('base64')}`,
       );
 
@@ -2063,6 +1938,131 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       const waterLabelData = waterLabels.data32S;
       // Store sub-cluster centroids for "Mix" response handling
       const compSubCentroids = new Map<number, Array<[number, number, number]>>();
+
+      // --- Split large water blobs at narrow necks ---
+      // When a coastal strip connects to the ocean through a narrow bridge,
+      // they form one CC. Erode to break the neck, reassign via BFS.
+      interface CompStat { area: number; left: number; top: number; width: number; height: number }
+      const compStats = new Map<number, CompStat>();
+      for (let c = 1; c < numWaterCC; c++) {
+        compStats.set(c, {
+          area: waterStats.intAt(c, cv.CC_STAT_AREA),
+          left: waterStats.intAt(c, cv.CC_STAT_LEFT),
+          top: waterStats.intAt(c, cv.CC_STAT_TOP),
+          width: waterStats.intAt(c, cv.CC_STAT_WIDTH),
+          height: waterStats.intAt(c, cv.CC_STAT_HEIGHT),
+        });
+      }
+
+      const SPLIT_MIN_AREA = Math.round(tp * 0.05); // only split CCs > 5% of image
+      const splitKSize = oddK(10);
+      const splitKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(splitKSize, splitKSize));
+      let nextWaterLabel = numWaterCC;
+
+      for (let c = 1; c < numWaterCC; c++) {
+        const stat = compStats.get(c)!;
+        if (stat.area < SPLIT_MIN_AREA) continue;
+
+        // Create binary mask for this CC
+        const ccMask = new Uint8Array(tp);
+        for (let i = 0; i < tp; i++) {
+          if (waterLabelData[i] === c) ccMask[i] = 255;
+        }
+
+        // Erode to break narrow necks
+        const compMaskMat = cv.matFromArray(TH, TW, cv.CV_8UC1, ccMask);
+        const erodedMat = new cv.Mat();
+        cv.erode(compMaskMat, erodedMat, splitKernel);
+        compMaskMat.delete();
+
+        // CC on eroded mask
+        const erodedLabels = new cv.Mat();
+        const erodedStats = new cv.Mat();
+        const erodedCents = new cv.Mat();
+        const numEroded = cv.connectedComponentsWithStats(erodedMat, erodedLabels, erodedStats, erodedCents);
+        erodedMat.delete(); erodedCents.delete();
+
+        // Count significant sub-blobs (>1% of original component area)
+        const minSubSize = Math.max(50, Math.round(stat.area * 0.01));
+        const significantSubs: Array<{ eLabel: number; area: number }> = [];
+        for (let sc = 1; sc < numEroded; sc++) {
+          const subArea = erodedStats.intAt(sc, cv.CC_STAT_AREA);
+          if (subArea >= minSubSize) significantSubs.push({ eLabel: sc, area: subArea });
+        }
+
+        if (significantSubs.length < 2) {
+          erodedLabels.delete(); erodedStats.delete();
+          continue;
+        }
+
+        // Sort by area descending (ocean first, coastal strip second)
+        significantSubs.sort((a, b) => b.area - a.area);
+
+        console.log(`  [Water] Splitting CC ${c} (${stat.area}px, ${(stat.area / tp * 100).toFixed(1)}%) into ${significantSubs.length} sub-blobs`);
+
+        // Map eroded sub-labels to new global labels
+        const subLabelMap = new Map<number, number>();
+        for (const sub of significantSubs) {
+          subLabelMap.set(sub.eLabel, nextWaterLabel++);
+        }
+
+        // Seed BFS: pixels in both original CC and an eroded sub-blob get new label
+        const erodedLabelData = erodedLabels.data32S;
+        const bfsQueue: number[] = [];
+
+        for (let i = 0; i < tp; i++) {
+          if (waterLabelData[i] !== c) continue;
+          const newLabel = subLabelMap.get(erodedLabelData[i]);
+          if (newLabel !== undefined) {
+            waterLabelData[i] = newLabel;
+            bfsQueue.push(i);
+          }
+        }
+
+        // BFS outward (8-connectivity to match CC): assign remaining pixels to nearest sub-blob
+        let head = 0;
+        while (head < bfsQueue.length) {
+          const pi = bfsQueue[head++];
+          const label = waterLabelData[pi];
+          const px = pi % TW, py = Math.floor(pi / TW);
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = px + dx, ny = py + dy;
+              if (nx < 0 || nx >= TW || ny < 0 || ny >= TH) continue;
+              const ni = ny * TW + nx;
+              if (waterLabelData[ni] !== c) continue; // not this CC or already assigned
+              waterLabelData[ni] = label;
+              bfsQueue.push(ni);
+            }
+          }
+        }
+
+        // Compute stats for new sub-labels
+        for (const [eLabel, newLabel] of subLabelMap) {
+          let subArea = 0, minX = TW, minY = TH, maxX = 0, maxY = 0;
+          for (let i = 0; i < tp; i++) {
+            if (waterLabelData[i] !== newLabel) continue;
+            subArea++;
+            const x = i % TW, y = Math.floor(i / TW);
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
+          if (subArea > 0) {
+            compStats.set(newLabel, {
+              area: subArea, left: minX, top: minY,
+              width: maxX - minX + 1, height: maxY - minY + 1,
+            });
+            console.log(`    sub-blob ${eLabel} → label ${newLabel}: ${subArea}px (${(subArea / tp * 100).toFixed(1)}%) bbox ${maxX - minX + 1}×${maxY - minY + 1}`);
+          }
+        }
+
+        // Remove original label (it's been split)
+        compStats.delete(c);
+
+        erodedLabels.delete(); erodedStats.delete();
+      }
+      splitKernel.delete();
 
       // Helper: generate crop of original image with magenta outline for given pixel set
       const generateOutlineCrop = async (
@@ -2111,17 +2111,17 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
             }
           }
         }
-        const targetW = Math.min(250, cropW * 2);
+        const targetW = Math.min(500, cropW * 2);
         const png = await sharp(cropBuf, { raw: { width: cropW, height: cropH, channels: 3 } })
           .resize(targetW, undefined, { kernel: 'lanczos3' }).png().toBuffer();
         return `data:image/png;base64,${png.toString('base64')}`;
       };
 
-      for (let c = 1; c < numWaterCC; c++) {
-        const area = waterStats.intAt(c, cv.CC_STAT_AREA);
+      for (const [c, stat] of compStats) {
+        const { area } = stat;
         if (area < minWaterSize) continue;
-        const bw = waterStats.intAt(c, cv.CC_STAT_WIDTH);
-        const bh = waterStats.intAt(c, cv.CC_STAT_HEIGHT);
+        const bw = stat.width;
+        const bh = stat.height;
         const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
         const solidity = area / Math.max(1, bw * bh);
         if (aspect > 4 && solidity < 0.3) continue; // elongated + sparse = river
@@ -2131,8 +2131,8 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
           if (waterLabelData[i] === c) waterMask[i] = 1;
         }
 
-        const cx = waterStats.intAt(c, cv.CC_STAT_LEFT);
-        const cy = waterStats.intAt(c, cv.CC_STAT_TOP);
+        const cx = stat.left;
+        const cy = stat.top;
 
         // Generate main crop
         let mainCrop: string | undefined;
@@ -2218,6 +2218,8 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
           subClusters,
         });
       }
+      // Save split-aware labels before deleting Mats (needed for rebuild after review)
+      const savedWaterLabels = new Int32Array(waterLabelData);
       waterLabels.delete(); waterStats.delete();
 
       console.log(`  [Water] ${waterComponents.length} component(s) after CC filter (from ${numWaterCC - 1} raw)`);
@@ -2298,31 +2300,12 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
           if (mixMap.size) changes.push(`${mixMap.size} mixed`);
           await logStep(`Rebuilding water mask (${changes.join(', ')})...`);
 
-          // Redo CC analysis from waterRaw to get labels
-          const wRawMat2 = cv.matFromArray(TH, TW, cv.CV_8UC1, waterRaw);
-          const wk2Size = oddK(7);
-          const wKernel2 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(wk2Size, wk2Size));
-          const wClosed2 = new cv.Mat();
-          cv.morphologyEx(wRawMat2, wClosed2, cv.MORPH_CLOSE, wKernel2);
-          wRawMat2.delete();
-          const wLabels2 = new cv.Mat();
-          const wStats2 = new cv.Mat();
-          const wCents2 = new cv.Mat();
-          cv.connectedComponentsWithStats(wClosed2, wLabels2, wStats2, wCents2);
-          wClosed2.delete(); wCents2.delete();
-          const lData2 = wLabels2.data32S;
-
+          // Use saved split-aware labels (includes blob-split sub-labels)
           waterMask.fill(0);
           for (let i = 0; i < tp; i++) {
-            const label = lData2[i];
+            const label = savedWaterLabels[i];
             if (label <= 0) continue;
-            const lArea = wStats2.intAt(label, cv.CC_STAT_AREA);
-            if (lArea < minWaterSize) continue;
-            const lbw = wStats2.intAt(label, cv.CC_STAT_WIDTH);
-            const lbh = wStats2.intAt(label, cv.CC_STAT_HEIGHT);
-            const lasp = Math.max(lbw, lbh) / Math.max(1, Math.min(lbw, lbh));
-            const lsol = lArea / Math.max(1, lbw * lbh);
-            if (lasp > 4 && lsol < 0.3) continue;
+            if (!compStats.has(label)) continue; // filtered out (too small, river-like)
 
             if (approvedSet.has(label)) {
               waterMask[i] = 1; // Fully approved
@@ -2340,7 +2323,6 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
             }
             // Else: rejected — waterMask stays 0
           }
-          wLabels2.delete(); wStats2.delete(); wKernel2.delete();
 
           // Re-dilate
           const wm3 = cv.matFromArray(TH, TW, cv.CV_8UC1, waterMask);
@@ -2600,11 +2582,125 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         console.log(`  [FG] Restored ${forcedRestored} forced-foreground pixels erased by morph pipeline`);
       }
 
-      // Saturation refinement: when country mask is >70% of image, the background
-      // detection likely failed (neighbors have similar gray tones). Use saturation
-      // to separate colorful country regions from muted gray neighbors.
+      // Remove foreign land: neighboring countries (e.g. Europe visible on Morocco map)
+      // get connected to the target country through narrow straits bridged by morph close.
+      // Erode to break narrow bridges, identify separate bodies, remove small foreign ones.
+      // Preserves exclaves: only removes bodies that are BOTH outside the main bbox AND
+      // smaller than 15% of the main body (real exclaves like Kaliningrad are kept).
+      {
+        const cmMat = cv.matFromArray(TH, TW, cv.CV_8UC1, countryMask);
+        // Scale-aware erosion: bridge must be < 15 base pixels wide to break
+        const erodeK = oddK(15);
+        const erodeKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(erodeK, erodeK));
+        const eroded = new cv.Mat();
+        cv.erode(cmMat, eroded, erodeKernel);
+        erodeKernel.delete(); cmMat.delete();
+
+        const erodedLabels = new cv.Mat();
+        const erodedStats = new cv.Mat();
+        const erodedCents = new cv.Mat();
+        const numErodedCC = cv.connectedComponentsWithStats(eroded, erodedLabels, erodedStats, erodedCents);
+        eroded.delete(); erodedCents.delete();
+
+        if (numErodedCC > 2) { // >2 means at least 2 foreground bodies
+          // Find the largest foreground body
+          let mainCC = 1, mainSize = 0;
+          for (let c = 1; c < numErodedCC; c++) {
+            const area = erodedStats.intAt(c, cv.CC_STAT_AREA);
+            if (area > mainSize) { mainSize = area; mainCC = c; }
+          }
+          // Get bounding box of main body
+          const mainTop = erodedStats.intAt(mainCC, cv.CC_STAT_TOP);
+          const mainLeft = erodedStats.intAt(mainCC, cv.CC_STAT_LEFT);
+          const mainW = erodedStats.intAt(mainCC, cv.CC_STAT_WIDTH);
+          const mainH = erodedStats.intAt(mainCC, cv.CC_STAT_HEIGHT);
+          const mainBottom = mainTop + mainH;
+          const mainRight = mainLeft + mainW;
+          const margin = pxS(20); // generous margin around main body
+
+          // Identify which secondary CCs are foreign land vs exclaves
+          const foreignCCs = new Set<number>();
+          for (let c = 1; c < numErodedCC; c++) {
+            if (c === mainCC) continue;
+            const area = erodedStats.intAt(c, cv.CC_STAT_AREA);
+            // Keep large bodies (>15% of main) — likely exclaves, not decoration
+            if (area > mainSize * 0.15) continue;
+            // Keep bodies inside main bbox + margin — could be islands or nearby exclaves
+            const cTop = erodedStats.intAt(c, cv.CC_STAT_TOP);
+            const cLeft = erodedStats.intAt(c, cv.CC_STAT_LEFT);
+            const cW = erodedStats.intAt(c, cv.CC_STAT_WIDTH);
+            const cH = erodedStats.intAt(c, cv.CC_STAT_HEIGHT);
+            const cBottom = cTop + cH;
+            const cRight = cLeft + cW;
+            const overlapsMain = cBottom >= mainTop - margin && cTop <= mainBottom + margin &&
+                                 cRight >= mainLeft - margin && cLeft <= mainRight + margin;
+            if (overlapsMain) continue;
+            foreignCCs.add(c);
+          }
+
+          if (foreignCCs.size > 0) {
+            // Remove foreign pixels from country mask
+            // Also remove non-eroded pixels in the bridge zone between foreign and main
+            let foreignRemoved = 0;
+            const erodedData = erodedLabels.data32S;
+            for (let i = 0; i < tp; i++) {
+              if (!countryMask[i]) continue;
+              // Check eroded label — if pixel belongs to a foreign CC, remove it
+              if (erodedData[i] > 0 && foreignCCs.has(erodedData[i])) {
+                countryMask[i] = 0;
+                countrySize--;
+                foreignRemoved++;
+                continue;
+              }
+              // Also remove non-eroded bridge pixels outside main bbox that have
+              // no eroded body (these are the bridge zone lost during erosion)
+              if (erodedData[i] === 0 && countryMask[i]) {
+                const x = i % TW, y = Math.floor(i / TW);
+                const outsideMain = y < mainTop - margin || y > mainBottom + margin ||
+                                    x < mainLeft - margin || x > mainRight + margin;
+                if (outsideMain) {
+                  countryMask[i] = 0;
+                  countrySize--;
+                  foreignRemoved++;
+                }
+              }
+            }
+            if (foreignRemoved > 0) {
+              console.log(`  [FG] Removed ${foreignRemoved} foreign land pixels (${foreignCCs.size} neighboring country blob(s))`);
+            }
+          }
+        }
+        erodedLabels.delete(); erodedStats.delete();
+      }
+
+      // Remove thin line artifacts (roads, borders drawn on map) via morphological opening.
+      // Opening = erode + dilate: removes features thinner than the kernel while preserving
+      // the country shape. Kernel ~5px catches 1-3px line artifacts without affecting real
+      // regions (typically 15px+ wide at TW=800).
+      {
+        const cmOpenMat = cv.matFromArray(TH, TW, cv.CV_8UC1, countryMask);
+        const openK = oddK(3);
+        const openKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(openK, openK));
+        const openedMat = new cv.Mat();
+        cv.morphologyEx(cmOpenMat, openedMat, cv.MORPH_OPEN, openKernel);
+        let openRemoved = 0;
+        for (let i = 0; i < tp; i++) {
+          if (countryMask[i] && !openedMat.data[i]) {
+            countryMask[i] = 0;
+            countrySize--;
+            openRemoved++;
+          }
+        }
+        cmOpenMat.delete(); openedMat.delete(); openKernel.delete();
+        if (openRemoved > 0) console.log(`  [FG] Morphological opening removed ${openRemoved} thin-line artifact pixels`);
+      }
+
+      // Saturation refinement: neighboring countries (Western Sahara, Algeria for Morocco)
+      // may have slightly different gray from map background, escaping background detection.
+      // Use Otsu on saturation to separate colorful country regions from muted gray neighbors.
+      // Guards below ensure this only applies when it makes a meaningful difference.
       const initialMaskPct = countrySize / tp;
-      if (initialMaskPct > 0.70) {
+      {
         // Compute per-pixel saturation: sat = (max - min) / max
         const sat = new Uint8Array(tp);
         for (let i = 0; i < tp; i++) {
@@ -2695,9 +2791,14 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         }
 
         // Use refined mask if significantly smaller and still reasonable
-        if (refinedSize / tp < initialMaskPct * 0.85 && refinedSize / tp > 0.10) {
+        const refinedPct = refinedSize / tp;
+        if (refinedPct < initialMaskPct * 0.85 && refinedPct > 0.10) {
+          const removed = countrySize - refinedSize;
+          console.log(`  [FG] Saturation refinement: removed ${removed} desaturated pixels (${(initialMaskPct * 100).toFixed(1)}% → ${(refinedPct * 100).toFixed(1)}%, Otsu threshold=${satThreshold})`);
           countryMask = refinedCountry;
           countrySize = refinedSize;
+        } else {
+          console.log(`  [FG] Saturation refinement: skipped (initial=${(initialMaskPct * 100).toFixed(1)}%, refined=${(refinedPct * 100).toFixed(1)}%, threshold=${satThreshold})`);
         }
       }
 
