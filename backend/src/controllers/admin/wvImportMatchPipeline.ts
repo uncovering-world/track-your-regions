@@ -1,0 +1,2336 @@
+/**
+ * WorldView Import Match — CV Pipeline Orchestrator
+ *
+ * Contains the monolithic colorMatchDivisionsSSE function (moved from controller).
+ * Future tasks will extract individual phases into separate modules.
+ */
+
+import { Response } from 'express';
+import sharp from 'sharp';
+import { pool } from '../../db/index.js';
+import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatchShared.js';
+import {
+  removeColoredLines,
+  cvMorphOp,
+  generateOutlineCrop,
+} from './wvImportMatchHelpers.js';
+import {
+  pendingWaterReviews,
+  storeWaterCrops,
+  type WaterReviewDecision,
+  pendingParkReviews,
+  storeParkCrops,
+  type ParkReviewDecision,
+} from './wvImportMatchReview.js';
+
+// OpenCV WASM — eagerly initialized at module load to avoid tsx/esbuild overhead during requests.
+// tsx transforms every dynamic import() through esbuild, which takes 30s+ for the 10MB opencv.js.
+// By importing at module level, the cost is paid once at server startup.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Cache OpenCV on globalThis so it survives tsx hot-reloads
+// (each hot-reload re-evaluates this module, but globalThis persists)
+const G = globalThis as unknown as { __cv?: any; __cvReady?: Promise<void> };
+if (!G.__cvReady) {
+  G.__cvReady = (async () => {
+    try {
+      const mod = await import('@techstark/opencv-js') as Record<string, unknown>;
+      const cv = (mod.default ?? mod) as Record<string, unknown>;
+      for (let i = 0; i < 600 && !cv.Mat; i++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      if (cv.Mat) {
+        G.__cv = cv;
+        console.log('OpenCV WASM initialized');
+      } else {
+        console.error('OpenCV WASM failed to initialize');
+      }
+    } catch (err) {
+      console.error('OpenCV WASM load error:', err);
+    }
+  })();
+}
+
+// =============================================================================
+// PipelineContext — shared state passed to all phase functions (future use)
+// =============================================================================
+
+export interface PipelineContext {
+  // Inputs (set by orchestrator before first phase)
+  cv: any;
+  regionId: number;
+  worldViewId: number;
+  regionName: string;
+  knownDivisionIds: Set<number>;
+  expectedRegionCount: number;
+  mapBuffer: Buffer;
+
+  // Image dimensions
+  TW: number;
+  TH: number;
+  tp: number;
+  origW: number;
+  origH: number;
+  RES_SCALE: number;
+
+  // Pixel buffers (set during noise removal in orchestrator)
+  origDownBuf: Buffer;
+  rawBuf: Buffer;
+  colorBuf: Buffer;
+  // NOTE: no separate `buf` alias — all phases use `colorBuf` directly
+
+  // Derived buffers (set during various phases)
+  hsvSharp: Buffer;
+  labBufEarly: Buffer;
+  hsvBuf: Buffer;
+  inpaintedBuf: Buffer | null;
+
+  // Masks (built up across phases)
+  textExcluded: Uint8Array;
+  waterGrown: Uint8Array;
+  countryMask: Uint8Array;
+  countrySize: number;
+  coastalBand: Uint8Array;
+
+  // K-means state (set by cluster phase)
+  pixelLabels: Uint8Array;
+  colorCentroids: Array<[number, number, number]>;
+  clusterCounts: number[];
+
+  // Recluster params (mutated by orchestrator loop)
+  ckOverride: number | null;
+  chromaBoost: number;
+  randomSeed: boolean;
+
+  // SSE/debug helpers (set by orchestrator)
+  sendEvent: (event: Record<string, unknown>) => void;
+  logStep: (step: string) => Promise<void>;
+  pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
+  debugImages: Array<{ label: string; dataUrl: string }>;
+  startTime: number;
+
+  // Utility functions (depend on TW/RES_SCALE)
+  oddK: (base: number) => number;
+  pxS: (base: number) => number;
+}
+
+// =============================================================================
+// colorMatchDivisionsSSE — monolithic CV pipeline (will be split in Tasks 4-8)
+// =============================================================================
+
+export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const regionId = parseInt(String(req.query.regionId));
+
+  // SSE setup — disable TCP buffering for immediate flush
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders();
+  res.socket?.setNoDelay(true);
+
+  const startTime = Date.now();
+  const sendEvent = (event: { type: string; step?: string; elapsed?: number; debugImage?: { label: string; dataUrl: string }; data?: unknown; message?: string; reviewId?: string; waterMaskImage?: string; waterPxPercent?: number; waterComponents?: Array<{ id: number; pct: number; cropDataUrl: string; subClusters: Array<{ idx: number; pct: number; cropDataUrl: string }> }> }) => {
+    if (res.destroyed) return;
+    try { res.write(`data: ${JSON.stringify(event)}\n\n`); } catch { /* client disconnected */ }
+  };
+  const logStep = async (step: string) => {
+    const elapsed = (Date.now() - startTime) / 1000;
+    console.log(`[CV Match SSE] ${step} (${elapsed.toFixed(1)}s)`);
+    sendEvent({ type: 'progress', step, elapsed });
+    // Yield to event loop so SSE data actually flushes to client
+    await new Promise(resolve => setImmediate(resolve));
+  };
+
+  // Get parent region info (name, map image)
+  const regionResult = await pool.query(`
+    SELECT r.name, ris.region_map_url
+    FROM regions r
+    LEFT JOIN region_import_state ris ON ris.region_id = r.id
+    WHERE r.id = $1 AND r.world_view_id = $2
+  `, [regionId, worldViewId]);
+
+  if (regionResult.rows.length === 0) {
+    sendEvent({ type: 'error', message: 'Region not found' });
+    res.end();
+    return;
+  }
+
+  const regionName = regionResult.rows[0].name as string;
+  const regionMapUrl = regionResult.rows[0].region_map_url as string | null;
+
+  if (!regionMapUrl) {
+    sendEvent({ type: 'error', message: 'No map image selected for this region' });
+    res.end();
+    return;
+  }
+
+  await logStep(`Loading divisions for ${regionName}...`);
+
+  // Collect ALL divisions known to be part of this parent region's territory.
+  // Includes divisions assigned to the parent itself and to all child regions,
+  // both via region_members (confirmed) and region_match_suggestions (proposed).
+  // This ensures multi-part territories (e.g. Egypt: Africa + Sinai) are fully covered.
+  const [knownMemberResult, knownSugResult] = await Promise.all([
+    pool.query(`
+      SELECT DISTINCT division_id AS id FROM region_members
+      WHERE region_id = $1 OR region_id IN (
+        SELECT id FROM regions WHERE parent_region_id = $1 AND world_view_id = $2
+      )
+    `, [regionId, worldViewId]),
+    pool.query(`
+      SELECT DISTINCT rms.division_id AS id FROM region_match_suggestions rms
+      WHERE (rms.region_id = $1 OR rms.region_id IN (
+        SELECT id FROM regions WHERE parent_region_id = $1 AND world_view_id = $2
+      ))
+      AND rms.rejected = FALSE
+    `, [regionId, worldViewId]),
+  ]);
+
+  const knownDivisionIds = new Set<number>();
+  for (const r of knownMemberResult.rows) knownDivisionIds.add(r.id as number);
+  for (const r of knownSugResult.rows) knownDivisionIds.add(r.id as number);
+
+  if (knownDivisionIds.size === 0) {
+    sendEvent({ type: 'error', message: 'No divisions found in this region or its children — need at least one assigned or suggested division' });
+    res.end();
+    return;
+  }
+
+  const sampleDivId = [...knownDivisionIds][0];
+
+  // Find country ancestor + determine GADM depth of sample division
+  const countryResult = await pool.query(`
+    WITH RECURSIVE ancestors AS (
+      SELECT id, name, parent_id, 0 AS depth FROM administrative_divisions WHERE id = $1
+      UNION ALL
+      SELECT ad.id, ad.name, ad.parent_id, a.depth + 1 FROM administrative_divisions ad
+      JOIN ancestors a ON a.parent_id = ad.id
+    )
+    SELECT a.id, a.name, a.depth FROM ancestors a
+    JOIN administrative_divisions p ON a.parent_id = p.id
+    WHERE p.parent_id IS NULL
+    LIMIT 1
+  `, [sampleDivId]);
+
+  const countryId = countryResult.rows[0]?.id as number | undefined;
+  const countryDepth = countryResult.rows[0]?.depth as number | undefined;
+  if (!countryId || countryDepth === undefined) {
+    sendEvent({ type: 'error', message: 'Could not find country ancestor' });
+    res.end();
+    return;
+  }
+
+  // Get ALL GADM divisions at the same depth as the sample (all siblings across the country).
+  // depth=1 means direct children of country, depth=2 means grandchildren, etc.
+  // If depth=0, the sample IS the country itself — go one level deeper to get subdivisions.
+  let targetDepth = countryDepth === 0 ? 1 : countryDepth;
+  let allDivsResult = await pool.query(`
+    WITH RECURSIVE descendants AS (
+      SELECT id, 0 AS depth FROM administrative_divisions WHERE id = $1
+      UNION ALL
+      SELECT ad.id, d.depth + 1 FROM administrative_divisions ad
+      JOIN descendants d ON ad.parent_id = d.id
+      WHERE d.depth < $2
+    )
+    SELECT id FROM descendants WHERE depth = $2
+  `, [countryId, targetDepth]);
+
+  // If only 1 division found (e.g. sample at country level), try one level deeper
+  if (allDivsResult.rows.length <= 1 && targetDepth === countryDepth) {
+    targetDepth = countryDepth + 1;
+    allDivsResult = await pool.query(`
+      WITH RECURSIVE descendants AS (
+        SELECT id, 0 AS depth FROM administrative_divisions WHERE id = $1
+        UNION ALL
+        SELECT ad.id, d.depth + 1 FROM administrative_divisions ad
+        JOIN descendants d ON ad.parent_id = d.id
+        WHERE d.depth < $2
+      )
+      SELECT id FROM descendants WHERE depth = $2
+    `, [countryId, targetDepth]);
+  }
+
+  // Union GADM descendants with ALL known divisions from region members + suggestions.
+  // The GADM walk captures unassigned siblings, while known divisions ensure
+  // multi-part territories (e.g. Egypt with African + Asian divisions) are fully covered.
+  const allDivisionIdSet = new Set<number>();
+  for (const r of allDivsResult.rows) allDivisionIdSet.add(r.id as number);
+  for (const id of knownDivisionIds) allDivisionIdSet.add(id);
+
+  const allDivisionIds = [...allDivisionIdSet];
+  if (allDivisionIds.length === 0) {
+    sendEvent({ type: 'error', message: 'No divisions found at this level' });
+    res.end();
+    return;
+  }
+
+  const gadmCount = allDivsResult.rows.length;
+  const extraFromRegion = allDivisionIds.length - gadmCount;
+  if (extraFromRegion > 0) {
+    await logStep(`Found ${gadmCount} GADM divisions + ${extraFromRegion} extra from region members (total: ${allDivisionIds.length})`);
+  }
+
+  // Get which divisions are already assigned to which child region
+  const assignedResult = await pool.query(`
+    SELECT rm.division_id, rm.region_id, r.name AS region_name
+    FROM region_members rm
+    JOIN regions r ON r.id = rm.region_id
+    WHERE rm.region_id IN (
+      SELECT id FROM regions WHERE parent_region_id = $1 AND world_view_id = $2
+    )
+  `, [regionId, worldViewId]);
+
+  const assignedMap = new Map<number, { regionId: number; regionName: string }>();
+  for (const r of assignedResult.rows) {
+    assignedMap.set(r.division_id as number, {
+      regionId: r.region_id as number,
+      regionName: r.region_name as string,
+    });
+  }
+
+  // Count child regions to cap K-means cluster count
+  const childCountResult = await pool.query(
+    `SELECT COUNT(*) FROM regions WHERE parent_region_id = $1 AND world_view_id = $2`,
+    [regionId, worldViewId],
+  );
+  const expectedRegionCount = parseInt(childCountResult.rows[0].count as string);
+
+  // Fetch centroids + names for all divisions
+  const centroidResult = await pool.query(`
+    SELECT id, name,
+      ST_X(ST_Centroid(geom_simplified_medium)) AS cx,
+      ST_Y(ST_Centroid(geom_simplified_medium)) AS cy
+    FROM administrative_divisions
+    WHERE id = ANY($1) AND geom_simplified_medium IS NOT NULL
+  `, [allDivisionIds]);
+
+  // Map division ID → display name (built up as we recurse deeper)
+  const divNameMap = new Map<number, string>();
+
+  const centroids = centroidResult.rows.map(r => {
+    const name = r.name as string;
+    divNameMap.set(r.id as number, name);
+    return {
+      id: r.id as number,
+      cx: parseFloat(r.cx as string),
+      cy: parseFloat(r.cy as string),
+      assigned: assignedMap.get(r.id as number) ?? null,
+    };
+  });
+
+  await logStep(`Computing borders for ${centroids.length} divisions...`);
+
+  // Fetch individual division SVG paths + classified borders + country outline
+  const [divPathsResult, borderResult] = await Promise.all([
+    // Individual division outlines as SVG (for CV rasterization)
+    pool.query(`
+      SELECT id, ST_AsSVG(geom_simplified_medium, 0, 4) AS svg_path
+      FROM administrative_divisions
+      WHERE id = ANY($1) AND geom_simplified_medium IS NOT NULL
+    `, [allDivisionIds]),
+    // Union border classification + region outline + bbox
+    // Use subset (union of all relevant divisions) for bbox — NOT the GADM country,
+    // so multi-part regions (e.g. Egypt: Africa + Sinai) get full coverage.
+    pool.query(`
+      WITH subset AS (
+        SELECT ST_Union(geom_simplified_medium) AS geom
+        FROM administrative_divisions
+        WHERE id = ANY($1) AND geom_simplified_medium IS NOT NULL
+      ),
+      all_borders AS (
+        SELECT ST_Union(ST_Boundary(geom_simplified_medium)) AS geom
+        FROM administrative_divisions
+        WHERE id = ANY($1) AND geom_simplified_medium IS NOT NULL
+      )
+      SELECT
+        ST_AsSVG(subset.geom, 0, 4) AS country_path,
+        ST_AsSVG(
+          ST_Intersection(
+            all_borders.geom,
+            ST_Buffer(ST_Boundary(subset.geom), 0.001)
+          ), 0, 4
+        ) AS external_border,
+        ST_AsSVG(
+          ST_Difference(
+            all_borders.geom,
+            ST_Buffer(ST_Boundary(subset.geom), 0.001)
+          ), 0, 4
+        ) AS internal_border,
+        ST_XMin(subset.geom) AS country_min_x,
+        ST_YMin(subset.geom) AS country_min_y,
+        ST_XMax(subset.geom) AS country_max_x,
+        ST_YMax(subset.geom) AS country_max_y
+      FROM subset, all_borders
+    `, [allDivisionIds]),
+  ]);
+
+  if (borderResult.rows.length === 0) {
+    sendEvent({ type: 'error', message: 'Could not compute borders' });
+    res.end();
+    return;
+  }
+
+  // Individual division paths (SVG for CV rasterization)
+  const divPaths = divPathsResult.rows.map(r => ({
+    id: r.id as number,
+    svgPath: r.svg_path as string,
+  }));
+
+  const row = borderResult.rows[0];
+  const countryPath = row.country_path as string;
+  const externalBorder = row.external_border as string | null;
+  const internalBorder = row.internal_border as string | null;
+  const cMinX = parseFloat(row.country_min_x as string);
+  const cMinY = parseFloat(row.country_min_y as string);
+  const cMaxX = parseFloat(row.country_max_x as string);
+  const cMaxY = parseFloat(row.country_max_y as string);
+
+  // Build debug SVG with country context
+  const pad = 0.5;
+  const vbX = cMinX - pad;
+  const vbY = -(cMaxY + pad);
+  const vbW = (cMaxX - cMinX) + 2 * pad;
+  const vbH = (cMaxY - cMinY) + 2 * pad;
+  const ss = Math.max(vbW, vbH) / 800; // stroke scale (thin lines for accuracy)
+
+  // Individual division outlines (all same style — assigned/unassigned shown by centroid dots)
+  const divisionShapes = divPaths.map(d =>
+    `<path d="${d.svgPath}" fill="#ddeeff" stroke="#90a4ae" stroke-width="${ss}" fill-opacity="0.7"/>`
+  ).join('\n');
+
+  // Centroid dots (green = assigned, orange = unassigned)
+  const dots = centroids.map(c => {
+    const color = c.assigned ? '#2e7d32' : '#e65100';
+    return `<circle cx="${c.cx}" cy="${-c.cy}" r="${ss * 4}" fill="${color}" stroke="white" stroke-width="${ss * 0.5}"/>`;
+  }).join('\n');
+
+  const borderSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" width="1600">
+    <rect x="${vbX}" y="${vbY}" width="${vbW}" height="${vbH}" fill="#f0f2f5"/>
+    <path d="${countryPath}" fill="#e8e8e8" stroke="#bbb" stroke-width="${ss * 0.5}"/>
+    ${divisionShapes}
+    ${externalBorder ? `<path d="${externalBorder}" fill="none" stroke="#d32f2f" stroke-width="${ss * 3}" stroke-linecap="round"/>` : ''}
+    ${internalBorder ? `<path d="${internalBorder}" fill="none" stroke="#1565c0" stroke-width="${ss * 2}" stroke-dasharray="${ss * 4},${ss * 3}" stroke-linecap="round"/>` : ''}
+    ${dots}
+  </svg>`;
+
+  const borderPng = await sharp(Buffer.from(borderSvg))
+    .flatten({ background: '#f0f2f5' })
+    .png()
+    .toBuffer();
+
+  const debugImages: Array<{ label: string; dataUrl: string }> = [];
+  let debugIdx = 0;
+  const debugSlug = regionName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const pushDebugImage = async (label: string, dataUrl: string) => {
+    const img = { label, dataUrl };
+    debugImages.push(img);
+    sendEvent({ type: 'debug_image', debugImage: img });
+    // Save debug images to /tmp for inspection (named by region to avoid overwrites)
+    try {
+      const b64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+      const fs = await import('fs');
+      fs.writeFileSync(`/tmp/cv-debug-${debugSlug}-${debugIdx++}.png`, Buffer.from(b64, 'base64'));
+    } catch { /* ignore */ }
+    await new Promise(resolve => setImmediate(resolve));
+  };
+
+  await pushDebugImage(
+    'Step 1: GADM divisions with classified borders (red=external, blue dashed=internal, green dot=assigned, orange dot=unassigned)',
+    `data:image/png;base64,${borderPng.toString('base64')}`,
+  );
+
+  // Step 2: CV border detection on the source map image
+  // Pipeline: downscale → noise removal (rivers/roads/text) → multi-bg detection via edge K-means →
+  // foreground mask → morphological close → connected components → country silhouette →
+  // K-means color clustering → spatial split → merge → ICP → division assignment → OCR → geo preview
+
+  try {
+    await logStep('Fetching source map image...');
+    const mapResponse = await fetch(regionMapUrl, {
+      headers: { 'User-Agent': 'TrackYourRegions/1.0 (CV border detection)' },
+      redirect: 'follow',
+    });
+    if (mapResponse.ok) {
+      const mapBuffer = Buffer.from(await mapResponse.arrayBuffer());
+      const origMeta = await sharp(mapBuffer).metadata();
+      const origW = origMeta.width!;
+      const origH = origMeta.height!;
+
+      // Downscale to 800px + targeted noise removal (rivers, roads, text)
+      const TW = 800;
+      const scale = TW / origW;
+      const TH = Math.round(origH * scale);
+      const tp = TW * TH;
+      // Scale factor for pixel-based constants (calibrated at 500px base resolution)
+      const RES_SCALE = TW / 500;
+      /** Scale pixel constant and ensure odd (required for OpenCV kernels) */
+      const oddK = (base: number) => { const v = Math.round(base * RES_SCALE); return v | 1; };
+      /** Scale pixel constant (round to nearest integer) */
+      const pxS = (base: number) => Math.round(base * RES_SCALE);
+
+      await logStep('Noise removal (downscale + median + line removal)...');
+      if (!G.__cv) throw new Error('OpenCV WASM not available');
+      const cv = G.__cv;
+      // Keep clean downscale for water review crops (before any processing)
+      const origDownBuf = await sharp(mapBuffer)
+        .removeAlpha()
+        .resize(TW, TH, { kernel: 'lanczos3' })
+        .raw()
+        .toBuffer();
+      // Light median + color-targeted line removal (kernel scales with resolution)
+      const rawBuf = await sharp(mapBuffer)
+        .removeAlpha()
+        .resize(TW, TH, { kernel: 'lanczos3' })
+        .median(oddK(5))
+        .raw()
+        .toBuffer();
+      removeColoredLines(rawBuf, TW, TH, RES_SCALE);
+
+      // Clean color buffer for K-means: start from origDownBuf (zero spatial filtering →
+      // zero cross-boundary contamination). Text is removed via BFS color propagation
+      // (nearest non-text neighbor color) instead of Telea inpainting (which bleeds ocean)
+      // or spatial filters (median/bilateral/mean-shift all blur across boundaries).
+      // This is the "Photoshop Select by Color → Content-Aware Fill" approach.
+      const colorBuf = Buffer.from(origDownBuf);
+      removeColoredLines(colorBuf, TW, TH, RES_SCALE);
+
+      // Debug: show image after noise removal (before CV processing)
+      const noiseRemovedPng = await sharp(Buffer.from(rawBuf), {
+        raw: { width: TW, height: TH, channels: 3 },
+      }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+      await pushDebugImage(
+        'After noise removal (downscale + median + line removal)',
+        `data:image/png;base64,${noiseRemovedPng.toString('base64')}`,
+      );
+
+      // --- Step A: Detect text/symbols for exclusion (no colorBuf modification) ---
+      // Key insight: we do NOT need to remove text from colorBuf. Every downstream step
+      // already handles text via textExcluded:
+      //  - K-means: skips text pixels, BFS label propagation fills their labels spatially
+      //  - BG detection: forces text as foreground
+      //  - Park detection: text is unsaturated (sat ≈ 0), fails park criterion
+      // Modifying colorBuf is destructive on thin regions where text covers 50%+ of pixels.
+      // Detection uses rawBuf (median-filtered) — conservative, preserves coastal strips.
+      await logStep('Text detection (BlackHat + dark spots)...');
+      const cvRaw = new cv.Mat(TH, TW, cv.CV_8UC3);
+      cvRaw.data.set(rawBuf);
+      // HSV of rawBuf for dark spot detection + ocean buffer
+      const cvHsvRaw = new cv.Mat();
+      cv.cvtColor(cvRaw, cvHsvRaw, cv.COLOR_RGB2HSV);
+      const hsvSharp = Buffer.from(cvHsvRaw.data);
+      cvHsvRaw.delete();
+      // Black Hat = closing - original: highlights dark thin features on lighter bg
+      const cvGray = new cv.Mat();
+      cv.cvtColor(cvRaw, cvGray, cv.COLOR_RGB2GRAY);
+      const bhSize = oddK(11);
+      const bhKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(bhSize, bhSize));
+      const cvBlackHat = new cv.Mat();
+      cv.morphologyEx(cvGray, cvBlackHat, cv.MORPH_BLACKHAT, bhKernel);
+      bhKernel.delete();
+      const textMask = new cv.Mat();
+      cv.threshold(cvBlackHat, textMask, 25, 255, cv.THRESH_BINARY);
+      cvBlackHat.delete(); cvGray.delete();
+      // Dark spot detection: city dots/symbols (V < 50, small CCs)
+      const darkMask = new cv.Mat(TH, TW, cv.CV_8UC1, new cv.Scalar(0));
+      for (let i = 0; i < tp; i++) {
+        if (hsvSharp[i * 3 + 2] < 50) darkMask.data[i] = 255;
+      }
+      const darkLabels = new cv.Mat();
+      const darkStats = new cv.Mat();
+      const darkCents = new cv.Mat();
+      const numDarkCC = cv.connectedComponentsWithStats(darkMask, darkLabels, darkStats, darkCents);
+      darkCents.delete();
+      const maxDarkSize = Math.round(tp * 0.005);
+      const darkLabelData = darkLabels.data32S;
+      for (let c = 1; c < numDarkCC; c++) {
+        if (darkStats.intAt(c, cv.CC_STAT_AREA) <= maxDarkSize) {
+          for (let i = 0; i < tp; i++) {
+            if (darkLabelData[i] === c) textMask.data[i] = 255;
+          }
+        }
+      }
+      darkMask.delete(); darkLabels.delete(); darkStats.delete();
+      // Dilate text mask to cover anti-aliased text edges
+      const textDilateK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
+      const textMaskDilated = new cv.Mat();
+      cv.dilate(textMask, textMaskDilated, textDilateK);
+      textMask.delete(); textDilateK.delete();
+
+      // textExcluded: marks text pixels for K-means exclusion + forced foreground
+      const textExcluded = new Uint8Array(tp);
+      for (let i = 0; i < tp; i++) if (textMaskDilated.data[i]) textExcluded[i] = 1;
+
+      // --- Ocean buffer + Telea inpaint on rawBuf for water detection only ---
+      const INPAINT_R = pxS(8);
+      const inpaintMask = new cv.Mat();
+      textMaskDilated.copyTo(inpaintMask);
+      const OCEAN_BUF_R = pxS(3);
+      const obSize = OCEAN_BUF_R * 2 + 1;
+      const oceanBufK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(obSize, obSize));
+      const textNear = new cv.Mat();
+      cv.dilate(textMaskDilated, textNear, oceanBufK);
+      oceanBufK.delete();
+      let oceanBuffered = 0;
+      for (let i = 0; i < tp; i++) {
+        if (textMaskDilated.data[i]) continue;
+        if (!textNear.data[i]) continue;
+        if (hsvSharp[i * 3 + 1] < 15) { inpaintMask.data[i] = 255; oceanBuffered++; }
+      }
+      textNear.delete();
+      if (oceanBuffered > 0) console.log(`  [Text] Ocean buffer: masked ${oceanBuffered} bg pixels adjacent to text`);
+
+      const cvInpainted = new cv.Mat();
+      cv.inpaint(cvRaw, inpaintMask, cvInpainted, INPAINT_R, cv.INPAINT_TELEA);
+      cvRaw.delete();
+      inpaintMask.delete();
+
+      // Debug: text mask
+      const textMaskPng = await sharp(Buffer.from(textMaskDilated.data), {
+        raw: { width: TW, height: TH, channels: 1 },
+      }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+      await pushDebugImage(
+        'Text mask (white = detected text/symbols — excluded from K-means, NOT removed from image)',
+        `data:image/png;base64,${textMaskPng.toString('base64')}`,
+      );
+      textMaskDilated.delete();
+
+      // Convert colorBuf to Lab for later BG detection
+      const cvBufForSeam = new cv.Mat(TH, TW, cv.CV_8UC3);
+      cvBufForSeam.data.set(colorBuf);
+      const cvLabSeam = new cv.Mat();
+      cv.cvtColor(cvBufForSeam, cvLabSeam, cv.COLOR_RGB2Lab);
+      const labBufEarly = Buffer.from(cvLabSeam.data);
+      cvBufForSeam.delete(); cvLabSeam.delete();
+
+      // --- Step B: Detect water on CLEAN inpainted image (sharp, no blur yet) ---
+      // Running after text removal so blue text labels don't get detected as water
+      await logStep('Detecting water (on clean sharp image, after text removal)...');
+      const inpaintedBuf = Buffer.from(cvInpainted.data);
+      const cvHsvClean = new cv.Mat();
+      cv.cvtColor(cvInpainted, cvHsvClean, cv.COLOR_RGB2HSV);
+      const hsvClean = Buffer.from(cvHsvClean.data);
+      cvHsvClean.delete();
+
+      // Adaptive water thresholds: sample edge pixels to find actual water color
+      const edgeHsvSamples: Array<[number, number, number]> = [];
+      const edgeRgbSamples: Array<[number, number, number]> = [];
+      for (let x = 0; x < TW; x++) {
+        for (let band = 0; band < 5; band++) {
+          for (const idx of [band * TW + x, (TH - 1 - band) * TW + x]) {
+            const h = hsvClean[idx * 3], s = hsvClean[idx * 3 + 1], v = hsvClean[idx * 3 + 2];
+            if (h >= 70 && h <= 140 && s > 8) {
+              edgeHsvSamples.push([h, s, v]);
+              edgeRgbSamples.push([inpaintedBuf[idx * 3], inpaintedBuf[idx * 3 + 1], inpaintedBuf[idx * 3 + 2]]);
+            }
+          }
+        }
+      }
+      for (let y = 0; y < TH; y++) {
+        for (let band = 0; band < 5; band++) {
+          for (const idx of [y * TW + band, y * TW + TW - 1 - band]) {
+            const h = hsvClean[idx * 3], s = hsvClean[idx * 3 + 1], v = hsvClean[idx * 3 + 2];
+            if (h >= 70 && h <= 140 && s > 8) {
+              edgeHsvSamples.push([h, s, v]);
+              edgeRgbSamples.push([inpaintedBuf[idx * 3], inpaintedBuf[idx * 3 + 1], inpaintedBuf[idx * 3 + 2]]);
+            }
+          }
+        }
+      }
+      const totalEdgePx = (TW + TH) * 2 * 5;
+      const useAdaptiveWater = edgeHsvSamples.length > totalEdgePx * 0.03;
+      let adaptiveH = 0, adaptiveS = 0, adaptiveV = 0;
+      let adaptiveR = 0, adaptiveG = 0, adaptiveB = 0;
+      if (useAdaptiveWater) {
+        edgeHsvSamples.sort((a, b) => a[0] - b[0]);
+        adaptiveH = edgeHsvSamples[Math.floor(edgeHsvSamples.length / 2)][0];
+        edgeHsvSamples.sort((a, b) => a[1] - b[1]);
+        adaptiveS = edgeHsvSamples[Math.floor(edgeHsvSamples.length / 2)][1];
+        edgeHsvSamples.sort((a, b) => a[2] - b[2]);
+        adaptiveV = edgeHsvSamples[Math.floor(edgeHsvSamples.length / 2)][2];
+        // Median RGB of edge water (for RGB-proximity supplement)
+        edgeRgbSamples.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
+        const mid = edgeRgbSamples[Math.floor(edgeRgbSamples.length / 2)];
+        adaptiveR = mid[0]; adaptiveG = mid[1]; adaptiveB = mid[2];
+        console.log(`  [Water] Adaptive: ${edgeHsvSamples.length} edge samples (${(edgeHsvSamples.length / totalEdgePx * 100).toFixed(1)}%), median HSV=(${adaptiveH},${adaptiveS},${adaptiveV}), median RGB=(${adaptiveR},${adaptiveG},${adaptiveB})`);
+      }
+
+      // ── Multi-signal water detection with voting ──
+      // Three independent signals vote on each pixel. A pixel is water if ≥2 agree.
+      // This handles boundary blur (median + inpainting smears water↔land edges) and
+      // text within water (dark text fails on original but inpainted to blue).
+      //
+      // Signal A: HSV thresholds on inpainted image (text removed → clean inside water)
+      // Signal B: HSV thresholds on original image (sharp boundaries, text still present)
+      // Signal C: Color proximity to known-water centroid (fills text gaps by color)
+
+      // Helper: does pixel pass water tier thresholds?
+      // Always use hardcoded tiers (reliable for standard Wikivoyage blue/teal water).
+      // When edge water sampling found water, supplement with a tight adaptive tier
+      // that only catches vivid pixels very close to the sampled water color.
+      const passesWaterTier = (h: number, s: number, v: number, r: number, g: number, b: number): boolean => {
+        // Hardcoded tiers — always active.
+        // Saturation cap (s < 210): map water is always pastel/soft (S typically 50-180).
+        // Deeply saturated pixels (S > 210) are colored land regions, not water — e.g.
+        // Morocco's blue coastal strip at S=255 has ocean-like hue but is a land region.
+        if (h >= 90 && h <= 120 && s > 40 && s < 210 && v > 90 && b > g + 12) return true;
+        if (h >= 80 && h <= 110 && s > 18 && s < 80 && v > 190 && b > r + 15) return true;
+        // Tight adaptive supplement — RGB proximity to edge-sampled water color.
+        // Catches water with unusual hue (e.g. teal where g > b) that hardcoded HSV tiers miss.
+        if (useAdaptiveWater) {
+          const dr = r - adaptiveR, dg = g - adaptiveG, db = b - adaptiveB;
+          if (dr * dr + dg * dg + db * db <= 35 * 35) return true;
+        }
+        return false;
+      };
+
+      // Signal A: on inpainted (text-free) image
+      const voteA = new Uint8Array(tp);
+      let countA = 0;
+      for (let i = 0; i < tp; i++) {
+        if (passesWaterTier(hsvClean[i * 3], hsvClean[i * 3 + 1], hsvClean[i * 3 + 2],
+            inpaintedBuf[i * 3], inpaintedBuf[i * 3 + 1], inpaintedBuf[i * 3 + 2])) {
+          voteA[i] = 1; countA++;
+        }
+      }
+
+      // Signal B: on original (unprocessed) image — sharp region boundaries
+      const cvOrigForWater = new cv.Mat(TH, TW, cv.CV_8UC3);
+      cvOrigForWater.data.set(origDownBuf);
+      const cvHsvOrig = new cv.Mat();
+      cv.cvtColor(cvOrigForWater, cvHsvOrig, cv.COLOR_RGB2HSV);
+      const hsvOrig = Buffer.from(cvHsvOrig.data);
+      cvOrigForWater.delete(); cvHsvOrig.delete();
+
+      const voteB = new Uint8Array(tp);
+      let countB = 0;
+      for (let i = 0; i < tp; i++) {
+        if (passesWaterTier(hsvOrig[i * 3], hsvOrig[i * 3 + 1], hsvOrig[i * 3 + 2],
+            origDownBuf[i * 3], origDownBuf[i * 3 + 1], origDownBuf[i * 3 + 2])) {
+          voteB[i] = 1; countB++;
+        }
+      }
+
+      // Seeds = A ∩ B (high-confidence water — both images agree)
+      let seedR = 0, seedG = 0, seedB = 0, seedCnt = 0;
+      for (let i = 0; i < tp; i++) {
+        if (voteA[i] && voteB[i]) {
+          seedR += inpaintedBuf[i * 3];
+          seedG += inpaintedBuf[i * 3 + 1];
+          seedB += inpaintedBuf[i * 3 + 2];
+          seedCnt++;
+        }
+      }
+
+      // Signal C: color proximity to water centroid on inpainted image
+      // Fills text gaps (inpainted text → similar blue → close to centroid)
+      // Rejects different-colored land (violet, green → far from centroid)
+      const voteC = new Uint8Array(tp);
+      let countC = 0;
+      if (seedCnt > 0) {
+        const avgR = seedR / seedCnt, avgG = seedG / seedCnt, avgB = seedB / seedCnt;
+        const COLOR_DIST_SQ = 50 * 50;
+        for (let i = 0; i < tp; i++) {
+          const dr = inpaintedBuf[i * 3] - avgR;
+          const dg = inpaintedBuf[i * 3 + 1] - avgG;
+          const db = inpaintedBuf[i * 3 + 2] - avgB;
+          if (dr * dr + dg * dg + db * db <= COLOR_DIST_SQ) { voteC[i] = 1; countC++; }
+        }
+      }
+
+      // Final water = ≥2 votes agree
+      const waterRaw = new Uint8Array(tp);
+      let waterRawCount = 0;
+      for (let i = 0; i < tp; i++) {
+        if (voteA[i] + voteB[i] + voteC[i] >= 2) { waterRaw[i] = 255; waterRawCount++; }
+      }
+      console.log(`  [Water] Voting: A=${countA} B=${countB} C=${countC} seeds(A∩B)=${seedCnt} → final=${waterRawCount} (${(waterRawCount / tp * 100).toFixed(1)}%)`);
+
+      // --- Step C: colorBuf is the single clean buffer for all downstream processing ---
+      // Pipeline: origDownBuf (no spatial filter) → line removal. No text removal from colorBuf.
+      // Text pixels are handled via textExcluded (K-means exclusion + forced foreground).
+      // No bilateral/median/mean-shift = zero cross-boundary contamination.
+      // Used for: foreground detection, park detection, K-means, debug visualization.
+      cvInpainted.delete(); // no longer needed — water detection already consumed it
+
+      // Debug: show clean colorBuf (text NOT removed — excluded from K-means instead)
+      const colorBufPng = await sharp(Buffer.from(colorBuf), {
+        raw: { width: TW, height: TH, channels: 3 },
+      }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+      await pushDebugImage(
+        '🔴 Clean image (no text removal, no spatial filter — text excluded from K-means)',
+        `data:image/png;base64,${colorBufPng.toString('base64')}`,
+      );
+
+
+      // HSV of the clean image for foreground detection
+      const cvBufFinal = new cv.Mat(TH, TW, cv.CV_8UC3);
+      cvBufFinal.data.set(colorBuf);
+      const cvHsvFinal = new cv.Mat();
+      cv.cvtColor(cvBufFinal, cvHsvFinal, cv.COLOR_RGB2HSV);
+      const hsvBuf = Buffer.from(cvHsvFinal.data);
+      cvBufFinal.delete(); cvHsvFinal.delete();
+
+      await logStep('Background detection + foreground mask...');
+
+      // Morphological close on water mask to fill small gaps, then keep large regions
+      const waterRawMat = cv.matFromArray(TH, TW, cv.CV_8UC1, waterRaw);
+      const wkSize = oddK(7);
+      const waterKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(wkSize, wkSize));
+      const waterClosedMat = new cv.Mat();
+      cv.morphologyEx(waterRawMat, waterClosedMat, cv.MORPH_CLOSE, waterKernel);
+      waterRawMat.delete();
+      // Connected components: keep water regions (>0.3% of image to catch lakes)
+      const waterLabels = new cv.Mat();
+      const waterStats = new cv.Mat();
+      const waterCents = new cv.Mat();
+      const numWaterCC = cv.connectedComponentsWithStats(waterClosedMat, waterLabels, waterStats, waterCents);
+      waterClosedMat.delete(); waterCents.delete();
+      // Collect water components with bounding boxes, crops, and pre-computed sub-clusters
+      interface WaterSubCluster { idx: number; pct: number; cropDataUrl: string }
+      interface WaterComponent { id: number; area: number; pct: number; cropDataUrl: string; subClusters: WaterSubCluster[] }
+      const waterComponents: WaterComponent[] = [];
+      const waterMask = new Uint8Array(tp);
+      const minWaterSize = Math.round(tp * 0.003); // 0.3% — catch lakes like Tanganyika, Kivu
+      const waterLabelData = waterLabels.data32S;
+      // Store sub-cluster centroids for "Mix" response handling
+      const compSubCentroids = new Map<number, Array<[number, number, number]>>();
+
+      // --- Split large water blobs at narrow necks ---
+      // When a coastal strip connects to the ocean through a narrow bridge,
+      // they form one CC. Erode to break the neck, reassign via BFS.
+      interface CompStat { area: number; left: number; top: number; width: number; height: number }
+      const compStats = new Map<number, CompStat>();
+      for (let c = 1; c < numWaterCC; c++) {
+        compStats.set(c, {
+          area: waterStats.intAt(c, cv.CC_STAT_AREA),
+          left: waterStats.intAt(c, cv.CC_STAT_LEFT),
+          top: waterStats.intAt(c, cv.CC_STAT_TOP),
+          width: waterStats.intAt(c, cv.CC_STAT_WIDTH),
+          height: waterStats.intAt(c, cv.CC_STAT_HEIGHT),
+        });
+      }
+
+      const SPLIT_MIN_AREA = Math.round(tp * 0.05); // only split CCs > 5% of image
+      const splitKSize = oddK(10);
+      const splitKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(splitKSize, splitKSize));
+      let nextWaterLabel = numWaterCC;
+
+      for (let c = 1; c < numWaterCC; c++) {
+        const stat = compStats.get(c)!;
+        if (stat.area < SPLIT_MIN_AREA) continue;
+
+        // Create binary mask for this CC
+        const ccMask = new Uint8Array(tp);
+        for (let i = 0; i < tp; i++) {
+          if (waterLabelData[i] === c) ccMask[i] = 255;
+        }
+
+        // Erode to break narrow necks
+        const compMaskMat = cv.matFromArray(TH, TW, cv.CV_8UC1, ccMask);
+        const erodedMat = new cv.Mat();
+        cv.erode(compMaskMat, erodedMat, splitKernel);
+        compMaskMat.delete();
+
+        // CC on eroded mask
+        const erodedLabels = new cv.Mat();
+        const erodedStats = new cv.Mat();
+        const erodedCents = new cv.Mat();
+        const numEroded = cv.connectedComponentsWithStats(erodedMat, erodedLabels, erodedStats, erodedCents);
+        erodedMat.delete(); erodedCents.delete();
+
+        // Count significant sub-blobs (>1% of original component area)
+        const minSubSize = Math.max(50, Math.round(stat.area * 0.01));
+        const significantSubs: Array<{ eLabel: number; area: number }> = [];
+        for (let sc = 1; sc < numEroded; sc++) {
+          const subArea = erodedStats.intAt(sc, cv.CC_STAT_AREA);
+          if (subArea >= minSubSize) significantSubs.push({ eLabel: sc, area: subArea });
+        }
+
+        if (significantSubs.length < 2) {
+          erodedLabels.delete(); erodedStats.delete();
+          continue;
+        }
+
+        // Sort by area descending (ocean first, coastal strip second)
+        significantSubs.sort((a, b) => b.area - a.area);
+
+        console.log(`  [Water] Splitting CC ${c} (${stat.area}px, ${(stat.area / tp * 100).toFixed(1)}%) into ${significantSubs.length} sub-blobs`);
+
+        // Map eroded sub-labels to new global labels
+        const subLabelMap = new Map<number, number>();
+        for (const sub of significantSubs) {
+          subLabelMap.set(sub.eLabel, nextWaterLabel++);
+        }
+
+        // Seed BFS: pixels in both original CC and an eroded sub-blob get new label
+        const erodedLabelData = erodedLabels.data32S;
+        const bfsQueue: number[] = [];
+
+        for (let i = 0; i < tp; i++) {
+          if (waterLabelData[i] !== c) continue;
+          const newLabel = subLabelMap.get(erodedLabelData[i]);
+          if (newLabel !== undefined) {
+            waterLabelData[i] = newLabel;
+            bfsQueue.push(i);
+          }
+        }
+
+        // BFS outward (8-connectivity to match CC): assign remaining pixels to nearest sub-blob
+        let head = 0;
+        while (head < bfsQueue.length) {
+          const pi = bfsQueue[head++];
+          const label = waterLabelData[pi];
+          const px = pi % TW, py = Math.floor(pi / TW);
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = px + dx, ny = py + dy;
+              if (nx < 0 || nx >= TW || ny < 0 || ny >= TH) continue;
+              const ni = ny * TW + nx;
+              if (waterLabelData[ni] !== c) continue; // not this CC or already assigned
+              waterLabelData[ni] = label;
+              bfsQueue.push(ni);
+            }
+          }
+        }
+
+        // Compute stats for new sub-labels
+        for (const [eLabel, newLabel] of subLabelMap) {
+          let subArea = 0, minX = TW, minY = TH, maxX = 0, maxY = 0;
+          for (let i = 0; i < tp; i++) {
+            if (waterLabelData[i] !== newLabel) continue;
+            subArea++;
+            const x = i % TW, y = Math.floor(i / TW);
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
+          if (subArea > 0) {
+            compStats.set(newLabel, {
+              area: subArea, left: minX, top: minY,
+              width: maxX - minX + 1, height: maxY - minY + 1,
+            });
+            console.log(`    sub-blob ${eLabel} → label ${newLabel}: ${subArea}px (${(subArea / tp * 100).toFixed(1)}%) bbox ${maxX - minX + 1}×${maxY - minY + 1}`);
+          }
+        }
+
+        // Remove original label (it's been split)
+        compStats.delete(c);
+
+        erodedLabels.delete(); erodedStats.delete();
+      }
+      splitKernel.delete();
+
+      for (const [c, stat] of compStats) {
+        const { area } = stat;
+        if (area < minWaterSize) continue;
+        const bw = stat.width;
+        const bh = stat.height;
+        const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
+        const solidity = area / Math.max(1, bw * bh);
+        if (aspect > 4 && solidity < 0.3) continue; // elongated + sparse = river
+
+        // Mark this component in the mask
+        for (let i = 0; i < tp; i++) {
+          if (waterLabelData[i] === c) waterMask[i] = 1;
+        }
+
+        const cx = stat.left;
+        const cy = stat.top;
+
+        // Generate main crop
+        let mainCrop: string | undefined;
+        try {
+          mainCrop = (await generateOutlineCrop(origDownBuf, TW, TH, si => waterLabelData[si] === c, cx, cy, bw, bh)) ?? undefined;
+        } catch { /* skip */ }
+        if (!mainCrop) continue;
+
+        // K=2 sub-clustering on component pixels (for "Mix" option)
+        const compPx: Array<[number, number, number, number]> = []; // [r, g, b, pixelIndex]
+        for (let y = cy; y < cy + bh && y < TH; y++) {
+          for (let x = cx; x < cx + bw && x < TW; x++) {
+            const si = y * TW + x;
+            if (waterLabelData[si] === c) {
+              compPx.push([inpaintedBuf[si * 3], inpaintedBuf[si * 3 + 1], inpaintedBuf[si * 3 + 2], si]);
+            }
+          }
+        }
+
+        const subClusters: WaterSubCluster[] = [];
+        if (compPx.length > 20) {
+          // Farthest-point K=2 init
+          const cents: Array<[number, number, number]> = [[compPx[0][0], compPx[0][1], compPx[0][2]]];
+          let maxD = 0, bestI = 0;
+          for (let i = 1; i < compPx.length; i++) {
+            const d = (compPx[i][0] - cents[0][0]) ** 2 + (compPx[i][1] - cents[0][1]) ** 2 + (compPx[i][2] - cents[0][2]) ** 2;
+            if (d > maxD) { maxD = d; bestI = i; }
+          }
+          cents.push([compPx[bestI][0], compPx[bestI][1], compPx[bestI][2]]);
+
+          // K-means iterations
+          const assignments = new Uint8Array(compPx.length);
+          for (let iter = 0; iter < 20; iter++) {
+            const sums = [[0, 0, 0, 0], [0, 0, 0, 0]];
+            for (let i = 0; i < compPx.length; i++) {
+              const [r, g, b] = compPx[i];
+              const d0 = (r - cents[0][0]) ** 2 + (g - cents[0][1]) ** 2 + (b - cents[0][2]) ** 2;
+              const d1 = (r - cents[1][0]) ** 2 + (g - cents[1][1]) ** 2 + (b - cents[1][2]) ** 2;
+              const k = d0 <= d1 ? 0 : 1;
+              assignments[i] = k;
+              sums[k][0] += r; sums[k][1] += g; sums[k][2] += b; sums[k][3]++;
+            }
+            for (let k = 0; k < 2; k++) {
+              if (sums[k][3] > 0) {
+                cents[k] = [Math.round(sums[k][0] / sums[k][3]), Math.round(sums[k][1] / sums[k][3]), Math.round(sums[k][2] / sums[k][3])];
+              }
+            }
+          }
+          compSubCentroids.set(c, cents);
+
+          // Generate sub-cluster crops with distinct outline colors
+          const subPixelSets = [new Set<number>(), new Set<number>()];
+          const subAreas = [0, 0];
+          for (let i = 0; i < compPx.length; i++) {
+            subPixelSets[assignments[i]].add(compPx[i][3]);
+            subAreas[assignments[i]]++;
+          }
+          // Compute bounding box per sub-cluster
+          for (let k = 0; k < 2; k++) {
+            if (subAreas[k] < 5) continue;
+            let minX = TW, minY = TH, maxX = 0, maxY = 0;
+            for (const si of subPixelSets[k]) {
+              const px = si % TW, py = Math.floor(si / TW);
+              if (px < minX) minX = px; if (px > maxX) maxX = px;
+              if (py < minY) minY = py; if (py > maxY) maxY = py;
+            }
+            try {
+              const subCrop = await generateOutlineCrop(origDownBuf, TW, TH, si => subPixelSets[k].has(si), minX, minY, maxX - minX + 1, maxY - minY + 1);
+              if (subCrop) {
+                subClusters.push({
+                  idx: k,
+                  pct: Math.round(subAreas[k] / tp * 1000) / 10,
+                  cropDataUrl: subCrop,
+                });
+              }
+            } catch { /* skip */ }
+          }
+        }
+
+        waterComponents.push({
+          id: c, area, pct: Math.round(area / tp * 1000) / 10,
+          cropDataUrl: mainCrop,
+          subClusters,
+        });
+      }
+      // Save split-aware labels before deleting Mats (needed for rebuild after review)
+      const savedWaterLabels = new Int32Array(waterLabelData);
+      waterLabels.delete(); waterStats.delete();
+
+      console.log(`  [Water] ${waterComponents.length} component(s) after CC filter (from ${numWaterCC - 1} raw)`);
+
+      // Dilate water mask with elliptical kernel for safety margin
+      const waterMaskMat = cv.matFromArray(TH, TW, cv.CV_8UC1, waterMask);
+      const wdSize = oddK(5);
+      const waterDilateKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(wdSize, wdSize));
+      const waterGrownMat = new cv.Mat();
+      cv.dilate(waterMaskMat, waterGrownMat, waterDilateKernel);
+      const waterGrown = new Uint8Array(waterGrownMat.data);
+      waterMaskMat.delete(); waterGrownMat.delete(); waterKernel.delete(); waterDilateKernel.delete();
+
+      // Debug: water mask overlay on original image
+      const waterVizBuf = Buffer.from(inpaintedBuf);
+      let waterPxCount = 0;
+      for (let i = 0; i < tp; i++) {
+        if (waterGrown[i]) {
+          waterVizBuf[i * 3] = 255; waterVizBuf[i * 3 + 1] = 0; waterVizBuf[i * 3 + 2] = 0;
+          waterPxCount++;
+        }
+      }
+      const waterDebugPng = await sharp(Buffer.from(waterVizBuf), {
+        raw: { width: TW, height: TH, channels: 3 },
+      }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+      await pushDebugImage(
+        `Water mask (red, ${waterPxCount} px = ${(waterPxCount / tp * 100).toFixed(1)}%)`,
+        `data:image/png;base64,${waterDebugPng.toString('base64')}`,
+      );
+
+      // Interactive per-component water review
+      if (waterComponents.length > 0) {
+        const reviewId = `wr-${regionId}-${Date.now()}`;
+        // Store crop images in memory — served via GET endpoint (avoids SSE stalling)
+        storeWaterCrops(reviewId, waterComponents);
+        const cropCount = waterComponents.reduce((n, wc) => n + 1 + wc.subClusters.length, 0);
+        console.log(`  [Water] Stored ${cropCount} crop(s) for review ${reviewId}`);
+        // Lightweight SSE event — no images, just metadata + reviewId
+        sendEvent({
+          type: 'water_review',
+          reviewId,
+          waterPxPercent: Math.round(waterPxCount / tp * 1000) / 10,
+          waterComponents: waterComponents.map(wc => ({
+            id: wc.id, pct: wc.pct, cropDataUrl: '',
+            subClusters: wc.subClusters.map(sc => ({ idx: sc.idx, pct: sc.pct, cropDataUrl: '' })),
+          })),
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        // Wait for user response: approved IDs + mix decisions
+        // The POST endpoint calls resolveWaterReview() which resolves this promise.
+        // Only auto-resolve on timeout (5 min); do NOT auto-resolve on req.close
+        // because the SSE connection may drop transiently while the user is deciding.
+        const decision = await new Promise<WaterReviewDecision>((resolve) => {
+          pendingWaterReviews.set(reviewId, resolve);
+          setTimeout(() => {
+            if (pendingWaterReviews.has(reviewId)) {
+              console.log(`  [Water] Review ${reviewId} timed out — auto-approving all`);
+              pendingWaterReviews.delete(reviewId);
+              resolve({ approvedIds: waterComponents.map(wc => wc.id), mixDecisions: [] });
+            }
+          }, 300000);
+        });
+
+        // Check if any components were rejected or mixed
+        const approvedSet = new Set(decision.approvedIds);
+        const mixMap = new Map(decision.mixDecisions.map(m => [m.componentId, new Set(m.approvedSubClusters)]));
+        const rejectedIds = waterComponents.filter(wc => !approvedSet.has(wc.id) && !mixMap.has(wc.id)).map(wc => wc.id);
+        const needsRebuild = rejectedIds.length > 0 || mixMap.size > 0;
+        let preRebuildWaterPx = 0;
+        for (let i = 0; i < tp; i++) if (waterGrown[i]) preRebuildWaterPx++;
+        console.log(`  [Water] Decision received: approved=[${[...approvedSet]}] rejected=[${rejectedIds}] mix=[${[...mixMap.keys()]}] all_components=[${waterComponents.map(wc => wc.id)}] needsRebuild=${needsRebuild} preRebuildWaterPx=${preRebuildWaterPx}`);
+
+        if (needsRebuild) {
+          const changes: string[] = [];
+          const rejected = waterComponents.filter(wc => !approvedSet.has(wc.id) && !mixMap.has(wc.id));
+          if (rejected.length) changes.push(`${rejected.length} rejected`);
+          if (mixMap.size) changes.push(`${mixMap.size} mixed`);
+          await logStep(`Rebuilding water mask (${changes.join(', ')})...`);
+
+          // Use saved split-aware labels (includes blob-split sub-labels)
+          waterMask.fill(0);
+          for (let i = 0; i < tp; i++) {
+            const label = savedWaterLabels[i];
+            if (label <= 0) continue;
+            if (!compStats.has(label)) continue; // filtered out (too small, river-like)
+
+            if (approvedSet.has(label)) {
+              waterMask[i] = 1; // Fully approved
+            } else if (mixMap.has(label)) {
+              // Mix: keep only approved sub-clusters
+              const approvedSubs = mixMap.get(label)!;
+              const cents = compSubCentroids.get(label);
+              if (cents) {
+                const r = inpaintedBuf[i * 3], g = inpaintedBuf[i * 3 + 1], b = inpaintedBuf[i * 3 + 2];
+                const d0 = (r - cents[0][0]) ** 2 + (g - cents[0][1]) ** 2 + (b - cents[0][2]) ** 2;
+                const d1 = (r - cents[1][0]) ** 2 + (g - cents[1][1]) ** 2 + (b - cents[1][2]) ** 2;
+                const nearest = d0 <= d1 ? 0 : 1;
+                if (approvedSubs.has(nearest)) waterMask[i] = 1;
+              }
+            }
+            // Else: rejected — waterMask stays 0
+          }
+
+          // Re-dilate
+          const wm3 = cv.matFromArray(TH, TW, cv.CV_8UC1, waterMask);
+          const wd3Size = oddK(5);
+          const wdk3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(wd3Size, wd3Size));
+          const wg3 = new cv.Mat();
+          cv.dilate(wm3, wg3, wdk3);
+          const newGrown = new Uint8Array(wg3.data);
+          wm3.delete(); wg3.delete(); wdk3.delete();
+          for (let i = 0; i < tp; i++) waterGrown[i] = newGrown[i];
+          let postRebuildWaterPx = 0;
+          for (let i = 0; i < tp; i++) if (waterGrown[i]) postRebuildWaterPx++;
+          console.log(`  [Water] Rebuild complete: ${preRebuildWaterPx} → ${postRebuildWaterPx} water px (delta: ${postRebuildWaterPx - preRebuildWaterPx})`);
+
+          // Updated debug image
+          let cnt = 0;
+          const viz = Buffer.from(inpaintedBuf);
+          for (let i = 0; i < tp; i++) {
+            if (waterGrown[i]) { viz[i * 3] = 255; viz[i * 3 + 1] = 0; viz[i * 3 + 2] = 0; cnt++; }
+          }
+          const p = await sharp(Buffer.from(viz), { raw: { width: TW, height: TH, channels: 3 } })
+            .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+          await pushDebugImage(
+            `Water mask (corrected, ${cnt} px = ${(cnt / tp * 100).toFixed(1)}%)`,
+            `data:image/png;base64,${p.toString('base64')}`,
+          );
+        }
+      }
+
+      // Detect background colors via K-means on 5px-band image edge pixels
+      const edgePx: Array<[number, number, number]> = [];
+      for (let x = 0; x < TW; x++) {
+        for (let band = 0; band < 5; band++) {
+          const tIdx = (band * TW + x) * 3;
+          const bIdx = ((TH - 1 - band) * TW + x) * 3;
+          edgePx.push([colorBuf[tIdx], colorBuf[tIdx + 1], colorBuf[tIdx + 2]]);
+          edgePx.push([colorBuf[bIdx], colorBuf[bIdx + 1], colorBuf[bIdx + 2]]);
+        }
+      }
+      for (let y = 0; y < TH; y++) {
+        for (let band = 0; band < 5; band++) {
+          const lIdx = (y * TW + band) * 3;
+          const rIdx = (y * TW + TW - 1 - band) * 3;
+          edgePx.push([colorBuf[lIdx], colorBuf[lIdx + 1], colorBuf[lIdx + 2]]);
+          edgePx.push([colorBuf[rIdx], colorBuf[rIdx + 1], colorBuf[rIdx + 2]]);
+        }
+      }
+
+      // K-means (K=3) on edge pixels with farthest-point initialization
+      const BK = 3;
+      const bgCentroids: Array<[number, number, number]> = [edgePx[0]];
+      for (let c = 1; c < BK; c++) {
+        let maxDist = 0, bestIdx = 0;
+        for (let i = 0; i < edgePx.length; i++) {
+          let minDist = Infinity;
+          for (const ct of bgCentroids) {
+            const d = (edgePx[i][0] - ct[0]) ** 2 + (edgePx[i][1] - ct[1]) ** 2 + (edgePx[i][2] - ct[2]) ** 2;
+            if (d < minDist) minDist = d;
+          }
+          if (minDist > maxDist) { maxDist = minDist; bestIdx = i; }
+        }
+        bgCentroids.push([...edgePx[bestIdx]]);
+      }
+      for (let iter = 0; iter < 20; iter++) {
+        const sums = bgCentroids.map(() => [0, 0, 0, 0]);
+        for (const px of edgePx) {
+          let bestDist = Infinity, bestK = 0;
+          for (let k = 0; k < BK; k++) {
+            const d = (px[0] - bgCentroids[k][0]) ** 2 + (px[1] - bgCentroids[k][1]) ** 2 + (px[2] - bgCentroids[k][2]) ** 2;
+            if (d < bestDist) { bestDist = d; bestK = k; }
+          }
+          sums[bestK][0] += px[0]; sums[bestK][1] += px[1]; sums[bestK][2] += px[2]; sums[bestK][3]++;
+        }
+        for (let k = 0; k < BK; k++) {
+          if (sums[k][3] > 0) {
+            bgCentroids[k] = [
+              Math.round(sums[k][0] / sums[k][3]),
+              Math.round(sums[k][1] / sums[k][3]),
+              Math.round(sums[k][2] / sums[k][3]),
+            ];
+          }
+        }
+      }
+
+      // Active background = edge clusters with >10% of edge pixels
+      const bgCnts = new Array(BK).fill(0);
+      for (const px of edgePx) {
+        let bestDist = Infinity, bestK = 0;
+        for (let k = 0; k < BK; k++) {
+          const d = (px[0] - bgCentroids[k][0]) ** 2 + (px[1] - bgCentroids[k][1]) ** 2 + (px[2] - bgCentroids[k][2]) ** 2;
+          if (d < bestDist) { bestDist = d; bestK = k; }
+        }
+        bgCnts[bestK]++;
+      }
+      const activeBg: Array<[number, number, number]> = [];
+      for (let k = 0; k < BK; k++) {
+        if (bgCnts[k] / edgePx.length > 0.10) activeBg.push(bgCentroids[k]);
+      }
+
+      // Convert active BG centroids to Lab for chrominance-weighted distance
+      const activeBgLab: Array<[number, number, number]> = activeBg.map(bg => {
+        const px = new cv.Mat(1, 1, cv.CV_8UC3);
+        px.data[0] = bg[0]; px.data[1] = bg[1]; px.data[2] = bg[2];
+        const lab = new cv.Mat();
+        cv.cvtColor(px, lab, cv.COLOR_RGB2Lab);
+        const result: [number, number, number] = [lab.data[0], lab.data[1], lab.data[2]];
+        px.delete(); lab.delete();
+        return result;
+      });
+
+      // ── Coastal band: the water detector found the coastline with a fine border.
+      // Pixels adjacent to detected water on the land side are guaranteed foreground —
+      // use this to protect thin coastal strips from being erased by bg detection.
+      const COAST_BAND_R = pxS(5);
+      const coastalBand = new Uint8Array(tp);
+      let coastalCount = 0;
+      for (let i = 0; i < tp; i++) {
+        if (!waterGrown[i]) continue;
+        const wx = i % TW, wy = Math.floor(i / TW);
+        for (let dy = -COAST_BAND_R; dy <= COAST_BAND_R; dy++) {
+          for (let dx = -COAST_BAND_R; dx <= COAST_BAND_R; dx++) {
+            if (dx * dx + dy * dy > COAST_BAND_R * COAST_BAND_R) continue;
+            const nx = wx + dx, ny = wy + dy;
+            if (nx < 0 || nx >= TW || ny < 0 || ny >= TH) continue;
+            const ni = ny * TW + nx;
+            if (!waterGrown[ni] && !coastalBand[ni]) { coastalBand[ni] = 1; coastalCount++; }
+          }
+        }
+      }
+      console.log(`  [FG] Coastal band: ${coastalCount} pixels marked as guaranteed foreground (within ${COAST_BAND_R}px of water)`);
+
+      // Foreground mask: pixel is foreground if it's far from background AND has saturation.
+      // Three additional forced-foreground signals prevent thin strips from disappearing:
+      //  1. textExcluded: text was detected there → on top of the map region, not background
+      //  2. coastalBand: adjacent to detected water → land side of coastline
+      const fgMask = new Uint8Array(tp);
+      const BG_DE_SQ = 12 * 12; // Chrominance-weighted Lab ΔE² threshold
+      const MIN_FG_SAT = 25;
+      for (let i = 0; i < tp; i++) {
+        if (waterGrown[i]) continue;
+        if (textExcluded[i] || coastalBand[i]) { fgMask[i] = 1; continue; }
+        const sat = hsvBuf[i * 3 + 1];
+        let isBg = false;
+        const pL = labBufEarly[i * 3], pA = labBufEarly[i * 3 + 1], pB = labBufEarly[i * 3 + 2];
+        for (const bg of activeBgLab) {
+          const dL = (pL - bg[0]) * 0.5; // de-weight luminance
+          const dA = pA - bg[1];
+          const dB = pB - bg[2];
+          if (dL * dL + dA * dA + dB * dB <= BG_DE_SQ) { isBg = true; break; }
+        }
+        if (!isBg || sat > MIN_FG_SAT) fgMask[i] = 1;
+      }
+
+      // Smooth the binary mask with Gaussian blur + re-threshold.
+      // This removes noisy spikes from colored lines in the gray background area,
+      // filling small gaps and smoothing the boundary before morphological close.
+      const fgMat = cv.matFromArray(TH, TW, cv.CV_8UC1, fgMask);
+      // Scale to 0-255 for blur
+      for (let i = 0; i < tp; i++) fgMat.data[i] = fgMat.data[i] ? 255 : 0;
+      const fgBlurred = new cv.Mat();
+      const gbSize = oddK(15);
+      cv.GaussianBlur(fgMat, fgBlurred, new cv.Size(gbSize, gbSize), 0);
+      const fgSmoothed = new cv.Mat();
+      cv.threshold(fgBlurred, fgSmoothed, 128, 1, cv.THRESH_BINARY);
+      const smoothedFg = new Uint8Array(fgSmoothed.data);
+      fgMat.delete(); fgBlurred.delete(); fgSmoothed.delete();
+
+      // Close: fills gaps from region borders (scales with resolution)
+      const closed = cvMorphOp(cv, smoothedFg, TW, TH, cv.MORPH_CLOSE, oddK(31));
+
+      await logStep('Connected components + country silhouette...');
+      // Connected components via OpenCV (8-connectivity, faster than manual BFS)
+      const closedMat = cv.matFromArray(TH, TW, cv.CV_8UC1, closed);
+      const ccLabelsMat = new cv.Mat();
+      const ccStats = new cv.Mat();
+      const ccCents = new cv.Mat();
+      const numCC = cv.connectedComponentsWithStats(closedMat, ccLabelsMat, ccStats, ccCents);
+      closedMat.delete(); ccCents.delete();
+      const ccLabels = ccLabelsMat.data32S; // Int32Array view
+
+      // Prefer largest component that doesn't touch image border (country surrounded by bg)
+      const touchesBorder = new Set<number>();
+      for (let x = 0; x < TW; x++) {
+        if (ccLabels[x] > 0) touchesBorder.add(ccLabels[x]);
+        if (ccLabels[(TH - 1) * TW + x] > 0) touchesBorder.add(ccLabels[(TH - 1) * TW + x]);
+      }
+      for (let y = 0; y < TH; y++) {
+        if (ccLabels[y * TW] > 0) touchesBorder.add(ccLabels[y * TW]);
+        if (ccLabels[y * TW + TW - 1] > 0) touchesBorder.add(ccLabels[y * TW + TW - 1]);
+      }
+      // Build sorted list of components by area (skip label 0 = background)
+      const componentSizes: Array<{ id: number; size: number }> = [];
+      for (let c = 1; c < numCC; c++) {
+        componentSizes.push({ id: c, size: ccStats.intAt(c, cv.CC_STAT_AREA) });
+      }
+      componentSizes.sort((a, b) => b.size - a.size);
+      let countryComp = componentSizes.length > 0 ? componentSizes[0].id : 0;
+      for (const c of componentSizes) {
+        if (!touchesBorder.has(c.id) && c.size > tp * 0.10) { countryComp = c.id; break; }
+      }
+      if (componentSizes.length > 0 && ccStats.intAt(countryComp, cv.CC_STAT_AREA) < tp * 0.10) {
+        countryComp = componentSizes[0].id;
+      }
+      ccStats.delete();
+
+      // Fill interior holes (flood from image border, anything not reached = country)
+      const outerMask = new Uint8Array(tp);
+      const borderQueue: number[] = [];
+      for (let x = 0; x < TW; x++) { borderQueue.push(x); borderQueue.push((TH - 1) * TW + x); }
+      for (let y = 0; y < TH; y++) { borderQueue.push(y * TW); borderQueue.push(y * TW + TW - 1); }
+      for (const p of borderQueue) outerMask[p] = 1;
+      let bHead = 0;
+      while (bHead < borderQueue.length) {
+        const p = borderQueue[bHead++];
+        for (const n of [p - TW, p + TW, p - 1, p + 1]) {
+          if (n >= 0 && n < tp && !outerMask[n] && ccLabels[n] !== countryComp) {
+            outerMask[n] = 1;
+            borderQueue.push(n);
+          }
+        }
+      }
+
+      let countryMask = new Uint8Array(tp);
+      let countrySize = 0;
+      for (let i = 0; i < tp; i++) {
+        // Exclude water pixels — interior hole fill would otherwise re-include lakes
+        // surrounded by land (e.g. Lake Victoria) since flood can't reach them
+        countryMask[i] = ((ccLabels[i] === countryComp || !outerMask[i]) && !waterGrown[i]) ? 1 : 0;
+        if (countryMask[i]) countrySize++;
+      }
+      ccLabelsMat.delete(); // done with ccLabels view
+
+      // Restore forced-foreground pixels that morphological pipeline erased.
+      // Gaussian blur (25px kernel) destroys thin strips (~15px wide), and CC selection
+      // drops fragments disconnected from the main body. But textExcluded (text on map
+      // regions) and coastalBand (land adjacent to water) are known foreground — re-add them.
+      let forcedRestored = 0;
+      for (let i = 0; i < tp; i++) {
+        if (!waterGrown[i] && !countryMask[i] && (textExcluded[i] || coastalBand[i])) {
+          countryMask[i] = 1;
+          countrySize++;
+          forcedRestored++;
+        }
+      }
+      if (forcedRestored > 0) {
+        console.log(`  [FG] Restored ${forcedRestored} forced-foreground pixels erased by morph pipeline`);
+      }
+
+      // Remove foreign land: neighboring countries (e.g. Europe visible on Morocco map)
+      // get connected to the target country through narrow straits bridged by morph close.
+      // Erode to break narrow bridges, identify separate bodies, remove small foreign ones.
+      // Preserves exclaves: only removes bodies that are BOTH outside the main bbox AND
+      // smaller than 15% of the main body (real exclaves like Kaliningrad are kept).
+      {
+        const cmMat = cv.matFromArray(TH, TW, cv.CV_8UC1, countryMask);
+        // Scale-aware erosion: bridge must be < 15 base pixels wide to break
+        const erodeK = oddK(15);
+        const erodeKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(erodeK, erodeK));
+        const eroded = new cv.Mat();
+        cv.erode(cmMat, eroded, erodeKernel);
+        erodeKernel.delete(); cmMat.delete();
+
+        const erodedLabels = new cv.Mat();
+        const erodedStats = new cv.Mat();
+        const erodedCents = new cv.Mat();
+        const numErodedCC = cv.connectedComponentsWithStats(eroded, erodedLabels, erodedStats, erodedCents);
+        eroded.delete(); erodedCents.delete();
+
+        if (numErodedCC > 2) { // >2 means at least 2 foreground bodies
+          // Find the largest foreground body
+          let mainCC = 1, mainSize = 0;
+          for (let c = 1; c < numErodedCC; c++) {
+            const area = erodedStats.intAt(c, cv.CC_STAT_AREA);
+            if (area > mainSize) { mainSize = area; mainCC = c; }
+          }
+          // Get bounding box of main body
+          const mainTop = erodedStats.intAt(mainCC, cv.CC_STAT_TOP);
+          const mainLeft = erodedStats.intAt(mainCC, cv.CC_STAT_LEFT);
+          const mainW = erodedStats.intAt(mainCC, cv.CC_STAT_WIDTH);
+          const mainH = erodedStats.intAt(mainCC, cv.CC_STAT_HEIGHT);
+          const mainBottom = mainTop + mainH;
+          const mainRight = mainLeft + mainW;
+          const margin = pxS(20); // generous margin around main body
+
+          // Identify which secondary CCs are foreign land vs exclaves
+          const foreignCCs = new Set<number>();
+          for (let c = 1; c < numErodedCC; c++) {
+            if (c === mainCC) continue;
+            const area = erodedStats.intAt(c, cv.CC_STAT_AREA);
+            // Keep large bodies (>15% of main) — likely exclaves, not decoration
+            if (area > mainSize * 0.15) continue;
+            // Keep bodies inside main bbox + margin — could be islands or nearby exclaves
+            const cTop = erodedStats.intAt(c, cv.CC_STAT_TOP);
+            const cLeft = erodedStats.intAt(c, cv.CC_STAT_LEFT);
+            const cW = erodedStats.intAt(c, cv.CC_STAT_WIDTH);
+            const cH = erodedStats.intAt(c, cv.CC_STAT_HEIGHT);
+            const cBottom = cTop + cH;
+            const cRight = cLeft + cW;
+            const overlapsMain = cBottom >= mainTop - margin && cTop <= mainBottom + margin &&
+                                 cRight >= mainLeft - margin && cLeft <= mainRight + margin;
+            if (overlapsMain) continue;
+            foreignCCs.add(c);
+          }
+
+          if (foreignCCs.size > 0) {
+            // Remove foreign pixels from country mask
+            // Also remove non-eroded pixels in the bridge zone between foreign and main
+            let foreignRemoved = 0;
+            const erodedData = erodedLabels.data32S;
+            for (let i = 0; i < tp; i++) {
+              if (!countryMask[i]) continue;
+              // Check eroded label — if pixel belongs to a foreign CC, remove it
+              if (erodedData[i] > 0 && foreignCCs.has(erodedData[i])) {
+                countryMask[i] = 0;
+                countrySize--;
+                foreignRemoved++;
+                continue;
+              }
+              // Also remove non-eroded bridge pixels outside main bbox that have
+              // no eroded body (these are the bridge zone lost during erosion)
+              if (erodedData[i] === 0 && countryMask[i]) {
+                const x = i % TW, y = Math.floor(i / TW);
+                const outsideMain = y < mainTop - margin || y > mainBottom + margin ||
+                                    x < mainLeft - margin || x > mainRight + margin;
+                if (outsideMain) {
+                  countryMask[i] = 0;
+                  countrySize--;
+                  foreignRemoved++;
+                }
+              }
+            }
+            if (foreignRemoved > 0) {
+              console.log(`  [FG] Removed ${foreignRemoved} foreign land pixels (${foreignCCs.size} neighboring country blob(s))`);
+            }
+          }
+        }
+        erodedLabels.delete(); erodedStats.delete();
+      }
+
+      // Remove thin line artifacts (roads, borders drawn on map) via morphological opening.
+      // Opening = erode + dilate: removes features thinner than the kernel while preserving
+      // the country shape. Kernel ~5px catches 1-3px line artifacts without affecting real
+      // regions (typically 15px+ wide at TW=800).
+      {
+        const cmOpenMat = cv.matFromArray(TH, TW, cv.CV_8UC1, countryMask);
+        const openK = oddK(3);
+        const openKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(openK, openK));
+        const openedMat = new cv.Mat();
+        cv.morphologyEx(cmOpenMat, openedMat, cv.MORPH_OPEN, openKernel);
+        let openRemoved = 0;
+        for (let i = 0; i < tp; i++) {
+          if (countryMask[i] && !openedMat.data[i]) {
+            countryMask[i] = 0;
+            countrySize--;
+            openRemoved++;
+          }
+        }
+        cmOpenMat.delete(); openedMat.delete(); openKernel.delete();
+        if (openRemoved > 0) console.log(`  [FG] Morphological opening removed ${openRemoved} thin-line artifact pixels`);
+      }
+
+      // Saturation refinement: neighboring countries (Western Sahara, Algeria for Morocco)
+      // may have slightly different gray from map background, escaping background detection.
+      // Use Otsu on saturation to separate colorful country regions from muted gray neighbors.
+      // Guards below ensure this only applies when it makes a meaningful difference.
+      const initialMaskPct = countrySize / tp;
+      {
+        // Compute per-pixel saturation: sat = (max - min) / max
+        const sat = new Uint8Array(tp);
+        for (let i = 0; i < tp; i++) {
+          const r = colorBuf[i * 3], g = colorBuf[i * 3 + 1], b = colorBuf[i * 3 + 2];
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          sat[i] = max === 0 ? 0 : Math.round(((max - min) / max) * 255);
+        }
+
+        // Otsu threshold on saturation histogram of country-mask pixels
+        const satHist = new Array(256).fill(0);
+        let satTotal = 0;
+        for (let i = 0; i < tp; i++) {
+          if (countryMask[i]) { satHist[sat[i]]++; satTotal++; }
+        }
+        let totalSum = 0;
+        for (let i = 0; i < 256; i++) totalSum += i * satHist[i];
+
+        let bestThresh = 0, bestVariance = 0, bgSum = 0, bgCount = 0;
+        for (let t = 0; t < 256; t++) {
+          bgCount += satHist[t];
+          bgSum += t * satHist[t];
+          const fgCount = satTotal - bgCount;
+          if (bgCount === 0 || fgCount === 0) continue;
+          const bgMean = bgSum / bgCount;
+          const fgMean = (totalSum - bgSum) / fgCount;
+          const variance = bgCount * fgCount * (bgMean - fgMean) ** 2;
+          if (variance > bestVariance) { bestVariance = variance; bestThresh = t; }
+        }
+        const satThreshold = Math.max(15, Math.min(80, bestThresh));
+
+        // Smooth saturation with OpenCV 5×5 median for robustness
+        const satMat = cv.matFromArray(TH, TW, cv.CV_8UC1, sat);
+        const satBlurred = new cv.Mat();
+        cv.medianBlur(satMat, satBlurred, oddK(9));
+        const satSmooth = new Uint8Array(satBlurred.data);
+        satMat.delete(); satBlurred.delete();
+
+        // Keep only saturated pixels, then close gaps and find largest CC
+        const refinedFg = new Uint8Array(tp);
+        for (let i = 0; i < tp; i++) {
+          if (countryMask[i] && satSmooth[i] >= satThreshold) refinedFg[i] = 1;
+        }
+        // Close: fill holes from text inpainting (scales with resolution)
+        const refinedClosed = cvMorphOp(cv, refinedFg, TW, TH, cv.MORPH_CLOSE, oddK(41));
+
+        // Find largest CC via OpenCV
+        const rClosedMat = cv.matFromArray(TH, TW, cv.CV_8UC1, refinedClosed);
+        const rLabels = new cv.Mat();
+        const rStats = new cv.Mat();
+        const rCents = new cv.Mat();
+        const numRCC = cv.connectedComponentsWithStats(rClosedMat, rLabels, rStats, rCents);
+        rClosedMat.delete(); rCents.delete();
+        const rccLabels = rLabels.data32S;
+        let rcc = 0, rccMaxSize = 0;
+        for (let c = 1; c < numRCC; c++) {
+          const area = rStats.intAt(c, cv.CC_STAT_AREA);
+          if (area > rccMaxSize) { rccMaxSize = area; rcc = c; }
+        }
+        rStats.delete();
+
+        // Rebuild country mask with outer flood fill
+        const rOuterMask = new Uint8Array(tp);
+        const rBorderQ: number[] = [];
+        for (let x = 0; x < TW; x++) { rBorderQ.push(x); rBorderQ.push((TH - 1) * TW + x); }
+        for (let y = 0; y < TH; y++) { rBorderQ.push(y * TW); rBorderQ.push(y * TW + TW - 1); }
+        for (const p of rBorderQ) rOuterMask[p] = 1;
+        let rHead = 0;
+        while (rHead < rBorderQ.length) {
+          const p = rBorderQ[rHead++];
+          for (const n of [p - TW, p + TW, p - 1, p + 1])
+            if (n >= 0 && n < tp && !rOuterMask[n] && rccLabels[n] !== rcc) { rOuterMask[n] = 1; rBorderQ.push(n); }
+        }
+
+        const refinedCountry = new Uint8Array(tp);
+        let refinedSize = 0;
+        for (let i = 0; i < tp; i++) {
+          refinedCountry[i] = ((rccLabels[i] === rcc || !rOuterMask[i]) && !waterGrown[i]) ? 1 : 0;
+          if (refinedCountry[i]) refinedSize++;
+        }
+        rLabels.delete(); // done with rccLabels view
+
+        // Restore forced-foreground pixels in refined mask too
+        for (let i = 0; i < tp; i++) {
+          if (!waterGrown[i] && !refinedCountry[i] && (textExcluded[i] || coastalBand[i])) {
+            refinedCountry[i] = 1;
+            refinedSize++;
+          }
+        }
+
+        // Use refined mask if significantly smaller and still reasonable
+        const refinedPct = refinedSize / tp;
+        if (refinedPct < initialMaskPct * 0.85 && refinedPct > 0.10) {
+          const removed = countrySize - refinedSize;
+          console.log(`  [FG] Saturation refinement: removed ${removed} desaturated pixels (${(initialMaskPct * 100).toFixed(1)}% → ${(refinedPct * 100).toFixed(1)}%, Otsu threshold=${satThreshold})`);
+          countryMask = refinedCountry;
+          countrySize = refinedSize;
+        } else {
+          console.log(`  [FG] Saturation refinement: skipped (initial=${(initialMaskPct * 100).toFixed(1)}%, refined=${(refinedPct * 100).toFixed(1)}%, threshold=${satThreshold})`);
+        }
+      }
+
+      // Debug: show country mask + water mask overlay
+      const maskVizBuf = Buffer.alloc(tp * 3, 200); // gray background
+      for (let i = 0; i < tp; i++) {
+        if (waterGrown[i]) {
+          maskVizBuf[i * 3] = 60; maskVizBuf[i * 3 + 1] = 120; maskVizBuf[i * 3 + 2] = 200; // blue = water
+        } else if (countryMask[i]) {
+          maskVizBuf[i * 3] = colorBuf[i * 3]; maskVizBuf[i * 3 + 1] = colorBuf[i * 3 + 1]; maskVizBuf[i * 3 + 2] = colorBuf[i * 3 + 2]; // original colors
+        }
+      }
+      const maskPng = await sharp(maskVizBuf, {
+        raw: { width: TW, height: TH, channels: 3 },
+      }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+      await pushDebugImage(
+        `Country mask (${(countrySize / tp * 100).toFixed(0)}% of image) + water (blue)`,
+        `data:image/png;base64,${maskPng.toString('base64')}`,
+      );
+
+      // ── Park overlay detection & removal ──────────────────────────────────
+      // Wikivoyage maps overlay national parks/reserves as dark saturated green
+      // blobs on top of region colors. These steal K-means clusters from actual
+      // regions. Detect them by: dark + saturated + greenish pixels within the
+      // country mask, forming mid-sized blobs that are distinctly darker than
+      // their surroundings. Inpaint confirmed parks with per-pixel nearest
+      // boundary color (not uniform average) so parks spanning two regions get
+      // correct colors on each side.
+      await logStep('Detecting park overlays...');
+      {
+        // Step 1: Find "dark saturated green" candidates in the country mask
+        const parkCandidate = new Uint8Array(tp);
+        // Compute median brightness of country pixels to set relative threshold
+        const brightnesses: number[] = [];
+        for (let i = 0; i < tp; i++) {
+          if (!countryMask[i]) continue;
+          brightnesses.push(Math.max(colorBuf[i * 3], colorBuf[i * 3 + 1], colorBuf[i * 3 + 2]));
+        }
+        brightnesses.sort((a, b) => a - b);
+        const medianV = brightnesses[Math.floor(brightnesses.length / 2)] || 128;
+        // Park criterion: dark relative to median, saturated, greenish
+        const vThresh = Math.round(medianV * 0.78); // darker than 78% of median (was 72%)
+        for (let i = 0; i < tp; i++) {
+          if (!countryMask[i]) continue;
+          const r = colorBuf[i * 3], g = colorBuf[i * 3 + 1], b2 = colorBuf[i * 3 + 2];
+          const maxC = Math.max(r, g, b2);
+          const minC = Math.min(r, g, b2);
+          const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+          // Dark + saturated + green-dominant (or at least green is high)
+          if (maxC <= vThresh && sat >= 0.20 && g >= r && g >= b2 * 0.8) {
+            parkCandidate[i] = 1;
+          }
+        }
+
+        // Step 2: Morphological close to fill small gaps in park blobs
+        // Dilation then erosion (kernel scales with resolution to bridge text gaps)
+        const PARK_MORPH_R = pxS(2);
+        const dilated = new Uint8Array(tp);
+        for (let i = 0; i < tp; i++) {
+          if (parkCandidate[i]) { dilated[i] = 1; continue; }
+          if (!countryMask[i]) continue;
+          const x = i % TW, y = Math.floor(i / TW);
+          outer: for (let dy = -PARK_MORPH_R; dy <= PARK_MORPH_R; dy++) {
+            for (let dx = -PARK_MORPH_R; dx <= PARK_MORPH_R; dx++) {
+              const nx = x + dx, ny = y + dy;
+              if (nx >= 0 && nx < TW && ny >= 0 && ny < TH && parkCandidate[ny * TW + nx]) { dilated[i] = 1; break outer; }
+            }
+          }
+        }
+        const closed = new Uint8Array(tp);
+        for (let i = 0; i < tp; i++) {
+          if (!dilated[i]) continue;
+          const x = i % TW, y = Math.floor(i / TW);
+          let allSet = true;
+          for (let dy = -PARK_MORPH_R; dy <= PARK_MORPH_R && allSet; dy++) {
+            for (let dx = -PARK_MORPH_R; dx <= PARK_MORPH_R && allSet; dx++) {
+              const nx = x + dx, ny = y + dy;
+              if (nx >= 0 && nx < TW && ny >= 0 && ny < TH) {
+                if (!dilated[ny * TW + nx]) allSet = false;
+              }
+            }
+          }
+          if (allSet) closed[i] = 1;
+        }
+        // Use closed mask for CC, but only within country
+        const parkMask = new Uint8Array(tp);
+        for (let i = 0; i < tp; i++) {
+          if (countryMask[i] && closed[i]) parkMask[i] = 1;
+        }
+
+        // Step 3: Connected components + size filter
+        const parkVisited = new Uint8Array(tp);
+        interface ParkBlob { id: number; pixels: number[]; avgR: number; avgG: number; avgB: number; boundaryAvgColor: [number, number, number] }
+        const parkBlobs: ParkBlob[] = [];
+        const minParkPx = Math.max(pxS(200), Math.round(countrySize * 0.003)); // >0.3%
+        const maxParkPx = Math.round(countrySize * 0.15); // <15% (raised from 4%)
+        let blobId = 0;
+        for (let i = 0; i < tp; i++) {
+          if (!parkMask[i] || parkVisited[i]) continue;
+          const pixels: number[] = [];
+          const q = [i]; parkVisited[i] = 1; let h = 0;
+          while (h < q.length) {
+            const p = q[h++]; pixels.push(p);
+            for (const n of [p - TW, p + TW, p - 1, p + 1]) {
+              if (n >= 0 && n < tp && !parkVisited[n] && parkMask[n]) { parkVisited[n] = 1; q.push(n); }
+            }
+          }
+          const pxPct = (pixels.length / countrySize * 100).toFixed(1);
+          if (pixels.length < minParkPx) {
+            console.log(`    [Park skip] CC ${pixels.length}px (${pxPct}%) — too small (min=${minParkPx})`);
+            continue;
+          }
+          if (pixels.length > maxParkPx) {
+            console.log(`    [Park skip] CC ${pixels.length}px (${pxPct}%) — too large (max=${maxParkPx})`);
+            continue;
+          }
+          // Compute blob average color
+          let rr = 0, gg = 0, bb = 0;
+          for (const p of pixels) { rr += colorBuf[p * 3]; gg += colorBuf[p * 3 + 1]; bb += colorBuf[p * 3 + 2]; }
+          const avgR = Math.round(rr / pixels.length), avgG = Math.round(gg / pixels.length), avgB = Math.round(bb / pixels.length);
+
+          // Step 4: Compute average boundary color for contrast check
+          const blobSet = new Set(pixels);
+          let bndCount = 0, brSum = 0, bgSum = 0, bbSum = 0;
+          for (const p of pixels) {
+            for (const n of [p - TW, p + TW, p - 1, p + 1]) {
+              if (n >= 0 && n < tp && countryMask[n] && !blobSet.has(n) && !parkMask[n]) {
+                brSum += colorBuf[n * 3]; bgSum += colorBuf[n * 3 + 1]; bbSum += colorBuf[n * 3 + 2];
+                bndCount++;
+              }
+            }
+          }
+          if (bndCount < 10) {
+            console.log(`    [Park skip] CC ${pixels.length}px (${pxPct}%) RGB(${avgR},${avgG},${avgB}) — no clear boundary (${bndCount} px)`);
+            continue;
+          }
+          const bndR = Math.round(brSum / bndCount);
+          const bndG = Math.round(bgSum / bndCount);
+          const bndB = Math.round(bbSum / bndCount);
+
+          // Step 5: Verify contrast — blob must be significantly darker than boundary
+          const blobLum = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+          const bndLum = 0.299 * bndR + 0.587 * bndG + 0.114 * bndB;
+          if (bndLum < blobLum * 1.12) {
+            console.log(`    [Park skip] CC ${pixels.length}px (${pxPct}%) RGB(${avgR},${avgG},${avgB}) — low contrast (blobLum=${blobLum.toFixed(0)} bndLum=${bndLum.toFixed(0)} ratio=${(bndLum/blobLum).toFixed(2)})`);
+            continue;
+          }
+
+          parkBlobs.push({ id: blobId++, pixels, avgR, avgG, avgB, boundaryAvgColor: [bndR, bndG, bndB] });
+        }
+
+        const totalParkPx = parkBlobs.reduce((s, b) => s + b.pixels.length, 0);
+        console.log(`  [Park] Detected ${parkBlobs.length} park blob(s), ${totalParkPx}px (${(totalParkPx / countrySize * 100).toFixed(1)}% of country), medianV=${medianV}, vThresh=${vThresh}`);
+        for (const pb of parkBlobs) {
+          console.log(`    blob ${pb.id}: ${pb.pixels.length}px RGB(${pb.avgR},${pb.avgG},${pb.avgB}) → avg boundary RGB(${pb.boundaryAvgColor})`);
+        }
+
+        // Debug: show park detection mask (use origDownBuf for unprocessed original colors)
+        const parkVizBuf = Buffer.alloc(tp * 3);
+        for (let i = 0; i < tp; i++) {
+          if (!countryMask[i]) {
+            parkVizBuf[i * 3] = 200; parkVizBuf[i * 3 + 1] = 200; parkVizBuf[i * 3 + 2] = 200;
+          } else {
+            // Show original colors dimmed, parks highlighted
+            parkVizBuf[i * 3] = Math.round(origDownBuf[i * 3] * 0.5 + 100);
+            parkVizBuf[i * 3 + 1] = Math.round(origDownBuf[i * 3 + 1] * 0.5 + 100);
+            parkVizBuf[i * 3 + 2] = Math.round(origDownBuf[i * 3 + 2] * 0.5 + 100);
+          }
+        }
+        // Highlight confirmed park blobs in red, their boundary color as a ring
+        for (const pb of parkBlobs) {
+          for (const p of pb.pixels) {
+            parkVizBuf[p * 3] = 220; parkVizBuf[p * 3 + 1] = 50; parkVizBuf[p * 3 + 2] = 50;
+          }
+        }
+        const parkVizPng = await sharp(parkVizBuf, {
+          raw: { width: TW, height: TH, channels: 3 },
+        }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+        await pushDebugImage(
+          `Park detection: ${parkBlobs.length} blobs (${(totalParkPx / countrySize * 100).toFixed(1)}% of country, red = detected parks)`,
+          `data:image/png;base64,${parkVizPng.toString('base64')}`,
+        );
+
+        // Interactive review if parks were found
+        if (parkBlobs.length > 0) {
+          const reviewId = `pr-${regionId}-${Date.now()}`;
+          // Generate crop images for each park blob
+          const cropComponents: Array<{ id: number; pct: number; cropDataUrl: string }> = [];
+          for (const pb of parkBlobs) {
+            // Find bounding box of blob
+            let minX = TW, maxX = 0, minY = TH, maxY = 0;
+            for (const p of pb.pixels) {
+              const x = p % TW, y = Math.floor(p / TW);
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+            }
+            const pad = 15;
+            const cx1 = Math.max(0, minX - pad), cy1 = Math.max(0, minY - pad);
+            const cx2 = Math.min(TW - 1, maxX + pad), cy2 = Math.min(TH - 1, maxY + pad);
+            const cw = cx2 - cx1 + 1, ch = cy2 - cy1 + 1;
+            // Render crop: unprocessed original image with 2px red border around park blob
+            const cropBuf = Buffer.alloc(cw * ch * 3);
+            const blobSet = new Set(pb.pixels);
+            // First pass: copy original image
+            for (let y = cy1; y <= cy2; y++) {
+              for (let x = cx1; x <= cx2; x++) {
+                const si = y * TW + x;
+                const di = (y - cy1) * cw + (x - cx1);
+                cropBuf[di * 3] = origDownBuf[si * 3];
+                cropBuf[di * 3 + 1] = origDownBuf[si * 3 + 1];
+                cropBuf[di * 3 + 2] = origDownBuf[si * 3 + 2];
+              }
+            }
+            // Second pass: draw 2px red border on edge pixels of the blob
+            for (let y = cy1; y <= cy2; y++) {
+              for (let x = cx1; x <= cx2; x++) {
+                const si = y * TW + x;
+                if (!blobSet.has(si)) continue;
+                let isEdge = false;
+                for (let dy = -1; dy <= 1 && !isEdge; dy++) {
+                  for (let dx = -1; dx <= 1 && !isEdge; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const ni = (y + dy) * TW + (x + dx);
+                    if (y + dy < 0 || y + dy >= TH || x + dx < 0 || x + dx >= TW || !blobSet.has(ni)) isEdge = true;
+                  }
+                }
+                if (isEdge) {
+                  for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                      const py = (y - cy1) + dy, px = (x - cx1) + dx;
+                      if (py >= 0 && py < ch && px >= 0 && px < cw) {
+                        const di = py * cw + px;
+                        cropBuf[di * 3] = 220; cropBuf[di * 3 + 1] = 40; cropBuf[di * 3 + 2] = 40;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            const cropPng = await sharp(cropBuf, { raw: { width: cw, height: ch, channels: 3 } }).png().toBuffer();
+            const cropDataUrl = `data:image/png;base64,${cropPng.toString('base64')}`;
+            cropComponents.push({ id: pb.id, pct: Math.round(pb.pixels.length / countrySize * 1000) / 10, cropDataUrl });
+          }
+
+          storeParkCrops(reviewId, cropComponents);
+          console.log(`  [Park] Stored ${cropComponents.length} crop(s) for review ${reviewId}`);
+
+          // Send park_review SSE event (like water_review)
+          sendEvent({
+            type: 'park_review',
+            reviewId,
+            data: {
+              parkCount: parkBlobs.length,
+              totalParkPct: Math.round(totalParkPx / countrySize * 1000) / 10,
+              components: cropComponents.map(c => ({ id: c.id, pct: c.pct })),
+            },
+          });
+          await new Promise(resolve => setImmediate(resolve));
+
+          // Wait for user to confirm which blobs are parks (5 min timeout → auto-confirm all)
+          const decision = await new Promise<ParkReviewDecision>((resolve) => {
+            pendingParkReviews.set(reviewId, resolve);
+            setTimeout(() => {
+              if (pendingParkReviews.has(reviewId)) {
+                console.log(`  [Park] Review ${reviewId} timed out — auto-confirming all ${parkBlobs.length} blobs`);
+                pendingParkReviews.delete(reviewId);
+                resolve({ confirmedIds: parkBlobs.map(b => b.id) });
+              }
+            }, 300000);
+          });
+
+          const confirmedSet = new Set(decision.confirmedIds);
+          const confirmedBlobs = parkBlobs.filter(b => confirmedSet.has(b.id));
+          console.log(`  [Park] Decision: ${confirmedBlobs.length}/${parkBlobs.length} confirmed as parks`);
+
+          // Inpaint confirmed parks — 3-pass approach:
+          //   Pass 1: BFS fill detected blobs + 6px dilation from colorBuf boundary.
+          //   Pass 2: Cleanup remaining dark-green remnants via BFS.
+          //   Pass 3: Harmonize — each filled pixel adopts the median color of
+          //           nearby non-filled country pixels so it clusters correctly.
+          if (confirmedBlobs.length > 0) {
+            await logStep(`Removing ${confirmedBlobs.length} park overlay(s)...`);
+
+            // ── Pass 1: BFS fill detected blobs + 6px dilation ──
+            const confirmedParkMask = new Uint8Array(tp);
+            for (const pb of confirmedBlobs) {
+              for (const p of pb.pixels) confirmedParkMask[p] = 1;
+            }
+            const PARK_DILATE = 6;
+            const fillZone = new Uint8Array(tp);
+            for (let i = 0; i < tp; i++) {
+              if (confirmedParkMask[i]) { fillZone[i] = 1; continue; }
+              if (!countryMask[i]) continue;
+              const ix = i % TW, iy = Math.floor(i / TW);
+              for (let dy = -PARK_DILATE; dy <= PARK_DILATE && !fillZone[i]; dy++) {
+                for (let dx = -PARK_DILATE; dx <= PARK_DILATE; dx++) {
+                  const nx = ix + dx, ny = iy + dy;
+                  if (nx >= 0 && nx < TW && ny >= 0 && ny < TH && confirmedParkMask[ny * TW + nx]) {
+                    fillZone[i] = 1; break;
+                  }
+                }
+              }
+            }
+            // BFS from boundary — seed from colorBuf (same color space as K-means input)
+            const parkFillColor = new Int32Array(tp * 3).fill(-1);
+            const bfsQueue: number[] = [];
+            const fillSet = new Set<number>();
+            for (let i = 0; i < tp; i++) { if (fillZone[i]) fillSet.add(i); }
+            for (const p of fillSet) {
+              for (const n of [p - TW, p + TW, p - 1, p + 1]) {
+                if (n >= 0 && n < tp && countryMask[n] && !fillSet.has(n) && parkFillColor[n * 3] === -1) {
+                  parkFillColor[n * 3] = colorBuf[n * 3];
+                  parkFillColor[n * 3 + 1] = colorBuf[n * 3 + 1];
+                  parkFillColor[n * 3 + 2] = colorBuf[n * 3 + 2];
+                  bfsQueue.push(n);
+                }
+              }
+            }
+            let bfsHead = 0;
+            while (bfsHead < bfsQueue.length) {
+              const p = bfsQueue[bfsHead++];
+              for (const n of [p - TW, p + TW, p - 1, p + 1]) {
+                if (n >= 0 && n < tp && fillSet.has(n) && parkFillColor[n * 3] === -1) {
+                  parkFillColor[n * 3] = parkFillColor[p * 3];
+                  parkFillColor[n * 3 + 1] = parkFillColor[p * 3 + 1];
+                  parkFillColor[n * 3 + 2] = parkFillColor[p * 3 + 2];
+                  bfsQueue.push(n);
+                }
+              }
+            }
+            for (const p of fillSet) {
+              if (parkFillColor[p * 3] >= 0) {
+                colorBuf[p * 3] = parkFillColor[p * 3];
+                colorBuf[p * 3 + 1] = parkFillColor[p * 3 + 1];
+                colorBuf[p * 3 + 2] = parkFillColor[p * 3 + 2];
+              }
+            }
+
+            // ── Pass 2: cleanup remaining dark-green remnants ──
+            const allFilled = new Uint8Array(tp); // track everything we've filled
+            for (const p of fillSet) allFilled[p] = 1;
+            const remnant = new Uint8Array(tp);
+            let remnantCount = 0;
+            for (let i = 0; i < tp; i++) {
+              if (!countryMask[i] || allFilled[i]) continue;
+              const r = colorBuf[i * 3], g = colorBuf[i * 3 + 1], b2 = colorBuf[i * 3 + 2];
+              const maxC = Math.max(r, g, b2);
+              const minC = Math.min(r, g, b2);
+              const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+              if (maxC <= vThresh && sat >= 0.20 && g >= r && g >= b2 * 0.8) {
+                remnant[i] = 1;
+                allFilled[i] = 1;
+                remnantCount++;
+              }
+            }
+            if (remnantCount > 0) {
+              console.log(`  [Park] Pass 2: cleaning ${remnantCount} remnant dark-green px`);
+              const remFill = new Int32Array(tp * 3).fill(-1);
+              const remQueue: number[] = [];
+              for (let i = 0; i < tp; i++) {
+                if (!remnant[i]) continue;
+                for (const n of [i - TW, i + TW, i - 1, i + 1]) {
+                  if (n >= 0 && n < tp && countryMask[n] && !allFilled[n] && remFill[n * 3] === -1) {
+                    remFill[n * 3] = colorBuf[n * 3];
+                    remFill[n * 3 + 1] = colorBuf[n * 3 + 1];
+                    remFill[n * 3 + 2] = colorBuf[n * 3 + 2];
+                    remQueue.push(n);
+                  }
+                }
+              }
+              let remHead = 0;
+              while (remHead < remQueue.length) {
+                const p = remQueue[remHead++];
+                for (const n of [p - TW, p + TW, p - 1, p + 1]) {
+                  if (n >= 0 && n < tp && remnant[n] && remFill[n * 3] === -1) {
+                    remFill[n * 3] = remFill[p * 3];
+                    remFill[n * 3 + 1] = remFill[p * 3 + 1];
+                    remFill[n * 3 + 2] = remFill[p * 3 + 2];
+                    remQueue.push(n);
+                  }
+                }
+              }
+              for (let i = 0; i < tp; i++) {
+                if (remnant[i] && remFill[i * 3] >= 0) {
+                  colorBuf[i * 3] = remFill[i * 3];
+                  colorBuf[i * 3 + 1] = remFill[i * 3 + 1];
+                  colorBuf[i * 3 + 2] = remFill[i * 3 + 2];
+                }
+              }
+            }
+
+            // ── Pass 3: harmonize filled pixels with surrounding region color ──
+            // Each filled pixel samples non-filled country pixels within a 10px
+            // radius and adopts their median color. This snaps the fill to the
+            // actual region interior color so K-means won't separate it.
+            const HARMONIZE_R = pxS(10);
+            let harmonized = 0;
+            for (let i = 0; i < tp; i++) {
+              if (!allFilled[i]) continue;
+              const ix = i % TW, iy = Math.floor(i / TW);
+              const samples: Array<[number, number, number]> = [];
+              for (let dy = -HARMONIZE_R; dy <= HARMONIZE_R; dy++) {
+                for (let dx = -HARMONIZE_R; dx <= HARMONIZE_R; dx++) {
+                  if (dx * dx + dy * dy > HARMONIZE_R * HARMONIZE_R) continue;
+                  const nx = ix + dx, ny = iy + dy;
+                  if (nx < 0 || nx >= TW || ny < 0 || ny >= TH) continue;
+                  const ni = ny * TW + nx;
+                  if (countryMask[ni] && !allFilled[ni]) {
+                    samples.push([colorBuf[ni * 3], colorBuf[ni * 3 + 1], colorBuf[ni * 3 + 2]]);
+                  }
+                }
+              }
+              if (samples.length >= 3) {
+                samples.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
+                const mid = samples[Math.floor(samples.length / 2)];
+                colorBuf[i * 3] = mid[0]; colorBuf[i * 3 + 1] = mid[1]; colorBuf[i * 3 + 2] = mid[2];
+                harmonized++;
+              }
+            }
+            console.log(`  [Park] Pass 3: harmonized ${harmonized}/${fillSet.size + remnantCount} filled px`);
+
+            // Debug: show result after park removal
+            const afterParkBuf = Buffer.alloc(tp * 3, 200);
+            for (let i = 0; i < tp; i++) {
+              if (waterGrown[i]) {
+                afterParkBuf[i * 3] = 60; afterParkBuf[i * 3 + 1] = 120; afterParkBuf[i * 3 + 2] = 200;
+              } else if (countryMask[i]) {
+                afterParkBuf[i * 3] = colorBuf[i * 3]; afterParkBuf[i * 3 + 1] = colorBuf[i * 3 + 1]; afterParkBuf[i * 3 + 2] = colorBuf[i * 3 + 2];
+              }
+            }
+            const afterParkPng = await sharp(afterParkBuf, {
+              raw: { width: TW, height: TH, channels: 3 },
+            }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+            await pushDebugImage(
+              `After park removal (${confirmedBlobs.length} parks inpainted with boundary colors)`,
+              `data:image/png;base64,${afterParkPng.toString('base64')}`,
+            );
+          }
+        }
+      }
+
+      // Recluster loop: re-run K-means with modified params when user requests
+      let reclusterAttempt = 0;
+      const MAX_RECLUSTER = 3;
+      let ckOverride: number | null = null;
+      let chromaBoost = 1.0;
+      let randomSeed = false;
+
+      let reclusterResult: ReclusterSignal | void;
+      do {
+      await logStep('K-means color clustering...');
+
+      // Convert clean color buffer to CIELAB for perceptually-accurate K-means
+      const cvBufForLab = new cv.Mat(TH, TW, cv.CV_8UC3);
+      cvBufForLab.data.set(colorBuf);
+      const cvLabMat = new cv.Mat();
+      cv.cvtColor(cvBufForLab, cvLabMat, cv.COLOR_RGB2Lab);
+      const labBuf = Buffer.from(cvLabMat.data);
+      cvBufForLab.delete(); cvLabMat.delete();
+
+      // Per-channel stats for z-score normalization (amplifies chromatic differences)
+      let sumL = 0, sumA = 0, sumB = 0, sumL2 = 0, sumA2 = 0, sumB2 = 0;
+      let statCount = 0;
+      for (let i = 0; i < tp; i++) {
+        if (!countryMask[i] || textExcluded[i]) continue;
+        const L = labBuf[i * 3], a = labBuf[i * 3 + 1], b = labBuf[i * 3 + 2];
+        sumL += L; sumA += a; sumB += b;
+        sumL2 += L * L; sumA2 += a * a; sumB2 += b * b;
+        statCount++;
+      }
+      if (statCount === 0) throw new Error('No country pixels remaining after text exclusion — cannot cluster');
+      const meanL = sumL / statCount, meanA = sumA / statCount, meanB = sumB / statCount;
+      const rawStdL = Math.sqrt(Math.max(0, sumL2 / statCount - meanL * meanL));
+      const rawStdA = Math.sqrt(Math.max(0, sumA2 / statCount - meanA * meanA));
+      const rawStdB = Math.sqrt(Math.max(0, sumB2 / statCount - meanB * meanB));
+      const stdL = rawStdL < 0.01 ? 1.0 : rawStdL;
+      const stdA = rawStdA < 0.01 ? 1.0 : rawStdA;
+      const stdB = rawStdB < 0.01 ? 1.0 : rawStdB;
+      const wL = 0.5 / stdL, wA = chromaBoost / stdA, wB = chromaBoost / stdB;
+      console.log(`  [Lab] mean=(${meanL.toFixed(1)},${meanA.toFixed(1)},${meanB.toFixed(1)}) std=(${stdL.toFixed(1)},${stdA.toFixed(1)},${stdB.toFixed(1)})`);
+
+      // K-means: use ~3x expected region count for enough color resolution
+      // to separate similar-but-distinct regions. The merge step consolidates
+      // truly redundant clusters afterward. Cap at 32, floor at 8.
+      const CK = ckOverride ?? Math.max(8, Math.min(expectedRegionCount * 3, 32));
+      console.log(`  [K-means] CK=${CK} (expectedRegions=${expectedRegionCount})`);
+      // Exclude text pixels from K-means centroids — their BFS-filled colors are
+      // from nearest neighbors and may be wrong at region boundaries.
+      // Park pixels are already filled with correct boundary colors in colorBuf.
+      const countryPixels: Array<[number, number, number]> = [];
+      const countryIndices: number[] = [];
+      let textExcludedCount = 0;
+      for (let i = 0; i < tp; i++) {
+        if (countryMask[i]) {
+          if (textExcluded[i]) { textExcludedCount++; continue; }
+          countryPixels.push([
+            (labBuf[i * 3] - meanL) * wL,
+            (labBuf[i * 3 + 1] - meanA) * wA,
+            (labBuf[i * 3 + 2] - meanB) * wB,
+          ]);
+          countryIndices.push(i);
+        }
+      }
+      if (textExcludedCount > 0) {
+        console.log(`  [K-means] Excluded ${textExcludedCount} text pixels from centroid computation (${(textExcludedCount / countrySize * 100).toFixed(1)}% of country)`);
+      }
+
+      // K-means++ initialization: probabilistic distance-weighted sampling
+      const firstIdx = randomSeed
+          ? Math.floor(Math.random() * countryPixels.length)
+          : Math.floor(countryPixels.length / 2);
+      const colorCentroids: Array<[number, number, number]> = [countryPixels[firstIdx]];
+      for (let c = 1; c < CK; c++) {
+        const d2 = new Float64Array(countryPixels.length);
+        let totalD2 = 0;
+        for (let i = 0; i < countryPixels.length; i++) {
+          let minDist = Infinity;
+          for (const ct of colorCentroids) {
+            const d = (countryPixels[i][0] - ct[0]) ** 2 + (countryPixels[i][1] - ct[1]) ** 2 + (countryPixels[i][2] - ct[2]) ** 2;
+            if (d < minDist) minDist = d;
+          }
+          d2[i] = minDist;
+          totalD2 += minDist;
+        }
+        let target = Math.random() * totalD2;
+        let chosen = 0;
+        for (let i = 0; i < countryPixels.length; i++) {
+          target -= d2[i];
+          if (target <= 0) { chosen = i; break; }
+        }
+        let retries = 0;
+        while (retries < 5) {
+          const p = countryPixels[chosen];
+          let tooClose = false;
+          for (const ct of colorCentroids) {
+            if ((p[0] - ct[0]) ** 2 + (p[1] - ct[1]) ** 2 + (p[2] - ct[2]) ** 2 < 4) { tooClose = true; break; }
+          }
+          if (!tooClose) break;
+          chosen = Math.floor(Math.random() * countryPixels.length);
+          retries++;
+        }
+        colorCentroids.push([...countryPixels[chosen]]);
+      }
+      const MAX_ITER = 40;
+      for (let iter = 0; iter < MAX_ITER; iter++) {
+        const sums = colorCentroids.map(() => [0, 0, 0, 0]);
+        for (const px of countryPixels) {
+          let bestDist = Infinity, bestK = 0;
+          for (let k = 0; k < CK; k++) {
+            const d = (px[0] - colorCentroids[k][0]) ** 2 + (px[1] - colorCentroids[k][1]) ** 2 + (px[2] - colorCentroids[k][2]) ** 2;
+            if (d < bestDist) { bestDist = d; bestK = k; }
+          }
+          sums[bestK][0] += px[0]; sums[bestK][1] += px[1]; sums[bestK][2] += px[2]; sums[bestK][3]++;
+        }
+        let totalMovement = 0;
+        for (let k = 0; k < CK; k++) {
+          if (sums[k][3] > 0) {
+            const newC: [number, number, number] = [
+              sums[k][0] / sums[k][3],
+              sums[k][1] / sums[k][3],
+              sums[k][2] / sums[k][3],
+            ];
+            totalMovement += Math.abs(newC[0] - colorCentroids[k][0]) + Math.abs(newC[1] - colorCentroids[k][1]) + Math.abs(newC[2] - colorCentroids[k][2]);
+            colorCentroids[k] = newC;
+          }
+        }
+        if (totalMovement < 1.0) {
+          console.log(`  [K-means] Converged at iteration ${iter + 1}`);
+          break;
+        }
+      }
+
+      // Convert centroids: normalized Lab → original Lab → RGB (for debug viz + shared pipeline)
+      const rgbCentroids: Array<[number, number, number]> = colorCentroids.map(c => {
+        const oL = Math.round(Math.min(255, Math.max(0, c[0] / wL + meanL)));
+        const oA = Math.round(Math.min(255, Math.max(0, c[1] / wA + meanA)));
+        const oB = Math.round(Math.min(255, Math.max(0, c[2] / wB + meanB)));
+        const labPx = new cv.Mat(1, 1, cv.CV_8UC3);
+        labPx.data[0] = oL; labPx.data[1] = oA; labPx.data[2] = oB;
+        const rgbPx = new cv.Mat();
+        cv.cvtColor(labPx, rgbPx, cv.COLOR_Lab2RGB);
+        const rgb: [number, number, number] = [rgbPx.data[0], rgbPx.data[1], rgbPx.data[2]];
+        labPx.delete(); rgbPx.delete();
+        return rgb;
+      });
+
+      // Two-phase label assignment using colorBuf (lightly filtered, accurate colors):
+      // Phase 1: Assign labels to clean (non-excluded) country pixels by nearest centroid.
+      // Phase 2: BFS-propagate labels from clean pixels into excluded (text+park) gaps.
+      // Clean pixels have accurate per-region colors from colorBuf (median(3) + mean shift).
+      // Excluded pixels get labels from spatial neighbors, preserving connectivity.
+      const pixelLabels = new Uint8Array(tp).fill(255);
+      const clusterCounts = new Array(CK).fill(0);
+      // Phase 1: color-based assignment for clean pixels only (normalized Lab)
+      for (let i = 0; i < tp; i++) {
+        if (!countryMask[i] || textExcluded[i]) continue;
+        const nL = (labBuf[i * 3] - meanL) * wL;
+        const nA = (labBuf[i * 3 + 1] - meanA) * wA;
+        const nB = (labBuf[i * 3 + 2] - meanB) * wB;
+        let bestDist = Infinity, bestK = 0;
+        for (let k = 0; k < CK; k++) {
+          const d = (nL - colorCentroids[k][0]) ** 2 + (nA - colorCentroids[k][1]) ** 2 + (nB - colorCentroids[k][2]) ** 2;
+          if (d < bestDist) { bestDist = d; bestK = k; }
+        }
+        pixelLabels[i] = bestK;
+        clusterCounts[bestK]++;
+      }
+      // Phase 2: BFS from clean pixels into text regions
+      if (textExcludedCount > 0) {
+        const bfsQ: number[] = [];
+        for (let i = 0; i < tp; i++) {
+          if (pixelLabels[i] < 255) bfsQ.push(i);
+        }
+        let bfsH = 0, bfsFilled = 0;
+        while (bfsH < bfsQ.length) {
+          const p = bfsQ[bfsH++];
+          const lbl = pixelLabels[p];
+          for (const n of [p - TW, p + TW, p - 1, p + 1]) {
+            if (n >= 0 && n < tp && countryMask[n] && pixelLabels[n] === 255) {
+              pixelLabels[n] = lbl;
+              clusterCounts[lbl]++;
+              bfsQ.push(n);
+              bfsFilled++;
+            }
+          }
+        }
+        console.log(`  [K-means] BFS propagated labels to ${bfsFilled} text pixels`);
+      }
+
+      // Spatial mode filter: clean up salt-and-pepper noise from BFS seams and line residue.
+      // For each pixel, if the majority of its neighborhood has a different label AND the
+      // pixel's color is reasonably close to the majority's centroid, relabel it.
+      const MODE_R = pxS(5); // radius in pixels (8 at TW=800)
+      let modeRelabeled = 0;
+      const newLabels = new Uint8Array(pixelLabels); // copy — don't modify during iteration
+      for (let i = 0; i < tp; i++) {
+        if (!countryMask[i] || pixelLabels[i] === 255) continue;
+        const ix = i % TW, iy = Math.floor(i / TW);
+        const votes = new Map<number, number>();
+        for (let dy = -MODE_R; dy <= MODE_R; dy++) {
+          const ny = iy + dy;
+          if (ny < 0 || ny >= TH) continue;
+          for (let dx = -MODE_R; dx <= MODE_R; dx++) {
+            const nx = ix + dx;
+            if (nx < 0 || nx >= TW) continue;
+            const ni = ny * TW + nx;
+            if (pixelLabels[ni] !== 255) votes.set(pixelLabels[ni], (votes.get(pixelLabels[ni]) || 0) + 1);
+          }
+        }
+        const myLabel = pixelLabels[i];
+        let bestLabel = myLabel, bestCount = 0;
+        for (const [lbl, cnt] of votes) {
+          if (cnt > bestCount) { bestCount = cnt; bestLabel = lbl; }
+        }
+        if (bestLabel === myLabel) continue;
+        // Guard: only relabel if pixel's color is close enough to majority centroid
+        const nL = (labBuf[i * 3] - meanL) * wL;
+        const nA = (labBuf[i * 3 + 1] - meanA) * wA;
+        const nB = (labBuf[i * 3 + 2] - meanB) * wB;
+        const distOwn = (nL - colorCentroids[myLabel][0]) ** 2 + (nA - colorCentroids[myLabel][1]) ** 2 + (nB - colorCentroids[myLabel][2]) ** 2;
+        const distMaj = (nL - colorCentroids[bestLabel][0]) ** 2 + (nA - colorCentroids[bestLabel][1]) ** 2 + (nB - colorCentroids[bestLabel][2]) ** 2;
+        if (distMaj < distOwn * 2.0) {
+          newLabels[i] = bestLabel;
+          modeRelabeled++;
+        }
+      }
+      // Apply relabeling
+      if (modeRelabeled > 0) {
+        for (let i = 0; i < tp; i++) pixelLabels[i] = newLabels[i];
+        // Recount
+        clusterCounts.fill(0);
+        for (let i = 0; i < tp; i++) {
+          if (countryMask[i] && pixelLabels[i] < 255) clusterCounts[pixelLabels[i]]++;
+        }
+        console.log(`  [Mode filter] Relabeled ${modeRelabeled} noisy pixels to neighborhood majority`);
+      }
+
+      // Log K-means results before processing
+      console.log(`  [K-means] ${CK} clusters, countrySize=${countrySize}:`);
+      for (let k = 0; k < CK; k++) {
+        if (clusterCounts[k] === 0) continue;
+        const pct = (clusterCounts[k] / countrySize * 100).toFixed(1);
+        const c = rgbCentroids[k];
+        console.log(`    cluster ${k}: RGB(${c[0]},${c[1]},${c[2]}) ${clusterCounts[k]}px (${pct}%)`);
+      }
+
+
+      // ── Spatial split through complete event: delegated to shared function ──
+      reclusterResult = await matchDivisionsFromClusters({
+        worldViewId, regionId,
+        knownDivisionIds,
+        buf: colorBuf, mapBuffer, countryMask, waterGrown, pixelLabels, colorCentroids: rgbCentroids,
+        TW, TH, origW, origH,
+        skipClusterReview: false,
+        sendEvent: sendEvent as (event: Record<string, unknown>) => void,
+        logStep, pushDebugImage, debugImages,
+        startTime,
+      });
+
+        if (reclusterResult?.recluster) {
+          reclusterAttempt++;
+          if (reclusterAttempt >= MAX_RECLUSTER) {
+            console.log(`  [Recluster] Max attempts (${MAX_RECLUSTER}) reached, proceeding with current clusters`);
+            await matchDivisionsFromClusters({
+              worldViewId, regionId, knownDivisionIds,
+              buf: colorBuf, mapBuffer, countryMask, waterGrown, pixelLabels, colorCentroids: rgbCentroids,
+              TW, TH, origW, origH,
+              skipClusterReview: true,
+              sendEvent: sendEvent as (event: Record<string, unknown>) => void,
+              logStep, pushDebugImage, debugImages, startTime,
+            });
+            break;
+          }
+          const preset = reclusterResult.preset;
+          if (preset === 'more_clusters') {
+            const baseCK = ckOverride ?? Math.max(8, Math.min(expectedRegionCount * 3, 32));
+            ckOverride = Math.min(baseCK + 4, 32);
+            console.log(`  [Recluster] More clusters: CK → ${ckOverride}`);
+          } else if (preset === 'different_seed') {
+            randomSeed = true;
+            console.log(`  [Recluster] Different seed: randomizing K-means++ init`);
+          } else if (preset === 'boost_chroma') {
+            chromaBoost = 1.5;
+            console.log(`  [Recluster] Boost chroma: a*/b* weight → ${chromaBoost}`);
+          }
+          await logStep(`Re-clustering (attempt ${reclusterAttempt + 1})...`);
+        }
+      } while (reclusterResult?.recluster);
+
+    } else {
+      console.log(`  Source map fetch failed: ${mapResponse.status}`);
+    }
+  } catch (mapErr) {
+    const errMsg = mapErr instanceof Error ? mapErr.message : String(mapErr);
+    console.error('  Source map border detection failed:', mapErr);
+    await logStep(`CV processing error: ${errMsg}`);
+  }
+
+  if (!res.destroyed) res.end();
+}
