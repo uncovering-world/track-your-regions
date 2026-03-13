@@ -83,3 +83,6 @@ docs/inbox/
 repomix-output.*
 data/cache/
 data/cache/
+
+# ML model files (downloaded on first use)
+backend/data/models/
