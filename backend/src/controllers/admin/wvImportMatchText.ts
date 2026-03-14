@@ -61,7 +61,9 @@ async function runMLTextDetection(
   const probData = outputTensor.data;
 
   // Threshold and crop to original dimensions
-  const TEXT_THRESHOLD = 0.3;
+  // Low threshold (0.15) to catch faint text strokes and anti-aliased edges.
+  // False positives are cleaned up by morphological closing + dilation downstream.
+  const TEXT_THRESHOLD = 0.15;
   const mask = new Uint8Array(TW * TH);
   for (let y = 0; y < TH; y++) {
     for (let x = 0; x < TW; x++) {
@@ -169,13 +171,19 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
   darkMask.delete(); darkLabels.delete(); darkStats.delete();
   if (darkCount > 0) console.log(`  [Text] Dark spots: added ${darkCount} pixels from small dark CCs`);
 
-  // --- Dilate text mask (3×3 — ML mask is precise, smaller than BlackHat's 5×5) ---
+  // --- Morphological close + dilate to create solid text coverage ---
+  // Close (7×7): bridges gaps between characters within a word
+  // Dilate (5×5): covers anti-aliased edges and thin strokes the model missed
   const cvTextMask = new cv.Mat(TH, TW, cv.CV_8UC1);
   for (let i = 0; i < tp; i++) cvTextMask.data[i] = textMask[i] ? 255 : 0;
-  const dilateK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+  const closeK = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(oddK(7), oddK(3)));
+  const cvClosed = new cv.Mat();
+  cv.morphologyEx(cvTextMask, cvClosed, cv.MORPH_CLOSE, closeK);
+  closeK.delete(); cvTextMask.delete();
+  const dilateK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
   const textMaskDilated = new cv.Mat();
-  cv.dilate(cvTextMask, textMaskDilated, dilateK);
-  cvTextMask.delete(); dilateK.delete();
+  cv.dilate(cvClosed, textMaskDilated, dilateK);
+  cvClosed.delete(); dilateK.delete();
 
   // textExcluded: marks text pixels for K-means exclusion + forced foreground
   const textExcluded = new Uint8Array(tp);
