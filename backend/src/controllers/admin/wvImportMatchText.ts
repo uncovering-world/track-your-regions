@@ -184,50 +184,6 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
   const textPixelCount = textExcluded.reduce((s, v) => s + v, 0);
   console.log(`  [Text] ${detectionMethod}: ${textPixelCount} pixels (${(textPixelCount / tp * 100).toFixed(1)}%)`);
 
-  // --- BFS color fill: replace text pixels in colorBuf with nearest non-text neighbor ---
-  // Now that the ML mask is precise (text only, no boundaries), BFS fill works well.
-  // Each text pixel gets the exact RGB of its nearest non-text pixel via wavefront expansion.
-  if (textPixelCount > 0) {
-    const bfsQ: number[] = [];
-    // Seed: all non-text pixels adjacent to at least one text pixel
-    for (let i = 0; i < tp; i++) {
-      if (textExcluded[i]) continue;
-      const x = i % TW, y = Math.floor(i / TW);
-      let adjText = false;
-      if (x > 0 && textExcluded[i - 1]) adjText = true;
-      if (x < TW - 1 && textExcluded[i + 1]) adjText = true;
-      if (y > 0 && textExcluded[i - TW]) adjText = true;
-      if (y < TH - 1 && textExcluded[i + TW]) adjText = true;
-      if (adjText) bfsQ.push(i);
-    }
-    const filled = new Uint8Array(tp); // track which text pixels have been filled
-    let bfsH = 0, bfsFilled = 0;
-    while (bfsH < bfsQ.length) {
-      const p = bfsQ[bfsH++];
-      const srcR = colorBuf[p * 3], srcG = colorBuf[p * 3 + 1], srcB = colorBuf[p * 3 + 2];
-      for (const n of [p - 1, p + 1, p - TW, p + TW]) {
-        if (n < 0 || n >= tp) continue;
-        if (!textExcluded[n] || filled[n]) continue;
-        colorBuf[n * 3] = srcR;
-        colorBuf[n * 3 + 1] = srcG;
-        colorBuf[n * 3 + 2] = srcB;
-        filled[n] = 1;
-        bfsQ.push(n);
-        bfsFilled++;
-      }
-    }
-    console.log(`  [Text] BFS color fill: replaced ${bfsFilled} text pixels with neighbor colors`);
-
-    // Debug: show the filled colorBuf
-    const filledPng = await sharp(Buffer.from(colorBuf), {
-      raw: { width: TW, height: TH, channels: 3 },
-    }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
-    await pushDebugImage(
-      `Clean image (text BFS-filled with neighbor colors) [${detectionMethod}]`,
-      `data:image/png;base64,${filledPng.toString('base64')}`,
-    );
-  }
-
   // --- Ocean buffer + Telea inpaint on rawBuf for water detection only ---
   const INPAINT_R = pxS(8);
   const inpaintMask = new cv.Mat();
