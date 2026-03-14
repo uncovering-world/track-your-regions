@@ -1,151 +1,52 @@
 /**
  * Text/symbol detection phase.
  *
- * Detects text using PP-OCRv4 DB model (ML) with BlackHat morphology fallback.
- * Dark symbols detected separately via connected-component analysis.
- * Does NOT modify colorBuf — text pixels are marked in textExcluded for downstream exclusion.
- * Also produces inpaintedBuf (Telea on rawBuf) for water detection and labBufEarly for BG detection.
+ * Detects text and dark symbols using HSV brightness threshold (V < 128),
+ * validated against 120 Wikivoyage maps. All WV text colors have V < 50%
+ * while all region fills have V >= 50%.
+ *
+ * After detection, Telea-inpaints text pixels in colorBuf so K-means sees
+ * clean region colors. textExcluded is still set as a safety net for K-means
+ * centroid exclusion.
  *
  * Sets on ctx: textExcluded, hsvSharp, inpaintedBuf, labBufEarly
+ * Modifies: colorBuf (text pixels replaced with Telea-inpainted colors)
  */
 
 import sharp from 'sharp';
 import type { PipelineContext } from './wvImportMatchPipeline.js';
-import { getTextDetSession } from '../../services/mlModels.js';
-
-// ---------------------------------------------------------------------------
-// ML text detection (PP-OCRv4 DB model)
-// ---------------------------------------------------------------------------
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type OrtSession = any;
-
-/** Preprocess image, run ONNX inference, return binary text mask or null on failure. */
-async function runMLTextDetection(
-  session: OrtSession,
-  origDownBuf: Buffer,
-  TW: number,
-  TH: number,
-): Promise<Uint8Array | null> {
-  if (origDownBuf.length !== TW * TH * 3) return null;
-
-  const ort = await import('onnxruntime-node');
-
-  // Pad to next multiple of 32 (zero-padding preserves geometry)
-  const padW = Math.ceil(TW / 32) * 32;
-  const padH = Math.ceil(TH / 32) * 32;
-
-  // Build NCHW Float32 input with ImageNet normalization
-  const mean = [0.485, 0.456, 0.406];
-  const std = [0.229, 0.224, 0.225];
-  const inputData = new Float32Array(3 * padH * padW);
-  const chStride = padH * padW;
-
-  for (let y = 0; y < TH; y++) {
-    for (let x = 0; x < TW; x++) {
-      const srcIdx = (y * TW + x) * 3;
-      const dstIdx = y * padW + x;
-      for (let c = 0; c < 3; c++) {
-        inputData[c * chStride + dstIdx] = (origDownBuf[srcIdx + c] / 255 - mean[c]) / std[c];
-      }
-    }
-  }
-  // Padded pixels stay 0 — black bands won't trigger text detection
-
-  const inputTensor = new ort.Tensor('float32', inputData, [1, 3, padH, padW]);
-  const results = await session.run({ x: inputTensor });
-
-  // Output: probability map — take first output tensor
-  const outputTensor = Object.values(results)[0] as { data: Float32Array } | undefined;
-  if (!outputTensor) return null;
-  const probData = outputTensor.data;
-
-  // Threshold and crop to original dimensions
-  // Low threshold (0.15) to catch faint text strokes and anti-aliased edges.
-  // False positives are cleaned up by morphological closing + dilation downstream.
-  const TEXT_THRESHOLD = 0.15;
-  const mask = new Uint8Array(TW * TH);
-  for (let y = 0; y < TH; y++) {
-    for (let x = 0; x < TW; x++) {
-      if (probData[y * padW + x] >= TEXT_THRESHOLD) {
-        mask[y * TW + x] = 1;
-      }
-    }
-  }
-  return mask;
-}
-
-// ---------------------------------------------------------------------------
-// BlackHat fallback (extracted from original detectText)
-// ---------------------------------------------------------------------------
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function detectTextBlackHat(
-  cv: any, rawBuf: Buffer, TW: number, TH: number, tp: number,
-  oddK: (base: number) => number,
-): Uint8Array {
-  const cvRaw = new cv.Mat(TH, TW, cv.CV_8UC3);
-  cvRaw.data.set(rawBuf);
-  const cvGray = new cv.Mat();
-  cv.cvtColor(cvRaw, cvGray, cv.COLOR_RGB2GRAY);
-  cvRaw.delete();
-  const bhSize = oddK(11);
-  const bhKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(bhSize, bhSize));
-  const cvBlackHat = new cv.Mat();
-  cv.morphologyEx(cvGray, cvBlackHat, cv.MORPH_BLACKHAT, bhKernel);
-  bhKernel.delete();
-  const textMaskMat = new cv.Mat();
-  cv.threshold(cvBlackHat, textMaskMat, 25, 255, cv.THRESH_BINARY);
-  cvBlackHat.delete(); cvGray.delete();
-  const mask = new Uint8Array(tp);
-  for (let i = 0; i < tp; i++) {
-    if (textMaskMat.data[i]) mask[i] = 1;
-  }
-  textMaskMat.delete();
-  return mask;
-}
-
-// ---------------------------------------------------------------------------
-// Main detectText phase
-// ---------------------------------------------------------------------------
 
 export async function detectText(ctx: PipelineContext): Promise<void> {
-  const { cv, TH, TW, tp, rawBuf, colorBuf, origDownBuf, oddK, pxS, logStep, pushDebugImage, origW, origH } = ctx;
+  const { cv, TH, TW, tp, rawBuf, colorBuf, pxS, logStep, pushDebugImage, origW, origH } = ctx;
 
-  // HSV of rawBuf — needed by dark CC detection + ocean buffer (always computed)
+  await logStep('Text detection (HSV threshold)...');
+
+  // --- HSV of rawBuf — needed by dark CC detection + ocean buffer ---
   const cvRaw = new cv.Mat(TH, TW, cv.CV_8UC3);
   cvRaw.data.set(rawBuf);
   const cvHsvRaw = new cv.Mat();
   cv.cvtColor(cvRaw, cvHsvRaw, cv.COLOR_RGB2HSV);
   const hsvSharp = Buffer.from(cvHsvRaw.data);
   cvHsvRaw.delete();
-  // cvRaw kept alive — reused for Telea inpaint below
+  // cvRaw kept alive — reused for Telea inpaint on rawBuf below
 
-  // --- Text detection: ML with BlackHat fallback ---
-  let textMask: Uint8Array;
-  let detectionMethod: string;
-
-  const session = await getTextDetSession();
-  if (session) {
-    await logStep('Text detection (ML model)...');
-    const mlMask = await runMLTextDetection(session, origDownBuf, TW, TH);
-    if (mlMask) {
-      textMask = mlMask;
-      detectionMethod = 'ML (PP-OCRv4)';
-    } else {
-      console.warn('[Text] ML inference returned null, falling back to BlackHat');
-      await logStep('Text detection (BlackHat fallback)...');
-      textMask = detectTextBlackHat(cv, rawBuf, TW, TH, tp, oddK);
-      detectionMethod = 'BlackHat (fallback)';
-    }
-  } else {
-    await logStep('Text detection (BlackHat — model unavailable)...');
-    textMask = detectTextBlackHat(cv, rawBuf, TW, TH, tp, oddK);
-    detectionMethod = 'BlackHat (no model)';
+  // --- HSV text detection: V < 128 on origDownBuf (0-255 scale = 50%) ---
+  // 120-map analysis: 100% of WV text colors have V < 50%, 96% of fills V >= 50%.
+  // Uses origDownBuf (clean downscale, no median) for accurate brightness values.
+  // removeColoredLines already ran on colorBuf, removing bright colored lines
+  // (roads, rivers, blue water labels) that would otherwise be kept by this rule.
+  const TEXT_V_THRESHOLD = 128;
+  const textMask = new Uint8Array(tp);
+  for (let i = 0; i < tp; i++) {
+    const r = colorBuf[i * 3], g = colorBuf[i * 3 + 1], b = colorBuf[i * 3 + 2];
+    const v = Math.max(r, g, b);
+    if (v < TEXT_V_THRESHOLD) textMask[i] = 1;
   }
 
-  // --- Dark spot detection: city dots/symbols (V < 50, small CCs) ---
-  // Kept separate from ML text detection — catches map symbols the text model won't detect
+  // --- Dark CC detection: small dark symbol clusters (V < 50 on rawBuf) ---
+  // Catches city dots, capital stars, compass fragments, scale bar pieces.
+  // Uses a stricter V < 50 threshold and size filter for scattered small symbols
+  // that might sit at V just above the main threshold.
   const darkMask = new cv.Mat(TH, TW, cv.CV_8UC1, new cv.Scalar(0));
   for (let i = 0; i < tp; i++) {
     if (hsvSharp[i * 3 + 2] < 50) darkMask.data[i] = 255;
@@ -171,28 +72,31 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
   darkMask.delete(); darkLabels.delete(); darkStats.delete();
   if (darkCount > 0) console.log(`  [Text] Dark spots: added ${darkCount} pixels from small dark CCs`);
 
-  // --- Morphological close + dilate to create solid text coverage ---
-  // Close (7×7): bridges gaps between characters within a word
-  // Dilate (5×5): covers anti-aliased edges and thin strokes the model missed
+  // --- Dilate text mask (5×5) to cover anti-aliased text edges ---
   const cvTextMask = new cv.Mat(TH, TW, cv.CV_8UC1);
   for (let i = 0; i < tp; i++) cvTextMask.data[i] = textMask[i] ? 255 : 0;
-  const closeK = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(oddK(7), oddK(3)));
-  const cvClosed = new cv.Mat();
-  cv.morphologyEx(cvTextMask, cvClosed, cv.MORPH_CLOSE, closeK);
-  closeK.delete(); cvTextMask.delete();
   const dilateK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
   const textMaskDilated = new cv.Mat();
-  cv.dilate(cvClosed, textMaskDilated, dilateK);
-  cvClosed.delete(); dilateK.delete();
+  cv.dilate(cvTextMask, textMaskDilated, dilateK);
+  cvTextMask.delete(); dilateK.delete();
 
   // textExcluded: marks text pixels for K-means exclusion + forced foreground
   const textExcluded = new Uint8Array(tp);
   for (let i = 0; i < tp; i++) if (textMaskDilated.data[i]) textExcluded[i] = 1;
 
   const textPixelCount = textExcluded.reduce((s, v) => s + v, 0);
-  console.log(`  [Text] ${detectionMethod}: ${textPixelCount} pixels (${(textPixelCount / tp * 100).toFixed(1)}%)`);
+  console.log(`  [Text] HSV (V<${TEXT_V_THRESHOLD}): ${textPixelCount} pixels (${(textPixelCount / tp * 100).toFixed(1)}%)`);
 
-  // --- Debug: show colorBuf with text pixels removed (holes) ---
+  // --- Debug: text mask ---
+  const textMaskPng = await sharp(Buffer.from(textMaskDilated.data), {
+    raw: { width: TW, height: TH, channels: 1 },
+  }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+  await pushDebugImage(
+    'Text mask [HSV V<128] (white = text/symbols detected)',
+    `data:image/png;base64,${textMaskPng.toString('base64')}`,
+  );
+
+  // --- Debug: colorBuf with text pixels blacked out ---
   if (textPixelCount > 0) {
     const holesViz = Buffer.from(colorBuf);
     for (let i = 0; i < tp; i++) {
@@ -202,22 +106,20 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
       raw: { width: TW, height: TH, channels: 3 },
     }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
     await pushDebugImage(
-      `Text removed (black holes) [${detectionMethod}]`,
+      'Text removed (black holes)',
       `data:image/png;base64,${holesPng.toString('base64')}`,
     );
   }
 
   // --- Telea inpaint colorBuf to fill text holes ---
-  // With the precise ML mask (text only, no boundaries), Telea smoothly
-  // interpolates from surrounding region colors. Small radius since text
-  // characters are thin (~3-8px at 800px resolution).
+  // Safe because the HSV mask only covers dark features (text, dots, symbols),
+  // NOT region boundaries (which are color transitions, not dark lines).
   if (textPixelCount > 0) {
     const FILL_R = pxS(5); // ~8px at TW=800 — covers text character width
     const cvColor = new cv.Mat(TH, TW, cv.CV_8UC3);
     cvColor.data.set(colorBuf);
     const cvFilled = new cv.Mat();
     cv.inpaint(cvColor, textMaskDilated, cvFilled, FILL_R, cv.INPAINT_TELEA);
-    // Copy inpainted pixels back into colorBuf
     const filledData = cvFilled.data;
     for (let i = 0; i < tp; i++) {
       if (textExcluded[i]) {
@@ -229,12 +131,11 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
     cvColor.delete(); cvFilled.delete();
     console.log(`  [Text] Telea inpaint: filled ${textPixelCount} text pixels in colorBuf`);
 
-    // Debug: show the filled result
     const filledPng = await sharp(Buffer.from(colorBuf), {
       raw: { width: TW, height: TH, channels: 3 },
     }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
     await pushDebugImage(
-      `Text filled (Telea inpaint) [${detectionMethod}] — fed to K-means`,
+      'Text filled (Telea inpaint) — fed to K-means',
       `data:image/png;base64,${filledPng.toString('base64')}`,
     );
   }
@@ -266,17 +167,9 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
   const inpaintedBuf = Buffer.from(cvInpainted.data);
   cvInpainted.delete();
 
-  // Debug: text mask (shows ML or BlackHat output)
-  const textMaskPng = await sharp(Buffer.from(textMaskDilated.data), {
-    raw: { width: TW, height: TH, channels: 1 },
-  }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
-  await pushDebugImage(
-    `Text mask [${detectionMethod}] (white = excluded from K-means, NOT removed from image)`,
-    `data:image/png;base64,${textMaskPng.toString('base64')}`,
-  );
   textMaskDilated.delete();
 
-  // Convert colorBuf to Lab for later BG detection
+  // Convert colorBuf to Lab for later BG detection (now uses Telea-filled version)
   const cvBufForSeam = new cv.Mat(TH, TW, cv.CV_8UC3);
   cvBufForSeam.data.set(colorBuf);
   const cvLabSeam = new cv.Mat();
