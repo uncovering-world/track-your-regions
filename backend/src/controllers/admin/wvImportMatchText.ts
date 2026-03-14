@@ -10,7 +10,6 @@
  */
 
 import sharp from 'sharp';
-import type { InferenceSession } from 'onnxruntime-node';
 import type { PipelineContext } from './wvImportMatchPipeline.js';
 import { getTextDetSession } from '../../services/mlModels.js';
 
@@ -18,9 +17,12 @@ import { getTextDetSession } from '../../services/mlModels.js';
 // ML text detection (PP-OCRv4 DB model)
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type OrtSession = any;
+
 /** Preprocess image, run ONNX inference, return binary text mask or null on failure. */
 async function runMLTextDetection(
-  session: InferenceSession,
+  session: OrtSession,
   origDownBuf: Buffer,
   TW: number,
   TH: number,
@@ -54,9 +56,9 @@ async function runMLTextDetection(
   const results = await session.run({ x: inputTensor });
 
   // Output: probability map — take first output tensor
-  const outputTensor = Object.values(results)[0];
+  const outputTensor = Object.values(results)[0] as { data: Float32Array } | undefined;
   if (!outputTensor) return null;
-  const probData = outputTensor.data as Float32Array;
+  const probData = outputTensor.data;
 
   // Threshold and crop to original dimensions
   const TEXT_THRESHOLD = 0.3;

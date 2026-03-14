@@ -3,6 +3,9 @@
  *
  * Models are downloaded on first use to `backend/data/models/` (gitignored).
  * Sessions are cached on globalThis to survive tsx hot-reloads.
+ *
+ * onnxruntime-node is loaded dynamically to avoid crashing the server if
+ * the native library is unavailable (e.g., missing glibc on Alpine).
  */
 
 import { existsSync, mkdirSync, createWriteStream } from 'fs';
@@ -11,7 +14,6 @@ import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import * as ort from 'onnxruntime-node';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MODELS_DIR = path.resolve(__dirname, '../../data/models');
@@ -22,10 +24,13 @@ const TEXT_DET_MODEL = {
   expectedSizeMB: 4.75, // ±0.5MB tolerance
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type OrtSession = any;
+
 // Cache on globalThis to survive tsx hot-reloads (same pattern as OpenCV WASM)
 const G = globalThis as unknown as {
-  __textDetSession?: ort.InferenceSession | null;
-  __textDetSessionReady?: Promise<ort.InferenceSession | null>;
+  __textDetSession?: OrtSession | null;
+  __textDetSessionReady?: Promise<OrtSession | null>;
 };
 
 async function downloadModel(url: string, destPath: string): Promise<void> {
@@ -53,13 +58,17 @@ async function downloadModel(url: string, destPath: string): Promise<void> {
 
 /**
  * Get the text detection ONNX session. Returns null if model is unavailable
- * (download failed, session creation failed). Caller should fall back to BlackHat.
+ * (download failed, session creation failed, native lib missing).
+ * Caller should fall back to BlackHat.
  */
-export function getTextDetSession(): Promise<ort.InferenceSession | null> {
+export function getTextDetSession(): Promise<OrtSession | null> {
   if (G.__textDetSessionReady) return G.__textDetSessionReady;
 
   G.__textDetSessionReady = (async () => {
     try {
+      // Dynamic import — avoids crashing server if native lib is missing
+      const ort = await import('onnxruntime-node');
+
       mkdirSync(MODELS_DIR, { recursive: true });
       const modelPath = path.join(MODELS_DIR, TEXT_DET_MODEL.filename);
 

@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Fonts for sharp SVG text rendering
-RUN apk add --no-cache fontconfig ttf-dejavu
+# Fonts for sharp SVG text rendering + glibc compat for onnxruntime-node
+RUN apk add --no-cache fontconfig ttf-dejavu gcompat
 
 WORKDIR /app
 
