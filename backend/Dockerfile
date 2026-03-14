@@ -1,7 +1,9 @@
-FROM node:20-alpine
+FROM node:20-slim
 
-# Fonts for sharp SVG text rendering + glibc compat for onnxruntime-node
-RUN apk add --no-cache fontconfig ttf-dejavu gcompat
+# Fonts for sharp SVG text rendering
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fontconfig fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
