@@ -115,7 +115,7 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
   // Safe because the HSV mask only covers dark features (text, dots, symbols),
   // NOT region boundaries (which are color transitions, not dark lines).
   if (textPixelCount > 0) {
-    const FILL_R = pxS(5); // ~8px at TW=800 — covers text character width
+    const FILL_R = pxS(2); // ~3px at TW=800 — tight around character strokes, avoids blurring across thin regions
     const cvColor = new cv.Mat(TH, TW, cv.CV_8UC3);
     cvColor.data.set(colorBuf);
     const cvFilled = new cv.Mat();
