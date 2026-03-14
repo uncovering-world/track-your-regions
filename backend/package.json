@@ -18,6 +18,7 @@
     "knip:full": "knip"
   },
   "dependencies": {
+    "@techstark/opencv-js": "^4.12.0-release.1",
     "@turf/turf": "^7.3.2",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
