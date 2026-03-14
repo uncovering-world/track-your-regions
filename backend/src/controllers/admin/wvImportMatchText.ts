@@ -15,9 +15,10 @@
 
 import sharp from 'sharp';
 import type { PipelineContext } from './wvImportMatchPipeline.js';
+import { detectColoredLines } from './wvImportMatchHelpers.js';
 
 export async function detectText(ctx: PipelineContext): Promise<void> {
-  const { cv, TH, TW, tp, rawBuf, colorBuf, pxS, logStep, pushDebugImage, origW, origH } = ctx;
+  const { cv, TH, TW, tp, rawBuf, colorBuf, pxS, RES_SCALE, logStep, pushDebugImage, origW, origH } = ctx;
 
   await logStep('Text detection (HSV threshold)...');
 
@@ -71,6 +72,19 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
   }
   darkMask.delete(); darkLabels.delete(); darkStats.delete();
   if (darkCount > 0) console.log(`  [Text] Dark spots: added ${darkCount} pixels from small dark CCs`);
+
+  // --- Colored line detection: blue rivers, red/yellow roads, blue water labels ---
+  // Detected as mask only — NO median replacement (which blurs boundaries).
+  // These get Telea-inpainted along with text using a tight radius.
+  const lineMask = detectColoredLines(colorBuf, TW, TH, RES_SCALE);
+  let lineCount = 0;
+  for (let i = 0; i < tp; i++) {
+    if (lineMask[i] && !textMask[i]) {
+      textMask[i] = 1;
+      lineCount++;
+    }
+  }
+  if (lineCount > 0) console.log(`  [Text] Colored lines: added ${lineCount} pixels (rivers, roads, water labels)`);
 
   // --- Dilate text mask (5×5) to cover anti-aliased text edges ---
   const cvTextMask = new cv.Mat(TH, TW, cv.CV_8UC1);

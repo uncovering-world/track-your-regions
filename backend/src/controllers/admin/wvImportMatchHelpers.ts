@@ -87,6 +87,29 @@ export function minRunLength(mask: Uint8Array, w: number, x: number, y: number, 
   return Math.min(hRun, vRun);
 }
 
+/** Detect vivid colored thin lines (rivers, roads, borders) — returns mask only, no modification */
+export function detectColoredLines(buf: Buffer, w: number, h: number, resScale = 1): Uint8Array {
+  const tp = w * h;
+  const maxR = Math.round(14 * resScale);
+  const maxThick = Math.round(12 * resScale);
+  const ctype = new Uint8Array(tp);
+  for (let i = 0; i < tp; i++) {
+    const { h: hue, s } = rgbToHsl(buf[i * 3], buf[i * 3 + 1], buf[i * 3 + 2]);
+    if (hue >= 170 && hue <= 270 && s > 20) ctype[i] = 1;
+    else if ((hue <= 25 || hue >= 335) && s > 40) ctype[i] = 2;
+    else if (hue >= 40 && hue <= 70 && s > 40) ctype[i] = 3;
+  }
+  const mask = new Uint8Array(tp);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      if (!ctype[p]) continue;
+      if (minRunLength(ctype, w, x, y, maxR) <= maxThick) mask[p] = 1;
+    }
+  }
+  return mask;
+}
+
 /** Stage 1: Remove vivid blue (rivers), red (roads) and yellow (roads/borders) thin line features */
 export function removeColoredLines(buf: Buffer, w: number, h: number, resScale = 1): number {
   const tp = w * h;

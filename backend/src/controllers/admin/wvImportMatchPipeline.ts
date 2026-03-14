@@ -485,13 +485,10 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         .toBuffer();
       removeColoredLines(rawBuf, TW, TH, RES_SCALE);
 
-      // Clean color buffer for K-means: start from origDownBuf (zero spatial filtering →
-      // zero cross-boundary contamination). Text is removed via BFS color propagation
-      // (nearest non-text neighbor color) instead of Telea inpainting (which bleeds ocean)
-      // or spatial filters (median/bilateral/mean-shift all blur across boundaries).
-      // This is the "Photoshop Select by Color → Content-Aware Fill" approach.
+      // Clean color buffer for K-means: start from origDownBuf with NO processing.
+      // Text + colored lines are detected as masks and Telea-inpainted in detectText
+      // with a tight radius — no 8px median blur that destroys thin coastal regions.
       const colorBuf = Buffer.from(origDownBuf);
-      removeColoredLines(colorBuf, TW, TH, RES_SCALE);
 
       // Debug: show image after noise removal (before CV processing)
       const noiseRemovedPng = await sharp(Buffer.from(rawBuf), {
