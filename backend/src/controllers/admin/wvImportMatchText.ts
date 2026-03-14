@@ -184,6 +184,53 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
   const textPixelCount = textExcluded.reduce((s, v) => s + v, 0);
   console.log(`  [Text] ${detectionMethod}: ${textPixelCount} pixels (${(textPixelCount / tp * 100).toFixed(1)}%)`);
 
+  // --- Debug: show colorBuf with text pixels removed (holes) ---
+  if (textPixelCount > 0) {
+    const holesViz = Buffer.from(colorBuf);
+    for (let i = 0; i < tp; i++) {
+      if (textExcluded[i]) { holesViz[i * 3] = 0; holesViz[i * 3 + 1] = 0; holesViz[i * 3 + 2] = 0; }
+    }
+    const holesPng = await sharp(holesViz, {
+      raw: { width: TW, height: TH, channels: 3 },
+    }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+    await pushDebugImage(
+      `Text removed (black holes) [${detectionMethod}]`,
+      `data:image/png;base64,${holesPng.toString('base64')}`,
+    );
+  }
+
+  // --- Telea inpaint colorBuf to fill text holes ---
+  // With the precise ML mask (text only, no boundaries), Telea smoothly
+  // interpolates from surrounding region colors. Small radius since text
+  // characters are thin (~3-8px at 800px resolution).
+  if (textPixelCount > 0) {
+    const FILL_R = pxS(5); // ~8px at TW=800 — covers text character width
+    const cvColor = new cv.Mat(TH, TW, cv.CV_8UC3);
+    cvColor.data.set(colorBuf);
+    const cvFilled = new cv.Mat();
+    cv.inpaint(cvColor, textMaskDilated, cvFilled, FILL_R, cv.INPAINT_TELEA);
+    // Copy inpainted pixels back into colorBuf
+    const filledData = cvFilled.data;
+    for (let i = 0; i < tp; i++) {
+      if (textExcluded[i]) {
+        colorBuf[i * 3] = filledData[i * 3];
+        colorBuf[i * 3 + 1] = filledData[i * 3 + 1];
+        colorBuf[i * 3 + 2] = filledData[i * 3 + 2];
+      }
+    }
+    cvColor.delete(); cvFilled.delete();
+    console.log(`  [Text] Telea inpaint: filled ${textPixelCount} text pixels in colorBuf`);
+
+    // Debug: show the filled result
+    const filledPng = await sharp(Buffer.from(colorBuf), {
+      raw: { width: TW, height: TH, channels: 3 },
+    }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+    await pushDebugImage(
+      `Text filled (Telea inpaint) [${detectionMethod}] — fed to K-means`,
+      `data:image/png;base64,${filledPng.toString('base64')}`,
+    );
+  }
+
   // --- Ocean buffer + Telea inpaint on rawBuf for water detection only ---
   const INPAINT_R = pxS(8);
   const inpaintMask = new cv.Mat();
