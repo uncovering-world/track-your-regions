@@ -418,6 +418,64 @@ export async function detectWater(ctx: PipelineContext): Promise<void> {
   console.log(`  [Water] ${waterComponents.length} component(s) after CC filter (from ${numWaterCC - 1} raw)`);
 
   // Dilate water mask with elliptical kernel for safety margin
+  // --- Edge-connectivity filter: remove thin water tentacles extending into land ---
+  // Erode water mask → flood-fill from image borders → only keep border-connected water.
+  // Thin coastal strips (15-20px) disconnect after erosion; main ocean body stays.
+  {
+    const wmMat = cv.matFromArray(TH, TW, cv.CV_8UC1, waterMask);
+    const erodeSize = oddK(8); // ~13px at TW=800 — breaks connections thinner than this
+    const erodeK2 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(erodeSize, erodeSize));
+    const erodedWater = new cv.Mat();
+    cv.erode(wmMat, erodedWater, erodeK2);
+    erodeK2.delete(); wmMat.delete();
+
+    // Flood fill from image borders on eroded mask — find border-connected water
+    const erodedData = erodedWater.data;
+    const borderConnected = new Uint8Array(tp);
+    const bq: number[] = [];
+    for (let x = 0; x < TW; x++) {
+      if (erodedData[x]) { borderConnected[x] = 1; bq.push(x); }
+      const bot = (TH - 1) * TW + x;
+      if (erodedData[bot]) { borderConnected[bot] = 1; bq.push(bot); }
+    }
+    for (let y = 0; y < TH; y++) {
+      const left = y * TW;
+      if (erodedData[left]) { borderConnected[left] = 1; bq.push(left); }
+      const right = y * TW + TW - 1;
+      if (erodedData[right]) { borderConnected[right] = 1; bq.push(right); }
+    }
+    let bh = 0;
+    while (bh < bq.length) {
+      const p = bq[bh++];
+      for (const n of [p - 1, p + 1, p - TW, p + TW]) {
+        if (n >= 0 && n < tp && erodedData[n] && !borderConnected[n]) {
+          borderConnected[n] = 1;
+          bq.push(n);
+        }
+      }
+    }
+    erodedWater.delete();
+
+    // Dilate border-connected mask back to original size + margin
+    const bcMat = cv.matFromArray(TH, TW, cv.CV_8UC1, borderConnected);
+    const dilateSize = oddK(10); // slightly larger than erode to fully recover edges
+    const dilateK2 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(dilateSize, dilateSize));
+    const bcDilated = new cv.Mat();
+    cv.dilate(bcMat, bcDilated, dilateK2);
+    dilateK2.delete(); bcMat.delete();
+
+    // Intersect with original water mask — removes tentacles that lost border connection
+    let removed = 0;
+    for (let i = 0; i < tp; i++) {
+      if (waterMask[i] && !bcDilated.data[i]) {
+        waterMask[i] = 0;
+        removed++;
+      }
+    }
+    bcDilated.delete();
+    if (removed > 0) console.log(`  [Water] Edge-connectivity filter: removed ${removed} inland water pixels (${(removed / tp * 100).toFixed(1)}%)`);
+  }
+
   const waterMaskMat = cv.matFromArray(TH, TW, cv.CV_8UC1, waterMask);
   const wdSize = oddK(5);
   const waterDilateKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(wdSize, wdSize));
