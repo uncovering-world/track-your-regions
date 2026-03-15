@@ -95,7 +95,7 @@ export async function detectWater(ctx: PipelineContext): Promise<void> {
     // Catches water with unusual hue (e.g. teal where g > b) that hardcoded HSV tiers miss.
     if (useAdaptiveWater) {
       const dr = r - adaptiveR, dg = g - adaptiveG, db = b - adaptiveB;
-      if (dr * dr + dg * dg + db * db <= 35 * 35) return true;
+      if (dr * dr + dg * dg + db * db <= 20 * 20) return true;
     }
     return false;
   };
