@@ -423,7 +423,7 @@ export async function detectWater(ctx: PipelineContext): Promise<void> {
   // Thin coastal strips (15-20px) disconnect after erosion; main ocean body stays.
   {
     const wmMat = cv.matFromArray(TH, TW, cv.CV_8UC1, waterMask);
-    const erodeSize = oddK(8); // ~13px at TW=800 — breaks connections thinner than this
+    const erodeSize = oddK(15); // ~24px at TW=800 — removes thin coastal strips (15-20px)
     const erodeK2 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(erodeSize, erodeSize));
     const erodedWater = new cv.Mat();
     cv.erode(wmMat, erodedWater, erodeK2);
@@ -458,7 +458,7 @@ export async function detectWater(ctx: PipelineContext): Promise<void> {
 
     // Dilate border-connected mask back to original size + margin
     const bcMat = cv.matFromArray(TH, TW, cv.CV_8UC1, borderConnected);
-    const dilateSize = oddK(10); // slightly larger than erode to fully recover edges
+    const dilateSize = oddK(17); // slightly larger than erode to fully recover edges
     const dilateK2 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(dilateSize, dilateSize));
     const bcDilated = new cv.Mat();
     cv.dilate(bcMat, bcDilated, dilateK2);

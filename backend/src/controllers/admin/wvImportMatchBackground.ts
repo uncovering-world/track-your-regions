@@ -300,6 +300,7 @@ export async function detectBackground(ctx: PipelineContext): Promise<void> {
 
       // Identify which secondary CCs are foreign land vs exclaves
       const foreignCCs = new Set<number>();
+      const erodedLabelData = erodedLabels.data32S;
       for (let c = 1; c < numErodedCC; c++) {
         if (c === mainCC) continue;
         const area = erodedStats.intAt(c, cv.CC_STAT_AREA);
@@ -314,19 +315,38 @@ export async function detectBackground(ctx: PipelineContext): Promise<void> {
         const cRight = cLeft + cW;
         const overlapsMain = cBottom >= mainTop - margin && cTop <= mainBottom + margin &&
                              cRight >= mainLeft - margin && cLeft <= mainRight + margin;
-        if (overlapsMain) continue;
-        foreignCCs.add(c);
+        if (!overlapsMain) {
+          foreignCCs.add(c);
+          continue;
+        }
+        // Blob overlaps main bbox — check if it's actually a colored region (exclave)
+        // or just gray background/text area that leaked into the country mask.
+        // Compute mean saturation of this blob's pixels in colorBuf.
+        let satSum = 0, satN = 0;
+        for (let i = 0; i < tp; i++) {
+          if (erodedLabelData[i] !== c) continue;
+          const r = colorBuf[i * 3], g = colorBuf[i * 3 + 1], b = colorBuf[i * 3 + 2];
+          const v = Math.max(r, g, b), mn = Math.min(r, g, b);
+          if (v > 0) satSum += (v - mn) / v;
+          satN++;
+        }
+        const meanSat = satN > 0 ? satSum / satN : 0;
+        // Desaturated blobs (mean S < 12%) near the main body are background/text areas,
+        // not real exclaves. Real exclaves have colored region fills (S > 15%).
+        if (meanSat < 0.12) {
+          foreignCCs.add(c);
+          console.log(`    [FG] Blob ${c}: area=${area}, meanSat=${(meanSat * 100).toFixed(1)}% → removed (desaturated, likely background)`);
+        }
       }
 
       if (foreignCCs.size > 0) {
         // Remove foreign pixels from country mask
         // Also remove non-eroded pixels in the bridge zone between foreign and main
         let foreignRemoved = 0;
-        const erodedData = erodedLabels.data32S;
         for (let i = 0; i < tp; i++) {
           if (!countryMask[i]) continue;
           // Check eroded label — if pixel belongs to a foreign CC, remove it
-          if (erodedData[i] > 0 && foreignCCs.has(erodedData[i])) {
+          if (erodedLabelData[i] > 0 && foreignCCs.has(erodedLabelData[i])) {
             countryMask[i] = 0;
             countrySize--;
             foreignRemoved++;
@@ -334,7 +354,7 @@ export async function detectBackground(ctx: PipelineContext): Promise<void> {
           }
           // Also remove non-eroded bridge pixels outside main bbox that have
           // no eroded body (these are the bridge zone lost during erosion)
-          if (erodedData[i] === 0 && countryMask[i]) {
+          if (erodedLabelData[i] === 0 && countryMask[i]) {
             const x = i % TW, y = Math.floor(i / TW);
             const outsideMain = y < mainTop - margin || y > mainBottom + margin ||
                                 x < mainLeft - margin || x > mainRight + margin;
