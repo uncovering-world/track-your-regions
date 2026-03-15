@@ -433,11 +433,11 @@ export async function detectBackground(ctx: PipelineContext): Promise<void> {
 
   // Remove thin line artifacts (roads, borders drawn on map) via morphological opening.
   // Opening = erode + dilate: removes features thinner than the kernel while preserving
-  // the country shape. Kernel ~5px catches 1-3px line artifacts without affecting real
-  // regions (typically 15px+ wide at TW=800).
+  // the country shape. Kernel ~13px removes border line tails up to ~12px wide.
+  // Real regions are typically 30px+ wide at TW=800.
   {
     const cmOpenMat = cv.matFromArray(TH, TW, cv.CV_8UC1, countryMask);
-    const openK = oddK(3);
+    const openK = oddK(8);
     const openKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(openK, openK));
     const openedMat = new cv.Mat();
     cv.morphologyEx(cmOpenMat, openedMat, cv.MORPH_OPEN, openKernel);
