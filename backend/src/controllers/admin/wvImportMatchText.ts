@@ -127,31 +127,69 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
     );
   }
 
-  // --- Telea inpaint colorBuf to fill text holes ---
-  // Safe because the HSV mask only covers dark features (text, dots, symbols),
-  // NOT region boundaries (which are color transitions, not dark lines).
+  // --- Smart Telea inpaint: only fill SMALL dark CCs (individual text characters) ---
+  // Large dark CCs (coastal text bands, boundary strips) stay as-is in colorBuf
+  // but are excluded from K-means via textExcluded. BFS label propagation handles them.
+  // This prevents Telea from blurring across thin coastal regions.
   if (textPixelCount > 0) {
-    const FILL_R = pxS(2); // ~3px at TW=800 — tight around character strokes, avoids blurring across thin regions
-    const cvColor = new cv.Mat(TH, TW, cv.CV_8UC3);
-    cvColor.data.set(colorBuf);
-    const cvFilled = new cv.Mat();
-    cv.inpaint(cvColor, textMaskDilated, cvFilled, FILL_R, cv.INPAINT_TELEA);
-    const filledData = cvFilled.data;
-    for (let i = 0; i < tp; i++) {
-      if (textExcluded[i]) {
-        colorBuf[i * 3] = filledData[i * 3];
-        colorBuf[i * 3 + 1] = filledData[i * 3 + 1];
-        colorBuf[i * 3 + 2] = filledData[i * 3 + 2];
+    // CC analysis on the combined mask to separate small text from large strips
+    const ccLabels = new cv.Mat();
+    const ccStats = new cv.Mat();
+    const ccCents = new cv.Mat();
+    const numCC = cv.connectedComponentsWithStats(textMaskDilated, ccLabels, ccStats, ccCents);
+    ccCents.delete();
+
+    // Threshold: CCs smaller than 0.1% of image are individual text/symbols → Telea fill
+    // CCs larger than 0.1% are coastal strips, large text bands → exclude only, no fill
+    const MAX_FILL_SIZE = Math.round(tp * 0.001);
+    const smallCCLabels = new Set<number>();
+    let smallPixels = 0, largePixels = 0;
+    for (let c = 1; c < numCC; c++) {
+      const area = ccStats.intAt(c, cv.CC_STAT_AREA);
+      if (area <= MAX_FILL_SIZE) {
+        smallCCLabels.add(c);
+        smallPixels += area;
+      } else {
+        largePixels += area;
       }
     }
-    cvColor.delete(); cvFilled.delete();
-    console.log(`  [Text] Telea inpaint: filled ${textPixelCount} text pixels in colorBuf`);
+    ccStats.delete();
+    console.log(`  [Text] CCs: ${numCC - 1} total, ${smallCCLabels.size} small (${smallPixels}px → Telea fill), ${numCC - 1 - smallCCLabels.size} large (${largePixels}px → exclude only)`);
+
+    // Build inpaint mask for small CCs only
+    const inpaintSmall = new cv.Mat(TH, TW, cv.CV_8UC1, new cv.Scalar(0));
+    const ccData = ccLabels.data32S;
+    for (let i = 0; i < tp; i++) {
+      if (ccData[i] > 0 && smallCCLabels.has(ccData[i])) {
+        inpaintSmall.data[i] = 255;
+      }
+    }
+    ccLabels.delete();
+
+    // Telea inpaint only small text CCs
+    if (smallPixels > 0) {
+      const FILL_R = pxS(2); // ~3px — tight around character strokes
+      const cvColor = new cv.Mat(TH, TW, cv.CV_8UC3);
+      cvColor.data.set(colorBuf);
+      const cvFilled = new cv.Mat();
+      cv.inpaint(cvColor, inpaintSmall, cvFilled, FILL_R, cv.INPAINT_TELEA);
+      const filledData = cvFilled.data;
+      for (let i = 0; i < tp; i++) {
+        if (inpaintSmall.data[i]) {
+          colorBuf[i * 3] = filledData[i * 3];
+          colorBuf[i * 3 + 1] = filledData[i * 3 + 1];
+          colorBuf[i * 3 + 2] = filledData[i * 3 + 2];
+        }
+      }
+      cvColor.delete(); cvFilled.delete();
+    }
+    inpaintSmall.delete();
 
     const filledPng = await sharp(Buffer.from(colorBuf), {
       raw: { width: TW, height: TH, channels: 3 },
     }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
     await pushDebugImage(
-      'Text filled (Telea inpaint) — fed to K-means',
+      'Text filled (small CCs only, large excluded) — fed to K-means',
       `data:image/png;base64,${filledPng.toString('base64')}`,
     );
   }
