@@ -92,7 +92,7 @@ export interface TreeNodeRowProps {
   onPruneToLeaves?: (regionId: number) => void;
   pruningRegionId?: number | null;
   onViewMap?: (regionId: number, context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string; divisionIds: number[] }) => void;
-  onCVMatch?: (regionId: number) => void;
+  onCVMatch?: (regionId: number, method?: 'classical' | 'meanshift') => void;
   cvMatchingRegionId?: number | null;
   onMapshapeMatch?: (regionId: number) => void;
   mapshapeMatchingRegionId?: number | null;

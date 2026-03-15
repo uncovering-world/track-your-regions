@@ -468,6 +468,7 @@ export const wvImportVisionMatchSchema = z.object({
 export const wvImportColorMatchSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   token: z.string().optional(),
+  method: z.enum(['classical', 'meanshift']).optional().default('classical'),
 });
 
 // Guided CV Match — seed point schemas

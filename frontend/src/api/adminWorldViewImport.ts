@@ -990,10 +990,11 @@ export function colorMatchWithProgress(
   worldViewId: number,
   regionId: number,
   onEvent: (event: ColorMatchSSEEvent) => void,
+  method: 'classical' | 'meanshift' = 'classical',
 ): Promise<ColorMatchResult> {
   return new Promise((resolve, reject) => {
     ensureFreshToken().then(token => {
-      const params = new URLSearchParams({ regionId: String(regionId) });
+      const params = new URLSearchParams({ regionId: String(regionId), method });
       if (token) params.append('token', token);
       const url = `${API_URL}/api/admin/wv-import/matches/${worldViewId}/color-match-stream?${params}`;
 

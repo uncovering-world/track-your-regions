@@ -88,7 +88,7 @@ interface TreeNodeActionsProps {
   onPruneToLeaves?: (regionId: number) => void;
   pruningRegionId?: number | null;
   onViewMap?: (regionId: number) => void;
-  onCVMatch?: (regionId: number) => void;
+  onCVMatch?: (regionId: number, method?: 'classical' | 'meanshift') => void;
   cvMatchingRegionId?: number | null;
   onMapshapeMatch?: (regionId: number) => void;
   mapshapeMatchingRegionId?: number | null;
@@ -339,6 +339,24 @@ export function TreeNodeActions({
               {cvMatchingRegionId === node.id
                 ? <CircularProgress size={16} />
                 : <CVMatchIcon sx={{ fontSize: 16, color: 'secondary.main' }} />}
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+
+      {/* Mean-shift CV match — alternative pipeline using mean-shift filtering */}
+      {onCVMatch && hasChildren && node.regionMapUrl && (
+        <Tooltip title="Mean-shift CV match (simpler pipeline: mean-shift filter + flood-fill background/water)">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onCVMatch(node.id, 'meanshift')}
+              disabled={isMutating || cvMatchingRegionId === node.id}
+              sx={{ p: 0.25 }}
+            >
+              {cvMatchingRegionId === node.id
+                ? <CircularProgress size={16} />
+                : <CVMatchIcon sx={{ fontSize: 16, color: 'info.main' }} />}
             </IconButton>
           </span>
         </Tooltip>

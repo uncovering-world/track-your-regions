@@ -19,6 +19,7 @@ import { detectWater } from './wvImportMatchWater.js';
 import { detectBackground } from './wvImportMatchBackground.js';
 import { detectParks } from './wvImportMatchParks.js';
 import { runKMeansClustering } from './wvImportMatchCluster.js';
+import { meanshiftPreprocess } from './wvImportMatchMeanshift.js';
 
 // OpenCV WASM — eagerly initialized at module load to avoid tsx/esbuild overhead during requests.
 // tsx transforms every dynamic import() through esbuild, which takes 30s+ for the 10MB opencv.js.
@@ -117,6 +118,7 @@ export interface PipelineContext {
 export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
   const regionId = parseInt(String(req.query.regionId));
+  const method = String(req.query.method || 'classical');
 
   // SSE setup — disable TCP buffering for immediate flush
   res.setHeader('Content-Type', 'text/event-stream');
@@ -518,15 +520,16 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         logStep, pushDebugImage, debugImages, startTime,
         oddK, pxS,
       };
-      await detectText(ctx);
-
-      // --- Step B: Water detection (multi-signal voting + CC + interactive review) ---
-      await detectWater(ctx);
-
-      // --- Step C: Background/foreground detection ---
-      await detectBackground(ctx);
-
-      await detectParks(ctx);
+      // Branch based on method: mean-shift replaces the classical 4-phase pipeline
+      if (method === 'meanshift') {
+        await meanshiftPreprocess(ctx);
+      } else {
+        // Classical pipeline: text → water → background → parks
+        await detectText(ctx);
+        await detectWater(ctx);
+        await detectBackground(ctx);
+        await detectParks(ctx);
+      }
 
       // Recluster loop: re-run K-means with modified params when user requests
       let reclusterAttempt = 0;

@@ -1206,7 +1206,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
   }, [tree, worldViewId, setUndoSnackbar]);
 
   // CV color match handler — opens dialog immediately with SSE progress
-  const handleCVMatch = useCallback(async (regionId: number) => {
+  const handleCVMatch = useCallback(async (regionId: number, method: 'classical' | 'meanshift' = 'classical') => {
     // Find tree node to get the original region map URL
     const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
       for (const n of nodes) {
@@ -1223,7 +1223,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
 
     setCVMatchingRegionId(regionId);
     setCVMatchDialog({
-      title: 'CV Color Match',
+      title: method === 'meanshift' ? 'CV Mean-Shift Match' : 'CV Color Match',
       progressText: 'Connecting...',
       progressColor: '#666',
       debugImages: [],
@@ -1381,7 +1381,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
             done: true,
           } : prev);
         }
-      });
+      }, method);
     } catch (err) {
       console.error('CV match failed:', err);
       setCVMatchDialog(prev => prev ? {
@@ -1887,7 +1887,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     </Typography>
                     {wr.waterMaskImage && (
                       <Box sx={{ mb: 1.5 }}>
-                        <img src={wr.waterMaskImage} style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 4, border: '1px solid #ccc' }} />
+                        <img src={wr.waterMaskImage} style={{ maxWidth: '100%', maxHeight: 350, borderRadius: 4, border: '1px solid #ccc' }} />
                       </Box>
                     )}
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 1.5 }}>
@@ -1900,7 +1900,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                               borderRadius: 1, p: 0.5, display: 'inline-block', textAlign: 'center', cursor: 'pointer',
                               bgcolor: bgColor(dec), '&:hover': { opacity: 0.85 },
                             }} onClick={() => cycleDecision(comp.id)}>
-                              <img src={comp.cropDataUrl} style={{ maxWidth: 200, maxHeight: 120, borderRadius: 2 }} />
+                              <img src={comp.cropDataUrl} style={{ maxWidth: 400, maxHeight: 250, borderRadius: 2 }} />
                               <Typography variant="caption" sx={{ display: 'block', mt: 0.5, fontWeight: 600, color: borderColor(dec) }}>
                                 {label(dec)} ({comp.pct}%)
                               </Typography>
@@ -1916,7 +1916,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                                       borderRadius: 1, p: 0.5, textAlign: 'center', cursor: 'pointer',
                                       bgcolor: approved ? 'info.50' : 'error.50', '&:hover': { opacity: 0.85 },
                                     }} onClick={() => toggleSubCluster(comp.id, sc.idx)}>
-                                      <img src={sc.cropDataUrl} style={{ maxWidth: 150, maxHeight: 90, borderRadius: 2 }} />
+                                      <img src={sc.cropDataUrl} style={{ maxWidth: 300, maxHeight: 200, borderRadius: 2 }} />
                                       <Typography variant="caption" sx={{ display: 'block', mt: 0.3, fontWeight: 600, color: approved ? 'info.main' : 'error.main' }}>
                                         {approved ? 'Water' : 'Region'} ({sc.pct}%)
                                       </Typography>
