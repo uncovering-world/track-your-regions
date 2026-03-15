@@ -181,8 +181,11 @@ export async function detectBackground(ctx: PipelineContext): Promise<void> {
   const smoothedFg = new Uint8Array(fgSmoothed.data);
   fgMat.delete(); fgBlurred.delete(); fgSmoothed.delete();
 
-  // Close: fills gaps from region borders (scales with resolution)
-  const closed = cvMorphOp(cv, smoothedFg, TW, TH, cv.MORPH_CLOSE, oddK(31));
+  // Close: fills gaps from region borders (scales with resolution).
+  // Reduced from oddK(31)→oddK(15) to stop bridging gaps to neighboring countries
+  // (e.g., Morocco→Western Sahara, Morocco→Algeria). Internal region boundaries
+  // are 5-10px gaps, well within 24px close range.
+  const closed = cvMorphOp(cv, smoothedFg, TW, TH, cv.MORPH_CLOSE, oddK(15));
 
   await logStep('Connected components + country silhouette...');
   // Connected components via OpenCV (8-connectivity, faster than manual BFS)
@@ -277,6 +280,9 @@ export async function detectBackground(ctx: PipelineContext): Promise<void> {
     let waterReclaimed = 0;
     for (let i = 0; i < tp; i++) {
       if (!waterGrown[i] || !cbExpanded.data[i]) continue;
+      // Don't reclaim text pixels — ocean labels (e.g., "North Atlantic Ocean")
+      // are colored teal text near the coast that should stay as water
+      if (textExcluded[i]) continue;
       // Check if this pixel is colored (region fill) — not just gray background
       const r = colorBuf[i * 3], g = colorBuf[i * 3 + 1], b = colorBuf[i * 3 + 2];
       const v = Math.max(r, g, b), mn = Math.min(r, g, b);
