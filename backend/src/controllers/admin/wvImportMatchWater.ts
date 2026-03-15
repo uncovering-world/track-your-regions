@@ -86,11 +86,11 @@ export async function detectWater(ctx: PipelineContext): Promise<void> {
   // that only catches vivid pixels very close to the sampled water color.
   const passesWaterTier = (h: number, s: number, v: number, r: number, g: number, b: number): boolean => {
     // Hardcoded tiers — always active.
-    // Saturation cap (s < 210): map water is always pastel/soft (S typically 50-180).
-    // Deeply saturated pixels (S > 210) are colored land regions, not water — e.g.
-    // Morocco's blue coastal strip at S=255 has ocean-like hue but is a land region.
+    // Saturation floor (s > 40/50): ocean is moderately saturated (S typically 80-180 on 0-255).
+    // Desaturated coastal land (S 20-50) has ocean-like hue but is NOT water.
+    // Saturation cap (s < 210): deeply saturated pixels are colored land regions.
     if (h >= 90 && h <= 120 && s > 40 && s < 210 && v > 90 && b > g + 12) return true;
-    if (h >= 80 && h <= 110 && s > 18 && s < 80 && v > 190 && b > r + 15) return true;
+    if (h >= 80 && h <= 110 && s > 50 && s < 80 && v > 190 && b > r + 15) return true;
     // Tight adaptive supplement — RGB proximity to edge-sampled water color.
     // Catches water with unusual hue (e.g. teal where g > b) that hardcoded HSV tiers miss.
     if (useAdaptiveWater) {
@@ -145,7 +145,7 @@ export async function detectWater(ctx: PipelineContext): Promise<void> {
   let countC = 0;
   if (seedCnt > 0) {
     const avgR = seedR / seedCnt, avgG = seedG / seedCnt, avgB = seedB / seedCnt;
-    const COLOR_DIST_SQ = 50 * 50;
+    const COLOR_DIST_SQ = 30 * 30; // tightened from 50 — coastal land at distance 50-90 was being caught
     for (let i = 0; i < tp; i++) {
       const dr = inpaintedBuf[i * 3] - avgR;
       const dg = inpaintedBuf[i * 3 + 1] - avgG;
