@@ -73,26 +73,28 @@ export async function detectText(ctx: PipelineContext): Promise<void> {
   darkMask.delete(); darkLabels.delete(); darkStats.delete();
   if (darkCount > 0) console.log(`  [Text] Dark spots: added ${darkCount} pixels from small dark CCs`);
 
+  // --- Dilate dark text mask ONLY (3×3) before merging colored lines ---
+  // Only dark text pixels need dilation (anti-aliased edges).
+  // Colored lines are already precisely detected by run-length filter — no dilation.
+  const cvTextMask = new cv.Mat(TH, TW, cv.CV_8UC1);
+  for (let i = 0; i < tp; i++) cvTextMask.data[i] = textMask[i] ? 255 : 0;
+  const dilateK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+  const textMaskDilated = new cv.Mat();
+  cv.dilate(cvTextMask, textMaskDilated, dilateK);
+  cvTextMask.delete(); dilateK.delete();
+
   // --- Colored line detection: blue rivers, red/yellow roads, blue water labels ---
   // Detected as mask only — NO median replacement (which blurs boundaries).
-  // These get Telea-inpainted along with text using a tight radius.
+  // Merged AFTER dilation so line pixels don't get inflated.
   const lineMask = detectColoredLines(colorBuf, TW, TH, RES_SCALE);
   let lineCount = 0;
   for (let i = 0; i < tp; i++) {
-    if (lineMask[i] && !textMask[i]) {
-      textMask[i] = 1;
+    if (lineMask[i] && !textMaskDilated.data[i]) {
+      textMaskDilated.data[i] = 255;
       lineCount++;
     }
   }
   if (lineCount > 0) console.log(`  [Text] Colored lines: added ${lineCount} pixels (rivers, roads, water labels)`);
-
-  // --- Dilate text mask (5×5) to cover anti-aliased text edges ---
-  const cvTextMask = new cv.Mat(TH, TW, cv.CV_8UC1);
-  for (let i = 0; i < tp; i++) cvTextMask.data[i] = textMask[i] ? 255 : 0;
-  const dilateK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
-  const textMaskDilated = new cv.Mat();
-  cv.dilate(cvTextMask, textMaskDilated, dilateK);
-  cvTextMask.delete(); dilateK.delete();
 
   // textExcluded: marks text pixels for K-means exclusion + forced foreground
   const textExcluded = new Uint8Array(tp);
