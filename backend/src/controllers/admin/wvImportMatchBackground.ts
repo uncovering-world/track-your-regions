@@ -262,6 +262,38 @@ export async function detectBackground(ctx: PipelineContext): Promise<void> {
     console.log(`  [FG] Restored ${forcedRestored} forced-foreground pixels erased by morph pipeline`);
   }
 
+  // Reclaim water pixels near the coast that are actually colored land regions.
+  // Some maps use a region color identical to the ocean (e.g., Morocco's cyan coastal strip).
+  // If a water pixel is adjacent to the country (within coastalBand) AND has a color that
+  // differs from the water-edge median by saturation or brightness, reclaim it as land.
+  // We expand the reclaim zone slightly (dilate coastalBand by 5px) to catch thin strips.
+  {
+    const cbMat = cv.matFromArray(TH, TW, cv.CV_8UC1, coastalBand);
+    const reclaimDilateK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(oddK(8), oddK(8)));
+    const cbExpanded = new cv.Mat();
+    cv.dilate(cbMat, cbExpanded, reclaimDilateK);
+    reclaimDilateK.delete(); cbMat.delete();
+
+    let waterReclaimed = 0;
+    for (let i = 0; i < tp; i++) {
+      if (!waterGrown[i] || !cbExpanded.data[i]) continue;
+      // Check if this pixel is colored (region fill) — not just gray background
+      const r = colorBuf[i * 3], g = colorBuf[i * 3 + 1], b = colorBuf[i * 3 + 2];
+      const v = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const sat = v > 0 ? (v - mn) / v : 0;
+      if (sat >= 0.15 && v >= 128) {
+        waterGrown[i] = 0;
+        countryMask[i] = 1;
+        countrySize++;
+        waterReclaimed++;
+      }
+    }
+    cbExpanded.delete();
+    if (waterReclaimed > 0) {
+      console.log(`  [FG] Reclaimed ${waterReclaimed} water pixels near coast as colored land`);
+    }
+  }
+
   // Remove foreign land: neighboring countries (e.g. Europe visible on Morocco map)
   // get connected to the target country through narrow straits bridged by morph close.
   // Erode to break narrow bridges, identify separate bodies, remove small foreign ones.
