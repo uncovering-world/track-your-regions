@@ -277,21 +277,41 @@ export async function detectBackground(ctx: PipelineContext): Promise<void> {
     cv.dilate(cbMat, cbExpanded, reclaimDilateK);
     reclaimDilateK.delete(); cbMat.delete();
 
-    let waterReclaimed = 0;
+    // BFS reclaim: grow country mask into water only from existing country edge.
+    // This ensures we only reclaim water pixels directly adjacent to the country,
+    // not random ocean text/fragments further out.
+    // Only reclaim colored pixels (S>=15%, V>=128) — not gray background.
+    const reclaimQ: number[] = [];
+    // Seed: country pixels adjacent to water
     for (let i = 0; i < tp; i++) {
-      if (!waterGrown[i] || !cbExpanded.data[i]) continue;
-      // Don't reclaim text pixels — ocean labels (e.g., "North Atlantic Ocean")
-      // are colored teal text near the coast that should stay as water
-      if (textExcluded[i]) continue;
-      // Check if this pixel is colored (region fill) — not just gray background
-      const r = colorBuf[i * 3], g = colorBuf[i * 3 + 1], b = colorBuf[i * 3 + 2];
-      const v = Math.max(r, g, b), mn = Math.min(r, g, b);
-      const sat = v > 0 ? (v - mn) / v : 0;
-      if (sat >= 0.15 && v >= 128) {
-        waterGrown[i] = 0;
-        countryMask[i] = 1;
-        countrySize++;
-        waterReclaimed++;
+      if (!countryMask[i]) continue;
+      const x = i % TW, y = Math.floor(i / TW);
+      for (const n of [i - 1, i + 1, i - TW, i + TW]) {
+        if (n >= 0 && n < tp && waterGrown[n] && cbExpanded.data[n]) {
+          reclaimQ.push(i);
+          break;
+        }
+      }
+    }
+    let waterReclaimed = 0;
+    let rHead = 0;
+    while (rHead < reclaimQ.length) {
+      const p = reclaimQ[rHead++];
+      for (const n of [p - 1, p + 1, p - TW, p + TW]) {
+        if (n < 0 || n >= tp) continue;
+        if (!waterGrown[n] || countryMask[n]) continue;
+        if (!cbExpanded.data[n]) continue;
+        if (textExcluded[n]) continue;
+        const r = colorBuf[n * 3], g = colorBuf[n * 3 + 1], b = colorBuf[n * 3 + 2];
+        const v = Math.max(r, g, b), mn = Math.min(r, g, b);
+        const sat = v > 0 ? (v - mn) / v : 0;
+        if (sat >= 0.15 && v >= 128) {
+          waterGrown[n] = 0;
+          countryMask[n] = 1;
+          countrySize++;
+          waterReclaimed++;
+          reclaimQ.push(n);
+        }
       }
     }
     cbExpanded.delete();
