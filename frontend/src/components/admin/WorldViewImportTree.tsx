@@ -2027,8 +2027,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                 const cr = cvMatchDialog.clusterReview!;
                 const sourceImg = cvMatchDialog.debugImages.find(img => img.label === '__source_map__');
                 const sorted = [...cr.clusters].sort((a, b) => b.pct - a.pct);
-                // Targets for "merge into" = non-excluded, non-small clusters
-                const mergeTargets = sorted.filter(c => !c.isSmall && !cr.excludes.has(c.label));
+                // Targets for "merge into" = any non-excluded cluster
+                const mergeTargets = sorted.filter(c => !cr.excludes.has(c.label));
                 const setAction = (label: number, value: string) => {
                   setCVMatchDialog(prev => {
                     if (!prev?.clusterReview) return prev;
@@ -2103,7 +2103,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                             >
                               <MenuItem value="keep">Keep as region</MenuItem>
                               <MenuItem value="exclude" sx={{ color: 'error.main' }}>Exclude (not a region)</MenuItem>
-                              {c.isSmall && mergeTargets.map(t => (
+                              {mergeTargets.filter(t => t.label !== c.label).map(t => (
                                 <MenuItem key={t.label} value={String(t.label)}>
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                                     <Box sx={{ width: 12, height: 12, bgcolor: t.color, borderRadius: '50%', border: '1px solid #ccc' }} />
