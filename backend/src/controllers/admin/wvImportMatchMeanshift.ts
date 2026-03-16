@@ -21,11 +21,10 @@
 
 import sharp from 'sharp';
 import type { PipelineContext } from './wvImportMatchPipeline.js';
-import { removeColoredLines } from './wvImportMatchHelpers.js';
 
 // ── Mean-shift parameters ──────────────────────────────────────────
 const MS_SP = 15;   // spatial radius (pixels at full resolution) — 15 preserves narrow strips better than 20
-const MS_SR = 20;   // color radius (Lab distance) — 20 preserves distinct adjacent colors better than 30
+const MS_SR = 25;   // color radius (Lab distance) — 25 absorbs roads better than 20, preserves yellow/orange boundary (Lab dist ~40)
 const MAX_ITER = 5;  // max iterations per pixel for convergence
 const BG_RGB_DIST = 30;   // flood-fill color distance for background
 const WATER_H_MIN = 70;   // HSV hue range for water (teal/blue)
@@ -370,17 +369,10 @@ function computeCoastalBand(
  */
 export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
   const {
-    cv, TW, TH, tp, origW, origH, RES_SCALE,
+    cv, TW, TH, tp, origW, origH,
     colorBuf,
     logStep, pushDebugImage,
   } = ctx;
-
-  // --- Step 0: Remove colored lines (roads, rivers, blue labels) ---
-  // Mean-shift can't absorb wide vivid lines (red/orange roads) because their
-  // color distance from region fills exceeds sr. Remove them first.
-  await logStep('Removing colored lines (roads, rivers)...');
-  const lineRemoved = removeColoredLines(colorBuf, TW, TH, RES_SCALE);
-  if (lineRemoved > 0) console.log(`  [MS] Removed ${lineRemoved} colored line pixels`);
 
   // --- Step 1: Mean-shift filtering ---
   await logStep(`Mean-shift filtering (sp=${MS_SP}, sr=${MS_SR})...`);
