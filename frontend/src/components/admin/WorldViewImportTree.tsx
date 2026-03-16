@@ -245,14 +245,11 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
                     0.08,
                   ]
                 : ['case',
-                    ['==', ['get', 'divisionId'], selectedId ?? -999], 0.7,
-                    ['==', ['get', 'painted'], true], 0.75,
+                    ['==', ['get', 'divisionId'], selectedId ?? -999], 0.85,
                     ['==', ['get', 'dismissed'], true], 0.15,
-                    ['==', ['get', 'accepted'], true], 0.55,
                     ['==', ['get', 'isOutOfBounds'], true], 0.08,
                     ['==', ['get', 'clusterId'], -1], 0.1,
-                    ['==', ['get', 'isUnsplittable'], true], 0.25,
-                    0.4,
+                    0.75,
                   ],
             }}
           />
