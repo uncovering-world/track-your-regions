@@ -47,6 +47,7 @@ import {
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
+import maplibregl from 'maplibre-gl';
 import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import { useQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -126,7 +127,12 @@ function mergeGeomsIntoSibling(
   });
 }
 
-const CV_MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+// Blank map style for CV preview — no basemap tiles that blend with colored divisions
+const CV_MAP_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {},
+  layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#f5f5f5' } }],
+};
 
 /** Interactive MapLibre map showing CV color-match division assignments with click-to-accept/reject */
 function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlightClusterId }: {
