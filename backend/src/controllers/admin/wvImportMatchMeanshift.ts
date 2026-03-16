@@ -311,40 +311,12 @@ function detectGrayBackground(
   srcMat.delete();
   hsvMat.delete();
 
-  // Mark all low-saturation pixels
-  const isGray = new Uint8Array(tp);
+  // Mark ALL low-saturation pixels as background.
+  // On WV maps, gray is ALWAYS background — never a region fill (fills have S≥15%).
+  // No flood fill needed — this catches gray "islands" like the Strait of Gibraltar
+  // that are surrounded by colored regions and unreachable from corners.
   for (let i = 0; i < tp; i++) {
-    if (hsvData[i * 3 + 1] < 25) isGray[i] = 1; // S < ~10%
-  }
-
-  // Flood fill from corners, only through gray pixels
-  const corners = [
-    0,
-    width - 1,
-    (height - 1) * width,
-    (height - 1) * width + width - 1,
-  ];
-
-  for (const startPix of corners) {
-    if (!isGray[startPix]) continue;
-    const stack = [startPix];
-    const visited = new Uint8Array(tp);
-
-    while (stack.length > 0) {
-      const pix = stack.pop()!;
-      if (visited[pix]) continue;
-      visited[pix] = 1;
-      if (!isGray[pix]) continue;
-
-      mask[pix] = 1;
-
-      const y = Math.floor(pix / width);
-      const x = pix % width;
-      if (y > 0) stack.push(pix - width);
-      if (y < height - 1) stack.push(pix + width);
-      if (x > 0) stack.push(pix - 1);
-      if (x < width - 1) stack.push(pix + 1);
-    }
+    if (hsvData[i * 3 + 1] < 25) mask[i] = 1; // S < ~10%
   }
 
   return mask;
