@@ -204,7 +204,18 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
         }}
         onMouseLeave={() => setHoveredId(null)}
         onClick={(e) => {
-          const f = e.features?.[0];
+          // Use a tolerance box for feature picking — tiny divisions at low zoom
+          // may not register with point-based queryRenderedFeatures
+          let f = e.features?.[0];
+          if (!f && mapRef.current) {
+            const point = e.point;
+            const bbox: [[number, number], [number, number]] = [
+              [point.x - 5, point.y - 5],
+              [point.x + 5, point.y + 5],
+            ];
+            const hits = mapRef.current.queryRenderedFeatures(bbox, { layers: ['cv-divisions-fill'] });
+            if (hits.length > 0) f = hits[0];
+          }
           const divId = f?.properties?.divisionId ?? null;
           // Paint mode: clicking a division reassigns it locally to the active cluster.
           // Always use onClusterReassign (local-only) — onAccept hits the API and can
