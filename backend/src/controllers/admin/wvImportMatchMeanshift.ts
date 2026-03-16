@@ -24,7 +24,7 @@ import type { PipelineContext } from './wvImportMatchPipeline.js';
 
 // ── Mean-shift parameters ──────────────────────────────────────────
 const MS_SP = 15;   // spatial radius (pixels at full resolution) — 15 preserves narrow strips better than 20
-const MS_SR = 25;   // color radius (Lab distance) — 25 absorbs roads better than 20, preserves yellow/orange boundary (Lab dist ~40)
+const MS_SR = 20;   // color radius (Lab distance) — 20 preserves distinct adjacent colors (yellow/orange boundary at Lab ~40)
 const MAX_ITER = 5;  // max iterations per pixel for convergence
 const BG_RGB_DIST = 30;   // flood-fill color distance for background
 const WATER_H_MIN = 70;   // HSV hue range for water (teal/blue)
@@ -373,6 +373,52 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
     colorBuf,
     logStep, pushDebugImage,
   } = ctx;
+
+  // --- Step 0: Gentle road pixel replacement ---
+  // Detect vivid red/yellow/blue thin-line pixels by HSL, replace each with
+  // the average of its non-road 4-neighbors. Unlike removeColoredLines (which
+  // uses 8px median and destroys boundaries), this is a 1-pixel replacement.
+  {
+    const roadMask = new Uint8Array(tp);
+    for (let i = 0; i < tp; i++) {
+      const r = colorBuf[i * 3], g = colorBuf[i * 3 + 1], b = colorBuf[i * 3 + 2];
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const d = mx - mn;
+      if (d < 30) continue; // not saturated enough to be a road
+      const s = mx > 0 ? d / mx : 0;
+      if (s < 0.3) continue;
+      let h = 0;
+      if (mx === r) h = ((g - b) / d) * 60;
+      else if (mx === g) h = ((b - r) / d) * 60 + 120;
+      else h = ((r - g) / d) * 60 + 240;
+      if (h < 0) h += 360;
+      // Red roads: H 0-25 or 335-360
+      // Yellow roads: H 40-70
+      // Blue rivers: H 170-270
+      if ((h <= 25 || h >= 335) || (h >= 40 && h <= 70) || (h >= 170 && h <= 270)) {
+        roadMask[i] = 1;
+      }
+    }
+    // Replace road pixels with average of non-road 4-neighbors
+    let replaced = 0;
+    for (let i = 0; i < tp; i++) {
+      if (!roadMask[i]) continue;
+      let sumR = 0, sumG = 0, sumB = 0, cnt = 0;
+      for (const n of [i - 1, i + 1, i - TW, i + TW]) {
+        if (n >= 0 && n < tp && !roadMask[n]) {
+          sumR += colorBuf[n * 3]; sumG += colorBuf[n * 3 + 1]; sumB += colorBuf[n * 3 + 2];
+          cnt++;
+        }
+      }
+      if (cnt > 0) {
+        colorBuf[i * 3] = Math.round(sumR / cnt);
+        colorBuf[i * 3 + 1] = Math.round(sumG / cnt);
+        colorBuf[i * 3 + 2] = Math.round(sumB / cnt);
+        replaced++;
+      }
+    }
+    if (replaced > 0) console.log(`  [MS] Gentle road replacement: ${replaced} pixels`);
+  }
 
   // --- Step 1: Mean-shift filtering ---
   await logStep(`Mean-shift filtering (sp=${MS_SP}, sr=${MS_SR})...`);
