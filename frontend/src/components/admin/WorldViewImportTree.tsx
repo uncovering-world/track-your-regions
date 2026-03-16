@@ -246,6 +246,7 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
                   ]
                 : ['case',
                     ['==', ['get', 'divisionId'], selectedId ?? -999], 0.7,
+                    ['==', ['get', 'painted'], true], 0.75,
                     ['==', ['get', 'dismissed'], true], 0.15,
                     ['==', ['get', 'accepted'], true], 0.55,
                     ['==', ['get', 'isOutOfBounds'], true], 0.08,
@@ -2459,7 +2460,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                                     ...prev.geoPreview.featureCollection,
                                     features: prev.geoPreview.featureCollection.features.map(f =>
                                       f.properties?.divisionId === divisionId
-                                        ? { ...f, properties: { ...f.properties, clusterId, color, regionId: ci?.regionId ?? null, regionName: ci?.regionName ?? null, isUnsplittable: false } }
+                                        ? { ...f, properties: { ...f.properties, clusterId, color, regionId: ci?.regionId ?? null, regionName: ci?.regionName ?? null, isUnsplittable: false, painted: true } }
                                         : f
                                     ),
                                   },
