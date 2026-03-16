@@ -634,13 +634,8 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
 
       const decision = await new Promise<ClusterReviewDecision>((resolve) => {
         pendingClusterReviews.set(reviewId, resolve);
-        setTimeout(() => {
-          if (pendingClusterReviews.has(reviewId)) {
-            console.log(`  [Cluster Review] ${reviewId} timed out — keeping all`);
-            pendingClusterReviews.delete(reviewId);
-            resolve({ merges: {} });
-          }
-        }, 180000);
+        // No timeout — user takes as long as needed. SSE connection stays open.
+        // Cleanup happens when the SSE connection closes (client disconnect).
       });
 
       // Check for recluster request
