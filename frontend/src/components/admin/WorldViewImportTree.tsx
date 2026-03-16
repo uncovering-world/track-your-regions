@@ -149,6 +149,8 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
   const mapRef = useRef<MapRef>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Counter to force GeoJSON source remount after paint (react-map-gl doesn't always detect deep property changes)
+  const [sourceVersion, setSourceVersion] = useState(0);
   // Paint mode: pick a cluster, then click divisions to assign them
   const [paintClusterId, setPaintClusterId] = useState<number | null>(null);
 
@@ -230,18 +232,8 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
             const ci = geoPreview.clusterInfos.find(c => c.clusterId === paintClusterId);
             if (ci && onClusterReassign) {
               onClusterReassign(divId, ci.clusterId, ci.color);
-              // Force immediate visual update — react-map-gl may not detect deep property changes
-              if (mapRef.current) {
-                const source = mapRef.current.getSource('cv-divisions') as maplibregl.GeoJSONSource | undefined;
-                if (source) {
-                  const newFeatures = geoPreview.featureCollection.features.map(ft =>
-                    ft.properties?.divisionId === divId
-                      ? { ...ft, properties: { ...ft.properties, clusterId: ci.clusterId, color: ci.color, painted: true } }
-                      : ft
-                  );
-                  source.setData({ ...geoPreview.featureCollection, features: newFeatures });
-                }
-              }
+              // Force GeoJSON source remount so MapLibre picks up the property change
+              setSourceVersion(v => v + 1);
             }
             return;
           }
@@ -260,7 +252,7 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
         }}
       >
         <NavigationControl position="top-right" showCompass={false} />
-        <Source id="cv-divisions" type="geojson" data={geoPreview.featureCollection}>
+        <Source id="cv-divisions" type="geojson" data={geoPreview.featureCollection} key={`src-${sourceVersion}`}>
           <Layer
             id="cv-divisions-fill"
             type="fill"
