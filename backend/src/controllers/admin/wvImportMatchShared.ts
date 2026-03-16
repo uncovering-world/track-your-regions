@@ -569,7 +569,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       if (c) clusterInfos.push({ label: lbl, color: [c[0], c[1], c[2]], pxCount: cnt, pct: Math.round(cnt / countrySize * 1000) / 10 });
     }
     const smallClusters = clusterInfos.filter(c => c.pct < 3);
-    if (smallClusters.length > 0) {
+    { // Always show cluster review — user may want to merge, exclude, or recluster
       const reviewId = `cr-${regionId}-${Date.now()}`;
 
       const previewBuf = Buffer.alloc(tp * 3, 220);
