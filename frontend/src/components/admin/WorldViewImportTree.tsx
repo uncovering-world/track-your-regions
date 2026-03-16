@@ -149,8 +149,17 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
   const mapRef = useRef<MapRef>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  // Counter to force GeoJSON source remount after paint (react-map-gl doesn't always detect deep property changes)
-  const [sourceVersion, setSourceVersion] = useState(0);
+
+  // Force MapLibre to pick up GeoJSON property changes after paint
+  // react-map-gl's <Source> doesn't always detect deep feature property updates
+  useEffect(() => {
+    if (mapRef.current) {
+      const source = mapRef.current.getSource('cv-divisions');
+      if (source && 'setData' in source) {
+        (source as maplibregl.GeoJSONSource).setData(geoPreview.featureCollection as GeoJSON.FeatureCollection);
+      }
+    }
+  }, [geoPreview.featureCollection]);
   // Paint mode: pick a cluster, then click divisions to assign them
   const [paintClusterId, setPaintClusterId] = useState<number | null>(null);
 
@@ -232,8 +241,6 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
             const ci = geoPreview.clusterInfos.find(c => c.clusterId === paintClusterId);
             if (ci && onClusterReassign) {
               onClusterReassign(divId, ci.clusterId, ci.color);
-              // Force GeoJSON source remount so MapLibre picks up the property change
-              setSourceVersion(v => v + 1);
             }
             return;
           }
@@ -252,7 +259,7 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
         }}
       >
         <NavigationControl position="top-right" showCompass={false} />
-        <Source id="cv-divisions" type="geojson" data={geoPreview.featureCollection} key={`src-${sourceVersion}`}>
+        <Source id="cv-divisions" type="geojson" data={geoPreview.featureCollection}>
           <Layer
             id="cv-divisions-fill"
             type="fill"
