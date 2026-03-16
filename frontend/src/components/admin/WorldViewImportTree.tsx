@@ -230,6 +230,18 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
             const ci = geoPreview.clusterInfos.find(c => c.clusterId === paintClusterId);
             if (ci && onClusterReassign) {
               onClusterReassign(divId, ci.clusterId, ci.color);
+              // Force immediate visual update — react-map-gl may not detect deep property changes
+              if (mapRef.current) {
+                const source = mapRef.current.getSource('cv-divisions') as maplibregl.GeoJSONSource | undefined;
+                if (source) {
+                  const newFeatures = geoPreview.featureCollection.features.map(ft =>
+                    ft.properties?.divisionId === divId
+                      ? { ...ft, properties: { ...ft.properties, clusterId: ci.clusterId, color: ci.color, painted: true } }
+                      : ft
+                  );
+                  source.setData({ ...geoPreview.featureCollection, features: newFeatures });
+                }
+              }
             }
             return;
           }
@@ -2474,7 +2486,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                                     ...prev.geoPreview.featureCollection,
                                     features: prev.geoPreview.featureCollection.features.map(f =>
                                       f.properties?.divisionId === divisionId
-                                        ? { ...f, properties: { ...f.properties, clusterId, color, regionId: ci?.regionId ?? null, regionName: ci?.regionName ?? null, isUnsplittable: false, painted: true } }
+                                        ? { ...f, properties: { ...f.properties, clusterId, color, painted: true } }
                                         : f
                                     ),
                                   },
