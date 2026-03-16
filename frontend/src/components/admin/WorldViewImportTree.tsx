@@ -63,6 +63,7 @@ import {
   parkCropUrl,
   respondToClusterReview,
   clusterPreviewUrl,
+  clusterHighlightUrl,
   type ClusterReviewCluster,
   mapshapeMatch,
   acceptBatchMatches,
@@ -592,6 +593,10 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       excludes: Set<number>;
       /** Map from cluster label → region id (user-assigned during review) */
       regionAssignments: Map<number, number>;
+      /** Currently highlighted cluster label (clicked by user) */
+      highlightedLabel?: number;
+      /** Highlight overlay image URL for the selected cluster */
+      highlightOverlay?: string;
     };
   } | null>(null);
   const [highlightClusterId, setHighlightClusterId] = useState<number | null>(null);
@@ -2073,8 +2078,13 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                       )}
                       {cr.previewImage && (
                         <Box sx={{ flex: '1 1 30%', textAlign: 'center' }}>
-                          <Typography variant="caption" color="text.secondary">Detected clusters</Typography>
-                          <img src={cr.previewImage} style={{ width: '100%', borderRadius: 4, border: '1px solid #ccc' }} />
+                          <Typography variant="caption" color="text.secondary">Detected clusters {cr.highlightedLabel != null ? '(click color circle to highlight)' : '(click a color circle to highlight)'}</Typography>
+                          <Box sx={{ position: 'relative', display: 'inline-block', width: '100%' }}>
+                            <img src={cr.previewImage} style={{ width: '100%', borderRadius: 4, border: '1px solid #ccc', display: 'block' }} />
+                            {cr.highlightOverlay && (
+                              <img src={cr.highlightOverlay} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', borderRadius: 4, pointerEvents: 'none' }} />
+                            )}
+                          </Box>
                         </Box>
                       )}
                     </Box>
@@ -2091,7 +2101,33 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                         }
                         return (
                           <Box key={c.label} sx={{ display: 'flex', alignItems: 'center', gap: 1, opacity: isExcluded || isMerged ? 0.5 : 1 }}>
-                            <Box sx={{ width: 20, height: 20, bgcolor: c.color, borderRadius: '50%', border: '1px solid #999', flexShrink: 0 }} />
+                            <Box
+                              sx={{
+                                width: 20, height: 20, bgcolor: c.color, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+                                border: cr.highlightedLabel === c.label ? '3px solid red' : '1px solid #999',
+                              }}
+                              onClick={() => {
+                                const isDeselect = cr.highlightedLabel === c.label;
+                                setCVMatchDialog(prev => {
+                                  if (!prev?.clusterReview) return prev;
+                                  if (isDeselect) return { ...prev, clusterReview: { ...prev.clusterReview, highlightedLabel: undefined, highlightOverlay: undefined } };
+                                  return { ...prev, clusterReview: { ...prev.clusterReview, highlightedLabel: c.label, highlightOverlay: undefined } };
+                                });
+                                if (!isDeselect) {
+                                  const hlUrl = clusterHighlightUrl(cr.reviewId, c.label);
+                                  fetch(hlUrl).then(r => r.ok ? r.blob() : null).then(blob => {
+                                    if (blob) {
+                                      const objUrl = URL.createObjectURL(blob);
+                                      setCVMatchDialog(prev => {
+                                        if (!prev?.clusterReview || prev.clusterReview.highlightedLabel !== c.label) return prev;
+                                        return { ...prev, clusterReview: { ...prev.clusterReview, highlightOverlay: objUrl } };
+                                      });
+                                    }
+                                  }).catch(() => {});
+                                }
+                              }}
+                              title="Click to highlight this cluster on the map"
+                            />
                             <Typography variant="body2" sx={{ minWidth: 55, fontWeight: c.isSmall ? 400 : 600 }}>
                               {c.pct.toFixed(1)}%
                             </Typography>

@@ -23,6 +23,7 @@ export {
   getParkCropImage,
   resolveClusterReview,
   getClusterPreviewImage,
+  getClusterHighlightImage,
   pendingClusterReviews,
   clusterPreviewImages,
 } from './wvImportMatchReview.js';

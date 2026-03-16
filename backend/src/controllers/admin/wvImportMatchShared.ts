@@ -11,6 +11,7 @@ import { pool } from '../../db/index.js';
 import {
   pendingClusterReviews,
   clusterPreviewImages,
+  storeClusterHighlights,
 } from './wvImportMatchReview.js';
 
 // =============================================================================
@@ -584,6 +585,32 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
 
       clusterPreviewImages.set(reviewId, previewDataUrl);
       setTimeout(() => { clusterPreviewImages.delete(reviewId); }, 600000);
+
+      // Generate per-cluster highlight images (red outline on transparent)
+      const highlights: Array<{ label: number; png: Buffer }> = [];
+      for (const ci of clusterInfos) {
+        // Build RGBA buffer: cluster pixels get red border, rest transparent
+        const hlBuf = Buffer.alloc(tp * 4, 0); // RGBA, all transparent
+        for (let i = 0; i < tp; i++) {
+          if (pixelLabels[i] !== ci.label) continue;
+          // Check if this pixel is at the edge of its cluster
+          const x = i % TW, y = Math.floor(i / TW);
+          let isEdge = false;
+          for (const n of [i - 1, i + 1, i - TW, i + TW]) {
+            if (n < 0 || n >= tp || pixelLabels[n] !== ci.label) { isEdge = true; break; }
+          }
+          if (isEdge) {
+            hlBuf[i * 4] = 255;     // R
+            hlBuf[i * 4 + 1] = 0;   // G
+            hlBuf[i * 4 + 2] = 0;   // B
+            hlBuf[i * 4 + 3] = 200; // A (semi-transparent)
+          }
+        }
+        const hlPng = await sharp(hlBuf, { raw: { width: TW, height: TH, channels: 4 } })
+          .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+        highlights.push({ label: ci.label, png: hlPng });
+      }
+      storeClusterHighlights(reviewId, highlights);
 
       sendEvent({
         type: 'cluster_review',

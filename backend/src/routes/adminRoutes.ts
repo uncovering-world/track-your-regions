@@ -95,6 +95,7 @@ import {
   getParkCropImage,
   resolveClusterReview,
   getClusterPreviewImage,
+  getClusterHighlightImage,
 } from '../controllers/admin/wvImportMatchController.js';
 import {
   startAIMatch,
@@ -409,6 +410,19 @@ router.get('/wv-import/cluster-preview/:reviewId', (req: AuthenticatedRequest, r
   } else {
     res.status(500).json({ error: 'Invalid preview data' });
   }
+});
+
+// Per-cluster highlight image (red outline overlay for selected cluster)
+router.get('/wv-import/cluster-highlight/:reviewId/:label', (req: AuthenticatedRequest, res: Response) => {
+  const png = getClusterHighlightImage(String(req.params.reviewId), parseInt(String(req.params.label)));
+  if (!png) {
+    res.status(404).json({ error: 'Highlight not found' });
+    return;
+  }
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.send(png);
 });
 
 // Cluster review callback (user merges small artifact clusters during CV match)

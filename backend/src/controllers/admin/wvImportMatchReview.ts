@@ -116,10 +116,29 @@ export const pendingClusterReviews = new Map<string, (decision: ClusterReviewDec
 
 /** Cluster preview images — served via GET endpoint (avoids SSE bloat like water/park crops) */
 export const clusterPreviewImages = new Map<string, string>();
+/** Per-cluster highlight images — key: "{reviewId}:{label}" → PNG buffer */
+const clusterHighlightImages = new Map<string, Buffer>();
 
 /** Get a stored cluster preview image (called from GET endpoint) */
 export function getClusterPreviewImage(reviewId: string): string | undefined {
   return clusterPreviewImages.get(reviewId);
+}
+
+/** Get a stored per-cluster highlight image (called from GET endpoint) */
+export function getClusterHighlightImage(reviewId: string, label: number): Buffer | undefined {
+  return clusterHighlightImages.get(`${reviewId}:${label}`);
+}
+
+/** Store per-cluster highlight images for a review session */
+export function storeClusterHighlights(reviewId: string, highlights: Array<{ label: number; png: Buffer }>) {
+  for (const h of highlights) {
+    clusterHighlightImages.set(`${reviewId}:${h.label}`, h.png);
+  }
+  setTimeout(() => {
+    for (const key of [...clusterHighlightImages.keys()]) {
+      if (key.startsWith(`${reviewId}:`)) clusterHighlightImages.delete(key);
+    }
+  }, 600000);
 }
 
 /** Resolve a pending cluster review (called from POST endpoint) */

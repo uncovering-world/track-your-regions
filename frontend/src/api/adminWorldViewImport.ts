@@ -912,6 +912,12 @@ export function clusterPreviewUrl(reviewId: string): string {
   return token ? `${base}?token=${token}` : base;
 }
 
+export function clusterHighlightUrl(reviewId: string, label: number): string {
+  const token = getAccessToken();
+  const base = `${API_URL}/api/admin/wv-import/cluster-highlight/${reviewId}/${label}`;
+  return token ? `${base}?token=${token}` : base;
+}
+
 /** Respond to cluster review during CV match */
 export async function respondToClusterReview(reviewId: string, decision: ClusterReviewDecision): Promise<void> {
   await authFetchJson(`${API_URL}/api/admin/wv-import/cluster-review/${reviewId}`, {
