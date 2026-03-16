@@ -481,7 +481,7 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
   // Removes Spain, Portugal, Algeria etc. that are connected via thin bridges.
   {
     const cmMat = cv.matFromArray(TH, TW, cv.CV_8UC1, countryMask);
-    const erodeK = oddK(15); // ~24px — breaks bridges thinner than this
+    const erodeK = oddK(5); // ~8px — breaks narrow straits (5-10px) but preserves coastal strips (15px+)
     const erodeKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(erodeK, erodeK));
     const eroded = new cv.Mat();
     cv.erode(cmMat, eroded, erodeKernel);
