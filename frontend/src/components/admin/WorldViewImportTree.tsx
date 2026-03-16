@@ -206,15 +206,13 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
         onClick={(e) => {
           const f = e.features?.[0];
           const divId = f?.properties?.divisionId ?? null;
-          // Paint mode: clicking a division assigns it to the active cluster immediately
+          // Paint mode: clicking a division reassigns it locally to the active cluster.
+          // Always use onClusterReassign (local-only) — onAccept hits the API and can
+          // trigger re-renders that revert the color. User saves assignments later.
           if (paintClusterId != null && divId != null) {
             const ci = geoPreview.clusterInfos.find(c => c.clusterId === paintClusterId);
-            if (ci) {
-              if (ci.regionId != null && ci.regionName && onAccept) {
-                onAccept(divId, ci.regionId, ci.regionName);
-              } else if (onClusterReassign) {
-                onClusterReassign(divId, ci.clusterId, ci.color);
-              }
+            if (ci && onClusterReassign) {
+              onClusterReassign(divId, ci.clusterId, ci.color);
             }
             return;
           }
