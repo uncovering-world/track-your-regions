@@ -23,7 +23,7 @@ import sharp from 'sharp';
 import type { PipelineContext } from './wvImportMatchPipeline.js';
 
 // ── Mean-shift parameters ──────────────────────────────────────────
-const MS_SP = 20;   // spatial radius (pixels at full resolution)
+const MS_SP = 15;   // spatial radius (pixels at full resolution) — 15 preserves narrow strips better than 20
 const MS_SR = 30;   // color radius (Lab Euclidean distance)
 const MAX_ITER = 5;  // max iterations per pixel for convergence
 const BG_RGB_DIST = 30;   // flood-fill color distance for background
@@ -398,7 +398,7 @@ function computeCoastalBand(
 export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
   const {
     cv, TW, TH, tp, origW, origH,
-    colorBuf,
+    colorBuf, oddK,
     logStep, pushDebugImage,
   } = ctx;
 
@@ -473,6 +473,69 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
       countryMask[i] = 1;
       countrySize++;
     }
+  }
+
+  // --- Step 5: Foreign land removal ---
+  // Erode country mask to break narrow connections (e.g., Strait of Gibraltar),
+  // then keep only the largest connected component as the main country body.
+  // Removes Spain, Portugal, Algeria etc. that are connected via thin bridges.
+  {
+    const cmMat = cv.matFromArray(TH, TW, cv.CV_8UC1, countryMask);
+    const erodeK = oddK(15); // ~24px — breaks bridges thinner than this
+    const erodeKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(erodeK, erodeK));
+    const eroded = new cv.Mat();
+    cv.erode(cmMat, eroded, erodeKernel);
+    erodeKernel.delete(); cmMat.delete();
+
+    // Find connected components on eroded mask
+    const eLabels = new cv.Mat();
+    const eStats = new cv.Mat();
+    const eCents = new cv.Mat();
+    const numCC = cv.connectedComponentsWithStats(eroded, eLabels, eStats, eCents);
+    eroded.delete(); eCents.delete();
+
+    if (numCC > 2) {
+      // Find largest foreground CC
+      let mainCC = 1, mainSize = 0;
+      for (let c = 1; c < numCC; c++) {
+        const area = eStats.intAt(c, cv.CC_STAT_AREA);
+        if (area > mainSize) { mainSize = area; mainCC = c; }
+      }
+
+      // Remove pixels belonging to non-main CCs
+      const eData = eLabels.data32S;
+      // BFS: assign each original countryMask pixel to its nearest eroded CC
+      const pixelCC = new Int32Array(tp).fill(-1);
+      const bfsQ: number[] = [];
+      for (let i = 0; i < tp; i++) {
+        if (eData[i] > 0) { pixelCC[i] = eData[i]; bfsQ.push(i); }
+      }
+      let bHead = 0;
+      while (bHead < bfsQ.length) {
+        const p = bfsQ[bHead++];
+        const label = pixelCC[p];
+        for (const n of [p - 1, p + 1, p - TW, p + TW]) {
+          if (n >= 0 && n < tp && countryMask[n] && pixelCC[n] === -1) {
+            pixelCC[n] = label;
+            bfsQ.push(n);
+          }
+        }
+      }
+
+      // Remove foreign land (non-main CCs)
+      let foreignRemoved = 0;
+      for (let i = 0; i < tp; i++) {
+        if (countryMask[i] && pixelCC[i] !== mainCC) {
+          countryMask[i] = 0;
+          countrySize--;
+          foreignRemoved++;
+        }
+      }
+      if (foreignRemoved > 0) {
+        console.log(`  [MS] Foreign land removal: removed ${foreignRemoved} pixels (${numCC - 2} foreign blob(s))`);
+      }
+    }
+    eLabels.delete(); eStats.delete();
   }
 
   // Coastal band: country pixels within 5px of water
