@@ -23,7 +23,7 @@ import sharp from 'sharp';
 import type { PipelineContext } from './wvImportMatchPipeline.js';
 
 // ── Mean-shift parameters ──────────────────────────────────────────
-const MS_SP = 15;   // spatial radius (pixels at full resolution) — 15 preserves narrow strips better than 20
+const MS_SP = 10;   // spatial radius (pixels at full res) — must be smaller than narrowest region strip (~10-15px)
 const MS_SR = 20;   // color radius (Lab distance) — 20 preserves distinct adjacent colors (yellow/orange boundary at Lab ~40)
 const MAX_ITER = 5;  // max iterations per pixel for convergence
 const BG_RGB_DIST = 30;   // flood-fill color distance for background
