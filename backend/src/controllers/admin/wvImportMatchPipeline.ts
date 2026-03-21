@@ -167,32 +167,21 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
 
   await logStep(`Loading divisions for ${regionName}...`);
 
-  // Collect ALL divisions known to be part of this parent region's territory.
-  // Includes divisions assigned to the parent itself and to all child regions,
-  // both via region_members (confirmed) and region_match_suggestions (proposed).
-  // This ensures multi-part territories (e.g. Egypt: Africa + Sinai) are fully covered.
-  const [knownMemberResult, knownSugResult] = await Promise.all([
-    pool.query(`
-      SELECT DISTINCT division_id AS id FROM region_members
-      WHERE region_id = $1 OR region_id IN (
-        SELECT id FROM regions WHERE parent_region_id = $1 AND world_view_id = $2
-      )
-    `, [regionId, worldViewId]),
-    pool.query(`
-      SELECT DISTINCT rms.division_id AS id FROM region_match_suggestions rms
-      WHERE (rms.region_id = $1 OR rms.region_id IN (
-        SELECT id FROM regions WHERE parent_region_id = $1 AND world_view_id = $2
-      ))
-      AND rms.rejected = FALSE
-    `, [regionId, worldViewId]),
-  ]);
+  // Collect divisions confirmed as part of this parent region's territory.
+  // Only region_members (accepted assignments) count — suggestions from other tools
+  // (name matching, etc.) must not influence the CV pipeline's division scope.
+  const knownMemberResult = await pool.query(`
+    SELECT DISTINCT division_id AS id FROM region_members
+    WHERE region_id = $1 OR region_id IN (
+      SELECT id FROM regions WHERE parent_region_id = $1 AND world_view_id = $2
+    )
+  `, [regionId, worldViewId]);
 
   const knownDivisionIds = new Set<number>();
   for (const r of knownMemberResult.rows) knownDivisionIds.add(r.id as number);
-  for (const r of knownSugResult.rows) knownDivisionIds.add(r.id as number);
 
   if (knownDivisionIds.size === 0) {
-    sendEvent({ type: 'error', message: 'No divisions found in this region or its children — need at least one assigned or suggested division' });
+    sendEvent({ type: 'error', message: 'No divisions found in this region or its children — need at least one accepted division (region_members)' });
     res.end();
     return;
   }
@@ -532,9 +521,6 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       }
 
       // Recluster loop: re-run K-means with modified params when user requests
-      let reclusterAttempt = 0;
-      const MAX_RECLUSTER = 3;
-
       let reclusterResult: ReclusterSignal | void;
       do {
         await runKMeansClustering(ctx);
@@ -552,21 +538,6 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         });
 
         if (reclusterResult?.recluster) {
-          reclusterAttempt++;
-          if (reclusterAttempt >= MAX_RECLUSTER) {
-            console.log(`  [Recluster] Max attempts (${MAX_RECLUSTER}) reached, proceeding with current clusters`);
-            await matchDivisionsFromClusters({
-              worldViewId, regionId, knownDivisionIds,
-              buf: ctx.colorBuf, mapBuffer, countryMask: ctx.countryMask,
-              waterGrown: ctx.waterGrown, pixelLabels: ctx.pixelLabels,
-              colorCentroids: ctx.colorCentroids,
-              TW, TH, origW, origH,
-              skipClusterReview: true,
-              sendEvent: sendEvent as (event: Record<string, unknown>) => void,
-              logStep, pushDebugImage, debugImages, startTime,
-            });
-            break;
-          }
           const preset = reclusterResult.preset;
           if (preset === 'more_clusters') {
             const baseCK = ctx.ckOverride ?? Math.max(8, Math.min(expectedRegionCount * 3, 32));
@@ -579,7 +550,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
             ctx.chromaBoost = 1.5;
             console.log(`  [Recluster] Boost chroma: a*/b* weight → ${ctx.chromaBoost}`);
           }
-          await logStep(`Re-clustering (attempt ${reclusterAttempt + 1})...`);
+          await logStep('Re-clustering...');
         }
       } while (reclusterResult?.recluster);
 

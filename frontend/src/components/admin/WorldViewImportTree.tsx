@@ -150,20 +150,16 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  // Force MapLibre to pick up GeoJSON property changes after paint
-  // react-map-gl's <Source> doesn't always detect deep feature property updates
-  useEffect(() => {
-    if (mapRef.current) {
-      const source = mapRef.current.getSource('cv-divisions');
-      if (source && 'setData' in source) {
-        (source as maplibregl.GeoJSONSource).setData(geoPreview.featureCollection as GeoJSON.FeatureCollection);
-      }
-    }
-  }, [geoPreview.featureCollection]);
+  // Track featureCollection identity — increment key to force Source remount
+  // so MapLibre renders fresh tiles from the updated GeoJSON (no stale tile cache).
+  const srcKeyRef = useRef({ data: geoPreview.featureCollection, key: 0 });
+  if (srcKeyRef.current.data !== geoPreview.featureCollection) {
+    srcKeyRef.current = { data: geoPreview.featureCollection, key: srcKeyRef.current.key + 1 };
+  }
+
   // Paint mode: pick a cluster, then click divisions to assign them
   const [paintClusterId, setPaintClusterId] = useState<number | null>(null);
 
-  // Use the per-feature `color` property for division fills
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fillColorExpr: any = ['get', 'color'];
 
@@ -259,7 +255,7 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
         }}
       >
         <NavigationControl position="top-right" showCompass={false} />
-        <Source id="cv-divisions" type="geojson" data={geoPreview.featureCollection}>
+        <Source key={srcKeyRef.current.key} id="cv-divisions" type="geojson" data={geoPreview.featureCollection}>
           <Layer
             id="cv-divisions-fill"
             type="fill"

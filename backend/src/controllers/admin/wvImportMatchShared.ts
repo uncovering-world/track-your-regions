@@ -1246,6 +1246,28 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
   const divAssignments: DivAssignment[] = [];
   const splitDivisionIds: number[] = [];
 
+  // Total pixel count per cluster — used to check if a division's minority portion
+  // covers a significant share of that cluster's area (force split even if >90% dominant)
+  const clusterTotalPixels = new Map<number, number>();
+  for (let i = 0; i < tp; i++) {
+    if (pixelLabels[i] === 255) continue;
+    const cl = pixelLabels[i];
+    clusterTotalPixels.set(cl, (clusterTotalPixels.get(cl) || 0) + 1);
+  }
+
+  /** Check if any minority cluster would lose a significant portion of its area */
+  const hasSignificantMinority = (sorted: Array<[number, number]>) => {
+    for (let si = 1; si < sorted.length; si++) {
+      const [minCluster, minCount] = sorted[si];
+      const clusterTotal = clusterTotalPixels.get(minCluster) || 0;
+      // Only consider clusters with ≥1% of country area (skip noise)
+      if (clusterTotal < countrySize * 0.01) continue;
+      // If this division's minority portion is ≥15% of that cluster's total, force split
+      if (minCount / clusterTotal > 0.15) return true;
+    }
+    return false;
+  };
+
   for (let ci = 0; ci < centroids.length; ci++) {
     if (outOfBoundsDivisions.has(ci)) continue;
     const div = centroids[ci];
@@ -1269,7 +1291,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
         const sorted = [...rawVotes.entries()].sort((a, b) => b[1] - a[1]);
         const [dominantCluster, dominantCount] = sorted[0];
         const confidence = Math.round((dominantCount / total) * 100) / 100;
-        const isSplit = confidence < 0.9 && sorted.length > 1;
+        const isSplit = (confidence < 0.9 && sorted.length > 1) || hasSignificantMinority(sorted);
         if (isSplit) splitDivisionIds.push(div.id);
         divAssignments.push({
           divisionId: div.id, clusterId: dominantCluster,
@@ -1301,7 +1323,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
     const sorted = [...votes.entries()].sort((a, b) => b[1] - a[1]);
     const [dominantCluster, dominantCount] = sorted[0];
     const confidence = Math.round((dominantCount / total) * 100) / 100;
-    const isSplit = confidence < 0.9 && sorted.length > 1;
+    const isSplit = (confidence < 0.9 && sorted.length > 1) || hasSignificantMinority(sorted);
     if (isSplit) splitDivisionIds.push(div.id);
     divAssignments.push({
       divisionId: div.id, clusterId: dominantCluster, confidence, isSplit,
@@ -1417,7 +1439,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
         const total = [...votes.values()].reduce((a, b) => a + b, 0);
         const sorted = [...votes.entries()].sort((a, b) => b[1] - a[1]);
         const conf = Math.round((sorted[0][1] / total) * 100) / 100;
-        const childIsSplit = conf < 0.9 && sorted.length > 1;
+        const childIsSplit = (conf < 0.9 && sorted.length > 1) || hasSignificantMinority(sorted);
         childClusters[chi] = sorted[0][0];
         if (childIsSplit) {
           nextPending.push({
