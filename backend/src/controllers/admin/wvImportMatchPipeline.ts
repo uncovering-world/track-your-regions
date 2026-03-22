@@ -119,6 +119,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
   const worldViewId = parseInt(String(req.params.worldViewId));
   const regionId = parseInt(String(req.query.regionId));
   const method = String(req.query.method || 'classical');
+  const usePolyRaster = req.query.polyRaster === 'true';
 
   // SSE setup — disable TCP buffering for immediate flush
   res.setHeader('Content-Type', 'text/event-stream');
@@ -168,17 +169,26 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
   await logStep(`Loading divisions for ${regionName}...`);
 
   // Collect divisions confirmed as part of this parent region's territory.
+  // ALL members (parent + children) — used for GADM depth detection and centroid scope.
   // Only region_members (accepted assignments) count — suggestions from other tools
   // (name matching, etc.) must not influence the CV pipeline's division scope.
   const knownMemberResult = await pool.query(`
-    SELECT DISTINCT division_id AS id FROM region_members
+    SELECT DISTINCT division_id AS id, region_id FROM region_members
     WHERE region_id = $1 OR region_id IN (
       SELECT id FROM regions WHERE parent_region_id = $1 AND world_view_id = $2
     )
   `, [regionId, worldViewId]);
 
   const knownDivisionIds = new Set<number>();
-  for (const r of knownMemberResult.rows) knownDivisionIds.add(r.id as number);
+  // Gap exclusion: only divisions assigned to CHILD regions, not the parent itself.
+  // Divisions assigned to the parent are exactly what we're splitting — they must be processable.
+  const childRegionMemberIds = new Set<number>();
+  for (const r of knownMemberResult.rows) {
+    knownDivisionIds.add(r.id as number);
+    if ((r.region_id as number) !== regionId) {
+      childRegionMemberIds.add(r.id as number);
+    }
+  }
 
   if (knownDivisionIds.size === 0) {
     sendEvent({ type: 'error', message: 'No divisions found in this region or its children — need at least one accepted division (region_members)' });
@@ -186,28 +196,81 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  const sampleDivId = [...knownDivisionIds][0];
+  // Determine countryId: the GADM division whose children we want to match.
+  // If the region's own division (not a child region's) has GADM children,
+  // use it directly — we're splitting that territory into its sub-divisions.
+  // Otherwise, walk up to the country ancestor and use siblings at the same depth.
+  const parentDivIds = new Set<number>();
+  for (const id of knownDivisionIds) {
+    if (!childRegionMemberIds.has(id)) parentDivIds.add(id);
+  }
 
-  // Find country ancestor + determine GADM depth of sample division
-  const countryResult = await pool.query(`
-    WITH RECURSIVE ancestors AS (
-      SELECT id, name, parent_id, 0 AS depth FROM administrative_divisions WHERE id = $1
-      UNION ALL
-      SELECT ad.id, ad.name, ad.parent_id, a.depth + 1 FROM administrative_divisions ad
-      JOIN ancestors a ON a.parent_id = ad.id
-    )
-    SELECT a.id, a.name, a.depth FROM ancestors a
-    JOIN administrative_divisions p ON a.parent_id = p.id
-    WHERE p.parent_id IS NULL
-    LIMIT 1
-  `, [sampleDivId]);
+  let countryId: number;
+  let countryDepth: number;
 
-  const countryId = countryResult.rows[0]?.id as number | undefined;
-  const countryDepth = countryResult.rows[0]?.depth as number | undefined;
-  if (!countryId || countryDepth === undefined) {
-    sendEvent({ type: 'error', message: 'Could not find country ancestor' });
-    res.end();
-    return;
+  if (parentDivIds.size === 1) {
+    const parentDivId = [...parentDivIds][0];
+    // Check if this division has GADM children (i.e., can be split)
+    const childrenCheck = await pool.query(
+      'SELECT COUNT(*)::int AS cnt FROM administrative_divisions WHERE parent_id = $1',
+      [parentDivId],
+    );
+    if ((childrenCheck.rows[0]?.cnt as number) > 0) {
+      // Use the region's own division as the "country" — split into its children
+      countryId = parentDivId;
+      countryDepth = 0;
+      console.log(`  [CV] Using region division ${parentDivId} as countryId (has ${childrenCheck.rows[0].cnt} children)`);
+    } else {
+      // Leaf division — fall through to ancestor walk
+      countryId = 0;
+      countryDepth = 0;
+    }
+  } else {
+    countryId = 0;
+    countryDepth = 0;
+  }
+
+  // If we couldn't use the region's own division, walk up to find the country ancestor
+  if (countryId === 0) {
+    const sampleDivId = [...knownDivisionIds][0];
+    const sampleDivResult = await pool.query(
+      'SELECT id, name, parent_id FROM administrative_divisions WHERE id = $1',
+      [sampleDivId],
+    );
+
+    if (sampleDivResult.rows.length === 0) {
+      sendEvent({ type: 'error', message: 'Sample division not found in GADM' });
+      res.end();
+      return;
+    }
+
+    if (sampleDivResult.rows[0].parent_id == null) {
+      countryId = sampleDivResult.rows[0].id as number;
+      countryDepth = 0;
+    } else {
+      const countryResult = await pool.query(`
+        WITH RECURSIVE ancestors AS (
+          SELECT id, name, parent_id, 0 AS depth FROM administrative_divisions WHERE id = $1
+          UNION ALL
+          SELECT ad.id, ad.name, ad.parent_id, a.depth + 1 FROM administrative_divisions ad
+          JOIN ancestors a ON a.parent_id = ad.id
+        )
+        SELECT a.id, a.name, a.depth FROM ancestors a
+        JOIN administrative_divisions p ON a.parent_id = p.id
+        WHERE p.parent_id IS NULL
+        LIMIT 1
+      `, [sampleDivId]);
+
+      const cId = countryResult.rows[0]?.id as number | undefined;
+      const cDepth = countryResult.rows[0]?.depth as number | undefined;
+      if (!cId || cDepth === undefined) {
+        sendEvent({ type: 'error', message: 'Could not find country ancestor' });
+        res.end();
+        return;
+      }
+      countryId = cId;
+      countryDepth = cDepth;
+    }
   }
 
   // Get ALL GADM divisions at the same depth as the sample (all siblings across the country).
@@ -254,11 +317,8 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  const gadmCount = allDivsResult.rows.length;
-  const extraFromRegion = allDivisionIds.length - gadmCount;
-  if (extraFromRegion > 0) {
-    await logStep(`Found ${gadmCount} GADM divisions + ${extraFromRegion} extra from region members (total: ${allDivisionIds.length})`);
-  }
+  const gapCount = allDivisionIds.length - childRegionMemberIds.size;
+  await logStep(`Found ${allDivisionIds.length} divisions (${childRegionMemberIds.size} assigned to child regions, ${gapCount} to process)`);
 
   // Get which divisions are already assigned to which child region
   const assignedResult = await pool.query(`
@@ -522,17 +582,20 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
 
       // Recluster loop: re-run K-means with modified params when user requests
       let reclusterResult: ReclusterSignal | void;
+      let skipKmeans = false; // remove_roads skips K-means — just cleans existing clusters
       do {
-        await runKMeansClustering(ctx);
+        if (!skipKmeans) await runKMeansClustering(ctx);
+        skipKmeans = false;
 
         // ── Spatial split through complete event: delegated to shared function ──
         reclusterResult = await matchDivisionsFromClusters({
-          worldViewId, regionId, knownDivisionIds,
+          worldViewId, regionId, knownDivisionIds: childRegionMemberIds, countryId, countryDepth,
           buf: ctx.colorBuf, mapBuffer, countryMask: ctx.countryMask,
           waterGrown: ctx.waterGrown, pixelLabels: ctx.pixelLabels,
           colorCentroids: ctx.colorCentroids,
           TW, TH, origW, origH,
           skipClusterReview: false,
+          usePolyRaster,
           sendEvent: sendEvent as (event: Record<string, unknown>) => void,
           logStep, pushDebugImage, debugImages, startTime,
         });
@@ -549,8 +612,156 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
           } else if (preset === 'boost_chroma') {
             ctx.chromaBoost = 1.5;
             console.log(`  [Recluster] Boost chroma: a*/b* weight → ${ctx.chromaBoost}`);
+          } else if (preset === 'remove_roads') {
+            // Morphological opening removes thin features (roads, border lines)
+            // while preserving solid region fills. k=5 ellipse removes ~1-3px lines.
+            // Does NOT re-run K-means — just removes pixels from existing clusters.
+            const cmMat = cv.matFromArray(TH, TW, cv.CV_8UC1,
+              Uint8Array.from(ctx.countryMask, (v: number) => v ? 255 : 0));
+            const roadK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
+            const opened = new cv.Mat();
+            cv.morphologyEx(cmMat, opened, cv.MORPH_OPEN, roadK);
+            let removed = 0;
+            for (let i = 0; i < tp; i++) {
+              if (ctx.countryMask[i] && !opened.data[i]) {
+                ctx.countryMask[i] = 0;
+                ctx.countrySize--;
+                // Also exclude from cluster labels so review sees clean clusters
+                if (ctx.pixelLabels[i] !== 255) {
+                  ctx.clusterCounts[ctx.pixelLabels[i]]--;
+                  ctx.pixelLabels[i] = 255;
+                }
+                removed++;
+              }
+            }
+            cmMat.delete(); roadK.delete(); opened.delete();
+            skipKmeans = true; // re-show cluster review with cleaned existing clusters
+            console.log(`  [Remove roads] Removed ${removed} thin pixels (${(removed / tp * 100).toFixed(1)}%)`);
+          } else if (preset === 'fill_holes') {
+            // Fill interior holes in the country mask (text/sign gaps).
+            // Flood-fill from image borders on the INVERSE mask to find exterior.
+            // Everything not reachable from borders = interior holes → fill them.
+            const inverseMask = new Uint8Array(tp);
+            for (let i = 0; i < tp; i++) {
+              if (!ctx.countryMask[i]) inverseMask[i] = 1;
+            }
+            // Flood-fill from all border pixels to mark exterior
+            const exterior = new Uint8Array(tp);
+            const queue: number[] = [];
+            for (let x = 0; x < TW; x++) {
+              if (inverseMask[x]) { exterior[x] = 1; queue.push(x); }
+              const bot = (TH - 1) * TW + x;
+              if (inverseMask[bot]) { exterior[bot] = 1; queue.push(bot); }
+            }
+            for (let y = 0; y < TH; y++) {
+              const left = y * TW;
+              if (inverseMask[left]) { exterior[left] = 1; queue.push(left); }
+              const right = y * TW + TW - 1;
+              if (inverseMask[right]) { exterior[right] = 1; queue.push(right); }
+            }
+            let head = 0;
+            while (head < queue.length) {
+              const p = queue[head++];
+              const px = p % TW, py = Math.floor(p / TW);
+              for (const n of [p - 1, p + 1, p - TW, p + TW]) {
+                if (n >= 0 && n < tp && inverseMask[n] && !exterior[n]) {
+                  const nx = n % TW, ny = Math.floor(n / TW);
+                  if (nx >= 0 && nx < TW && ny >= 0 && ny < TH) {
+                    exterior[n] = 1;
+                    queue.push(n);
+                  }
+                }
+              }
+            }
+            // Interior holes = inverse pixels NOT reachable from borders
+            // Collect hole pixels, then BFS-assign each to the nearest surrounding cluster
+            const holePixels: number[] = [];
+            for (let i = 0; i < tp; i++) {
+              if (inverseMask[i] && !exterior[i]) {
+                ctx.countryMask[i] = 1;
+                ctx.countrySize++;
+                holePixels.push(i);
+              }
+            }
+            // BFS from all existing cluster boundary pixels into holes
+            // Each hole pixel gets the label of the nearest clustered neighbor
+            if (holePixels.length > 0) {
+              const holeSet = new Set(holePixels);
+              const fillQueue: number[] = [];
+              // Seed: cluster pixels adjacent to hole pixels
+              for (const hp of holePixels) {
+                for (const n of [hp - 1, hp + 1, hp - TW, hp + TW]) {
+                  if (n >= 0 && n < tp && ctx.pixelLabels[n] !== 255 && !holeSet.has(n)) {
+                    // This neighbor has a cluster — seed BFS from it
+                    // But we want to BFS INTO holes, so check if hp itself needs a label
+                    if (ctx.pixelLabels[hp] === 255) {
+                      ctx.pixelLabels[hp] = ctx.pixelLabels[n];
+                      ctx.clusterCounts[ctx.pixelLabels[n]]++;
+                      fillQueue.push(hp);
+                    }
+                  }
+                }
+              }
+              // BFS outward through remaining hole pixels
+              let fHead = 0;
+              while (fHead < fillQueue.length) {
+                const p = fillQueue[fHead++];
+                const label = ctx.pixelLabels[p];
+                for (const n of [p - 1, p + 1, p - TW, p + TW]) {
+                  if (n >= 0 && n < tp && holeSet.has(n) && ctx.pixelLabels[n] === 255) {
+                    ctx.pixelLabels[n] = label;
+                    ctx.clusterCounts[label]++;
+                    fillQueue.push(n);
+                  }
+                }
+              }
+            }
+            skipKmeans = true; // holes assigned via BFS, no K-means needed
+            console.log(`  [Fill holes] Filled ${holePixels.length} interior hole pixels (${(holePixels.length / tp * 100).toFixed(1)}%)`);
+          } else if (preset === 'clean_light' || preset === 'clean_heavy') {
+            // Remove small isolated pixel clusters (text remnants, icon fragments).
+            // Light: remove CCs < 0.1% of country area. Heavy: < 0.5%.
+            const threshold = preset === 'clean_light' ? 0.001 : 0.005;
+            const minSize = Math.max(5, Math.round(ctx.countrySize * threshold));
+            // BFS connected components on the country mask
+            const ccLabels = new Int32Array(tp);
+            let nextLabel = 1;
+            const ccSizes = new Map<number, number>();
+            for (let i = 0; i < tp; i++) {
+              if (!ctx.countryMask[i] || ccLabels[i] > 0) continue;
+              const label = nextLabel++;
+              let size = 0;
+              const bfs = [i];
+              while (bfs.length > 0) {
+                const p = bfs.pop()!;
+                if (p < 0 || p >= tp || ccLabels[p] > 0 || !ctx.countryMask[p]) continue;
+                ccLabels[p] = label;
+                size++;
+                const x = p % TW, y = Math.floor(p / TW);
+                if (x > 0) bfs.push(p - 1);
+                if (x < TW - 1) bfs.push(p + 1);
+                if (y > 0) bfs.push(p - TW);
+                if (y < TH - 1) bfs.push(p + TW);
+              }
+              ccSizes.set(label, size);
+            }
+            let removed = 0;
+            const removedCCs = [...ccSizes.entries()].filter(([, s]) => s < minSize).length;
+            for (let i = 0; i < tp; i++) {
+              if (ccLabels[i] > 0 && (ccSizes.get(ccLabels[i]) ?? 0) < minSize) {
+                ctx.countryMask[i] = 0;
+                ctx.countrySize--;
+                if (ctx.pixelLabels[i] !== 255) {
+                  ctx.clusterCounts[ctx.pixelLabels[i]]--;
+                  ctx.pixelLabels[i] = 255;
+                }
+                removed++;
+              }
+            }
+            skipKmeans = true;
+            console.log(`  [Clean ${preset === 'clean_light' ? 'light' : 'heavy'}] Removed ${removed} pixels in ${removedCCs} small CCs (threshold: <${minSize}px = ${(threshold * 100).toFixed(1)}% of country)`);
           }
-          await logStep('Re-clustering...');
+          await logStep(skipKmeans ? 'Cleaning...' : 'Re-clustering...');
         }
       } while (reclusterResult?.recluster);
 

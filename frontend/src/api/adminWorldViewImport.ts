@@ -743,6 +743,22 @@ export async function aiSuggestChildren(
 }
 
 // =============================================================================
+// AI Suggest Cluster-to-Region Mapping
+// =============================================================================
+
+export async function aiSuggestClusterRegions(
+  worldViewId: number,
+  clusters: Array<{ clusterId: number; color: string; pixelShare: number; divisionNames: string[] }>,
+  childRegions: Array<{ id: number; name: string }>,
+  modelOverride?: string,
+): Promise<{ matches: Array<{ clusterId: number; regionId: number | null; regionName: string | null }>; stats: { model: string; promptTokens: number; completionTokens: number; cost: number; durationMs: number } }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-clusters`, {
+    method: 'POST',
+    body: JSON.stringify({ clusters, childRegions, ...(modelOverride ? { model: modelOverride } : {}) }),
+  });
+}
+
+// =============================================================================
 // Children Coverage
 // =============================================================================
 
@@ -897,12 +913,14 @@ export interface ClusterReviewCluster {
   color: string;
   pct: number;
   isSmall: boolean;
+  componentCount: number;
 }
 
 export interface ClusterReviewDecision {
   merges: Record<number, number>;
   excludes?: number[];
-  recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' };
+  recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy' };
+  split?: number[];
 }
 
 /** URL for cluster preview image (served from backend memory, like water/park crops) */
@@ -997,10 +1015,12 @@ export function colorMatchWithProgress(
   regionId: number,
   onEvent: (event: ColorMatchSSEEvent) => void,
   method: 'classical' | 'meanshift' = 'classical',
+  options?: { polyRaster?: boolean },
 ): Promise<ColorMatchResult> {
   return new Promise((resolve, reject) => {
     ensureFreshToken().then(token => {
       const params = new URLSearchParams({ regionId: String(regionId), method });
+      if (options?.polyRaster) params.append('polyRaster', 'true');
       if (token) params.append('token', token);
       const url = `${API_URL}/api/admin/wv-import/matches/${worldViewId}/color-match-stream?${params}`;
 

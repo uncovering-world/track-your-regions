@@ -440,3 +440,116 @@ Respond with JSON only (no markdown fences):
     res.status(500).json({ error: err instanceof Error ? err.message : 'AI suggest children failed' });
   }
 }
+
+/**
+ * AI-assisted cluster-to-region matching.
+ * Given K-means color clusters (each containing GADM division names) and a list
+ * of child region names, asks the AI to match each cluster to a region.
+ */
+export async function aiSuggestClusterRegions(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { clusters, childRegions, model: modelOverride } = req.body as {
+    clusters: Array<{ clusterId: number; color: string; pixelShare: number; divisionNames: string[] }>;
+    childRegions: Array<{ id: number; name: string }>;
+    model?: string;
+  };
+  console.log(`[WV Import] POST /matches/${worldViewId}/ai-suggest-clusters — ${clusters.length} clusters, ${childRegions.length} regions${modelOverride ? ` (model override: ${modelOverride})` : ''}`);
+
+  if (!isOpenAIAvailable()) {
+    res.status(503).json({ error: 'OpenAI API not configured' });
+    return;
+  }
+
+  const startMs = Date.now();
+  const model = modelOverride || await getModelForFeature('cv_cluster_match');
+  const client = getClient();
+
+  const clusterDescriptions = clusters.map(c =>
+    `Cluster ${c.clusterId} (${Math.round(c.pixelShare * 100)}% of map): ${c.divisionNames.join(', ')}`
+  ).join('\n');
+
+  const regionNames = childRegions.map(r => r.name).join(', ');
+
+  const systemPrompt = `You are an expert in world geography and administrative divisions.
+You are given clusters of GADM administrative divisions detected on a Wikivoyage travel region map, and a list of Wikivoyage sub-region names.
+Your job: match each cluster to the most likely Wikivoyage sub-region based on geographic knowledge.
+
+Rules:
+- Each cluster should map to exactly one region (or null if no match).
+- CRITICAL: Each region name must appear AT MOST ONCE across all matches. Never assign the same region to two different clusters. If two clusters seem to match the same region, pick the better fit and set the other to null.
+- Use your knowledge of where these divisions are located geographically.
+- The division names are official GADM names. The region names are Wikivoyage travel region names (may be informal, e.g. "Wild Coast" for the Transkei area).
+- It is OK to leave some clusters unmatched (null) if there is no good fit. Do not force a match.
+- Return valid JSON only.`;
+
+  const userPrompt = `Available Wikivoyage regions: ${regionNames}
+
+Clusters of GADM divisions:
+${clusterDescriptions}
+
+Return JSON: { "matches": [{ "clusterId": <number>, "regionName": <string|null> }] }
+Match each cluster to the best Wikivoyage region name, or null if no match.`;
+
+  try {
+    const response = await chatCompletion(client, {
+      model,
+      temperature: 0.1,
+      max_completion_tokens: 1000,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content ?? '{}';
+    let matches: Array<{ clusterId: number; regionName: string | null }>;
+    try {
+      const parsed = JSON.parse(content);
+      matches = Array.isArray(parsed) ? parsed : parsed.matches ?? parsed.result ?? [];
+    } catch {
+      matches = [];
+    }
+
+    // Map region names back to IDs (case-insensitive) + dedup (keep first occurrence)
+    const regionMap = new Map(childRegions.map(r => [r.name.toLowerCase(), r.id]));
+    const usedRegionIds = new Set<number>();
+    const result = matches.map(m => {
+      const regionId = m.regionName ? (regionMap.get(m.regionName.toLowerCase()) ?? null) : null;
+      if (regionId && usedRegionIds.has(regionId)) {
+        console.log(`  [AI Suggest Clusters] Dedup: cluster ${m.clusterId} tried to use already-assigned region "${m.regionName}" → null`);
+        return { clusterId: m.clusterId, regionId: null, regionName: null };
+      }
+      if (regionId) usedRegionIds.add(regionId);
+      return { clusterId: m.clusterId, regionId, regionName: m.regionName };
+    });
+
+    // Log usage stats
+    const usage = response.usage;
+    const promptTokens = usage?.prompt_tokens ?? 0;
+    const completionTokens = usage?.completion_tokens ?? 0;
+    const costResult = calculateCost(promptTokens, completionTokens, model, false);
+    const durationMs = Date.now() - startMs;
+
+    logAIUsage({
+      feature: 'cv_cluster_match',
+      model,
+      description: `${clusters.length} clusters → ${childRegions.length} regions (wv ${worldViewId})`,
+      apiCalls: 1,
+      promptTokens,
+      completionTokens,
+      totalCost: costResult.totalCost,
+      durationMs,
+    });
+
+    console.log(`  [AI Suggest Clusters] model=${model} ${promptTokens} in, ${completionTokens} out, cost=$${costResult.totalCost.toFixed(4)}, ${durationMs}ms, matched=${result.filter(r => r.regionId).length}/${clusters.length}`);
+
+    res.json({
+      matches: result,
+      stats: { model, promptTokens, completionTokens, cost: costResult.totalCost, durationMs },
+    });
+  } catch (err) {
+    console.error('[AI Suggest Clusters] Error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'AI suggestion failed' });
+  }
+}

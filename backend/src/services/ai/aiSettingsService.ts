@@ -25,10 +25,15 @@ function invalidateCache(): void {
   cache = null;
 }
 
-/** Get the model ID configured for a feature. Falls back to gpt-4.1-mini. */
+/** Per-feature default models (override the global default). */
+const FEATURE_DEFAULTS: Record<string, string> = {
+  cv_cluster_match: 'o4-mini',
+};
+
+/** Get the model ID configured for a feature. Uses per-feature default, then global default (gpt-4.1-mini). */
 export async function getModelForFeature(feature: string): Promise<string> {
   const settings = await loadCache();
-  return settings.get(`model.${feature}`) ?? 'gpt-4.1-mini';
+  return settings.get(`model.${feature}`) ?? FEATURE_DEFAULTS[feature] ?? 'gpt-4.1-mini';
 }
 
 /** Get all AI settings (for admin page). */

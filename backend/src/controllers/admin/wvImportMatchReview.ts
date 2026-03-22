@@ -108,7 +108,9 @@ export interface ClusterReviewDecision {
   /** Cluster labels to exclude entirely (not a real region — set to background) */
   excludes?: number[];
   /** Request re-clustering with modified parameters */
-  recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' };
+  recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy' };
+  /** Cluster labels to split into their connected components */
+  split?: number[];
 }
 
 /** Pending cluster review callbacks */

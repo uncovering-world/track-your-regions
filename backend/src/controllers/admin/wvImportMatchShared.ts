@@ -84,6 +84,8 @@ export interface MatchDivisionsParams {
   worldViewId: number;
   regionId: number;
   knownDivisionIds: Set<number>;
+  countryId: number;
+  countryDepth: number;
   buf: Buffer;
   mapBuffer: Buffer;
   countryMask: Uint8Array;
@@ -95,6 +97,7 @@ export interface MatchDivisionsParams {
   origW: number;
   origH: number;
   skipClusterReview: boolean;
+  usePolyRaster?: boolean; // Use polygon rasterization instead of centroid flood-fill for division assignment
   sendEvent: (event: Record<string, unknown>) => void;
   logStep: (msg: string) => Promise<void>;
   pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
@@ -104,7 +107,7 @@ export interface MatchDivisionsParams {
 
 export interface ReclusterSignal {
   recluster: true;
-  preset: 'more_clusters' | 'different_seed' | 'boost_chroma';
+  preset: 'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy';
 }
 
 /**
@@ -116,11 +119,12 @@ export interface ReclusterSignal {
  */
 export async function matchDivisionsFromClusters(params: MatchDivisionsParams): Promise<ReclusterSignal | void> {
   const {
-    worldViewId, regionId, knownDivisionIds,
+    worldViewId, regionId, knownDivisionIds, countryId, countryDepth,
     buf, mapBuffer, countryMask, waterGrown: _waterGrown,
     pixelLabels, colorCentroids,
     TW, TH, origW, origH,
     skipClusterReview,
+    usePolyRaster = false,
     sendEvent, logStep, pushDebugImage, debugImages,
     startTime,
   } = params;
@@ -137,28 +141,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
   }
 
   // ── Load division data from DB ──
-  const sampleDivId = [...knownDivisionIds][0];
-
-  const countryResult = await pool.query(`
-    WITH RECURSIVE ancestors AS (
-      SELECT id, name, parent_id, 0 AS depth FROM administrative_divisions WHERE id = $1
-      UNION ALL
-      SELECT ad.id, ad.name, ad.parent_id, a.depth + 1 FROM administrative_divisions ad
-      JOIN ancestors a ON a.parent_id = ad.id
-    )
-    SELECT a.id, a.name, a.depth FROM ancestors a
-    JOIN administrative_divisions p ON a.parent_id = p.id
-    WHERE p.parent_id IS NULL
-    LIMIT 1
-  `, [sampleDivId]);
-
-  const countryId = countryResult.rows[0]?.id as number | undefined;
-  const countryName = countryResult.rows[0]?.name as string | undefined;
-  const countryDepth = countryResult.rows[0]?.depth as number | undefined;
-  if (!countryId || countryDepth === undefined) {
-    sendEvent({ type: 'error', message: 'Could not find country ancestor' });
-    return;
-  }
+  // countryId and countryDepth are passed in from the pipeline (already resolved)
 
   let targetDepth = countryDepth === 0 ? 1 : countryDepth;
   let allDivsResult = await pool.query(`
@@ -196,7 +179,8 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
     return;
   }
 
-  // Get which divisions are already assigned to which child region
+  // Get which divisions are already assigned to CHILD regions (not the parent itself).
+  // Divisions assigned to the parent are being split — they need to be processable.
   const assignedResult = await pool.query(`
     SELECT rm.division_id, rm.region_id, r.name AS region_name
     FROM region_members rm
@@ -294,12 +278,17 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
   const cMaxX = parseFloat(row.country_max_x as string);
   const cMaxY = parseFloat(row.country_max_y as string);
 
-  // Region name for logging
+  // Region + country name for logging
   const regionNameResult = await pool.query(
     `SELECT name FROM regions WHERE id = $1 AND world_view_id = $2`,
     [regionId, worldViewId],
   );
   const regionName = (regionNameResult.rows[0]?.name as string) ?? `Region#${regionId}`;
+  const countryNameResult = await pool.query(
+    `SELECT name FROM administrative_divisions WHERE id = $1`,
+    [countryId],
+  );
+  const countryName = (countryNameResult.rows[0]?.name as string) ?? `Country#${countryId}`;
 
   // ── Cluster result variables (populated during the pipeline) ──
   let cvClusterResult: Array<{
@@ -559,16 +548,40 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
     await pushDebugImage(`Clusters (${finalLabels.size} final)`, `data:image/png;base64,${vizPng.toString('base64')}`);
   }
 
-  // ── Interactive cluster review ──
-  if (!skipClusterReview) {
-    const clusterInfos: Array<{ label: number; color: [number, number, number]; pxCount: number; pct: number }> = [];
+  // ── Interactive cluster review (loops on split requests) ──
+  let reviewLoop = !skipClusterReview;
+  while (reviewLoop) {
+    reviewLoop = false; // Will be set to true only if split is requested
+    const clusterInfos: Array<{ label: number; color: [number, number, number]; pxCount: number; pct: number; componentCount: number }> = [];
     for (const lbl of finalLabels) {
       let cnt = 0;
       for (let i = 0; i < tp; i++) if (pixelLabels[i] === lbl) cnt++;
       const c = colorCentroids[lbl];
-      if (c) clusterInfos.push({ label: lbl, color: [c[0], c[1], c[2]], pxCount: cnt, pct: Math.round(cnt / countrySize * 1000) / 10 });
+      if (!c) continue;
+      // Connected component analysis: count spatially disconnected parts
+      const visited = new Uint8Array(tp);
+      let compCount = 0;
+      const minCompSize = Math.max(20, Math.round(cnt * 0.05)); // ≥5% of cluster or 20px
+      for (let seed = 0; seed < tp; seed++) {
+        if (pixelLabels[seed] !== lbl || visited[seed]) continue;
+        let compSize = 0;
+        const stack = [seed];
+        while (stack.length > 0) {
+          const pix = stack.pop()!;
+          if (visited[pix]) continue;
+          visited[pix] = 1;
+          if (pixelLabels[pix] !== lbl) continue;
+          compSize++;
+          const y = Math.floor(pix / TW), x = pix % TW;
+          if (y > 0) stack.push(pix - TW);
+          if (y < TH - 1) stack.push(pix + TW);
+          if (x > 0) stack.push(pix - 1);
+          if (x < TW - 1) stack.push(pix + 1);
+        }
+        if (compSize >= minCompSize) compCount++;
+      }
+      clusterInfos.push({ label: lbl, color: [c[0], c[1], c[2]], pxCount: cnt, pct: Math.round(cnt / countrySize * 1000) / 10, componentCount: compCount });
     }
-    const smallClusters = clusterInfos.filter(c => c.pct < 3);
     { // Always show cluster review — user may want to merge, exclude, or recluster
       const reviewId = `cr-${regionId}-${Date.now()}`;
 
@@ -586,25 +599,17 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       clusterPreviewImages.set(reviewId, previewDataUrl);
       setTimeout(() => { clusterPreviewImages.delete(reviewId); }, 600000);
 
-      // Generate per-cluster highlight images (red outline on transparent)
+      // Generate per-cluster highlight images (bright pink fill on transparent)
       const highlights: Array<{ label: number; png: Buffer }> = [];
       for (const ci of clusterInfos) {
-        // Build RGBA buffer: cluster pixels get red border, rest transparent
+        // Build RGBA buffer: cluster pixels get hot pink highlighter fill, rest transparent
         const hlBuf = Buffer.alloc(tp * 4, 0); // RGBA, all transparent
         for (let i = 0; i < tp; i++) {
           if (pixelLabels[i] !== ci.label) continue;
-          // Check if this pixel is at the edge of its cluster
-          const x = i % TW, y = Math.floor(i / TW);
-          let isEdge = false;
-          for (const n of [i - 1, i + 1, i - TW, i + TW]) {
-            if (n < 0 || n >= tp || pixelLabels[n] !== ci.label) { isEdge = true; break; }
-          }
-          if (isEdge) {
-            hlBuf[i * 4] = 255;     // R
-            hlBuf[i * 4 + 1] = 0;   // G
-            hlBuf[i * 4 + 2] = 0;   // B
-            hlBuf[i * 4 + 3] = 200; // A (semi-transparent)
-          }
+          hlBuf[i * 4] = 255;     // R
+          hlBuf[i * 4 + 1] = 0;   // G
+          hlBuf[i * 4 + 2] = 200; // B (hot pink)
+          hlBuf[i * 4 + 3] = 140; // A — bright but see-through like a highlighter
         }
         const hlPng = await sharp(hlBuf, { raw: { width: TW, height: TH, channels: 4 } })
           .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
@@ -621,6 +626,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
             color: `rgb(${c.color[0]},${c.color[1]},${c.color[2]})`,
             pct: c.pct,
             isSmall: c.pct < 3,
+            componentCount: c.componentCount,
           })),
         },
       });
@@ -629,7 +635,8 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       interface ClusterReviewDecision {
         merges: Record<number, number>;
         excludes?: number[];
-        recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' };
+        recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy' };
+        split?: number[];
       }
 
       const decision = await new Promise<ClusterReviewDecision>((resolve) => {
@@ -643,6 +650,57 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
         console.log(`  [Cluster Review] Recluster requested: ${decision.recluster.preset}`);
         return { recluster: true, preset: decision.recluster.preset };
       }
+
+      // Apply split — CCA on each target cluster, assign new labels, loop back to review
+      const splitLabels = (decision.split ?? []).map(Number).filter(l => finalLabels.has(l));
+      if (splitLabels.length > 0) {
+        await logStep(`Splitting ${splitLabels.length} cluster(s) into connected components...`);
+        let nextLabel = Math.max(...finalLabels) + 1;
+        for (const lbl of splitLabels) {
+          // Find connected components via flood-fill
+          const compVisited = new Uint8Array(tp);
+          const components: number[][] = []; // each component = list of pixel indices
+          for (let seed = 0; seed < tp; seed++) {
+            if (pixelLabels[seed] !== lbl || compVisited[seed]) continue;
+            const comp: number[] = [];
+            const stack = [seed];
+            while (stack.length > 0) {
+              const pix = stack.pop()!;
+              if (compVisited[pix]) continue;
+              compVisited[pix] = 1;
+              if (pixelLabels[pix] !== lbl) continue;
+              comp.push(pix);
+              const y = Math.floor(pix / TW), x = pix % TW;
+              if (y > 0) stack.push(pix - TW);
+              if (y < TH - 1) stack.push(pix + TW);
+              if (x > 0) stack.push(pix - 1);
+              if (x < TW - 1) stack.push(pix + 1);
+            }
+            if (comp.length >= 20) components.push(comp);
+          }
+          if (components.length <= 1) {
+            console.log(`  [Split] Cluster ${lbl}: only 1 significant component, skipping`);
+            continue;
+          }
+          // Sort components by size descending — largest keeps the original label
+          components.sort((a, b) => b.length - a.length);
+          console.log(`  [Split] Cluster ${lbl}: ${components.length} components (${components.map(c => c.length + 'px').join(', ')})`);
+          const origColor = colorCentroids[lbl] ?? [128, 128, 128];
+          // First component keeps original label, rest get new labels with same color
+          // (they originated from the same cluster — visual distinction comes from spatial separation)
+          for (let ci = 1; ci < components.length; ci++) {
+            const newLbl = nextLabel++;
+            for (const pix of components[ci]) pixelLabels[pix] = newLbl;
+            finalLabels.add(newLbl);
+            colorCentroids[newLbl] = [...origColor] as [number, number, number];
+            console.log(`  [Split] New cluster ${newLbl}: ${components[ci].length}px (split from cluster ${lbl})`);
+          }
+        }
+        console.log(`  [Split] Now ${finalLabels.size} clusters — looping back to review`);
+        reviewLoop = true; // Loop back to cluster review with updated labels
+      }
+
+      if (reviewLoop) continue;
 
       // Apply excludes
       const excludeLabels = (decision.excludes ?? []).map(Number).filter(l => finalLabels.has(l));
@@ -757,6 +815,48 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       if (refinedSize > tp * 0.15 && refinedSize < baseSize * 0.95) {
         console.log(`  [ICP] Excluding ${grayClusterIds.length} gray cluster(s): mask ${baseSize}→${refinedSize} px (${(refinedSize/tp*100).toFixed(0)}%)`);
         icpMask = refined;
+      }
+    }
+  }
+
+  // Remove tiny noise CCs from ICP mask before bbox computation.
+  // Keep only the largest CC + any CC >1% of it (exclaves, islands).
+  // Scattered text/icon fragments would otherwise expand the bbox and skew alignment.
+  {
+    const ccLabels = new Int32Array(tp);
+    let nextLabel = 1;
+    const ccSizes = new Map<number, number>();
+    for (let i = 0; i < tp; i++) {
+      if (!icpMask[i] || ccLabels[i] > 0) continue;
+      // BFS flood fill
+      const label = nextLabel++;
+      let size = 0;
+      const queue = [i];
+      while (queue.length > 0) {
+        const p = queue.pop()!;
+        if (p < 0 || p >= tp || ccLabels[p] > 0 || !icpMask[p]) continue;
+        ccLabels[p] = label;
+        size++;
+        const x = p % TW, y = Math.floor(p / TW);
+        if (x > 0) queue.push(p - 1);
+        if (x < TW - 1) queue.push(p + 1);
+        if (y > 0) queue.push(p - TW);
+        if (y < TH - 1) queue.push(p + TW);
+      }
+      ccSizes.set(label, size);
+    }
+    if (ccSizes.size > 1) {
+      const mainSize = Math.max(...ccSizes.values());
+      const threshold = Math.max(10, Math.round(mainSize * 0.01));
+      let removed = 0;
+      for (let i = 0; i < tp; i++) {
+        if (ccLabels[i] > 0 && (ccSizes.get(ccLabels[i]) ?? 0) < threshold) {
+          icpMask[i] = 0;
+          removed++;
+        }
+      }
+      if (removed > 0) {
+        console.log(`  [ICP] Noise cleanup: removed ${removed} pixels in ${[...ccSizes.values()].filter(s => s < threshold).length} tiny CCs (<1% of main)`);
       }
     }
   }
@@ -1206,22 +1306,97 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
     return queue.length;
   }
 
-  // Flood fill each division from its centroid
+  // Assign pixels to divisions: two approaches
   const divisionMap = new Int16Array(tp).fill(-1);
   const outOfBoundsDivisions = new Set<number>();
-  for (let ci = 0; ci < centroids.length; ci++) {
-    const [px, py] = gadmToPixel(centroids[ci].cx, -centroids[ci].cy);
-    const ix = Math.round(px), iy = Math.round(py);
-    if (ix < 0 || ix >= TW || iy < 0 || iy >= TH || !countryMask[iy * TW + ix]) {
-      outOfBoundsDivisions.add(ci);
-      continue;
+
+  if (usePolyRaster) {
+    // ── Polygon rasterization: transform each GADM division polygon to pixel
+    // space using the ICP transform and scan-line fill it. This uses the actual
+    // division shape — no centroid dependency, handles divisions with centroids
+    // in gray/desert areas (e.g. Cacadu). Standard GIS zonal statistics approach.
+    const divIdToIdx = new Map<number, number>();
+    for (let ci = 0; ci < centroids.length; ci++) divIdToIdx.set(centroids[ci].id, ci);
+
+    // For each division polygon, rasterize into divisionMap
+    // Later divisions overwrite earlier ones at overlapping pixels (last-write-wins),
+    // but GADM polygons are non-overlapping so this is fine.
+    for (const dp of divPaths) {
+      const ci = divIdToIdx.get(dp.id);
+      if (ci === undefined) continue;
+
+      // Parse SVG path → polygon points → transform to pixel coordinates
+      const rawPts = parseSvgPathPoints(dp.svgPath);
+      if (rawPts.length < 3) continue;
+      const polyPts = rawPts.map(([gx, gy]) => gadmToPixel(gx, gy));
+
+      // Scan-line fill: for each row, find x-intersections and fill between pairs
+      let polyMinY = TH, polyMaxY = 0;
+      for (const [, py] of polyPts) {
+        const iy = Math.round(py);
+        if (iy < polyMinY) polyMinY = iy;
+        if (iy > polyMaxY) polyMaxY = iy;
+      }
+      polyMinY = Math.max(0, polyMinY);
+      polyMaxY = Math.min(TH - 1, polyMaxY);
+
+      for (let y = polyMinY; y <= polyMaxY; y++) {
+        const intersections: number[] = [];
+        for (let i = 0; i < polyPts.length; i++) {
+          const [x0, y0] = polyPts[i];
+          const [x1, y1] = polyPts[(i + 1) % polyPts.length];
+          if ((y0 <= y && y1 > y) || (y1 <= y && y0 > y)) {
+            const xIntersect = x0 + (y - y0) / (y1 - y0) * (x1 - x0);
+            intersections.push(xIntersect);
+          }
+        }
+        intersections.sort((a, b) => a - b);
+        // Fill between pairs of intersections
+        for (let j = 0; j + 1 < intersections.length; j += 2) {
+          const xStart = Math.max(0, Math.ceil(intersections[j]));
+          const xEnd = Math.min(TW - 1, Math.floor(intersections[j + 1]));
+          for (let x = xStart; x <= xEnd; x++) {
+            divisionMap[y * TW + x] = ci;
+          }
+        }
+      }
     }
-    floodFillDiv(px, py, ci, wallMask, divisionMap);
-  }
-  if (outOfBoundsDivisions.size > 0) {
-    console.log(`  [CV] ${outOfBoundsDivisions.size} division(s) outside map coverage — centroids outside country mask`);
-    for (const ci of outOfBoundsDivisions) {
-      cvOutOfBounds.push({ id: centroids[ci].id, name: divNameMap.get(centroids[ci].id) ?? `#${centroids[ci].id}` });
+    console.log(`  [CV] Division assignment: polygon rasterization (${divPaths.length} polygons)`);
+  } else {
+    // ── Original: flood fill from centroids, with snap fallback
+    for (let ci = 0; ci < centroids.length; ci++) {
+      const [px, py] = gadmToPixel(centroids[ci].cx, -centroids[ci].cy);
+      let ix = Math.round(px), iy = Math.round(py);
+      if (ix < 0 || ix >= TW || iy < 0 || iy >= TH || !countryMask[iy * TW + ix]) {
+        let found = false;
+        const maxRadius = Math.round(Math.max(TW, TH) * 0.15);
+        for (let r = 1; r <= maxRadius && !found; r++) {
+          for (let dy = -r; dy <= r && !found; dy++) {
+            for (let dx = -r; dx <= r && !found; dx++) {
+              if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+              const nx = ix + dx, ny = iy + dy;
+              if (nx >= 0 && nx < TW && ny >= 0 && ny < TH && countryMask[ny * TW + nx]) {
+                const divName = divNameMap.get(centroids[ci].id) ?? `#${centroids[ci].id}`;
+                console.log(`  [CV] ${divName}: centroid outside mask, snapped ${r}px to nearest country pixel`);
+                ix = nx; iy = ny;
+                found = true;
+              }
+            }
+          }
+        }
+        if (!found) {
+          outOfBoundsDivisions.add(ci);
+          continue;
+        }
+      }
+      floodFillDiv(ix, iy, ci, wallMask, divisionMap);
+    }
+    if (outOfBoundsDivisions.size > 0) {
+      const outsideNames = [...outOfBoundsDivisions].map(ci => divNameMap.get(centroids[ci].id) ?? `#${centroids[ci].id}`);
+      console.log(`  [CV] ${outOfBoundsDivisions.size} division(s) outside map coverage: ${outsideNames.join(', ')}`);
+      for (const ci of outOfBoundsDivisions) {
+        cvOutOfBounds.push({ id: centroids[ci].id, name: divNameMap.get(centroids[ci].id) ?? `#${centroids[ci].id}` });
+      }
     }
   }
 
@@ -1325,6 +1500,9 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
     const confidence = Math.round((dominantCount / total) * 100) / 100;
     const isSplit = (confidence < 0.9 && sorted.length > 1) || hasSignificantMinority(sorted);
     if (isSplit) splitDivisionIds.push(div.id);
+    const divName = divNameMap.get(div.id) ?? `#${div.id}`;
+    const voteStr = sorted.slice(0, 4).map(([cl, c]) => `c${cl}:${(c / total * 100).toFixed(0)}%`).join(' ');
+    console.log(`  [Assign] ${divName}: ${isSplit ? 'SPLIT' : 'single'} conf=${confidence} votes=[${voteStr}] (${total}px)`);
     divAssignments.push({
       divisionId: div.id, clusterId: dominantCluster, confidence, isSplit,
       splitClusters: isSplit
@@ -1776,6 +1954,36 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
     }
   }
 
+  // Filter out already-assigned divisions from results — only show gap divisions.
+  // Also exclude recursive-split children of known divisions.
+  const knownOrChildOfKnown = new Set(knownDivisionIds);
+  for (const a of finalAssignments) {
+    if (a.parentDivisionId && knownDivisionIds.has(a.parentDivisionId)) {
+      knownOrChildOfKnown.add(a.divisionId);
+      // Inherit parent's assignment for tooltip display
+      if (!assignedMap.has(a.divisionId) && assignedMap.has(a.parentDivisionId)) {
+        assignedMap.set(a.divisionId, assignedMap.get(a.parentDivisionId)!);
+      }
+    }
+  }
+  // Walk deeper: children-of-children of known divisions
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const a of finalAssignments) {
+      if (a.parentDivisionId && knownOrChildOfKnown.has(a.parentDivisionId) && !knownOrChildOfKnown.has(a.divisionId)) {
+        knownOrChildOfKnown.add(a.divisionId);
+        if (!assignedMap.has(a.divisionId) && assignedMap.has(a.parentDivisionId)) {
+          assignedMap.set(a.divisionId, assignedMap.get(a.parentDivisionId)!);
+        }
+        changed = true;
+      }
+    }
+  }
+  const gapAssignments = finalAssignments.filter(a => !knownOrChildOfKnown.has(a.divisionId));
+  const gapUnsplittable = unsplittableDivs.filter(u => !knownOrChildOfKnown.has(u.divisionId));
+  console.log(`  Gap filter: ${finalAssignments.length} total → ${gapAssignments.length} gap divisions (${knownOrChildOfKnown.size} already assigned)`);
+
   // Build cluster suggestion groups
   const totalCountryPixels = [...finalClusters.values()].reduce((a, b) => a + b, 0);
   const clusterResult = [...finalClusters].map(([clusterId, pixelCount]) => {
@@ -1795,17 +2003,17 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       clusterId, color: hex,
       pixelShare: Math.round((pixelCount / totalCountryPixels) * 100) / 100,
       suggestedRegion,
-      divisions: finalAssignments.filter(a => a.clusterId === clusterId).map(d => ({
+      divisions: gapAssignments.filter(a => a.clusterId === clusterId).map(d => ({
         id: d.divisionId, name: divNameMap.get(d.divisionId) ?? `#${d.divisionId}`,
         confidence: d.confidence, depth: d.depth,
         ...(d.parentDivisionId ? { parentDivisionId: d.parentDivisionId } : {}),
       })),
-      unsplittable: unsplittableDivs.filter(a => a.clusterId === clusterId).map(u => ({
+      unsplittable: gapUnsplittable.filter(a => a.clusterId === clusterId).map(u => ({
         id: u.divisionId, name: divNameMap.get(u.divisionId) ?? `#${u.divisionId}`,
         confidence: u.confidence, splitClusters: u.splitClusters,
       })),
     };
-  });
+  }).filter(c => c.divisions.length > 0 || c.unsplittable.length > 0);
 
   cvClusterResult = clusterResult;
   console.log(`  Assignment: ${finalAssignments.length} resolved, ${unsplittableDivs.length} unsplittable, ${splitDepth} depth levels, ${finalClusters.size} clusters`);
@@ -1853,11 +2061,12 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
     `data:image/png;base64,${assignPng.toString('base64')}`,
   );
 
-  // Build interactive geo preview data
+  // Build interactive geo preview data — all divisions for context,
+  // with already-assigned ones marked as preAssigned (dimmed in UI).
   {
     const divClusterMap = new Map<number, { clusterId: number; confidence: number }>();
     for (const a of finalAssignments) divClusterMap.set(a.divisionId, { clusterId: a.clusterId, confidence: a.confidence });
-    const unsplittableSet = new Set(unsplittableDivs.map(u => u.divisionId));
+    const unsplittableSet = new Set(gapUnsplittable.map(u => u.divisionId));
     for (const u of unsplittableDivs) {
       if (!divClusterMap.has(u.divisionId)) {
         divClusterMap.set(u.divisionId, { clusterId: u.clusterId, confidence: u.confidence });
@@ -1887,6 +2096,8 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       const clusterId = assignment?.clusterId ?? -1;
       const region = clusterRegionMap.get(clusterId);
       const isOob = outOfBoundsIdSet.has(divId);
+      const isPreAssigned = knownOrChildOfKnown.has(divId);
+      const existingAssignment = assignedMap.get(divId);
       features.push({
         type: 'Feature',
         properties: {
@@ -1896,9 +2107,14 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
           confidence: isOob ? 0 : (assignment?.confidence ?? 0),
           isUnsplittable: unsplittableSet.has(divId),
           isOutOfBounds: isOob,
+          preAssigned: isPreAssigned,
           color: isOob ? '#888888' : (clusterColorMap.get(clusterId) ?? '#cccccc'),
-          regionId: isOob ? null : (region?.id ?? null),
-          regionName: isOob ? null : (region?.name ?? null),
+          regionId: isPreAssigned && existingAssignment
+            ? existingAssignment.regionId
+            : (isOob ? null : (region?.id ?? null)),
+          regionName: isPreAssigned && existingAssignment
+            ? existingAssignment.regionName
+            : (isOob ? null : (region?.name ?? null)),
         },
         geometry: JSON.parse(r.geojson as string),
       });
@@ -1915,12 +2131,14 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       featureCollection: { type: 'FeatureCollection', features },
       clusterInfos: geoClusterInfos,
     };
+    console.log(`  [GeoPreview] ${features.length} features, ${geoClusterInfos.length} cluster infos, ${allFinalIds.length} division IDs queried, ${geoResult.rows.length} geom rows returned`);
   }
 
   console.log(`  Source map: ${origW}x${origH} → ${TW}x${TH}, regions: ${finalClusters.size}, ICP: ${best.label} (err=${best.error.toFixed(2)}, overflow=${best.overflow.toFixed(1)})`);
 
   const assignedCount = centroids.filter(c => c.assigned).length;
-  console.log(`CV color match: ${regionName} (${countryName}), ${centroids.length} divisions (${assignedCount} assigned)`);
+  const gapCount = centroids.length - assignedCount;
+  console.log(`CV color match: ${regionName} (${countryName}), ${centroids.length} divisions (${assignedCount} already assigned, ${gapCount} gaps)`);
 
   sendEvent({
     type: 'complete',

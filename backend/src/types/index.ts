@@ -445,16 +445,16 @@ export const wvImportAcceptBatchSchema = z.object({
   assignments: z.array(z.object({
     regionId: z.coerce.number().int().positive(),
     divisionId: z.coerce.number().int().positive(),
-  })).min(1).max(1000),
+  })).min(1).max(5000),
 });
 
 export const wvImportUnionGeometrySchema = z.object({
-  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(100),
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(500),
   regionId: z.coerce.number().int().positive().optional(),
 });
 
 export const wvImportSplitDeeperSchema = z.object({
-  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(100),
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(500),
   wikidataId: z.string().regex(/^Q\d+$/),
   regionId: z.coerce.number().int().positive(),
 });
@@ -469,6 +469,7 @@ export const wvImportColorMatchSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   token: z.string().optional(),
   method: z.enum(['classical', 'meanshift']).optional().default('classical'),
+  polyRaster: z.enum(['true', 'false']).optional(),
 });
 
 // Guided CV Match — seed point schemas

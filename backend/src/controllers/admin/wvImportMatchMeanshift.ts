@@ -20,6 +20,7 @@
  */
 
 import sharp from 'sharp';
+import { reviewAndFinalizeWater } from './wvImportMatchHelpers.js';
 import type { PipelineContext } from './wvImportMatchPipeline.js';
 
 // ── Mean-shift parameters ──────────────────────────────────────────
@@ -208,7 +209,7 @@ function floodFillWater(
   buf: Buffer,
   width: number,
   height: number,
-): Uint8Array {
+): { mask: Uint8Array; refColor: [number, number, number] | null } {
   const tp = width * height;
   const waterMask = new Uint8Array(tp);
 
@@ -252,7 +253,7 @@ function floodFillWater(
     }
   }
 
-  if (wCount === 0) return waterMask; // No water detected on edges
+  if (wCount === 0) return { mask: waterMask, refColor: null }; // No water detected on edges
 
   // Average water color
   const refR = Math.round(wR / wCount);
@@ -285,7 +286,7 @@ function floodFillWater(
     if (x < width - 1) stack.push(pix + 1);
   }
 
-  return waterMask;
+  return { mask: waterMask, refColor: [refR, refG, refB] };
 }
 
 /**
@@ -437,13 +438,16 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
   );
 
   // --- Step 2: Simple background removal ---
+  // Use the ORIGINAL image for background detection (same reasoning as water):
+  // mean-shift desaturates borderline pixels, pushing land colors below S<25
+  // and causing them to be falsely classified as gray background.
   await logStep('Background removal (flood fill from corners)...');
 
   // Flood fill from corners using RGB distance
-  const bgMaskRgb = floodFillBackground(colorBuf, TW, TH, BG_RGB_DIST);
+  const bgMaskRgb = floodFillBackground(Buffer.from(ctx.origDownBuf), TW, TH, BG_RGB_DIST);
 
   // Also detect gray/unsaturated background
-  const bgMaskGray = detectGrayBackground(cv, colorBuf, TW, TH);
+  const bgMaskGray = detectGrayBackground(cv, Buffer.from(ctx.origDownBuf), TW, TH);
 
   // Combine: background = RGB flood fill OR gray flood fill
   const bgMask = new Uint8Array(tp);
@@ -451,28 +455,79 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
     if (bgMaskRgb[i] || bgMaskGray[i]) bgMask[i] = 1;
   }
 
-  // --- Step 3: Simple water detection ---
-  await logStep('Water detection (flood fill from edges)...');
-  const waterMask = floodFillWater(cv, colorBuf, TW, TH);
+  // --- Step 3: Water detection (coastal + inland) ---
+  // Use the ORIGINAL image for water detection, not the mean-shift filtered one.
+  // Mean-shift blurs low-saturation water pixels into surrounding land colors,
+  // shifting the reference color and causing flood fill to bleed (e.g. Niger: 233x
+  // more false water on filtered vs original). The original preserves sharp
+  // color boundaries between water and land.
+  await logStep('Water detection (flood fill from edges + inland lakes)...');
+  const { mask: waterMask, refColor: waterRefColor } = floodFillWater(cv, Buffer.from(ctx.origDownBuf), TW, TH);
 
-  // Debug image: show background + water detection
+  // Detect inland water bodies: find large connected components of pixels
+  // that look like the detected sea color (e.g. Chott el Jerid in Tunisia).
+  // Uses RGB distance to the sea reference color — much more specific than HSV
+  // hue range, which would false-positive on green-ish map regions.
+  const origBuf = ctx.origDownBuf;
+  if (waterRefColor) {
+    const [wR, wG, wB] = waterRefColor;
+    // Tighter threshold than coastal flood-fill — inland lakes must closely match sea color
+    const inlandThresh2 = 25 * 25 * 3;
+    const waterLike = new Uint8Array(tp);
+    for (let i = 0; i < tp; i++) {
+      if (waterMask[i] || bgMask[i]) continue;
+      const dR = origBuf[i * 3] - wR;
+      const dG = origBuf[i * 3 + 1] - wG;
+      const dB = origBuf[i * 3 + 2] - wB;
+      if (dR * dR + dG * dG + dB * dB <= inlandThresh2) {
+        waterLike[i] = 1;
+      }
+    }
+
+    // Find connected components; mark large ones as inland water
+    const visited = new Uint8Array(tp);
+    const minLakeSize = Math.max(100, Math.round(tp * 0.005)); // ≥0.5% of image area
+    let inlandCount = 0;
+
+    for (let seed = 0; seed < tp; seed++) {
+      if (!waterLike[seed] || visited[seed]) continue;
+
+      const component: number[] = [];
+      const stack = [seed];
+      while (stack.length > 0) {
+        const pix = stack.pop()!;
+        if (visited[pix]) continue;
+        visited[pix] = 1;
+        if (!waterLike[pix]) continue;
+        component.push(pix);
+        const y = Math.floor(pix / TW);
+        const x = pix % TW;
+        if (y > 0) stack.push(pix - TW);
+        if (y < TH - 1) stack.push(pix + TW);
+        if (x > 0) stack.push(pix - 1);
+        if (x < TW - 1) stack.push(pix + 1);
+      }
+
+      if (component.length >= minLakeSize) {
+        for (const pix of component) waterMask[pix] = 1;
+        inlandCount += component.length;
+      }
+    }
+
+    if (inlandCount > 0) {
+      console.log(`  [MS] Inland water detection: ${inlandCount} pixels (ref color rgb(${wR},${wG},${wB}))`);
+    }
+  }
+
+  // Debug image: show background + water detection (before review)
   const debugBuf = Buffer.alloc(tp * 3);
   for (let i = 0; i < tp; i++) {
     if (bgMask[i]) {
-      // Background = light gray
-      debugBuf[i * 3] = 200;
-      debugBuf[i * 3 + 1] = 200;
-      debugBuf[i * 3 + 2] = 200;
+      debugBuf[i * 3] = 200; debugBuf[i * 3 + 1] = 200; debugBuf[i * 3 + 2] = 200;
     } else if (waterMask[i]) {
-      // Water = blue
-      debugBuf[i * 3] = 100;
-      debugBuf[i * 3 + 1] = 150;
-      debugBuf[i * 3 + 2] = 255;
+      debugBuf[i * 3] = 100; debugBuf[i * 3 + 1] = 150; debugBuf[i * 3 + 2] = 255;
     } else {
-      // Foreground = original filtered color
-      debugBuf[i * 3] = colorBuf[i * 3];
-      debugBuf[i * 3 + 1] = colorBuf[i * 3 + 1];
-      debugBuf[i * 3 + 2] = colorBuf[i * 3 + 2];
+      debugBuf[i * 3] = colorBuf[i * 3]; debugBuf[i * 3 + 1] = colorBuf[i * 3 + 1]; debugBuf[i * 3 + 2] = colorBuf[i * 3 + 2];
     }
   }
   const maskPng = await sharp(debugBuf, {
@@ -483,21 +538,21 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
     `data:image/png;base64,${maskPng.toString('base64')}`,
   );
 
-  // --- Step 4: Build country mask and set ctx fields ---
+  // --- Step 4: Interactive water review (shared with classical pipeline) ---
+  // CC analysis, narrow-neck splitting, crop generation, user review, mask rebuild
+  const waterGrown = await reviewAndFinalizeWater(waterMask, colorBuf, ctx);
+
+  // --- Step 5: Build country mask ---
   const countryMask = new Uint8Array(tp);
   let countrySize = 0;
   for (let i = 0; i < tp; i++) {
-    if (!bgMask[i] && !waterMask[i]) {
+    if (!bgMask[i] && !waterGrown[i]) {
       countryMask[i] = 1;
       countrySize++;
     }
   }
 
-  // --- Step 5: Foreign land removal ---
-  // Find connected components on the raw country mask (no erosion — erosion
-  // destroys thin coastal strips). Keep only the largest CC.
-  // This works because the Strait of Gibraltar and other narrow water passages
-  // are already classified as water/background, separating foreign land.
+  // --- Step 6: Foreign land removal ---
   {
     const cmMat = cv.matFromArray(TH, TW, cv.CV_8UC1, countryMask);
     const ccLabels = new cv.Mat();
@@ -507,21 +562,18 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
     cmMat.delete(); ccCents.delete();
 
     if (numCC > 2) {
-      // Find largest foreground CC
       let mainCC = 1, mainSize = 0;
       for (let c = 1; c < numCC; c++) {
         const area = ccStats.intAt(c, cv.CC_STAT_AREA);
         if (area > mainSize) { mainSize = area; mainCC = c; }
       }
 
-      // Remove all non-main CCs (small foreign blobs, islands, text fragments)
-      // Keep CCs > 15% of main (likely exclaves, not foreign land)
       const ccData = ccLabels.data32S;
       let foreignRemoved = 0;
       for (let c = 1; c < numCC; c++) {
         if (c === mainCC) continue;
         const area = ccStats.intAt(c, cv.CC_STAT_AREA);
-        if (area > mainSize * 0.15) continue; // keep large exclaves
+        if (area > mainSize * 0.15) continue;
         for (let i = 0; i < tp; i++) {
           if (ccData[i] === c) {
             countryMask[i] = 0;
@@ -538,16 +590,15 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
   }
 
   // Coastal band: country pixels within 5px of water
-  const coastalBand = computeCoastalBand(waterMask, countryMask, TW, TH);
+  const coastalBand = computeCoastalBand(waterGrown, countryMask, TW, TH);
 
   // Set all ctx fields
-  ctx.textExcluded = new Uint8Array(tp); // empty — mean-shift absorbed text
-  ctx.waterGrown = waterMask;
+  ctx.textExcluded = new Uint8Array(tp);
+  ctx.waterGrown = waterGrown;
   ctx.countryMask = countryMask;
   ctx.countrySize = countrySize;
   ctx.coastalBand = coastalBand;
 
-  // Skip hsvSharp, inpaintedBuf, labBufEarly — not needed for mean-shift path
   ctx.hsvSharp = Buffer.alloc(0);
   ctx.labBufEarly = Buffer.alloc(0);
   ctx.inpaintedBuf = null;

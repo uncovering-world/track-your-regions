@@ -43,6 +43,8 @@ import {
   ExpandMore as ExpandMoreIcon,
   PieChartOutline as CoverageIcon,
   Visibility,
+  CallSplit as SplitIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -59,6 +61,7 @@ import {
   getCoverageGeometry,
   analyzeCoverageGaps as apiAnalyzeCoverageGaps,
   colorMatchWithProgress,
+  aiSuggestClusterRegions,
   respondToWaterReview,
   respondToParkReview,
   parkCropUrl,
@@ -93,7 +96,7 @@ import {
 } from './importTreeUtils';
 import { useTreeMutations, type MapPickerState } from './useTreeMutations';
 import { ManualFixDialog, RemoveRegionDialog, CoverageCompareDialog } from './ImportTreeDialogs';
-import { ShadowCreateRow, NavControls, GapDivisionTree } from './GapAnalysis';
+import { ShadowCreateRow, NavControls, GapDivisionTree, GapContextMap } from './GapAnalysis';
 import { linkifyRegionNames } from './importTreeLinkify';
 import * as turf from '@turf/turf';
 
@@ -230,6 +233,9 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
             if (hits.length > 0) f = hits[0];
           }
           const divId = f?.properties?.divisionId ?? null;
+          const isPreAssigned = f?.properties?.preAssigned === true;
+          // Skip pre-assigned divisions — they're already accepted region members
+          if (isPreAssigned) return;
           // Paint mode: clicking a division reassigns it locally to the active cluster.
           // Always use onClusterReassign (local-only) — onAccept hits the API and can
           // trigger re-renders that revert the color. User saves assignments later.
@@ -266,10 +272,12 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
                     ['==', ['get', 'clusterId'], highlightClusterId], 0.75,
                     ['==', ['get', 'divisionId'], selectedId ?? -999], 0.7,
                     ['==', ['get', 'isOutOfBounds'], true], 0.08,
+                    ['==', ['get', 'preAssigned'], true], 0.25,
                     0.08,
                   ]
                 : ['case',
                     ['==', ['get', 'divisionId'], selectedId ?? -999], 0.95,
+                    ['==', ['get', 'preAssigned'], true], 0.25,
                     ['==', ['get', 'dismissed'], true], 0.15,
                     ['==', ['get', 'isOutOfBounds'], true], 0.08,
                     ['==', ['get', 'clusterId'], -1], 0.1,
@@ -283,6 +291,7 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
             paint={{
               'line-color': ['case',
                 ['==', ['get', 'divisionId'], selectedId ?? -999], '#1565c0',
+                ['==', ['get', 'preAssigned'], true], '#999',
                 ['==', ['get', 'dismissed'], true], '#999',
                 ['==', ['get', 'isOutOfBounds'], true], '#aaa',
                 '#333',
@@ -291,11 +300,13 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
                 ? ['case',
                     ['==', ['get', 'clusterId'], highlightClusterId], 2,
                     ['==', ['get', 'divisionId'], selectedId ?? -999], 3,
+                    ['==', ['get', 'preAssigned'], true], 0.3,
                     ['==', ['get', 'isOutOfBounds'], true], 0.3,
                     0.3,
                   ]
                 : ['case',
                     ['==', ['get', 'divisionId'], selectedId ?? -999], 3,
+                    ['==', ['get', 'preAssigned'], true], 0.4,
                     ['==', ['get', 'dismissed'], true], 0.5,
                     ['==', ['get', 'isOutOfBounds'], true], 0.5,
                     ['==', ['get', 'isUnsplittable'], true], 1.5,
@@ -393,7 +404,8 @@ function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlig
         }}>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>{hoveredFeature.name}</Typography>
           <Typography variant="caption" color="text.secondary">
-            {hoveredFeature.dismissed ? 'Dismissed' :
+            {hoveredFeature.preAssigned ? `Already assigned to ${hoveredFeature.regionName ?? 'parent region'}` :
+             hoveredFeature.dismissed ? 'Dismissed' :
              hoveredFeature.isUnsplittable ? `Unsplittable${hoveredFeature.regionName ? ` — suggests ${hoveredFeature.regionName}` : ''} — click to assign` :
              hoveredFeature.clusterId === -1 ? 'Unassigned' :
              `${hoveredFeature.regionName ?? 'Unmatched cluster'} — ${Math.round((hoveredFeature.confidence ?? 0) * 100)}% confidence`}
@@ -574,6 +586,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     outOfBounds: Array<{ id: number; name: string }>;
     regionId: number;
     regionMapUrl: string | null;
+    sourceUrl: string | null;
     done: boolean;
     /** Saved cluster→region assignments from cluster review (persists after review is cleared) */
     savedRegionAssignments?: Map<number, number>;
@@ -716,6 +729,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     regionMapUrl: string | null;
   } | null>(null);
   const [highlightedGapId, setHighlightedGapId] = useState<number | null>(null);
+  const [gapMapSelectedRegionId, setGapMapSelectedRegionId] = useState<number | null>(null);
 
   const handleAnalyzeGaps = useCallback(async (regionId: number) => {
     const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
@@ -1231,6 +1245,12 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
   }, [tree, worldViewId, setUndoSnackbar]);
 
   // CV color match handler — opens dialog immediately with SSE progress
+  const [usePolyRaster, setUsePolyRaster] = useState(false);
+  const [aiModelOverride, setAiModelOverride] = useState<string | null>(null);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelPickerModels, setModelPickerModels] = useState<Array<{ id: string }>>([]);
+  const [modelPickerGlobal, setModelPickerGlobal] = useState('');
+  const [modelPickerSelected, setModelPickerSelected] = useState('');
   const handleCVMatch = useCallback(async (regionId: number, method: 'classical' | 'meanshift' = 'classical') => {
     // Find tree node to get the original region map URL
     const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
@@ -1257,6 +1277,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       outOfBounds: [],
       regionId,
       regionMapUrl: node?.regionMapUrl ?? null,
+      sourceUrl: node?.sourceUrl ?? null,
       done: false,
     });
 
@@ -1391,7 +1412,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
               childRegions: event.data?.childRegions ?? prev.childRegions,
               outOfBounds: event.data?.outOfBounds ?? prev.outOfBounds,
               geoPreview: event.data?.geoPreview,
-              progressText: `Done in ${event.elapsed?.toFixed(1)}s — ${stats.cvUnsplittable ?? 0} unsplittable${stats.cvOutOfBounds ? `, ${stats.cvOutOfBounds} outside map` : ''}`,
+              progressText: `Done in ${event.elapsed?.toFixed(1)}s — ${stats.cvAssignedDivisions ?? 0} matched${stats.assignedDivisions ? `, ${stats.assignedDivisions} pre-assigned` : ''}${stats.cvUnsplittable ? `, ${stats.cvUnsplittable} unsplittable` : ''}${stats.cvOutOfBounds ? `, ${stats.cvOutOfBounds} outside map` : ''}`,
               progressColor: '#2e7d32',
               done: true,
             };
@@ -1406,7 +1427,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
             done: true,
           } : prev);
         }
-      }, method);
+      }, method, { polyRaster: usePolyRaster });
     } catch (err) {
       console.error('CV match failed:', err);
       setCVMatchDialog(prev => prev ? {
@@ -1418,7 +1439,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     } finally {
       setCVMatchingRegionId(null);
     }
-  }, [worldViewId, tree]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worldViewId, tree, usePolyRaster]);
 
   // Mapshape match handler — fetches Kartographer mapshape data from Wikivoyage page,
   // maps to GADM divisions, and opens the same dialog as CV match
@@ -1434,6 +1456,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       outOfBounds: [],
       regionId,
       regionMapUrl: null,
+      sourceUrl: null,
       done: false,
     });
 
@@ -1858,7 +1881,13 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       >
         {cvMatchDialog && (
           <>
-            <DialogTitle>{cvMatchDialog.title}</DialogTitle>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {cvMatchDialog.title}
+              <Box component="label" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.75rem', ml: 'auto', fontWeight: 400 }}>
+                <input type="checkbox" checked={usePolyRaster} onChange={e => setUsePolyRaster(e.target.checked)} />
+                Poly raster
+              </Box>
+            </DialogTitle>
             <DialogContent dividers sx={{ p: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
                 {!cvMatchDialog.done && <CircularProgress size={18} />}
@@ -2082,27 +2111,27 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                       Review detected color clusters. Exclude artifacts (gray/noise), merge small leftovers into real regions, or keep as-is.
                     </Typography>
-                    {/* Side-by-side: region map + source map + cluster preview */}
-                    <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+                    {/* Side-by-side: region map + source map + cluster preview — sticky, max 40vh so cluster list is always visible */}
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1.5, position: 'sticky', top: 0, zIndex: 10, bgcolor: 'info.50', pb: 1 }}>
                       {cvMatchDialog.regionMapUrl && (
-                        <Box sx={{ flex: '1 1 30%', textAlign: 'center' }}>
+                        <Box sx={{ flex: '1 1 30%', textAlign: 'center', display: 'flex', flexDirection: 'column' }}>
                           <Typography variant="caption" color="text.secondary">Region map</Typography>
-                          <img src={cvMatchDialog.regionMapUrl} style={{ width: '100%', borderRadius: 4, border: '1px solid #ccc' }} />
+                          <img src={cvMatchDialog.regionMapUrl} style={{ maxWidth: '100%', maxHeight: '35vh', objectFit: 'contain', borderRadius: 4 }} />
                         </Box>
                       )}
                       {sourceImg && (
-                        <Box sx={{ flex: '1 1 30%', textAlign: 'center' }}>
+                        <Box sx={{ flex: '1 1 30%', textAlign: 'center', display: 'flex', flexDirection: 'column' }}>
                           <Typography variant="caption" color="text.secondary">Processed</Typography>
-                          <img src={sourceImg.dataUrl} style={{ width: '100%', borderRadius: 4, border: '1px solid #ccc' }} />
+                          <img src={sourceImg.dataUrl} style={{ maxWidth: '100%', maxHeight: '35vh', objectFit: 'contain', borderRadius: 4 }} />
                         </Box>
                       )}
                       {cr.previewImage && (
-                        <Box sx={{ flex: '1 1 30%', textAlign: 'center' }}>
+                        <Box sx={{ flex: '1 1 30%', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                           <Typography variant="caption" color="text.secondary">Detected clusters {cr.highlightedLabel != null ? '(click color circle to highlight)' : '(click a color circle to highlight)'}</Typography>
-                          <Box sx={{ position: 'relative', display: 'inline-block', width: '100%' }}>
-                            <img src={cr.previewImage} style={{ width: '100%', borderRadius: 4, border: '1px solid #ccc', display: 'block' }} />
+                          <Box sx={{ position: 'relative', display: 'inline-flex', maxHeight: '35vh' }}>
+                            <img src={cr.previewImage} style={{ maxWidth: '100%', maxHeight: '35vh', objectFit: 'contain', borderRadius: 4, display: 'block' }} />
                             {cr.highlightOverlay && (
-                              <img src={cr.highlightOverlay} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', borderRadius: 4, pointerEvents: 'none' }} />
+                              <img src={cr.highlightOverlay} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: 4, pointerEvents: 'none' }} />
                             )}
                           </Box>
                         </Box>
@@ -2193,6 +2222,30 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                                 ))}
                               </Select>
                             )}
+                            {isKept && c.componentCount > 1 && (
+                              <IconButton
+                                size="small"
+                                title={`Split into ${c.componentCount} disconnected parts`}
+                                color="warning"
+                                onClick={async () => {
+                                  setCVMatchDialog(prev => prev ? {
+                                    ...prev,
+                                    clusterReview: undefined,
+                                    progressText: `Splitting cluster into ${c.componentCount} parts...`,
+                                  } : prev);
+                                  try {
+                                    await respondToClusterReview(cr.reviewId, {
+                                      merges: {},
+                                      split: [c.label],
+                                    });
+                                  } catch (e) {
+                                    console.error('[Split] POST failed:', e);
+                                  }
+                                }}
+                              >
+                                <SplitIcon fontSize="small" />
+                              </IconButton>
+                            )}
                           </Box>
                         );
                       })}
@@ -2221,12 +2274,41 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     >
                       Confirm clusters
                     </Button>
-                    {/* Re-cluster options */}
-                    <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+                    {/* Split all disconnected + Re-cluster options */}
+                    <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
+                      {sorted.some(c => c.componentCount > 1 && getAction(c.label) === 'keep') && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="warning"
+                          startIcon={<SplitIcon />}
+                          sx={{ fontSize: '0.7rem', py: 0.25, px: 0.75 }}
+                          title="Split all clusters that have disconnected parts"
+                          onClick={async () => {
+                            const splitLabels = sorted.filter(c => c.componentCount > 1 && getAction(c.label) === 'keep').map(c => c.label);
+                            setCVMatchDialog(prev => prev ? {
+                              ...prev,
+                              clusterReview: undefined,
+                              progressText: `Splitting ${splitLabels.length} cluster(s) into components...`,
+                            } : prev);
+                            try {
+                              await respondToClusterReview(cr.reviewId, { merges: {}, split: splitLabels });
+                            } catch (e) {
+                              console.error('[Split All] POST failed:', e);
+                            }
+                          }}
+                        >
+                          Split disconnected
+                        </Button>
+                      )}
                       {([
                         { preset: 'more_clusters' as const, label: 'More clusters' },
                         { preset: 'different_seed' as const, label: 'Different seed' },
                         { preset: 'boost_chroma' as const, label: 'Boost colors' },
+                        { preset: 'remove_roads' as const, label: 'Remove roads' },
+                        { preset: 'fill_holes' as const, label: 'Fill holes' },
+                        { preset: 'clean_light' as const, label: 'Clean noise' },
+                        { preset: 'clean_heavy' as const, label: 'Clean noise+' },
                       ]).map(opt => (
                         <Button
                           key={opt.preset}
@@ -2268,7 +2350,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                 return (
                   <Box sx={{ mb: 3 }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Region Assignment Preview</Typography>
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 10, bgcolor: 'background.paper', pb: 1, maxHeight: '45vh' }}>
                       {/* Wikivoyage mapshape preview (Kartographer geoshapes) */}
                       {wvPreview && wvPreview.features.length > 0 && (
                         <Box sx={{ flex: '1 1 48%', minWidth: 250, height: 400 }}>
@@ -2498,9 +2580,157 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
               {/* Cluster suggestions (shown when complete) */}
               {cvMatchDialog.done && cvMatchDialog.clusters.length > 0 && (
                 <Box sx={{ mb: 3 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5 }}>
-                    Suggested Assignments ({cvMatchDialog.clusters.reduce((s, c) => s + c.divisions.length, 0)} divisions → {cvMatchDialog.clusters.length} regions)
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      Suggested Assignments ({cvMatchDialog.clusters.reduce((s, c) => s + c.divisions.length, 0)} divisions → {cvMatchDialog.clusters.length} regions)
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      sx={{ fontSize: '0.7rem', py: 0.25, px: 0.75, textTransform: 'none' }}
+                      disabled={!cvMatchDialog.sourceUrl}
+                      onClick={() => cvMatchDialog.sourceUrl && window.open(cvMatchDialog.sourceUrl, '_blank')}
+                      title={cvMatchDialog.sourceUrl ? 'Open Wikivoyage page to see region names' : 'No source URL available'}
+                    >
+                      View source page
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="primary"
+                      sx={{ fontSize: '0.7rem', py: 0.25, px: 0.75, textTransform: 'none' }}
+                      disabled={cvMatchDialog.clusters.length === 0 || cvMatchDialog.childRegions.length === 0}
+                      title="Use AI to match clusters to region names based on division geography"
+                      onClick={async () => {
+                        const prevText = cvMatchDialog.progressText;
+                        setCVMatchDialog(prev => prev ? { ...prev, progressText: 'AI suggesting region matches...' } : prev);
+                        try {
+                          const clusterData = cvMatchDialog.clusters.map(c => ({
+                            clusterId: c.clusterId,
+                            color: c.color,
+                            pixelShare: c.pixelShare,
+                            divisionNames: [
+                              ...c.divisions.map(d => d.name),
+                              ...c.unsplittable.map(d => d.name),
+                            ],
+                          }));
+                          const result = await aiSuggestClusterRegions(worldViewId, clusterData, cvMatchDialog.childRegions, aiModelOverride || undefined);
+                          setCVMatchDialog(prev => {
+                            if (!prev) return prev;
+                            const matchMap = new Map(result.matches.filter(m => m.regionId).map(m => [m.clusterId, m.regionId!]));
+                            const newClusters = prev.clusters.map(c => {
+                              const regionId = matchMap.get(c.clusterId);
+                              if (!regionId) return c;
+                              const region = prev.childRegions.find(r => r.id === regionId);
+                              return region ? { ...c, suggestedRegion: region } : c;
+                            });
+                            const newGeo = prev.geoPreview ? {
+                              ...prev.geoPreview,
+                              clusterInfos: prev.geoPreview.clusterInfos.map(ci => {
+                                const regionId = matchMap.get(ci.clusterId);
+                                if (!regionId) return ci;
+                                const region = prev.childRegions.find(r => r.id === regionId);
+                                return region ? { ...ci, regionId, regionName: region.name } : ci;
+                              }),
+                              featureCollection: {
+                                ...prev.geoPreview.featureCollection,
+                                features: prev.geoPreview.featureCollection.features.map(f => {
+                                  if (!f.properties?.clusterId) return f;
+                                  const regionId = matchMap.get(f.properties.clusterId);
+                                  if (!regionId) return f;
+                                  const region = prev.childRegions.find(r => r.id === regionId);
+                                  return region ? { ...f, properties: { ...f.properties, regionId, regionName: region.name } } : f;
+                                }),
+                              },
+                            } : prev.geoPreview;
+                            return {
+                              ...prev,
+                              clusters: newClusters,
+                              geoPreview: newGeo,
+                              progressText: `AI matched ${matchMap.size}/${prev.clusters.length} clusters ($${result.stats.cost.toFixed(3)})`,
+                            };
+                          });
+                        } catch (err) {
+                          console.error('AI suggest failed:', err);
+                          setCVMatchDialog(prev => prev ? { ...prev, progressText: prevText } : prev);
+                        }
+                      }}
+                    >
+                      AI Suggest
+                    </Button>
+                    <IconButton
+                      size="small"
+                      title={aiModelOverride ? `Model: ${aiModelOverride} (local override)` : 'Change AI model'}
+                      sx={{ width: 24, height: 24 }}
+                      onClick={async () => {
+                        try {
+                          const { getAISettings } = await import('../../api/adminAI');
+                          const { settings, models } = await getAISettings();
+                          const current = settings['model.cv_cluster_match'] || 'o4-mini';
+                          setModelPickerModels(models);
+                          setModelPickerGlobal(current);
+                          setModelPickerSelected(aiModelOverride || current);
+                          setModelPickerOpen(true);
+                        } catch (err) {
+                          console.error('Failed to load AI models:', err);
+                        }
+                      }}
+                    >
+                      <SettingsIcon sx={{ fontSize: 14, color: aiModelOverride ? 'primary.main' : 'text.secondary' }} />
+                    </IconButton>
+                    <Dialog open={modelPickerOpen} onClose={() => setModelPickerOpen(false)} maxWidth="xs" fullWidth>
+                      <DialogTitle sx={{ pb: 1, fontSize: '1rem' }}>AI Model — Cluster Match</DialogTitle>
+                      <DialogContent sx={{ pt: 1 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                          Global: {modelPickerGlobal}{aiModelOverride ? ` · Local override: ${aiModelOverride}` : ''}
+                        </Typography>
+                        <Select
+                          size="small"
+                          fullWidth
+                          value={modelPickerSelected}
+                          onChange={e => setModelPickerSelected(e.target.value)}
+                          sx={{ fontSize: '0.85rem' }}
+                        >
+                          {modelPickerModels.map(m => (
+                            <MenuItem key={m.id} value={m.id}>{m.id}</MenuItem>
+                          ))}
+                        </Select>
+                      </DialogContent>
+                      <DialogActions>
+                        {aiModelOverride && (
+                          <Button size="small" color="warning" onClick={() => { setAiModelOverride(null); setModelPickerOpen(false); }}>
+                            Clear override
+                          </Button>
+                        )}
+                        <Box sx={{ flex: 1 }} />
+                        <Button size="small" onClick={() => setModelPickerOpen(false)}>Cancel</Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => { setAiModelOverride(modelPickerSelected); setModelPickerOpen(false); }}
+                        >
+                          Use locally
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={async () => {
+                            try {
+                              const { updateAISetting } = await import('../../api/adminAI');
+                              await updateAISetting('model.cv_cluster_match', modelPickerSelected);
+                              setAiModelOverride(null);
+                              setModelPickerOpen(false);
+                              setCVMatchDialog(prev => prev ? { ...prev, progressText: `Global model → ${modelPickerSelected}` } : prev);
+                            } catch (err) {
+                              console.error('Failed to save:', err);
+                            }
+                          }}
+                        >
+                          Save global
+                        </Button>
+                      </DialogActions>
+                    </Dialog>
+                  </Box>
                   {cvMatchDialog.clusters.map(cluster => (
                     <Box
                       key={cluster.clusterId}
@@ -2570,14 +2800,20 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                             <Visibility sx={{ fontSize: 16 }} />
                           </IconButton>
                         </Box>
-                        {cluster.suggestedRegion && cluster.divisions.length > 0 && (
+                        {(cluster.divisions.length > 0 || cluster.unsplittable.length > 0) && (
                           <Button
                             size="small"
                             variant="contained"
                             color="success"
+                            disabled={!cluster.suggestedRegion}
+                            title={!cluster.suggestedRegion ? 'Select a region from the dropdown first' : `Accept all ${cluster.divisions.length + cluster.unsplittable.length} divisions into ${cluster.suggestedRegion.name}`}
                             onClick={async () => {
+                              if (!cluster.suggestedRegion) return;
                               const regionId = cluster.suggestedRegion!.id;
-                              const assignments = cluster.divisions.map(d => ({ regionId, divisionId: d.id }));
+                              const assignments = [
+                                ...cluster.divisions.map(d => ({ regionId, divisionId: d.id })),
+                                ...cluster.unsplittable.map(d => ({ regionId, divisionId: d.id })),
+                              ];
                               try {
                                 await acceptBatchMatches(worldViewId, assignments);
                                 setCVMatchDialog(prev => prev ? {
@@ -2590,7 +2826,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                               }
                             }}
                           >
-                            Accept all ({cluster.divisions.length})
+                            Accept all ({cluster.divisions.length + cluster.unsplittable.length})
                           </Button>
                         )}
                       </Box>
@@ -2691,8 +2927,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                         </Button>
                       );
                     })()}
-                    {/* Accept all matched (including unsplittable associations) */}
-                    {cvMatchDialog.clusters.some(c => c.suggestedRegion && c.divisions.length > 0) && (
+                    {/* Accept all matched (including unsplittable — assigned to dominant cluster's region) */}
+                    {cvMatchDialog.clusters.some(c => c.suggestedRegion && (c.divisions.length > 0 || c.unsplittable.length > 0)) && (
                       <Button
                         variant="contained"
                         color="success"
@@ -2700,8 +2936,11 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                         onClick={async () => {
                           const allAssignments: Array<{ regionId: number; divisionId: number }> = [];
                           for (const cluster of cvMatchDialog.clusters) {
-                            if (!cluster.suggestedRegion || cluster.divisions.length === 0) continue;
+                            if (!cluster.suggestedRegion) continue;
                             for (const div of cluster.divisions) {
+                              allAssignments.push({ regionId: cluster.suggestedRegion.id, divisionId: div.id });
+                            }
+                            for (const div of cluster.unsplittable) {
                               allAssignments.push({ regionId: cluster.suggestedRegion.id, divisionId: div.id });
                             }
                           }
@@ -2710,7 +2949,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                             await acceptBatchMatches(worldViewId, allAssignments);
                             setCVMatchDialog(prev => prev ? {
                               ...prev,
-                              clusters: prev.clusters.filter(c => !c.suggestedRegion || c.divisions.length === 0),
+                              clusters: prev.clusters.filter(c => !c.suggestedRegion),
                             } : prev);
                             invalidateTree(cvMatchDialog.regionId);
                           } catch (err) {
@@ -2719,8 +2958,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                         }}
                       >
                         Accept all matched ({cvMatchDialog.clusters
-                          .filter(c => c.suggestedRegion && c.divisions.length > 0)
-                          .reduce((s, c) => s + c.divisions.length, 0)} divisions)
+                          .filter(c => c.suggestedRegion)
+                          .reduce((s, c) => s + c.divisions.length + c.unsplittable.length, 0)} divisions)
                       </Button>
                     )}
                   </Box>
@@ -2781,7 +3020,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                   Skip Cluster Review
                 </Button>
               )}
-              <Button onClick={() => setCVMatchDialog(null)} disabled={!cvMatchDialog.done}>
+              <Button onClick={() => { setCVMatchDialog(null); setCVMatchingRegionId(null); }}>
                 Close
               </Button>
             </DialogActions>
@@ -2917,22 +3156,40 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       {gapAnalysis && (
         <Dialog
           open
-          onClose={() => { setGapAnalysis(null); invalidateTree(); }}
-          maxWidth="md"
+          onClose={() => { setGapAnalysis(null); setGapMapSelectedRegionId(null); invalidateTree(); }}
+          maxWidth="lg"
           fullWidth
+          slotProps={{ paper: { sx: { height: '90vh', display: 'flex', flexDirection: 'column' } } }}
         >
-          <DialogTitle>Coverage Gap Analysis: {gapAnalysis.regionName}</DialogTitle>
-          {gapAnalysis.regionMapUrl && (
-            <Box sx={{ px: 3, pb: 1 }}>
-              <Box
-                component="img"
-                src={`${gapAnalysis.regionMapUrl}?width=800`}
-                alt={`${gapAnalysis.regionName} region map`}
-                sx={{ maxWidth: '100%', maxHeight: 250, objectFit: 'contain', borderRadius: 1, border: 1, borderColor: 'divider' }}
-              />
-            </Box>
-          )}
-          <DialogContent>
+          <DialogTitle sx={{ pb: 1, flexShrink: 0 }}>Coverage Gap Analysis: {gapAnalysis.regionName}</DialogTitle>
+          {/* Top: source image + context map side by side (sticky) */}
+          <Box sx={{ display: 'flex', gap: 1, px: 3, pb: 1, flexShrink: 0, minHeight: 0 }}>
+            {gapAnalysis.regionMapUrl && (
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Box
+                  component="img"
+                  src={`${gapAnalysis.regionMapUrl}?width=800`}
+                  alt={`${gapAnalysis.regionName} region map`}
+                  sx={{ width: '100%', maxHeight: 300, objectFit: 'contain', borderRadius: 1, border: 1, borderColor: 'divider' }}
+                />
+              </Box>
+            )}
+            {!gapAnalysis.loading && gapAnalysis.gapDivisions.length > 0 && (
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <GapContextMap
+                  gapDivisions={gapAnalysis.gapDivisions}
+                  siblingRegions={gapAnalysis.siblingRegions}
+                  worldViewId={worldViewId}
+                  highlightedGapId={highlightedGapId}
+                  onHighlight={setHighlightedGapId}
+                  selectedRegionId={gapMapSelectedRegionId}
+                  onRegionSelect={(regionId) => setGapMapSelectedRegionId(regionId)}
+                />
+              </Box>
+            )}
+          </Box>
+          {/* Bottom: scrollable gap list */}
+          <DialogContent sx={{ flex: 1, overflow: 'auto', pt: 1 }}>
             {gapAnalysis.loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
                 <CircularProgress />
@@ -2945,7 +3202,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
               <GapDivisionTree
                 gapDivisions={gapAnalysis.gapDivisions}
                 parentRegionId={gapAnalysis.regionId}
-                worldViewId={worldViewId}
+                mapSelectedRegionId={gapMapSelectedRegionId}
                 subtreeRegions={(() => {
                   if (!tree) return [];
                   const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
@@ -2968,7 +3225,6 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                   walk(parent.children, 0);
                   return result;
                 })()}
-                siblingRegions={gapAnalysis.siblingRegions}
                 highlightedGapId={highlightedGapId}
                 onHighlight={setHighlightedGapId}
                 isMutating={isMutating}
@@ -3029,7 +3285,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => { setGapAnalysis(null); invalidateTree(); }}>Close</Button>
+            <Button onClick={() => { setGapAnalysis(null); setGapMapSelectedRegionId(null); invalidateTree(); }}>Close</Button>
           </DialogActions>
         </Dialog>
       )}

@@ -108,6 +108,7 @@ import {
   resetMatch,
   aiMatchOneRegion,
   aiSuggestChildren,
+  aiSuggestClusterRegions,
 } from '../controllers/admin/wvImportAIController.js';
 import {
   mergeChildIntoParent,
@@ -435,13 +436,14 @@ router.post('/wv-import/cluster-review/:reviewId', (req: AuthenticatedRequest, r
     }
   }
   const excludes: number[] = Array.isArray(req.body?.excludes) ? req.body.excludes.map(Number) : [];
-  const validPresets = new Set(['more_clusters', 'different_seed', 'boost_chroma']);
+  const split: number[] = Array.isArray(req.body?.split) ? req.body.split.map(Number) : [];
+  const validPresets = new Set(['more_clusters', 'different_seed', 'boost_chroma', 'remove_roads', 'fill_holes', 'clean_light', 'clean_heavy']);
   const rawPreset = req.body?.recluster?.preset;
   const recluster = typeof rawPreset === 'string' && validPresets.has(rawPreset)
-    ? { preset: rawPreset as 'more_clusters' | 'different_seed' | 'boost_chroma' }
+    ? { preset: rawPreset as 'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy' }
     : undefined;
-  console.log(`  [Cluster Review POST] reviewId=${reviewId} merges=${JSON.stringify(merges)} excludes=[${excludes}]${recluster ? ` recluster=${recluster.preset}` : ''}`);
-  const found = resolveClusterReview(reviewId, { merges, excludes, recluster });
+  console.log(`  [Cluster Review POST] reviewId=${reviewId} merges=${JSON.stringify(merges)} excludes=[${excludes}]${split.length ? ` split=[${split}]` : ''}${recluster ? ` recluster=${recluster.preset}` : ''}`);
+  const found = resolveClusterReview(reviewId, { merges, excludes, recluster, split: split.length > 0 ? split : undefined });
   if (found) {
     res.json({ ok: true });
   } else {
@@ -513,6 +515,9 @@ router.post('/wv-import/matches/:worldViewId/dismiss-hierarchy-warnings', valida
 
 // AI suggest children for a region (Wikivoyage page + AI analysis)
 router.post('/wv-import/matches/:worldViewId/ai-suggest-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiSuggestChildren);
+
+// AI suggest cluster-to-region mapping (CV match pipeline)
+router.post('/wv-import/matches/:worldViewId/ai-suggest-clusters', validate(worldViewIdParamSchema, 'params'), aiSuggestClusterRegions);
 
 // Children coverage % (how much of parent's geometry children cover)
 router.get('/wv-import/matches/:worldViewId/children-coverage', validate(worldViewIdParamSchema, 'params'), validate(childrenCoverageQuerySchema, 'query'), getChildrenCoverage);
