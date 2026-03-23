@@ -2350,7 +2350,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                 return (
                   <Box sx={{ mb: 3 }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Region Assignment Preview</Typography>
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 10, bgcolor: 'background.paper', pb: 1, maxHeight: '45vh' }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 10, bgcolor: 'background.paper', pb: 1, maxHeight: '42vh', overflow: 'hidden' }}>
                       {/* Wikivoyage mapshape preview (Kartographer geoshapes) */}
                       {wvPreview && wvPreview.features.length > 0 && (
                         <Box sx={{ flex: '1 1 48%', minWidth: 250, height: 400 }}>
@@ -2449,12 +2449,12 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                       )}
                       {/* CV source map image (for CV match only) */}
                       {sourceImg && !wvPreview && (
-                        <Box sx={{ flex: '1 1 48%', minWidth: 250 }}>
+                        <Box sx={{ flex: '1 1 48%', minWidth: 250, maxHeight: '40vh', display: 'flex', flexDirection: 'column' }}>
                           <Typography variant="caption" color="text.secondary">Source map</Typography>
-                          <img src={sourceImg.dataUrl} style={{ width: '100%', border: '1px solid #ccc', borderRadius: 4 }} />
+                          <img src={sourceImg.dataUrl} style={{ maxWidth: '100%', maxHeight: 'calc(40vh - 20px)', objectFit: 'contain', borderRadius: 4 }} />
                         </Box>
                       )}
-                      <Box sx={{ flex: '1 1 48%', minWidth: 250, height: 400 }}>
+                      <Box sx={{ flex: '1 1 48%', minWidth: 250, height: Math.min(400, window.innerHeight * 0.4) }}>
                         <Typography variant="caption" color="text.secondary">{wvPreview ? 'GADM division assignment' : 'CV region assignment'} (hover for details)</Typography>
                         <CvMatchMap
                           geoPreview={geo}
