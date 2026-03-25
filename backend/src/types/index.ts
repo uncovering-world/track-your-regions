@@ -542,6 +542,12 @@ export const wvImportSmartSimplifySchema = z.object({
   parentRegionId: z.coerce.number().int().positive(),
 });
 
+export const wvImportSmartSimplifyApplySchema = z.object({
+  parentRegionId: z.coerce.number().int().positive(),
+  ownerRegionId: z.coerce.number().int().positive(),
+  memberRowIds: z.array(z.number().int().positive()).min(1),
+});
+
 export const wvImportApproveCoverageSchema = z.object({
   divisionId: z.coerce.number().int().positive(),
   regionId: z.coerce.number().int().positive(),

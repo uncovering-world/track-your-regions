@@ -46,6 +46,7 @@ import {
   wvImportRenameRegionSchema,
   wvImportReparentRegionSchema,
   wvImportSmartSimplifySchema,
+  wvImportSmartSimplifyApplySchema,
   coverageSSEQuerySchema,
   childrenCoverageQuerySchema,
 } from '../types/index.js';
@@ -83,7 +84,7 @@ import {
   geocodeMatch, geoshapeMatch, pointMatch, resetMatch, aiMatchOneRegion,
   aiSuggestChildren, aiSuggestClusterRegions,
   // Tree ops
-  mergeChildIntoParent, removeRegionFromImport, dismissChildren, pruneToLeaves, simplifyHierarchy, detectSmartSimplify,
+  mergeChildIntoParent, removeRegionFromImport, dismissChildren, pruneToLeaves, simplifyHierarchy, detectSmartSimplify, applySmartSimplifyMove,
   // Flatten
   collapseToParent, smartFlattenPreview, smartFlatten, syncInstances, handleAsGrouping,
   // Hierarchy
@@ -441,6 +442,9 @@ router.post('/wv-import/matches/:worldViewId/simplify-hierarchy', validate(world
 
 // Smart simplify: detect cross-sibling division moves for simplification
 router.post('/wv-import/matches/:worldViewId/smart-simplify', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifySchema), detectSmartSimplify);
+
+// Smart simplify: apply a single move (reassign divisions + simplify)
+router.post('/wv-import/matches/:worldViewId/smart-simplify/apply-move', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifyApplySchema), applySmartSimplifyMove);
 
 // Remove a region from the import tree (optionally reparenting children)
 router.post('/wv-import/matches/:worldViewId/remove-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportRemoveRegionSchema), removeRegionFromImport);

@@ -821,3 +821,101 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
 
   res.json({ moves });
 }
+
+/**
+ * Apply a single smart-simplify move: reassign divisions to the owner region, then simplify.
+ * POST /api/admin/wv-import/matches/:worldViewId/smart-simplify/apply-move
+ */
+export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { parentRegionId, ownerRegionId, memberRowIds } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/smart-simplify/apply-move — parent=${parentRegionId} owner=${ownerRegionId} rows=${memberRowIds.length}`);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Verify parentRegionId and ownerRegionId belong to this world view
+    const parentCheck = await client.query(
+      'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+      [parentRegionId, worldViewId],
+    );
+    if (parentCheck.rows.length === 0) {
+      res.status(404).json({ error: 'Parent region not found in this world view' });
+      return;
+    }
+
+    const ownerCheck = await client.query(
+      'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+      [ownerRegionId, worldViewId],
+    );
+    if (ownerCheck.rows.length === 0) {
+      res.status(404).json({ error: 'Owner region not found in this world view' });
+      return;
+    }
+
+    // 2. Get child regions of parentRegionId
+    const childrenResult = await client.query(
+      'SELECT id FROM regions WHERE parent_region_id = $1 AND world_view_id = $2',
+      [parentRegionId, worldViewId],
+    );
+    const childIds = new Set(childrenResult.rows.map(r => r.id as number));
+
+    // Verify ownerRegionId is a child of parentRegionId
+    if (!childIds.has(ownerRegionId)) {
+      res.status(400).json({ error: 'Owner region is not a child of the parent region' });
+      return;
+    }
+
+    // 3. Verify all memberRowIds belong to children of parentRegionId (security check)
+    const memberCheck = await client.query(
+      'SELECT id, region_id FROM region_members WHERE id = ANY($1)',
+      [memberRowIds],
+    );
+    if (memberCheck.rows.length !== memberRowIds.length) {
+      res.status(400).json({ error: 'Some memberRowIds were not found' });
+      return;
+    }
+    const affectedRegionIds = new Set<number>();
+    for (const row of memberCheck.rows) {
+      const regionId = row.region_id as number;
+      if (!childIds.has(regionId)) {
+        res.status(400).json({ error: `Member row ${row.id} belongs to region ${regionId} which is not a child of the parent` });
+        return;
+      }
+      affectedRegionIds.add(regionId);
+    }
+    affectedRegionIds.add(ownerRegionId);
+
+    // 4. Move members to the owner region
+    const moveResult = await client.query(
+      'UPDATE region_members SET region_id = $1 WHERE id = ANY($2)',
+      [ownerRegionId, memberRowIds],
+    );
+
+    await client.query('COMMIT');
+
+    // 5. Post-commit: simplify the owner region
+    const { replacements } = await runSimplifyHierarchy(ownerRegionId, worldViewId);
+
+    // 6. Invalidate geometry + sync match status for all affected regions
+    for (const regionId of affectedRegionIds) {
+      await invalidateRegionGeometry(regionId);
+      await syncImportMatchStatus(regionId);
+    }
+
+    console.log(`[WV Import] Smart-simplify applied: moved ${moveResult.rowCount} members to region ${ownerRegionId}, ${replacements.length} simplifications`);
+    res.json({
+      moved: moveResult.rowCount,
+      simplification: {
+        replacements,
+        totalReduced: replacements.reduce((sum, r) => sum + r.replacedCount, 0) - replacements.length,
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
