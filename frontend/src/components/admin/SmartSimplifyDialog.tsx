@@ -82,6 +82,7 @@ export function SmartSimplifyDialog({
   const [selectedMoveIndex, setSelectedMoveIndex] = useState<number | null>(null);
   const [appliedGadmParentIds, setAppliedGadmParentIds] = useState<Set<number>>(new Set());
   const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'current' | 'proposed'>('current');
 
   // Load data on open
@@ -177,6 +178,7 @@ export function SmartSimplifyDialog({
     if (!move) return;
 
     setApplying(true);
+    setApplyError(null);
     try {
       await applySmartSimplifyMove(
         worldViewId,
@@ -193,7 +195,9 @@ export function SmartSimplifyDialog({
       );
       setSelectedMoveIndex(nextIndex >= 0 ? nextIndex : null);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Apply failed';
       console.error('Apply move failed:', err);
+      setApplyError(msg);
     } finally {
       setApplying(false);
     }
@@ -446,6 +450,11 @@ export function SmartSimplifyDialog({
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
                   Detected Moves
                 </Typography>
+                {applyError && (
+                  <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+                    {applyError}
+                  </Typography>
+                )}
                 {moves.map((move, idx) => {
                   const isApplied = appliedGadmParentIds.has(move.gadmParentId);
                   const isSelected = selectedMoveIndex === idx;
