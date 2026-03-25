@@ -1,0 +1,427 @@
+/**
+ * SmartSimplifyDialog — Detect and fix misplaced divisions across child regions.
+ *
+ * Shows a side-by-side view: source region map image (left) and MapLibre map
+ * with color-coded child region geometries (right). Below the map, a scrollable
+ * list of detected moves that can be applied individually or skipped.
+ */
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Box,
+  Typography,
+  IconButton,
+  CircularProgress,
+  Button,
+  Chip,
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import CheckIcon from '@mui/icons-material/Check';
+import SkipNextIcon from '@mui/icons-material/SkipNext';
+import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
+import * as turf from '@turf/turf';
+import {
+  detectSmartSimplify,
+  applySmartSimplifyMove,
+  type SmartSimplifyMove,
+} from '../../api/adminWorldViewImport';
+import { getChildrenRegionGeometry } from '../../api/adminWvImportCoverage';
+import type { SiblingRegionGeometry } from '../../api/adminWvImportCoverage';
+
+const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+
+const CHILD_COLORS = [
+  '#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd',
+  '#dd5577', '#55bb88', '#bb7744', '#7755cc', '#cc5533',
+];
+
+interface SmartSimplifyDialogProps {
+  open: boolean;
+  onClose: () => void;
+  worldViewId: number;
+  parentRegionId: number;
+  parentRegionName: string;
+  regionMapUrl: string | null;
+  onApplied: () => void;
+}
+
+export function SmartSimplifyDialog({
+  open,
+  onClose,
+  worldViewId,
+  parentRegionId,
+  parentRegionName,
+  regionMapUrl,
+  onApplied,
+}: SmartSimplifyDialogProps) {
+  const mapRef = useRef<MapRef>(null);
+
+  // Data state
+  const [moves, setMoves] = useState<SmartSimplifyMove[] | null>(null);
+  const [childGeometries, setChildGeometries] = useState<SiblingRegionGeometry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Interaction state
+  const [selectedMoveIndex, setSelectedMoveIndex] = useState<number | null>(null);
+  const [appliedGadmParentIds, setAppliedGadmParentIds] = useState<Set<number>>(new Set());
+  const [applying, setApplying] = useState(false);
+
+  // Load data on open
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    setError(null);
+    setMoves(null);
+    setChildGeometries(null);
+    setSelectedMoveIndex(null);
+    setAppliedGadmParentIds(new Set());
+
+    Promise.all([
+      detectSmartSimplify(worldViewId, parentRegionId),
+      getChildrenRegionGeometry(worldViewId, parentRegionId),
+    ])
+      .then(([detectResult, geoResult]) => {
+        setMoves(detectResult.moves);
+        setChildGeometries(geoResult.childRegions);
+        if (detectResult.moves.length > 0) {
+          setSelectedMoveIndex(0);
+        }
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to load data');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [open, worldViewId, parentRegionId]);
+
+  // Fit map bounds when geometries load
+  useEffect(() => {
+    if (!childGeometries || childGeometries.length === 0 || !mapRef.current) return;
+    try {
+      const fc: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: childGeometries.map((c) => ({
+          type: 'Feature' as const,
+          properties: { regionId: c.regionId, name: c.name },
+          geometry: c.geometry,
+        })),
+      };
+      const bounds = turf.bbox(fc) as [number, number, number, number];
+      mapRef.current.fitBounds(
+        [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+        { padding: 40, duration: 500 },
+      );
+    } catch (e) {
+      console.error('Failed to fit bounds:', e);
+    }
+  }, [childGeometries]);
+
+  // Build a color map: regionId -> color
+  const colorMap = new Map<number, string>();
+  if (childGeometries) {
+    childGeometries.forEach((c, i) => {
+      colorMap.set(c.regionId, CHILD_COLORS[i % CHILD_COLORS.length]);
+    });
+  }
+
+  // Handle Apply
+  const handleApply = useCallback(async () => {
+    if (moves == null || selectedMoveIndex == null) return;
+    const move = moves[selectedMoveIndex];
+    if (!move) return;
+
+    setApplying(true);
+    try {
+      await applySmartSimplifyMove(
+        worldViewId,
+        parentRegionId,
+        move.ownerRegionId,
+        move.divisions.map((d) => d.memberRowId),
+      );
+      setAppliedGadmParentIds((prev) => new Set(prev).add(move.gadmParentId));
+      onApplied();
+
+      // Advance to next non-applied move
+      const nextIndex = moves.findIndex(
+        (m, i) => i > selectedMoveIndex && !appliedGadmParentIds.has(m.gadmParentId) && m.gadmParentId !== move.gadmParentId,
+      );
+      setSelectedMoveIndex(nextIndex >= 0 ? nextIndex : null);
+    } catch (err) {
+      console.error('Apply move failed:', err);
+    } finally {
+      setApplying(false);
+    }
+  }, [moves, selectedMoveIndex, worldViewId, parentRegionId, onApplied, appliedGadmParentIds]);
+
+  // Handle Skip
+  const handleSkip = useCallback(() => {
+    if (moves == null || selectedMoveIndex == null) return;
+    const nextIndex = moves.findIndex(
+      (m, i) => i > selectedMoveIndex && !appliedGadmParentIds.has(m.gadmParentId),
+    );
+    setSelectedMoveIndex(nextIndex >= 0 ? nextIndex : null);
+  }, [moves, selectedMoveIndex, appliedGadmParentIds]);
+
+  const selectedMove = moves && selectedMoveIndex != null ? moves[selectedMoveIndex] : null;
+
+  // Highlight region IDs involved in the selected move
+  const highlightedRegionIds = new Set<number>();
+  if (selectedMove) {
+    highlightedRegionIds.add(selectedMove.ownerRegionId);
+    for (const div of selectedMove.divisions) {
+      highlightedRegionIds.add(div.fromRegionId);
+    }
+  }
+
+  const hasSideBySide = !!regionMapUrl;
+  const pendingMoves = moves ? moves.filter((m) => !appliedGadmParentIds.has(m.gadmParentId)).length : 0;
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="lg"
+      fullWidth
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography variant="h6">Smart Simplify: {parentRegionName}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {loading
+                ? 'Detecting misplaced divisions...'
+                : error
+                  ? error
+                  : moves && moves.length === 0
+                    ? 'No misplaced divisions detected'
+                    : `${moves?.length ?? 0} move${(moves?.length ?? 0) !== 1 ? 's' : ''} detected, ${pendingMoves} pending`
+              }
+            </Typography>
+          </Box>
+          <IconButton onClick={onClose} size="small">
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+      <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column', height: 600 }}>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+            <CircularProgress />
+          </Box>
+        ) : error ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+            <Typography color="error">{error}</Typography>
+          </Box>
+        ) : (
+          <>
+            {/* Top section: map(s) */}
+            <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
+              {/* Left panel: source map image */}
+              {hasSideBySide && (
+                <Box sx={{
+                  width: '42%',
+                  flexShrink: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRight: 1,
+                  borderColor: 'divider',
+                  bgcolor: 'grey.50',
+                  p: 1,
+                }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Region map
+                  </Typography>
+                  <Box
+                    component="img"
+                    src={`${regionMapUrl}?width=500`}
+                    alt="Region map"
+                    sx={{
+                      maxWidth: '100%',
+                      maxHeight: '95%',
+                      objectFit: 'contain',
+                    }}
+                  />
+                </Box>
+              )}
+
+              {/* Right panel: MapLibre map with child regions */}
+              <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', pt: 0.5 }}>
+                  Child regions (GADM geometry)
+                </Typography>
+                <Box sx={{ flex: 1, minHeight: 0 }}>
+                  <MapGL
+                    ref={mapRef}
+                    initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
+                    style={{ width: '100%', height: '100%' }}
+                    mapStyle={MAP_STYLE}
+                    onLoad={() => {
+                      if (mapRef.current && childGeometries && childGeometries.length > 0) {
+                        try {
+                          const fc: GeoJSON.FeatureCollection = {
+                            type: 'FeatureCollection',
+                            features: childGeometries.map((c) => ({
+                              type: 'Feature' as const,
+                              properties: {},
+                              geometry: c.geometry,
+                            })),
+                          };
+                          const bounds = turf.bbox(fc) as [number, number, number, number];
+                          mapRef.current.fitBounds(
+                            [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+                            { padding: 40, duration: 500 },
+                          );
+                        } catch (e) {
+                          console.error('Failed to fit bounds on load:', e);
+                        }
+                      }
+                    }}
+                  >
+                    <NavigationControl position="top-right" showCompass={false} />
+                    {childGeometries?.map((child, idx) => {
+                      const color = CHILD_COLORS[idx % CHILD_COLORS.length];
+                      const isHighlighted = highlightedRegionIds.has(child.regionId);
+                      return (
+                        <Source
+                          key={child.regionId}
+                          id={`child-${child.regionId}`}
+                          type="geojson"
+                          data={{
+                            type: 'Feature',
+                            properties: { name: child.name },
+                            geometry: child.geometry,
+                          }}
+                        >
+                          <Layer
+                            id={`child-fill-${child.regionId}`}
+                            type="fill"
+                            paint={{
+                              'fill-color': color,
+                              'fill-opacity': isHighlighted ? 0.5 : 0.2,
+                            }}
+                          />
+                          <Layer
+                            id={`child-outline-${child.regionId}`}
+                            type="line"
+                            paint={{
+                              'line-color': color,
+                              'line-width': isHighlighted ? 3 : 1,
+                            }}
+                          />
+                        </Source>
+                      );
+                    })}
+                  </MapGL>
+                </Box>
+              </Box>
+            </Box>
+
+            {/* Bottom section: moves list */}
+            {moves && moves.length > 0 && (
+              <Box sx={{
+                borderTop: 1,
+                borderColor: 'divider',
+                maxHeight: 220,
+                minHeight: 120,
+                overflow: 'auto',
+                p: 1.5,
+              }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Detected Moves
+                </Typography>
+                {moves.map((move, idx) => {
+                  const isApplied = appliedGadmParentIds.has(move.gadmParentId);
+                  const isSelected = selectedMoveIndex === idx;
+                  return (
+                    <Box
+                      key={move.gadmParentId}
+                      onClick={() => !isApplied && setSelectedMoveIndex(idx)}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        p: 1,
+                        mb: 0.5,
+                        borderRadius: 1,
+                        cursor: isApplied ? 'default' : 'pointer',
+                        bgcolor: isSelected ? 'action.selected' : isApplied ? 'action.disabledBackground' : 'transparent',
+                        opacity: isApplied ? 0.5 : 1,
+                        '&:hover': !isApplied ? { bgcolor: isSelected ? 'action.selected' : 'action.hover' } : {},
+                        border: 1,
+                        borderColor: isSelected ? 'primary.main' : 'transparent',
+                      }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" fontWeight={600}>
+                          {move.gadmParentName}
+                          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            {move.gadmParentPath}
+                          </Typography>
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Move {move.divisions.length} division{move.divisions.length !== 1 ? 's' : ''} to{' '}
+                          <Typography component="span" variant="caption" fontWeight={600} sx={{ color: colorMap.get(move.ownerRegionId) ?? 'text.primary' }}>
+                            {move.ownerRegionName}
+                          </Typography>
+                          {' '}(has {move.totalChildren - move.divisions.length}/{move.totalChildren} children)
+                        </Typography>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                          {move.divisions.map((div) => (
+                            <Chip
+                              key={div.memberRowId}
+                              label={`${div.name} (from ${div.fromRegionName})`}
+                              size="small"
+                              sx={{
+                                height: 20,
+                                fontSize: '0.65rem',
+                                bgcolor: colorMap.get(div.fromRegionId)
+                                  ? `${colorMap.get(div.fromRegionId)}22`
+                                  : undefined,
+                              }}
+                            />
+                          ))}
+                        </Box>
+                      </Box>
+                      {isApplied ? (
+                        <Chip label="Applied" color="success" size="small" sx={{ height: 24 }} />
+                      ) : isSelected ? (
+                        <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="primary"
+                            startIcon={applying ? <CircularProgress size={14} /> : <CheckIcon />}
+                            onClick={(e) => { e.stopPropagation(); handleApply(); }}
+                            disabled={applying}
+                          >
+                            Apply
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<SkipNextIcon />}
+                            onClick={(e) => { e.stopPropagation(); handleSkip(); }}
+                            disabled={applying}
+                          >
+                            Skip
+                          </Button>
+                        </Box>
+                      ) : null}
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
