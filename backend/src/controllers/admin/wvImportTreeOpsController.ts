@@ -502,28 +502,17 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
 }
 
 /**
- * Simplify hierarchy by merging child divisions into parents when 100% coverage is found.
+ * Core simplification logic: merge child divisions into parents when 100% coverage is found.
  * Recursive: keeps merging upward until no more simplifications possible.
- * POST /api/admin/wv-import/matches/:worldViewId/simplify-hierarchy
+ * Opens its own connection and transaction. Returns the list of replacements made.
  */
-export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
-  console.log(`[WV Import] POST /matches/${worldViewId}/simplify-hierarchy — regionId=${regionId}`);
-
+async function runSimplifyHierarchy(
+  regionId: number,
+  _worldViewId: number,
+): Promise<{ replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }> }> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    // Verify region belongs to this world view
-    const region = await client.query(
-      'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
-      [regionId, worldViewId],
-    );
-    if (region.rows.length === 0) {
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
-    }
 
     const allReplacements: Array<{ parentName: string; parentPath: string; replacedCount: number }> = [];
 
@@ -606,19 +595,43 @@ export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response
     }
 
     await client.query('COMMIT');
-
-    // Post-transaction: invalidate geometry and sync match status
-    if (allReplacements.length > 0) {
-      await invalidateRegionGeometry(regionId);
-      await syncImportMatchStatus(regionId);
-    }
-
-    const totalReduced = allReplacements.reduce((sum, r) => sum + r.replacedCount, 0) - allReplacements.length;
-    res.json({ replacements: allReplacements, totalReduced });
+    return { replacements: allReplacements };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+}
+
+/**
+ * Simplify hierarchy by merging child divisions into parents when 100% coverage is found.
+ * Recursive: keeps merging upward until no more simplifications possible.
+ * POST /api/admin/wv-import/matches/:worldViewId/simplify-hierarchy
+ */
+export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/simplify-hierarchy — regionId=${regionId}`);
+
+  // Verify region belongs to this world view
+  const region = await pool.query(
+    'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+    [regionId, worldViewId],
+  );
+  if (region.rows.length === 0) {
+    res.status(404).json({ error: 'Region not found in this world view' });
+    return;
+  }
+
+  const { replacements } = await runSimplifyHierarchy(regionId, worldViewId);
+
+  // Post-transaction: invalidate geometry and sync match status
+  if (replacements.length > 0) {
+    await invalidateRegionGeometry(regionId);
+    await syncImportMatchStatus(regionId);
+  }
+
+  const totalReduced = replacements.reduce((sum, r) => sum + r.replacedCount, 0) - replacements.length;
+  res.json({ replacements, totalReduced });
 }
