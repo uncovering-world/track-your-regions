@@ -32,6 +32,7 @@ import {
   Palette as CVMatchIcon,
   Layers as MapshapeMatchIcon,
   ClearAll as ClearAssignedIcon,
+  LowPriority as SimplifyIcon,
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
 import { Tooltip } from './treeNodeShared';
@@ -88,12 +89,14 @@ interface TreeNodeActionsProps {
   onPruneToLeaves?: (regionId: number) => void;
   pruningRegionId?: number | null;
   onViewMap?: (regionId: number) => void;
-  onCVMatch?: (regionId: number, method?: 'classical' | 'meanshift') => void;
+  onCVMatch?: (regionId: number) => void;
   cvMatchingRegionId?: number | null;
   onMapshapeMatch?: (regionId: number) => void;
   mapshapeMatchingRegionId?: number | null;
   onClearMembers?: (regionId: number) => void;
   clearingMembersRegionId?: number | null;
+  onSimplifyHierarchy?: (regionId: number) => void;
+  simplifyingRegionId?: number | null;
   /** Whether this is a root node (depth 0) — remove button is hidden for root */
   isRoot?: boolean;
 }
@@ -261,6 +264,8 @@ export function TreeNodeActions({
   mapshapeMatchingRegionId,
   onClearMembers,
   clearingMembersRegionId,
+  onSimplifyHierarchy,
+  simplifyingRegionId,
   isRoot,
 }: TreeNodeActionsProps) {
   // Show dismiss button when node has children with unsuccessful match statuses
@@ -328,29 +333,11 @@ export function TreeNodeActions({
 
       {/* CV color match — for parent nodes with children and a region map */}
       {onCVMatch && hasChildren && node.regionMapUrl && (
-        <Tooltip title="CV color match (align country outline to map, cluster divisions by color)">
+        <Tooltip title="CV color match (gap divisions only)">
           <span>
             <IconButton
               size="small"
               onClick={() => onCVMatch(node.id)}
-              disabled={isMutating || cvMatchingRegionId === node.id}
-              sx={{ p: 0.25 }}
-            >
-              {cvMatchingRegionId === node.id
-                ? <CircularProgress size={16} />
-                : <CVMatchIcon sx={{ fontSize: 16, color: 'secondary.main' }} />}
-            </IconButton>
-          </span>
-        </Tooltip>
-      )}
-
-      {/* Mean-shift CV match — alternative pipeline using mean-shift filtering */}
-      {onCVMatch && hasChildren && node.regionMapUrl && (
-        <Tooltip title="Mean-shift CV match (simpler pipeline: mean-shift filter + flood-fill background/water)">
-          <span>
-            <IconButton
-              size="small"
-              onClick={() => onCVMatch(node.id, 'meanshift')}
               disabled={isMutating || cvMatchingRegionId === node.id}
               sx={{ p: 0.25 }}
             >
@@ -670,6 +657,27 @@ export function TreeNodeActions({
           </Tooltip>
         );
       })()}
+
+      {/* Simplify hierarchy — merge child divisions into parents */}
+      {node.assignedDivisions.length >= 2
+        && (node.matchStatus === 'auto_matched' || node.matchStatus === 'manual_matched')
+        && onSimplifyHierarchy && (
+        <Tooltip title="Simplify — merge child divisions into parents where all children are assigned">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onSimplifyHierarchy(node.id)}
+              disabled={isMutating || simplifyingRegionId != null}
+              sx={{ p: 0.25 }}
+            >
+              {simplifyingRegionId === node.id
+                ? <CircularProgress size={14} />
+                : <SimplifyIcon sx={{ fontSize: 16, color: 'info.main' }} />
+              }
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
 
       {/* Clear all assigned divisions (keep suggestions) */}
       {role === 'country' && node.assignedDivisions.length > 0 && onClearMembers && (
