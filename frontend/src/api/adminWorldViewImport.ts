@@ -358,6 +358,8 @@ export {
   aiSuggestChildren,
   aiSuggestClusterRegions,
   simplifyHierarchy,
+  detectSmartSimplify,
+  applySmartSimplifyMove,
 } from './adminWvImportTreeOps';
 export type {
   SmartFlattenPreviewResult,
@@ -366,6 +368,10 @@ export type {
   AutoResolveResult,
   AISuggestChildrenResult,
   SimplifyHierarchyResult,
+  SmartSimplifyDivision,
+  SmartSimplifyMove,
+  SmartSimplifyResult,
+  ApplySmartSimplifyResult,
 } from './adminWvImportTreeOps';
 
 export {

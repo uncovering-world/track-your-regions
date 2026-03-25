@@ -330,3 +330,56 @@ export async function simplifyHierarchy(
     { method: 'POST', body: JSON.stringify({ regionId }) },
   );
 }
+
+// =============================================================================
+// Smart Simplify
+// =============================================================================
+
+export interface SmartSimplifyDivision {
+  divisionId: number;
+  name: string;
+  fromRegionId: number;
+  fromRegionName: string;
+  memberRowId: number;
+}
+
+export interface SmartSimplifyMove {
+  gadmParentId: number;
+  gadmParentName: string;
+  gadmParentPath: string;
+  totalChildren: number;
+  ownerRegionId: number;
+  ownerRegionName: string;
+  divisions: SmartSimplifyDivision[];
+}
+
+export interface SmartSimplifyResult {
+  moves: SmartSimplifyMove[];
+}
+
+export async function detectSmartSimplify(
+  worldViewId: number,
+  parentRegionId: number,
+): Promise<SmartSimplifyResult> {
+  return authFetchJson(
+    `${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify`,
+    { method: 'POST', body: JSON.stringify({ parentRegionId }) },
+  );
+}
+
+export interface ApplySmartSimplifyResult {
+  moved: number;
+  simplification: SimplifyHierarchyResult;
+}
+
+export async function applySmartSimplifyMove(
+  worldViewId: number,
+  parentRegionId: number,
+  ownerRegionId: number,
+  memberRowIds: number[],
+): Promise<ApplySmartSimplifyResult> {
+  return authFetchJson(
+    `${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify/apply-move`,
+    { method: 'POST', body: JSON.stringify({ parentRegionId, ownerRegionId, memberRowIds }) },
+  );
+}
