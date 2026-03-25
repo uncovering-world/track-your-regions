@@ -635,3 +635,189 @@ export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response
   const totalReduced = replacements.reduce((sum, r) => sum + r.replacedCount, 0) - replacements.length;
   res.json({ replacements, totalReduced });
 }
+
+/**
+ * Detect cross-sibling division moves that would allow simplification.
+ * READ-ONLY — no mutations. Finds GADM parents whose children are fully present
+ * across sibling regions but split among multiple siblings.
+ * POST /api/admin/wv-import/matches/:worldViewId/smart-simplify
+ */
+export async function detectSmartSimplify(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { parentRegionId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/smart-simplify — parentRegionId=${parentRegionId}`);
+
+  // 1. Verify parentRegionId belongs to this world view
+  const parentRegion = await pool.query(
+    'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+    [parentRegionId, worldViewId],
+  );
+  if (parentRegion.rows.length === 0) {
+    res.status(404).json({ error: 'Parent region not found in this world view' });
+    return;
+  }
+
+  // 2. Get all child regions of parentRegionId
+  const childrenResult = await pool.query(
+    'SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2',
+    [parentRegionId, worldViewId],
+  );
+  if (childrenResult.rows.length === 0) {
+    res.json({ moves: [] });
+    return;
+  }
+
+  const childMap = new Map<number, string>();
+  const childIds: number[] = [];
+  for (const row of childrenResult.rows) {
+    childIds.push(row.id as number);
+    childMap.set(row.id as number, row.name as string);
+  }
+
+  // 3. Get all full-coverage members (no custom_geom) across ALL children
+  const membersResult = await pool.query(`
+    SELECT rm.id AS member_row_id, rm.region_id, rm.division_id, ad.name AS division_name, ad.parent_id
+    FROM region_members rm
+    JOIN administrative_divisions ad ON ad.id = rm.division_id
+    WHERE rm.region_id = ANY($1) AND rm.custom_geom IS NULL
+  `, [childIds]);
+
+  // 4. Group members by GADM parent_id
+  const byGadmParent = new Map<number, Array<{
+    memberRowId: number; regionId: number; divisionId: number; divisionName: string;
+  }>>();
+  for (const row of membersResult.rows) {
+    if (row.parent_id == null) continue;
+    const gadmParentId = row.parent_id as number;
+    if (!byGadmParent.has(gadmParentId)) byGadmParent.set(gadmParentId, []);
+    byGadmParent.get(gadmParentId)!.push({
+      memberRowId: row.member_row_id as number,
+      regionId: row.region_id as number,
+      divisionId: row.division_id as number,
+      divisionName: row.division_name as string,
+    });
+  }
+
+  if (byGadmParent.size === 0) {
+    res.json({ moves: [] });
+    return;
+  }
+
+  // 5. Batch-fetch child counts for all GADM parents
+  const gadmParentIds = [...byGadmParent.keys()];
+  const countsResult = await pool.query(
+    'SELECT parent_id, count(*)::int AS cnt FROM administrative_divisions WHERE parent_id = ANY($1) GROUP BY parent_id',
+    [gadmParentIds],
+  );
+  const gadmChildCounts = new Map<number, number>();
+  for (const row of countsResult.rows) {
+    gadmChildCounts.set(row.parent_id as number, row.cnt as number);
+  }
+
+  // 6. Find GADM parents where ALL children are present AND split across multiple siblings
+  const candidateParentIds: number[] = [];
+  for (const [gadmParentId, members] of byGadmParent) {
+    const totalChildren = gadmChildCounts.get(gadmParentId) ?? 0;
+    if (members.length !== totalChildren) continue;
+
+    // Check if split across multiple sibling regions
+    const regionIds = new Set(members.map(m => m.regionId));
+    if (regionIds.size < 2) continue;
+
+    candidateParentIds.push(gadmParentId);
+  }
+
+  if (candidateParentIds.length === 0) {
+    res.json({ moves: [] });
+    return;
+  }
+
+  // 7. Batch-fetch GADM parent names + paths via recursive ancestor CTE
+  const pathsResult = await pool.query(`
+    WITH RECURSIVE ancestors AS (
+      SELECT id, name, parent_id, 1 AS depth, id AS root_id
+      FROM administrative_divisions WHERE id = ANY($1)
+      UNION ALL
+      SELECT ad.id, ad.name, ad.parent_id, a.depth + 1, a.root_id
+      FROM administrative_divisions ad
+      JOIN ancestors a ON ad.id = a.parent_id
+    )
+    SELECT root_id, array_agg(name ORDER BY depth DESC) AS path_names
+    FROM ancestors
+    GROUP BY root_id
+  `, [candidateParentIds]);
+
+  const gadmPaths = new Map<number, { name: string; path: string }>();
+  for (const row of pathsResult.rows) {
+    const names = row.path_names as string[];
+    gadmPaths.set(row.root_id as number, {
+      name: names[names.length - 1],
+      path: names.join(' > '),
+    });
+  }
+
+  // 8. Build moves
+  const moves: Array<{
+    gadmParentId: number;
+    gadmParentName: string;
+    gadmParentPath: string;
+    totalChildren: number;
+    ownerRegionId: number;
+    ownerRegionName: string;
+    divisions: Array<{
+      divisionId: number;
+      name: string;
+      fromRegionId: number;
+      fromRegionName: string;
+      memberRowId: number;
+    }>;
+  }> = [];
+
+  for (const gadmParentId of candidateParentIds) {
+    const members = byGadmParent.get(gadmParentId)!;
+    const totalChildren = gadmChildCounts.get(gadmParentId)!;
+    const pathInfo = gadmPaths.get(gadmParentId);
+
+    // Count members per region to find the owner (most members, tie-break: lowest region ID)
+    const countByRegion = new Map<number, number>();
+    for (const m of members) {
+      countByRegion.set(m.regionId, (countByRegion.get(m.regionId) ?? 0) + 1);
+    }
+    let ownerRegionId = 0;
+    let ownerCount = 0;
+    for (const [regionId, count] of countByRegion) {
+      if (count > ownerCount || (count === ownerCount && regionId < ownerRegionId)) {
+        ownerRegionId = regionId;
+        ownerCount = count;
+      }
+    }
+
+    // Divisions NOT in the owner are move suggestions
+    const divisionsToMove = members
+      .filter(m => m.regionId !== ownerRegionId)
+      .map(m => ({
+        divisionId: m.divisionId,
+        name: m.divisionName,
+        fromRegionId: m.regionId,
+        fromRegionName: childMap.get(m.regionId) ?? `Region ${m.regionId}`,
+        memberRowId: m.memberRowId,
+      }));
+
+    if (divisionsToMove.length === 0) continue;
+
+    moves.push({
+      gadmParentId,
+      gadmParentName: pathInfo?.name ?? `Division ${gadmParentId}`,
+      gadmParentPath: pathInfo?.path ?? '',
+      totalChildren,
+      ownerRegionId,
+      ownerRegionName: childMap.get(ownerRegionId) ?? `Region ${ownerRegionId}`,
+      divisions: divisionsToMove,
+    });
+  }
+
+  // Sort by number of divisions to move (most impactful first)
+  moves.sort((a, b) => b.divisions.length - a.divisions.length);
+
+  res.json({ moves });
+}

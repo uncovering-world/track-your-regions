@@ -468,8 +468,6 @@ export const wvImportVisionMatchSchema = z.object({
 export const wvImportColorMatchSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   token: z.string().optional(),
-  method: z.enum(['classical', 'meanshift']).optional().default('classical'),
-  polyRaster: z.enum(['true', 'false']).optional(),
 });
 
 // Guided CV Match — seed point schemas
@@ -538,6 +536,10 @@ export const wvImportRenameRegionSchema = z.object({
 export const wvImportReparentRegionSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   newParentId: z.coerce.number().int().positive().nullable(),
+});
+
+export const wvImportSmartSimplifySchema = z.object({
+  parentRegionId: z.coerce.number().int().positive(),
 });
 
 export const wvImportApproveCoverageSchema = z.object({
