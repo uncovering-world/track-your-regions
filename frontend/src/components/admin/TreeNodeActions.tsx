@@ -33,6 +33,7 @@ import {
   Layers as MapshapeMatchIcon,
   ClearAll as ClearAssignedIcon,
   LowPriority as SimplifyIcon,
+  SwapHoriz as SmartSimplifyIcon,
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
 import { Tooltip } from './treeNodeShared';
@@ -97,6 +98,7 @@ interface TreeNodeActionsProps {
   clearingMembersRegionId?: number | null;
   onSimplifyHierarchy?: (regionId: number) => void;
   simplifyingRegionId?: number | null;
+  onSmartSimplify?: (regionId: number) => void;
   /** Whether this is a root node (depth 0) — remove button is hidden for root */
   isRoot?: boolean;
 }
@@ -266,6 +268,7 @@ export function TreeNodeActions({
   clearingMembersRegionId,
   onSimplifyHierarchy,
   simplifyingRegionId,
+  onSmartSimplify,
   isRoot,
 }: TreeNodeActionsProps) {
   // Show dismiss button when node has children with unsuccessful match statuses
@@ -631,6 +634,22 @@ export function TreeNodeActions({
                 ? <CircularProgress size={14} />
                 : <GroupingIcon sx={{ fontSize: 16 }} />
               }
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+
+      {/* Smart simplify — detect misplaced divisions across children */}
+      {hasChildren && onSmartSimplify && (
+        <Tooltip title="Smart simplify — detect misplaced divisions across children">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onSmartSimplify(node.id)}
+              disabled={isMutating}
+              sx={{ p: 0.25 }}
+            >
+              <SmartSimplifyIcon sx={{ fontSize: 16, color: 'info.main' }} />
             </IconButton>
           </span>
         </Tooltip>

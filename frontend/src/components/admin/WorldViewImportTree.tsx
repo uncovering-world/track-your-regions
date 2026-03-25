@@ -47,6 +47,7 @@ import { useNavigationState } from './useNavigationState';
 import { useImportTreeDialogs } from './useImportTreeDialogs';
 import { CvMatchDialog } from './CvMatchDialog';
 import { AIReviewDrawer } from './AIReviewDrawer';
+import { SmartSimplifyDialog } from './SmartSimplifyDialog';
 
 interface WorldViewImportTreeProps {
   worldViewId: number;
@@ -439,6 +440,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     clearingMembersRegionId={clearMembersMutation.isPending ? (clearMembersMutation.variables ?? null) : null}
                     onSimplifyHierarchy={handleSimplifyHierarchy}
                     simplifyingRegionId={simplifyHierarchyMutation.isPending ? (simplifyHierarchyMutation.variables ?? null) : null}
+                    onSmartSimplify={dialogs.handleSmartSimplify}
                     coverageData={coverageData?.coverage}
                     coverageLoading={coverageLoading}
                     coverageDirtyIds={coverageDirtyIds}
@@ -590,6 +592,17 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
         onCancel={() => dialogs.setFlattenPreview(null)}
         confirming={smartFlattenMutation.isPending}
       />
+      {dialogs.smartSimplifyDialog && (
+        <SmartSimplifyDialog
+          open
+          onClose={() => dialogs.setSmartSimplifyDialog(null)}
+          worldViewId={worldViewId}
+          parentRegionId={dialogs.smartSimplifyDialog.regionId}
+          parentRegionName={dialogs.smartSimplifyDialog.regionName}
+          regionMapUrl={dialogs.smartSimplifyDialog.regionMapUrl}
+          onApplied={() => invalidateTree(dialogs.smartSimplifyDialog?.regionId)}
+        />
+      )}
       <AISuggestChildrenDialog
         state={dialogs.suggestChildrenResult}
         onClose={() => dialogs.setSuggestChildrenResult(null)}
