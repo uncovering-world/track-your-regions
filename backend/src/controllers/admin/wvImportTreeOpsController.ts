@@ -14,6 +14,7 @@ import {
   type SuggestionSnapshot,
   undoEntries,
 } from './wvImportUtils.js';
+import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
 
 // =============================================================================
 // Tree structure manipulation endpoints
@@ -336,15 +337,22 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
       DELETE FROM regions WHERE id IN (SELECT id FROM desc_regions ORDER BY depth DESC)
     `, [regionId]);
 
-    // Update parent: clear children-related status, assignments, and suggestions
-    await client.query(
-      'DELETE FROM region_members WHERE region_id = $1',
-      [regionId],
-    );
-    await client.query(
-      `UPDATE region_import_state SET match_status = 'no_candidates' WHERE region_id = $1`,
-      [regionId],
-    );
+    // Update parent: if it has its own divisions, keep them and mark as matched;
+    // otherwise clear to no_candidates so the user can re-match at this level.
+    const parentHasDivisions = parentMembersResult.rows.length > 0;
+    if (parentHasDivisions) {
+      // Keep existing divisions — just update status to reflect it's now a leaf with assignments
+      await client.query(
+        `UPDATE region_import_state SET match_status = 'auto_matched' WHERE region_id = $1`,
+        [regionId],
+      );
+    } else {
+      await client.query(
+        `UPDATE region_import_state SET match_status = 'no_candidates' WHERE region_id = $1`,
+        [regionId],
+      );
+    }
+    // Always clear suggestions (stale after hierarchy change)
     await client.query(
       `DELETE FROM region_match_suggestions WHERE region_id = $1`,
       [regionId],
@@ -485,6 +493,128 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
 
     console.log(`[WV Import] Pruned ${grandDescIds.length} grandchildren+ from region ${regionId} (kept ${childIds.length} direct children)`);
     res.json({ pruned: grandDescIds.length, undoAvailable: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Simplify hierarchy by merging child divisions into parents when 100% coverage is found.
+ * Recursive: keeps merging upward until no more simplifications possible.
+ * POST /api/admin/wv-import/matches/:worldViewId/simplify-hierarchy
+ */
+export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/simplify-hierarchy — regionId=${regionId}`);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify region belongs to this world view
+    const region = await client.query(
+      'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+      [regionId, worldViewId],
+    );
+    if (region.rows.length === 0) {
+      res.status(404).json({ error: 'Region not found in this world view' });
+      return;
+    }
+
+    const allReplacements: Array<{ parentName: string; parentPath: string; replacedCount: number }> = [];
+
+    // Recursive simplification loop
+    for (;;) {
+      // Get all full-coverage members (no custom_geom) with their GADM parent
+      const members = await client.query(`
+        SELECT rm.id AS member_id, rm.division_id, ad.parent_id
+        FROM region_members rm
+        JOIN administrative_divisions ad ON ad.id = rm.division_id
+        WHERE rm.region_id = $1 AND rm.custom_geom IS NULL
+      `, [regionId]);
+
+      // Group by parent_id (skip nulls — root divisions can't merge further)
+      const byParent = new Map<number, Array<{ memberId: number; divisionId: number }>>();
+      for (const row of members.rows) {
+        if (row.parent_id == null) continue;
+        const parentId = row.parent_id as number;
+        if (!byParent.has(parentId)) byParent.set(parentId, []);
+        byParent.get(parentId)!.push({ memberId: row.member_id, divisionId: row.division_id });
+      }
+
+      // Check which parents are fully covered
+      const replacements: Array<{ parentId: number; memberIds: number[]; count: number }> = [];
+      for (const [parentId, children] of byParent) {
+        const totalResult = await client.query(
+          'SELECT count(*)::int AS cnt FROM administrative_divisions WHERE parent_id = $1',
+          [parentId],
+        );
+        const totalChildren = totalResult.rows[0].cnt as number;
+        if (children.length === totalChildren) {
+          replacements.push({
+            parentId,
+            memberIds: children.map(c => c.memberId),
+            count: children.length,
+          });
+        }
+      }
+
+      if (replacements.length === 0) break;
+
+      // Execute replacements
+      for (const rep of replacements) {
+        // Delete child members
+        await client.query(
+          'DELETE FROM region_members WHERE id = ANY($1::int[])',
+          [rep.memberIds],
+        );
+
+        // Check if parent is already a member (avoid duplicates)
+        const existing = await client.query(
+          'SELECT id FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
+          [regionId, rep.parentId],
+        );
+        if (existing.rows.length === 0) {
+          await client.query(
+            'INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)',
+            [regionId, rep.parentId],
+          );
+        }
+
+        // Build parent path using recursive ancestor query
+        const pathResult = await client.query(`
+          WITH RECURSIVE ancestors AS (
+            SELECT id, name, parent_id, 1 AS depth
+            FROM administrative_divisions WHERE id = $1
+            UNION ALL
+            SELECT ad.id, ad.name, ad.parent_id, a.depth + 1
+            FROM administrative_divisions ad
+            JOIN ancestors a ON ad.id = a.parent_id
+          )
+          SELECT name FROM ancestors ORDER BY depth DESC
+        `, [rep.parentId]);
+        const names = pathResult.rows.map(r => r.name as string);
+        const parentPath = names.join(' > ');
+        const parentName = names[names.length - 1];
+
+        allReplacements.push({ parentName, parentPath, replacedCount: rep.count });
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // Post-transaction: invalidate geometry and sync match status
+    if (allReplacements.length > 0) {
+      await invalidateRegionGeometry(regionId);
+      await syncImportMatchStatus(regionId);
+    }
+
+    const totalReduced = allReplacements.reduce((sum, r) => sum + r.replacedCount, 0) - allReplacements.length;
+    res.json({ replacements: allReplacements, totalReduced });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
