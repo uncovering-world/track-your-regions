@@ -40,6 +40,8 @@ A single "Simplify hierarchy" button on matched region nodes in the Review dialo
 }
 ```
 
+`totalReduced` = net reduction in member count = `sum(replacedCount) - replacements.length` (each replacement removes N children and adds 1 parent, so net is N-1 per replacement).
+
 If nothing to simplify:
 ```json
 { "replacements": [], "totalReduced": 0 }
@@ -47,19 +49,35 @@ If nothing to simplify:
 
 ### Algorithm
 
+Uses a dedicated client connection with explicit transaction (`BEGIN`/`COMMIT`/`ROLLBACK`), following the pattern used by all tree-ops controllers.
+
+**Pre-check:** Verify the region belongs to the specified world view:
+```sql
+SELECT id FROM regions WHERE id = $1 AND world_view_id = $2
 ```
-function simplifyHierarchy(regionId):
+Return 404 if not found.
+
+```
+function simplifyHierarchy(regionId, worldViewId):
+  client = pool.connect()
+  client.query('BEGIN')
+
+  allReplacements = []
   loop:
-    members = SELECT rm.id, rm.division_id, ad.parent_id
-              FROM region_members rm
-              JOIN administrative_divisions ad ON ad.id = rm.division_id
-              WHERE rm.region_id = regionId AND rm.custom_geom IS NULL
+    members = client.query(
+      SELECT rm.id, rm.division_id, ad.parent_id
+      FROM region_members rm
+      JOIN administrative_divisions ad ON ad.id = rm.division_id
+      WHERE rm.region_id = regionId AND rm.custom_geom IS NULL
+    )
 
     group members by ad.parent_id (skip NULL parents — root divisions)
 
     replacements = []
     for each (parentId, childMembers) in groups:
-      totalChildren = SELECT count(*) FROM administrative_divisions WHERE parent_id = parentId
+      totalChildren = client.query(
+        SELECT count(*) FROM administrative_divisions WHERE parent_id = parentId
+      )
       if childMembers.length == totalChildren:
         replacements.push({ parentId, memberIdsToRemove: childMembers.map(m => m.id) })
 
@@ -67,20 +85,45 @@ function simplifyHierarchy(regionId):
 
     for each replacement:
       DELETE FROM region_members WHERE id IN (memberIdsToRemove)
-      INSERT INTO region_members (region_id, division_id) VALUES (regionId, parentId)
 
-    record replacement info for response
+      -- Check for existing membership before inserting (avoid duplicates)
+      existing = client.query(
+        SELECT id FROM region_members
+        WHERE region_id = regionId AND division_id = parentId AND custom_geom IS NULL
+      )
+      if not existing:
+        INSERT INTO region_members (region_id, division_id) VALUES (regionId, parentId)
+
+    -- Build parent name + path for response using recursive ancestor query
+    for each replacement:
+      parentInfo = client.query(
+        WITH RECURSIVE ancestors AS (
+          SELECT id, name, parent_id, 1 as depth
+          FROM administrative_divisions WHERE id = parentId
+          UNION ALL
+          SELECT ad.id, ad.name, ad.parent_id, a.depth + 1
+          FROM administrative_divisions ad
+          JOIN ancestors a ON ad.id = a.parent_id
+        )
+        SELECT name FROM ancestors ORDER BY depth DESC
+      )
+      parentPath = join ancestor names with ' > '
+      parentName = last name in chain
+      allReplacements.push({ parentName, parentPath, replacedCount: childMembers.length })
+
+  client.query('COMMIT')
+  client.release()
 
   invalidateRegionGeometry(regionId)
   syncImportMatchStatus(regionId)
-  return accumulated replacements
+  return { replacements: allReplacements, totalReduced }
 ```
 
-All operations run in a single database transaction.
+Note: `syncImportMatchStatus` will set match status to `manual_matched` (since members exist). This is an acceptable semantic shift from `auto_matched` — the user explicitly modified the membership.
 
 ### File placement
 
-- Controller: `backend/src/controllers/worldView/regionMemberMutations.ts` — new `simplifyHierarchy()` function
+- Controller: `backend/src/controllers/admin/wvImportTreeOpsController.ts` — new `simplifyHierarchy()` export (consistent with `mergeChildIntoParent`, `pruneToLeaves`, etc.)
 - Route: `backend/src/routes/adminRoutes.ts` — new POST route
 - Validation: Zod schema for `{ regionId: z.number() }`
 
@@ -135,8 +178,13 @@ export async function simplifyHierarchy(
 | Root-level divisions (no parent) | Skipped — cannot merge further |
 | Single member | Button hidden (need >= 2) |
 | Recursive: after first pass creates new complete parent | Next iteration catches it |
+| Parent division already a member | Skip insert (duplicate check), still count as replacement |
+| Region not in specified world view | Return 404 |
 
 ## Testing
 
-- Unit test: mock DB responses, verify correct grouping and replacement logic
+- Unit test: single-level simplification (all children of one parent present → merged)
+- Unit test: multi-level recursive (districts → states → country in successive passes)
+- Unit test: mixed full + custom_geom members (custom_geom excluded, partial parent not merged)
+- Unit test: partial coverage (not all children present → no merge)
 - Manual test: import Eastern India with district-level matches, click simplify, verify districts collapse to states
