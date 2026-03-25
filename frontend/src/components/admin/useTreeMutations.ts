@@ -39,6 +39,7 @@ import {
   renameRegion,
   reparentRegion,
   getChildrenCoverage,
+  simplifyHierarchy,
   type MatchTreeNode,
   type ChildrenCoverageResult,
 } from '../../api/adminWorldViewImport';
@@ -392,6 +393,11 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     onSuccess: (_data, regionId) => invalidateStatsOnly(regionId),
   });
 
+  const simplifyHierarchyMutation = useMutation({
+    mutationFn: (regionId: number) => simplifyHierarchy(worldViewId, regionId),
+    onSuccess: (_data, regionId) => invalidateTree(regionId),
+  });
+
   // ── Hierarchy mutations ──────────────────────────────────────────────────
 
   const dismissMutation = useMutation({
@@ -609,7 +615,8 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     mergeMutation.isPending || smartFlattenMutation.isPending || addChildMutation.isPending ||
     dismissWarningsMutation.isPending || removeMutation.isPending || collapseToParentMutation.isPending ||
     autoResolveMutation.isPending ||
-    renameMutation.isPending || reparentMutation.isPending;
+    renameMutation.isPending || reparentMutation.isPending ||
+    simplifyHierarchyMutation.isPending;
 
   return {
     // Mutations
@@ -644,6 +651,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     dismissWarningsMutation,
     renameMutation,
     reparentMutation,
+    simplifyHierarchyMutation,
     renamingRegionId: renameMutation.isPending ? (renameMutation.variables?.regionId ?? null) : null,
     reparentingRegionId: reparentMutation.isPending ? (reparentMutation.variables?.regionId ?? null) : null,
     // State
