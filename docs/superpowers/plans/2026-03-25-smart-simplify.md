@@ -484,12 +484,11 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 4: Frontend — API client + mutation
+### Task 4: Frontend — API client
 
 **Files:**
 - Modify: `frontend/src/api/adminWvImportTreeOps.ts` (add functions + types)
 - Modify: `frontend/src/api/adminWorldViewImport.ts` (add re-exports)
-- Modify: `frontend/src/components/admin/useTreeMutations.ts` (add mutation for apply-move)
 
 - [ ] **Step 1: Add API functions to `adminWvImportTreeOps.ts`**
 
@@ -920,7 +919,7 @@ export function SmartSimplifyDialog({
 }
 ```
 
-This is a starting implementation. The map shows child region geometries color-coded. The "Proposed" toggle and per-division highlighting will need refinement based on the actual geometry data available (the `getChildrenRegionGeometry` returns union per child, not per division). For division-level highlighting, the dialog may need to fetch individual division geometries for the selected move's divisions. This can be refined during implementation.
+**Implementation note:** This is a V1 that shows child-region-level geometry (union per child, color-coded). The Current/Proposed toggle and per-division highlighting (dashed red borders on individual divisions) require per-division geometry which `getChildrenRegionGeometry` does not provide. V1 shows the child-region-level view which is sufficient for the user to understand which regions are involved in each move. Per-division highlighting can be added as a follow-up by fetching `fetchDivisionGeometry` from `frontend/src/api/regions.ts` for the selected move's `divisionIds`.
 
 - [ ] **Step 2: Verify it compiles**
 
@@ -956,7 +955,15 @@ export interface SmartSimplifyState {
 }
 ```
 
-2. Add state and handler inside the hook:
+2. Add to the `UseImportTreeDialogsResult` interface (around line 178, before the closing `}`):
+```typescript
+  // Smart simplify
+  smartSimplifyDialog: SmartSimplifyState | null;
+  setSmartSimplifyDialog: React.Dispatch<React.SetStateAction<SmartSimplifyState | null>>;
+  handleSmartSimplify: (regionId: number) => void;
+```
+
+3. Add state and handler inside the hook:
 ```typescript
   // Smart simplify
   const [smartSimplifyDialog, setSmartSimplifyDialog] = useState<SmartSimplifyState | null>(null);
@@ -973,7 +980,7 @@ export interface SmartSimplifyState {
   }, [tree]);
 ```
 
-3. Add to the return object:
+4. Add to the return object:
 ```typescript
     // Smart simplify
     smartSimplifyDialog, setSmartSimplifyDialog, handleSmartSimplify,
