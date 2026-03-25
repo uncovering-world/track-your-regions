@@ -4,9 +4,14 @@
  * Shows a side-by-side view: source region map image (left) and MapLibre map
  * with color-coded child region geometries (right). Below the map, a scrollable
  * list of detected moves that can be applied individually or skipped.
+ *
+ * The map has a Current/Proposed toggle:
+ * - Current: divisions shown in their current region's color, moved divisions
+ *   highlighted with dashed red borders
+ * - Proposed: moved divisions recolored to the owner region's color
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -17,6 +22,8 @@ import {
   CircularProgress,
   Button,
   Chip,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
@@ -30,6 +37,8 @@ import {
 } from '../../api/adminWorldViewImport';
 import { getChildrenRegionGeometry } from '../../api/adminWvImportCoverage';
 import type { SiblingRegionGeometry } from '../../api/adminWvImportCoverage';
+import { fetchDivisionGeometry } from '../../api/divisions';
+import type { GeoJSONGeometry } from '../../types';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -65,10 +74,15 @@ export function SmartSimplifyDialog({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Per-division geometries for the selected move (fetched on demand)
+  const [divisionGeometries, setDivisionGeometries] = useState<Map<number, GeoJSONGeometry>>(new Map());
+  const [divGeoLoading, setDivGeoLoading] = useState(false);
+
   // Interaction state
   const [selectedMoveIndex, setSelectedMoveIndex] = useState<number | null>(null);
   const [appliedGadmParentIds, setAppliedGadmParentIds] = useState<Set<number>>(new Set());
   const [applying, setApplying] = useState(false);
+  const [viewMode, setViewMode] = useState<'current' | 'proposed'>('current');
 
   // Load data on open
   useEffect(() => {
@@ -79,6 +93,8 @@ export function SmartSimplifyDialog({
     setChildGeometries(null);
     setSelectedMoveIndex(null);
     setAppliedGadmParentIds(new Set());
+    setDivisionGeometries(new Map());
+    setViewMode('current');
 
     Promise.all([
       detectSmartSimplify(worldViewId, parentRegionId),
@@ -99,6 +115,33 @@ export function SmartSimplifyDialog({
       });
   }, [open, worldViewId, parentRegionId]);
 
+  // Fetch division geometries when selected move changes
+  const selectedMove = moves && selectedMoveIndex != null ? moves[selectedMoveIndex] : null;
+
+  useEffect(() => {
+    if (!selectedMove) return;
+    const divIds = selectedMove.divisions.map(d => d.divisionId);
+    // Check which ones we already have
+    const missing = divIds.filter(id => !divisionGeometries.has(id));
+    if (missing.length === 0) return;
+
+    setDivGeoLoading(true);
+    Promise.all(
+      missing.map(id => fetchDivisionGeometry(id, worldViewId, { detail: 'medium' }).then(feat => ({ id, feat }))),
+    )
+      .then(results => {
+        setDivisionGeometries(prev => {
+          const next = new Map(prev);
+          for (const { id, feat } of results) {
+            if (feat?.geometry) next.set(id, feat.geometry);
+          }
+          return next;
+        });
+      })
+      .finally(() => setDivGeoLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-fetch when selected move's gadmParentId changes
+  }, [selectedMove?.gadmParentId, worldViewId]);
+
   // Fit map bounds when geometries load
   useEffect(() => {
     if (!childGeometries || childGeometries.length === 0 || !mapRef.current) return;
@@ -107,7 +150,7 @@ export function SmartSimplifyDialog({
         type: 'FeatureCollection',
         features: childGeometries.map((c) => ({
           type: 'Feature' as const,
-          properties: { regionId: c.regionId, name: c.name },
+          properties: {},
           geometry: c.geometry,
         })),
       };
@@ -122,12 +165,10 @@ export function SmartSimplifyDialog({
   }, [childGeometries]);
 
   // Build a color map: regionId -> color
-  const colorMap = new Map<number, string>();
-  if (childGeometries) {
-    childGeometries.forEach((c, i) => {
-      colorMap.set(c.regionId, CHILD_COLORS[i % CHILD_COLORS.length]);
-    });
-  }
+  const colorMap = useMemo(() => {
+    if (!childGeometries) return new Map<number, string>();
+    return new Map(childGeometries.map((c, i) => [c.regionId, CHILD_COLORS[i % CHILD_COLORS.length]]));
+  }, [childGeometries]);
 
   // Handle Apply
   const handleApply = useCallback(async () => {
@@ -167,19 +208,31 @@ export function SmartSimplifyDialog({
     setSelectedMoveIndex(nextIndex >= 0 ? nextIndex : null);
   }, [moves, selectedMoveIndex, appliedGadmParentIds]);
 
-  const selectedMove = moves && selectedMoveIndex != null ? moves[selectedMoveIndex] : null;
-
   // Highlight region IDs involved in the selected move
-  const highlightedRegionIds = new Set<number>();
-  if (selectedMove) {
-    highlightedRegionIds.add(selectedMove.ownerRegionId);
-    for (const div of selectedMove.divisions) {
-      highlightedRegionIds.add(div.fromRegionId);
+  const highlightedRegionIds = useMemo(() => {
+    const set = new Set<number>();
+    if (selectedMove) {
+      set.add(selectedMove.ownerRegionId);
+      for (const div of selectedMove.divisions) {
+        set.add(div.fromRegionId);
+      }
     }
-  }
+    return set;
+  }, [selectedMove]);
 
   const hasSideBySide = !!regionMapUrl;
   const pendingMoves = moves ? moves.filter((m) => !appliedGadmParentIds.has(m.gadmParentId)).length : 0;
+
+  // Division overlay color: in "proposed" mode, show in the owner's color; in "current", show in the from-region's color
+  const getDivisionOverlayColor = useCallback((divisionId: number): string => {
+    if (!selectedMove) return '#ff5252';
+    if (viewMode === 'proposed') {
+      return colorMap.get(selectedMove.ownerRegionId) ?? '#4CAF50';
+    }
+    // Current: show in the from-region's color
+    const div = selectedMove.divisions.find(d => d.divisionId === divisionId);
+    return div ? (colorMap.get(div.fromRegionId) ?? '#ff5252') : '#ff5252';
+  }, [selectedMove, viewMode, colorMap]);
 
   return (
     <Dialog
@@ -253,9 +306,26 @@ export function SmartSimplifyDialog({
 
               {/* Right panel: MapLibre map with child regions */}
               <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', pt: 0.5 }}>
-                  Child regions (GADM geometry)
-                </Typography>
+                {/* Toggle bar */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1.5, py: 0.5, borderBottom: 1, borderColor: 'divider' }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Child regions (GADM)
+                    {divGeoLoading && <CircularProgress size={10} sx={{ ml: 1 }} />}
+                  </Typography>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={viewMode}
+                    onChange={(_, v) => { if (v) setViewMode(v); }}
+                  >
+                    <ToggleButton value="current" sx={{ px: 1.5, py: 0, fontSize: '0.7rem', textTransform: 'none' }}>
+                      Current
+                    </ToggleButton>
+                    <ToggleButton value="proposed" sx={{ px: 1.5, py: 0, fontSize: '0.7rem', textTransform: 'none' }}>
+                      Proposed
+                    </ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
                 <Box sx={{ flex: 1, minHeight: 0 }}>
                   <MapGL
                     ref={mapRef}
@@ -285,6 +355,8 @@ export function SmartSimplifyDialog({
                     }}
                   >
                     <NavigationControl position="top-right" showCompass={false} />
+
+                    {/* Child region union geometries (background) */}
                     {childGeometries?.map((child, idx) => {
                       const color = CHILD_COLORS[idx % CHILD_COLORS.length];
                       const isHighlighted = highlightedRegionIds.has(child.regionId);
@@ -304,7 +376,7 @@ export function SmartSimplifyDialog({
                             type="fill"
                             paint={{
                               'fill-color': color,
-                              'fill-opacity': isHighlighted ? 0.5 : 0.2,
+                              'fill-opacity': isHighlighted ? 0.35 : 0.15,
                             }}
                           />
                           <Layer
@@ -312,7 +384,45 @@ export function SmartSimplifyDialog({
                             type="line"
                             paint={{
                               'line-color': color,
-                              'line-width': isHighlighted ? 3 : 1,
+                              'line-width': isHighlighted ? 2.5 : 1,
+                            }}
+                          />
+                        </Source>
+                      );
+                    })}
+
+                    {/* Per-division overlays for the selected move */}
+                    {selectedMove && selectedMove.divisions.map(div => {
+                      const geom = divisionGeometries.get(div.divisionId);
+                      if (!geom) return null;
+                      const overlayColor = getDivisionOverlayColor(div.divisionId);
+                      const isCurrent = viewMode === 'current';
+                      return (
+                        <Source
+                          key={`div-${div.divisionId}`}
+                          id={`div-${div.divisionId}`}
+                          type="geojson"
+                          data={{
+                            type: 'Feature',
+                            properties: { name: div.name },
+                            geometry: geom,
+                          }}
+                        >
+                          <Layer
+                            id={`div-fill-${div.divisionId}`}
+                            type="fill"
+                            paint={{
+                              'fill-color': overlayColor,
+                              'fill-opacity': 0.6,
+                            }}
+                          />
+                          <Layer
+                            id={`div-border-${div.divisionId}`}
+                            type="line"
+                            paint={{
+                              'line-color': isCurrent ? '#ff5252' : overlayColor,
+                              'line-width': isCurrent ? 2.5 : 2,
+                              'line-dasharray': isCurrent ? [4, 3] : [1, 0],
                             }}
                           />
                         </Source>
