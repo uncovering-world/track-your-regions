@@ -37,9 +37,11 @@ function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }:
         </IconButton>
       </Tooltip>
       <Tooltip title="Reject">
+        <span>
         <IconButton size="small" color="error" onClick={() => onReject(regionId, div.divisionId)} disabled={isMutating} sx={{ p: 0.25 }}>
           <CloseIcon sx={{ fontSize: 16 }} />
         </IconButton>
+        </span>
       </Tooltip>
     </Box>
   );
@@ -300,16 +302,31 @@ export function TreeNodeContent({
             />
           ))}
           {node.suggestions.length > 1 && (
-            <Button
-              size="small"
-              variant="text"
-              color="success"
-              onClick={() => onAcceptAll(node.suggestions.map(s => ({ regionId: node.id, divisionId: s.divisionId })))}
-              disabled={isMutating}
-              sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}
-            >
-              Accept all {node.suggestions.length}
-            </Button>
+            <>
+              <Button
+                size="small"
+                variant="text"
+                color="info"
+                onClick={() => {
+                  const allIds = node.suggestions.map(s => s.divisionId);
+                  const allSelected = allIds.every(id => selectedDivIds.has(id));
+                  setSelectedDivIds(allSelected ? new Set() : new Set(allIds));
+                }}
+                sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}
+              >
+                {node.suggestions.every(s => selectedDivIds.has(s.divisionId)) ? 'Deselect all' : 'Select all'}
+              </Button>
+              <Button
+                size="small"
+                variant="text"
+                color="success"
+                onClick={() => onAcceptAll(node.suggestions.map(s => ({ regionId: node.id, divisionId: s.divisionId })))}
+                disabled={isMutating}
+                sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}
+              >
+                Accept all {node.suggestions.length}
+              </Button>
+            </>
           )}
           {node.suggestions.length > 0 && (
             <Button
