@@ -34,41 +34,46 @@ A "Smart Simplify" button on parent region nodes (e.g., India) that analyzes all
 
 **Algorithm:**
 
-Uses a dedicated client connection with explicit transaction (`BEGIN`/`COMMIT`/`ROLLBACK`).
+This is a read-only endpoint — uses `pool.query()` directly (no dedicated client, no transaction), following the pattern of other read-only admin endpoints like `getChildrenRegionGeometry`.
 
 **Pre-check:** Verify `parentRegionId` belongs to `worldViewId` and has children.
 
 ```
 function detectSmartSimplifyMoves(parentRegionId, worldViewId):
-  client = pool.connect()
-
   // 1. Get all child regions
-  children = client.query(
+  children = pool.query(
     SELECT id, name FROM regions
     WHERE parent_region_id = parentRegionId AND world_view_id = worldViewId
   )
+  if children.length === 0: return { moves: [] }
 
-  // 2. For each child, get full-coverage members with GADM parent
-  allMembers = []
-  for each child in children:
-    members = client.query(
-      SELECT rm.id AS member_row_id, rm.division_id, rm.region_id,
-             ad.parent_id AS gadm_parent_id, ad.name AS division_name
-      FROM region_members rm
-      JOIN administrative_divisions ad ON ad.id = rm.division_id
-      WHERE rm.region_id = child.id AND rm.custom_geom IS NULL
-    )
-    allMembers.push(...members)
+  // 2. Get all full-coverage members across ALL children in one query
+  allMembers = pool.query(
+    SELECT rm.id AS member_row_id, rm.division_id, rm.region_id,
+           ad.parent_id AS gadm_parent_id, ad.name AS division_name
+    FROM region_members rm
+    JOIN administrative_divisions ad ON ad.id = rm.division_id
+    WHERE rm.region_id = ANY(childIds) AND rm.custom_geom IS NULL
+  )
 
   // 3. Group by GADM parent (skip nulls)
   byGadmParent = group allMembers by gadm_parent_id
 
-  // 4. For each GADM parent, check if ALL children are present across siblings
+  // 4. Batch-fetch child counts for all GADM parents at once (avoids N+1)
+  gadmParentIds = [...byGadmParent.keys()]
+  childCounts = pool.query(
+    SELECT parent_id, count(*)::int AS cnt
+    FROM administrative_divisions
+    WHERE parent_id = ANY(gadmParentIds)
+    GROUP BY parent_id
+  )
+  // Build lookup: gadmParentId → total children count
+  totalChildrenMap = Map from childCounts
+
+  // 5. For each GADM parent, check if ALL children are present and split across siblings
   moves = []
   for each (gadmParentId, members) in byGadmParent:
-    totalChildren = client.query(
-      SELECT count(*)::int FROM administrative_divisions WHERE parent_id = gadmParentId
-    )
+    totalChildren = totalChildrenMap.get(gadmParentId)
     if members.length != totalChildren: continue  // not complete — skip
 
     // Check if split across multiple sibling regions
@@ -77,12 +82,13 @@ function detectSmartSimplifyMoves(parentRegionId, worldViewId):
 
     // Find owner (sibling with the most)
     ownerRegionId = region with max count in byRegion
+    // Tie-breaker: lowest region ID (deterministic)
     ownerRegionName = children.find(c => c.id === ownerRegionId).name
 
     // Divisions in other siblings are the move suggestions
     divisionsToMove = members where region_id != ownerRegionId
 
-    // Build GADM parent path
+    // Build GADM parent path (recursive ancestor query)
     parentPath = recursive ancestor query for gadmParentId
 
     moves.push({
@@ -101,7 +107,6 @@ function detectSmartSimplifyMoves(parentRegionId, worldViewId):
       })),
     })
 
-  client.release()
   return { moves }
 ```
 
@@ -143,7 +148,9 @@ If nothing found: `{ "moves": [] }`
 
 **Algorithm:**
 
-Uses a dedicated client connection with `BEGIN`/`COMMIT`/`ROLLBACK`.
+Uses a dedicated client connection with `BEGIN`/`COMMIT`/`ROLLBACK` for the move transaction. Simplification runs post-commit in its own transaction (reusing `runSimplifyHierarchy`).
+
+**Security:** Verify that each `memberRowId` belongs to a child region of `parentRegionId` within the specified world view. Reject the request if any member row does not belong.
 
 ```
 function applySmartSimplifyMove(parentRegionId, ownerRegionId, memberRowIds, worldViewId):
@@ -153,24 +160,30 @@ function applySmartSimplifyMove(parentRegionId, ownerRegionId, memberRowIds, wor
   // Verify regions belong to world view
   verify parentRegionId and ownerRegionId exist in worldViewId
 
-  // Move each member to the owner region
-  affectedRegionIds = Set()
-  for each memberRowId in memberRowIds:
-    result = client.query(
-      UPDATE region_members SET region_id = ownerRegionId
-      WHERE id = memberRowId RETURNING region_id  -- old region_id from before update? No — need to capture source first
-    )
-    // Actually: get the source region before moving
-    source = client.query(SELECT region_id FROM region_members WHERE id = memberRowId)
-    affectedRegionIds.add(source.region_id)
-    client.query(UPDATE region_members SET region_id = ownerRegionId WHERE id = memberRowId)
+  // Verify all memberRowIds belong to children of parentRegionId
+  childIds = client.query(
+    SELECT id FROM regions WHERE parent_region_id = parentRegionId AND world_view_id = worldViewId
+  )
+  verification = client.query(
+    SELECT id, region_id FROM region_members WHERE id = ANY(memberRowIds)
+  )
+  for each row in verification:
+    if row.region_id not in childIds: return 400 "Member row does not belong to a child of this parent"
 
+  // Collect source regions, then move all members
+  affectedRegionIds = Set(verification.rows.map(r => r.region_id))
   affectedRegionIds.add(ownerRegionId)
 
-  client.query('COMMIT')
+  client.query(
+    UPDATE region_members SET region_id = ownerRegionId WHERE id = ANY(memberRowIds)
+  )
 
-  // Post-transaction: run simplify on the owner region
-  // (reuse the simplifyHierarchy logic but as a function, not an endpoint)
+  client.query('COMMIT')
+  client.release()
+
+  // Post-commit: run simplify on the owner region (opens its own transaction)
+  // If this fails, the moves are already committed — user sees "moved N, simplified 0"
+  // which is an acceptable partial-success state (simplify can be re-run manually)
   simplifyResult = await runSimplifyHierarchy(ownerRegionId, worldViewId)
 
   // Invalidate geometries and sync match status for all affected regions
@@ -195,13 +208,41 @@ function applySmartSimplifyMove(parentRegionId, ownerRegionId, memberRowIds, wor
 }
 ```
 
+### Zod schemas
+
+In `backend/src/types/index.ts`:
+
+```typescript
+export const wvImportSmartSimplifySchema = z.object({
+  parentRegionId: z.coerce.number().int().positive(),
+});
+
+export const wvImportSmartSimplifyApplySchema = z.object({
+  parentRegionId: z.coerce.number().int().positive(),
+  ownerRegionId: z.coerce.number().int().positive(),
+  memberRowIds: z.array(z.number().int().positive()).min(1),
+});
+```
+
+### Shared simplify logic
+
+Extract the core simplification loop from the existing `simplifyHierarchy` endpoint into a reusable function:
+
+```typescript
+async function runSimplifyHierarchy(
+  regionId: number,
+  worldViewId: number,
+): Promise<{ replacements: Array<{...}>; totalReduced: number }>
+```
+
+The existing `simplifyHierarchy` endpoint becomes a thin wrapper that calls `runSimplifyHierarchy`. The apply-move endpoint also calls it post-commit.
+
 ### File placement
 
-- Controller: `backend/src/controllers/admin/wvImportTreeOpsController.ts` — new `detectSmartSimplify()` and `applySmartSimplifyMove()` exports
+- Controller: `backend/src/controllers/admin/wvImportTreeOpsController.ts` — new `detectSmartSimplify()` and `applySmartSimplifyMove()` exports, plus extracted `runSimplifyHierarchy()` helper
 - Barrel: `backend/src/controllers/admin/worldViewImportController.ts` — add re-exports
 - Routes: `backend/src/routes/adminRoutes.ts` — two new POST routes
-- Validation: New Zod schemas for both request bodies in `backend/src/types/index.ts`
-- Shared logic: Extract the core simplification loop from `simplifyHierarchy` into a reusable function (e.g., `runSimplifyHierarchy(regionId, worldViewId, client?)`) so both the standalone simplify endpoint and the apply-move endpoint can use it
+- Validation: `backend/src/types/index.ts` — `wvImportSmartSimplifySchema` and `wvImportSmartSimplifyApplySchema`
 
 ## Frontend
 
@@ -252,12 +293,12 @@ Re-exported from `adminWorldViewImport.ts`.
 
 ### SmartSimplifyDialog
 
-A full-width MUI `Dialog` (like `DivisionPreviewDialog`).
+A full-width MUI `Dialog`. New component file: `frontend/src/components/admin/SmartSimplifyDialog.tsx`.
 
 **Layout:**
-- Left panel (42%): Source map image (`regionMapUrl` of the parent region)
+- Left panel (42%): Source map image (`regionMapUrl` of the parent region). Falls back to placeholder if none available.
 - Right panel top: MapLibre map — all sibling divisions color-coded by owning region
-  - Current/Proposed toggle
+  - Current/Proposed toggle. "Proposed" mode is computed client-side: divisions in the selected move are reassigned to the owner region's color.
   - Selected move's divisions highlighted with dashed red border
   - Non-relevant divisions dimmed
 - Right panel bottom: Scrollable moves list
@@ -266,19 +307,20 @@ A full-width MUI `Dialog` (like `DivisionPreviewDialog`).
   - Applied moves: struck through, dimmed, "applied" badge
 
 **Map data:**
-- On open: calls `detectSmartSimplify` endpoint + fetches `getRegionMemberGeometries` for each child region
+- On open: calls `detectSmartSimplify` endpoint + fetches division geometries for display
+- Uses `getChildrenRegionGeometry` admin endpoint (single call for all children) for the base color-coded view, plus individual division geometries for highlight via existing `fetchDivisionGeometry` from `frontend/src/api/regions.ts`
 - Each division rendered as a GeoJSON polygon, colored by its owning sibling
 - Color palette: use each child region's own `color` property, or generate distinct colors if not set
 
 **State management:**
 - `selectedMoveIndex: number | null` — which move is selected in the list
-- `appliedMoves: Set<number>` — indices of applied moves (by gadmParentId)
+- `appliedGadmParentIds: Set<number>` — set of applied moves' gadmParentIds (survives re-ordering)
 - `viewMode: 'current' | 'proposed'` — toggle state
 
 **On Apply:**
 1. Call `applySmartSimplifyMove` endpoint
-2. Mark move as applied in local state (struck through)
-3. Update map: in "current" view, moved divisions now show in their new region's color
+2. Mark move as applied in local state (add gadmParentId to `appliedGadmParentIds`)
+3. Update map: moved divisions now show in their new region's color
 4. Invalidate tree query in background (so the tree updates when dialog closes)
 
 **On close:** Tree already refreshed from invalidation during applies.
@@ -293,14 +335,18 @@ A full-width MUI `Dialog` (like `DivisionPreviewDialog`).
 | Same GADM parent has members with custom_geom | Those members excluded from analysis |
 | Division appears in multiple siblings (duplicates) | Count by sibling; owner is max count; duplicates in other siblings become move targets |
 | Parent has no `regionMapUrl` | Left panel shows placeholder or falls back to ancestor's map |
-| Move applied but another move becomes invalid | Each apply-move is independent. If user applies move A and that somehow affects move B's validity, the apply-move endpoint will still work (it just moves members by row ID). The simplification step may find nothing new to simplify, which is fine. |
-| Tie in majority (e.g., 12 districts in Eastern, 12 in Western) | Pick the first sibling alphabetically (or by region ID). The user can skip if they disagree. |
+| Move applied but another move becomes invalid | Each apply-move is independent. It moves members by row ID — if already moved, UPDATE is idempotent (sets region_id to ownerRegionId which it already is). Simplification may find nothing new, which is fine. |
+| Tie in majority (e.g., 12 in Eastern, 12 in Western) | Pick the sibling with the lowest region ID (deterministic). User can skip if they disagree. |
+| Apply-move succeeds but simplify fails | Partial success: divisions moved but not simplified. User can re-run simplify manually. Response still returns the move count. |
+| memberRowIds don't belong to children of parentRegionId | Return 400 error. Security check prevents cross-world-view manipulation. |
 
 ## Testing
 
 - Unit test: detection with 2 siblings, one GADM parent split across them → correct move suggested
 - Unit test: detection with 3 siblings, divisions split 3 ways → majority owner identified
 - Unit test: partial GADM coverage (not all children present) → no move suggested
-- Unit test: all divisions in one sibling already → no move suggested
+- Unit test: all divisions in one sibling already → no move suggested (but simplify would work — button still useful)
 - Unit test: apply-move moves members and runs simplification
+- Unit test: apply-move rejects memberRowIds not belonging to children of parentRegionId
+- Integration test: detect → apply → detect again → previously applied move no longer appears
 - Manual test: India with Eastern/Western children, Chhattisgarh split → detect, apply, verify simplification
