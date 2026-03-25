@@ -69,85 +69,36 @@ import {
   getCuratorActivity,
 } from '../controllers/admin/curatorController.js';
 import {
-  startWorldViewImport,
-  getWorldViewImportStatus,
-  cancelWorldViewImport,
-  getGeoshape,
-} from '../controllers/admin/wvImportLifecycleController.js';
-import {
-  getMatchStats,
-  getMatchTree,
-  acceptMatch,
-  rejectMatch,
-  rejectRemaining,
-  clearMembers,
-  acceptAndRejectRest,
-  acceptBatchMatches,
-  selectMapImage,
-  markManualFix,
-  getUnionGeometry,
-  splitDivisionsDeeper,
-  visionMatchDivisions,
-  colorMatchDivisionsSSE,
-  resolveWaterReview,
-  getWaterCropImage,
-  resolveParkReview,
-  getParkCropImage,
-  resolveClusterReview,
-  getClusterPreviewImage,
-  getClusterHighlightImage,
-} from '../controllers/admin/wvImportMatchController.js';
-import {
-  startAIMatch,
-  getAIMatchStatus,
-  cancelAIMatchEndpoint,
-  dbSearchOneRegion,
-  geocodeMatch,
-  geoshapeMatch,
-  pointMatch,
-  resetMatch,
-  aiMatchOneRegion,
-  aiSuggestChildren,
-  aiSuggestClusterRegions,
-} from '../controllers/admin/wvImportAIController.js';
-import {
-  mergeChildIntoParent,
-  removeRegionFromImport,
-  dismissChildren,
-  pruneToLeaves,
-} from '../controllers/admin/wvImportTreeOpsController.js';
-import {
-  collapseToParent,
-  smartFlattenPreview,
-  smartFlatten,
-  syncInstances,
-  handleAsGrouping,
-} from '../controllers/admin/wvImportFlattenController.js';
-import {
-  undoLastOperation,
-  autoResolveChildrenPreview,
-  autoResolveChildren,
-} from '../controllers/admin/wvImportHierarchyController.js';
-import {
-  getCoverage,
-  getCoverageSSE,
-  geoSuggestGap,
-  dismissCoverageGap,
-  undismissCoverageGap,
-  approveCoverageSuggestion,
-  finalizeReview,
-  rematchWorldView,
-  getRematchStatus,
-  addChildRegion,
-  dismissHierarchyWarnings,
-} from '../controllers/admin/wvImportCoverageController.js';
-import {
-  getChildrenCoverage,
-  getCoverageGeometry,
-  analyzeCoverageGaps,
-  getChildrenRegionGeometry,
-} from '../controllers/admin/wvImportCoverageCompareController.js';
-import { mapshapeMatchDivisions } from '../controllers/admin/wvImportMapshapeController.js';
+  // Lifecycle
+  startWorldViewImport, getWorldViewImportStatus, cancelWorldViewImport, getGeoshape,
+  // Match
+  getMatchStats, getMatchTree, acceptMatch, rejectMatch, rejectRemaining, clearMembers,
+  acceptAndRejectRest, acceptBatchMatches, selectMapImage, markManualFix,
+  getUnionGeometry, splitDivisionsDeeper, visionMatchDivisions, colorMatchDivisionsSSE,
+  resolveWaterReview, getWaterCropImage, resolveParkReview, getParkCropImage,
+  resolveClusterReview, getClusterPreviewImage, getClusterHighlightImage,
+  // AI
+  startAIMatch, getAIMatchStatus, cancelAIMatchEndpoint, dbSearchOneRegion,
+  geocodeMatch, geoshapeMatch, pointMatch, resetMatch, aiMatchOneRegion,
+  aiSuggestChildren, aiSuggestClusterRegions,
+  // Tree ops
+  mergeChildIntoParent, removeRegionFromImport, dismissChildren, pruneToLeaves, simplifyHierarchy,
+  // Flatten
+  collapseToParent, smartFlattenPreview, smartFlatten, syncInstances, handleAsGrouping,
+  // Hierarchy
+  undoLastOperation, autoResolveChildrenPreview, autoResolveChildren,
+  // Coverage
+  getCoverage, getCoverageSSE, geoSuggestGap, dismissCoverageGap,
+  undismissCoverageGap, approveCoverageSuggestion,
+  // Rematch
+  rematchWorldView, getRematchStatus,
+  // Finalize
+  finalizeReview, addChildRegion, dismissHierarchyWarnings,
+  // Coverage compare
+  getChildrenCoverage, getCoverageGeometry, analyzeCoverageGaps, getChildrenRegionGeometry,
+  // Mapshape + rename + guided match
+  mapshapeMatchDivisions, renameRegion, reparentRegion,
+} from '../controllers/admin/worldViewImportController.js';
 import {
   startWikivoyageExtraction,
   getWikivoyageExtractionStatus,
@@ -156,20 +107,10 @@ import {
   deleteCacheFile,
 } from '../controllers/admin/wikivoyageExtractController.js';
 import {
-  getAISettings,
-  updateAISetting,
-  getAIUsage,
-  updatePricing,
-  getLearnedRules,
-  addLearnedRule,
-  deleteLearnedRule,
-  reviewLearnedRules,
-  applyRuleReviewSuggestion,
+  getAISettings, updateAISetting, getAIUsage, updatePricing,
+  getLearnedRules, addLearnedRule, deleteLearnedRule,
+  reviewLearnedRules, applyRuleReviewSuggestion,
 } from '../controllers/admin/aiController.js';
-import {
-  renameRegion,
-  reparentRegion,
-} from '../controllers/admin/wvImportRenameController.js';
 import { hierarchyReview } from '../controllers/admin/aiHierarchyReviewController.js';
 
 const router = Router();
@@ -350,11 +291,11 @@ router.get('/wv-import/water-crop/:reviewId/:componentId/:subCluster', (req: Aut
   const match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
   if (match) {
     const buffer = Buffer.from(match[2], 'base64');
-    res.setHeader('Content-Type', `image/${match[1]}`);
+    res.type(`image/${match[1]}`);
     res.setHeader('Cache-Control', 'private, max-age=300');
     // Override Helmet's same-origin policy so cross-origin <img> tags work
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.send(buffer);
+    res.end(buffer);
   } else {
     res.status(500).json({ error: 'Invalid crop data' });
   }
@@ -385,10 +326,10 @@ router.get('/wv-import/park-crop/:reviewId/:componentId', (req: AuthenticatedReq
   const match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
   if (match) {
     const buffer = Buffer.from(match[2], 'base64');
-    res.setHeader('Content-Type', `image/${match[1]}`);
+    res.type(`image/${match[1]}`);
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.send(buffer);
+    res.end(buffer);
   } else {
     res.status(500).json({ error: 'Invalid crop data' });
   }
@@ -404,10 +345,10 @@ router.get('/wv-import/cluster-preview/:reviewId', (req: AuthenticatedRequest, r
   const match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
   if (match) {
     const buffer = Buffer.from(match[2], 'base64');
-    res.setHeader('Content-Type', `image/${match[1]}`);
+    res.type(`image/${match[1]}`);
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.send(buffer);
+    res.end(buffer);
   } else {
     res.status(500).json({ error: 'Invalid preview data' });
   }
@@ -493,6 +434,9 @@ router.post('/wv-import/matches/:worldViewId/mark-manual-fix', validate(worldVie
 
 // Merge single-child parent's only child into the parent
 router.post('/wv-import/matches/:worldViewId/merge-child', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), mergeChildIntoParent);
+
+// Simplify hierarchy: replace single-child chains with direct parent→grandchild links
+router.post('/wv-import/matches/:worldViewId/simplify-hierarchy', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyHierarchy);
 
 // Remove a region from the import tree (optionally reparenting children)
 router.post('/wv-import/matches/:worldViewId/remove-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportRemoveRegionSchema), removeRegionFromImport);
