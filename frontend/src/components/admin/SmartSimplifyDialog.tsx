@@ -126,14 +126,21 @@ export function SmartSimplifyDialog({
       });
   }, [open, worldViewId, parentRegionId]);
 
-  // Fetch division geometries when selected move changes
+  // Derived: the active selection (either a GADM move or a spatial anomaly)
   const selectedMove = moves && selectedMoveIndex != null ? moves[selectedMoveIndex] : null;
+  const selectedAnomaly = spatialAnomalies && selectedAnomalyIndex != null ? spatialAnomalies[selectedAnomalyIndex] : null;
 
+  // Active division IDs to show on the map (from whichever selection is active)
+  const activeDivIds = useMemo(() => {
+    if (selectedMove) return selectedMove.divisions.map(d => d.divisionId);
+    if (selectedAnomaly) return selectedAnomaly.divisions.map(d => d.divisionId);
+    return [];
+  }, [selectedMove, selectedAnomaly]);
+
+  // Fetch division geometries when active selection changes
   useEffect(() => {
-    if (!selectedMove) return;
-    const divIds = selectedMove.divisions.map(d => d.divisionId);
-    // Check which ones we already have
-    const missing = divIds.filter(id => !divisionGeometries.has(id));
+    if (activeDivIds.length === 0) return;
+    const missing = activeDivIds.filter(id => !divisionGeometries.has(id));
     if (missing.length === 0) return;
 
     setDivGeoLoading(true);
@@ -150,8 +157,28 @@ export function SmartSimplifyDialog({
         });
       })
       .finally(() => setDivGeoLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-fetch when selected move's gadmParentId changes
-  }, [selectedMove?.gadmParentId, worldViewId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fetch when selection key changes
+  }, [selectedMove?.gadmParentId, selectedAnomalyIndex, worldViewId]);
+
+  // Fly to selected anomaly's divisions when geometries are ready
+  useEffect(() => {
+    if (!selectedAnomaly || !mapRef.current) return;
+    const geoms = selectedAnomaly.divisions
+      .map(d => divisionGeometries.get(d.divisionId))
+      .filter((g): g is GeoJSONGeometry => !!g);
+    if (geoms.length === 0) return;
+    try {
+      const fc: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: geoms.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g as GeoJSON.Geometry })),
+      };
+      const bounds = turf.bbox(fc) as [number, number, number, number];
+      mapRef.current.fitBounds(
+        [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+        { padding: 60, duration: 500 },
+      );
+    } catch { /* ignore */ }
+  }, [selectedAnomaly, divisionGeometries]);
 
   // Fit map bounds when geometries load
   useEffect(() => {
@@ -261,7 +288,7 @@ export function SmartSimplifyDialog({
     setSelectedAnomalyIndex(nextIndex >= 0 ? nextIndex : null);
   }, [spatialAnomalies, appliedAnomalyIndices]);
 
-  // Highlight region IDs involved in the selected move
+  // Highlight region IDs involved in the selected move or anomaly
   const highlightedRegionIds = useMemo(() => {
     const set = new Set<number>();
     if (selectedMove) {
@@ -269,23 +296,33 @@ export function SmartSimplifyDialog({
       for (const div of selectedMove.divisions) {
         set.add(div.fromRegionId);
       }
+    } else if (selectedAnomaly) {
+      set.add(selectedAnomaly.suggestedTargetRegionId);
+      set.add(selectedAnomaly.divisions[0]?.sourceRegionId);
     }
     return set;
-  }, [selectedMove]);
+  }, [selectedMove, selectedAnomaly]);
 
   const hasSideBySide = !!regionMapUrl;
   const pendingMoves = moves ? moves.filter((m) => !appliedGadmParentIds.has(m.gadmParentId)).length : 0;
 
-  // Division overlay color: in "proposed" mode, show in the owner's color; in "current", show in the from-region's color
+  // Division overlay color: in "proposed" mode, show in the target's color; in "current", show in the source's color
   const getDivisionOverlayColor = useCallback((divisionId: number): string => {
-    if (!selectedMove) return '#ff5252';
-    if (viewMode === 'proposed') {
-      return colorMap.get(selectedMove.ownerRegionId) ?? '#4CAF50';
+    if (selectedMove) {
+      if (viewMode === 'proposed') {
+        return colorMap.get(selectedMove.ownerRegionId) ?? '#4CAF50';
+      }
+      const div = selectedMove.divisions.find(d => d.divisionId === divisionId);
+      return div ? (colorMap.get(div.fromRegionId) ?? '#ff5252') : '#ff5252';
     }
-    // Current: show in the from-region's color
-    const div = selectedMove.divisions.find(d => d.divisionId === divisionId);
-    return div ? (colorMap.get(div.fromRegionId) ?? '#ff5252') : '#ff5252';
-  }, [selectedMove, viewMode, colorMap]);
+    if (selectedAnomaly) {
+      if (viewMode === 'proposed') {
+        return colorMap.get(selectedAnomaly.suggestedTargetRegionId) ?? '#4CAF50';
+      }
+      return colorMap.get(selectedAnomaly.divisions[0]?.sourceRegionId) ?? '#ff5252';
+    }
+    return '#ff5252';
+  }, [selectedMove, selectedAnomaly, viewMode, colorMap]);
 
   return (
     <Dialog
@@ -444,25 +481,28 @@ export function SmartSimplifyDialog({
                       );
                     })}
 
-                    {/* Per-division overlays for the selected move */}
-                    {selectedMove && selectedMove.divisions.map(div => {
-                      const geom = divisionGeometries.get(div.divisionId);
+                    {/* Per-division overlays for the selected move or anomaly */}
+                    {activeDivIds.map(divId => {
+                      const geom = divisionGeometries.get(divId);
                       if (!geom) return null;
-                      const overlayColor = getDivisionOverlayColor(div.divisionId);
+                      const overlayColor = getDivisionOverlayColor(divId);
                       const isCurrent = viewMode === 'current';
+                      const divName = selectedMove?.divisions.find(d => d.divisionId === divId)?.name
+                        ?? selectedAnomaly?.divisions.find(d => d.divisionId === divId)?.name
+                        ?? '';
                       return (
                         <Source
-                          key={`div-${div.divisionId}`}
-                          id={`div-${div.divisionId}`}
+                          key={`div-${divId}`}
+                          id={`div-${divId}`}
                           type="geojson"
                           data={{
                             type: 'Feature',
-                            properties: { name: div.name },
+                            properties: { name: divName },
                             geometry: geom,
                           }}
                         >
                           <Layer
-                            id={`div-fill-${div.divisionId}`}
+                            id={`div-fill-${divId}`}
                             type="fill"
                             paint={{
                               'fill-color': overlayColor,
@@ -470,7 +510,7 @@ export function SmartSimplifyDialog({
                             }}
                           />
                           <Layer
-                            id={`div-border-${div.divisionId}`}
+                            id={`div-border-${divId}`}
                             type="line"
                             paint={{
                               'line-color': isCurrent ? '#ff5252' : overlayColor,
@@ -512,7 +552,7 @@ export function SmartSimplifyDialog({
                   return (
                     <Box
                       key={move.gadmParentId}
-                      onClick={() => !isApplied && setSelectedMoveIndex(idx)}
+                      onClick={() => { if (!isApplied) { setSelectedMoveIndex(idx); setSelectedAnomalyIndex(null); } }}
                       sx={{
                         display: 'flex',
                         alignItems: 'center',
@@ -603,7 +643,7 @@ export function SmartSimplifyDialog({
                       return (
                         <Box
                           key={`anomaly-${idx}`}
-                          onClick={() => !isApplied && setSelectedAnomalyIndex(idx)}
+                          onClick={() => { if (!isApplied) { setSelectedAnomalyIndex(idx); setSelectedMoveIndex(null); } }}
                           sx={{
                             p: 1, mb: 0.5, borderRadius: 1, cursor: isApplied ? 'default' : 'pointer',
                             border: 1, borderColor: isSelected ? 'info.main' : 'divider',

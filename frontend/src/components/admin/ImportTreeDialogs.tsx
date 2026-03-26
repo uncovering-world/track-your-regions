@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -8,10 +8,24 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Autocomplete,
+  Checkbox,
   CircularProgress,
 } from '@mui/material';
 import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';
+import { type searchDivisions } from '../../api/divisions';
+import type {
+  RenameDialogState,
+  ReparentDialogState,
+  SuggestChildrenState,
+  DivisionSearchDialogState,
+  GapAnalysisState,
+  FlatRegionItem,
+} from './useImportTreeDialogs';
+import { GapDivisionTree, GapContextMap } from './GapAnalysis';
+import { mergeGeometries, mergeGeomsIntoSibling } from './CvMatchMap';
+import { type MatchTreeNode, getChildrenRegionGeometry } from '../../api/adminWorldViewImport';
 
 export const COVERAGE_MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -162,11 +176,136 @@ export function RemoveRegionDialog({ state, onClose, onConfirm, isPending }: {
   );
 }
 
+const CHILD_COLORS = ['#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd', '#aa3366', '#55bb88', '#8866cc', '#dd5555', '#44bbaa', '#7766bb', '#bb8844'];
+
+/** Right-side panel: children's divisions (unified or color-coded) or geoshape */
+function CoverageRightPanel({ data, fitToAll }: {
+  data: {
+    regionId: number;
+    worldViewId: number;
+    childrenGeometry: GeoJSON.Geometry | null;
+    geoshapeGeometry?: GeoJSON.Geometry | null;
+  };
+  fitToAll: (mapRef: React.RefObject<MapRef | null>) => void;
+}) {
+  const mapRef = useRef<MapRef>(null);
+  const hasGeoshape = data.geoshapeGeometry != null;
+  const hasChildren = data.childrenGeometry != null;
+
+  // Color-coded children view
+  const [rightMode, setRightMode] = useState<'unified' | 'colored'>('unified');
+  const [childRegions, setChildRegions] = useState<Array<{ regionId: number; name: string; geometry: GeoJSON.Geometry }> | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Reset when region changes
+  useEffect(() => { setRightMode('unified'); setChildRegions(null); }, [data.regionId]);
+
+  const handleToggle = useCallback(async () => {
+    setRightMode(prev => prev === 'colored' ? 'unified' : 'colored');
+    if (rightMode !== 'unified' || childRegions) return; // toggling off, or already loaded
+    setLoading(true);
+    try {
+      const result = await getChildrenRegionGeometry(data.worldViewId, data.regionId);
+      setChildRegions(result.childRegions);
+    } finally {
+      setLoading(false);
+    }
+  }, [rightMode, childRegions, data.worldViewId, data.regionId]);
+
+  const coloredChildren = useMemo(() =>
+    (childRegions ?? []).map((c, i) => ({
+      ...c,
+      color: CHILD_COLORS[i % CHILD_COLORS.length],
+      fc: {
+        type: 'FeatureCollection' as const,
+        features: [{ type: 'Feature' as const, properties: { name: c.name }, geometry: c.geometry }],
+      },
+    })),
+  [childRegions]);
+
+  let rightLabel = 'Wikidata geoshape (expected shape)';
+  if (rightMode === 'colored') rightLabel = 'Subregions (color-coded)';
+  else if (hasChildren) rightLabel = "Children's divisions (all descendants)";
+
+  let buttonLabel = 'Color by subregion';
+  if (loading) buttonLabel = 'Loading...';
+  else if (rightMode === 'colored') buttonLabel = 'Show unified';
+
+  if (!hasChildren && !hasGeoshape) {
+    return (
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>{rightLabel}</Typography>
+        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover', borderRadius: 1 }}>
+          <Typography color="text.secondary">No data to compare</Typography>
+        </Box>
+      </Box>
+    );
+  }
+
+  const geojsonData = hasChildren
+    ? { type: 'Feature' as const, properties: {}, geometry: data.childrenGeometry! }
+    : { type: 'Feature' as const, properties: {}, geometry: data.geoshapeGeometry! };
+  const fillColor = hasChildren ? '#ff8833' : '#22c55e';
+  const showColored = rightMode === 'colored' && hasChildren;
+
+  return (
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+        <Typography variant="subtitle2" sx={{ flex: 1 }}>{rightLabel}</Typography>
+        {hasChildren && (
+          <Button
+            size="small"
+            variant={rightMode === 'colored' ? 'contained' : 'outlined'}
+            onClick={handleToggle}
+            disabled={loading}
+            sx={{ fontSize: '0.7rem', py: 0.25, px: 1, minWidth: 0 }}
+          >
+            {buttonLabel}
+          </Button>
+        )}
+      </Box>
+      <MapGL
+        ref={mapRef}
+        initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
+        style={{ width: '100%', flex: 1, minHeight: showColored ? 280 : 350 }}
+        mapStyle={COVERAGE_MAP_STYLE}
+        onLoad={() => fitToAll(mapRef)}
+      >
+        <NavigationControl position="top-right" showCompass={false} />
+        {showColored ? (
+          coloredChildren.map((c, i) => (
+            <Source key={`child-${c.regionId}`} id={`child-${i}`} type="geojson" data={c.fc}>
+              <Layer id={`child-fill-${i}`} type="fill" paint={{ 'fill-color': c.color, 'fill-opacity': 0.45 }} />
+              <Layer id={`child-outline-${i}`} type="line" paint={{ 'line-color': c.color, 'line-width': 1.5 }} />
+            </Source>
+          ))
+        ) : (
+          <Source id="right-geo" type="geojson" data={geojsonData}>
+            <Layer id="right-fill" type="fill" paint={{ 'fill-color': fillColor, 'fill-opacity': 0.4 }} />
+            <Layer id="right-outline" type="line" paint={{ 'line-color': fillColor, 'line-width': 2 }} />
+          </Source>
+        )}
+      </MapGL>
+      {showColored && coloredChildren.length > 0 && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5, maxHeight: 60, overflow: 'auto' }}>
+          {coloredChildren.map(c => (
+            <Box key={c.regionId} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5 }}>
+              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c.color, flexShrink: 0 }} />
+              <Typography variant="caption" noWrap sx={{ maxWidth: 120 }}>{c.name}</Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 /** Side-by-side map dialog comparing parent's own divisions vs children's divisions */
 export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
   data: {
     regionId: number;
     regionName: string;
+    worldViewId: number;
     loading: boolean;
     parentGeometry: GeoJSON.Geometry | null;
     childrenGeometry: GeoJSON.Geometry | null;
@@ -176,7 +315,6 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
   onAnalyzeGaps?: (regionId: number) => void;
 }) {
   const leftMapRef = useRef<MapRef>(null);
-  const rightMapRef = useRef<MapRef>(null);
 
   const hasGeoshape = data?.geoshapeGeometry != null;
   const hasChildren = data?.childrenGeometry != null;
@@ -198,10 +336,6 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
     mapRef.current.fitBounds([[combinedBbox[0], combinedBbox[1]], [combinedBbox[2], combinedBbox[3]]], { padding: 40, duration: 0 });
   }, [combinedBbox]);
 
-  // Left: assigned divisions (blue) + geoshape overlay (green dashed) if available
-  // Right: geoshape (green) for leaves, or children's divisions (orange) for containers
-  const rightLabel = hasChildren ? "Children's divisions (all descendants)" : 'Wikidata geoshape (expected shape)';
-
   return (
     <Dialog open={data != null} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>Coverage Comparison: {data?.regionName}</DialogTitle>
@@ -211,7 +345,7 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
             <CircularProgress />
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', gap: 2, height: 400 }}>
+          <Box sx={{ display: 'flex', gap: 2, minHeight: 400 }}>
             {/* Left: assigned divisions + geoshape overlay */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
@@ -221,7 +355,7 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
                 <MapGL
                   ref={leftMapRef}
                   initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
-                  style={{ width: '100%', flex: 1 }}
+                  style={{ width: '100%', flex: 1, minHeight: 350 }}
                   mapStyle={COVERAGE_MAP_STYLE}
                   onLoad={() => fitToAll(leftMapRef)}
                 >
@@ -230,7 +364,6 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
                     <Layer id="parent-fill" type="fill" paint={{ 'fill-color': '#3388ff', 'fill-opacity': 0.4 }} />
                     <Layer id="parent-outline" type="line" paint={{ 'line-color': '#3388ff', 'line-width': 2 }} />
                   </Source>
-                  {/* Overlay geoshape as dashed outline when container has both */}
                   {hasGeoshape && hasChildren && (
                     <Source id="geoshape-overlay" type="geojson" data={{ type: 'Feature', properties: {}, geometry: data.geoshapeGeometry! }}>
                       <Layer id="geoshape-overlay-outline" type="line" paint={{ 'line-color': '#22c55e', 'line-width': 2, 'line-dasharray': [4, 3] }} />
@@ -244,43 +377,10 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
               )}
             </Box>
 
-            {/* Right: children's divisions (containers) or geoshape (leaves) */}
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>{rightLabel}</Typography>
-              {hasChildren ? (
-                <MapGL
-                  ref={rightMapRef}
-                  initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
-                  style={{ width: '100%', flex: 1 }}
-                  mapStyle={COVERAGE_MAP_STYLE}
-                  onLoad={() => fitToAll(rightMapRef)}
-                >
-                  <NavigationControl position="top-right" showCompass={false} />
-                  <Source id="children-geo" type="geojson" data={{ type: 'Feature', properties: {}, geometry: data!.childrenGeometry! }}>
-                    <Layer id="children-fill" type="fill" paint={{ 'fill-color': '#ff8833', 'fill-opacity': 0.4 }} />
-                    <Layer id="children-outline" type="line" paint={{ 'line-color': '#ff8833', 'line-width': 2 }} />
-                  </Source>
-                </MapGL>
-              ) : hasGeoshape ? (
-                <MapGL
-                  ref={rightMapRef}
-                  initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
-                  style={{ width: '100%', flex: 1 }}
-                  mapStyle={COVERAGE_MAP_STYLE}
-                  onLoad={() => fitToAll(rightMapRef)}
-                >
-                  <NavigationControl position="top-right" showCompass={false} />
-                  <Source id="geoshape-geo" type="geojson" data={{ type: 'Feature', properties: {}, geometry: data!.geoshapeGeometry! }}>
-                    <Layer id="geoshape-fill" type="fill" paint={{ 'fill-color': '#22c55e', 'fill-opacity': 0.4 }} />
-                    <Layer id="geoshape-outline" type="line" paint={{ 'line-color': '#22c55e', 'line-width': 2 }} />
-                  </Source>
-                </MapGL>
-              ) : (
-                <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover', borderRadius: 1 }}>
-                  <Typography color="text.secondary">{data?.childrenGeometry === null && !hasGeoshape ? 'No data to compare' : 'No descendant divisions'}</Typography>
-                </Box>
-              )}
-            </Box>
+            {/* Right: children panel with unified/colored toggle */}
+            {data && (
+              <CoverageRightPanel data={data} fitToAll={fitToAll} />
+            )}
           </Box>
         )}
       </DialogContent>
@@ -295,6 +395,412 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
             Find Gap Divisions
           </Button>
         )}
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** Simple text-field dialog for renaming a region */
+export function RenameRegionDialog({ state, onClose, onSubmit, onNameChange }: {
+  state: RenameDialogState | null;
+  onClose: () => void;
+  onSubmit: () => void;
+  onNameChange: (value: string) => void;
+}) {
+  return (
+    <Dialog open={state != null} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Rename Region</DialogTitle>
+      <DialogContent>
+        <TextField
+          autoFocus
+          fullWidth
+          size="small"
+          label="Region name"
+          value={state?.newName ?? ''}
+          onChange={(e) => onNameChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') onSubmit(); }}
+          sx={{ mt: 1 }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} size="small">Cancel</Button>
+        <Button onClick={onSubmit} variant="contained" size="small"
+          disabled={!state?.newName.trim() || state?.newName.trim() === state?.currentName}>
+          Rename
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** Autocomplete dialog for moving a region to a new parent */
+export function ReparentRegionDialog({ state, onClose, onSubmit, onParentChange, flatRegionList }: {
+  state: ReparentDialogState | null;
+  onClose: () => void;
+  onSubmit: () => void;
+  onParentChange: (parentId: number | null) => void;
+  flatRegionList: FlatRegionItem[];
+}) {
+  return (
+    <Dialog open={state != null} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Move &quot;{state?.regionName}&quot;</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Select new parent region:
+        </Typography>
+        <Autocomplete
+          size="small"
+          options={flatRegionList.filter(r => r.id !== state?.regionId)}
+          getOptionLabel={(opt) => '\u00A0'.repeat(opt.depth * 2) + opt.name}
+          value={flatRegionList.find(r => r.id === state?.selectedParentId) ?? null}
+          onChange={(_e, val) => onParentChange(val?.id ?? null)}
+          renderInput={(params) => <TextField {...params} label="Parent region" placeholder="Search regions..." />}
+          sx={{ mt: 1 }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} size="small">Cancel</Button>
+        <Button onClick={onSubmit} variant="contained" size="small"
+          disabled={state?.selectedParentId == null}>
+          Move
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** Dialog for adding a new child region by name */
+export function AddChildDialog({ parentRegionId, name, onNameChange, onClose, onSubmit, isPending }: {
+  parentRegionId: number | null;
+  name: string;
+  onNameChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <Dialog open={parentRegionId != null} onClose={onClose}>
+      <DialogTitle>Add Child Region</DialogTitle>
+      <DialogContent>
+        <TextField
+          autoFocus
+          fullWidth
+          label="Region name"
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && name.trim() && parentRegionId) {
+              onSubmit();
+            }
+          }}
+          sx={{ mt: 1 }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={onSubmit}
+          disabled={!name.trim() || isPending}
+        >
+          Add
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** Dialog showing AI-suggested child regions with checkboxes */
+export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, isPending }: {
+  state: SuggestChildrenState | null;
+  onClose: () => void;
+  onToggle: (name: string) => void;
+  onSubmit: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <Dialog
+      open={state != null}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>Suggested Children for &quot;{state?.regionName}&quot;</DialogTitle>
+      <DialogContent>
+        {state?.result.analysis && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {state.result.analysis}
+          </Typography>
+        )}
+        {state?.result.suggestions.length === 0 && (
+          <Typography variant="body2">No missing children found.</Typography>
+        )}
+        {state?.result.suggestions.map((s) => (
+          <Box key={s.name} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+            <Checkbox
+              size="small"
+              checked={state.selected.has(s.name)}
+              onChange={() => onToggle(s.name)}
+              sx={{ p: 0.25 }}
+            />
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2">
+                {s.name}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">{s.reason}</Typography>
+            </Box>
+          </Box>
+        ))}
+        {state?.result.stats && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+            {(state.result.stats.inputTokens + state.result.stats.outputTokens).toLocaleString()} tokens
+            {' \u00b7 '}${state.result.stats.cost.toFixed(4)}
+          </Typography>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          disabled={!state?.selected.size || isPending}
+          onClick={onSubmit}
+        >
+          Create {state?.selected.size ?? 0} Selected
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** Autocomplete search dialog for manually assigning a GADM division to a region */
+export function DivisionSearchDialog({ state, onClose, onSelect, query, results, loading, onInputChange }: {
+  state: DivisionSearchDialogState | null;
+  onClose: () => void;
+  onSelect: (divisionId: number) => void;
+  query: string;
+  results: Awaited<ReturnType<typeof searchDivisions>>;
+  loading: boolean;
+  onInputChange: (_e: unknown, value: string) => void;
+}) {
+  return (
+    <Dialog
+      open={state != null}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>Assign Division to &quot;{state?.regionName}&quot;</DialogTitle>
+      <DialogContent>
+        <Autocomplete
+          size="small"
+          options={results}
+          getOptionLabel={(opt) => `${opt.name} (${opt.path})`}
+          filterOptions={(x) => x}
+          inputValue={query}
+          onInputChange={onInputChange}
+          loading={loading}
+          onChange={(_e, val) => {
+            if (val && state) {
+              onSelect(val.id);
+            }
+          }}
+          renderOption={(props, opt) => (
+            <li {...props} key={opt.id}>
+              <Box>
+                <Typography variant="body2">{opt.name}</Typography>
+                <Typography variant="caption" color="text.secondary">{opt.path}</Typography>
+              </Box>
+            </li>
+          )}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Search GADM divisions"
+              placeholder="Type at least 2 characters..."
+              autoFocus
+              sx={{ mt: 1 }}
+            />
+          )}
+          noOptionsText={query.length < 2 ? 'Type at least 2 characters' : 'No divisions found'}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} size="small">Cancel</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** Full-screen dialog for coverage gap analysis with map and division tree */
+export function GapAnalysisDialog({ state, tree, worldViewId, highlightedGapId, setHighlightedGapId, gapMapSelectedRegionId, setGapMapSelectedRegionId, onClose, setLastMutatedRegionId, acceptAllMutation, addChildMutation, isMutating }: {
+  state: GapAnalysisState | null;
+  tree: MatchTreeNode[] | undefined;
+  worldViewId: number;
+  highlightedGapId: number | null;
+  setHighlightedGapId: React.Dispatch<React.SetStateAction<number | null>>;
+  gapMapSelectedRegionId: number | null;
+  setGapMapSelectedRegionId: React.Dispatch<React.SetStateAction<number | null>>;
+  onClose: () => void;
+  setLastMutatedRegionId: (id: number) => void;
+  acceptAllMutation: { mutate: (assignments: Array<{ regionId: number; divisionId: number }>) => void };
+  addChildMutation: { mutate: (args: { parentRegionId: number; name: string }, opts?: { onSuccess?: (result: { regionId: number } | undefined) => void }) => void; isPending: boolean };
+  isMutating: boolean;
+}) {
+  // Local state setter used from callbacks to remove gaps after assignment.
+  // Syncs from external state on open and when loading completes, but preserves
+  // local modifications (e.g. removed gaps) while not loading.
+  const [localState, setLocalState] = useState<GapAnalysisState | null>(null);
+  const localModified = useRef(false);
+
+  // Sync external state → local state when region changes or loading status changes
+  useEffect(() => {
+    if (!state) { setLocalState(null); localModified.current = false; return; }
+    // Always sync loading state and fresh results; only skip if user made local edits
+    if (state.loading || !localModified.current) {
+      setLocalState(state);
+    }
+  }, [state?.regionId, state?.loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const effectiveState = localState?.regionId === state?.regionId ? localState : state;
+
+  if (!effectiveState) return null;
+
+  const subtreeRegions = (() => {
+    if (!tree) return [];
+    const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
+      for (const n of nodes) {
+        if (n.id === effectiveState.regionId) return n;
+        const found = findNode(n.children);
+        if (found) return found;
+      }
+      return null;
+    };
+    const parent = findNode(tree);
+    if (!parent) return [];
+    const result: Array<{ id: number; name: string; depth: number }> = [];
+    const walk = (nodes: MatchTreeNode[], depth: number) => {
+      for (const n of nodes) {
+        result.push({ id: n.id, name: n.name, depth });
+        walk(n.children, depth + 1);
+      }
+    };
+    walk(parent.children, 0);
+    return result;
+  })();
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      maxWidth="lg"
+      fullWidth
+      slotProps={{ paper: { sx: { height: '90vh', display: 'flex', flexDirection: 'column' } } }}
+    >
+      <DialogTitle sx={{ pb: 1, flexShrink: 0 }}>Coverage Gap Analysis: {effectiveState.regionName}</DialogTitle>
+      {/* Top: source image + context map side by side (sticky) */}
+      <Box sx={{ display: 'flex', gap: 1, px: 3, pb: 1, flexShrink: 0, minHeight: 0 }}>
+        {effectiveState.regionMapUrl && (
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box
+              component="img"
+              src={`${effectiveState.regionMapUrl}?width=800`}
+              alt={`${effectiveState.regionName} region map`}
+              sx={{ width: '100%', maxHeight: 300, objectFit: 'contain', borderRadius: 1, border: 1, borderColor: 'divider' }}
+            />
+          </Box>
+        )}
+        {!effectiveState.loading && effectiveState.gapDivisions.length > 0 && (
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <GapContextMap
+              gapDivisions={effectiveState.gapDivisions}
+              siblingRegions={effectiveState.siblingRegions}
+              worldViewId={worldViewId}
+              highlightedGapId={highlightedGapId}
+              onHighlight={setHighlightedGapId}
+              selectedRegionId={gapMapSelectedRegionId}
+              onRegionSelect={(regionId) => setGapMapSelectedRegionId(regionId)}
+            />
+          </Box>
+        )}
+      </Box>
+      {/* Bottom: scrollable gap list */}
+      <DialogContent sx={{ flex: 1, overflow: 'auto', pt: 1 }}>
+        {effectiveState.loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+            <CircularProgress />
+          </Box>
+        ) : effectiveState.gapDivisions.length === 0 ? (
+          <Typography color="text.secondary" sx={{ py: 2 }}>
+            No gap divisions found. Children fully cover the parent&apos;s territory.
+          </Typography>
+        ) : (
+          <GapDivisionTree
+            gapDivisions={effectiveState.gapDivisions}
+            parentRegionId={effectiveState.regionId}
+            parentRegionName={effectiveState.regionName}
+            mapSelectedRegionId={gapMapSelectedRegionId}
+            subtreeRegions={subtreeRegions}
+            highlightedGapId={highlightedGapId}
+            onHighlight={setHighlightedGapId}
+            isMutating={isMutating}
+            onAssign={(gap, descendantIds, targetRegionId) => {
+              setLastMutatedRegionId(targetRegionId);
+              acceptAllMutation.mutate([{
+                regionId: targetRegionId,
+                divisionId: gap.divisionId,
+              }]);
+              const removeIds = new Set([gap.divisionId, ...descendantIds]);
+              const removedGeoms = effectiveState.gapDivisions
+                .filter(d => removeIds.has(d.divisionId) && d.geometry)
+                .map(d => d.geometry!);
+              localModified.current = true;
+              setLocalState(prev => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  gapDivisions: prev.gapDivisions.filter(d => !removeIds.has(d.divisionId)),
+                  siblingRegions: mergeGeomsIntoSibling(prev.siblingRegions, targetRegionId, removedGeoms),
+                };
+              });
+            }}
+            onNewRegion={(gap, descendantIds) => {
+              if (!effectiveState) return;
+              addChildMutation.mutate(
+                { parentRegionId: effectiveState.regionId, name: gap.name },
+                {
+                  onSuccess: (newRegion) => {
+                    if (newRegion?.regionId) {
+                      setLastMutatedRegionId(newRegion.regionId);
+                      acceptAllMutation.mutate([{
+                        regionId: newRegion.regionId,
+                        divisionId: gap.divisionId,
+                      }]);
+                    }
+                    const removeIds = new Set([gap.divisionId, ...descendantIds]);
+                    const removedGeoms = effectiveState.gapDivisions
+                      .filter(d => removeIds.has(d.divisionId) && d.geometry)
+                      .map(d => d.geometry!);
+                    const mergedGeom = mergeGeometries(removedGeoms);
+                    setLocalState(prev => {
+                      if (!prev) return prev;
+                      const newSiblings = mergedGeom && newRegion?.regionId
+                        ? [...prev.siblingRegions, { regionId: newRegion.regionId, name: gap.name, geometry: mergedGeom }]
+                        : prev.siblingRegions;
+                      return {
+                        ...prev,
+                        gapDivisions: prev.gapDivisions.filter(d => !removeIds.has(d.divisionId)),
+                        siblingRegions: newSiblings,
+                      };
+                    });
+                  },
+                },
+              );
+            }}
+          />
+        )}
+      </DialogContent>
+      <DialogActions>
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>

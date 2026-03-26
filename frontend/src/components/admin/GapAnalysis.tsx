@@ -94,7 +94,7 @@ export function NavControls({ label, idx, total, onPrev, onNext, onClose }: {
 }
 
 /** Inline select for assigning a gap division to an existing region in the subtree */
-export function GapAssignSelect({ subtreeRegions, defaultRegionId, mapSelectedRegionId, isMutating, hasGapChildren, onSelect }: {
+export function GapAssignSelect({ subtreeRegions, defaultRegionId, mapSelectedRegionId, isMutating, hasGapChildren, onSelect, parentRegionName }: {
   subtreeRegions: Array<{ id: number; name: string; depth: number; isLast?: boolean }>;
   /** Pre-select the suggested target if available */
   defaultRegionId?: number;
@@ -103,6 +103,8 @@ export function GapAssignSelect({ subtreeRegions, defaultRegionId, mapSelectedRe
   isMutating: boolean;
   hasGapChildren: boolean;
   onSelect: (regionId: number) => void;
+  /** Parent region name for building hierarchy paths in tooltips */
+  parentRegionName?: string;
 }) {
   const [selected, setSelected] = useState<number | ''>(defaultRegionId ?? '');
 
@@ -112,6 +114,16 @@ export function GapAssignSelect({ subtreeRegions, defaultRegionId, mapSelectedRe
       setSelected(mapSelectedRegionId);
     }
   }, [mapSelectedRegionId, subtreeRegions]);
+
+  // Build hierarchy path tooltips (e.g. "Europe → Western Europe → France")
+  const regionPaths = useMemo(() => {
+    const stack: string[] = [];
+    return subtreeRegions.map(r => {
+      stack.length = r.depth;
+      stack.push(r.name);
+      return parentRegionName ? [parentRegionName, ...stack].join(' \u2192 ') : stack.join(' \u2192 ');
+    });
+  }, [subtreeRegions, parentRegionName]);
 
   // Build tree indent prefix: "├─ " or "└─ " with "│  " or "   " for ancestors
   const treeLabels = useMemo(() => {
@@ -159,7 +171,7 @@ export function GapAssignSelect({ subtreeRegions, defaultRegionId, mapSelectedRe
       >
         <option value="">Assign to...</option>
         {subtreeRegions.map((r, i) => (
-          <option key={r.id} value={r.id}>{treeLabels[i]}</option>
+          <option key={r.id} value={r.id} title={regionPaths[i]}>{treeLabels[i]}</option>
         ))}
       </TextField>
       <Button
@@ -180,7 +192,7 @@ export function GapAssignSelect({ subtreeRegions, defaultRegionId, mapSelectedRe
 const SIBLING_COLORS = ['#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd', '#aa3366', '#55bb88', '#8866cc'];
 
 /** Map showing gap divisions in context of existing sibling regions, with drill-down */
-function GapContextMap({ gapDivisions, siblingRegions, worldViewId, highlightedGapId, onHighlight, onRegionSelect, selectedRegionId }: {
+export function GapContextMap({ gapDivisions, siblingRegions, worldViewId, highlightedGapId, onHighlight, onRegionSelect, selectedRegionId }: {
   gapDivisions: CoverageGapDivision[];
   siblingRegions: SiblingRegionGeometry[];
   worldViewId: number;
@@ -300,7 +312,7 @@ function GapContextMap({ gapDivisions, siblingRegions, worldViewId, highlightedG
   }, [highlightedGapId, onHighlight, handleRegionClick]);
 
   return (
-    <Box sx={{ height: 300, mb: 2, borderRadius: 1, overflow: 'hidden', position: 'relative' }}>
+    <Box sx={{ height: 300, borderRadius: 1, overflow: 'hidden', position: 'relative' }}>
       <MapGL
         ref={mapRef}
         initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
@@ -429,23 +441,22 @@ function GapContextMap({ gapDivisions, siblingRegions, worldViewId, highlightedG
 }
 
 /** Tree-structured display of gap divisions. Groups children under their GADM parents. */
-export function GapDivisionTree({ gapDivisions, parentRegionId: _parentRegionId, subtreeRegions, siblingRegions, worldViewId, highlightedGapId, onHighlight, isMutating, onAssign, onNewRegion }: {
+export function GapDivisionTree({ gapDivisions, parentRegionId: _parentRegionId, parentRegionName, subtreeRegions, highlightedGapId, onHighlight, isMutating, onAssign, onNewRegion, mapSelectedRegionId }: {
   gapDivisions: CoverageGapDivision[];
   parentRegionId: number;
+  /** Parent region name — used for building hierarchy path tooltips */
+  parentRegionName: string;
   /** All regions in the parent's subtree — shown as assign targets */
   subtreeRegions: Array<{ id: number; name: string; depth: number }>;
-  /** Per-sibling region geometries for map context */
-  siblingRegions: SiblingRegionGeometry[];
-  worldViewId: number;
   /** Currently highlighted gap division ID */
   highlightedGapId: number | null;
   onHighlight: (id: number | null) => void;
   isMutating: boolean;
   onAssign: (gap: CoverageGapDivision, descendantIds: number[], targetRegionId: number) => void;
   onNewRegion: (gap: CoverageGapDivision, descendantIds: number[]) => void;
+  /** Region selected from the map — synced to all assign dropdowns */
+  mapSelectedRegionId?: number | null;
 }) {
-  // Region selected from the map — synced to all assign dropdowns
-  const [mapSelectedRegionId, setMapSelectedRegionId] = useState<number | null>(null);
 
   // Build tree: find which gap divisions are children of other gap divisions
   const gapIdSet = new Set(gapDivisions.map(g => g.divisionId));
@@ -519,6 +530,7 @@ export function GapDivisionTree({ gapDivisions, parentRegionId: _parentRegionId,
               isMutating={isMutating}
               hasGapChildren={hasGapChildren}
               onSelect={(regionId) => onAssign(gap, descendantIds, regionId)}
+              parentRegionName={parentRegionName}
             />
           )}
           <Button
@@ -542,18 +554,9 @@ export function GapDivisionTree({ gapDivisions, parentRegionId: _parentRegionId,
 
   return (
     <>
-      <GapContextMap
-        gapDivisions={gapDivisions}
-        siblingRegions={siblingRegions}
-        worldViewId={worldViewId}
-        highlightedGapId={highlightedGapId}
-        onHighlight={onHighlight}
-        selectedRegionId={mapSelectedRegionId}
-        onRegionSelect={(regionId) => setMapSelectedRegionId(regionId)}
-      />
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Found {gapDivisions.length} GADM division{gapDivisions.length === 1 ? '' : 's'} in the uncovered area.
-        Assigning a parent division also handles its children.
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        {gapDivisions.length} gap division{gapDivisions.length === 1 ? '' : 's'}.
+        Assigning a parent also handles its children.
       </Typography>
       {roots.map(gap => renderGapRow(gap, 0))}
     </>

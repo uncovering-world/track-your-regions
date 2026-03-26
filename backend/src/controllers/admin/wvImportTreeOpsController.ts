@@ -664,7 +664,7 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
     [parentRegionId, worldViewId],
   );
   if (childrenResult.rows.length === 0) {
-    res.json({ moves: [] });
+    res.json({ moves: [], spatialAnomalies: [] });
     return;
   }
 
@@ -700,7 +700,8 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
   }
 
   if (byGadmParent.size === 0) {
-    res.json({ moves: [] });
+    const spatialAnomalies = await detectAnomaliesForRegion(worldViewId, parentRegionId);
+    res.json({ moves: [], spatialAnomalies });
     return;
   }
 
@@ -729,7 +730,8 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
   }
 
   if (candidateParentIds.length === 0) {
-    res.json({ moves: [] });
+    const spatialAnomalies = await detectAnomaliesForRegion(worldViewId, parentRegionId);
+    res.json({ moves: [], spatialAnomalies });
     return;
   }
 
@@ -821,7 +823,13 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
   moves.sort((a, b) => b.divisions.length - a.divisions.length);
 
   // Spatial anomaly detection (exclaves & disconnected fragments)
-  const spatialAnomalies = await detectAnomaliesForRegion(worldViewId, parentRegionId);
+  let spatialAnomalies: Awaited<ReturnType<typeof detectAnomaliesForRegion>> = [];
+  try {
+    spatialAnomalies = await detectAnomaliesForRegion(worldViewId, parentRegionId);
+    console.log(`[WV Import] Smart-simplify spatial anomalies: ${spatialAnomalies.length} found for parent=${parentRegionId}`);
+  } catch (err) {
+    console.error('[WV Import] Spatial anomaly detection failed:', err);
+  }
 
   res.json({ moves, spatialAnomalies });
 }
