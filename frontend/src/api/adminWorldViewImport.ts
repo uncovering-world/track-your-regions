@@ -372,6 +372,8 @@ export type {
   SmartSimplifyMove,
   SmartSimplifyResult,
   ApplySmartSimplifyResult,
+  SpatialAnomalyDivision,
+  SpatialAnomaly,
 } from './adminWvImportTreeOps';
 
 export {
@@ -422,6 +424,7 @@ export {
   guidedMatchWithProgress,
 } from './adminWvImportCvMatch';
 export type {
+  AdjacencyEdge,
   ClusterGeoInfo,
   ColorMatchCluster,
   DebugImage,

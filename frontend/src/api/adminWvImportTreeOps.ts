@@ -353,8 +353,26 @@ export interface SmartSimplifyMove {
   divisions: SmartSimplifyDivision[];
 }
 
+export interface SpatialAnomalyDivision {
+  divisionId: number;
+  name: string;
+  memberRowId: number | null;
+  sourceRegionId: number;
+  sourceRegionName: string;
+}
+
+export interface SpatialAnomaly {
+  divisions: SpatialAnomalyDivision[];
+  suggestedTargetRegionId: number;
+  suggestedTargetRegionName: string;
+  fragmentSize: number;
+  totalRegionSize: number;
+  score: number;
+}
+
 export interface SmartSimplifyResult {
   moves: SmartSimplifyMove[];
+  spatialAnomalies: SpatialAnomaly[];
 }
 
 export async function detectSmartSimplify(
@@ -377,9 +395,10 @@ export async function applySmartSimplifyMove(
   parentRegionId: number,
   ownerRegionId: number,
   memberRowIds: number[],
+  skipSimplify?: boolean,
 ): Promise<ApplySmartSimplifyResult> {
   return authFetchJson(
     `${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify/apply-move`,
-    { method: 'POST', body: JSON.stringify({ parentRegionId, ownerRegionId, memberRowIds }) },
+    { method: 'POST', body: JSON.stringify({ parentRegionId, ownerRegionId, memberRowIds, skipSimplify }) },
   );
 }
