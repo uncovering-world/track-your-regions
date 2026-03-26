@@ -15,6 +15,7 @@ import {
   undoEntries,
 } from './wvImportUtils.js';
 import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
+import { detectAnomaliesForRegion } from '../../services/worldViewImport/spatialAnomalyDetector.js';
 
 // =============================================================================
 // Tree structure manipulation endpoints
@@ -819,7 +820,10 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
   // Sort by number of divisions to move (most impactful first)
   moves.sort((a, b) => b.divisions.length - a.divisions.length);
 
-  res.json({ moves });
+  // Spatial anomaly detection (exclaves & disconnected fragments)
+  const spatialAnomalies = await detectAnomaliesForRegion(worldViewId, parentRegionId);
+
+  res.json({ moves, spatialAnomalies });
 }
 
 /**
@@ -828,7 +832,7 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
  */
 export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
-  const { parentRegionId, ownerRegionId, memberRowIds } = req.body;
+  const { parentRegionId, ownerRegionId, memberRowIds, skipSimplify } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/smart-simplify/apply-move — parent=${parentRegionId} owner=${ownerRegionId} rows=${memberRowIds.length}`);
 
   const client = await pool.connect();
@@ -895,8 +899,12 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
 
     await client.query('COMMIT');
 
-    // 5. Post-commit: simplify the owner region
-    const { replacements } = await runSimplifyHierarchy(ownerRegionId, worldViewId);
+    // 5. Post-commit: simplify the owner region (skip if applying a spatial anomaly fix)
+    let replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }> = [];
+    if (!skipSimplify) {
+      const simplifyResult = await runSimplifyHierarchy(ownerRegionId, worldViewId);
+      replacements = simplifyResult.replacements;
+    }
 
     // 6. Invalidate geometry + sync match status for all affected regions
     for (const regionId of affectedRegionIds) {
