@@ -60,10 +60,12 @@ export interface CvMatchMapProps {
   onClusterReassign?: (divisionId: number, clusterId: number, color: string) => void;
   /** Highlight all divisions belonging to this cluster (dim everything else) */
   highlightClusterId?: number | null;
+  /** Division IDs flagged as spatial anomalies (exclaves) */
+  anomalousDivisionIds?: Set<number>;
 }
 
 /** Interactive MapLibre map showing CV color-match division assignments with click-to-accept/reject */
-export function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlightClusterId }: CvMatchMapProps) {
+export function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, highlightClusterId, anomalousDivisionIds }: CvMatchMapProps) {
   const mapRef = useRef<MapRef>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -249,6 +251,21 @@ export function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, 
               'line-color': '#ff9800',
               'line-width': 1.5,
               'line-dasharray': [4, 4],
+            }}
+          />
+          {/* Spatial anomaly overlay (dashed magenta) */}
+          <Layer
+            id="cv-divisions-anomaly"
+            type="line"
+            source="cv-divisions"
+            filter={anomalousDivisionIds && anomalousDivisionIds.size > 0
+              ? ['in', ['get', 'divisionId'], ['literal', [...anomalousDivisionIds]]]
+              : ['==', 1, 0]
+            }
+            paint={{
+              'line-color': '#e040fb',
+              'line-width': 2.5,
+              'line-dasharray': [4, 3],
             }}
           />
         </Source>
