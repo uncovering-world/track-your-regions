@@ -260,7 +260,7 @@ export function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, 
             source="cv-divisions"
             filter={anomalousDivisionIds && anomalousDivisionIds.size > 0
               ? ['in', ['get', 'divisionId'], ['literal', [...anomalousDivisionIds]]]
-              : ['==', 1, 0]
+              : ['==', ['get', 'divisionId'], -1]
             }
             paint={{
               'line-color': '#e040fb',

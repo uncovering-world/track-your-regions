@@ -1,8 +1,8 @@
 /**
  * WorldView Import Matcher — Shared Utilities
  *
- * Name normalization, GADM data loading, and in-memory matching helpers
- * shared between country-level and legacy leaf-level matchers.
+ * Name normalization, GADM data loading, path building, and in-memory
+ * matching helpers shared between country-level, legacy, and AI matchers.
  */
 
 import { pool } from '../../db/index.js';

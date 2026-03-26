@@ -124,7 +124,6 @@ export {
   login,
   register,
   logout,
-  refreshTokens,
   getCurrentUser,
   getGoogleAuthUrl,
   getAppleAuthUrl,

@@ -732,7 +732,7 @@ export function GapAnalysisDialog({ state, tree, worldViewId, highlightedGapId, 
           </Box>
         ) : effectiveState.gapDivisions.length === 0 ? (
           <Typography color="text.secondary" sx={{ py: 2 }}>
-            No gap divisions found. Children fully cover the parent&apos;s territory.
+            No gap divisions found.
           </Typography>
         ) : (
           <GapDivisionTree

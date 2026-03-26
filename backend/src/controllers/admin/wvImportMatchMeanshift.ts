@@ -14,7 +14,7 @@
  * WASM build, the algorithm is implemented manually in Lab color space at
  * half resolution for speed.
  *
- * Sets on ctx: textExcluded, waterGrown, countryMask, countrySize, coastalBand
+ * Sets on ctx: waterGrown, countryMask, countrySize, coastalBand
  * Modifies: colorBuf (replaced with mean-shift filtered result)
  * Skips: hsvSharp, inpaintedBuf, labBufEarly (set to empty — not needed)
  */
@@ -447,9 +447,29 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
   const bgMaskRgb = floodFillBackground(Buffer.from(ctx.origDownBuf), TW, TH, BG_RGB_DIST);
 
   // Also detect gray/unsaturated background
-  const bgMaskGray = detectGrayBackground(cv, Buffer.from(ctx.origDownBuf), TW, TH);
+  const bgMaskGrayRaw = detectGrayBackground(cv, Buffer.from(ctx.origDownBuf), TW, TH);
 
-  // Combine: background = RGB flood fill OR gray flood fill
+  // Morphological opening on gray mask: removes thin features (1-3px border lines,
+  // admin boundaries) that have low saturation but aren't background. Without this,
+  // border lines at narrow map corridors break the country mask CC connectivity,
+  // causing foreign land removal to drop entire protrusions (e.g. Xinjiang's west).
+  const openKSize = ctx.oddK(5);
+  const grayMat = cv.matFromArray(TH, TW, cv.CV_8UC1,
+    Uint8Array.from(bgMaskGrayRaw, (v: number) => v ? 255 : 0));
+  const openKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(openKSize, openKSize));
+  const grayOpened = new cv.Mat();
+  cv.morphologyEx(grayMat, grayOpened, cv.MORPH_OPEN, openKernel);
+  const bgMaskGray = new Uint8Array(tp);
+  for (let i = 0; i < tp; i++) bgMaskGray[i] = grayOpened.data[i] ? 1 : 0;
+  grayMat.delete(); openKernel.delete(); grayOpened.delete();
+
+  const grayRawCount = bgMaskGrayRaw.reduce((s: number, v: number) => s + v, 0);
+  const grayOpenCount = bgMaskGray.reduce((s: number, v: number) => s + v, 0);
+  if (grayRawCount !== grayOpenCount) {
+    console.log(`  [MS] Gray bg opening: ${grayRawCount} → ${grayOpenCount} px (removed ${grayRawCount - grayOpenCount} thin features)`);
+  }
+
+  // Combine: background = RGB flood fill OR gray flood fill (opened)
   const bgMask = new Uint8Array(tp);
   for (let i = 0; i < tp; i++) {
     if (bgMaskRgb[i] || bgMaskGray[i]) bgMask[i] = 1;
@@ -589,11 +609,31 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
     ccLabels.delete(); ccStats.delete();
   }
 
+  // Debug image: country mask after foreign land removal (diagnoses lost regions)
+  {
+    const cmDebug = Buffer.alloc(tp * 3);
+    for (let i = 0; i < tp; i++) {
+      if (countryMask[i]) {
+        cmDebug[i * 3] = colorBuf[i * 3]; cmDebug[i * 3 + 1] = colorBuf[i * 3 + 1]; cmDebug[i * 3 + 2] = colorBuf[i * 3 + 2];
+      } else if (waterGrown[i]) {
+        cmDebug[i * 3] = 100; cmDebug[i * 3 + 1] = 150; cmDebug[i * 3 + 2] = 255;
+      } else {
+        cmDebug[i * 3] = 200; cmDebug[i * 3 + 1] = 200; cmDebug[i * 3 + 2] = 200;
+      }
+    }
+    const cmPng = await sharp(cmDebug, {
+      raw: { width: TW, height: TH, channels: 3 },
+    }).resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+    await pushDebugImage(
+      'Country mask (after foreign land removal)',
+      `data:image/png;base64,${cmPng.toString('base64')}`,
+    );
+  }
+
   // Coastal band: country pixels within 5px of water
   const coastalBand = computeCoastalBand(waterGrown, countryMask, TW, TH);
 
   // Set all ctx fields
-  ctx.textExcluded = new Uint8Array(tp);
   ctx.waterGrown = waterGrown;
   ctx.countryMask = countryMask;
   ctx.countrySize = countrySize;

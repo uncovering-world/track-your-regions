@@ -13,21 +13,19 @@
  * - aiAssistTypes.ts — UsageStats, LastOperation, RegionSuggestion interfaces
  * - useAIModelManager.ts — model selection, provider config, status checking
  * - useAIUsageTracking.ts — usage stat helpers (totalStats, getPercentage, resetStats)
+ * - useGroupDescriptions.ts — group description management (localStorage, AI generation)
+ * - useAISuggestions.ts — AI suggestion operations (single, batch, auto-assign)
  * - AIUsagePopover.tsx — usage statistics popover display
+ * - AIAssistControls.tsx — header controls (batch, escalation, model selector)
+ * - AIDivisionList.tsx — division list with suggestion rows
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   Box,
   Typography,
   Button,
   Paper,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  IconButton,
-  Tooltip,
   Chip,
   CircularProgress,
   Alert,
@@ -35,41 +33,22 @@ import {
   LinearProgress,
   Collapse,
   Divider,
-  Badge,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Checkbox,
-  FormControlLabel,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
+  IconButton,
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import CallSplitIcon from '@mui/icons-material/CallSplit';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import PaidIcon from '@mui/icons-material/Paid';
 import type { Region, RegionMember } from '@/types';
 import type { SubdivisionGroup } from './types';
 import { getGroupColor } from './types';
-import {
-  suggestGroupForRegion,
-  suggestGroupsForMultipleRegions,
-  generateGroupDescriptions,
-} from '@/api';
 import type { UsageStats, LastOperation, RegionSuggestion } from './aiAssistTypes';
 import { useAIModelManager } from './useAIModelManager';
 import { useAIUsageTracking } from './useAIUsageTracking';
-import { AIUsagePopover } from './AIUsagePopover';
+import { useGroupDescriptions } from './useGroupDescriptions';
+import { useAISuggestions } from './useAISuggestions';
+import { AIAssistControls } from './AIAssistControls';
+import { AIDivisionList } from './AIDivisionList';
 
 // Re-export types for consumer compatibility
 export type { UsageStats, LastOperation, RegionSuggestion } from './aiAssistTypes';
@@ -133,113 +112,73 @@ export function AIAssistTab({
     setLastOperation,
   });
 
-  const [batchProcessing, setBatchProcessing] = useState(false);
-  const [expandedDivisions, setExpandedDivisions] = useState<Set<number>>(new Set());
-  const [autoAssignCount, setAutoAssignCount] = useState(0);
-  const [quotaError, setQuotaError] = useState<string | null>(null);
+  const groupNames = useMemo(() => subdivisionGroups.map(g => g.name), [subdivisionGroups]);
 
-  const [usagePopoverAnchor, setUsagePopoverAnchor] = useState<HTMLElement | null>(null);
+  const {
+    groupDescriptions,
+    generatingDescriptions,
+    showDescriptions,
+    toggleShowDescriptions,
+    handleGenerateDescriptions,
+    handleDescriptionChange,
+  } = useGroupDescriptions({
+    regionId: selectedRegion?.id,
+    regionName: selectedRegion?.name || 'Unknown',
+    groupNames,
+    worldViewDescription,
+    worldViewSource,
+    aiAvailable,
+    setSingleRequestStats,
+    setQuotaError: (err) => setQuotaErrorFromDescriptions(err),
+  });
 
-  // Force reprocess option
-  const [forceReprocess, setForceReprocess] = useState(false);
+  const {
+    batchProcessing,
+    autoAssignCount,
+    quotaError,
+    setQuotaError,
+    forceReprocess,
+    setForceReprocess,
+    escalationLevel,
+    setEscalationLevel,
+    useWebSearch,
+    setUseWebSearch,
+    effectiveWebSearch,
+    askAI,
+    batchProcess,
+    autoAssignHighConfidence,
+    assignToGroup,
+    highConfidenceCount,
+    divisionsToProcessCount,
+  } = useAISuggestions({
+    selectedRegionName: selectedRegion?.name || 'Unknown',
+    worldViewDescription,
+    worldViewSource,
+    groupNames,
+    groupDescriptions,
+    unassignedDivisions,
+    setUnassignedDivisions,
+    subdivisionGroups,
+    setSubdivisionGroups,
+    suggestions,
+    setSuggestions,
+    aiAvailable,
+    currentModel,
+    setSingleRequestStats,
+    setBatchRequestStats,
+    setLastOperation,
+  });
 
-  // Escalation level for AI requests
-  type EscalationLevel = 'fast' | 'reasoning' | 'reasoning_search';
-  const [escalationLevel, setEscalationLevel] = useState<EscalationLevel>('fast');
-
-  // Web search option (now derived from escalation level or manual override)
-  const [useWebSearch, setUseWebSearch] = useState(false);
-  const effectiveWebSearch = escalationLevel === 'reasoning_search' || useWebSearch;
-
-  // Group descriptions for AI context
-  const [groupDescriptions, setGroupDescriptions] = useState<Record<string, string>>({});
-  const [generatingDescriptions, setGeneratingDescriptions] = useState(false);
-  const [showDescriptions, setShowDescriptions] = useState(false);
-
-  // LocalStorage key for group descriptions
-  const descriptionsStorageKey = selectedRegion ? `ai-group-descriptions-${selectedRegion.id}` : null;
-
-  // Load descriptions from localStorage on mount
-  useEffect(() => {
-    if (descriptionsStorageKey) {
-      try {
-        const saved = localStorage.getItem(descriptionsStorageKey);
-        if (saved) {
-          setGroupDescriptions(JSON.parse(saved));
-        }
-      } catch (e) {
-        console.error('Failed to load group descriptions:', e);
-      }
-    }
-  }, [descriptionsStorageKey]);
-
-  // Save descriptions to localStorage when they change
-  useEffect(() => {
-    if (descriptionsStorageKey && Object.keys(groupDescriptions).length > 0) {
-      try {
-        localStorage.setItem(descriptionsStorageKey, JSON.stringify(groupDescriptions));
-      } catch (e) {
-        console.error('Failed to save group descriptions:', e);
-      }
-    }
-  }, [groupDescriptions, descriptionsStorageKey]);
-
-  // Generate descriptions using AI
-  const handleGenerateDescriptions = async () => {
-    if (!aiAvailable || subdivisionGroups.length === 0) return;
-
-    setGeneratingDescriptions(true);
-    try {
-      const groupNames = subdivisionGroups.map(g => g.name);
-      const result = await generateGroupDescriptions(
-        groupNames,
-        selectedRegion?.name || 'Unknown',
-        worldViewDescription,
-        worldViewSource,
-        useWebSearch
-      );
-
-      setGroupDescriptions(result.descriptions);
-      setShowDescriptions(true);
-
-      // Track usage if available
-      if (result.usage) {
-        setSingleRequestStats(prev => ({
-          tokens: prev.tokens + result.usage!.totalTokens,
-          inputCost: prev.inputCost + (result.usage!.cost?.inputCost ?? 0),
-          outputCost: prev.outputCost + (result.usage!.cost?.outputCost ?? 0),
-          webSearchCost: (prev.webSearchCost || 0) + (result.usage!.cost?.webSearchCost ?? 0),
-          totalCost: prev.totalCost + (result.usage!.cost?.totalCost ?? 0),
-          requests: prev.requests + 1,
-          regionsProcessed: prev.regionsProcessed,
-        }));
-      }
-    } catch (error) {
-      console.error('Failed to generate descriptions:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('hamsters') || errorMessage.includes('quota')) {
-        setQuotaError(errorMessage);
-      }
-    } finally {
-      setGeneratingDescriptions(false);
-    }
-  };
-
-  // Update a single group description
-  const handleDescriptionChange = (groupName: string, description: string) => {
-    setGroupDescriptions(prev => ({
-      ...prev,
-      [groupName]: description,
-    }));
-  };
+  // Bridge: useGroupDescriptions needs to set quota error from useAISuggestions
+  const setQuotaErrorFromDescriptions = useCallback((err: string | null) => {
+    setQuotaError(err);
+  }, [setQuotaError]);
 
   // Get all divisions (unassigned + assigned to groups)
-  const allDivisions = [
+  const allDivisions = useMemo(() => [
     ...unassignedDivisions,
     ...subdivisionGroups.flatMap(g => g.members),
-  ].sort((a, b) => a.name.localeCompare(b.name));
-
-  const groupNames = subdivisionGroups.map(g => g.name);
+  ].sort((a, b) => a.name.localeCompare(b.name)), [unassignedDivisions, subdivisionGroups]);
 
   // Find which group a division is currently assigned to
   const getDivisionGroup = useCallback((divisionId: number): string | null => {
@@ -250,294 +189,6 @@ export function AIAssistTab({
     }
     return null;
   }, [subdivisionGroups]);
-
-  // Ask AI for a single region
-  const askAI = async (division: RegionMember, overrideEscalation?: EscalationLevel) => {
-    if (!aiAvailable || groupNames.length === 0 || quotaError) return;
-
-    const useLevel = overrideEscalation || escalationLevel;
-    const divisionKey = division.memberRowId || division.id;
-    setSuggestions(prev => new Map(prev).set(divisionKey, {
-      division,
-      suggestion: null,
-      loading: true,
-      error: null,
-    }));
-
-    try {
-      const regionPath = division.path || `${selectedRegion?.name || ''} > ${division.name}`;
-      const suggestion = await suggestGroupForRegion(
-        regionPath,
-        division.name,
-        groupNames,
-        selectedRegion?.name || 'Unknown',
-        Object.keys(groupDescriptions).length > 0 ? groupDescriptions : undefined,
-        useLevel === 'reasoning_search' || useWebSearch,
-        worldViewSource,
-        useLevel
-      );
-
-      setSuggestions(prev => new Map(prev).set(divisionKey, {
-        division,
-        suggestion,
-        loading: false,
-        error: null,
-      }));
-
-      // Track single request usage
-      if (suggestion.usage) {
-        const tokens = suggestion.usage.totalTokens;
-        const inputCost = suggestion.usage.cost?.inputCost ?? 0;
-        const outputCost = suggestion.usage.cost?.outputCost ?? 0;
-        const webSearchCost = suggestion.usage.cost?.webSearchCost ?? 0;
-        const totalCost = suggestion.usage.cost?.totalCost ?? 0;
-
-        setSingleRequestStats(prev => ({
-          tokens: prev.tokens + tokens,
-          inputCost: prev.inputCost + inputCost,
-          outputCost: prev.outputCost + outputCost,
-          webSearchCost: (prev.webSearchCost || 0) + webSearchCost,
-          totalCost: prev.totalCost + totalCost,
-          requests: prev.requests + 1,
-          regionsProcessed: (prev.regionsProcessed || 0) + 1,
-        }));
-
-        setLastOperation({
-          type: 'single',
-          tokens,
-          inputCost,
-          outputCost,
-          webSearchCost,
-          totalCost,
-          regionsCount: 1,
-          model: suggestion.usage.model || currentModel,
-          timestamp: new Date(),
-        });
-      }
-    } catch (error: unknown) {
-      // Check if it's a quota exceeded error
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('hamsters') || errorMessage.includes('quota') || errorMessage.includes('429')) {
-        setQuotaError(errorMessage);
-      }
-
-      setSuggestions(prev => new Map(prev).set(divisionKey, {
-        division,
-        suggestion: null,
-        loading: false,
-        error: errorMessage,
-      }));
-    }
-  };
-
-  // Batch process all unassigned divisions
-  const batchProcess = async () => {
-    if (!aiAvailable || groupNames.length === 0 || unassignedDivisions.length === 0 || quotaError) return;
-
-    // Filter out divisions that already have suggestions (unless force is enabled)
-    const divisionsToProcess = forceReprocess
-      ? unassignedDivisions
-      : unassignedDivisions.filter(div => {
-          const divisionKey = div.memberRowId || div.id;
-          const existing = suggestions.get(divisionKey);
-          // Skip if already has a suggestion (not loading, no error)
-          return !existing?.suggestion;
-        });
-
-    if (divisionsToProcess.length === 0) {
-      console.log('All divisions already have AI suggestions');
-      return;
-    }
-
-    setBatchProcessing(true);
-
-    try {
-      // Just send names - paths are not needed since we provide parentRegion
-      const regions = divisionsToProcess.map(div => ({
-        path: '', // Not needed anymore
-        name: div.name,
-      }));
-
-      const result = await suggestGroupsForMultipleRegions(
-        regions,
-        groupNames,
-        selectedRegion?.name || 'Unknown',
-        worldViewDescription,
-        worldViewSource,
-        effectiveWebSearch,
-        Object.keys(groupDescriptions).length > 0 ? groupDescriptions : undefined
-      );
-
-      // Track batch usage
-      if (result.usage) {
-        const tokens = result.usage.totalTokens;
-        const inputCost = result.usage.cost?.inputCost ?? 0;
-        const outputCost = result.usage.cost?.outputCost ?? 0;
-        const webSearchCost = result.usage.cost?.webSearchCost ?? 0;
-        const totalCost = result.usage.cost?.totalCost ?? 0;
-        const actualRequests = result.apiRequestsCount || 1;
-
-        setBatchRequestStats(prev => ({
-          tokens: prev.tokens + tokens,
-          inputCost: prev.inputCost + inputCost,
-          outputCost: prev.outputCost + outputCost,
-          webSearchCost: (prev.webSearchCost || 0) + webSearchCost,
-          totalCost: prev.totalCost + totalCost,
-          requests: prev.requests + actualRequests,
-          regionsProcessed: (prev.regionsProcessed || 0) + regions.length,
-        }));
-
-        setLastOperation({
-          type: 'batch',
-          tokens,
-          inputCost,
-          outputCost,
-          webSearchCost,
-          totalCost,
-          regionsCount: regions.length,
-          model: result.usage.model || currentModel,
-          timestamp: new Date(),
-        });
-      }
-
-      // Update suggestions map
-      const newSuggestions = new Map(suggestions);
-      for (const div of divisionsToProcess) {
-        const suggestion = result.suggestions[div.name];
-        if (suggestion) {
-          const divisionKey = div.memberRowId || div.id;
-          newSuggestions.set(divisionKey, {
-            division: div,
-            suggestion,
-            loading: false,
-            error: null,
-          });
-        }
-      }
-      setSuggestions(newSuggestions);
-    } catch (error: unknown) {
-      console.error('Batch processing failed:', error);
-      // Check if it's a quota exceeded error
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('hamsters') || errorMessage.includes('quota') || errorMessage.includes('429')) {
-        setQuotaError(errorMessage);
-      }
-    } finally {
-      setBatchProcessing(false);
-    }
-  };
-
-  // Auto-assign all high-confidence suggestions
-  const autoAssignHighConfidence = () => {
-    let assignedCount = 0;
-
-    const newUnassigned = [...unassignedDivisions];
-    const newGroups = subdivisionGroups.map(g => ({ ...g, members: [...g.members] }));
-
-    for (const [divisionKey, data] of suggestions) {
-      if (
-        data.suggestion?.confidence === 'high' &&
-        data.suggestion.suggestedGroup &&
-        !data.suggestion.shouldSplit
-      ) {
-        // Find the division
-        const divIndex = newUnassigned.findIndex(
-          d => (d.memberRowId || d.id) === divisionKey
-        );
-        if (divIndex === -1) continue;
-
-        const division = newUnassigned[divIndex];
-
-        // Find the target group
-        const groupIndex = newGroups.findIndex(
-          g => g.name === data.suggestion!.suggestedGroup
-        );
-        if (groupIndex === -1) continue;
-
-        // Move division to group
-        newUnassigned.splice(divIndex, 1);
-        newGroups[groupIndex].members.push(division);
-        assignedCount++;
-      }
-    }
-
-    if (assignedCount > 0) {
-      setUnassignedDivisions(newUnassigned);
-      setSubdivisionGroups(newGroups);
-      setAutoAssignCount(assignedCount);
-      setTimeout(() => setAutoAssignCount(0), 3000);
-    }
-  };
-
-  // Assign a single division to a group
-  const assignToGroup = (division: RegionMember, groupName: string) => {
-    const divisionKey = division.memberRowId || division.id;
-
-    // Remove from unassigned
-    const newUnassigned = unassignedDivisions.filter(
-      d => (d.memberRowId || d.id) !== divisionKey
-    );
-
-    // Remove from any existing group
-    const newGroups = subdivisionGroups.map(g => ({
-      ...g,
-      members: g.members.filter(m => (m.memberRowId || m.id) !== divisionKey),
-    }));
-
-    // Add to target group
-    const targetGroupIndex = newGroups.findIndex(g => g.name === groupName);
-    if (targetGroupIndex !== -1) {
-      newGroups[targetGroupIndex].members.push(division);
-    }
-
-    setUnassignedDivisions(newUnassigned);
-    setSubdivisionGroups(newGroups);
-  };
-
-  // Toggle expanded state for a division
-  const toggleExpanded = (divisionId: number) => {
-    setExpandedDivisions(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(divisionId)) {
-        newSet.delete(divisionId);
-      } else {
-        newSet.add(divisionId);
-      }
-      return newSet;
-    });
-  };
-
-  // Get confidence color
-  const getConfidenceColor = (confidence: string): 'success' | 'warning' | 'error' | 'default' => {
-    switch (confidence) {
-      case 'high': return 'success';
-      case 'medium': return 'warning';
-      case 'low': return 'error';
-      default: return 'default';
-    }
-  };
-
-  // Get group color by name (for suggestion badges)
-  const getGroupColorByName = (groupName: string) => {
-    const index = groupNames.indexOf(groupName);
-    return index >= 0 ? getGroupColor(subdivisionGroups[index], index) : '#666';
-  };
-
-  // Count high-confidence suggestions for auto-assign button
-  const highConfidenceCount = Array.from(suggestions.values()).filter(
-    s => s.suggestion?.confidence === 'high' &&
-         s.suggestion.suggestedGroup &&
-         !s.suggestion.shouldSplit &&
-         unassignedDivisions.some(d => (d.memberRowId || d.id) === (s.division.memberRowId || s.division.id))
-  ).length;
-
-  // Count divisions to process (respects forceReprocess flag)
-  const divisionsToProcessCount = forceReprocess
-    ? unassignedDivisions.length
-    : unassignedDivisions.filter(div => {
-        const divisionKey = div.memberRowId || div.id;
-        return !suggestions.get(divisionKey)?.suggestion;
-      }).length;
 
   // Render loading state
   if (checkingStatus) {
@@ -590,198 +241,35 @@ export function AIAssistTab({
         </Alert>
       )}
 
-      {/* Header with actions and model selector */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Button
-            variant="contained"
-            startIcon={batchProcessing ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
-            onClick={batchProcess}
-            disabled={batchProcessing || divisionsToProcessCount === 0 || !!quotaError}
-          >
-            {batchProcessing
-              ? 'Processing...'
-              : divisionsToProcessCount === 0
-                ? 'All have suggestions'
-                : `Ask AI (${divisionsToProcessCount}${forceReprocess ? ' all' : ' remaining'})`}
-          </Button>
-
-          <FormControlLabel
-            control={
-              <Checkbox
-                size="small"
-                checked={forceReprocess}
-                onChange={(e) => setForceReprocess(e.target.checked)}
-              />
-            }
-            label={<Typography variant="body2">Force re-process all</Typography>}
-          />
-
-          {highConfidenceCount > 0 && (
-            <Badge badgeContent={highConfidenceCount} color="success">
-              <Button
-                variant="outlined"
-                color="success"
-                startIcon={<AutoFixHighIcon />}
-                onClick={autoAssignHighConfidence}
-              >
-                Auto-Assign High Confidence
-              </Button>
-            </Badge>
-          )}
-        </Box>
-      </Box>
-
-      {/* Escalation Level Selector */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
-          AI Mode:
-        </Typography>
-        <ToggleButtonGroup
-          value={escalationLevel}
-          exclusive
-          onChange={(_, value) => value && setEscalationLevel(value)}
-          size="small"
-        >
-          <ToggleButton value="fast">
-            <Tooltip title="Cheap & fast. Only answers if 100% certain, otherwise marks for escalation.">
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                ⚡ Fast
-              </Box>
-            </Tooltip>
-          </ToggleButton>
-          <ToggleButton value="reasoning">
-            <Tooltip title="Uses reasoning to think step-by-step. More accurate but costs more.">
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                🧠 Reasoning
-              </Box>
-            </Tooltip>
-          </ToggleButton>
-          <ToggleButton value="reasoning_search">
-            <Tooltip title="Reasoning + web search. Most accurate, highest cost. Searches for your source.">
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                🔍 + Search
-              </Box>
-            </Tooltip>
-          </ToggleButton>
-        </ToggleButtonGroup>
-
-        {/* Manual web search override (only if not already in search mode) */}
-        {escalationLevel !== 'reasoning_search' && (
-          <Tooltip title="Enable web search even in Fast/Reasoning mode. Costs extra.">
-            <FormControlLabel
-              control={
-                <Checkbox
-                  size="small"
-                  checked={useWebSearch}
-                  onChange={(e) => setUseWebSearch(e.target.checked)}
-                  disabled={!worldViewSource}
-                />
-              }
-              label={
-                <Typography variant="body2">🌐 +Search</Typography>
-              }
-            />
-          </Tooltip>
-        )}
-
-        {effectiveWebSearch && (
-          <Chip
-            label="Web search active"
-            size="small"
-            color="info"
-            icon={<span>🌐</span>}
-          />
-        )}
-      </Box>
-
-      {/* Model selector row */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-          <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel id="ai-model-select-label">AI Model</InputLabel>
-            <Select
-              labelId="ai-model-select-label"
-              value={currentModel}
-              label="AI Model"
-              onChange={(e) => handleModelChange(e.target.value)}
-              disabled={changingModel || batchProcessing}
-            >
-              {availableModels.map((model) => (
-                <MenuItem key={model.id} value={model.id}>
-                  <Box>
-                    <Typography variant="body2">{model.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {model.description}
-                    </Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          {/* Web Search Model selector - only show when web search is enabled */}
-          {useWebSearch && webSearchModels.length > 0 && (
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel id="web-search-model-select-label">🌐 Search Model</InputLabel>
-              <Select
-                labelId="web-search-model-select-label"
-                value={webSearchModelId}
-                label="🌐 Search Model"
-                onChange={(e) => handleWebSearchModelChange(e.target.value)}
-                disabled={changingModel || batchProcessing}
-              >
-                {webSearchModels.map((model) => (
-                  <MenuItem key={model.id} value={model.id}>
-                    <Box>
-                      <Typography variant="body2">{model.name}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {model.description}
-                      </Typography>
-                    </Box>
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-
-          <Tooltip title="Refresh available models from OpenAI">
-            <IconButton
-              size="small"
-              onClick={refreshModels}
-              disabled={changingModel || batchProcessing}
-            >
-              <RefreshIcon />
-            </IconButton>
-          </Tooltip>
-
-          {/* Usage/cost tracking button */}
-          <Tooltip title="View token usage and costs">
-            <IconButton
-              size="small"
-              onClick={(e) => setUsagePopoverAnchor(e.currentTarget)}
-              color={totalStats.tokens > 0 ? 'primary' : 'default'}
-            >
-              <Badge
-                badgeContent={totalStats.requests > 0 ? totalStats.requests : undefined}
-                color="info"
-                max={99}
-              >
-                <PaidIcon />
-              </Badge>
-            </IconButton>
-          </Tooltip>
-
-          {/* Usage popover */}
-          <AIUsagePopover
-            anchorEl={usagePopoverAnchor}
-            onClose={() => setUsagePopoverAnchor(null)}
-            lastOperation={lastOperation}
-            singleRequestStats={singleRequestStats}
-            batchRequestStats={batchRequestStats}
-            totalStats={totalStats}
-            onResetStats={resetStats}
-          />
-      </Box>
+      <AIAssistControls
+        batchProcessing={batchProcessing}
+        divisionsToProcessCount={divisionsToProcessCount}
+        forceReprocess={forceReprocess}
+        setForceReprocess={setForceReprocess}
+        onBatchProcess={batchProcess}
+        highConfidenceCount={highConfidenceCount}
+        onAutoAssign={autoAssignHighConfidence}
+        escalationLevel={escalationLevel}
+        setEscalationLevel={setEscalationLevel}
+        useWebSearch={useWebSearch}
+        setUseWebSearch={setUseWebSearch}
+        effectiveWebSearch={effectiveWebSearch}
+        worldViewSource={worldViewSource}
+        currentModel={currentModel}
+        availableModels={availableModels}
+        webSearchModelId={webSearchModelId}
+        webSearchModels={webSearchModels}
+        changingModel={changingModel}
+        onModelChange={handleModelChange}
+        onWebSearchModelChange={handleWebSearchModelChange}
+        onRefreshModels={refreshModels}
+        totalStats={totalStats}
+        singleRequestStats={singleRequestStats}
+        batchRequestStats={batchRequestStats}
+        lastOperation={lastOperation}
+        onResetStats={resetStats}
+        quotaError={quotaError}
+      />
 
       {/* Auto-assign success message */}
       <Collapse in={autoAssignCount > 0}>
@@ -811,23 +299,21 @@ export function AIAssistTab({
         ))}
 
         {/* Generate descriptions button */}
-        <Tooltip title="Generate AI descriptions for each group to improve classification accuracy">
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={generatingDescriptions ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
-            onClick={handleGenerateDescriptions}
-            disabled={generatingDescriptions || !!quotaError}
-            sx={{ ml: 'auto' }}
-          >
-            {Object.keys(groupDescriptions).length > 0 ? 'Regenerate' : 'Prepare'} Descriptions
-          </Button>
-        </Tooltip>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={generatingDescriptions ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
+          onClick={() => handleGenerateDescriptions(effectiveWebSearch)}
+          disabled={generatingDescriptions || !!quotaError}
+          sx={{ ml: 'auto' }}
+        >
+          {Object.keys(groupDescriptions).length > 0 ? 'Regenerate' : 'Prepare'} Descriptions
+        </Button>
 
         {Object.keys(groupDescriptions).length > 0 && (
           <IconButton
             size="small"
-            onClick={() => setShowDescriptions(!showDescriptions)}
+            onClick={toggleShowDescriptions}
           >
             {showDescriptions ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           </IconButton>
@@ -876,293 +362,17 @@ export function AIAssistTab({
       <Divider sx={{ my: 2 }} />
 
       {/* Divisions list with AI suggestions */}
-      <Paper variant="outlined" sx={{ maxHeight: 400, overflow: 'auto' }}>
-        <List dense>
-          {allDivisions.map((division) => {
-            const divisionKey = division.memberRowId || division.id;
-            const suggestionData = suggestions.get(divisionKey);
-            const currentGroup = getDivisionGroup(divisionKey);
-            const isExpanded = expandedDivisions.has(divisionKey);
-            const isUnassigned = !currentGroup;
-
-            return (
-              <Box key={divisionKey}>
-                <ListItem
-                  sx={{
-                    bgcolor: isUnassigned ? 'background.paper' : 'action.selected',
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: 40 }}>
-                    {suggestionData?.loading ? (
-                      <CircularProgress size={20} />
-                    ) : suggestionData?.suggestion?.needsEscalation ? (
-                      <Tooltip title="AI uncertain - click to escalate with more reasoning or web search">
-                        <Box sx={{ color: 'warning.main', fontSize: '1.2rem' }}>⚠️</Box>
-                      </Tooltip>
-                    ) : suggestionData?.suggestion?.shouldSplit ? (
-                      <Tooltip title="AI suggests splitting this region">
-                        <CallSplitIcon color="warning" />
-                      </Tooltip>
-                    ) : suggestionData?.suggestion?.confidence === 'high' ? (
-                      <Tooltip title="High confidence suggestion">
-                        <CheckCircleIcon color="success" />
-                      </Tooltip>
-                    ) : suggestionData?.suggestion ? (
-                      <Tooltip title={`${suggestionData.suggestion.confidence} confidence`}>
-                        <HelpOutlineIcon color={suggestionData.suggestion.confidence === 'medium' ? 'warning' : 'disabled'} />
-                      </Tooltip>
-                    ) : null}
-                  </ListItemIcon>
-
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2" fontWeight={500}>
-                          {division.name}
-                        </Typography>
-                        {currentGroup && (
-                          <Chip
-                            label={currentGroup}
-                            size="small"
-                            sx={{
-                              height: 20,
-                              fontSize: '0.7rem',
-                              bgcolor: getGroupColorByName(currentGroup) + '30',
-                              borderColor: getGroupColorByName(currentGroup),
-                              border: '1px solid',
-                            }}
-                          />
-                        )}
-                      </Box>
-                    }
-                    slotProps={{ primary: { component: 'div' }, secondary: { component: 'div' } }}
-                    secondary={
-                      suggestionData?.suggestion && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
-                          <Chip
-                            label={suggestionData.suggestion.confidence}
-                            size="small"
-                            color={getConfidenceColor(suggestionData.suggestion.confidence)}
-                            sx={{ height: 18, fontSize: '0.65rem' }}
-                          />
-                          {suggestionData.suggestion.suggestedGroup && !suggestionData.suggestion.shouldSplit && (
-                            <Typography variant="caption" color="text.secondary">
-                              → {suggestionData.suggestion.suggestedGroup}
-                            </Typography>
-                          )}
-                          {suggestionData.suggestion.shouldSplit && (
-                            <Chip
-                              label={suggestionData.suggestion.splitGroups
-                                ? `⚠️ Split: ${suggestionData.suggestion.splitGroups.join(' / ')}`
-                                : `⚠️ Needs split (${suggestionData.suggestion.suggestedGroup || 'multiple groups'})`}
-                              size="small"
-                              color="warning"
-                              sx={{ height: 18, fontSize: '0.65rem' }}
-                            />
-                          )}
-                        </Box>
-                      )
-                    }
-                  />
-
-                  <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    {/* Ask AI button */}
-                    {isUnassigned && !suggestionData?.suggestion && (
-                      <Tooltip title={quotaError ? "AI credits exhausted" : "Ask AI for suggestion"}>
-                        <span>
-                          <IconButton
-                            size="small"
-                            onClick={() => askAI(division)}
-                            disabled={suggestionData?.loading || !!quotaError}
-                          >
-                            <SmartToyIcon fontSize="small" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    )}
-
-                    {/* Escalation buttons for uncertain suggestions */}
-                    {suggestionData?.suggestion?.needsEscalation && isUnassigned && (
-                      <>
-                        {suggestionData.suggestion.escalationLevel !== 'reasoning' && (
-                          <Tooltip title="Re-ask with reasoning (🧠 think deeper)">
-                            <IconButton
-                              size="small"
-                              color="warning"
-                              onClick={() => askAI(division, 'reasoning')}
-                              disabled={suggestionData?.loading || !!quotaError}
-                            >
-                              <span style={{ fontSize: '1rem' }}>🧠</span>
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        {suggestionData.suggestion.escalationLevel !== 'reasoning_search' && (
-                          <Tooltip title="Re-ask with web search (🔍 search for sources)">
-                            <IconButton
-                              size="small"
-                              color="info"
-                              onClick={() => askAI(division, 'reasoning_search')}
-                              disabled={suggestionData?.loading || !!quotaError || !worldViewSource}
-                            >
-                              <span style={{ fontSize: '1rem' }}>🔍</span>
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                      </>
-                    )}
-
-                    {/* Quick assign buttons if suggestion exists */}
-                    {suggestionData?.suggestion?.suggestedGroup &&
-                     suggestionData.suggestion.confidence !== 'low' &&
-                     !suggestionData.suggestion.shouldSplit &&
-                     isUnassigned && (
-                      <Tooltip title={`Assign to ${suggestionData.suggestion.suggestedGroup}`}>
-                        <IconButton
-                          size="small"
-                          color="success"
-                          onClick={() => assignToGroup(division, suggestionData.suggestion!.suggestedGroup!)}
-                        >
-                          <PlayArrowIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-
-                    {/* Show details toggle */}
-                    {suggestionData?.suggestion && (
-                      <IconButton size="small" onClick={() => toggleExpanded(divisionKey)}>
-                        {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                      </IconButton>
-                    )}
-                  </Box>
-                </ListItem>
-
-                {/* Expanded details */}
-                <Collapse in={isExpanded && !!suggestionData?.suggestion}>
-                  <Box sx={{ px: 3, py: 1.5, bgcolor: 'grey.50' }}>
-                    {/* Escalation level and status */}
-                    <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
-                      <Chip
-                        label={
-                          suggestionData?.suggestion?.escalationLevel === 'reasoning_search' ? '🔍 Search' :
-                          suggestionData?.suggestion?.escalationLevel === 'reasoning' ? '🧠 Reasoning' : '⚡ Fast'
-                        }
-                        size="small"
-                        variant="outlined"
-                        color={
-                          suggestionData?.suggestion?.escalationLevel === 'reasoning_search' ? 'info' :
-                          suggestionData?.suggestion?.escalationLevel === 'reasoning' ? 'warning' : 'default'
-                        }
-                      />
-                      {suggestionData?.suggestion?.needsEscalation && (
-                        <Chip
-                          label="⚠️ Needs escalation"
-                          size="small"
-                          color="warning"
-                        />
-                      )}
-                    </Box>
-
-                    <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                      <InfoOutlinedIcon fontSize="small" color="action" />
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Reasoning:</strong> {suggestionData?.suggestion?.reasoning}
-                      </Typography>
-                    </Box>
-                    {suggestionData?.suggestion?.context && (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 3 }}>
-                        <strong>Context:</strong> {suggestionData.suggestion.context}
-                      </Typography>
-                    )}
-
-                    {/* Sources from web search */}
-                    {suggestionData?.suggestion?.sources && suggestionData.suggestion.sources.length > 0 && (
-                      <Box sx={{ ml: 3, mt: 1 }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <strong>🌐 Sources:</strong>
-                        </Typography>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, mt: 0.5 }}>
-                          {suggestionData.suggestion.sources.map((source, idx) => (
-                            <Typography
-                              key={idx}
-                              variant="caption"
-                              component="a"
-                              href={source}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              sx={{
-                                color: 'primary.main',
-                                textDecoration: 'none',
-                                '&:hover': { textDecoration: 'underline' },
-                                wordBreak: 'break-all',
-                              }}
-                            >
-                              {source.length > 60 ? source.substring(0, 60) + '...' : source}
-                            </Typography>
-                          ))}
-                        </Box>
-                      </Box>
-                    )}
-
-                    {/* Manual assign buttons for all groups */}
-                    {isUnassigned && (
-                      <Box sx={{ mt: 1.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ mr: 1, alignSelf: 'center' }}>
-                          Assign to:
-                        </Typography>
-                        {groupNames.map((groupName, idx) => {
-                          const gc = getGroupColor(subdivisionGroups[idx], idx);
-                          return (
-                            <Button
-                              key={groupName}
-                              size="small"
-                              variant={
-                                suggestionData?.suggestion?.suggestedGroup === groupName
-                                  ? 'contained'
-                                  : 'outlined'
-                              }
-                              sx={{
-                                fontSize: '0.7rem',
-                                py: 0.25,
-                                borderColor: gc,
-                                color: suggestionData?.suggestion?.suggestedGroup === groupName
-                                  ? 'white'
-                                  : gc,
-                                bgcolor: suggestionData?.suggestion?.suggestedGroup === groupName
-                                  ? gc
-                                  : 'transparent',
-                                '&:hover': {
-                                  bgcolor: gc + '30',
-                                },
-                              }}
-                              onClick={() => assignToGroup(division, groupName)}
-                            >
-                              {groupName}
-                            </Button>
-                          );
-                        })}
-                      </Box>
-                    )}
-
-                    {/* Split suggestion action */}
-                    {suggestionData?.suggestion?.shouldSplit && suggestionData.suggestion.splitGroups && (
-                      <Alert severity="warning" sx={{ mt: 1 }} icon={<CallSplitIcon />}>
-                        <Typography variant="body2">
-                          This region may need to be split between: <strong>{suggestionData.suggestion.splitGroups.join(' and ')}</strong>
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Use the Map View tab to split this region's geometry if needed.
-                        </Typography>
-                      </Alert>
-                    )}
-                  </Box>
-                </Collapse>
-              </Box>
-            );
-          })}
-        </List>
-      </Paper>
+      <AIDivisionList
+        allDivisions={allDivisions}
+        subdivisionGroups={subdivisionGroups}
+        groupNames={groupNames}
+        suggestions={suggestions}
+        getDivisionGroup={getDivisionGroup}
+        quotaError={quotaError}
+        worldViewSource={worldViewSource}
+        onAskAI={askAI}
+        onAssignToGroup={assignToGroup}
+      />
 
       {/* Footer info */}
       <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>

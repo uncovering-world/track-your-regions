@@ -175,6 +175,8 @@ interface TreeNodeContentProps {
   coverageFetching?: boolean;
   /** Callback when coverage chip is clicked */
   onCoverageClick?: (regionId: number) => void;
+  /** Notify virtualizer to re-measure row height after content resize */
+  onContentResize?: () => void;
 }
 
 export function TreeNodeContent({
@@ -202,9 +204,21 @@ export function TreeNodeContent({
   coverageLoading,
   coverageFetching,
   onCoverageClick,
+  onContentResize,
 }: TreeNodeContentProps) {
   const [selectedDivIds, setSelectedDivIds] = useState<Set<number>>(new Set());
+  const [divisionsExpanded, setDivisionsExpanded] = useState(false);
   const showCheckboxes = node.suggestions.length > 1;
+
+  // Reset collapse state when node changes (virtualized list may reuse component)
+  useEffect(() => {
+    setDivisionsExpanded(false);
+  }, [node.id]);
+
+  // Notify virtualizer to re-measure row height when divisions expand/collapse
+  useEffect(() => {
+    onContentResize?.();
+  }, [divisionsExpanded, onContentResize]);
 
   const toggleSelection = useCallback((divisionId: number) => {
     setSelectedDivIds(prev => {
@@ -253,9 +267,30 @@ export function TreeNodeContent({
       {/* Division list for matched countries */}
       {role === 'country' && (node.matchStatus === 'auto_matched' || node.matchStatus === 'manual_matched') && node.assignedDivisions.length > 0 && (
         <Box sx={{ pl: depth * 3 + 4.5, pb: 0.3 }}>
-          {node.assignedDivisions.map((div) => (
-            <AssignedDivisionRow key={div.divisionId} div={div} regionId={node.id} onReject={onReject} onPreview={handlePreviewAssigned} isMutating={isMutating} />
-          ))}
+          {divisionsExpanded ? (
+            <>
+              {node.assignedDivisions.map((div) => (
+                <AssignedDivisionRow key={div.divisionId} div={div} regionId={node.id} onReject={onReject} onPreview={handlePreviewAssigned} isMutating={isMutating} />
+              ))}
+              <Typography
+                variant="caption"
+                color="primary"
+                onClick={() => setDivisionsExpanded(false)}
+                sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+              >
+                Hide
+              </Typography>
+            </>
+          ) : (
+            <Typography
+              variant="caption"
+              color="primary"
+              onClick={() => setDivisionsExpanded(true)}
+              sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+            >
+              {node.assignedDivisions.length} division{node.assignedDivisions.length !== 1 ? 's' : ''}…
+            </Typography>
+          )}
           {geoshapeCoveragePercent != null && (
             <Chip
               size="small"
@@ -284,9 +319,30 @@ export function TreeNodeContent({
       {/* Suggestions and assigned divisions for review/suggested countries */}
       {role === 'country' && (node.matchStatus === 'needs_review' || node.matchStatus === 'suggested') && (node.assignedDivisions.length > 0 || node.suggestions.length > 0) && (
         <Box sx={{ pl: depth * 3 + 4.5, pb: 0.3 }}>
-          {node.assignedDivisions.map((div) => (
-            <AssignedDivisionRow key={`a-${div.divisionId}`} div={div} regionId={node.id} onReject={onReject} onPreview={handlePreviewAssigned} isMutating={isMutating} />
-          ))}
+          {divisionsExpanded ? (
+            <>
+              {node.assignedDivisions.map((div) => (
+                <AssignedDivisionRow key={`a-${div.divisionId}`} div={div} regionId={node.id} onReject={onReject} onPreview={handlePreviewAssigned} isMutating={isMutating} />
+              ))}
+              <Typography
+                variant="caption"
+                color="primary"
+                onClick={() => setDivisionsExpanded(false)}
+                sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+              >
+                Hide
+              </Typography>
+            </>
+          ) : (
+            <Typography
+              variant="caption"
+              color="primary"
+              onClick={() => setDivisionsExpanded(true)}
+              sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+            >
+              {node.assignedDivisions.length} division{node.assignedDivisions.length !== 1 ? 's' : ''}…
+            </Typography>
+          )}
           {node.suggestions.map((suggestion) => (
             <SuggestionRow
               key={`s-${suggestion.divisionId}`}

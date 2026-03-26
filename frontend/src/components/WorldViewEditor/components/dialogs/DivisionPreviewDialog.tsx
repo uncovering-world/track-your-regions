@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useMemo, useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -15,10 +15,12 @@ import CheckIcon from '@mui/icons-material/Check';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import MapGL, { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
+import type maplibregl from 'maplibre-gl';
 import * as turf from '@turf/turf';
-import { fetchGeoshape } from '../../../../api/adminWorldViewImport';
+import { fetchGeoshape, getChildrenRegionGeometry } from '../../../../api/adminWorldViewImport';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+const CHILD_COLORS = ['#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd', '#aa3366', '#55bb88', '#8866cc', '#dd5555', '#44bbaa', '#7766bb', '#bb8844'];
 
 interface PreviewDivision {
   name: string;
@@ -39,6 +41,10 @@ interface DivisionPreviewDialogProps {
   regionName?: string;
   /** Wikidata ID for geoshape fallback (when no regionMapUrl) */
   wikidataId?: string;
+  /** World view ID for fetching children geometry */
+  worldViewId?: number;
+  /** Region ID for fetching children geometry */
+  regionId?: number;
   /** Optional accept callback — when provided, shows an Accept button */
   onAccept?: () => void;
   /** Optional reject callback — when provided, shows a Reject button */
@@ -53,6 +59,168 @@ interface DivisionPreviewDialogProps {
   actionPending?: boolean;
 }
 
+/** Right panel: GADM divisions with AI classification colors */
+function DivisionsMapPanel({ mapRef, geometry, aiSuggestedIds, aiRejectedIds, aiUnclearIds }: {
+  mapRef: React.RefObject<MapRef>;
+  geometry: GeoJSON.Geometry | GeoJSON.FeatureCollection;
+  aiSuggestedIds: Set<number>;
+  aiRejectedIds: Set<number>;
+  aiUnclearIds: Set<number>;
+}) {
+  const rawData: GeoJSON.FeatureCollection = geometry.type === 'FeatureCollection'
+    ? geometry as GeoJSON.FeatureCollection
+    : { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: geometry as GeoJSON.Geometry }] };
+  const hasAiResults = aiSuggestedIds.size > 0 || aiRejectedIds.size > 0 || aiUnclearIds.size > 0;
+  const geoData: GeoJSON.FeatureCollection = hasAiResults
+    ? {
+        ...rawData,
+        features: rawData.features.map(f => {
+          const divId = f.properties?.divisionId;
+          if (divId == null) return f;
+          const aiClass = aiSuggestedIds.has(divId) ? 'inside'
+            : aiRejectedIds.has(divId) ? 'outside'
+            : aiUnclearIds.has(divId) ? 'unclear'
+            : null;
+          return aiClass ? { ...f, properties: { ...f.properties, aiClass } } : f;
+        }),
+      }
+    : rawData;
+  return (
+    <MapGL
+      ref={mapRef}
+      initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
+      style={{ width: '100%', height: '100%' }}
+      mapStyle={MAP_STYLE}
+      onLoad={() => {
+        if (mapRef.current) {
+          try {
+            const bbox = turf.bbox(geoData) as [number, number, number, number];
+            mapRef.current.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, duration: 0 });
+          } catch (e) { console.error('Failed to fit bounds:', e); }
+        }
+      }}
+    >
+      <NavigationControl position="top-right" showCompass={false} />
+      <Source id="preview-division" type="geojson" data={geoData}>
+        <Layer id="preview-division-fill" type="fill" filter={['!=', ['geometry-type'], 'Point']} paint={{
+          'fill-color': ['case', ['has', 'assignedTo'], '#9e9e9e', ['==', ['get', 'aiClass'], 'inside'], '#4caf50', ['==', ['get', 'aiClass'], 'outside'], '#f44336', ['==', ['get', 'aiClass'], 'unclear'], '#ff9800', ['==', ['get', 'hasPoints'], true], '#4caf50', '#3388ff'],
+          'fill-opacity': ['case', ['has', 'assignedTo'], 0.15, ['==', ['get', 'aiClass'], 'inside'], 0.5, ['==', ['get', 'aiClass'], 'outside'], 0.2, ['==', ['get', 'aiClass'], 'unclear'], 0.4, ['==', ['get', 'hasPoints'], true], 0.5, 0.4],
+        }} />
+        <Layer id="preview-division-outline" type="line" filter={['!=', ['geometry-type'], 'Point']} paint={{
+          'line-color': ['case', ['has', 'assignedTo'], '#9e9e9e', ['==', ['get', 'aiClass'], 'inside'], '#2e7d32', ['==', ['get', 'aiClass'], 'outside'], '#c62828', ['==', ['get', 'aiClass'], 'unclear'], '#e65100', ['==', ['get', 'hasPoints'], true], '#2e7d32', '#3388ff'],
+          'line-width': ['case', ['has', 'assignedTo'], 1, ['has', 'aiClass'], 2, 2],
+        }} />
+        <Layer id="preview-markers" type="circle" filter={['==', ['geometry-type'], 'Point']} paint={{ 'circle-radius': 5, 'circle-color': '#e53935', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 }} />
+      </Source>
+    </MapGL>
+  );
+}
+
+/** Right panel: color-coded children regions */
+function ChildrenMapPanel({ childRegions, loading, geometry }: {
+  childRegions: Array<{ regionId: number; name: string; geometry: GeoJSON.Geometry }> | null;
+  loading: boolean;
+  geometry: GeoJSON.Geometry | GeoJSON.FeatureCollection | null;
+}) {
+  const mapRef = useRef<MapRef>(null);
+  const colored = useMemo(() =>
+    (childRegions ?? []).map((c, i) => ({
+      ...c,
+      color: CHILD_COLORS[i % CHILD_COLORS.length],
+      fc: { type: 'FeatureCollection' as const, features: [{ type: 'Feature' as const, properties: { name: c.name }, geometry: c.geometry }] },
+    })),
+  [childRegions]);
+
+  // Fit to the same extent as the division geometry (if available) or children
+  const fitData = useMemo(() => {
+    if (geometry) {
+      return geometry.type === 'FeatureCollection'
+        ? geometry as GeoJSON.FeatureCollection
+        : { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry }] } as GeoJSON.FeatureCollection;
+    }
+    if (!childRegions?.length) return null;
+    return {
+      type: 'FeatureCollection' as const,
+      features: childRegions.map(c => ({ type: 'Feature' as const, properties: {}, geometry: c.geometry })),
+    };
+  }, [geometry, childRegions]);
+
+  // Hover tooltip — all hooks must be before early returns
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; name: string } | null>(null);
+  const interactiveIds = useMemo(() => colored.map((_, i) => `child-fill-${i}`), [colored]);
+  const handleMouseMove = useCallback((e: maplibregl.MapLayerMouseEvent) => {
+    const name = e.features?.[0]?.properties?.name;
+    if (name) setTooltip({ x: e.point.x, y: e.point.y, name });
+    else setTooltip(null);
+  }, []);
+  const handleMouseLeave = useCallback(() => setTooltip(null), []);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
+  }
+  if (!colored.length) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+        <Typography color="text.secondary">No child regions with divisions</Typography>
+      </Box>
+    );
+  }
+  return (
+    <>
+      <Box sx={{ position: 'relative', flex: 1 }}>
+        <MapGL
+          ref={mapRef}
+          initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
+          style={{ width: '100%', height: '100%' }}
+          mapStyle={MAP_STYLE}
+          interactiveLayerIds={interactiveIds}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          cursor={tooltip ? 'pointer' : 'grab'}
+          onLoad={() => {
+            if (mapRef.current && fitData) {
+              try {
+                const bbox = turf.bbox(fitData) as [number, number, number, number];
+                mapRef.current.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, duration: 0 });
+              } catch { /* ignore */ }
+            }
+          }}
+        >
+          <NavigationControl position="top-right" showCompass={false} />
+          {colored.map((c, i) => (
+            <Source key={`child-${c.regionId}`} id={`child-${i}`} type="geojson" data={c.fc}>
+              <Layer id={`child-fill-${i}`} type="fill" paint={{ 'fill-color': c.color, 'fill-opacity': 0.45 }} />
+              <Layer id={`child-outline-${i}`} type="line" paint={{ 'line-color': c.color, 'line-width': 1.5 }} />
+            </Source>
+          ))}
+        </MapGL>
+        {tooltip && (
+          <Box sx={{
+            position: 'absolute', left: tooltip.x + 12, top: tooltip.y - 28,
+            bgcolor: 'rgba(0,0,0,0.8)', color: '#fff', px: 1, py: 0.25,
+            borderRadius: 0.5, fontSize: '0.75rem', pointerEvents: 'none',
+            whiteSpace: 'nowrap', zIndex: 10,
+          }}>
+            {tooltip.name}
+          </Box>
+        )}
+      </Box>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, p: 0.5, borderTop: 1, borderColor: 'divider', maxHeight: 55, overflow: 'auto' }}>
+        {colored.map(c => (
+          <Box key={c.regionId} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5 }}>
+            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c.color, flexShrink: 0 }} />
+            <Typography variant="caption" noWrap sx={{ maxWidth: 120 }}>{c.name}</Typography>
+          </Box>
+        ))}
+      </Box>
+    </>
+  );
+}
+
 export function DivisionPreviewDialog({
   division,
   geometry,
@@ -62,6 +230,8 @@ export function DivisionPreviewDialog({
   regionMapLabel,
   regionName,
   wikidataId,
+  worldViewId,
+  regionId,
   onAccept,
   onReject,
   onAcceptAndRejectRest,
@@ -81,6 +251,28 @@ export function DivisionPreviewDialog({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiReasoning, setAiReasoning] = useState<string | null>(null);
   const [aiDebugImages, setAiDebugImages] = useState<{ regionMap: string; divisionsMap: string } | null>(null);
+
+  // Color-coded children view for right panel
+  const [rightMode, setRightMode] = useState<'divisions' | 'children'>('divisions');
+  const [childRegions, setChildRegions] = useState<Array<{ regionId: number; name: string; geometry: GeoJSON.Geometry }> | null>(null);
+  const [childrenLoading, setChildrenLoading] = useState(false);
+  const canShowChildren = worldViewId != null && regionId != null;
+
+  // Reset children state when region changes
+  useEffect(() => { setRightMode('divisions'); setChildRegions(null); }, [regionId]);
+
+  const handleToggleChildren = async () => {
+    if (rightMode === 'children') { setRightMode('divisions'); return; }
+    setRightMode('children');
+    if (childRegions || !canShowChildren) return;
+    setChildrenLoading(true);
+    try {
+      const result = await getChildrenRegionGeometry(worldViewId!, regionId!);
+      setChildRegions(result.childRegions);
+    } finally {
+      setChildrenLoading(false);
+    }
+  };
 
   // Fetch geoshape when dialog opens with wikidataId (preferred over image)
   useEffect(() => {
@@ -155,7 +347,14 @@ export function DivisionPreviewDialog({
                 </Typography>
               )}
             </Typography>
-            <Typography variant="caption" color="text.secondary">GADM division <strong>{division?.name}</strong></Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {rightMode === 'children' ? 'Subregions (color-coded)' : <>GADM division <strong>{division?.name}</strong></>}
+              {canShowChildren && (
+                <Typography component="span" variant="caption" sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }} onClick={handleToggleChildren}>
+                  {childrenLoading ? 'loading...' : rightMode === 'children' ? 'show divisions' : 'show subregions'}
+                </Typography>
+              )}
+            </Typography>
           </Box>
         )}
         <Box sx={{ display: 'flex', height: hasSideBySide ? 380 : 400 }}>
@@ -262,117 +461,28 @@ export function DivisionPreviewDialog({
             </Box>
           )}
 
-          {/* GADM division map (right side, or full width if no WV image/geoshape) */}
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+          {/* Right side: GADM divisions or color-coded children */}
+          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            {rightMode === 'children' ? (
+              <ChildrenMapPanel
+                childRegions={childRegions}
+                loading={childrenLoading}
+                geometry={geometry}
+              />
+            ) : loading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
                 <CircularProgress />
               </Box>
-            ) : geometry ? (() => {
-              const rawData: GeoJSON.FeatureCollection = geometry.type === 'FeatureCollection'
-                ? geometry as GeoJSON.FeatureCollection
-                : { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: geometry as GeoJSON.Geometry }] };
-              // Enrich with AI classification flags
-              const hasAiResults = aiSuggestedIds.size > 0 || aiRejectedIds.size > 0 || aiUnclearIds.size > 0;
-              const geoData: GeoJSON.FeatureCollection = hasAiResults
-                ? {
-                    ...rawData,
-                    features: rawData.features.map(f => {
-                      const divId = f.properties?.divisionId;
-                      if (divId == null) return f;
-                      const aiClass = aiSuggestedIds.has(divId) ? 'inside'
-                        : aiRejectedIds.has(divId) ? 'outside'
-                        : aiUnclearIds.has(divId) ? 'unclear'
-                        : null;
-                      return aiClass ? { ...f, properties: { ...f.properties, aiClass } } : f;
-                    }),
-                  }
-                : rawData;
-              return (
-                <MapGL
-                  ref={mapRef}
-                  initialViewState={{
-                    longitude: 0,
-                    latitude: 0,
-                    zoom: 1,
-                  }}
-                  style={{ width: '100%', height: '100%' }}
-                  mapStyle={MAP_STYLE}
-                  onLoad={() => {
-                    if (mapRef.current && geometry) {
-                      try {
-                        const bbox = turf.bbox(geoData) as [number, number, number, number];
-                        mapRef.current.fitBounds(
-                          [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-                          { padding: 40, duration: 0 }
-                        );
-                      } catch (e) {
-                        console.error('Failed to fit bounds:', e);
-                      }
-                    }
-                  }}
-                >
-                  <NavigationControl position="top-right" showCompass={false} />
-                  <Source id="preview-division" type="geojson" data={geoData}>
-                    <Layer
-                      id="preview-division-fill"
-                      type="fill"
-                      filter={['!=', ['geometry-type'], 'Point']}
-                      paint={{
-                        'fill-color': ['case',
-                          ['has', 'assignedTo'], '#9e9e9e',
-                          ['==', ['get', 'aiClass'], 'inside'], '#4caf50',
-                          ['==', ['get', 'aiClass'], 'outside'], '#f44336',
-                          ['==', ['get', 'aiClass'], 'unclear'], '#ff9800',
-                          ['==', ['get', 'hasPoints'], true], '#4caf50',
-                          '#3388ff',
-                        ],
-                        'fill-opacity': ['case',
-                          ['has', 'assignedTo'], 0.15,
-                          ['==', ['get', 'aiClass'], 'inside'], 0.5,
-                          ['==', ['get', 'aiClass'], 'outside'], 0.2,
-                          ['==', ['get', 'aiClass'], 'unclear'], 0.4,
-                          ['==', ['get', 'hasPoints'], true], 0.5,
-                          0.4,
-                        ],
-                      }}
-                    />
-                    <Layer
-                      id="preview-division-outline"
-                      type="line"
-                      filter={['!=', ['geometry-type'], 'Point']}
-                      paint={{
-                        'line-color': ['case',
-                          ['has', 'assignedTo'], '#9e9e9e',
-                          ['==', ['get', 'aiClass'], 'inside'], '#2e7d32',
-                          ['==', ['get', 'aiClass'], 'outside'], '#c62828',
-                          ['==', ['get', 'aiClass'], 'unclear'], '#e65100',
-                          ['==', ['get', 'hasPoints'], true], '#2e7d32',
-                          '#3388ff',
-                        ],
-                        'line-width': ['case',
-                          ['has', 'assignedTo'], 1,
-                          ['has', 'aiClass'], 2,
-                          2,
-                        ],
-                      }}
-                    />
-                    <Layer
-                      id="preview-markers"
-                      type="circle"
-                      filter={['==', ['geometry-type'], 'Point']}
-                      paint={{
-                        'circle-radius': 5,
-                        'circle-color': '#e53935',
-                        'circle-stroke-color': '#fff',
-                        'circle-stroke-width': 1.5,
-                      }}
-                    />
-                  </Source>
-                </MapGL>
-              );
-            })() : (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+            ) : geometry ? (
+              <DivisionsMapPanel
+                mapRef={mapRef}
+                geometry={geometry}
+                aiSuggestedIds={aiSuggestedIds}
+                aiRejectedIds={aiRejectedIds}
+                aiUnclearIds={aiUnclearIds}
+              />
+            ) : (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
                 <Typography color="text.secondary">No geometry available</Typography>
               </Box>
             )}

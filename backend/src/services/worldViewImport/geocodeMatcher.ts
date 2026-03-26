@@ -164,7 +164,7 @@ export async function geocodeMatchRegion(
         FROM administrative_divisions ad
         WHERE ${whereClause}
       )
-      SELECT * FROM containing ORDER BY depth ASC
+      SELECT * FROM containing ORDER BY depth DESC
     `, [lng, lat]);
 
     if (spatialResult.rows.length > 0) {
@@ -183,10 +183,8 @@ export async function geocodeMatchRegion(
     return { found: 0, suggestions: [], geocodedName, searchRadiusKm: 200 };
   }
 
-  // Filter out rejected, already-suggested, and already-assigned divisions.
-  // Boost score for divisions whose name matches the region name (most likely correct).
+  // Filter out rejected, already-suggested, and already-assigned divisions
   const existingIds = new Set(existingSuggestions.map(s => s.divisionId));
-  const regionNameLower = regionName.toLowerCase();
   const newSuggestions: MatchSuggestion[] = [];
 
   for (const spatialRow of spatialRows) {
@@ -203,13 +201,11 @@ export async function geocodeMatchRegion(
       console.log(`[Geocode Match]   Skipping ${spatialRow.name} (id=${divId}) — already suggested`);
       continue;
     }
-    // Name match gets higher score so correct division appears first in UI
-    const nameMatch = spatialRow.name.toLowerCase() === regionNameLower;
     newSuggestions.push({
       divisionId: divId,
       name: spatialRow.name,
       path: spatialRow.path,
-      score: nameMatch ? 700 : 600,
+      score: 600, // Geocode-based — needs review
     });
   }
 

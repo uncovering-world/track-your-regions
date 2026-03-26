@@ -107,7 +107,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     }
   }, [worldViewId]);
 
-  const handleViewMap = useCallback(async (_regionId: number, context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string; divisionIds: number[] }) => {
+  const handleViewMap = useCallback(async (regionId: number, context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string; divisionIds: number[] }) => {
     const hasDivisions = context.divisionIds.length > 0;
     setPreviewDivision({
       name: hasDivisions ? `${context.regionName} — ${context.divisionIds.length} division${context.divisionIds.length > 1 ? 's' : ''}` : context.regionName,
@@ -115,6 +115,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       regionMapUrl: context.regionMapUrl,
       regionMapLabel: context.regionMapLabel,
       regionName: context.regionName,
+      regionId,
     });
     setPreviewGeometry(null);
     if (hasDivisions) {
@@ -562,6 +563,8 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         regionMapLabel={previewDivision?.regionMapLabel}
         regionName={previewDivision?.regionName}
         wikidataId={previewDivision?.wikidataId}
+        worldViewId={worldViewId}
+        regionId={previewDivision?.regionId}
         onAccept={
           previewDivision?.divisionIds && previewDivision.regionId != null
             ? () => previewAcceptSelectedMutation.mutate({ regionId: previewDivision.regionId!, divisionIds: previewDivision.divisionIds! })

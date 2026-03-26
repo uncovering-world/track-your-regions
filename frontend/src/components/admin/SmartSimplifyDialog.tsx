@@ -160,6 +160,26 @@ export function SmartSimplifyDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fetch when selection key changes
   }, [selectedMove?.gadmParentId, selectedAnomalyIndex, worldViewId]);
 
+  // Fly to selected move's divisions when geometries are ready
+  useEffect(() => {
+    if (!selectedMove || !mapRef.current) return;
+    const geoms = selectedMove.divisions
+      .map(d => divisionGeometries.get(d.divisionId))
+      .filter((g): g is GeoJSONGeometry => !!g);
+    if (geoms.length === 0) return;
+    try {
+      const fc: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: geoms.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g as GeoJSON.Geometry })),
+      };
+      const bounds = turf.bbox(fc) as [number, number, number, number];
+      mapRef.current.fitBounds(
+        [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+        { padding: 60, duration: 500 },
+      );
+    } catch { /* ignore */ }
+  }, [selectedMove, divisionGeometries]);
+
   // Fly to selected anomaly's divisions when geometries are ready
   useEffect(() => {
     if (!selectedAnomaly || !mapRef.current) return;

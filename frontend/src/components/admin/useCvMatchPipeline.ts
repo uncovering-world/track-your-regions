@@ -112,6 +112,7 @@ export interface UseCvMatchPipelineResult {
 export function useCvMatchPipeline(
   worldViewId: number,
   tree: MatchTreeNode[] | undefined,
+  onComplete?: (regionId: number) => void,
 ): UseCvMatchPipelineResult {
   // CV color match / Mapshape match dialog state
   const [cvMatchingRegionId, setCVMatchingRegionId] = useState<number | null>(null);
@@ -119,6 +120,8 @@ export function useCvMatchPipeline(
   const [cvMatchDialog, setCVMatchDialog] = useState<CvMatchDialogState | null>(null);
   const [highlightClusterId, setHighlightClusterId] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   // Settings
   const [aiModelOverride, setAiModelOverride] = useState<string | null>(null);
@@ -311,6 +314,7 @@ export function useCvMatchPipeline(
               done: true,
             };
           });
+          onCompleteRef.current?.(regionId);
         }
 
         if (event.type === 'error') {
@@ -395,6 +399,7 @@ export function useCvMatchPipeline(
         progressColor: '#2e7d32',
         done: true,
       } : prev);
+      onComplete?.(regionId);
     } catch (err) {
       console.error('Mapshape match failed:', err);
       setCVMatchDialog(prev => prev ? {

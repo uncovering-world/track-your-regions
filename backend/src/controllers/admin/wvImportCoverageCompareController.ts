@@ -68,16 +68,32 @@ export async function getChildrenCoverage(req: AuthenticatedRequest, res: Respon
       }
     }
 
-    // 3. Collect all descendant division IDs for a given region
-    function collectDescendantDivisions(regionId: number): number[] {
-      const result: number[] = [];
-      const children = childrenOf.get(regionId) ?? [];
-      for (const childId of children) {
-        const childDivs = divisionsByRegion.get(childId) ?? [];
-        result.push(...childDivs);
-        result.push(...collectDescendantDivisions(childId));
+    // 3. Collect descendant division IDs for ALL container regions via SQL recursive CTE.
+    //    Uses the same approach as the gap analysis / coverage geometry endpoints for consistency.
+    const descendantDivsByContainer = new Map<number, number[]>();
+    {
+      const descResult = await pool.query(`
+        WITH RECURSIVE descendants AS (
+          SELECT r.parent_region_id AS root_id, r.id AS region_id
+          FROM regions r
+          WHERE r.world_view_id = $1 AND r.parent_region_id IS NOT NULL
+          UNION ALL
+          SELECT d.root_id, r.id
+          FROM descendants d
+          JOIN regions r ON r.parent_region_id = d.region_id
+        )
+        SELECT d.root_id AS container_id,
+               array_agg(DISTINCT rm.division_id) AS desc_div_ids
+        FROM descendants d
+        JOIN region_members rm ON rm.region_id = d.region_id
+        GROUP BY d.root_id
+      `, [worldViewId]);
+      for (const row of descResult.rows) {
+        descendantDivsByContainer.set(
+          row.container_id as number,
+          (row.desc_div_ids as number[]).filter(d => d != null),
+        );
       }
-      return result;
     }
 
     // 4. Find container nodes that have descendants with divisions
@@ -92,7 +108,7 @@ export async function getChildrenCoverage(req: AuthenticatedRequest, res: Respon
 
       const children = childrenOf.get(regionId);
       if (!children || children.length === 0) continue;
-      const descendantDivIds = collectDescendantDivisions(regionId);
+      const descendantDivIds = descendantDivsByContainer.get(regionId) ?? [];
       if (descendantDivIds.length === 0) {
         // Children exist but none have divisions yet → 0% coverage
         zeroCoverageIds.push(regionId);
@@ -329,6 +345,9 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
   console.log(`[WV Import] POST /matches/${worldViewId}/coverage-gap-analysis/${regionId}`);
 
   try {
+    const t0 = Date.now();
+    const logTiming = (label: string) => console.log(`  [CoverageGap] ${label} — ${Date.now() - t0}ms`);
+
     // 1. Get parent's own division IDs (from region_members, or fallback to GADM name match)
     const parentDivsResult = await pool.query(
       `SELECT rm.division_id FROM region_members rm
@@ -365,6 +384,8 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
       return;
     }
 
+    logTiming(`Step 1: parent divs (${parentDivIds.length} divisions)`);
+
     // 2. Get all descendant regions and their division IDs
     const descendantsResult = await pool.query(`
       WITH RECURSIVE descendants AS (
@@ -385,12 +406,16 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
       allDescendantDivIds.push(...divIds);
     }
 
+    logTiming(`Step 2: descendants (${descendantsResult.rows.length} regions, ${allDescendantDivIds.length} divs)`);
+
     // 3. Get direct children (for suggesting targets)
     const directChildrenResult = await pool.query(
       `SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2 ORDER BY name`,
       [regionId, worldViewId],
     );
     const directChildren = directChildrenResult.rows as Array<{ id: number; name: string }>;
+
+    logTiming(`Step 3: direct children (${directChildren.length} children)`);
 
     // 4. Find GADM divisions in the gap using PostGIS difference
     // Uses geom_simplified_medium for performance
@@ -428,13 +453,14 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
       CROSS JOIN gap g
       WHERE NOT ST_IsEmpty(g.geom)
         AND ST_Intersects(d.geom_simplified_medium, g.geom)
-        AND d.id != ALL($1)
         AND d.id != ALL($3)
         AND safe_geo_area(ST_Intersection(d.geom_simplified_medium, g.geom)) /
             NULLIF(safe_geo_area(d.geom_simplified_medium), 0) > 0.3
       ORDER BY area_km2 DESC
       LIMIT 30
     `, [parentDivIds, allDescendantDivIds.length > 0 ? allDescendantDivIds : [0], allDescendantDivIds.length > 0 ? allDescendantDivIds : [0]]);
+
+    logTiming(`Step 4: gap query (${gapResult.rows.length} gap divisions, parent=${parentDivIds.length} divs, desc=${allDescendantDivIds.length} divs)`);
 
     // 5. Build name paths for gap divisions by walking parent_id chains
     const divIdsForPath = gapResult.rows.map(r => r.id as number);
@@ -477,6 +503,8 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
         pathMap.set(divId, { path: parts.join(' > '), level: parts.length - 1 });
       }
     }
+
+    logTiming(`Step 5: name paths (${divIdsForPath.length} divisions)`);
 
     // 5b. Build per-child-region geometries for the map context.
     // For each direct child, collect its own + descendant division IDs, then union them.
@@ -551,6 +579,8 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
       }
     }
 
+    logTiming(`Step 5b: sibling geometries (${siblingRegions.length} siblings)`);
+
     // 6. For each gap division, find the nearest direct child by boundary distance
     const gapDivisions: Array<{
       divisionId: number;
@@ -564,49 +594,51 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
       suggestedTarget: { regionId: number; regionName: string } | null;
     }> = [];
 
-    for (const row of gapResult.rows) {
-      let suggestedTarget: { regionId: number; regionName: string } | null = null;
+    // Batch-find nearest child region for all gap divisions in one query
+    // instead of N+1 individual ST_Distance queries.
+    const gapDivIds = gapResult.rows.map(r => r.id as number);
+    const suggestedTargets = new Map<number, { regionId: number; regionName: string }>();
 
-      if (directChildren.length > 0) {
-        // Find nearest child by polygon boundary distance.
-        // Uses descendant divisions (not just direct) so container children
-        // like "Central Ukraine" are reachable through their sub-regions.
-        const nearestResult = await pool.query(`
-          WITH gap_div AS (
-            SELECT geom_simplified_medium AS geom FROM administrative_divisions WHERE id = $1
-          ),
-          child_descendants AS (
-            -- For each direct child, collect its own + all descendant region IDs
-            SELECT child.id AS child_id, child.name AS child_name, descendant.id AS desc_id
-            FROM regions child
-            LEFT JOIN LATERAL (
-              WITH RECURSIVE tree AS (
-                SELECT child.id AS id
-                UNION ALL
-                SELECT r.id FROM regions r JOIN tree t ON r.parent_region_id = t.id
-              )
-              SELECT id FROM tree
-            ) descendant ON true
-            WHERE child.parent_region_id = $2
-          )
-          SELECT cd.child_id AS region_id, cd.child_name AS name,
-                 ST_Distance(gd.geom::geography, ad.geom_simplified_medium::geography) / 1000.0 AS dist_km
-          FROM gap_div gd
-          CROSS JOIN child_descendants cd
+    if (directChildren.length > 0 && gapDivIds.length > 0) {
+      const nearestResult = await pool.query(`
+        WITH child_descendants AS (
+          SELECT child.id AS child_id, child.name AS child_name, descendant.id AS desc_id
+          FROM regions child
+          LEFT JOIN LATERAL (
+            WITH RECURSIVE tree AS (
+              SELECT child.id AS id
+              UNION ALL
+              SELECT r.id FROM regions r JOIN tree t ON r.parent_region_id = t.id
+            )
+            SELECT id FROM tree
+          ) descendant ON true
+          WHERE child.parent_region_id = $2
+        ),
+        child_divs AS (
+          SELECT cd.child_id, cd.child_name, ad.geom_simplified_medium AS geom
+          FROM child_descendants cd
           JOIN region_members rm ON rm.region_id = cd.desc_id
           JOIN administrative_divisions ad ON ad.id = rm.division_id AND ad.geom_simplified_medium IS NOT NULL
-          ORDER BY ad.geom_simplified_medium <-> gd.geom
-          LIMIT 1
-        `, [row.id, regionId]);
+        )
+        SELECT DISTINCT ON (gap.id)
+          gap.id AS gap_div_id,
+          cd.child_id AS region_id,
+          cd.child_name AS name
+        FROM unnest($1::int[]) AS gap(id)
+        JOIN administrative_divisions gd ON gd.id = gap.id
+        CROSS JOIN child_divs cd
+        ORDER BY gap.id, cd.geom <-> gd.geom_simplified_medium
+      `, [gapDivIds, regionId]);
 
-        if (nearestResult.rows.length > 0) {
-          suggestedTarget = {
-            regionId: nearestResult.rows[0].region_id as number,
-            regionName: nearestResult.rows[0].name as string,
-          };
-        }
+      for (const row of nearestResult.rows) {
+        suggestedTargets.set(row.gap_div_id as number, {
+          regionId: row.region_id as number,
+          regionName: row.name as string,
+        });
       }
+    }
 
+    for (const row of gapResult.rows) {
       const pathInfo = pathMap.get(row.id as number);
       gapDivisions.push({
         divisionId: row.id as number,
@@ -617,9 +649,11 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
         areaKm2: Math.round(row.area_km2 as number),
         overlapWithGap: Math.round((row.overlap_pct as number) * 100) / 100,
         geometry: row.geojson ? JSON.parse(row.geojson as string) : null,
-        suggestedTarget,
+        suggestedTarget: suggestedTargets.get(row.id as number) ?? null,
       });
     }
+
+    logTiming(`Step 6: nearest-child KNN (${gapDivIds.length} gaps × ${directChildren.length} children)`);
 
     res.json({ gapDivisions, siblingRegions });
   } catch (err) {

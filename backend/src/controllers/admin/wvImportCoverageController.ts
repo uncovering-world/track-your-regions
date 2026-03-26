@@ -1,16 +1,12 @@
 /**
  * WorldView Import Coverage Controller
  *
- * Coverage analysis, gap suggestions, rematch, hierarchy review, finalize.
+ * Coverage analysis, gap suggestions, dismiss/undismiss, approve coverage.
  */
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import {
-  matchCountryLevel,
-} from '../../services/worldViewImport/index.js';
-import { createInitialProgress, type ImportProgress } from '../../services/worldViewImport/types.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
 
 // =============================================================================
@@ -77,6 +73,199 @@ async function fetchGapSubtrees(nonLeafGapIds: number[]): Promise<Map<number, Su
   return result;
 }
 
+/** Shared coverage gap query (used by both getCoverage and getCoverageSSE) */
+const COVERAGE_GAP_QUERY = `
+  WITH RECURSIVE assigned AS (
+    SELECT DISTINCT rm.division_id AS id
+    FROM region_members rm
+    JOIN regions r ON r.id = rm.region_id
+    WHERE r.world_view_id = $1
+  ),
+  ancestors AS (
+    SELECT a.id AS current_id
+    FROM assigned a
+    UNION ALL
+    SELECT ad.parent_id
+    FROM ancestors anc
+    JOIN administrative_divisions ad ON ad.id = anc.current_id
+    WHERE ad.parent_id IS NOT NULL
+  ),
+  has_coverage_below AS (
+    SELECT DISTINCT current_id AS id FROM ancestors
+  ),
+  covered_descendants AS (
+    SELECT a.id AS current_id
+    FROM assigned a
+    UNION ALL
+    SELECT child.id
+    FROM covered_descendants cd
+    JOIN administrative_divisions child ON child.parent_id = cd.current_id
+  ),
+  fully_covered AS (
+    SELECT DISTINCT current_id AS id FROM covered_descendants
+  )
+  SELECT d.id, d.name, d.parent_id, d.has_children, p.name AS parent_name
+  FROM administrative_divisions d
+  LEFT JOIN administrative_divisions p ON p.id = d.parent_id
+  WHERE d.id NOT IN (SELECT id FROM fully_covered)
+    AND d.id NOT IN (SELECT id FROM has_coverage_below)
+    AND (
+      d.parent_id IS NULL
+      OR d.parent_id IN (SELECT id FROM has_coverage_below)
+    )
+  ORDER BY p.name NULLS FIRST, d.name
+`;
+
+/** Shared sibling match query */
+const SIBLING_MATCH_QUERY = `
+  SELECT DISTINCT ON (gap.id)
+    gap.id AS gap_id,
+    rm.region_id,
+    r.name AS region_name,
+    r.parent_region_id
+  FROM unnest($1::integer[]) AS gap(id)
+  JOIN administrative_divisions gap_div ON gap_div.id = gap.id
+  JOIN administrative_divisions sibling
+    ON sibling.parent_id = gap_div.parent_id AND sibling.id != gap.id
+  JOIN region_members rm ON rm.division_id = sibling.id
+  JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
+  ORDER BY gap.id, r.id
+`;
+
+/** Shared ancestor walk query */
+const ANCESTOR_WALK_QUERY = `
+  WITH RECURSIVE walk AS (
+    SELECT $1::integer AS node_id, 0 AS depth
+    UNION ALL
+    SELECT ad.parent_id, w.depth + 1
+    FROM walk w
+    JOIN administrative_divisions ad ON ad.id = w.node_id
+    WHERE ad.parent_id IS NOT NULL
+  )
+  SELECT rm.region_id, r.name AS region_name, r.parent_region_id
+  FROM walk w
+  JOIN administrative_divisions ad ON ad.id = w.node_id
+  JOIN administrative_divisions sibling
+    ON sibling.parent_id = ad.parent_id AND sibling.id != ad.id
+  JOIN region_members rm ON rm.division_id = sibling.id
+  JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
+  ORDER BY w.depth
+  LIMIT 1
+`;
+
+interface ActiveGap {
+  id: number;
+  name: string;
+  hasChildren: boolean;
+  parentId: number | null;
+  parentName: string | null;
+}
+
+interface DismissedGap {
+  id: number;
+  name: string;
+  parentName: string | null;
+}
+
+interface SuggestionInfo {
+  action: 'add_member' | 'create_region';
+  targetRegionId: number;
+  targetRegionName: string;
+}
+
+/** Parse gap query rows into active and dismissed gaps */
+function parseGapRows(
+  rows: Array<Record<string, unknown>>,
+  dismissedIds: Set<number>,
+): { activeGaps: ActiveGap[]; dismissedGaps: DismissedGap[] } {
+  const activeGaps: ActiveGap[] = [];
+  const dismissedGaps: DismissedGap[] = [];
+
+  for (const r of rows) {
+    const gap = {
+      id: r.id as number,
+      name: r.name as string,
+      hasChildren: r.has_children as boolean,
+      parentId: (r.parent_id as number) ?? null,
+      parentName: (r.parent_name as string) ?? null,
+    };
+    if (dismissedIds.has(gap.id)) {
+      dismissedGaps.push({ id: gap.id, name: gap.name, parentName: gap.parentName });
+    } else {
+      activeGaps.push(gap);
+    }
+  }
+
+  return { activeGaps, dismissedGaps };
+}
+
+/** Run sibling + ancestor walk matching to produce suggestions */
+async function buildSuggestions(
+  gapIds: number[],
+  activeGaps: ActiveGap[],
+  worldViewId: number,
+  logStep?: (step: string) => void,
+): Promise<Map<number, SuggestionInfo>> {
+  const suggestionByGapId = new Map<number, SuggestionInfo>();
+  if (gapIds.length === 0) return suggestionByGapId;
+
+  // Step 1: Batch sibling match
+  const siblingResult = await pool.query(SIBLING_MATCH_QUERY, [gapIds, worldViewId]);
+
+  for (const row of siblingResult.rows) {
+    suggestionByGapId.set(row.gap_id as number, {
+      action: 'add_member',
+      targetRegionId: row.region_id as number,
+      targetRegionName: row.region_name as string,
+    });
+  }
+
+  logStep?.(`Sibling matches: ${siblingResult.rows.length}/${gapIds.length} gaps`);
+
+  // Step 2: Ancestor walk for remaining gaps
+  const remainingGaps = activeGaps.filter(g => !suggestionByGapId.has(g.id) && g.parentId != null);
+  for (let i = 0; i < remainingGaps.length; i++) {
+    const gap = remainingGaps[i];
+    logStep?.(`Ancestor walk ${i + 1}/${remainingGaps.length}: ${gap.name}...`);
+
+    const ancestorResult = await pool.query(ANCESTOR_WALK_QUERY, [gap.parentId, worldViewId]);
+
+    if (ancestorResult.rows.length > 0) {
+      const row = ancestorResult.rows[0];
+      const parentRegionId = row.parent_region_id as number | null;
+      if (parentRegionId != null) {
+        suggestionByGapId.set(gap.id, {
+          action: 'create_region',
+          targetRegionId: parentRegionId,
+          targetRegionName: row.region_name as string,
+        });
+      }
+    }
+  }
+
+  return suggestionByGapId;
+}
+
+/** Format coverage result for API response */
+function formatCoverageResult(
+  activeGaps: ActiveGap[],
+  dismissedGaps: DismissedGap[],
+  suggestionByGapId: Map<number, SuggestionInfo>,
+  subtreeByGapId: Map<number, SubtreeNode[]>,
+) {
+  return {
+    gaps: activeGaps.map(g => ({
+      id: g.id,
+      name: g.name,
+      parentName: g.parentName,
+      suggestion: suggestionByGapId.get(g.id) ?? null,
+      ...(subtreeByGapId.has(g.id) ? { subtree: subtreeByGapId.get(g.id) } : {}),
+    })),
+    dismissedCount: dismissedGaps.length,
+    dismissedGaps,
+  };
+}
+
 /**
  * Check GADM coverage -- find "gap boundaries" at every level.
  * GET /api/admin/wv-import/matches/:worldViewId/coverage
@@ -92,163 +281,17 @@ export async function getCoverage(req: AuthenticatedRequest, res: Response): Pro
   );
   const dismissedIds = new Set<number>((wvResult.rows[0]?.dismissed as number[]) ?? []);
 
-  const result = await pool.query(`
-    WITH RECURSIVE assigned AS (
-      -- All GADM divisions directly assigned as region_members
-      SELECT DISTINCT rm.division_id AS id
-      FROM region_members rm
-      JOIN regions r ON r.id = rm.region_id
-      WHERE r.world_view_id = $1
-    ),
-    -- Walk UP from each assigned division to root, collecting ancestor IDs.
-    -- Any ID in this set either IS assigned or HAS an assigned descendant.
-    ancestors AS (
-      SELECT a.id AS current_id
-      FROM assigned a
-      UNION ALL
-      SELECT ad.parent_id
-      FROM ancestors anc
-      JOIN administrative_divisions ad ON ad.id = anc.current_id
-      WHERE ad.parent_id IS NOT NULL
-    ),
-    has_coverage_below AS (
-      SELECT DISTINCT current_id AS id FROM ancestors
-    ),
-    -- Walk DOWN from assigned divisions to mark all descendants as covered.
-    -- If Russia is assigned, every subdivision under it is fully covered.
-    covered_descendants AS (
-      SELECT a.id AS current_id
-      FROM assigned a
-      UNION ALL
-      SELECT child.id
-      FROM covered_descendants cd
-      JOIN administrative_divisions child ON child.parent_id = cd.current_id
-    ),
-    fully_covered AS (
-      SELECT DISTINCT current_id AS id FROM covered_descendants
-    )
-    -- Gap boundaries: divisions that are neither fully covered (from above)
-    -- nor have coverage below, whose parent has partial coverage below
-    -- (or is a root with no coverage at all).
-    SELECT d.id, d.name, d.parent_id, d.has_children, p.name AS parent_name
-    FROM administrative_divisions d
-    LEFT JOIN administrative_divisions p ON p.id = d.parent_id
-    WHERE d.id NOT IN (SELECT id FROM fully_covered)
-      AND d.id NOT IN (SELECT id FROM has_coverage_below)
-      AND (
-        d.parent_id IS NULL
-        OR d.parent_id IN (SELECT id FROM has_coverage_below)
-      )
-    ORDER BY p.name NULLS FIRST, d.name
-  `, [worldViewId]);
-
-  // Split into active gaps and dismissed gaps
-  const activeGaps: Array<{ id: number; name: string; hasChildren: boolean; parentId: number | null; parentName: string | null }> = [];
-  const dismissedGaps: Array<{ id: number; name: string; parentName: string | null }> = [];
-
-  for (const r of result.rows) {
-    const gap = {
-      id: r.id as number,
-      name: r.name as string,
-      hasChildren: r.has_children as boolean,
-      parentId: (r.parent_id as number) ?? null,
-      parentName: (r.parent_name as string) ?? null,
-    };
-    if (dismissedIds.has(gap.id)) {
-      dismissedGaps.push({ id: gap.id, name: gap.name, parentName: gap.parentName });
-    } else {
-      activeGaps.push(gap);
-    }
-  }
+  const result = await pool.query(COVERAGE_GAP_QUERY, [worldViewId]);
+  const { activeGaps, dismissedGaps } = parseGapRows(result.rows as Array<Record<string, unknown>>, dismissedIds);
 
   // For non-leaf gaps, fetch the full GADM subtree so admin can see what's underneath
   const nonLeafGapIds = activeGaps.filter(g => g.hasChildren).map(g => g.id);
   const subtreeByGapId = await fetchGapSubtrees(nonLeafGapIds);
 
-  // Tree-based suggestions: find nearest assigned GADM sibling/cousin per gap.
-  // Pure integer joins on parent_id -- no geometry, ~8ms for all gaps.
   const gapIds = activeGaps.map(g => g.id);
+  const suggestionByGapId = await buildSuggestions(gapIds, activeGaps, worldViewId);
 
-  const suggestionByGapId = new Map<number, {
-    action: 'add_member' | 'create_region';
-    targetRegionId: number;
-    targetRegionName: string;
-  }>();
-
-  if (gapIds.length > 0) {
-    // Step 1: Batch sibling match -- gaps whose GADM siblings are directly assigned
-    const siblingResult = await pool.query(`
-      SELECT DISTINCT ON (gap.id)
-        gap.id AS gap_id,
-        rm.region_id,
-        r.name AS region_name,
-        r.parent_region_id
-      FROM unnest($1::integer[]) AS gap(id)
-      JOIN administrative_divisions gap_div ON gap_div.id = gap.id
-      JOIN administrative_divisions sibling
-        ON sibling.parent_id = gap_div.parent_id AND sibling.id != gap.id
-      JOIN region_members rm ON rm.division_id = sibling.id
-      JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
-      ORDER BY gap.id, r.id
-    `, [gapIds, worldViewId]);
-
-    for (const row of siblingResult.rows) {
-      suggestionByGapId.set(row.gap_id as number, {
-        action: 'add_member',
-        targetRegionId: row.region_id as number,
-        targetRegionName: row.region_name as string,
-      });
-    }
-
-    // Step 2: Ancestor walk for remaining gaps (no direct siblings assigned).
-    // Walk UP the GADM tree from the gap's parent to find the nearest assigned cousin.
-    const remainingGaps = activeGaps.filter(g => !suggestionByGapId.has(g.id) && g.parentId != null);
-    for (const gap of remainingGaps) {
-      const ancestorResult = await pool.query(`
-        WITH RECURSIVE walk AS (
-          SELECT $1::integer AS node_id, 0 AS depth
-          UNION ALL
-          SELECT ad.parent_id, w.depth + 1
-          FROM walk w
-          JOIN administrative_divisions ad ON ad.id = w.node_id
-          WHERE ad.parent_id IS NOT NULL
-        )
-        SELECT rm.region_id, r.name AS region_name, r.parent_region_id
-        FROM walk w
-        JOIN administrative_divisions ad ON ad.id = w.node_id
-        JOIN administrative_divisions sibling
-          ON sibling.parent_id = ad.parent_id AND sibling.id != ad.id
-        JOIN region_members rm ON rm.division_id = sibling.id
-        JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
-        ORDER BY w.depth
-        LIMIT 1
-      `, [gap.parentId, worldViewId]);
-
-      if (ancestorResult.rows.length > 0) {
-        const row = ancestorResult.rows[0];
-        const parentRegionId = row.parent_region_id as number | null;
-        if (parentRegionId != null) {
-          suggestionByGapId.set(gap.id, {
-            action: 'create_region',
-            targetRegionId: parentRegionId,
-            targetRegionName: row.region_name as string,
-          });
-        }
-      }
-    }
-  }
-
-  res.json({
-    gaps: activeGaps.map(g => ({
-      id: g.id,
-      name: g.name,
-      parentName: g.parentName,
-      suggestion: suggestionByGapId.get(g.id) ?? null,
-      ...(subtreeByGapId.has(g.id) ? { subtree: subtreeByGapId.get(g.id) } : {}),
-    })),
-    dismissedCount: dismissedGaps.length,
-    dismissedGaps,
-  });
+  res.json(formatCoverageResult(activeGaps, dismissedGaps, suggestionByGapId, subtreeByGapId));
 }
 
 /**
@@ -297,66 +340,8 @@ export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): 
     );
     const dismissedIds = new Set<number>((wvResult.rows[0]?.dismissed as number[]) ?? []);
 
-    const result = await pool.query(`
-      WITH RECURSIVE assigned AS (
-        SELECT DISTINCT rm.division_id AS id
-        FROM region_members rm
-        JOIN regions r ON r.id = rm.region_id
-        WHERE r.world_view_id = $1
-      ),
-      ancestors AS (
-        SELECT a.id AS current_id
-        FROM assigned a
-        UNION ALL
-        SELECT ad.parent_id
-        FROM ancestors anc
-        JOIN administrative_divisions ad ON ad.id = anc.current_id
-        WHERE ad.parent_id IS NOT NULL
-      ),
-      has_coverage_below AS (
-        SELECT DISTINCT current_id AS id FROM ancestors
-      ),
-      covered_descendants AS (
-        SELECT a.id AS current_id
-        FROM assigned a
-        UNION ALL
-        SELECT child.id
-        FROM covered_descendants cd
-        JOIN administrative_divisions child ON child.parent_id = cd.current_id
-      ),
-      fully_covered AS (
-        SELECT DISTINCT current_id AS id FROM covered_descendants
-      )
-      SELECT d.id, d.name, d.parent_id, d.has_children, p.name AS parent_name
-      FROM administrative_divisions d
-      LEFT JOIN administrative_divisions p ON p.id = d.parent_id
-      WHERE d.id NOT IN (SELECT id FROM fully_covered)
-        AND d.id NOT IN (SELECT id FROM has_coverage_below)
-        AND (
-          d.parent_id IS NULL
-          OR d.parent_id IN (SELECT id FROM has_coverage_below)
-        )
-      ORDER BY p.name NULLS FIRST, d.name
-    `, [worldViewId]);
-
-    // Split into active gaps and dismissed gaps
-    const activeGaps: Array<{ id: number; name: string; hasChildren: boolean; parentId: number | null; parentName: string | null }> = [];
-    const dismissedGaps: Array<{ id: number; name: string; parentName: string | null }> = [];
-
-    for (const r of result.rows) {
-      const gap = {
-        id: r.id as number,
-        name: r.name as string,
-        hasChildren: r.has_children as boolean,
-        parentId: (r.parent_id as number) ?? null,
-        parentName: (r.parent_name as string) ?? null,
-      };
-      if (dismissedIds.has(gap.id)) {
-        dismissedGaps.push({ id: gap.id, name: gap.name, parentName: gap.parentName });
-      } else {
-        activeGaps.push(gap);
-      }
-    }
+    const result = await pool.query(COVERAGE_GAP_QUERY, [worldViewId]);
+    const { activeGaps, dismissedGaps } = parseGapRows(result.rows as Array<Record<string, unknown>>, dismissedIds);
 
     // Fetch subtrees for non-leaf gaps
     const nonLeafGapIds = activeGaps.filter(g => g.hasChildren).map(g => g.id);
@@ -364,83 +349,10 @@ export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): 
 
     logStep(`Found ${activeGaps.length} active gaps, ${dismissedGaps.length} dismissed`);
 
-    // Step 2: Batch sibling match -- pure integer join on parent_id (~8ms)
+    // Step 2: Batch sibling match + ancestor walk
     logStep('Finding sibling matches...');
     const gapIds = activeGaps.map(g => g.id);
-    const suggestionByGapId = new Map<number, {
-      action: 'add_member' | 'create_region';
-      targetRegionId: number;
-      targetRegionName: string;
-    }>();
-
-    if (gapIds.length > 0) {
-      const siblingResult = await pool.query(`
-        SELECT DISTINCT ON (gap.id)
-          gap.id AS gap_id,
-          rm.region_id,
-          r.name AS region_name,
-          r.parent_region_id
-        FROM unnest($1::integer[]) AS gap(id)
-        JOIN administrative_divisions gap_div ON gap_div.id = gap.id
-        JOIN administrative_divisions sibling
-          ON sibling.parent_id = gap_div.parent_id AND sibling.id != gap.id
-        JOIN region_members rm ON rm.division_id = sibling.id
-        JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
-        ORDER BY gap.id, r.id
-      `, [gapIds, worldViewId]);
-
-      for (const row of siblingResult.rows) {
-        suggestionByGapId.set(row.gap_id as number, {
-          action: 'add_member',
-          targetRegionId: row.region_id as number,
-          targetRegionName: row.region_name as string,
-        });
-      }
-
-      logStep(`Sibling matches: ${siblingResult.rows.length}/${gapIds.length} gaps`);
-
-      // Step 3: Ancestor walk for remaining gaps (no direct siblings assigned).
-      // Walk UP the GADM tree from gap's parent to find nearest assigned cousin.
-      const remainingGaps = activeGaps.filter(g => !suggestionByGapId.has(g.id) && g.parentId != null);
-      if (remainingGaps.length > 0) {
-        for (let i = 0; i < remainingGaps.length; i++) {
-          const gap = remainingGaps[i];
-          logStep(`Ancestor walk ${i + 1}/${remainingGaps.length}: ${gap.name}...`);
-
-          const ancestorResult = await pool.query(`
-            WITH RECURSIVE walk AS (
-              SELECT $1::integer AS node_id, 0 AS depth
-              UNION ALL
-              SELECT ad.parent_id, w.depth + 1
-              FROM walk w
-              JOIN administrative_divisions ad ON ad.id = w.node_id
-              WHERE ad.parent_id IS NOT NULL
-            )
-            SELECT rm.region_id, r.name AS region_name, r.parent_region_id
-            FROM walk w
-            JOIN administrative_divisions ad ON ad.id = w.node_id
-            JOIN administrative_divisions sibling
-              ON sibling.parent_id = ad.parent_id AND sibling.id != ad.id
-            JOIN region_members rm ON rm.division_id = sibling.id
-            JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
-            ORDER BY w.depth
-            LIMIT 1
-          `, [gap.parentId, worldViewId]);
-
-          if (ancestorResult.rows.length > 0) {
-            const row = ancestorResult.rows[0];
-            const parentRegionId = row.parent_region_id as number | null;
-            if (parentRegionId != null) {
-              suggestionByGapId.set(gap.id, {
-                action: 'create_region',
-                targetRegionId: parentRegionId,
-                targetRegionName: row.region_name as string,
-              });
-            }
-          }
-        }
-      }
-    }
+    const suggestionByGapId = await buildSuggestions(gapIds, activeGaps, worldViewId, logStep);
 
     const addCount = [...suggestionByGapId.values()].filter(s => s.action === 'add_member').length;
     const createCount = [...suggestionByGapId.values()].filter(s => s.action === 'create_region').length;
@@ -448,22 +360,10 @@ export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): 
     logStep(`Done: ${addCount} add_member, ${createCount} create_region, ${noSuggestion} without suggestion`);
 
     // Send complete event with full result
-    const coverageResult = {
-      gaps: activeGaps.map(g => ({
-        id: g.id,
-        name: g.name,
-        parentName: g.parentName,
-        suggestion: suggestionByGapId.get(g.id) ?? null,
-        ...(subtreeByGapId.has(g.id) ? { subtree: subtreeByGapId.get(g.id) } : {}),
-      })),
-      dismissedCount: dismissedGaps.length,
-      dismissedGaps,
-    };
-
     sendEvent({
       type: 'complete',
       elapsed: (Date.now() - startTime) / 1000,
-      data: coverageResult,
+      data: formatCoverageResult(activeGaps, dismissedGaps, suggestionByGapId, subtreeByGapId),
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
@@ -523,9 +423,6 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
   }
 
   // Boundary-based KNN: finds the nearest assigned region by polygon boundary distance.
-  // Uses `geom <->` (GiST bbox-based KNN) to catch large regions whose boundary is
-  // close even if their centroid is far (e.g., Antarctica for Heard Island).
-  // Then computes exact boundary distance with ST_Distance on geography.
   const result = await pool.query(`
     WITH gap_center AS (
       SELECT ST_Centroid(ST_Envelope(geom)) AS pt
@@ -569,8 +466,6 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
   const regionId = row.region_id as number;
 
   // Fetch ancestor chain (suggested region -> root) and children of the suggested region.
-  // Ancestors let admin pick where in the hierarchy to add the gap.
-  // Children let admin pick a more specific child (e.g., "South Ocean Islands" under "Antarctica").
   const [ancestorResult, childrenResult] = await Promise.all([
     pool.query(`
       WITH RECURSIVE chain AS (
@@ -590,7 +485,6 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
   ]);
 
   // Build nested contextTree: root -> ... -> suggested (with children attached)
-  // ancestorResult is ordered root-first (depth DESC), suggested region is last
   interface ContextNode {
     id: number;
     name: string;
@@ -763,295 +657,4 @@ export async function approveCoverageSuggestion(req: AuthenticatedRequest, res: 
   );
 
   res.json({ approved: true, regionId: targetRegionId });
-}
-
-/**
- * Finalize review -- mark the world view as done.
- * Appends '_done' to current source_type (e.g. 'wikivoyage' -> 'wikivoyage_done', 'imported' -> 'imported_done').
- * The world view remains editable from the WorldView Editor.
- * POST /api/admin/wv-import/matches/:worldViewId/finalize
- */
-export async function finalizeReview(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  console.log(`[WV Import] POST /matches/${worldViewId}/finalize`);
-
-  // Check for unmatched regions
-  // Exclude no_candidates regions where any ancestor has assigned divisions
-  // (ancestor geometry covers them)
-  const unmatchedResult = await pool.query(`
-    WITH RECURSIVE ancestor_walk AS (
-      SELECT r.id AS region_id, r.parent_region_id AS ancestor_id
-      FROM regions r
-      WHERE r.world_view_id = $1 AND r.parent_region_id IS NOT NULL
-      UNION ALL
-      SELECT aw.region_id, reg.parent_region_id
-      FROM ancestor_walk aw
-      JOIN regions reg ON reg.id = aw.ancestor_id
-      WHERE reg.parent_region_id IS NOT NULL
-    ),
-    covered_by_ancestor AS (
-      SELECT DISTINCT aw.region_id
-      FROM ancestor_walk aw
-      JOIN region_members rm ON rm.region_id = aw.ancestor_id
-      WHERE aw.ancestor_id IS NOT NULL
-    ),
-    unresolved_leaves AS (
-      SELECT r2.id AS region_id
-      FROM regions r2
-      JOIN region_import_state ris2 ON ris2.region_id = r2.id
-      WHERE r2.world_view_id = $1
-        AND r2.is_leaf = true
-        AND ris2.match_status NOT IN ('auto_matched', 'manual_matched', 'children_matched')
-        AND r2.id NOT IN (SELECT region_id FROM covered_by_ancestor)
-    ),
-    has_unresolved_desc AS (
-      SELECT ul.region_id FROM unresolved_leaves ul
-      UNION
-      SELECT r2.parent_region_id
-      FROM has_unresolved_desc hud
-      JOIN regions r2 ON r2.id = hud.region_id
-      WHERE r2.parent_region_id IS NOT NULL
-    )
-    SELECT COUNT(*) FILTER (
-             WHERE ris.match_status = 'needs_review'
-               AND r.id NOT IN (SELECT region_id FROM covered_by_ancestor)
-           ) AS needs_review,
-           COUNT(*) FILTER (
-             WHERE ris.match_status = 'no_candidates'
-               AND r.id NOT IN (SELECT region_id FROM covered_by_ancestor)
-               AND r.id IN (SELECT region_id FROM has_unresolved_desc)
-           ) AS no_candidates
-    FROM regions r
-    LEFT JOIN region_import_state ris ON ris.region_id = r.id
-    WHERE r.world_view_id = $1
-  `, [worldViewId]);
-
-  const needsReview = parseInt(unmatchedResult.rows[0].needs_review as string);
-  const noCandidates = parseInt(unmatchedResult.rows[0].no_candidates as string);
-  if (needsReview > 0 || noCandidates > 0) {
-    res.status(400).json({
-      error: `Cannot finalize: ${needsReview} regions need review, ${noCandidates} have no candidates`,
-    });
-    return;
-  }
-
-  // Derive finalized source_type from current (e.g. 'wikivoyage' -> 'wikivoyage_done')
-  const result = await pool.query(
-    `UPDATE world_views SET source_type = source_type || '_done', updated_at = NOW()
-     WHERE id = $1 AND source_type IN ('wikivoyage', 'imported')
-     RETURNING id, name`,
-    [worldViewId],
-  );
-
-  if (result.rows.length === 0) {
-    res.status(404).json({ error: 'World view not found or already finalized' });
-    return;
-  }
-
-  console.log(`[WV Import] Finalized review for worldView ${worldViewId}`);
-  res.json({ finalized: true, worldViewId });
-}
-
-// =============================================================================
-// Rematch
-// =============================================================================
-
-/** In-memory progress for re-matching */
-const runningRematches = new Map<number, { progress: ImportProgress; startTime: number }>();
-
-/**
- * Re-run country-level matching on an existing world view.
- * Clears all match metadata and region_members, then re-runs the matcher.
- * POST /api/admin/wv-import/matches/:worldViewId/rematch
- */
-export async function rematchWorldView(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  console.log(`[WV Import] POST /matches/${worldViewId}/rematch`);
-
-  // Check world view exists and is import-sourced
-  const wvCheck = await pool.query(
-    `SELECT id FROM world_views WHERE id = $1 AND source_type IN ('wikivoyage', 'wikivoyage_done', 'imported', 'imported_done')`,
-    [worldViewId],
-  );
-  if (wvCheck.rows.length === 0) {
-    res.status(404).json({ error: 'Imported world view not found' });
-    return;
-  }
-
-  // Check no rematch is already running
-  const existing = runningRematches.get(worldViewId);
-  if (existing && existing.progress.status === 'matching') {
-    res.status(409).json({ error: 'Re-matching is already running for this world view' });
-    return;
-  }
-
-  const progress = createInitialProgress();
-  progress.status = 'matching';
-  progress.statusMessage = 'Resetting match data...';
-  runningRematches.set(worldViewId, { progress, startTime: Date.now() });
-
-  // Run in background
-  runRematch(worldViewId, progress).catch((err) => {
-    console.error(`[WV Import] Rematch error for worldView ${worldViewId}:`, err);
-    progress.status = 'failed';
-    progress.statusMessage = `Re-match failed: ${err instanceof Error ? err.message : String(err)}`;
-  }).finally(() => {
-    const thisEntry = runningRematches.get(worldViewId);
-    setTimeout(() => {
-      if (runningRematches.get(worldViewId) === thisEntry) {
-        runningRematches.delete(worldViewId);
-      }
-    }, 300_000);
-  });
-
-  res.json({ started: true });
-}
-
-async function runRematch(worldViewId: number, progress: ImportProgress): Promise<void> {
-  const startTime = Date.now();
-
-  // Step 1: Reset all match metadata and region_members
-  console.log(`[WV Import Rematch] Resetting match data for worldView ${worldViewId}...`);
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Delete all region_members for this world view
-    await client.query(`
-      DELETE FROM region_members
-      WHERE region_id IN (SELECT id FROM regions WHERE world_view_id = $1)
-    `, [worldViewId]);
-
-    // Delete all suggestions for this world view
-    await client.query(`
-      DELETE FROM region_match_suggestions
-      WHERE region_id IN (SELECT id FROM regions WHERE world_view_id = $1)
-    `, [worldViewId]);
-
-    // Reset match status (keep source_url, region_map_url, etc.)
-    await client.query(`
-      UPDATE region_import_state SET match_status = 'no_candidates'
-      WHERE region_id IN (SELECT id FROM regions WHERE world_view_id = $1)
-    `, [worldViewId]);
-
-    // Clear dismissed coverage gaps (re-match resets all state)
-    await client.query(
-      `UPDATE world_views SET dismissed_coverage_ids = '{}' WHERE id = $1`,
-      [worldViewId],
-    );
-
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-
-  const resetDuration = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`[WV Import Rematch] Reset complete in ${resetDuration}s`);
-
-  // Step 2: Re-run country-level matching
-  progress.statusMessage = 'Re-matching countries to GADM...';
-  await matchCountryLevel(worldViewId, progress);
-
-  const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
-  progress.status = 'complete';
-  progress.statusMessage = `Re-match complete: ${progress.countriesMatched} countries matched (${progress.subdivisionsDrilled} with subdivisions), ${progress.noCandidates} unmatched. Took ${totalDuration}s.`;
-  console.log(`[WV Import Rematch] Complete in ${totalDuration}s: matched=${progress.countriesMatched}, drilldowns=${progress.subdivisionsDrilled}, none=${progress.noCandidates}`);
-}
-
-/**
- * Get re-match progress.
- * GET /api/admin/wv-import/matches/:worldViewId/rematch/status
- */
-export function getRematchStatus(req: AuthenticatedRequest, res: Response): void {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const entry = runningRematches.get(worldViewId);
-  if (entry) {
-    res.json({
-      status: entry.progress.status,
-      statusMessage: entry.progress.statusMessage,
-      countriesMatched: entry.progress.countriesMatched,
-      totalCountries: entry.progress.totalCountries,
-      noCandidates: entry.progress.noCandidates,
-    });
-  } else {
-    res.json({ status: 'idle' });
-  }
-}
-
-// =============================================================================
-// Hierarchy Review
-// =============================================================================
-
-/**
- * Add a child region under a parent during hierarchy review.
- * POST /api/admin/wv-import/matches/:worldViewId/add-child-region
- */
-export async function addChildRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { parentRegionId, name } = req.body as { parentRegionId: number; name: string };
-  console.log(`[WV Import] POST /matches/${worldViewId}/add-child-region — parent=${parentRegionId}, name="${name}"`);
-
-  // Verify parent belongs to world view
-  const parent = await pool.query(
-    'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
-    [parentRegionId, worldViewId],
-  );
-  if (parent.rows.length === 0) {
-    res.status(404).json({ error: 'Parent region not found in this world view' });
-    return;
-  }
-
-  // Get import_run_id from parent's import state
-  const parentState = await pool.query(
-    'SELECT import_run_id FROM region_import_state WHERE region_id = $1',
-    [parentRegionId],
-  );
-  const importRunId = parentState.rows[0]?.import_run_id ?? null;
-
-  // Create child region
-  const result = await pool.query(
-    `INSERT INTO regions (world_view_id, name, parent_region_id)
-     VALUES ($1, $2, $3) RETURNING id`,
-    [worldViewId, name, parentRegionId],
-  );
-  const regionId = result.rows[0].id as number;
-
-  // Create region_import_state
-  await pool.query(
-    `INSERT INTO region_import_state (region_id, import_run_id, match_status)
-     VALUES ($1, $2, 'no_candidates')`,
-    [regionId, importRunId],
-  );
-
-  res.json({ created: true, regionId });
-}
-
-/**
- * Dismiss hierarchy warnings for a region (mark as reviewed).
- * POST /api/admin/wv-import/matches/:worldViewId/dismiss-hierarchy-warnings
- */
-export async function dismissHierarchyWarnings(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body as { regionId: number };
-  console.log(`[WV Import] POST /matches/${worldViewId}/dismiss-hierarchy-warnings — regionId=${regionId}`);
-
-  // Verify region belongs to world view
-  const region = await pool.query(
-    'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
-    [regionId, worldViewId],
-  );
-  if (region.rows.length === 0) {
-    res.status(404).json({ error: 'Region not found in this world view' });
-    return;
-  }
-
-  await pool.query(
-    `UPDATE region_import_state SET hierarchy_reviewed = true WHERE region_id = $1`,
-    [regionId],
-  );
-
-  res.json({ dismissed: true });
 }

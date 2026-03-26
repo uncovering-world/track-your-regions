@@ -17,6 +17,9 @@ and mark the old one as `Superseded by ADR-XXXX`.
 | [0006](0006-martin-for-vector-tiles.md) | Martin for vector tile serving | Accepted | 2025-01-01 |
 | [0007](0007-jwt-with-httponly-refresh-tokens.md) | JWT with httpOnly refresh tokens | Accepted | 2025-02-01 |
 | [0008](0008-tanstack-query-for-server-state.md) | TanStack Query for server state | Accepted | 2025-01-01 |
+| [0009](0009-opencv-js-wasm-for-cv-pipeline.md) | Use OpenCV.js (WASM) for server-side CV pipeline | Accepted | 2026-03-24 |
+| [0010](0010-cielab-kmeans-for-map-clustering.md) | CIELAB color space with K-means++ for map clustering | Accepted | 2026-03-24 |
+| [0011](0011-centralized-ai-service-layer.md) | Centralized AI service layer | Accepted | 2026-03-24 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

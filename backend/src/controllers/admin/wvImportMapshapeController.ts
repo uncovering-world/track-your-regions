@@ -46,8 +46,10 @@ async function fetchWikitext(pageTitle: string): Promise<string | null> {
 
 /** Extract page title from Wikivoyage URL */
 function pageNameFromUrl(sourceUrl: string): string | null {
-  const match = sourceUrl.match(/\/wiki\/(.+?)(?:#.*)?$/);
-  return match ? decodeURIComponent(match[1]) : null;
+  const idx = sourceUrl.indexOf('/wiki/');
+  if (idx < 0) return null;
+  const rest = sourceUrl.slice(idx + 6).split('#')[0];
+  return rest ? decodeURIComponent(rest) : null;
 }
 
 /** Match a mapshape to a child region by name or Wikidata IDs */

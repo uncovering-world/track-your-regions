@@ -217,13 +217,43 @@ export function extractImageCandidates(wikitext: string, maxCandidates = 15): st
 export function parseMapshapes(wikitext: string): MapshapeEntry[] {
   const cleanText = stripHtmlComments(wikitext);
   const results: MapshapeEntry[] = [];
-  const regex = /\{\{mapshape\|([^}]+)\}\}/gi;
-  let match;
-  while ((match = regex.exec(cleanText)) !== null) {
-    const params = match[1];
-    const fill = params.match(/fill\s*=\s*([#\w]+)/i)?.[1] ?? '';
-    const title = params.match(/title\s*=\s*([^|]+)/i)?.[1]?.trim() ?? '';
-    const wikidata = params.match(/wikidata\s*=\s*([^|]+)/i)?.[1]?.trim() ?? '';
+  // Match {{mapshape|...}} handling nested templates like {{StdColor|t1}}.
+  // Find each {{mapshape| start, then scan forward counting braces for balanced close.
+  const lower = cleanText.toLowerCase();
+  let searchFrom = 0;
+  while (true) {
+    const startIdx = lower.indexOf('{{mapshape|', searchFrom);
+    if (startIdx === -1) break;
+    // Find balanced closing }} by counting nesting depth
+    let depth = 0;
+    let endIdx = -1;
+    for (let i = startIdx; i < cleanText.length - 1; i++) {
+      if (cleanText[i] === '{' && cleanText[i + 1] === '{') { depth++; i++; }
+      else if (cleanText[i] === '}' && cleanText[i + 1] === '}') {
+        depth--;
+        if (depth === 0) { endIdx = i; break; }
+        i++;
+      }
+    }
+    if (endIdx === -1) break;
+    const inner = cleanText.substring(startIdx + '{{mapshape|'.length, endIdx);
+    searchFrom = endIdx + 2;
+
+    // Resolve nested {{StdColor|...}} templates to a placeholder color
+    const resolved = inner.replace(/\{\{StdColor\|([^}]+)\}\}/gi, (_m, code: string) => {
+      // Map StdColor codes to approximate hex colors for display
+      const stdColors: Record<string, string> = {
+        t1: '#cfd48c', t2: '#b5d29b', t3: '#d4a76a', t4: '#c7b8d1',
+        t5: '#8cc2c4', t6: '#d4a4a7', t7: '#b8c7d1', t8: '#d1c7a4',
+        t9: '#a4b8d1', t10: '#c4c78c',
+      };
+      return stdColors[code.trim().toLowerCase()] ?? '#cccccc';
+    });
+
+    const fill = resolved.match(/fill\s*=\s*([#\w]+)/i)?.[1] ?? '';
+    const title = (resolved.match(/title\s*=\s*([^|]+)/i)?.[1] ?? resolved.match(/name\s*=\s*([^|]+)/i)?.[1])?.trim()
+      ?.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1') ?? '';  // strip [[...]] wikilinks
+    const wikidata = resolved.match(/wikidata\s*=\s*([^|]+)/i)?.[1]?.trim() ?? '';
     if (title && wikidata) {
       results.push({
         title,

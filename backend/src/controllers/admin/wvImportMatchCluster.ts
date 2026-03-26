@@ -12,7 +12,7 @@ export async function runKMeansClustering(ctx: PipelineContext): Promise<void> {
   const {
     cv, TW, TH, tp,
     pxS,
-    colorBuf, countryMask, countrySize, textExcluded,
+    colorBuf, countryMask, countrySize,
     expectedRegionCount,
     logStep,
   } = ctx;
@@ -32,13 +32,13 @@ export async function runKMeansClustering(ctx: PipelineContext): Promise<void> {
   let sumL = 0, sumA = 0, sumB = 0, sumL2 = 0, sumA2 = 0, sumB2 = 0;
   let statCount = 0;
   for (let i = 0; i < tp; i++) {
-    if (!countryMask[i] || textExcluded[i]) continue;
+    if (!countryMask[i]) continue;
     const L = labBuf[i * 3], a = labBuf[i * 3 + 1], b = labBuf[i * 3 + 2];
     sumL += L; sumA += a; sumB += b;
     sumL2 += L * L; sumA2 += a * a; sumB2 += b * b;
     statCount++;
   }
-  if (statCount === 0) throw new Error('No country pixels remaining after text exclusion — cannot cluster');
+  if (statCount === 0) throw new Error('No country pixels remaining — cannot cluster');
   const meanL = sumL / statCount, meanA = sumA / statCount, meanB = sumB / statCount;
   const rawStdL = Math.sqrt(Math.max(0, sumL2 / statCount - meanL * meanL));
   const rawStdA = Math.sqrt(Math.max(0, sumA2 / statCount - meanA * meanA));
@@ -54,23 +54,15 @@ export async function runKMeansClustering(ctx: PipelineContext): Promise<void> {
   // truly redundant clusters afterward. Cap at 32, floor at 8.
   const CK = ckOverride ?? Math.max(8, Math.min(expectedRegionCount * 3, 32));
   console.log(`  [K-means] CK=${CK} (expectedRegions=${expectedRegionCount})`);
-  // Exclude text pixels from K-means centroids — their BFS-filled colors are
-  // from nearest neighbors and may be wrong at region boundaries.
-  // Park pixels are already filled with correct boundary colors in colorBuf.
   const countryPixels: Array<[number, number, number]> = [];
-  let textExcludedCount = 0;
   for (let i = 0; i < tp; i++) {
     if (countryMask[i]) {
-      if (textExcluded[i]) { textExcludedCount++; continue; }
       countryPixels.push([
         (labBuf[i * 3] - meanL) * wL,
         (labBuf[i * 3 + 1] - meanA) * wA,
         (labBuf[i * 3 + 2] - meanB) * wB,
       ]);
     }
-  }
-  if (textExcludedCount > 0) {
-    console.log(`  [K-means] Excluded ${textExcludedCount} text pixels from centroid computation (${(textExcludedCount / countrySize * 100).toFixed(1)}% of country)`);
   }
 
   // K-means++ initialization: probabilistic distance-weighted sampling
@@ -152,16 +144,11 @@ export async function runKMeansClustering(ctx: PipelineContext): Promise<void> {
     return rgb;
   });
 
-  // Two-phase label assignment using colorBuf (lightly filtered, accurate colors):
-  // Phase 1: Assign labels to clean (non-excluded) country pixels by nearest centroid.
-  // Phase 2: BFS-propagate labels from clean pixels into excluded (text+park) gaps.
-  // Clean pixels have accurate per-region colors from colorBuf (median(3) + mean shift).
-  // Excluded pixels get labels from spatial neighbors, preserving connectivity.
+  // Assign labels to country pixels by nearest centroid
   const pixelLabels = new Uint8Array(tp).fill(255);
   const clusterCounts = new Array(CK).fill(0);
-  // Phase 1: color-based assignment for clean pixels only (normalized Lab)
   for (let i = 0; i < tp; i++) {
-    if (!countryMask[i] || textExcluded[i]) continue;
+    if (!countryMask[i]) continue;
     const nL = (labBuf[i * 3] - meanL) * wL;
     const nA = (labBuf[i * 3 + 1] - meanA) * wA;
     const nB = (labBuf[i * 3 + 2] - meanB) * wB;
@@ -172,27 +159,6 @@ export async function runKMeansClustering(ctx: PipelineContext): Promise<void> {
     }
     pixelLabels[i] = bestK;
     clusterCounts[bestK]++;
-  }
-  // Phase 2: BFS from clean pixels into text regions
-  if (textExcludedCount > 0) {
-    const bfsQ: number[] = [];
-    for (let i = 0; i < tp; i++) {
-      if (pixelLabels[i] < 255) bfsQ.push(i);
-    }
-    let bfsH = 0, bfsFilled = 0;
-    while (bfsH < bfsQ.length) {
-      const p = bfsQ[bfsH++];
-      const lbl = pixelLabels[p];
-      for (const n of [p - TW, p + TW, p - 1, p + 1]) {
-        if (n >= 0 && n < tp && countryMask[n] && pixelLabels[n] === 255) {
-          pixelLabels[n] = lbl;
-          clusterCounts[lbl]++;
-          bfsQ.push(n);
-          bfsFilled++;
-        }
-      }
-    }
-    console.log(`  [K-means] BFS propagated labels to ${bfsFilled} text pixels`);
   }
 
   // Spatial mode filter: clean up salt-and-pepper noise from BFS seams and line residue.

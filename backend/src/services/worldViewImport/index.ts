@@ -13,7 +13,9 @@ import type { ImportTreeNode, ImportProgress, MatchingPolicy } from './types.js'
 import { createInitialProgress } from './types.js';
 
 export type { ImportTreeNode, ImportProgress, MatchSuggestion, MatchingPolicy, RegionImportState } from './types.js';
-export { matchCountryLevel, matchChildrenAsCountries } from './matcher.js';
+export { matchCountryLevel } from './matcher.js';
+export { matchChildrenAsCountries } from './matcherGrouping.js';
+export { matchLeafRegions } from './matcherLegacy.js';
 
 /** In-memory progress map, keyed by operation ID */
 const runningImports = new Map<string, ImportProgress>();

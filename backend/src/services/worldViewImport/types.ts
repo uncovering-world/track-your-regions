@@ -64,6 +64,29 @@ export interface ImportProgress {
   worldViewId: number | null;
 }
 
+/** Progress for AI re-matching (separate from import progress) */
+export interface AIMatchProgress {
+  status: 'running' | 'complete' | 'failed' | 'cancelled';
+  statusMessage: string;
+  totalLeaves: number;
+  processedLeaves: number;
+  improved: number;
+  totalCost: number;
+  cancel: boolean;
+}
+
+/** Result from a single AI match attempt */
+export interface AIMatchResult {
+  regionId: number;
+  divisionId: number | null;
+  divisionName: string | null;
+  alternativeNames: string[];
+  /** Additional divisions when a region spans multiple GADM entries (e.g., Donbas = Donetsk + Luhansk) */
+  additionalDivisions: Array<{ name: string; alternativeNames: string[] }>;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+}
+
 export function createInitialProgress(): ImportProgress {
   return {
     cancel: false,

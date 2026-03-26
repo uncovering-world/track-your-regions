@@ -4,6 +4,7 @@ import tsparser from '@typescript-eslint/parser';
 import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import security from 'eslint-plugin-security';
+import sonarjs from 'eslint-plugin-sonarjs';
 
 export default [
   {
@@ -13,6 +14,8 @@ export default [
   ...tseslint.configs['flat/recommended'],
   // Security rules
   security.configs.recommended,
+  // Code quality rules
+  sonarjs.configs.recommended,
   // React recommended rules (flat config) with settings
   {
     ...reactPlugin.configs.flat.recommended,
@@ -64,6 +67,9 @@ export default [
       // Security: keep most as warnings, disable noisy ones
       'security/detect-object-injection': 'off', // Too many false positives with TypeScript
       'security/detect-eval-with-expression': 'error',
+      // SonarJS: disable genuine false positives only
+      'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses
+      'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
     },
     settings: {
       react: {

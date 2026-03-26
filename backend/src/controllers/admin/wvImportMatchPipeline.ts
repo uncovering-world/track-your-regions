@@ -14,19 +14,15 @@ import { matchDivisionsFromClusters, type ReclusterSignal } from './wvImportMatc
 import {
   removeColoredLines,
 } from './wvImportMatchHelpers.js';
-import { detectText } from './wvImportMatchText.js';
-import { detectWater } from './wvImportMatchWater.js';
-import { detectBackground } from './wvImportMatchBackground.js';
-import { detectParks } from './wvImportMatchParks.js';
 import { runKMeansClustering } from './wvImportMatchCluster.js';
 import { meanshiftPreprocess } from './wvImportMatchMeanshift.js';
 
 // OpenCV WASM — eagerly initialized at module load to avoid tsx/esbuild overhead during requests.
 // tsx transforms every dynamic import() through esbuild, which takes 30s+ for the 10MB opencv.js.
 // By importing at module level, the cost is paid once at server startup.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 // Cache OpenCV on globalThis so it survives tsx hot-reloads
 // (each hot-reload re-evaluates this module, but globalThis persists)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js has no TypeScript types
 const G = globalThis as unknown as { __cv?: any; __cvReady?: Promise<void> };
 if (!G.__cvReady) {
   G.__cvReady = (async () => {
@@ -54,6 +50,7 @@ if (!G.__cvReady) {
 
 export interface PipelineContext {
   // Inputs (set by orchestrator before first phase)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js has no TypeScript types
   cv: any;
   regionId: number;
   worldViewId: number;
@@ -83,7 +80,6 @@ export interface PipelineContext {
   inpaintedBuf: Buffer | null;
 
   // Masks (built up across phases)
-  textExcluded: Uint8Array;
   waterGrown: Uint8Array;
   countryMask: Uint8Array;
   countrySize: number;
@@ -118,8 +114,6 @@ export interface PipelineContext {
 export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
   const regionId = parseInt(String(req.query.regionId));
-  const method = String(req.query.method || 'classical');
-  const usePolyRaster = req.query.polyRaster === 'true';
 
   // SSE setup — disable TCP buffering for immediate flush
   res.setHeader('Content-Type', 'text/event-stream');
@@ -196,111 +190,98 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  // Determine countryId: the GADM division whose children we want to match.
-  // If the region's own division (not a child region's) has GADM children,
-  // use it directly — we're splitting that territory into its sub-divisions.
+  // Determine countryIds: the GADM division(s) whose children we want to match.
+  // If the region's own divisions have GADM children, use them directly — we're
+  // splitting that territory into its sub-divisions. Supports multi-part regions
+  // (e.g. Egypt spans Africa + Asia with separate GADM roots).
   // Otherwise, walk up to the country ancestor and use siblings at the same depth.
   const parentDivIds = new Set<number>();
   for (const id of knownDivisionIds) {
     if (!childRegionMemberIds.has(id)) parentDivIds.add(id);
   }
 
-  let countryId: number;
-  let countryDepth: number;
+  let countryIds: number[] = [];
+  let countryDepth: number = 0;
 
-  if (parentDivIds.size === 1) {
-    const parentDivId = [...parentDivIds][0];
-    // Check if this division has GADM children (i.e., can be split)
+  if (parentDivIds.size >= 1) {
+    // Check which own divisions have GADM children (i.e., can be split)
     const childrenCheck = await pool.query(
-      'SELECT COUNT(*)::int AS cnt FROM administrative_divisions WHERE parent_id = $1',
-      [parentDivId],
+      'SELECT parent_id, COUNT(*)::int AS cnt FROM administrative_divisions WHERE parent_id = ANY($1) GROUP BY parent_id',
+      [[...parentDivIds]],
     );
-    if ((childrenCheck.rows[0]?.cnt as number) > 0) {
-      // Use the region's own division as the "country" — split into its children
-      countryId = parentDivId;
+    const withChildren = new Set(childrenCheck.rows.map(r => r.parent_id as number));
+    if (withChildren.size > 0) {
+      countryIds = [...withChildren];
       countryDepth = 0;
-      console.log(`  [CV] Using region division ${parentDivId} as countryId (has ${childrenCheck.rows[0].cnt} children)`);
-    } else {
-      // Leaf division — fall through to ancestor walk
-      countryId = 0;
-      countryDepth = 0;
+      console.log(`  [CV] Using region division(s) [${countryIds.join(', ')}] as scope roots (${childrenCheck.rows.map(r => `${r.parent_id}→${r.cnt} children`).join(', ')})`);
     }
-  } else {
-    countryId = 0;
-    countryDepth = 0;
+    // If none have children, fall through to ancestor walk below
   }
 
-  // If we couldn't use the region's own division, walk up to find the country ancestor
-  if (countryId === 0) {
-    const sampleDivId = [...knownDivisionIds][0];
-    const sampleDivResult = await pool.query(
-      'SELECT id, name, parent_id FROM administrative_divisions WHERE id = $1',
+  // If the region has no splittable own divisions, find the common GADM parent of its
+  // children's divisions — scope to that subtree only, never the whole country.
+  if (countryIds.length === 0 && childRegionMemberIds.size > 0) {
+    const sampleDivId = [...childRegionMemberIds][0];
+    const parentResult = await pool.query(
+      'SELECT parent_id FROM administrative_divisions WHERE id = $1',
       [sampleDivId],
     );
-
-    if (sampleDivResult.rows.length === 0) {
-      sendEvent({ type: 'error', message: 'Sample division not found in GADM' });
-      res.end();
-      return;
-    }
-
-    if (sampleDivResult.rows[0].parent_id == null) {
-      countryId = sampleDivResult.rows[0].id as number;
+    const gadmParentId = parentResult.rows[0]?.parent_id as number | null;
+    if (gadmParentId != null) {
+      countryIds = [gadmParentId];
       countryDepth = 0;
-    } else {
-      const countryResult = await pool.query(`
-        WITH RECURSIVE ancestors AS (
-          SELECT id, name, parent_id, 0 AS depth FROM administrative_divisions WHERE id = $1
-          UNION ALL
-          SELECT ad.id, ad.name, ad.parent_id, a.depth + 1 FROM administrative_divisions ad
-          JOIN ancestors a ON a.parent_id = ad.id
-        )
-        SELECT a.id, a.name, a.depth FROM ancestors a
-        JOIN administrative_divisions p ON a.parent_id = p.id
-        WHERE p.parent_id IS NULL
-        LIMIT 1
-      `, [sampleDivId]);
-
-      const cId = countryResult.rows[0]?.id as number | undefined;
-      const cDepth = countryResult.rows[0]?.depth as number | undefined;
-      if (!cId || cDepth === undefined) {
-        sendEvent({ type: 'error', message: 'Could not find country ancestor' });
-        res.end();
-        return;
-      }
-      countryId = cId;
-      countryDepth = cDepth;
+      console.log(`  [CV] Region has no own division — scoping to GADM parent ${gadmParentId} of child divisions`);
     }
   }
 
-  // Get ALL GADM divisions at the same depth as the sample (all siblings across the country).
-  // depth=1 means direct children of country, depth=2 means grandchildren, etc.
-  // If depth=0, the sample IS the country itself — go one level deeper to get subdivisions.
-  let targetDepth = countryDepth === 0 ? 1 : countryDepth;
+  if (countryIds.length === 0) {
+    sendEvent({ type: 'error', message: 'Cannot determine GADM scope: region has no own division and no children with divisions assigned' });
+    res.end();
+    return;
+  }
+
+  // Count child regions early — used for adaptive depth selection and K-means cap
+  const childCountResult = await pool.query(
+    `SELECT COUNT(*) FROM regions WHERE parent_region_id = $1 AND world_view_id = $2`,
+    [regionId, worldViewId],
+  );
+  const expectedRegionCount = parseInt(childCountResult.rows[0].count as string);
+
+  // Adaptive depth: if the scope roots themselves (e.g. states) are numerous enough
+  // for the expected child regions, use them directly instead of going one level deeper
+  // to districts. This avoids splitting 51 districts across 4 clusters when 5-6 states
+  // already map naturally to the 4 color regions on the source map.
+  let targetDepth: number;
+  if (countryIds.length > 1 && countryIds.length >= expectedRegionCount) {
+    targetDepth = 0;
+    console.log(`  [CV] Using scope roots directly as divisions (${countryIds.length} roots ≥ ${expectedRegionCount} expected regions)`);
+  } else {
+    targetDepth = countryDepth === 0 ? 1 : countryDepth;
+  }
   let allDivsResult = await pool.query(`
     WITH RECURSIVE descendants AS (
-      SELECT id, 0 AS depth FROM administrative_divisions WHERE id = $1
+      SELECT id, 0 AS depth FROM administrative_divisions WHERE id = ANY($1)
       UNION ALL
       SELECT ad.id, d.depth + 1 FROM administrative_divisions ad
       JOIN descendants d ON ad.parent_id = d.id
       WHERE d.depth < $2
     )
     SELECT id FROM descendants WHERE depth = $2
-  `, [countryId, targetDepth]);
+  `, [countryIds, targetDepth]);
 
   // If only 1 division found (e.g. sample at country level), try one level deeper
   if (allDivsResult.rows.length <= 1 && targetDepth === countryDepth) {
     targetDepth = countryDepth + 1;
     allDivsResult = await pool.query(`
       WITH RECURSIVE descendants AS (
-        SELECT id, 0 AS depth FROM administrative_divisions WHERE id = $1
+        SELECT id, 0 AS depth FROM administrative_divisions WHERE id = ANY($1)
         UNION ALL
         SELECT ad.id, d.depth + 1 FROM administrative_divisions ad
         JOIN descendants d ON ad.parent_id = d.id
         WHERE d.depth < $2
       )
       SELECT id FROM descendants WHERE depth = $2
-    `, [countryId, targetDepth]);
+    `, [countryIds, targetDepth]);
   }
 
   // Union GADM descendants with ALL known divisions from region members + suggestions.
@@ -337,13 +318,6 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
       regionName: r.region_name as string,
     });
   }
-
-  // Count child regions to cap K-means cluster count
-  const childCountResult = await pool.query(
-    `SELECT COUNT(*) FROM regions WHERE parent_region_id = $1 AND world_view_id = $2`,
-    [regionId, worldViewId],
-  );
-  const expectedRegionCount = parseInt(childCountResult.rows[0].count as string);
 
   // Fetch centroids + names for all divisions
   const centroidResult = await pool.query(`
@@ -536,9 +510,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         .toBuffer();
       removeColoredLines(rawBuf, TW, TH, RES_SCALE);
 
-      // Clean color buffer for K-means: start from origDownBuf with NO processing.
-      // Text + colored lines are detected as masks and Telea-inpainted in detectText
-      // with a tight radius — no 8px median blur that destroys thin coastal regions.
+      // Clean color buffer for K-means: start from origDownBuf with NO processing
       const colorBuf = Buffer.from(origDownBuf);
 
       // Debug: show image after noise removal (before CV processing)
@@ -559,7 +531,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         origDownBuf, rawBuf, colorBuf,
         hsvSharp: Buffer.alloc(0), labBufEarly: Buffer.alloc(0),
         hsvBuf: Buffer.alloc(0), inpaintedBuf: null,
-        textExcluded: new Uint8Array(0), waterGrown: new Uint8Array(0),
+        waterGrown: new Uint8Array(0),
         countryMask: new Uint8Array(0), countrySize: 0,
         coastalBand: new Uint8Array(0),
         pixelLabels: new Uint8Array(0),
@@ -569,16 +541,8 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         logStep, pushDebugImage, debugImages, startTime,
         oddK, pxS,
       };
-      // Branch based on method: mean-shift replaces the classical 4-phase pipeline
-      if (method === 'meanshift') {
-        await meanshiftPreprocess(ctx);
-      } else {
-        // Classical pipeline: text → water → background → parks
-        await detectText(ctx);
-        await detectWater(ctx);
-        await detectBackground(ctx);
-        await detectParks(ctx);
-      }
+      // Mean-shift preprocessing: edge-preserving filter to clean noise before K-means
+      await meanshiftPreprocess(ctx);
 
       // Recluster loop: re-run K-means with modified params when user requests
       let reclusterResult: ReclusterSignal | void;
@@ -589,13 +553,12 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
 
         // ── Spatial split through complete event: delegated to shared function ──
         reclusterResult = await matchDivisionsFromClusters({
-          worldViewId, regionId, knownDivisionIds: childRegionMemberIds, countryId, countryDepth,
+          worldViewId, regionId, knownDivisionIds: childRegionMemberIds, countryIds, countryDepth,
           buf: ctx.colorBuf, mapBuffer, countryMask: ctx.countryMask,
           waterGrown: ctx.waterGrown, pixelLabels: ctx.pixelLabels,
           colorCentroids: ctx.colorCentroids,
           TW, TH, origW, origH,
           skipClusterReview: false,
-          usePolyRaster,
           sendEvent: sendEvent as (event: Record<string, unknown>) => void,
           logStep, pushDebugImage, debugImages, startTime,
         });
@@ -662,7 +625,6 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
             let head = 0;
             while (head < queue.length) {
               const p = queue[head++];
-              const px = p % TW, py = Math.floor(p / TW);
               for (const n of [p - 1, p + 1, p - TW, p + TW]) {
                 if (n >= 0 && n < tp && inverseMask[n] && !exterior[n]) {
                   const nx = n % TW, ny = Math.floor(n / TW);

@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-non-literal-fs-filename -- cache dir paths are validated (no user input) */
 /**
  * Wikivoyage Extraction Service
  *

@@ -372,7 +372,9 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       const c = colorCentroids[lbl];
       if (!c) continue;
       // Connected component analysis with erosion to break thin bridges
-      const minCompSize = Math.max(20, Math.round(cnt * 0.05)); // ≥5% of cluster or 20px
+      // Use fixed threshold of 20px (matches split logic) — 5% was hiding small
+      // disconnected fragments like map title text that users need to split off
+      const minCompSize = 20;
       const components = findComponentsWithErosion(lbl, minCompSize);
       const compCount = components.filter(c => c.length >= minCompSize).length;
       clusterInfos.push({ label: lbl, color: [c[0], c[1], c[2]], pxCount: cnt, pct: Math.round(cnt / countrySize * 1000) / 10, componentCount: compCount });
@@ -505,6 +507,12 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
   const postReviewClusters = new Map<number, number>();
   for (let i = 0; i < tp; i++) {
     if (pixelLabels[i] < 255) postReviewClusters.set(pixelLabels[i], (postReviewClusters.get(pixelLabels[i]) || 0) + 1);
+  }
+
+  // Rebuild ICP mask after review exclusions — excluded clusters must not affect
+  // border detection or bbox computation (e.g. title text marked for removal)
+  for (let i = 0; i < tp; i++) {
+    if (icpMask[i] && pixelLabels[i] === 255) icpMask[i] = 0;
   }
 
   // ── Phase 3: ICP alignment ──

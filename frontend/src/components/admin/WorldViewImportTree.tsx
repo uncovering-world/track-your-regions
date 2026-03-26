@@ -95,6 +95,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     }
   }, [coverageRefetching, lastMutatedRegionId]);
 
+
   // Compute the set of ancestor IDs for the last mutated region
   const coverageDirtyIds = useMemo<ReadonlySet<number>>(() => {
     if (!coverageRefetching || lastMutatedRegionId == null || !tree) return new Set();
@@ -144,10 +145,6 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
 
   // ── Extracted hooks ────────────────────────────────────────────────────────
 
-  const cvPipeline = useCvMatchPipeline(worldViewId, tree);
-
-  const nav = useNavigationState(tree, shadowInsertions, coverageData);
-
   const dialogs = useImportTreeDialogs(worldViewId, tree, {
     renameMutation,
     reparentMutation,
@@ -155,6 +152,10 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     setUndoSnackbar,
     invalidateTree,
   });
+
+  const cvPipeline = useCvMatchPipeline(worldViewId, tree, dialogs.handleSmartSimplify);
+
+  const nav = useNavigationState(tree, shadowInsertions, coverageData);
 
   // ── Callbacks ──────────────────────────────────────────────────────────────
 
@@ -445,6 +446,15 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     coverageLoading={coverageLoading}
                     coverageDirtyIds={coverageDirtyIds}
                     onCoverageClick={dialogs.handleCoverageClick}
+                    onContentResize={() => {
+                      // Re-measure visible items after DOM update (don't use virtualizer.measure()
+                      // which clears ALL cached sizes and causes layout thrash)
+                      requestAnimationFrame(() => {
+                        nav.parentRef.current?.querySelectorAll<HTMLElement>('[data-index]').forEach(el => {
+                          nav.virtualizer.measureElement(el);
+                        });
+                      });
+                    }}
                     onManualFix={(regionId, needsManualFix) => {
                       if (needsManualFix) {
                         // Find the node name for the dialog title
