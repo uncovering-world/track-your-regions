@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeShoelaceArea, computeBboxFromDivisions } from './wvImportMatchIcp.js';
+import { computeShoelaceArea, computeBboxFromDivisions, detectBboxInflation } from './wvImportMatchIcp.js';
 
 describe('computeShoelaceArea', () => {
   it('computes area of a unit square', () => {
@@ -38,5 +38,37 @@ describe('computeBboxFromDivisions', () => {
     const divs = [{ id: 1, minX: 5, maxX: 15, minY: 2, maxY: 7, area: 50 }];
     const bbox = computeBboxFromDivisions(divs);
     expect(bbox).toEqual({ minX: 5, maxX: 15, minY: 2, maxY: 7 });
+  });
+});
+
+describe('detectBboxInflation', () => {
+  const TW = 800, TH = 600;
+
+  it('returns true when both aspect ratio mismatch AND overflow exceed thresholds', () => {
+    const gBbox = { minX: 0, maxX: 200, minY: 0, maxY: 100 };
+    const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 400 };
+    const overflow = 120; // 120/800 = 0.15 > 0.12
+    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(true);
+  });
+
+  it('returns false when aspect ratios are similar (compact country)', () => {
+    const gBbox = { minX: 0, maxX: 100, minY: 0, maxY: 80 };
+    const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 340 };
+    const overflow = 120;
+    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(false);
+  });
+
+  it('returns false when overflow is low (elongated but well-matched)', () => {
+    const gBbox = { minX: 0, maxX: 200, minY: 0, maxY: 100 };
+    const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 400 };
+    const overflow = 50; // 50/800 = 0.0625 < 0.12
+    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(false);
+  });
+
+  it('returns false when both signals are below thresholds', () => {
+    const gBbox = { minX: 0, maxX: 100, minY: 0, maxY: 80 };
+    const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 340 };
+    const overflow = 50;
+    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(false);
   });
 });

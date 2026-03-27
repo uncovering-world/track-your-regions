@@ -88,6 +88,30 @@ export function computeBboxFromDivisions(
   return { minX, maxX, minY, maxY };
 }
 
+/**
+ * Detect if ICP alignment likely failed due to bbox inflation (distant islands).
+ * Uses dual signal: aspect ratio mismatch (pre-ICP) AND high overflow (post-ICP).
+ */
+export function detectBboxInflation(
+  gBbox: { minX: number; maxX: number; minY: number; maxY: number },
+  cBbox: { minX: number; maxX: number; minY: number; maxY: number },
+  bestOverflow: number,
+  TW: number, TH: number,
+): boolean {
+  const gadmW = gBbox.maxX - gBbox.minX;
+  const gadmH = gBbox.maxY - gBbox.minY;
+  const cvW = cBbox.maxX - cBbox.minX;
+  const cvH = cBbox.maxY - cBbox.minY;
+  if (gadmW <= 0 || gadmH <= 0 || cvW <= 0 || cvH <= 0) return false;
+
+  const gadmRatio = gadmW / gadmH;
+  const cvRatio = cvW / cvH;
+  const ratioMismatch = Math.max(gadmRatio, cvRatio) / Math.min(gadmRatio, cvRatio);
+  const overflowPct = bestOverflow / Math.max(TW, TH);
+
+  return ratioMismatch > 1.4 && overflowPct > 0.12;
+}
+
 // =============================================================================
 // Internal helpers
 // =============================================================================
