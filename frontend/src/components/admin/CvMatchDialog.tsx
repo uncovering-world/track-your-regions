@@ -30,6 +30,7 @@ import { CvWaterReviewSection } from './CvWaterReviewSection';
 import { CvParkReviewSection } from './CvParkReviewSection';
 import { CvClusterReviewSection } from './CvClusterReviewSection';
 import { CvGeoPreviewSection, CvClusterSuggestionsSection } from './CvGeoPreviewSection';
+import { CvIcpAdjustmentSection } from './CvIcpAdjustmentSection';
 
 export interface CvMatchDialogProps {
   cvMatchDialog: CvMatchDialogState | null;
@@ -102,6 +103,12 @@ export function CvMatchDialog({
             {cvMatchDialog.parkReview && <CvParkReviewSection cvMatchDialog={cvMatchDialog} setCVMatchDialog={setCVMatchDialog} />}
             {cvMatchDialog.clusterReview && (
               <CvClusterReviewSection cvMatchDialog={cvMatchDialog} setCVMatchDialog={setCVMatchDialog} />
+            )}
+            {cvMatchDialog.icpAdjustment && (
+              <CvIcpAdjustmentSection
+                cvMatchDialog={cvMatchDialog}
+                setCVMatchDialog={setCVMatchDialog}
+              />
             )}
             {/* Interactive geo preview: side-by-side source map + MapLibre division map */}
             {cvMatchDialog.done && (

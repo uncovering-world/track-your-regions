@@ -124,7 +124,7 @@ export interface ParkReviewDecision {
 // =============================================================================
 
 export interface ColorMatchSSEEvent {
-  type: 'progress' | 'debug_image' | 'complete' | 'error' | 'water_review' | 'park_review' | 'cluster_review';
+  type: 'progress' | 'debug_image' | 'complete' | 'error' | 'water_review' | 'park_review' | 'cluster_review' | 'icp_adjustment_available';
   step?: string;
   elapsed?: number;
   debugImage?: DebugImage;
@@ -137,6 +137,7 @@ export interface ColorMatchSSEEvent {
   waterMaskImage?: string;
   waterPxPercent?: number;
   waterComponents?: WaterComponent[];
+  metrics?: { overflow: number; error: number; icpOption: string };
 }
 
 // =============================================================================
@@ -257,6 +258,19 @@ export async function respondToParkReview(reviewId: string, decision: ParkReview
 /** Respond to a per-component water review during CV match */
 export async function respondToWaterReview(reviewId: string, decision: WaterReviewDecision): Promise<void> {
   await authFetchJson(`${API_URL}/api/admin/wv-import/water-review/${reviewId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(decision),
+  });
+}
+
+export interface IcpAdjustmentDecision {
+  action: 'adjust' | 'continue';
+}
+
+/** Respond to ICP adjustment suggestion during CV match */
+export async function respondToIcpAdjustment(reviewId: string, decision: IcpAdjustmentDecision): Promise<void> {
+  await authFetchJson(`${API_URL}/api/admin/wv-import/icp-adjustment/${reviewId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(decision),

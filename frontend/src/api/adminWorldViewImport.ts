@@ -419,6 +419,7 @@ export {
   parkCropUrl,
   respondToParkReview,
   respondToWaterReview,
+  respondToIcpAdjustment,
   colorMatchWithProgress,
   prepareGuidedMatch,
   guidedMatchWithProgress,

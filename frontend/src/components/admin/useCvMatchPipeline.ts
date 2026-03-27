@@ -80,6 +80,11 @@ export interface CvMatchDialogState {
     /** Highlight overlay image URL for the selected cluster */
     highlightOverlay?: string;
   };
+  icpAdjustment?: {
+    reviewId: string;
+    message: string;
+    metrics: { overflow: number; error: number; icpOption: string };
+  };
 }
 
 export interface UseCvMatchPipelineResult {
@@ -277,6 +282,28 @@ export function useCvMatchPipeline(
               },
               progressText: 'Cluster review — merge small artifacts before assignment',
               progressColor: '#1565c0',
+            };
+          });
+        }
+
+        if (event.type === 'icp_adjustment_available' && event.reviewId) {
+          console.log(`[CV SSE] icp_adjustment_available: reviewId=${event.reviewId}`);
+          const rid = event.reviewId;
+          setCVMatchDialog(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              icpAdjustment: {
+                reviewId: rid,
+                message: event.message ?? 'Alignment quality is lower than expected.',
+                metrics: {
+                  overflow: event.metrics?.overflow ?? 0,
+                  error: event.metrics?.error ?? 0,
+                  icpOption: event.metrics?.icpOption ?? '',
+                },
+              },
+              progressText: 'ICP alignment — adjustment available',
+              progressColor: '#ed6c02',
             };
           });
         }
