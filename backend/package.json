@@ -29,7 +29,7 @@
     "express-rate-limit": "^8.2.2",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
-    "nodemailer": "^8.0.1",
+    "nodemailer": "^8.0.4",
     "openai": "^6.17.0",
     "passport": "^0.7.0",
     "passport-apple": "^2.0.2",
