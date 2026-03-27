@@ -6,7 +6,7 @@
  */
 
 export { getGeoshape, startWorldViewImport, getWorldViewImportStatus, cancelWorldViewImport } from './wvImportLifecycleController.js';
-export { getMatchStats, acceptMatch, rejectMatch, rejectRemaining, acceptAndRejectRest, clearMembers, acceptBatchMatches, getMatchTree, selectMapImage, markManualFix, getUnionGeometry, splitDivisionsDeeper, visionMatchDivisions, colorMatchDivisionsSSE, resolveWaterReview, getWaterCropImage, resolveParkReview, getParkCropImage, resolveClusterReview, getClusterPreviewImage, getClusterHighlightImage } from './wvImportMatchController.js';
+export { getMatchStats, acceptMatch, rejectMatch, rejectRemaining, acceptAndRejectRest, clearMembers, acceptBatchMatches, getMatchTree, selectMapImage, markManualFix, getUnionGeometry, splitDivisionsDeeper, visionMatchDivisions, colorMatchDivisionsSSE, resolveWaterReview, getWaterCropImage, resolveParkReview, getParkCropImage, resolveClusterReview, getClusterPreviewImage, getClusterHighlightImage, resolveIcpAdjustment } from './wvImportMatchController.js';
 export { getChildrenCoverage, getCoverageGeometry, analyzeCoverageGaps, getChildrenRegionGeometry } from './wvImportCoverageCompareController.js';
 export { mergeChildIntoParent, removeRegionFromImport, dismissChildren, pruneToLeaves, simplifyHierarchy, detectSmartSimplify, applySmartSimplifyMove } from './wvImportTreeOpsController.js';
 export { collapseToParent, smartFlattenPreview, smartFlatten, syncInstances, handleAsGrouping } from './wvImportFlattenController.js';

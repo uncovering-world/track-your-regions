@@ -13,9 +13,21 @@ import {
   pendingClusterReviews,
   clusterPreviewImages,
   storeClusterHighlights,
+  pendingIcpAdjustments,
+  type IcpAdjustmentDecision,
 } from './wvImportMatchReview.js';
 import { cleanClusters } from './wvImportMatchClusterClean.js';
-import { alignDivisionsToImage } from './wvImportMatchIcp.js';
+import {
+  alignDivisionsToImage,
+  detectBboxInflation,
+  findBboxOutliers,
+  findOverlapOutliers,
+  computeShoelaceArea,
+  computeBboxFromDivisions,
+  type AlignmentResult,
+  type DivisionBbox,
+} from './wvImportMatchIcp.js';
+import { parseSvgPathPoints } from './wvImportMatchSvgHelpers.js';
 import { assignDivisionsToClusters } from './wvImportMatchAssignment.js';
 import { getAdjacencyGraph, detectSpatialAnomalies } from '../../services/worldViewImport/spatialAnomalyDetector.js';
 import type { AdjacencyEdge, DivisionAssignment, SpatialAnomaly } from '../../services/worldViewImport/spatialAnomalyDetector.js';
@@ -518,7 +530,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
   // ── Phase 3: ICP alignment ──
   await logStep('ICP alignment (matching GADM boundary to CV silhouette)...');
 
-  const { gadmToPixel, bestLabel, bestError, bestOverflow } = await alignDivisionsToImage({
+  const icpResult = await alignDivisionsToImage({
     divPaths, countryPath,
     cMinX, cMinY, cMaxX, cMaxY,
     icpMask, pixelLabels,
@@ -526,6 +538,106 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
     quantBuf, centroids, mapBuffer,
     pxS, pushDebugImage,
   });
+
+  let { gadmToPixel } = icpResult;
+  const { bestLabel, bestError, bestOverflow, gBbox, cBbox } = icpResult;
+
+  // Check for bbox inflation (islands problem)
+  const inflationDetected = detectBboxInflation(gBbox, cBbox, bestOverflow, TW, TH);
+
+  if (inflationDetected) {
+    console.log(`  [ICP] Bbox inflation detected — aspect ratio mismatch + high overflow (err=${bestError.toFixed(1)}, overflow=${bestOverflow.toFixed(0)}px)`);
+    const reviewId = `icp-adj-${Date.now()}`;
+
+    sendEvent({
+      type: 'icp_adjustment_available',
+      reviewId,
+      message: 'Alignment quality is lower than expected, possibly due to small islands or features not shown on the map.',
+      metrics: { overflow: Math.round(bestOverflow), error: Math.round(bestError * 10) / 10, icpOption: bestLabel },
+    });
+    await new Promise(resolve => setImmediate(resolve));
+
+    const decision = await new Promise<IcpAdjustmentDecision>((resolve) => {
+      pendingIcpAdjustments.set(reviewId, resolve);
+      setTimeout(() => {
+        if (pendingIcpAdjustments.has(reviewId)) {
+          console.log(`  [ICP Adjustment] Review ${reviewId} timed out — continuing with original`);
+          pendingIcpAdjustments.delete(reviewId);
+          resolve({ action: 'continue' });
+        }
+      }, 300000);
+    });
+
+    if (decision.action === 'adjust') {
+      await logStep('Adjusting ICP alignment (excluding outlier divisions)...');
+
+      // Parse division SVG points
+      const divParsed = divPaths.map(d => ({
+        id: d.id,
+        points: parseSvgPathPoints(d.svgPath),
+      }));
+
+      // Compute per-division bboxes + areas
+      const divBboxes: DivisionBbox[] = divParsed.map(d => {
+        let dMinX = Infinity, dMaxX = -Infinity, dMinY = Infinity, dMaxY = -Infinity;
+        for (const [x, y] of d.points) {
+          if (x < dMinX) dMinX = x; if (x > dMaxX) dMaxX = x;
+          if (y < dMinY) dMinY = y; if (y > dMaxY) dMaxY = y;
+        }
+        return { id: d.id, minX: dMinX, maxX: dMaxX, minY: dMinY, maxY: dMaxY, area: computeShoelaceArea(d.points) };
+      });
+
+      const icpParams = {
+        divPaths, countryPath,
+        cMinX, cMinY, cMaxX, cMaxY,
+        icpMask, pixelLabels,
+        TW, TH, origW, origH,
+        quantBuf, centroids, mapBuffer,
+        pxS, pushDebugImage,
+      };
+
+      // Strategy B: BBox contribution analysis
+      const excludedB = findBboxOutliers(divBboxes, cBbox);
+      const remainingB = divBboxes.filter(d => !excludedB.includes(d.id));
+      let resultB: AlignmentResult | null = null;
+      if (excludedB.length > 0 && remainingB.length > 0) {
+        const bboxB = computeBboxFromDivisions(remainingB);
+        console.log(`  [ICP Adjust B] Excluded ${excludedB.length} divisions: [${excludedB}]`);
+        resultB = await alignDivisionsToImage({ ...icpParams, gBboxOverride: bboxB, scaleRange: 0.25 });
+      }
+
+      // Strategy C: CV-GADM overlap check
+      const excludedC = findOverlapOutliers(divParsed, gadmToPixel, icpMask, TW, TH);
+      const remainingC = divBboxes.filter(d => !excludedC.includes(d.id));
+      let resultC: AlignmentResult | null = null;
+      if (excludedC.length > 0 && remainingC.length > 0) {
+        const bboxC = computeBboxFromDivisions(remainingC);
+        console.log(`  [ICP Adjust C] Excluded ${excludedC.length} divisions: [${excludedC}]`);
+        resultC = await alignDivisionsToImage({ ...icpParams, gBboxOverride: bboxC, scaleRange: 0.25 });
+      }
+
+      // Pick best result
+      const candidates: Array<{ label: string; overflow: number; error: number; result: AlignmentResult | null }> = [
+        { label: 'original', overflow: bestOverflow, error: bestError, result: null },
+      ];
+      if (resultB) candidates.push({ label: 'strategyB', overflow: resultB.bestOverflow, error: resultB.bestError, result: resultB });
+      if (resultC) candidates.push({ label: 'strategyC', overflow: resultC.bestOverflow, error: resultC.bestError, result: resultC });
+      candidates.sort((a, b) => {
+        if (Math.abs(a.overflow - b.overflow) < 3) return a.error - b.error;
+        return a.overflow - b.overflow;
+      });
+
+      const winner = candidates[0];
+      if (winner.result) {
+        gadmToPixel = winner.result.gadmToPixel;
+        console.log(`  [ICP Adjust] Winner: ${winner.label} (ICP ${winner.result.bestLabel}, err=${winner.result.bestError.toFixed(1)}, overflow=${winner.result.bestOverflow.toFixed(0)}px)`);
+      } else {
+        console.log(`  [ICP Adjust] Original alignment was best — keeping it`);
+      }
+    } else {
+      console.log(`  [ICP Adjustment] User chose to continue with original alignment`);
+    }
+  }
 
   // ── Phase 4: Division-to-cluster assignment ──
   await logStep('Assigning GADM divisions to color regions...');

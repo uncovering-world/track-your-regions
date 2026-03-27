@@ -151,3 +151,23 @@ export function resolveClusterReview(reviewId: string, decision: ClusterReviewDe
   resolve(decision);
   return true;
 }
+
+// =============================================================================
+// ICP adjustment review
+// =============================================================================
+
+export interface IcpAdjustmentDecision {
+  action: 'adjust' | 'continue';
+}
+
+/** Pending ICP adjustment callbacks — SSE handler pauses here, POST handler resolves */
+export const pendingIcpAdjustments = new Map<string, (decision: IcpAdjustmentDecision) => void>();
+
+/** Resolve a pending ICP adjustment review (called from POST endpoint) */
+export function resolveIcpAdjustment(reviewId: string, decision: IcpAdjustmentDecision): boolean {
+  const resolve = pendingIcpAdjustments.get(reviewId);
+  if (!resolve) return false;
+  pendingIcpAdjustments.delete(reviewId);
+  resolve(decision);
+  return true;
+}

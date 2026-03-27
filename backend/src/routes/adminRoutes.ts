@@ -78,7 +78,7 @@ import {
   acceptAndRejectRest, acceptBatchMatches, selectMapImage, markManualFix,
   getUnionGeometry, splitDivisionsDeeper, visionMatchDivisions, colorMatchDivisionsSSE,
   resolveWaterReview, getWaterCropImage, resolveParkReview, getParkCropImage,
-  resolveClusterReview, getClusterPreviewImage, getClusterHighlightImage,
+  resolveClusterReview, getClusterPreviewImage, getClusterHighlightImage, resolveIcpAdjustment,
   // AI
   startAIMatch, getAIMatchStatus, cancelAIMatchEndpoint, dbSearchOneRegion,
   geocodeMatch, geoshapeMatch, pointMatch, resetMatch, aiMatchOneRegion,
@@ -387,6 +387,19 @@ router.post('/wv-import/cluster-review/:reviewId', (req: AuthenticatedRequest, r
     : undefined;
   console.log(`  [Cluster Review POST] reviewId=${reviewId} merges=${JSON.stringify(merges)} excludes=[${excludes}]${split.length ? ` split=[${split}]` : ''}${recluster ? ` recluster=${recluster.preset}` : ''}`);
   const found = resolveClusterReview(reviewId, { merges, excludes, recluster, split: split.length > 0 ? split : undefined });
+  if (found) {
+    res.json({ ok: true });
+  } else {
+    res.status(404).json({ error: 'Review not found or expired' });
+  }
+});
+
+// ICP adjustment callback (user approves/skips ICP realignment during CV match)
+router.post('/wv-import/icp-adjustment/:reviewId', (req: AuthenticatedRequest, res: Response) => {
+  const reviewId = String(req.params.reviewId);
+  const action = req.body?.action === 'adjust' ? 'adjust' : 'continue';
+  console.log(`  [ICP Adjustment POST] reviewId=${reviewId} action=${action}`);
+  const found = resolveIcpAdjustment(reviewId, { action });
   if (found) {
     res.json({ ok: true });
   } else {

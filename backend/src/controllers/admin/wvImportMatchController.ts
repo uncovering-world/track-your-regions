@@ -26,6 +26,7 @@ export {
   getClusterHighlightImage,
   pendingClusterReviews,
   clusterPreviewImages,
+  resolveIcpAdjustment,
 } from './wvImportMatchReview.js';
 
 // =============================================================================
