@@ -39,6 +39,10 @@ export interface AlignmentParams {
   pxS: (base: number) => number;
   /** Logging callbacks */
   pushDebugImage: (label: string, dataUrl: string) => Promise<void>;
+  /** Override GADM bbox (for adjusted alignment after excluding islands) */
+  gBboxOverride?: { minX: number; maxX: number; minY: number; maxY: number };
+  /** Scale constraint range — 0.10 means ±10% (default), 0.25 means ±25% */
+  scaleRange?: number;
 }
 
 export interface AlignmentResult {
@@ -50,6 +54,10 @@ export interface AlignmentResult {
   bestError: number;
   /** Max bbox overflow */
   bestOverflow: number;
+  /** GADM bbox used for alignment (original or overridden) */
+  gBbox: { minX: number; maxX: number; minY: number; maxY: number };
+  /** CV bbox computed from border pixels */
+  cBbox: { minX: number; maxX: number; minY: number; maxY: number };
 }
 
 // =============================================================================
@@ -330,7 +338,7 @@ export async function alignDivisionsToImage(params: AlignmentParams): Promise<Al
   const nearestCvBorder = buildNearestCvBorderFn(cvBorderPixels, TW, TH, CELL);
 
   // Two-phase ICP with auto-selection
-  const gBbox = { minX: cMinX, maxX: cMaxX, minY: -cMaxY, maxY: -cMinY };
+  const gBbox = params.gBboxOverride ?? { minX: cMinX, maxX: cMaxX, minY: -cMaxY, maxY: -cMinY };
   let cvMinX = TW, cvMaxX = 0, cvMinY = TH, cvMaxY = 0;
   for (const [x, y] of cvBorderPixels) {
     if (x < cvMinX) cvMinX = x; if (x > cvMaxX) cvMaxX = x;
@@ -339,6 +347,7 @@ export async function alignDivisionsToImage(params: AlignmentParams): Promise<Al
   const cBbox = { minX: cvMinX, maxX: cvMaxX, minY: cvMinY, maxY: cvMaxY };
   const initSx = (cBbox.maxX - cBbox.minX) / (gBbox.maxX - gBbox.minX);
   const initSy = (cBbox.maxY - cBbox.minY) / (gBbox.maxY - gBbox.minY);
+  const range = params.scaleRange ?? 0.10;
 
   console.log(`  [ICP] GADM bbox (PostGIS): x=[${gBbox.minX.toFixed(4)},${gBbox.maxX.toFixed(4)}] y=[${gBbox.minY.toFixed(4)},${gBbox.maxY.toFixed(4)}]`);
   console.log(`  [ICP] CV bbox (full):      x=[${cBbox.minX},${cBbox.maxX}] y=[${cBbox.minY},${cBbox.maxY}] (${cvBorderPixels.length} pts)`);
@@ -398,8 +407,8 @@ export async function alignDivisionsToImage(params: AlignmentParams): Promise<Al
     }
     const detX = np * sGx2 - sGx * sGx, detY = np * sGy2 - sGy * sGy;
     if (Math.abs(detX) < 1e-10 || Math.abs(detY) < 1e-10) break;
-    sxB = Math.max(initSx * 0.90, Math.min(initSx * 1.10, (np * sGxCx - sGx * sCx) / detX));
-    syB = Math.max(initSy * 0.90, Math.min(initSy * 1.10, (np * sGyCy - sGy * sCy) / detY));
+    sxB = Math.max(initSx * (1 - range), Math.min(initSx * (1 + range), (np * sGxCx - sGx * sCx) / detX));
+    syB = Math.max(initSy * (1 - range), Math.min(initSy * (1 + range), (np * sGyCy - sGy * sCy) / detY));
     txB = (sCx - sxB * sGx) / np;
     tyB = (sCy - syB * sGy) / np;
     for (let iter = 0; iter < 5; iter++) {
@@ -474,8 +483,8 @@ export async function alignDivisionsToImage(params: AlignmentParams): Promise<Al
     }
     const detXC = wSum * wsGx2 - wsGx * wsGx, detYC = wSum * wsGy2 - wsGy * wsGy;
     if (Math.abs(detXC) < 1e-10 || Math.abs(detYC) < 1e-10) break;
-    sxC = Math.max(initSx * 0.90, Math.min(initSx * 1.10, (wSum * wsGxCx - wsGx * wsCx) / detXC));
-    syC = Math.max(initSy * 0.90, Math.min(initSy * 1.10, (wSum * wsGyCy - wsGy * wsCy) / detYC));
+    sxC = Math.max(initSx * (1 - range), Math.min(initSx * (1 + range), (wSum * wsGxCx - wsGx * wsCx) / detXC));
+    syC = Math.max(initSy * (1 - range), Math.min(initSy * (1 + range), (wSum * wsGyCy - wsGy * wsCy) / detYC));
     txC = (wsCx - sxC * wsGx) / wSum;
     tyC = (wsCy - syC * wsGy) / wSum;
     for (let iter = 0; iter < 5; iter++) {
@@ -616,5 +625,7 @@ export async function alignDivisionsToImage(params: AlignmentParams): Promise<Al
     bestLabel: best.label,
     bestError: best.error,
     bestOverflow: best.overflow,
+    gBbox,
+    cBbox,
   };
 }
