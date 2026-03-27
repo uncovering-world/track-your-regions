@@ -53,6 +53,42 @@ export interface AlignmentResult {
 }
 
 // =============================================================================
+// Geometry helpers for ICP adjustment
+// =============================================================================
+
+export interface DivisionBbox {
+  id: number;
+  minX: number; maxX: number;
+  minY: number; maxY: number;
+  area: number;
+}
+
+/** Compute polygon area using the shoelace formula. Returns absolute area. */
+export function computeShoelaceArea(points: Array<[number, number]>): number {
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const j = (i + 1) % points.length;
+    area += points[i][0] * points[j][1];
+    area -= points[j][0] * points[i][1];
+  }
+  return Math.abs(area) / 2;
+}
+
+/** Compute the tight bounding box enclosing all divisions. */
+export function computeBboxFromDivisions(
+  divs: DivisionBbox[],
+): { minX: number; maxX: number; minY: number; maxY: number } {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const d of divs) {
+    if (d.minX < minX) minX = d.minX;
+    if (d.maxX > maxX) maxX = d.maxX;
+    if (d.minY < minY) minY = d.minY;
+    if (d.maxY > maxY) maxY = d.maxY;
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+// =============================================================================
 // Internal helpers
 // =============================================================================
 
