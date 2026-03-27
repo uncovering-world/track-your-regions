@@ -112,6 +112,87 @@ export function detectBboxInflation(
   return ratioMismatch > 1.4 && overflowPct > 0.12;
 }
 
+/**
+ * Strategy B: Find divisions that inflate the GADM bbox disproportionately.
+ * Iteratively removes the division whose removal shrinks the bbox the most,
+ * until the aspect ratio matches the CV bbox or no significant improvement remains.
+ */
+export function findBboxOutliers(
+  divBboxes: DivisionBbox[],
+  cBbox: { minX: number; maxX: number; minY: number; maxY: number },
+): number[] {
+  const totalArea = divBboxes.reduce((sum, d) => sum + d.area, 0);
+  const cvW = cBbox.maxX - cBbox.minX;
+  const cvH = cBbox.maxY - cBbox.minY;
+  if (cvW <= 0 || cvH <= 0) return [];
+  const cvRatio = cvW / cvH;
+
+  const excluded: number[] = [];
+  let remaining = [...divBboxes];
+
+  for (let iter = 0; iter < divBboxes.length && remaining.length > 1; iter++) {
+    const curBbox = computeBboxFromDivisions(remaining);
+    const curW = curBbox.maxX - curBbox.minX;
+    const curH = curBbox.maxY - curBbox.minY;
+    if (curW <= 0 || curH <= 0) break;
+
+    const curRatio = curW / curH;
+    const ratioMatch = Math.max(curRatio, cvRatio) / Math.min(curRatio, cvRatio);
+    if (ratioMatch <= 1.3) break;
+
+    const curArea = curW * curH;
+    let bestReduction = 0;
+    let bestIdx = -1;
+
+    for (let i = 0; i < remaining.length; i++) {
+      if (remaining[i].area > totalArea * 0.1) continue;
+      const without = remaining.filter((_, j) => j !== i);
+      if (without.length === 0) continue;
+      const newBbox = computeBboxFromDivisions(without);
+      const newArea = (newBbox.maxX - newBbox.minX) * (newBbox.maxY - newBbox.minY);
+      const reduction = (curArea - newArea) / curArea;
+      if (reduction > bestReduction) {
+        bestReduction = reduction;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx < 0 || bestReduction < 0.05) break;
+
+    excluded.push(remaining[bestIdx].id);
+    remaining = remaining.filter((_, i) => i !== bestIdx);
+  }
+
+  return excluded;
+}
+
+/**
+ * Strategy C: Find divisions whose centroid doesn't land on the CV mask
+ * when projected using the (possibly bad) initial gadmToPixel transform.
+ * Accepts pre-parsed points to keep SVG parsing in the caller.
+ */
+export function findOverlapOutliers(
+  divPaths: Array<{ id: number; points: Array<[number, number]> }>,
+  gadmToPixel: (gx: number, gy: number) => [number, number],
+  icpMask: Uint8Array,
+  TW: number, TH: number,
+): number[] {
+  const excluded: number[] = [];
+  for (const d of divPaths) {
+    if (d.points.length === 0) continue;
+    let cx = 0, cy = 0;
+    for (const [x, y] of d.points) { cx += x; cy += y; }
+    cx /= d.points.length;
+    cy /= d.points.length;
+    const [px, py] = gadmToPixel(cx, cy);
+    const ix = Math.round(px), iy = Math.round(py);
+    if (ix < 0 || ix >= TW || iy < 0 || iy >= TH || !icpMask[iy * TW + ix]) {
+      excluded.push(d.id);
+    }
+  }
+  return excluded;
+}
+
 // =============================================================================
 // Internal helpers
 // =============================================================================
