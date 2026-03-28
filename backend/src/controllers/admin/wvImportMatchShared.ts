@@ -543,7 +543,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
   const { bestLabel, bestError, bestOverflow, gBbox, cBbox } = icpResult;
 
   // Check for bbox inflation (islands problem)
-  const inflationDetected = detectBboxInflation(gBbox, cBbox, bestOverflow, TW, TH);
+  const inflationDetected = detectBboxInflation(gBbox, cBbox, bestOverflow, bestError, TW, TH);
 
   if (inflationDetected) {
     console.log(`  [ICP] Bbox inflation detected — aspect ratio mismatch + high overflow (err=${bestError.toFixed(1)}, overflow=${bestOverflow.toFixed(0)}px)`);

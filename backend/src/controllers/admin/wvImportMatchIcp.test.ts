@@ -45,42 +45,38 @@ describe('detectBboxInflation', () => {
   const TW = 800, TH = 600;
 
   it('returns true when aspect ratio mismatch + moderate overflow', () => {
-    // GADM 2:1, CV 1:1 → ratioMismatch=2.0>1.2, overflow=15%>10%
     const gBbox = { minX: 0, maxX: 200, minY: 0, maxY: 100 };
     const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 400 };
-    const overflow = 120;
-    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(true);
+    expect(detectBboxInflation(gBbox, cBbox, 120, 10, TW, TH)).toBe(true);
   });
 
   it('returns true when overflow alone is very high', () => {
-    // Similar shapes but overflow > 15%
     const gBbox = { minX: 0, maxX: 100, minY: 0, maxY: 80 };
     const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 340 };
-    const overflow = 130; // 130/800 = 16.25% > 15%
-    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(true);
+    expect(detectBboxInflation(gBbox, cBbox, 130, 5, TW, TH)).toBe(true);
   });
 
-  it('returns true when scale asymmetry is high + overflow', () => {
-    // GADM 4:1 mapped to CV 2:1 → scaleAsymmetry = 2.0 > 1.25, overflow > 8%
-    const gBbox = { minX: 0, maxX: 400, minY: 0, maxY: 100 };
-    const cBbox = { minX: 0, maxX: 600, minY: 0, maxY: 300 };
-    const overflow = 80; // 80/800 = 10% > 8%
-    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(true);
+  it('returns true when scale asymmetry + high mean error (low overflow)', () => {
+    // Simulates Western Java: scaleAsymmetry=1.34, low overflow, high error
+    // GADM 3.7:2.6, CV 620:327 → scaleAsymmetry ≈ 1.33
+    const gBbox = { minX: 0, maxX: 3.73, minY: 0, maxY: 2.64 };
+    const cBbox = { minX: 81, maxX: 701, minY: 118, maxY: 445 };
+    // overflow=27 (3.4%), error=22 (2.8%) — overflow low but error high
+    expect(detectBboxInflation(gBbox, cBbox, 27, 22, TW, TH)).toBe(true);
   });
 
-  it('returns false when overflow is very low (good alignment)', () => {
-    const gBbox = { minX: 0, maxX: 200, minY: 0, maxY: 100 };
-    const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 400 };
-    const overflow = 30; // 30/800 = 3.75% — too low for any path
-    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(false);
-  });
-
-  it('returns false when shapes match and overflow is moderate', () => {
-    // Similar ratios, moderate overflow — no problem
+  it('returns true when mean error alone is very high', () => {
     const gBbox = { minX: 0, maxX: 100, minY: 0, maxY: 80 };
     const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 340 };
-    const overflow = 50; // 50/800 = 6.25%
-    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(false);
+    // Low overflow, matching shapes, but very high error (>3%)
+    expect(detectBboxInflation(gBbox, cBbox, 20, 30, TW, TH)).toBe(true);
+  });
+
+  it('returns false when all metrics are good', () => {
+    const gBbox = { minX: 0, maxX: 100, minY: 0, maxY: 80 };
+    const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 340 };
+    // Low overflow, low error, matching shapes
+    expect(detectBboxInflation(gBbox, cBbox, 20, 8, TW, TH)).toBe(false);
   });
 });
 

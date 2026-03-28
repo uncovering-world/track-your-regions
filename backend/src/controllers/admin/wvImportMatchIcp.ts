@@ -100,15 +100,18 @@ export function computeBboxFromDivisions(
  * Detect if ICP alignment likely failed due to bbox inflation (distant islands)
  * or other shape mismatch between GADM and CV bounding boxes.
  *
- * Three detection paths (any one triggers):
- * 1. Aspect ratio mismatch > 1.2 AND overflow > 10% — moderate shape + alignment issues
- * 2. Overflow alone > 15% — severe misalignment regardless of shape
- * 3. Scale asymmetry > 25% AND overflow > 8% — initSx/initSy differ significantly
+ * Five detection paths (any one triggers):
+ * 1. Aspect ratio mismatch > 1.2 AND overflow > 10%
+ * 2. Overflow alone > 15%
+ * 3. Scale asymmetry > 1.25 AND overflow > 8%
+ * 4. Scale asymmetry > 1.2 AND mean error > 2% of image — catches distorted fits
+ * 5. Mean error alone > 3% of image — very poor alignment regardless of cause
  */
 export function detectBboxInflation(
   gBbox: { minX: number; maxX: number; minY: number; maxY: number },
   cBbox: { minX: number; maxX: number; minY: number; maxY: number },
   bestOverflow: number,
+  bestError: number,
   TW: number, TH: number,
 ): boolean {
   const gadmW = gBbox.maxX - gBbox.minX;
@@ -121,6 +124,7 @@ export function detectBboxInflation(
   const cvRatio = cvW / cvH;
   const ratioMismatch = Math.max(gadmRatio, cvRatio) / Math.min(gadmRatio, cvRatio);
   const overflowPct = bestOverflow / Math.max(TW, TH);
+  const meanErrorPct = bestError / Math.max(TW, TH);
 
   // Scale asymmetry: if initSx/initSy differs significantly from 1.0,
   // the GADM bbox shape doesn't match the CV bbox shape
@@ -128,11 +132,13 @@ export function detectBboxInflation(
   const scaleRatioY = cvH / gadmH;
   const scaleAsymmetry = Math.max(scaleRatioX, scaleRatioY) / Math.min(scaleRatioX, scaleRatioY);
 
-  console.log(`  [ICP Detection] ratioMismatch=${ratioMismatch.toFixed(3)}, overflowPct=${(overflowPct * 100).toFixed(1)}%, scaleAsymmetry=${scaleAsymmetry.toFixed(3)}`);
+  console.log(`  [ICP Detection] ratioMismatch=${ratioMismatch.toFixed(3)}, overflowPct=${(overflowPct * 100).toFixed(1)}%, scaleAsymmetry=${scaleAsymmetry.toFixed(3)}, meanErrorPct=${(meanErrorPct * 100).toFixed(1)}%`);
 
   return (ratioMismatch > 1.2 && overflowPct > 0.10)
       || (overflowPct > 0.15)
-      || (scaleAsymmetry > 1.25 && overflowPct > 0.08);
+      || (scaleAsymmetry > 1.25 && overflowPct > 0.08)
+      || (scaleAsymmetry > 1.2 && meanErrorPct > 0.02)
+      || (meanErrorPct > 0.03);
 }
 
 /**
