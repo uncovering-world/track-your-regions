@@ -622,6 +622,12 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       ];
       if (resultB) candidates.push({ label: 'strategyB', overflow: resultB.bestOverflow, error: resultB.bestError, result: resultB });
       if (resultC) candidates.push({ label: 'strategyC', overflow: resultC.bestOverflow, error: resultC.bestError, result: resultC });
+
+      // Log all candidates for debugging
+      for (const c of candidates) {
+        console.log(`  [ICP Adjust] Candidate ${c.label}: overflow=${c.overflow.toFixed(1)}, err=${c.error.toFixed(1)}`);
+      }
+
       candidates.sort((a, b) => {
         if (Math.abs(a.overflow - b.overflow) < 3) return a.error - b.error;
         return a.overflow - b.overflow;

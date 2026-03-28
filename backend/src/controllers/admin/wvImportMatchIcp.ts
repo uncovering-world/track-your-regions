@@ -348,10 +348,25 @@ export async function alignDivisionsToImage(params: AlignmentParams): Promise<Al
   }
 
   // Parse + resample GADM country boundary
-  const gadmBoundary = resamplePath(
+  let gadmBoundary = resamplePath(
     parseSvgPathPoints(countryPath),
     pxS(500),
   );
+
+  // When using bbox override (excluding islands), filter boundary points to
+  // the overridden bbox. Without this, island boundary points inflate overflow
+  // and error metrics even though the islands were excluded from the bbox.
+  if (params.gBboxOverride) {
+    const ob = params.gBboxOverride;
+    const marginX = (ob.maxX - ob.minX) * 0.05;
+    const marginY = (ob.maxY - ob.minY) * 0.05;
+    const beforeCount = gadmBoundary.length;
+    gadmBoundary = gadmBoundary.filter(([gx, gy]) =>
+      gx >= ob.minX - marginX && gx <= ob.maxX + marginX &&
+      gy >= ob.minY - marginY && gy <= ob.maxY + marginY,
+    );
+    console.log(`  [ICP] Filtered gadmBoundary: ${beforeCount} → ${gadmBoundary.length} points (excluded ${beforeCount - gadmBoundary.length} outside bbox override)`);
+  }
 
   // Spatial grid for fast nearest-neighbor on CV border
   const CELL = pxS(5);
