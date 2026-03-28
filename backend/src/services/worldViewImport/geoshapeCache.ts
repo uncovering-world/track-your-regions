@@ -236,6 +236,122 @@ export async function computeMultiDivisionCoverage(
   return coverage != null ? Math.round(coverage * 100000) / 100000 : null;
 }
 
+interface CoverageEntry {
+  coverage: number;
+  intersectionArea: number;
+  gadmArea: number;
+}
+
+type CandidateInfo = {
+  id: number;
+  name: string;
+  path: string;
+  parentId: number | null;
+  gadmDepth: number;
+  coverage: number;
+  intersectionArea: number;
+  gadmArea: number;
+};
+
+/**
+ * Refine a covering set by drilling down imprecise divisions.
+ *
+ * For each division in the covering set, computes precision = intersectionArea / gadmArea.
+ * If precision < 0.5 (the geoshape covers less than half the GADM division), replaces
+ * that division with its children that intersect the geoshape — recursively up to maxDepth.
+ * This handles cases like a Wikivoyage island region matching a whole GADM province.
+ */
+async function refineCoveringSet(
+  coveringSet: CandidateInfo[],
+  wikidataId: string,
+  wikiArea: number,
+  depth: number = 0,
+  maxDepth: number = 3,
+): Promise<CandidateInfo[]> {
+  const result: CandidateInfo[] = [];
+
+  for (const entry of coveringSet) {
+    const precision = entry.gadmArea > 0 ? entry.intersectionArea / entry.gadmArea : 1;
+
+    if (precision >= 0.5 || depth >= maxDepth) {
+      result.push(entry);
+      continue;
+    }
+
+    console.log(
+      `[Geoshape Refine] ${entry.name} (id=${entry.id}): precision=${(precision * 100).toFixed(1)}% — drilling down to children`,
+    );
+
+    // Query children of this division that intersect the geoshape
+    const childResult = await pool.query(`
+      WITH wiki AS (
+        SELECT ST_ForcePolygonCCW(geom) AS geom
+        FROM wikidata_geoshapes
+        WHERE wikidata_id = $1 AND not_available = FALSE
+      )
+      SELECT ad.id, ad.name, ad.parent_id,
+        safe_geo_area(
+          ST_ForcePolygonCCW(ST_CollectionExtract(
+            ST_MakeValid(ST_Intersection(w.geom, ad.geom_simplified_medium)), 3
+          ))
+        ) AS intersection_area,
+        safe_geo_area(ad.geom_simplified_medium) AS gadm_area,
+        (WITH RECURSIVE div_ancestors AS (
+          SELECT ad.id AS aid, ad.name AS aname, ad.parent_id AS apid
+          UNION ALL
+          SELECT d.id, d.name, d.parent_id
+          FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.apid
+        )
+        SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
+      FROM administrative_divisions ad, wiki w
+      WHERE ad.parent_id = $2
+        AND ad.geom_simplified_medium IS NOT NULL
+        AND ST_Intersects(ad.geom_simplified_medium, w.geom)
+    `, [wikidataId, entry.id]);
+
+    // Build child candidates, filtering tiny overlaps (< 1% of wiki area)
+    const children: CandidateInfo[] = [];
+    for (const row of childResult.rows) {
+      const childIntersectionArea = (row.intersection_area as number | null) ?? 0;
+      const childGadmArea = (row.gadm_area as number | null) ?? 0;
+      const childCoverage = wikiArea > 0 ? childIntersectionArea / wikiArea : 0;
+      if (childCoverage < 0.01) continue;
+      children.push({
+        id: row.id as number,
+        name: row.name as string,
+        path: row.path as string,
+        parentId: row.parent_id as number | null,
+        gadmDepth: entry.gadmDepth + 1,
+        coverage: childCoverage,
+        intersectionArea: childIntersectionArea,
+        gadmArea: childGadmArea,
+      });
+    }
+
+    // Check if children adequately cover the parent's intersection
+    const childIntersectionSum = children.reduce((sum, c) => sum + c.intersectionArea, 0);
+    const childCoverageRatio = entry.intersectionArea > 0
+      ? childIntersectionSum / entry.intersectionArea
+      : 0;
+
+    if (childCoverageRatio >= 0.8 && children.length > 0) {
+      console.log(
+        `[Geoshape Refine] Replacing ${entry.name} with ${children.length} children (childCoverageRatio=${(childCoverageRatio * 100).toFixed(1)}%)`,
+      );
+      // Recurse on children to refine further
+      const refinedChildren = await refineCoveringSet(children, wikidataId, wikiArea, depth + 1, maxDepth);
+      result.push(...refinedChildren);
+    } else {
+      console.log(
+        `[Geoshape Refine] Keeping ${entry.name} — children insufficient (${children.length} children, childCoverageRatio=${(childCoverageRatio * 100).toFixed(1)}%)`,
+      );
+      result.push(entry);
+    }
+  }
+
+  return result;
+}
+
 /**
  * Match a region by comparing its Wikidata geoshape against GADM divisions.
  *
@@ -420,18 +536,28 @@ export async function geoshapeMatchRegion(
         ST_ForcePolygonCCW(ST_CollectionExtract(
           ST_MakeValid(ST_Intersection(w.geom, ad.geom_simplified_medium)), 3
         ))
-      ) / NULLIF(wa.area, 0) AS coverage
+      ) / NULLIF(wa.area, 0) AS coverage,
+      safe_geo_area(
+        ST_ForcePolygonCCW(ST_CollectionExtract(
+          ST_MakeValid(ST_Intersection(w.geom, ad.geom_simplified_medium)), 3
+        ))
+      ) AS intersection_area,
+      safe_geo_area(ad.geom_simplified_medium) AS gadm_area
     FROM administrative_divisions ad, wiki w, wiki_area wa
     WHERE ad.id = ANY($2)
       AND ad.geom_simplified_medium IS NOT NULL
   `, [wikidataId, candidateIds]);
 
   // Build coverage map
-  const coverageMap = new Map<number, number>();
+  const coverageMap = new Map<number, CoverageEntry>();
   for (const row of coverageResult.rows) {
     const coverage = row.coverage as number | null;
     if (coverage != null && coverage > 0.01) { // Filter tiny overlaps (< 1%)
-      coverageMap.set(row.division_id as number, coverage);
+      coverageMap.set(row.division_id as number, {
+        coverage,
+        intersectionArea: (row.intersection_area as number | null) ?? 0,
+        gadmArea: (row.gadm_area as number | null) ?? 0,
+      });
     }
   }
 
@@ -440,19 +566,29 @@ export async function geoshapeMatchRegion(
     return { found: 0, suggestions: [] };
   }
 
+  // Compute wiki geoshape area for refinement precision checks
+  const wikiAreaResult = await pool.query(`
+    SELECT safe_geo_area(ST_ForcePolygonCCW(geom)) AS area
+    FROM wikidata_geoshapes
+    WHERE wikidata_id = $1 AND not_available = FALSE
+  `, [wikidataId]);
+  const wikiArea = (wikiAreaResult.rows[0]?.area as number) ?? 0;
+
   // 7. Build hierarchy-aware covering set
-  type CandidateInfo = { id: number; name: string; path: string; parentId: number | null; gadmDepth: number; coverage: number };
   const candidateInfoMap = new Map<number, CandidateInfo>();
   for (const row of candidateResult.rows) {
     const id = row.id as number;
-    if (!coverageMap.has(id)) continue;
+    const entry = coverageMap.get(id);
+    if (!entry) continue;
     candidateInfoMap.set(id, {
       id,
       name: row.name as string,
       path: row.path as string,
       parentId: row.parent_id as number | null,
       gadmDepth: row.gadm_depth as number,
-      coverage: coverageMap.get(id)!,
+      coverage: entry.coverage,
+      intersectionArea: entry.intersectionArea,
+      gadmArea: entry.gadmArea,
     });
   }
 
@@ -490,8 +626,16 @@ export async function geoshapeMatchRegion(
     return { found: 0, suggestions: [] };
   }
 
+  // 7b. Refine covering set: drill down imprecise divisions into their children
+  const refinedCoveringSet = await refineCoveringSet(coveringSet, wikidataId, wikiArea);
+
+  if (refinedCoveringSet.length === 0) {
+    console.log(`[Geoshape Match] No refined covering set candidates for region ${regionId}`);
+    return { found: 0, suggestions: [] };
+  }
+
   // 8. Compute total coverage of the covering set (union of selected / wiki area)
-  const selectedDivisionIds = coveringSet.map(c => c.id);
+  const selectedDivisionIds = refinedCoveringSet.map(c => c.id);
   const totalCoverageResult = await pool.query(`
     WITH wiki AS (
       SELECT ST_ForcePolygonCCW(geom) AS geom
@@ -526,7 +670,7 @@ export async function geoshapeMatchRegion(
     [newStatus, regionId],
   );
 
-  for (const c of coveringSet) {
+  for (const c of refinedCoveringSet) {
     const score = Math.round(c.coverage * 1000); // Score based on coverage of wiki shape
     // For covering sets, geo_similarity = per-division coverage of the wiki shape.
     // Using IoU here would be misleading: each division's IoU inflates via the
