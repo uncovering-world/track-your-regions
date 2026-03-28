@@ -853,6 +853,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
       [parentRegionId, worldViewId],
     );
     if (parentCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
       res.status(404).json({ error: 'Parent region not found in this world view' });
       return;
     }
@@ -862,6 +863,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
       [ownerRegionId, worldViewId],
     );
     if (ownerCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
       res.status(404).json({ error: 'Owner region not found in this world view' });
       return;
     }
@@ -875,6 +877,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
 
     // Verify ownerRegionId is a child of parentRegionId
     if (!childIds.has(ownerRegionId)) {
+      await client.query('ROLLBACK');
       res.status(400).json({ error: 'Owner region is not a child of the parent region' });
       return;
     }
@@ -885,6 +888,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
       [memberRowIds],
     );
     if (memberCheck.rows.length !== memberRowIds.length) {
+      await client.query('ROLLBACK');
       res.status(400).json({ error: 'Some memberRowIds were not found' });
       return;
     }
@@ -892,6 +896,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
     for (const row of memberCheck.rows) {
       const regionId = row.region_id as number;
       if (!childIds.has(regionId)) {
+        await client.query('ROLLBACK');
         res.status(400).json({ error: `Member row ${row.id} belongs to region ${regionId} which is not a child of the parent` });
         return;
       }
