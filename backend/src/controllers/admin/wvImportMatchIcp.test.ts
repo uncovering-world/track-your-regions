@@ -44,31 +44,42 @@ describe('computeBboxFromDivisions', () => {
 describe('detectBboxInflation', () => {
   const TW = 800, TH = 600;
 
-  it('returns true when both aspect ratio mismatch AND overflow exceed thresholds', () => {
+  it('returns true when aspect ratio mismatch + moderate overflow', () => {
+    // GADM 2:1, CV 1:1 → ratioMismatch=2.0>1.2, overflow=15%>10%
     const gBbox = { minX: 0, maxX: 200, minY: 0, maxY: 100 };
     const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 400 };
-    const overflow = 120; // 120/800 = 0.15 > 0.12
+    const overflow = 120;
     expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(true);
   });
 
-  it('returns false when aspect ratios are similar (compact country)', () => {
+  it('returns true when overflow alone is very high', () => {
+    // Similar shapes but overflow > 15%
     const gBbox = { minX: 0, maxX: 100, minY: 0, maxY: 80 };
     const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 340 };
-    const overflow = 120;
-    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(false);
+    const overflow = 130; // 130/800 = 16.25% > 15%
+    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(true);
   });
 
-  it('returns false when overflow is low (elongated but well-matched)', () => {
+  it('returns true when scale asymmetry is high + overflow', () => {
+    // GADM 4:1 mapped to CV 2:1 → scaleAsymmetry = 2.0 > 1.25, overflow > 8%
+    const gBbox = { minX: 0, maxX: 400, minY: 0, maxY: 100 };
+    const cBbox = { minX: 0, maxX: 600, minY: 0, maxY: 300 };
+    const overflow = 80; // 80/800 = 10% > 8%
+    expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(true);
+  });
+
+  it('returns false when overflow is very low (good alignment)', () => {
     const gBbox = { minX: 0, maxX: 200, minY: 0, maxY: 100 };
     const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 400 };
-    const overflow = 50; // 50/800 = 0.0625 < 0.12
+    const overflow = 30; // 30/800 = 3.75% — too low for any path
     expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(false);
   });
 
-  it('returns false when both signals are below thresholds', () => {
+  it('returns false when shapes match and overflow is moderate', () => {
+    // Similar ratios, moderate overflow — no problem
     const gBbox = { minX: 0, maxX: 100, minY: 0, maxY: 80 };
     const cBbox = { minX: 0, maxX: 400, minY: 0, maxY: 340 };
-    const overflow = 50;
+    const overflow = 50; // 50/800 = 6.25%
     expect(detectBboxInflation(gBbox, cBbox, overflow, TW, TH)).toBe(false);
   });
 });

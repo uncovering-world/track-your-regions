@@ -97,8 +97,13 @@ export function computeBboxFromDivisions(
 }
 
 /**
- * Detect if ICP alignment likely failed due to bbox inflation (distant islands).
- * Uses dual signal: aspect ratio mismatch (pre-ICP) AND high overflow (post-ICP).
+ * Detect if ICP alignment likely failed due to bbox inflation (distant islands)
+ * or other shape mismatch between GADM and CV bounding boxes.
+ *
+ * Three detection paths (any one triggers):
+ * 1. Aspect ratio mismatch > 1.2 AND overflow > 10% — moderate shape + alignment issues
+ * 2. Overflow alone > 15% — severe misalignment regardless of shape
+ * 3. Scale asymmetry > 25% AND overflow > 8% — initSx/initSy differ significantly
  */
 export function detectBboxInflation(
   gBbox: { minX: number; maxX: number; minY: number; maxY: number },
@@ -117,7 +122,17 @@ export function detectBboxInflation(
   const ratioMismatch = Math.max(gadmRatio, cvRatio) / Math.min(gadmRatio, cvRatio);
   const overflowPct = bestOverflow / Math.max(TW, TH);
 
-  return ratioMismatch > 1.4 && overflowPct > 0.12;
+  // Scale asymmetry: if initSx/initSy differs significantly from 1.0,
+  // the GADM bbox shape doesn't match the CV bbox shape
+  const scaleRatioX = cvW / gadmW;
+  const scaleRatioY = cvH / gadmH;
+  const scaleAsymmetry = Math.max(scaleRatioX, scaleRatioY) / Math.min(scaleRatioX, scaleRatioY);
+
+  console.log(`  [ICP Detection] ratioMismatch=${ratioMismatch.toFixed(3)}, overflowPct=${(overflowPct * 100).toFixed(1)}%, scaleAsymmetry=${scaleAsymmetry.toFixed(3)}`);
+
+  return (ratioMismatch > 1.2 && overflowPct > 0.10)
+      || (overflowPct > 0.15)
+      || (scaleAsymmetry > 1.25 && overflowPct > 0.08);
 }
 
 /**
