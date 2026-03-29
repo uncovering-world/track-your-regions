@@ -680,13 +680,8 @@ export async function autoResolveChildren(req: AuthenticatedRequest, res: Respon
         [regionId],
       );
 
-      // Remove redundant parent members only when fully resolved
-      for (const redundant of result.parentMembers.redundant) {
-        await client.query(
-          `DELETE FROM region_members WHERE region_id = $1 AND division_id = $2`,
-          [regionId, redundant.divisionId],
-        );
-      }
+      // Keep parent's division assignments — children get sub-divisions,
+      // but the parent's own GADM mapping defines its geographic area
     }
 
     await client.query('COMMIT');
@@ -712,8 +707,8 @@ export async function autoResolveChildren(req: AuthenticatedRequest, res: Respon
       review: result.needsReview.length,
       total: result.total,
       failed: result.unmatched,
-      parentMembersKept: result.parentMembers.kept.length,
-      parentMembersRemoved: allResolved ? result.parentMembers.redundant.length : 0,
+      parentMembersKept: result.parentMembers.kept.length + result.parentMembers.redundant.length,
+      parentMembersRemoved: 0,
       undoAvailable: true,
     });
   } catch (err) {
