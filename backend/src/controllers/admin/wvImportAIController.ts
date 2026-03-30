@@ -143,11 +143,11 @@ export async function geocodeMatch(req: AuthenticatedRequest, res: Response): Pr
  */
 export async function geoshapeMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
-  console.log(`[WV Import] POST /matches/${worldViewId}/geoshape-match — regionId=${regionId}`);
+  const { regionId, scopeAncestorId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/geoshape-match — regionId=${regionId}${scopeAncestorId ? ` scopeAncestorId=${scopeAncestorId}` : ''}`);
 
   try {
-    const result = await geoshapeMatchRegion(worldViewId, regionId);
+    const result = await geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId);
     // Compute geo similarity if region now has multiple suggestions
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);

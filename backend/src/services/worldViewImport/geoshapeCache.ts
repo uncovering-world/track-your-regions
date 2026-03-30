@@ -487,7 +487,14 @@ async function refineCoveringSet(
 export async function geoshapeMatchRegion(
   worldViewId: number,
   regionId: number,
-): Promise<{ found: number; suggestions: Array<{ divisionId: number; name: string; path: string; score: number }>; totalCoverage?: number }> {
+  scopeAncestorId?: number,
+): Promise<{
+  found: number;
+  suggestions: Array<{ divisionId: number; name: string; path: string; score: number }>;
+  totalCoverage?: number;
+  scopeAncestorName?: string;
+  nextScope?: { ancestorId: number; ancestorName: string };
+}> {
   // 1. Get region's Wikidata ID
   const wdResult = await pool.query(
     `SELECT ris.source_external_id, r.is_leaf
@@ -515,25 +522,59 @@ export async function geoshapeMatchRegion(
   // 3. Scope: walk up the region tree to find nearest ancestor with assigned GADM divisions
   const ancestorResult = await pool.query(`
     WITH RECURSIVE ancestors AS (
-      SELECT id, parent_region_id, 0 AS depth FROM regions WHERE id = $1
+      SELECT id, name, parent_region_id, 0 AS depth FROM regions WHERE id = $1
       UNION ALL
-      SELECT r.id, r.parent_region_id, a.depth + 1
+      SELECT r.id, r.name, r.parent_region_id, a.depth + 1
       FROM regions r JOIN ancestors a ON r.id = a.parent_region_id
     )
-    SELECT a.id,
+    SELECT a.id, a.name,
       (SELECT array_agg(rm.division_id) FROM region_members rm WHERE rm.region_id = a.id) AS division_ids
     FROM ancestors a
     ORDER BY a.depth
   `, [regionId]);
 
-  // Find the nearest ancestor (excluding self) that has assigned divisions
+  // Find the scope ancestor and the next one above it
   let scopeDivisionIds: number[] = [];
+  let scopeAncestorName: string | undefined;
+  let nextScope: { ancestorId: number; ancestorName: string } | undefined;
+  let foundScope = false;
+  const skipUntilPassed = scopeAncestorId != null;
+  let passedRequestedAncestor = false;
+
   for (const row of ancestorResult.rows) {
-    if ((row.id as number) === regionId) continue;
+    const rowId = row.id as number;
+    const rowName = row.name as string;
     const ids = row.division_ids as number[] | null;
-    if (ids && ids.length > 0) {
-      scopeDivisionIds = ids;
-      break;
+    const hasDivisions = ids != null && ids.length > 0;
+
+    if (rowId === regionId) continue; // skip self
+
+    if (skipUntilPassed && !passedRequestedAncestor) {
+      if (rowId === scopeAncestorId) {
+        passedRequestedAncestor = true;
+        if (hasDivisions) {
+          scopeDivisionIds = ids;
+          scopeAncestorName = rowName;
+          foundScope = true;
+          continue; // keep looking for nextScope
+        }
+      }
+      continue; // skip ancestors below the requested one
+    }
+
+    if (!foundScope) {
+      if (hasDivisions) {
+        scopeDivisionIds = ids;
+        scopeAncestorName = rowName;
+        foundScope = true;
+        continue; // keep looking for nextScope
+      }
+    } else {
+      // Already found scope — look for the next ancestor with divisions
+      if (hasDivisions) {
+        nextScope = { ancestorId: rowId, ancestorName: rowName };
+        break;
+      }
     }
   }
 
@@ -602,8 +643,8 @@ export async function geoshapeMatchRegion(
   const candidateResult = await pool.query(candidateQuery, candidateParams);
 
   if (candidateResult.rows.length === 0) {
-    console.log(`[Geoshape Match] No spatial candidates for region ${regionId} (${wikidataId})`);
-    return { found: 0, suggestions: [] };
+    console.log(`[Geoshape Match] No spatial candidates for region ${regionId} (${wikidataId}) in scope ${scopeAncestorName ?? 'global'}`);
+    return { found: 0, suggestions: [], scopeAncestorName, nextScope };
   }
 
   console.log(`[Geoshape Match] Found ${candidateResult.rows.length} spatial candidates for region ${regionId} (${wikidataId})`);
@@ -812,7 +853,7 @@ export async function geoshapeMatchRegion(
   suggestions.sort((a, b) => b.score - a.score);
 
   console.log(`[Geoshape Match] Covering set for region ${regionId}: ${suggestions.map(s => `${s.name} (${(s.score / 10).toFixed(1)}%)`).join(', ')} — total coverage: ${roundedTotalCoverage != null ? (roundedTotalCoverage * 100).toFixed(1) : '?'}%`);
-  return { found: suggestions.length, suggestions, totalCoverage: roundedTotalCoverage };
+  return { found: suggestions.length, suggestions, totalCoverage: roundedTotalCoverage, scopeAncestorName, nextScope };
 }
 
 /**
