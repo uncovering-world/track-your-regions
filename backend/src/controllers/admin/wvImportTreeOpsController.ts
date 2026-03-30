@@ -638,6 +638,48 @@ export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response
 }
 
 /**
+ * Simplify all children of a parent region, one by one.
+ * POST /api/admin/wv-import/matches/:worldViewId/simplify-children
+ */
+export async function simplifyChildren(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/simplify-children — parentRegionId=${regionId}`);
+
+  // Get child regions that have 2+ divisions (simplification candidates)
+  const childrenResult = await pool.query(
+    `SELECT r.id, r.name,
+       (SELECT count(*)::int FROM region_members rm WHERE rm.region_id = r.id AND rm.custom_geom IS NULL) AS member_count
+     FROM regions r
+     WHERE r.parent_region_id = $1 AND r.world_view_id = $2
+     ORDER BY r.name`,
+    [regionId, worldViewId],
+  );
+
+  const results: Array<{ regionId: number; regionName: string; replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }>; totalReduced: number }> = [];
+  const affectedRegionIds: number[] = [];
+
+  for (const child of childrenResult.rows) {
+    if ((child.member_count as number) < 2) continue;
+
+    const { replacements } = await runSimplifyHierarchy(child.id as number, worldViewId);
+    if (replacements.length > 0) {
+      affectedRegionIds.push(child.id as number);
+      const totalReduced = replacements.reduce((sum, r) => sum + r.replacedCount, 0) - replacements.length;
+      results.push({ regionId: child.id as number, regionName: child.name as string, replacements, totalReduced });
+    }
+  }
+
+  // Post-transaction: invalidate geometry and sync match status for affected regions
+  for (const id of affectedRegionIds) {
+    await invalidateRegionGeometry(id);
+    await syncImportMatchStatus(id);
+  }
+
+  res.json({ results, totalSimplified: results.length });
+}
+
+/**
  * Detect cross-sibling division moves that would allow simplification.
  * READ-ONLY — no mutations. Finds GADM parents whose children are fully present
  * across sibling regions but split among multiple siblings.

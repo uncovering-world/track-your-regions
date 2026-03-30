@@ -290,8 +290,11 @@ function floodFillWater(
 }
 
 /**
- * Also detect gray/unsaturated background: pixels with S < 25 (10% of 255)
- * in HSV are considered gray. Flood fill from corners among gray pixels.
+ * Also detect gray/unsaturated background: pixels with S < 15 (~6% of 255)
+ * in HSV are considered gray. Very light-colored regions (e.g. Tyrol's light
+ * pink at S≈24) are kept while pure gray backgrounds (S≈0) are caught.
+ * The primary RGB flood fill from corners handles the main background detection;
+ * this is a second layer for gray "islands" unreachable from corners.
  */
 function detectGrayBackground(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -312,12 +315,11 @@ function detectGrayBackground(
   srcMat.delete();
   hsvMat.delete();
 
-  // Mark ALL low-saturation pixels as background.
-  // On WV maps, gray is ALWAYS background — never a region fill (fills have S≥15%).
-  // No flood fill needed — this catches gray "islands" like the Strait of Gibraltar
-  // that are surrounded by colored regions and unreachable from corners.
+  // Mark low-saturation pixels as gray candidates.
+  // Threshold 15 (~6%) catches true gray (S≈0) while preserving very light
+  // region fills like pale pink (S≈20-25) that appear on WV maps.
   for (let i = 0; i < tp; i++) {
-    if (hsvData[i * 3 + 1] < 25) mask[i] = 1; // S < ~10%
+    if (hsvData[i * 3 + 1] < 15) mask[i] = 1;
   }
 
   return mask;
@@ -469,10 +471,49 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
     console.log(`  [MS] Gray bg opening: ${grayRawCount} → ${grayOpenCount} px (removed ${grayRawCount - grayOpenCount} thin features)`);
   }
 
-  // Combine: background = RGB flood fill OR gray flood fill (opened)
+  // Flood fill from corners through opened gray pixels — only mark gray reachable
+  // from image edges as background. Interior low-saturation regions (e.g. Tyrol's
+  // light pink) stay disconnected after opening removes border lines, so they're kept.
+  const bgMaskGrayFilled = new Uint8Array(tp);
+  {
+    const corners = [0, TW - 1, (TH - 1) * TW, (TH - 1) * TW + TW - 1];
+    const visited = new Uint8Array(tp);
+    const stack: number[] = [];
+    for (const c of corners) {
+      if (bgMaskGray[c]) stack.push(c);
+    }
+    // Also seed from all border pixels (not just corners) for better connectivity
+    for (let x = 0; x < TW; x++) {
+      if (bgMaskGray[x]) stack.push(x);
+      if (bgMaskGray[(TH - 1) * TW + x]) stack.push((TH - 1) * TW + x);
+    }
+    for (let y = 0; y < TH; y++) {
+      if (bgMaskGray[y * TW]) stack.push(y * TW);
+      if (bgMaskGray[y * TW + TW - 1]) stack.push(y * TW + TW - 1);
+    }
+    while (stack.length > 0) {
+      const pix = stack.pop()!;
+      if (visited[pix]) continue;
+      visited[pix] = 1;
+      if (!bgMaskGray[pix]) continue;
+      bgMaskGrayFilled[pix] = 1;
+      const y = Math.floor(pix / TW);
+      const x = pix % TW;
+      if (y > 0) stack.push(pix - TW);
+      if (y < TH - 1) stack.push(pix + TW);
+      if (x > 0) stack.push(pix - 1);
+      if (x < TW - 1) stack.push(pix + 1);
+    }
+    const filledCount = bgMaskGrayFilled.reduce((s, v) => s + v, 0);
+    if (filledCount !== grayOpenCount) {
+      console.log(`  [MS] Gray bg flood fill: ${grayOpenCount} → ${filledCount} px (${grayOpenCount - filledCount} interior gray pixels kept as country)`);
+    }
+  }
+
+  // Combine: background = RGB flood fill OR gray flood fill (opened + edge-connected)
   const bgMask = new Uint8Array(tp);
   for (let i = 0; i < tp; i++) {
-    if (bgMaskRgb[i] || bgMaskGray[i]) bgMask[i] = 1;
+    if (bgMaskRgb[i] || bgMaskGrayFilled[i]) bgMask[i] = 1;
   }
 
   // --- Step 3: Water detection (coastal + inland) ---
@@ -573,6 +614,9 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
   }
 
   // --- Step 6: Foreign land removal ---
+  // Only remove small disconnected CCs that touch the image border (neighboring
+  // country fragments). Interior CCs are kept regardless of size — they're real
+  // exclaves or regions disconnected by border-line artifacts.
   {
     const cmMat = cv.matFromArray(TH, TW, cv.CV_8UC1, countryMask);
     const ccLabels = new cv.Mat();
@@ -588,12 +632,38 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
         if (area > mainSize) { mainSize = area; mainCC = c; }
       }
 
+      // Check which CCs touch the image border (row 0/TH-1 or col 0/TW-1)
       const ccData = ccLabels.data32S;
+      const touchesBorder = new Set<number>();
+      for (let x = 0; x < TW; x++) {
+        const topLabel = ccData[x];
+        const botLabel = ccData[(TH - 1) * TW + x];
+        if (topLabel > 0) touchesBorder.add(topLabel);
+        if (botLabel > 0) touchesBorder.add(botLabel);
+      }
+      for (let y = 0; y < TH; y++) {
+        const leftLabel = ccData[y * TW];
+        const rightLabel = ccData[y * TW + TW - 1];
+        if (leftLabel > 0) touchesBorder.add(leftLabel);
+        if (rightLabel > 0) touchesBorder.add(rightLabel);
+      }
+
       let foreignRemoved = 0;
+      const removedDetails: string[] = [];
       for (let c = 1; c < numCC; c++) {
         if (c === mainCC) continue;
         const area = ccStats.intAt(c, cv.CC_STAT_AREA);
-        if (area > mainSize * 0.15) continue;
+        const pct = ((area / mainSize) * 100).toFixed(1);
+        const atBorder = touchesBorder.has(c);
+
+        // Keep interior CCs (not foreign land) and large border CCs (>15% = real territory)
+        if (!atBorder || area > mainSize * 0.15) {
+          if (area > mainSize * 0.01) {
+            console.log(`  [MS] Foreign land: kept CC #${c} (${pct}% of main, ${atBorder ? 'border' : 'interior'})`);
+          }
+          continue;
+        }
+        removedDetails.push(`CC #${c} ${pct}%`);
         for (let i = 0; i < tp; i++) {
           if (ccData[i] === c) {
             countryMask[i] = 0;
@@ -603,7 +673,9 @@ export async function meanshiftPreprocess(ctx: PipelineContext): Promise<void> {
         }
       }
       if (foreignRemoved > 0) {
-        console.log(`  [MS] Foreign land removal: removed ${foreignRemoved} pixels (kept main CC + exclaves >15%)`);
+        console.log(`  [MS] Foreign land removal: removed ${foreignRemoved} px (${removedDetails.join(', ')})`);
+      } else if (numCC > 2) {
+        console.log(`  [MS] Foreign land removal: kept all ${numCC - 1} CCs (none matched border+small criteria)`);
       }
     }
     ccLabels.delete(); ccStats.delete();

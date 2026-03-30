@@ -225,6 +225,18 @@ export async function getChildrenCoverage(req: AuthenticatedRequest, res: Respon
       }
     }
 
+    console.log(`[WV Import] Children coverage: ${Object.keys(coverage).length} containers computed, ${zeroCoverageIds.length} zero-coverage` +
+      (targetRegionId ? ` (target=${targetRegionId})` : '') +
+      (onlyId ? ` (onlyId=${onlyId})` : ''));
+    // Log any containers with unexpectedly low coverage for debugging
+    for (const [id, cov] of Object.entries(coverage)) {
+      if (cov < 0.9 && cov > 0) {
+        const name = nameByRegion.get(Number(id)) ?? '?';
+        const parentDivs = divisionsByRegion.get(Number(id)) ?? [];
+        const descDivs = descendantDivsByContainer.get(Number(id)) ?? [];
+        console.log(`  [Coverage] "${name}" (${id}): ${(cov * 100).toFixed(2)}% — parentDivs=[${parentDivs}] descDivs=[${descDivs.join(',')}]`);
+      }
+    }
     res.json({ coverage, geoshapeCoverage });
   } catch (err) {
     console.error('[WV Import] Children coverage failed:', err);

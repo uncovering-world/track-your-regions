@@ -9,7 +9,7 @@ import { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { pool } from '../../db/index.js';
 import { parseMapshapes } from '../../services/wikivoyageExtract/parser.js';
-import { getOrFetchGeoshape } from '../../services/worldViewImport/geoshapeCache.js';
+import { getOrFetchGeoshape, getOrFetchCommonsMapGeoshape } from '../../services/worldViewImport/geoshapeCache.js';
 
 const WV_API_URL = 'https://en.wikivoyage.org/w/api.php';
 const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)';
@@ -143,7 +143,26 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  console.log(`[Mapshape Match] Found ${mapshapes.length} mapshapes for region ${regionId} (${pageTitle})`);
+  // 3b. Process Commons map data mapshapes — fetch geometry, fill in metadata
+  for (const ms of mapshapes) {
+    if (!ms.commonsFile) continue;
+    const meta = await getOrFetchCommonsMapGeoshape(ms.commonsFile);
+    if (meta.available) {
+      if (!ms.title && meta.title) ms.title = meta.title;
+      if (!ms.color && meta.color) ms.color = meta.color;
+      // Use cache key as synthetic ID so existing matching pipeline works unchanged
+      ms.wikidataIds = [`commons:${ms.commonsFile}`];
+    }
+  }
+
+  // Filter out entries that couldn't be resolved (no wikidata IDs and no Commons geometry)
+  const resolvedMapshapes = mapshapes.filter(ms => ms.wikidataIds.length > 0 && ms.title);
+  if (resolvedMapshapes.length === 0) {
+    res.json({ found: false, message: 'Mapshape templates found but no geoshapes could be resolved' });
+    return;
+  }
+
+  console.log(`[Mapshape Match] Found ${resolvedMapshapes.length} mapshapes for region ${regionId} (${pageTitle})`);
 
   // 4. Get scope: parent region's GADM divisions, walking up if needed
   let scopeDivisionIds: number[] = [];
@@ -183,10 +202,10 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  // 5. Ensure all mapshape geoshapes are cached
-  const allWikidataIds = [...new Set(mapshapes.flatMap(m => m.wikidataIds))];
+  // 5. Ensure all mapshape geoshapes are cached (skip commons: IDs — already cached)
+  const allWikidataIds = [...new Set(resolvedMapshapes.flatMap(m => m.wikidataIds))];
   for (const wdId of allWikidataIds) {
-    await getOrFetchGeoshape(wdId);
+    if (!wdId.startsWith('commons:')) await getOrFetchGeoshape(wdId);
   }
 
   const availableResult = await pool.query(
@@ -197,7 +216,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
 
   // Build mapshape union geometries (one per mapshape) for coverage queries
   // Store the valid Wikidata IDs per mapshape for reuse
-  const mapshapeValidIds: string[][] = mapshapes.map(ms =>
+  const mapshapeValidIds: string[][] = resolvedMapshapes.map(ms =>
     ms.wikidataIds.filter(id => availableIds.has(id)),
   );
 
@@ -234,7 +253,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
     type DivCoverage = { divisionId: number; mapshapeIndex: number; coverage: number };
     const coverages: DivCoverage[] = [];
 
-    for (let i = 0; i < mapshapes.length; i++) {
+    for (let i = 0; i < resolvedMapshapes.length; i++) {
       const validIds = mapshapeValidIds[i];
       if (validIds.length === 0) continue;
 
@@ -380,13 +399,41 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
     wikidataId: (r.wikidata_id as string) ?? null,
   }));
 
-  const mapshapeResults = mapshapes.map((ms, i) => ({
+  const mapshapeResults = resolvedMapshapes.map((ms, i) => ({
     title: ms.title,
     color: ms.color,
     wikidataIds: ms.wikidataIds,
     matchedRegion: matchRegion(ms.title, ms.wikidataIds, childRegions),
     divisions: (mapshapeDivisions.get(i) ?? []).sort((a, b) => b.coverage - a.coverage),
   }));
+
+  // --- Group mapshapes by color into composite regions ---
+  // Wikivoyage pages color-code mapshapes by region — same color = same region
+  const colorGroupMap = new Map<string, number[]>();
+  for (let i = 0; i < resolvedMapshapes.length; i++) {
+    const key = mapshapeResults[i].color.toLowerCase();
+    if (!colorGroupMap.has(key)) colorGroupMap.set(key, []);
+    colorGroupMap.get(key)!.push(i);
+  }
+
+  const msIndexToGroupIndex = new Map<number, number>();
+  const groupedMapshapes: typeof mapshapeResults = [];
+  let groupIdx = 0;
+  for (const [, indices] of colorGroupMap) {
+    for (const msIdx of indices) {
+      msIndexToGroupIndex.set(msIdx, groupIdx);
+    }
+    const group = indices.map(i => mapshapeResults[i]);
+    const matchedRegion = group.find(ms => ms.matchedRegion)?.matchedRegion ?? null;
+    groupedMapshapes.push({
+      title: matchedRegion?.name ?? group.map(ms => ms.title).join(', '),
+      color: group[0].color,
+      wikidataIds: [...new Set(group.flatMap(ms => ms.wikidataIds))],
+      matchedRegion,
+      divisions: group.flatMap(ms => ms.divisions).sort((a, b) => b.coverage - a.coverage),
+    });
+    groupIdx++;
+  }
 
   // 10. Build GeoJSON for map preview
   const allDivisionIds = [...divisionBestMap.keys()];
@@ -410,8 +457,8 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
       const geojson = geoJsonMap.get(divId);
       if (!geojson) continue;
 
-      const ms = mapshapes[assignment.mapshapeIndex];
-      const matchedRegion = matchRegion(ms.title, ms.wikidataIds, childRegions);
+      const gi = msIndexToGroupIndex.get(assignment.mapshapeIndex) ?? 0;
+      const grouped = groupedMapshapes[gi];
 
       features.push({
         type: 'Feature',
@@ -419,15 +466,15 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
         properties: {
           divisionId: divId,
           name: assignment.name,
-          color: ms.color,
-          mapshapeTitle: ms.title,
-          regionId: matchedRegion?.id ?? null,
-          regionName: matchedRegion?.name ?? null,
+          color: grouped.color,
+          mapshapeTitle: grouped.title,
+          regionId: grouped.matchedRegion?.id ?? null,
+          regionName: grouped.matchedRegion?.name ?? null,
           coverage: Math.round(assignment.coverage * 1000) / 1000,
           accepted: false,
           isUnsplittable: assignment.isUnsplittable,
           confidence: assignment.coverage,
-          clusterId: assignment.mapshapeIndex,
+          clusterId: gi,
         },
       });
     }
@@ -436,7 +483,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
   }
 
   // Build clusterInfos (compatible with CvMatchMap)
-  const clusterInfos = mapshapeResults.map((r, i) => ({
+  const clusterInfos = groupedMapshapes.map((r, i) => ({
     clusterId: i,
     color: r.color,
     regionId: r.matchedRegion?.id ?? null,
@@ -445,8 +492,8 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
 
   // 11. Build Wikivoyage preview — geoshape boundaries per mapshape for side-by-side comparison
   const wvPreviewFeatures: GeoJSON.Feature[] = [];
-  for (let i = 0; i < mapshapes.length; i++) {
-    const ms = mapshapes[i];
+  for (let i = 0; i < resolvedMapshapes.length; i++) {
+    const ms = resolvedMapshapes[i];
     const validIds = ms.wikidataIds.filter(id => availableIds.has(id));
     if (validIds.length === 0) continue;
 
@@ -463,7 +510,7 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
         type: 'Feature',
         geometry: JSON.parse(unionResult.rows[0].geojson as string) as GeoJSON.Geometry,
         properties: {
-          mapshapeIndex: i,
+          mapshapeIndex: msIndexToGroupIndex.get(i) ?? i,
           title: ms.title,
           color: ms.color,
         },
@@ -476,17 +523,17 @@ export async function mapshapeMatchDivisions(req: AuthenticatedRequest, res: Res
     features: wvPreviewFeatures,
   };
 
-  console.log(`[Mapshape Match] Result: ${mapshapeResults.length} mapshapes, ${allDivisionIds.length} divisions matched`);
+  console.log(`[Mapshape Match] Result: ${resolvedMapshapes.length} mapshapes → ${groupedMapshapes.length} color groups, ${allDivisionIds.length} divisions matched`);
 
   res.json({
     found: true,
-    mapshapes: mapshapeResults,
+    mapshapes: groupedMapshapes,
     childRegions,
     geoPreview: { featureCollection, clusterInfos },
     wikivoyagePreview,
     stats: {
-      totalMapshapes: mapshapes.length,
-      matchedMapshapes: mapshapeResults.filter(r => r.matchedRegion).length,
+      totalMapshapes: groupedMapshapes.length,
+      matchedMapshapes: groupedMapshapes.filter(r => r.matchedRegion).length,
       totalDivisions: allDivisionIds.length,
     },
   });

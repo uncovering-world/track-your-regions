@@ -91,6 +91,122 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
   }
 }
 
+/** Metadata returned from a fetched Wikimedia Commons map data file */
+export interface CommonsMapMeta {
+  available: boolean;
+  title?: string;
+  color?: string;
+}
+
+/**
+ * Fetch and cache a Wikimedia Commons map data file (e.g. "North_Sea_Coast_region.map").
+ *
+ * These files contain GeoJSON FeatureCollections with polygon geometries, fill colors,
+ * and titles. Used by Wikivoyage pages that reference `wikicommons=` in {{mapshape}}
+ * templates instead of `wikidata=`.
+ *
+ * Stores geometry in wikidata_geoshapes using "commons:{filename}" as the key.
+ */
+export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise<CommonsMapMeta> {
+  const cacheKey = `commons:${commonsFile}`;
+
+  // Check cache first
+  const cached = await pool.query(
+    'SELECT not_available FROM wikidata_geoshapes WHERE wikidata_id = $1',
+    [cacheKey],
+  );
+  if (cached.rows.length > 0) {
+    return { available: !cached.rows[0].not_available };
+  }
+
+  // Rate limit
+  const now = Date.now();
+  const elapsed = now - lastFetchTime;
+  if (elapsed < FETCH_DELAY_MS) {
+    await new Promise(resolve => setTimeout(resolve, FETCH_DELAY_MS - elapsed));
+  }
+  lastFetchTime = Date.now();
+
+  try {
+    const url = `https://commons.wikimedia.org/wiki/Data:${encodeURIComponent(commonsFile)}?action=raw`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!response.ok) {
+      console.warn(`[GeoshapeCache] Commons HTTP ${response.status} for ${commonsFile}`);
+      await pool.query(
+        `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
+         ON CONFLICT (wikidata_id) DO NOTHING`,
+        [cacheKey],
+      );
+      return { available: false };
+    }
+
+    const data = await response.json() as {
+      data?: { features?: Array<{ geometry?: unknown; properties?: Record<string, string> }> };
+    };
+
+    const features = data?.data?.features;
+    if (!features || features.length === 0 || !features[0]?.geometry) {
+      await pool.query(
+        `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
+         ON CONFLICT (wikidata_id) DO NOTHING`,
+        [cacheKey],
+      );
+      return { available: false };
+    }
+
+    // Extract metadata from first feature's properties
+    const props = features[0].properties ?? {};
+    const rawTitle = props['title'] ?? '';
+    const title = rawTitle.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1').trim();
+    const color = props['fill'] ?? '';
+
+    // Store geometry — pipeline for hand-drawn Commons shapes:
+    //   ST_Force2D: strip Z coordinates (Commons GeoJSON often has [lon,lat,0])
+    //   Buffer expand/shrink (0.00001°): resolves GEOS TopologyExceptions from
+    //     near-touching edges in hand-drawn shapes — ~1m precision loss is
+    //     irrelevant for region-level matching
+    const geomJson = JSON.stringify(features[0].geometry);
+    if (features.length === 1) {
+      await pool.query(
+        `INSERT INTO wikidata_geoshapes (wikidata_id, geom)
+         VALUES ($1, ST_Multi(ST_CollectionExtract(
+           ST_Buffer(ST_Buffer(ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON($2), 4326)), 0.00001), -0.00001), 3)))
+         ON CONFLICT (wikidata_id) DO UPDATE SET geom = EXCLUDED.geom, not_available = FALSE`,
+        [cacheKey, geomJson],
+      );
+    } else {
+      // Multiple features — buffer each feature BEFORE union to fix per-feature
+      // topology issues that make ST_Union fail with TopologyException
+      const geomJsons = features
+        .map(f => f.geometry ? JSON.stringify(f.geometry) : null)
+        .filter(Boolean) as string[];
+      await pool.query(
+        `INSERT INTO wikidata_geoshapes (wikidata_id, geom)
+         VALUES ($1, ST_Multi(ST_CollectionExtract(
+           (SELECT ST_Union(
+             ST_Buffer(ST_Buffer(ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON(g), 4326)), 0.00001), -0.00001)
+           ) FROM unnest($2::text[]) AS g), 3)))
+         ON CONFLICT (wikidata_id) DO UPDATE SET geom = EXCLUDED.geom, not_available = FALSE`,
+        [cacheKey, geomJsons],
+      );
+    }
+
+    return { available: true, title, color };
+  } catch (err) {
+    console.error(`[GeoshapeCache] Failed to fetch Commons map ${commonsFile}:`, err);
+    await pool.query(
+      `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
+       ON CONFLICT (wikidata_id) DO NOTHING`,
+      [cacheKey],
+    );
+    return { available: false };
+  }
+}
+
 /**
  * Compute geo similarity between a cached Wikidata geoshape and a GADM division.
  * Uses geom_simplified_medium for performance.

@@ -20,8 +20,10 @@ export interface CleanParams {
   pixelLabels: Uint8Array;
   /** Color centroids per cluster (mutated: new entries added for split CCs) */
   colorCentroids: Array<[number, number, number] | null>;
-  /** Raw image buffer */
+  /** Mean-shifted image buffer */
   buf: Buffer;
+  /** Original (pre-mean-shift) image buffer — used for divisive split with outlier filtering */
+  origBuf?: Buffer;
   /** Country pixel mask */
   countryMask: Uint8Array;
   /** Country pixel count */
@@ -51,9 +53,241 @@ export interface CleanResult {
 // Main cleaning function
 // =============================================================================
 
+// =============================================================================
+// Divisive split: detect merged adjacent regions within a single cluster
+// =============================================================================
+
+// Thresholds — kept as named constants for easy tuning / reversal
+const DIVISIVE_MIN_CLUSTER_PCT = 0.10;  // only consider clusters >10% of country
+const DIVISIVE_MIN_COLOR_DIST = 12;     // min RGB distance between sub-clusters
+const DIVISIVE_MIN_COHERENCE = 0.50;    // each sub-cluster's main CC must be >50%
+const DIVISIVE_MIN_SHARPNESS = 0.25;    // boundary contrast / centroid distance
+const DIVISIVE_MIN_VARIANCE = 50;       // per-pixel RGB variance within cluster
+
+/**
+ * Try to split large clusters that contain two visually distinct regions whose
+ * colors were merged by mean-shift smoothing.
+ *
+ * Uses the ORIGINAL (pre-mean-shift) image colors to detect differences that
+ * K-means couldn't see. Three guards prevent false splits:
+ *  1. Spatial coherence — each sub-cluster must form a contiguous region
+ *  2. Color distance — sub-cluster centroids must differ by ≥ DIVISIVE_MIN_COLOR_DIST
+ *  3. Boundary sharpness — the ratio of per-pixel contrast at the split boundary
+ *     to centroid distance must be ≥ DIVISIVE_MIN_SHARPNESS (rejects gradients)
+ */
+function divisiveSplitClusters(
+  pixelLabels: Uint8Array,
+  colorCentroids: Array<[number, number, number] | null>,
+  buf: Buffer,
+  origBuf: Buffer,
+  countrySize: number,
+  TW: number,
+  TH: number,
+): number {
+  const tp = TW * TH;
+
+  let maxLabel = 0;
+  for (let i = 0; i < tp; i++) {
+    if (pixelLabels[i] < 255 && pixelLabels[i] > maxLabel) maxLabel = pixelLabels[i];
+  }
+  let nextLabel = maxLabel + 1;
+
+  const clusterCounts = new Map<number, number>();
+  for (let i = 0; i < tp; i++) {
+    if (pixelLabels[i] < 255) clusterCounts.set(pixelLabels[i], (clusterCounts.get(pixelLabels[i]) || 0) + 1);
+  }
+
+  let splitCount = 0;
+
+  for (const [label, count] of clusterCounts) {
+    if (count / countrySize < DIVISIVE_MIN_CLUSTER_PCT) continue;
+
+    // Skip desaturated (gray/dark) clusters — these are background, not regions
+    const cc = colorCentroids[label];
+    if (cc) {
+      const maxC = Math.max(cc[0], cc[1], cc[2]);
+      const minC = Math.min(cc[0], cc[1], cc[2]);
+      const sat = maxC > 0 ? ((maxC - minC) / maxC) * 255 : 0;
+      if (sat < 25) continue;
+    }
+
+    // Collect cluster pixel indices.
+    // Use ORIGINAL image colors (origBuf) for the K=2 split — the mean-shifted
+    // buffer is too uniform within a K-means cluster (variance ≈ 25, always fails).
+    // But origBuf has text/road noise, so FILTER outlier pixels whose origBuf
+    // color is far from the cluster's mean-shifted centroid.
+    const clusterPixels: number[] = [];
+    for (let i = 0; i < tp; i++) {
+      if (pixelLabels[i] === label) clusterPixels.push(i);
+    }
+
+    // Filter: exclude text/road artifacts (origBuf color far from mean-shifted centroid)
+    const OUTLIER_DIST_SQ = 60 * 60; // 60 RGB units from centroid
+    const filteredIndices: number[] = [];
+    const filteredColors: Array<[number, number, number]> = [];
+    for (let idx = 0; idx < clusterPixels.length; idx++) {
+      const i = clusterPixels[idx];
+      const r = origBuf[i * 3], g = origBuf[i * 3 + 1], b = origBuf[i * 3 + 2];
+      if (cc) {
+        const d = (r - cc[0]) ** 2 + (g - cc[1]) ** 2 + (b - cc[2]) ** 2;
+        if (d > OUTLIER_DIST_SQ) continue; // text/road artifact — skip
+      }
+      filteredIndices.push(idx);
+      filteredColors.push([r, g, b]);
+    }
+    if (filteredColors.length < count * 0.5) continue; // too many outliers — skip
+
+    // Check within-cluster variance on filtered origBuf colors
+    const mR = filteredColors.reduce((s, c) => s + c[0], 0) / filteredColors.length;
+    const mG = filteredColors.reduce((s, c) => s + c[1], 0) / filteredColors.length;
+    const mB = filteredColors.reduce((s, c) => s + c[2], 0) / filteredColors.length;
+    const variance = filteredColors.reduce((s, c) =>
+      s + (c[0] - mR) ** 2 + (c[1] - mG) ** 2 + (c[2] - mB) ** 2, 0) / filteredColors.length;
+    if (variance < DIVISIVE_MIN_VARIANCE) continue;
+
+    // K=2 K-means on filtered origBuf colors — seed with most-distant pair
+    const colors = filteredColors;
+    const sampleCount = Math.min(colors.length, 100);
+    const stride = Math.max(1, Math.floor(colors.length / sampleCount));
+    const sampleIdx: number[] = [];
+    for (let s = 0; s < colors.length && sampleIdx.length < sampleCount; s += stride) sampleIdx.push(s);
+
+    let maxDist = 0, s0 = 0, s1 = Math.min(1, colors.length - 1);
+    for (let a = 0; a < sampleIdx.length; a++) {
+      for (let b = a + 1; b < sampleIdx.length; b++) {
+        const ai = sampleIdx[a], bi = sampleIdx[b];
+        const d = (colors[ai][0] - colors[bi][0]) ** 2 +
+                  (colors[ai][1] - colors[bi][1]) ** 2 +
+                  (colors[ai][2] - colors[bi][2]) ** 2;
+        if (d > maxDist) { maxDist = d; s0 = ai; s1 = bi; }
+      }
+    }
+
+    let c0 = [...colors[s0]], c1 = [...colors[s1]];
+    const assign = new Uint8Array(colors.length);
+    for (let iter = 0; iter < 20; iter++) {
+      for (let i = 0; i < colors.length; i++) {
+        const d0 = (colors[i][0] - c0[0]) ** 2 + (colors[i][1] - c0[1]) ** 2 + (colors[i][2] - c0[2]) ** 2;
+        const d1 = (colors[i][0] - c1[0]) ** 2 + (colors[i][1] - c1[1]) ** 2 + (colors[i][2] - c1[2]) ** 2;
+        assign[i] = d0 <= d1 ? 0 : 1;
+      }
+      const sums = [[0, 0, 0, 0], [0, 0, 0, 0]];
+      for (let i = 0; i < colors.length; i++) {
+        const k = assign[i];
+        sums[k][0] += colors[i][0]; sums[k][1] += colors[i][1]; sums[k][2] += colors[i][2]; sums[k][3]++;
+      }
+      if (!sums[0][3] || !sums[1][3]) break;
+      c0 = [sums[0][0] / sums[0][3], sums[0][1] / sums[0][3], sums[0][2] / sums[0][3]];
+      c1 = [sums[1][0] / sums[1][3], sums[1][1] / sums[1][3], sums[1][2] / sums[1][3]];
+    }
+
+    // Guard 1: color distance
+    const colorDist = Math.sqrt(
+      (c0[0] - c1[0]) ** 2 + (c0[1] - c1[1]) ** 2 + (c0[2] - c1[2]) ** 2);
+    if (colorDist < DIVISIVE_MIN_COLOR_DIST) continue;
+
+    // Assign ALL cluster pixels (including filtered-out outliers) to nearest centroid.
+    // K=2 was trained on clean pixels; now classify the full set using those centroids.
+    const fullAssign = new Uint8Array(clusterPixels.length);
+    for (let idx = 0; idx < clusterPixels.length; idx++) {
+      const i = clusterPixels[idx];
+      const r = buf[i * 3], g = buf[i * 3 + 1], b = buf[i * 3 + 2];
+      const d0 = (r - c0[0]) ** 2 + (g - c0[1]) ** 2 + (b - c0[2]) ** 2;
+      const d1 = (r - c1[0]) ** 2 + (g - c1[1]) ** 2 + (b - c1[2]) ** 2;
+      fullAssign[idx] = d0 <= d1 ? 0 : 1;
+    }
+
+    // Build pixel→sub-cluster lookup
+    const pixAssign = new Map<number, number>();
+    for (let idx = 0; idx < clusterPixels.length; idx++) pixAssign.set(clusterPixels[idx], fullAssign[idx]);
+    const sub0 = clusterPixels.filter((_, i) => fullAssign[i] === 0);
+    const sub1 = clusterPixels.filter((_, i) => fullAssign[i] === 1);
+
+    // Guard 2: spatial coherence — each sub-cluster's main CC must be >50%
+    function largestCCFraction(pixels: number[]): number {
+      const pSet = new Set(pixels);
+      const visited = new Set<number>();
+      let maxCC = 0;
+      for (const p of pixels) {
+        if (visited.has(p)) continue;
+        let sz = 0;
+        const q = [p];
+        while (q.length > 0) {
+          const cur = q.pop()!;
+          if (visited.has(cur) || !pSet.has(cur)) continue;
+          visited.add(cur); sz++;
+          const cx = cur % TW, cy = Math.floor(cur / TW);
+          if (cy > 0) q.push(cur - TW);
+          if (cy < TH - 1) q.push(cur + TW);
+          if (cx > 0) q.push(cur - 1);
+          if (cx < TW - 1) q.push(cur + 1);
+        }
+        if (sz > maxCC) maxCC = sz;
+      }
+      return maxCC / pixels.length;
+    }
+
+    const coh0 = largestCCFraction(sub0), coh1 = largestCCFraction(sub1);
+    if (coh0 < DIVISIVE_MIN_COHERENCE || coh1 < DIVISIVE_MIN_COHERENCE) continue;
+
+    // Guard 3: boundary sharpness ratio — rejects gradients
+    let contrastSum = 0, bCount = 0;
+    for (const p of sub0) {
+      const px = p % TW, py = Math.floor(p / TW);
+      if (py > 0 && pixAssign.get(p - TW) === 1) {
+        const dr = buf[p * 3] - buf[(p - TW) * 3];
+        const dg = buf[p * 3 + 1] - buf[(p - TW) * 3 + 1];
+        const db = buf[p * 3 + 2] - buf[(p - TW) * 3 + 2];
+        contrastSum += Math.sqrt(dr * dr + dg * dg + db * db); bCount++;
+      }
+      if (py < TH - 1 && pixAssign.get(p + TW) === 1) {
+        const dr = buf[p * 3] - buf[(p + TW) * 3];
+        const dg = buf[p * 3 + 1] - buf[(p + TW) * 3 + 1];
+        const db = buf[p * 3 + 2] - buf[(p + TW) * 3 + 2];
+        contrastSum += Math.sqrt(dr * dr + dg * dg + db * db); bCount++;
+      }
+      if (px > 0 && pixAssign.get(p - 1) === 1) {
+        const dr = buf[p * 3] - buf[(p - 1) * 3];
+        const dg = buf[p * 3 + 1] - buf[(p - 1) * 3 + 1];
+        const db = buf[p * 3 + 2] - buf[(p - 1) * 3 + 2];
+        contrastSum += Math.sqrt(dr * dr + dg * dg + db * db); bCount++;
+      }
+      if (px < TW - 1 && pixAssign.get(p + 1) === 1) {
+        const dr = buf[p * 3] - buf[(p + 1) * 3];
+        const dg = buf[p * 3 + 1] - buf[(p + 1) * 3 + 1];
+        const db = buf[p * 3 + 2] - buf[(p + 1) * 3 + 2];
+        contrastSum += Math.sqrt(dr * dr + dg * dg + db * db); bCount++;
+      }
+    }
+    const sharpness = bCount > 0 && colorDist > 0 ? (contrastSum / bCount) / colorDist : 0;
+    if (sharpness < DIVISIVE_MIN_SHARPNESS) {
+      console.log(`  [Divisive] cluster ${label} (${(count / countrySize * 100).toFixed(1)}%): var=${variance.toFixed(0)}, dist=${colorDist.toFixed(1)}, sharpness=${sharpness.toFixed(3)} — gradual boundary, skip`);
+      continue;
+    }
+
+    // All guards passed — split the smaller sub-cluster into a new label
+    const newLabel = nextLabel++;
+    const smaller = sub0.length <= sub1.length ? sub0 : sub1;
+    const larger = sub0.length > sub1.length ? sub0 : sub1;
+    const smallerCentroid = sub0.length <= sub1.length ? c0 : c1;
+    const largerCentroid = sub0.length > sub1.length ? c0 : c1;
+
+    for (const p of smaller) pixelLabels[p] = newLabel;
+    colorCentroids[label] = [Math.round(largerCentroid[0]), Math.round(largerCentroid[1]), Math.round(largerCentroid[2])];
+    colorCentroids[newLabel] = [Math.round(smallerCentroid[0]), Math.round(smallerCentroid[1]), Math.round(smallerCentroid[2])];
+
+    console.log(`  [Divisive] cluster ${label} (${(count / countrySize * 100).toFixed(1)}%): split → ` +
+      `${larger.length}px RGB(${colorCentroids[label]}) + ${smaller.length}px RGB(${colorCentroids[newLabel]}) as cluster ${newLabel} ` +
+      `(dist=${colorDist.toFixed(1)}, sharpness=${sharpness.toFixed(2)})`);
+    splitCount++;
+  }
+
+  return splitCount;
+}
+
 export async function cleanClusters(params: CleanParams): Promise<CleanResult> {
   const {
-    pixelLabels, colorCentroids, buf, countryMask, countrySize,
+    pixelLabels, colorCentroids, buf, origBuf, countryMask, countrySize,
     TW, TH, origW, origH,
     pxS, pushDebugImage,
   } = params;
@@ -268,6 +502,16 @@ export async function cleanClusters(params: CleanParams): Promise<CleanResult> {
         console.log(`    excluded ${nl}: RGB(${c?.[0]},${c?.[1]},${c?.[2]}) ${cnt}px (${(cnt / countrySize * 100).toFixed(1)}%)`);
       }
     }
+  }
+
+  // ── Divisive split: detect merged adjacent regions using original image colors ──
+  // Runs AFTER merge + noise exclusion so it sees the final large clusters
+  // (e.g. a 10% pink that grew to 20% by absorbing desaturated neighbors).
+  // Divisive split uses origBuf colors (which preserve pre-mean-shift differences)
+  // but filters out text/road outliers by distance from the mean-shifted centroid.
+  // Full-pixel assignment uses the clean mean-shifted buf for coherence/sharpness.
+  if (origBuf) {
+    divisiveSplitClusters(pixelLabels, colorCentroids, buf, origBuf, countrySize, TW, TH);
   }
 
   // Count final clusters

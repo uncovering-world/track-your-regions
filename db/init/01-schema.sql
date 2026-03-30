@@ -229,6 +229,8 @@ CREATE TABLE IF NOT EXISTS region_members (
 CREATE INDEX IF NOT EXISTS idx_region_members_region ON region_members(region_id);
 CREATE INDEX IF NOT EXISTS idx_region_members_division ON region_members(division_id);
 CREATE INDEX IF NOT EXISTS idx_region_members_custom_geom ON region_members USING GIST(custom_geom) WHERE custom_geom IS NOT NULL;
+-- Prevent duplicate (region, division) when no custom geometry — ON CONFLICT DO NOTHING relies on this
+CREATE UNIQUE INDEX IF NOT EXISTS idx_region_members_unique_no_custom ON region_members(region_id, division_id) WHERE custom_geom IS NULL;
 
 -- =============================================================================
 -- Geometry Resolution Views

@@ -680,7 +680,14 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
       });
     }
 
-    const result = await matchChildrenAsCountries(worldViewId, regionId);
+    // Get parent's currently assigned divisions to scope the matching
+    const parentMembers = await pool.query(
+      'SELECT division_id FROM region_members WHERE region_id = $1',
+      [regionId],
+    );
+    const scopeDivisionIds = parentMembers.rows.map(r => r.division_id as number);
+
+    const result = await matchChildrenAsCountries(worldViewId, regionId, scopeDivisionIds);
 
     // Store undo entry after successful matching
     undoEntries.set(worldViewId, {

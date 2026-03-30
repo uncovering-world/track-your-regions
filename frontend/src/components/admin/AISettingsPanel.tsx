@@ -40,7 +40,7 @@ import {
 const FEATURE_LABELS: Record<string, { label: string; description: string }> = {
   'model.matching': { label: 'AI Matching', description: 'Matches imported regions to GADM administrative divisions. Used when clicking the AI match button on individual regions or running batch AI matching.' },
   'model.hierarchy_review': { label: 'Hierarchy Review', description: 'Reviews the import tree for structural issues (missing regions, odd nesting, depth imbalance). Triggered by the "AI Review" button in the import tree toolbar.' },
-  'model.suggest_children': { label: 'Suggest Children', description: 'Fetches a region\'s Wikivoyage page, extracts listed sub-regions, and uses AI to identify missing children. Triggered by the sparkle button on nodes with a source URL.' },
+  'model.review_children': { label: 'Suggest Children', description: 'Fetches a region\'s Wikivoyage page, extracts listed sub-regions, and uses AI to identify missing children. Triggered by the sparkle button on nodes with a source URL.' },
   'model.extraction': { label: 'Extraction (Wikivoyage)', description: 'Classifies ambiguous Wikivoyage pages during region extraction (is this a region, a city, or a redirect?). Runs during the initial Wikivoyage import.' },
   'model.extraction_interview': { label: 'Extraction Interview', description: 'Formulates and processes questions about ambiguous region classifications during extraction. Works alongside the extraction model.' },
   'model.subdivision_assist': { label: 'Subdivision Assist', description: 'Helps assign GADM subdivisions to matched regions, suggesting which sub-divisions belong to which parent.' },
@@ -53,7 +53,7 @@ const FEATURE_LABELS: Record<string, { label: string; description: string }> = {
 const RAW_FEATURE_LABELS: Record<string, string> = {
   matching: 'AI Matching',
   hierarchy_review: 'Hierarchy Review',
-  suggest_children: 'Suggest Children',
+  review_children: 'Suggest Children',
   extraction: 'Extraction',
   extraction_interview: 'Extraction Interview',
   subdivision_assist: 'Subdivision Assist',
@@ -76,7 +76,7 @@ const SESSION_ESTIMATES: Record<string, { inputTokens: number; outputTokens: num
   'model.extraction_interview': { inputTokens: 50_000, outputTokens: 15_000, session: 'Interview for ambiguous extractions', description: '~30 questions × 2 calls each (formulate + process answer)' },
   'model.matching': { inputTokens: 460_000, outputTokens: 115_000, session: 'Match all countries to GADM', description: '~230 countries × AI-assisted GADM matching' },
   'model.hierarchy_review': { inputTokens: 75_000, outputTokens: 20_000, session: 'Review all flagged hierarchy nodes', description: '~50 flagged nodes × AI review for missing children' },
-  'model.suggest_children': { inputTokens: 3_000, outputTokens: 1_000, session: 'Single suggest-children call', description: '~1 call per region: Wikivoyage page + AI analysis for missing sub-regions' },
+  'model.review_children': { inputTokens: 3_000, outputTokens: 1_000, session: 'Single suggest-children call', description: '~1 call per region: Wikivoyage page + AI analysis for missing sub-regions' },
   'model.subdivision_assist': { inputTokens: 40_000, outputTokens: 10_000, session: 'Assist with subdivision assignments', description: '~20 AI-assisted subdivision groupings' },
   'model.rule_review': { inputTokens: 2_000, outputTokens: 1_000, session: 'Review learned rules', description: '1 call to analyze all rules for duplicates/contradictions' },
   'model.vision_match': { inputTokens: 5_000, outputTokens: 500, session: 'Single vision match call', description: '1 GPT-4o vision call per region: image analysis + division list matching' },

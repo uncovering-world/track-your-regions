@@ -98,13 +98,13 @@ Seven changes, ordered by impact. All modify the existing auto pipeline — no n
 
 **Current**: `passesWaterTier` uses hardcoded HSV ranges: H∈[80,120], S>18-40, V>90-190. Only detects blue-to-cyan water. Maps with pale blue, teal, or gray-blue water may fail.
 
-**Change**: Before running HSV tiers, sample water color from edge pixels:
+**Change**: Hardcoded tiers remain the primary water detector (reliable for standard Wikivoyage blue/teal). Edge sampling provides a tight RGB-proximity adaptive supplement:
 - From the 5px edge band, find pixels with loose blue/cyan check: H∈[70,140], S>8 (OpenCV scale)
-- If >3% of edge pixels match, compute their median H, S, V in OpenCV space
-- Build adaptive tiers centered on actual water color:
-  - Tier 1 (vivid): H ± 20, S > median_S × 0.5, V > median_V × 0.5
-  - Tier 2 (pale): H ± 30, S > median_S × 0.25, V > median_V × 0.6
-- Fall back to current hardcoded tiers if no edge water found
+- If >3% of edge pixels match, compute their median H, S, V AND median R, G, B
+- Add one tight adaptive tier using **RGB proximity** (not HSV): pixel distance to median edge RGB ≤ 35
+- This catches water with unusual hue (e.g., teal where g > b) that hardcoded HSV tiers miss
+
+**POC validation (Morocco)**: Morocco's ocean is teal RGB(131,207,202) with g > b, which breaks all HSV tier `b > g` checks. The original HSV-based adaptive supplement also failed because `b > g + 10` is false for teal. RGB proximity at threshold 35 catches ocean (distance 0 from edge median) while excluding green region RGB(66,180,121) at distance ~100. Final POC results: water 40.6%, country mask 24.1% (203K pixels), 5 major regions cleanly separated, yellow Rabat-Sale region preserved at 0.9%.
 
 **Why**: Wikivoyage maps always show surrounding ocean at the image edges. By sampling the actual water color, we adapt to each map's palette instead of assuming standard blue.
 

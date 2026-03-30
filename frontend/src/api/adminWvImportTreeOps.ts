@@ -170,10 +170,12 @@ export async function addChildRegion(
   worldViewId: number,
   parentRegionId: number,
   name: string,
+  sourceUrl?: string,
+  sourceExternalId?: string,
 ): Promise<{ created: boolean; regionId: number }> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/add-child-region`, {
     method: 'POST',
-    body: JSON.stringify({ parentRegionId, name }),
+    body: JSON.stringify({ parentRegionId, name, sourceUrl, sourceExternalId }),
   });
 }
 
@@ -203,10 +205,12 @@ export async function renameRegion(
   worldViewId: number,
   regionId: number,
   name: string,
+  sourceUrl?: string,
+  sourceExternalId?: string,
 ): Promise<{ renamed: boolean; regionId: number; oldName: string; newName: string }> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rename-region`, {
     method: 'POST',
-    body: JSON.stringify({ regionId, name }),
+    body: JSON.stringify({ regionId, name, sourceUrl, sourceExternalId }),
   });
 }
 

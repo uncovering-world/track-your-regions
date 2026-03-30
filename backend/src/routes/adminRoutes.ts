@@ -84,7 +84,7 @@ import {
   geocodeMatch, geoshapeMatch, pointMatch, resetMatch, aiMatchOneRegion,
   aiSuggestChildren, aiSuggestClusterRegions,
   // Tree ops
-  mergeChildIntoParent, removeRegionFromImport, dismissChildren, pruneToLeaves, simplifyHierarchy, detectSmartSimplify, applySmartSimplifyMove,
+  mergeChildIntoParent, removeRegionFromImport, dismissChildren, pruneToLeaves, simplifyHierarchy, simplifyChildren, detectSmartSimplify, applySmartSimplifyMove,
   // Flatten
   collapseToParent, smartFlattenPreview, smartFlatten, syncInstances, handleAsGrouping,
   // Hierarchy
@@ -452,6 +452,9 @@ router.post('/wv-import/matches/:worldViewId/merge-child', validate(worldViewIdP
 
 // Simplify hierarchy: replace single-child chains with direct parent→grandchild links
 router.post('/wv-import/matches/:worldViewId/simplify-hierarchy', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyHierarchy);
+
+// Simplify children: simplify all child regions one by one
+router.post('/wv-import/matches/:worldViewId/simplify-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyChildren);
 
 // Smart simplify: detect cross-sibling division moves for simplification
 router.post('/wv-import/matches/:worldViewId/smart-simplify', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifySchema), detectSmartSimplify);

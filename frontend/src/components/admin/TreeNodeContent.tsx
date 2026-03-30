@@ -253,9 +253,7 @@ export function TreeNodeContent({
           <Chip
             size="small"
             icon={coverageFetching ? <CircularProgress size={12} color="inherit" /> : undefined}
-            label={coverageFetching
-              ? 'Recalculating…'
-              : `Children cover ${(coveragePercent * 100).toFixed(2)}%`}
+            label={`Children cover ${(coveragePercent * 100).toFixed(2)}%`}
             color={coveragePercent >= 0.9 ? 'success' : coveragePercent >= 0.5 ? 'warning' : 'error'}
             variant="outlined"
             onClick={onCoverageClick && !coverageFetching ? () => onCoverageClick(node.id) : undefined}
@@ -264,8 +262,8 @@ export function TreeNodeContent({
         </Box>
       )}
 
-      {/* Division list for matched countries */}
-      {role === 'country' && (node.matchStatus === 'auto_matched' || node.matchStatus === 'manual_matched') && node.assignedDivisions.length > 0 && (
+      {/* Division list for matched countries and drilled-down parents */}
+      {(role === 'country' || node.matchStatus === 'children_matched') && (node.matchStatus === 'auto_matched' || node.matchStatus === 'manual_matched' || node.matchStatus === 'children_matched') && node.assignedDivisions.length > 0 && (
         <Box sx={{ pl: depth * 3 + 4.5, pb: 0.3 }}>
           {divisionsExpanded ? (
             <>
@@ -295,9 +293,7 @@ export function TreeNodeContent({
             <Chip
               size="small"
               variant="outlined"
-              label={coverageFetching
-                ? 'Recalculating…'
-                : `Geoshape ${(geoshapeCoveragePercent * 100).toFixed(1)}%`}
+              label={`Geoshape ${(geoshapeCoveragePercent * 100).toFixed(1)}%`}
               icon={coverageFetching ? <CircularProgress size={12} color="inherit" /> : undefined}
               color={geoshapeCoveragePercent >= 0.9 ? 'success' : geoshapeCoveragePercent >= 0.5 ? 'warning' : 'error'}
               onClick={onCoverageClick && !coverageFetching ? () => onCoverageClick(node.id) : undefined}

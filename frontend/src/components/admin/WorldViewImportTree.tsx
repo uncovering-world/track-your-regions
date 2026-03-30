@@ -49,6 +49,18 @@ import { CvMatchDialog } from './CvMatchDialog';
 import { AIReviewDrawer } from './AIReviewDrawer';
 import { SmartSimplifyDialog } from './SmartSimplifyDialog';
 
+/** Find a child region's ID by name under a specific parent */
+function findChildIdByName(nodes: MatchTreeNode[], parentId: number, childName: string): number | undefined {
+  for (const node of nodes) {
+    if (node.id === parentId) {
+      return node.children.find(c => c.name === childName)?.id;
+    }
+    const found = findChildIdByName(node.children, parentId, childName);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 interface WorldViewImportTreeProps {
   worldViewId: number;
   onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string) => void;
@@ -135,7 +147,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
     acceptAllMutation, acceptSelectedMutation, acceptSelectedRejectRestMutation, rejectSelectedMutation,
     dbSearchOneMutation, aiMatchOneMutation, geocodeMatchMutation, geoshapeMatchMutation, pointMatchMutation,
     resetMatchMutation, clearMembersMutation, dismissMutation, pruneMutation, syncMutation, groupingMutation, mergeMutation,
-    smartFlattenMutation, removeMutation, collapseToParentMutation, autoResolveMutation, simplifyHierarchyMutation, undoMutation,
+    smartFlattenMutation, removeMutation, collapseToParentMutation, autoResolveMutation, simplifyHierarchyMutation, simplifyChildrenMutation, undoMutation,
     selectMapMutation, manualFixMutation, addChildMutation,
     dismissWarningsMutation, renameMutation, reparentMutation,
     renamingRegionId, reparentingRegionId,
@@ -184,6 +196,19 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       },
     });
   }, [simplifyHierarchyMutation]);
+
+  const handleSimplifyChildren = useCallback((regionId: number) => {
+    simplifyChildrenMutation.mutate(regionId, {
+      onSuccess: (data) => {
+        if (data.totalSimplified === 0) {
+          setSimplifySnackbar('No children could be simplified');
+        } else {
+          const summary = data.results.map(r => `${r.regionName} (${r.totalReduced} reduced)`).join(', ');
+          setSimplifySnackbar(`Simplified ${data.totalSimplified} children: ${summary}`);
+        }
+      },
+    });
+  }, [simplifyChildrenMutation]);
 
   // Compute which sourceUrls appear on multiple nodes (duplicates)
   // and which are already synced (same matchStatus and same division set)
@@ -385,7 +410,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     onAIMatch={(regionId) => aiMatchOneMutation.mutate(regionId)}
                     onDismissChildren={(regionId) => dismissMutation.mutate(regionId)}
                     onSync={(regionId) => syncMutation.mutate(regionId)}
-                    onHandleAsGrouping={(regionId) => groupingMutation.mutate(regionId)}
+                    onHandleAsGrouping={(regionId) => { setLastMutatedRegionId(regionId); groupingMutation.mutate(regionId); }}
                     onGeocodeMatch={(regionId) => geocodeMatchMutation.mutate(regionId)}
                     onGeoshapeMatch={(regionId) => geoshapeMatchMutation.mutate(regionId)}
                     onPointMatch={(regionId) => pointMatchMutation.mutate(regionId)}
@@ -441,6 +466,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     clearingMembersRegionId={clearMembersMutation.isPending ? (clearMembersMutation.variables ?? null) : null}
                     onSimplifyHierarchy={handleSimplifyHierarchy}
                     simplifyingRegionId={simplifyHierarchyMutation.isPending ? (simplifyHierarchyMutation.variables ?? null) : null}
+                    onSimplifyChildren={handleSimplifyChildren}
+                    simplifyingChildrenRegionId={simplifyChildrenMutation.isPending ? (simplifyChildrenMutation.variables ?? null) : null}
                     onSmartSimplify={dialogs.handleSmartSimplify}
                     coverageData={coverageData?.coverage}
                     coverageLoading={coverageLoading}
@@ -616,21 +643,51 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       <AISuggestChildrenDialog
         state={dialogs.suggestChildrenResult}
         onClose={() => dialogs.setSuggestChildrenResult(null)}
-        onToggle={(name) => {
+        onToggle={(key) => {
           dialogs.setSuggestChildrenResult(prev => {
             if (!prev) return prev;
             const next = new Set(prev.selected);
-            if (next.has(name)) next.delete(name);
-            else next.add(name);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
             return { ...prev, selected: next };
           });
         }}
         onSubmit={() => {
           if (!dialogs.suggestChildrenResult) return;
-          const names = [...dialogs.suggestChildrenResult.selected];
-          for (const name of names) {
-            addChildMutation.mutate({ parentRegionId: dialogs.suggestChildrenResult.regionId, name });
+          const { regionId, result, selected } = dialogs.suggestChildrenResult;
+
+          for (const key of selected) {
+            const colonIdx = key.indexOf(':');
+            const type = key.slice(0, colonIdx);
+            const name = key.slice(colonIdx + 1);
+            const action = result.actions.find(a => a.type === type && a.name === name);
+            if (!action) continue;
+
+            if (action.type === 'add') {
+              addChildMutation.mutate({
+                parentRegionId: regionId,
+                name: action.name,
+                sourceUrl: action.sourceUrl ?? undefined,
+                sourceExternalId: action.sourceExternalId ?? undefined,
+              });
+            } else if (action.type === 'remove') {
+              const childId = tree ? findChildIdByName(tree, regionId, action.name) : undefined;
+              if (childId) {
+                removeMutation.mutate({ regionId: childId, reparentChildren: true });
+              }
+            } else if (action.type === 'rename') {
+              const childId = tree ? findChildIdByName(tree, regionId, action.name) : undefined;
+              if (childId) {
+                renameMutation.mutate({
+                  regionId: childId,
+                  name: action.newName ?? action.name,
+                  sourceUrl: action.sourceUrl ?? undefined,
+                  sourceExternalId: action.sourceExternalId ?? undefined,
+                });
+              }
+            }
           }
+
           dialogs.setSuggestChildrenResult(null);
         }}
         isPending={addChildMutation.isPending}

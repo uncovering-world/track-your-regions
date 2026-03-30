@@ -46,6 +46,8 @@ export interface MatchDivisionsParams {
   countryIds: number[];
   countryDepth: number;
   buf: Buffer;
+  /** Original (pre-mean-shift) image buffer — for divisive split */
+  origBuf?: Buffer;
   mapBuffer: Buffer;
   countryMask: Uint8Array;
   waterGrown: Uint8Array;
@@ -78,7 +80,7 @@ export interface ReclusterSignal {
 export async function matchDivisionsFromClusters(params: MatchDivisionsParams): Promise<ReclusterSignal | void> {
   const {
     worldViewId, regionId, knownDivisionIds, countryIds, countryDepth,
-    buf, mapBuffer, countryMask, waterGrown: _waterGrown,
+    buf, origBuf, mapBuffer, countryMask, waterGrown: _waterGrown,
     pixelLabels, colorCentroids,
     TW, TH, origW, origH,
     skipClusterReview,
@@ -369,7 +371,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
 
   // ── Phase 1: Cluster cleaning (spatial split, merge, patch cleanup, noise exclusion) ──
   const { finalLabels, quantBuf, icpMask } = await cleanClusters({
-    pixelLabels, colorCentroids, buf, countryMask, countrySize,
+    pixelLabels, colorCentroids, buf, origBuf, countryMask, countrySize,
     TW, TH, origW, origH, pxS, pushDebugImage,
   });
 

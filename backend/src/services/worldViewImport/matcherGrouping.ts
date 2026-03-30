@@ -19,15 +19,17 @@ import {
 } from './matcherUtils.js';
 
 /**
- * Treat a matched region as a sub-continental grouping: clear its own match,
- * mark it as `children_matched`, and run country-level matching on its children.
+ * Treat a matched region as a sub-continental grouping: mark it as `children_matched`
+ * and run matching on its children.
  *
- * Used when the admin identifies Melanesia/Micronesia/Polynesia etc. as groupings
- * whose children (Fiji, PNG, ...) should be matched independently as countries.
+ * When `scopeDivisionIds` is provided, matches children against the GADM children
+ * (and deeper descendants) of those divisions. When empty, falls back to matching
+ * against all GADM countries. Parent's own division assignments are preserved.
  */
 export async function matchChildrenAsCountries(
   worldViewId: number,
   regionId: number,
+  scopeDivisionIds: number[] = [],
 ): Promise<{ matched: number; total: number }> {
   // Load GADM data
   const gadm = await loadGADMData();
@@ -45,6 +47,42 @@ export async function matchChildrenAsCountries(
     throw new Error('Region has no children to match');
   }
 
+  // Build scoped division pool: children (and deeper) of the parent's assigned divisions
+  // If no scope, fall back to all GADM countries
+  let scopedDivisions: DivisionEntry[] = [];
+  let scopedByName: Map<string, DivisionEntry[]> = new Map();
+
+  if (scopeDivisionIds.length > 0) {
+    // Collect the parent's own divisions + all their descendants (BFS)
+    const poolIds = new Set<number>(scopeDivisionIds);
+    const queue = [...scopeDivisionIds];
+    while (queue.length > 0) {
+      const parentId = queue.shift()!;
+      const childIds = gadm.childrenOf.get(parentId);
+      if (childIds) {
+        for (const cid of childIds) {
+          if (!poolIds.has(cid)) {
+            poolIds.add(cid);
+            queue.push(cid);
+          }
+        }
+      }
+    }
+    scopedDivisions = [...poolIds]
+      .map(id => gadm.divisionsById.get(id))
+      .filter((e): e is DivisionEntry => !!e);
+
+    // Index by normalized name for lookup
+    for (const entry of scopedDivisions) {
+      const key = normalizeName(entry.name);
+      if (!scopedByName.has(key)) scopedByName.set(key, []);
+      scopedByName.get(key)!.push(entry);
+    }
+    console.log(`[WV Matcher] Scoped matching: ${scopedDivisions.length} divisions (${scopeDivisionIds.length} parent + descendants)`);
+  }
+
+  const useScoped = scopedDivisions.length > 0;
+
   const updates: Array<{
     id: number;
     matchStatus: MatchStatus;
@@ -58,61 +96,194 @@ export async function matchChildrenAsCountries(
     const childName = row.name as string;
     const childHasChildren = row.has_children as boolean;
 
-    // Try matching as a country
     const cleaned = cleanWvName(childName);
     const variants = getNameVariants(cleaned);
-    let countryMatchIds: number[] = [];
-    for (const variant of variants) {
-      const ids = gadm.gadmCountries.get(variant);
-      if (ids && ids.length > 0) { countryMatchIds = ids; break; }
-    }
 
-    if (countryMatchIds.length === 1) {
-      const countryId = countryMatchIds[0];
-      if (!childHasChildren) {
-        // Leaf — assign directly
-        const path = getPath(countryId, gadm.pathCache, gadm.divisionsById);
-        const entry = gadm.divisionsById.get(countryId)!;
-        updates.push({
-          id: childId,
-          matchStatus: 'auto_matched',
-          suggestions: [{ divisionId: countryId, name: entry.name, path, score: 700 }],
-          divisionId: countryId,
-        });
-        matched++;
-      } else {
-        // Has WV children — try subdivision drill-down
-        const gadmChildIds = gadm.childrenOf.get(countryId);
-        if (gadmChildIds && gadmChildIds.length > 0) {
-          // Load WV grandchildren for drill-down
-          const gcResult = await pool.query(
-            `SELECT id, name FROM regions WHERE parent_region_id = $1 ORDER BY name`,
-            [childId],
-          );
-          const gadmChildren = gadmChildIds.map(id => gadm.divisionsById.get(id)!).filter(Boolean);
-          const matches = new Map<number, { gadmEntry: DivisionEntry; score: number }>();
-          for (const gc of gcResult.rows) {
-            const best = findBestAmongChildren(gc.name as string, gadmChildren);
-            if (best && best.score >= 700) {
-              matches.set(gc.id as number, { gadmEntry: best.entry, score: best.score });
-            }
-          }
-          if (matches.size === gcResult.rows.length) {
-            // All grandchildren matched — assign at subdivision level
-            updates.push({ id: childId, matchStatus: 'children_matched', suggestions: [] });
+    if (useScoped) {
+      // --- Scoped matching: match against descendants of parent's divisions ---
+      let bestMatch: { entry: DivisionEntry; score: number } | null = null;
+
+      // Try name variants against scoped divisions
+      for (const variant of variants) {
+        const entries = scopedByName.get(variant);
+        if (entries && entries.length === 1) {
+          bestMatch = { entry: entries[0], score: 700 };
+          break;
+        }
+      }
+
+      // Fallback: findBestAmongChildren for fuzzy matching
+      if (!bestMatch) {
+        const best = findBestAmongChildren(childName, scopedDivisions);
+        if (best && best.score >= 500) {
+          bestMatch = best;
+        }
+      }
+
+      if (bestMatch) {
+        const { entry, score } = bestMatch;
+        if (!childHasChildren) {
+          // Leaf — assign directly
+          const path = getPath(entry.id, gadm.pathCache, gadm.divisionsById);
+          updates.push({
+            id: childId,
+            matchStatus: score >= 700 ? 'auto_matched' : 'needs_review',
+            suggestions: [{ divisionId: entry.id, name: entry.name, path, score }],
+            divisionId: score >= 700 ? entry.id : undefined,
+          });
+          if (score >= 700) matched++;
+        } else {
+          // Has WV children — try subdivision drill-down
+          const gadmChildIds = gadm.childrenOf.get(entry.id);
+          if (gadmChildIds && gadmChildIds.length > 0) {
+            const gcResult = await pool.query(
+              `SELECT id, name FROM regions WHERE parent_region_id = $1 ORDER BY name`,
+              [childId],
+            );
+            const gadmChildren = gadmChildIds.map(id => gadm.divisionsById.get(id)!).filter(Boolean);
+            const matches = new Map<number, { gadmEntry: DivisionEntry; score: number }>();
             for (const gc of gcResult.rows) {
-              const m = matches.get(gc.id as number)!;
-              const path = getPath(m.gadmEntry.id, gadm.pathCache, gadm.divisionsById);
-              updates.push({
-                id: gc.id as number,
-                matchStatus: 'auto_matched',
-                suggestions: [{ divisionId: m.gadmEntry.id, name: m.gadmEntry.name, path, score: m.score }],
-                divisionId: m.gadmEntry.id,
-              });
+              const best = findBestAmongChildren(gc.name as string, gadmChildren);
+              if (best && best.score >= 700) {
+                matches.set(gc.id as number, { gadmEntry: best.entry, score: best.score });
+              }
             }
-            matched++;
+            if (matches.size === gcResult.rows.length) {
+              // All grandchildren matched at subdivision level
+              updates.push({ id: childId, matchStatus: 'children_matched', suggestions: [] });
+              for (const gc of gcResult.rows) {
+                const m = matches.get(gc.id as number)!;
+                const path = getPath(m.gadmEntry.id, gadm.pathCache, gadm.divisionsById);
+                updates.push({
+                  id: gc.id as number,
+                  matchStatus: 'auto_matched',
+                  suggestions: [{ divisionId: m.gadmEntry.id, name: m.gadmEntry.name, path, score: m.score }],
+                  divisionId: m.gadmEntry.id,
+                });
+              }
+              matched++;
+            } else {
+              // Not all grandchildren match — assign at this level
+              const path = getPath(entry.id, gadm.pathCache, gadm.divisionsById);
+              updates.push({
+                id: childId,
+                matchStatus: score >= 700 ? 'auto_matched' : 'needs_review',
+                suggestions: [{ divisionId: entry.id, name: entry.name, path, score }],
+                divisionId: score >= 700 ? entry.id : undefined,
+              });
+              if (score >= 700) matched++;
+            }
           } else {
-            // Not all grandchildren match — assign at country level
+            // No GADM subdivisions — assign at this level
+            const path = getPath(entry.id, gadm.pathCache, gadm.divisionsById);
+            updates.push({
+              id: childId,
+              matchStatus: score >= 700 ? 'auto_matched' : 'needs_review',
+              suggestions: [{ divisionId: entry.id, name: entry.name, path, score }],
+              divisionId: score >= 700 ? entry.id : undefined,
+            });
+            if (score >= 700) matched++;
+          }
+        }
+      } else {
+        // No match found in scoped divisions — try trigram search within scope
+        const normalized = normalizeName(cleaned);
+        const scopeIds = scopedDivisions.map(d => d.id);
+        const trigramResult = await pool.query(`
+          SELECT id, name, similarity(name_normalized, $1) AS sim
+          FROM administrative_divisions
+          WHERE id = ANY($2)
+            AND name_normalized % $1
+            AND similarity(name_normalized, $1) > 0.3
+          ORDER BY sim DESC
+          LIMIT 5
+        `, [normalized, scopeIds]);
+
+        const fallbackSuggestions: MatchSuggestion[] = [];
+        for (const r of trigramResult.rows) {
+          const path = getPath(r.id as number, gadm.pathCache, gadm.divisionsById);
+          fallbackSuggestions.push({
+            divisionId: r.id as number,
+            name: r.name as string,
+            path,
+            score: Math.round((r.sim as number) * 1000),
+          });
+        }
+
+        if (fallbackSuggestions.length === 1 && fallbackSuggestions[0].score >= 700) {
+          updates.push({
+            id: childId,
+            matchStatus: 'auto_matched',
+            suggestions: fallbackSuggestions,
+            divisionId: fallbackSuggestions[0].divisionId,
+          });
+          matched++;
+        } else if (fallbackSuggestions.length > 0) {
+          updates.push({ id: childId, matchStatus: 'needs_review', suggestions: fallbackSuggestions });
+        } else {
+          updates.push({ id: childId, matchStatus: 'no_candidates', suggestions: [] });
+        }
+      }
+    } else {
+      // --- Unscoped: original behavior — match against all GADM countries ---
+      let countryMatchIds: number[] = [];
+      for (const variant of variants) {
+        const ids = gadm.gadmCountries.get(variant);
+        if (ids && ids.length > 0) { countryMatchIds = ids; break; }
+      }
+
+      if (countryMatchIds.length === 1) {
+        const countryId = countryMatchIds[0];
+        if (!childHasChildren) {
+          const path = getPath(countryId, gadm.pathCache, gadm.divisionsById);
+          const entry = gadm.divisionsById.get(countryId)!;
+          updates.push({
+            id: childId,
+            matchStatus: 'auto_matched',
+            suggestions: [{ divisionId: countryId, name: entry.name, path, score: 700 }],
+            divisionId: countryId,
+          });
+          matched++;
+        } else {
+          const gadmChildIds = gadm.childrenOf.get(countryId);
+          if (gadmChildIds && gadmChildIds.length > 0) {
+            const gcResult = await pool.query(
+              `SELECT id, name FROM regions WHERE parent_region_id = $1 ORDER BY name`,
+              [childId],
+            );
+            const gadmChildren = gadmChildIds.map(id => gadm.divisionsById.get(id)!).filter(Boolean);
+            const matches = new Map<number, { gadmEntry: DivisionEntry; score: number }>();
+            for (const gc of gcResult.rows) {
+              const best = findBestAmongChildren(gc.name as string, gadmChildren);
+              if (best && best.score >= 700) {
+                matches.set(gc.id as number, { gadmEntry: best.entry, score: best.score });
+              }
+            }
+            if (matches.size === gcResult.rows.length) {
+              updates.push({ id: childId, matchStatus: 'children_matched', suggestions: [] });
+              for (const gc of gcResult.rows) {
+                const m = matches.get(gc.id as number)!;
+                const path = getPath(m.gadmEntry.id, gadm.pathCache, gadm.divisionsById);
+                updates.push({
+                  id: gc.id as number,
+                  matchStatus: 'auto_matched',
+                  suggestions: [{ divisionId: m.gadmEntry.id, name: m.gadmEntry.name, path, score: m.score }],
+                  divisionId: m.gadmEntry.id,
+                });
+              }
+              matched++;
+            } else {
+              const path = getPath(countryId, gadm.pathCache, gadm.divisionsById);
+              const entry = gadm.divisionsById.get(countryId)!;
+              updates.push({
+                id: childId,
+                matchStatus: 'auto_matched',
+                suggestions: [{ divisionId: countryId, name: entry.name, path, score: 700 }],
+                divisionId: countryId,
+              });
+              matched++;
+            }
+          } else {
             const path = getPath(countryId, gadm.pathCache, gadm.divisionsById);
             const entry = gadm.divisionsById.get(countryId)!;
             updates.push({
@@ -123,86 +294,58 @@ export async function matchChildrenAsCountries(
             });
             matched++;
           }
-        } else {
-          // No GADM subdivisions — assign at country level
-          const path = getPath(countryId, gadm.pathCache, gadm.divisionsById);
-          const entry = gadm.divisionsById.get(countryId)!;
-          updates.push({
-            id: childId,
-            matchStatus: 'auto_matched',
-            suggestions: [{ divisionId: countryId, name: entry.name, path, score: 700 }],
-            divisionId: countryId,
-          });
-          matched++;
         }
-      }
-    } else if (countryMatchIds.length > 1) {
-      // Multiple GADM matches — needs review
-      const suggestions: MatchSuggestion[] = countryMatchIds.map(id => {
-        const entry = gadm.divisionsById.get(id)!;
-        const path = getPath(id, gadm.pathCache, gadm.divisionsById);
-        return { divisionId: id, name: entry.name, path, score: 700 };
-      });
-      updates.push({ id: childId, matchStatus: 'needs_review', suggestions });
-    } else {
-      // No country match — try fallback against all divisions
-      const seen = new Set<number>();
-      const fallbackSuggestions: MatchSuggestion[] = [];
-
-      // Phase 1: Exact name variant matching (in-memory)
-      for (const variant of variants) {
-        const matches = gadm.divisionsByNormalizedName.get(variant);
-        if (matches) {
-          for (const entry of matches) {
-            if (seen.has(entry.id)) continue;
-            seen.add(entry.id);
-            const path = getPath(entry.id, gadm.pathCache, gadm.divisionsById);
-            fallbackSuggestions.push({ divisionId: entry.id, name: entry.name, path, score: 700 });
+      } else if (countryMatchIds.length > 1) {
+        const suggestions: MatchSuggestion[] = countryMatchIds.map(id => {
+          const entry = gadm.divisionsById.get(id)!;
+          const path = getPath(id, gadm.pathCache, gadm.divisionsById);
+          return { divisionId: id, name: entry.name, path, score: 700 };
+        });
+        updates.push({ id: childId, matchStatus: 'needs_review', suggestions });
+      } else {
+        // No country match — try fallback against all divisions
+        const seen = new Set<number>();
+        const fallbackSuggestions: MatchSuggestion[] = [];
+        for (const variant of variants) {
+          const matches = gadm.divisionsByNormalizedName.get(variant);
+          if (matches) {
+            for (const entry of matches) {
+              if (seen.has(entry.id)) continue;
+              seen.add(entry.id);
+              const path = getPath(entry.id, gadm.pathCache, gadm.divisionsById);
+              fallbackSuggestions.push({ divisionId: entry.id, name: entry.name, path, score: 700 });
+            }
           }
         }
-      }
-      if (fallbackSuggestions.length > 1) {
-        for (const s of fallbackSuggestions) s.score = 500;
-      }
-
-      // Phase 2: Trigram similarity search (DB fallback)
-      if (fallbackSuggestions.length === 0) {
-        const normalized = normalizeName(cleanWvName(childName));
-        const trigramResult = await pool.query(`
-          SELECT id, name, similarity(name_normalized, $1) AS sim
-          FROM administrative_divisions
-          WHERE name_normalized % $1
-            AND similarity(name_normalized, $1) > 0.3
-          ORDER BY sim DESC
-          LIMIT 5
-        `, [normalized]);
-
-        for (const row of trigramResult.rows) {
-          const id = row.id as number;
-          if (seen.has(id)) continue;
-          seen.add(id);
-          const path = getPath(id, gadm.pathCache, gadm.divisionsById);
-          fallbackSuggestions.push({
-            divisionId: id,
-            name: row.name as string,
-            path,
-            score: Math.round((row.sim as number) * 1000),
-          });
+        if (fallbackSuggestions.length > 1) {
+          for (const s of fallbackSuggestions) s.score = 500;
         }
-      }
-
-      if (fallbackSuggestions.length === 1 && fallbackSuggestions[0].score >= 700) {
-        updates.push({
-          id: childId,
-          matchStatus: 'auto_matched',
-          suggestions: fallbackSuggestions,
-          divisionId: fallbackSuggestions[0].divisionId,
-        });
-        matched++;
-      } else if (fallbackSuggestions.length > 0) {
-        updates.push({ id: childId, matchStatus: 'needs_review', suggestions: fallbackSuggestions.slice(0, 5) });
-      } else {
-        updates.push({ id: childId, matchStatus: 'no_candidates', suggestions: [] });
+        if (fallbackSuggestions.length === 0) {
+          const normalized = normalizeName(cleanWvName(childName));
+          const trigramResult = await pool.query(`
+            SELECT id, name, similarity(name_normalized, $1) AS sim
+            FROM administrative_divisions
+            WHERE name_normalized % $1
+              AND similarity(name_normalized, $1) > 0.3
+            ORDER BY sim DESC
+            LIMIT 5
+          `, [normalized]);
+          for (const r of trigramResult.rows) {
+            const id = r.id as number;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            const path = getPath(id, gadm.pathCache, gadm.divisionsById);
+            fallbackSuggestions.push({ divisionId: id, name: r.name as string, path, score: Math.round((r.sim as number) * 1000) });
+          }
+        }
+        if (fallbackSuggestions.length === 1 && fallbackSuggestions[0].score >= 700) {
+          updates.push({ id: childId, matchStatus: 'auto_matched', suggestions: fallbackSuggestions, divisionId: fallbackSuggestions[0].divisionId });
+          matched++;
+        } else if (fallbackSuggestions.length > 0) {
+          updates.push({ id: childId, matchStatus: 'needs_review', suggestions: fallbackSuggestions.slice(0, 5) });
+        } else {
+          updates.push({ id: childId, matchStatus: 'no_candidates', suggestions: [] });
+        }
       }
     }
   }
@@ -212,18 +355,9 @@ export async function matchChildrenAsCountries(
   try {
     await client.query('BEGIN');
 
-    // Clear parent's own match and mark as children_matched
-    await client.query(
-      `DELETE FROM region_members WHERE region_id = $1`,
-      [regionId],
-    );
+    // Mark parent as children_matched (keep its division assignments)
     await client.query(
       `UPDATE region_import_state SET match_status = 'children_matched' WHERE region_id = $1`,
-      [regionId],
-    );
-    // Clear parent's suggestions
-    await client.query(
-      `DELETE FROM region_match_suggestions WHERE region_id = $1`,
       [regionId],
     );
 

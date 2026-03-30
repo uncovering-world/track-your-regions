@@ -554,7 +554,7 @@ export async function colorMatchDivisionsSSE(req: AuthenticatedRequest, res: Res
         // ── Spatial split through complete event: delegated to shared function ──
         reclusterResult = await matchDivisionsFromClusters({
           worldViewId, regionId, knownDivisionIds: childRegionMemberIds, countryIds, countryDepth,
-          buf: ctx.colorBuf, mapBuffer, countryMask: ctx.countryMask,
+          buf: ctx.colorBuf, origBuf: ctx.origDownBuf, mapBuffer, countryMask: ctx.countryMask,
           waterGrown: ctx.waterGrown, pixelLabels: ctx.pixelLabels,
           colorCentroids: ctx.colorCentroids,
           TW, TH, origW, origH,

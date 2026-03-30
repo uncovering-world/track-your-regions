@@ -189,6 +189,8 @@ export interface MapshapeEntry {
   title: string;
   color: string;
   wikidataIds: string[];
+  /** Wikimedia Commons map data file (e.g. "North_Sea_Coast_region.map") — alternative to wikidata */
+  commonsFile?: string;
 }
 
 /** Section info from the MediaWiki parse API */

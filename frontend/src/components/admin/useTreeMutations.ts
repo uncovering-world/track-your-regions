@@ -40,6 +40,7 @@ import {
   reparentRegion,
   getChildrenCoverage,
   simplifyHierarchy,
+  simplifyChildren,
   type MatchTreeNode,
   type ChildrenCoverageResult,
 } from '../../api/adminWorldViewImport';
@@ -398,6 +399,11 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     onSuccess: (_data, regionId) => invalidateTree(regionId),
   });
 
+  const simplifyChildrenMutation = useMutation({
+    mutationFn: (parentRegionId: number) => simplifyChildren(worldViewId, parentRegionId),
+    onSuccess: () => invalidateTree(),
+  });
+
   // ── Hierarchy mutations ──────────────────────────────────────────────────
 
   const dismissMutation = useMutation({
@@ -435,8 +441,8 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
 
   const groupingMutation = useMutation({
     mutationFn: (regionId: number) => handleAsGrouping(worldViewId, regionId),
-    onSuccess: (data) => {
-      invalidateTree();
+    onSuccess: (data, regionId) => {
+      invalidateTree(regionId);
       if (data.undoAvailable) {
         setUndoSnackbar({
           open: true,
@@ -518,8 +524,13 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   });
 
   const renameMutation = useMutation({
-    mutationFn: ({ regionId, name }: { regionId: number; name: string }) =>
-      renameRegion(worldViewId, regionId, name),
+    mutationFn: ({ regionId, name, sourceUrl, sourceExternalId }: {
+      regionId: number;
+      name: string;
+      sourceUrl?: string;
+      sourceExternalId?: string;
+    }) =>
+      renameRegion(worldViewId, regionId, name, sourceUrl, sourceExternalId),
     onSuccess: () => invalidateTree(),
   });
 
@@ -572,8 +583,13 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   // ── Hierarchy mutations (add child, dismiss warnings) ───────────────────
 
   const addChildMutation = useMutation({
-    mutationFn: ({ parentRegionId, name }: { parentRegionId: number; name: string }) =>
-      addChildRegion(worldViewId, parentRegionId, name),
+    mutationFn: ({ parentRegionId, name, sourceUrl, sourceExternalId }: {
+      parentRegionId: number;
+      name: string;
+      sourceUrl?: string;
+      sourceExternalId?: string;
+    }) =>
+      addChildRegion(worldViewId, parentRegionId, name, sourceUrl, sourceExternalId),
     onSuccess: () => invalidateTree(),
   });
 
@@ -616,7 +632,8 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     dismissWarningsMutation.isPending || removeMutation.isPending || collapseToParentMutation.isPending ||
     autoResolveMutation.isPending ||
     renameMutation.isPending || reparentMutation.isPending ||
-    simplifyHierarchyMutation.isPending;
+    simplifyHierarchyMutation.isPending ||
+    simplifyChildrenMutation.isPending;
 
   return {
     // Mutations
@@ -652,6 +669,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     renameMutation,
     reparentMutation,
     simplifyHierarchyMutation,
+    simplifyChildrenMutation,
     renamingRegionId: renameMutation.isPending ? (renameMutation.variables?.regionId ?? null) : null,
     reparentingRegionId: reparentMutation.isPending ? (reparentMutation.variables?.regionId ?? null) : null,
     // State

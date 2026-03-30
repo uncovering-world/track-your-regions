@@ -37,6 +37,10 @@ export interface CvMatchDialogState {
   done: boolean;
   /** Saved cluster->region assignments from cluster review (persists after review is cleared) */
   savedRegionAssignments?: Map<number, number>;
+  /** Saved merges from cluster review (persists across split operations) */
+  savedMerges?: Map<number, number>;
+  /** Saved excludes from cluster review (persists across split operations) */
+  savedExcludes?: Set<number>;
   geoPreview?: {
     featureCollection: GeoJSON.FeatureCollection;
     clusterInfos: ClusterGeoInfo[];
@@ -270,16 +274,41 @@ export function useCvMatchPipeline(
                 if (sat < 0.15 && c.isSmall) autoExcludes.add(c.label);
               }
             }
+            // Restore saved decisions for cluster labels that still exist after split
+            const newLabels = new Set(clusters.map((c: { label: number }) => c.label));
+            const restoredMerges = new Map<number, number>();
+            const restoredExcludes = new Set<number>(autoExcludes);
+            const restoredRegionAssignments = new Map<number, number>();
+
+            if (prev.savedMerges) {
+              for (const [from, to] of prev.savedMerges) {
+                if (newLabels.has(from) && newLabels.has(to)) restoredMerges.set(from, to);
+              }
+            }
+            if (prev.savedExcludes) {
+              for (const label of prev.savedExcludes) {
+                if (newLabels.has(label)) restoredExcludes.add(label);
+              }
+            }
+            if (prev.savedRegionAssignments) {
+              for (const [label, regionId] of prev.savedRegionAssignments) {
+                if (newLabels.has(label)) restoredRegionAssignments.set(label, regionId);
+              }
+            }
+
             return {
               ...prev,
               clusterReview: {
                 reviewId: rid,
                 clusters,
                 previewImage: clusterPreviewUrl(rid),
-                merges: new Map(),
-                excludes: autoExcludes,
-                regionAssignments: new Map(),
+                merges: restoredMerges,
+                excludes: restoredExcludes,
+                regionAssignments: restoredRegionAssignments,
               },
+              savedRegionAssignments: undefined,
+              savedMerges: undefined,
+              savedExcludes: undefined,
               progressText: 'Cluster review — merge small artifacts before assignment',
               progressColor: '#1565c0',
             };

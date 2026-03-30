@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import {
   CallSplit as SplitIcon,
+  Block as BlockIcon,
 } from '@mui/icons-material';
 import {
   respondToClusterReview,
@@ -33,7 +34,14 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
   const sourceImg = cvMatchDialog.debugImages.find(img => img.label === '__source_map__');
   const sorted = [...cr.clusters].sort((a, b) => b.pct - a.pct);
   // Targets for "merge into" = any non-excluded cluster
-  const mergeTargets = sorted.filter(c => !cr.excludes.has(c.label));
+  // Merge targets: only clusters that are "kept" (not excluded or merged into something else)
+  const mergeTargets = sorted.filter(c => !cr.excludes.has(c.label) && !cr.merges.has(c.label));
+  // Helper: look up assigned region name for a cluster label
+  const regionNameForLabel = (label: number): string | null => {
+    const regionId = cr.regionAssignments.get(label);
+    if (regionId == null) return null;
+    return cvMatchDialog.childRegions.find(r => r.id === regionId)?.name ?? null;
+  };
   const setAction = (label: number, value: string) => {
     setCVMatchDialog(prev => {
       if (!prev?.clusterReview) return prev;
@@ -139,15 +147,29 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
               >
                 <MenuItem value="keep">Keep as region</MenuItem>
                 <MenuItem value="exclude" sx={{ color: 'error.main' }}>Exclude (not a region)</MenuItem>
-                {mergeTargets.filter(t => t.label !== c.label).map(t => (
-                  <MenuItem key={t.label} value={String(t.label)}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                      <Box sx={{ width: 12, height: 12, bgcolor: t.color, borderRadius: '50%', border: '1px solid #ccc' }} />
-                      <span>Merge into {t.pct.toFixed(1)}%</span>
-                    </Box>
-                  </MenuItem>
-                ))}
+                {mergeTargets.filter(t => t.label !== c.label).map(t => {
+                  const rName = regionNameForLabel(t.label);
+                  return (
+                    <MenuItem key={t.label} value={String(t.label)}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <Box sx={{ width: 12, height: 12, bgcolor: t.color, borderRadius: '50%', border: '1px solid #ccc' }} />
+                        <span>Merge into {rName ?? `${t.pct.toFixed(1)}%`}</span>
+                      </Box>
+                    </MenuItem>
+                  );
+                })}
               </Select>
+              {!isExcluded && (
+                <IconButton
+                  size="small"
+                  title="Exclude (not a region)"
+                  color="error"
+                  onClick={() => setAction(c.label, 'exclude')}
+                  sx={{ p: 0.25 }}
+                >
+                  <BlockIcon fontSize="small" />
+                </IconButton>
+              )}
               {isKept && cvMatchDialog.childRegions.length > 0 && (
                 <Select
                   size="small"
@@ -182,6 +204,9 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
                     setCVMatchDialog(prev => prev ? {
                       ...prev,
                       clusterReview: undefined,
+                      savedRegionAssignments: cr.regionAssignments.size > 0 ? new Map(cr.regionAssignments) : undefined,
+                      savedMerges: cr.merges.size > 0 ? new Map(cr.merges) : undefined,
+                      savedExcludes: cr.excludes.size > 0 ? new Set(cr.excludes) : undefined,
                       progressText: `Splitting cluster into ${c.componentCount} parts...`,
                     } : prev);
                     try {
@@ -227,19 +252,22 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
       </Button>
       {/* Split all disconnected + Re-cluster options */}
       <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
-        {sorted.some(c => c.componentCount > 1 && getAction(c.label) === 'keep') && (
+        {sorted.some(c => c.componentCount > 1 && getAction(c.label) === 'keep' && !cr.regionAssignments.has(c.label)) && (
           <Button
             size="small"
             variant="outlined"
             color="warning"
             startIcon={<SplitIcon />}
             sx={{ fontSize: '0.7rem', py: 0.25, px: 0.75 }}
-            title="Split all clusters that have disconnected parts"
+            title="Split unhandled clusters that have disconnected parts"
             onClick={async () => {
-              const splitLabels = sorted.filter(c => c.componentCount > 1 && getAction(c.label) === 'keep').map(c => c.label);
+              const splitLabels = sorted.filter(c => c.componentCount > 1 && getAction(c.label) === 'keep' && !cr.regionAssignments.has(c.label)).map(c => c.label);
               setCVMatchDialog(prev => prev ? {
                 ...prev,
                 clusterReview: undefined,
+                savedRegionAssignments: cr.regionAssignments.size > 0 ? new Map(cr.regionAssignments) : undefined,
+                savedMerges: cr.merges.size > 0 ? new Map(cr.merges) : undefined,
+                savedExcludes: cr.excludes.size > 0 ? new Set(cr.excludes) : undefined,
                 progressText: `Splitting ${splitLabels.length} cluster(s) into components...`,
               } : prev);
               try {

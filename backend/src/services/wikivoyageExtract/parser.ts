@@ -254,11 +254,20 @@ export function parseMapshapes(wikitext: string): MapshapeEntry[] {
     const title = (resolved.match(/title\s*=\s*([^|]+)/i)?.[1] ?? resolved.match(/name\s*=\s*([^|]+)/i)?.[1])?.trim()
       ?.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1') ?? '';  // strip [[...]] wikilinks
     const wikidata = resolved.match(/wikidata\s*=\s*([^|]+)/i)?.[1]?.trim() ?? '';
+    const wikicommons = resolved.match(/wikicommons\s*=\s*([^|]+)/i)?.[1]?.trim() ?? '';
     if (title && wikidata) {
       results.push({
         title,
         color: fill,
         wikidataIds: wikidata.split(',').map(id => id.trim()).filter(Boolean),
+      });
+    } else if (wikicommons) {
+      // Commons map data file — title/color may be filled later from the fetched GeoJSON
+      results.push({
+        title,
+        color: fill,
+        wikidataIds: [],
+        commonsFile: wikicommons,
       });
     }
   }
