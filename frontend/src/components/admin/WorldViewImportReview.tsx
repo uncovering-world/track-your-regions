@@ -43,6 +43,7 @@ import {
   rejectRemaining,
   getUnionGeometry,
   getTransferPreview,
+  acceptWithTransfer,
   splitDivisionsDeeper,
   visionMatchDivisions,
 } from '../../api/adminWorldViewImport';
@@ -69,6 +70,11 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   } | null>(null);
   const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | GeoJSON.FeatureCollection | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  // Pending transfer: stored when transfer preview is opened, executed on confirm
+  const [pendingTransfer, setPendingTransfer] = useState<{
+    regionId: number; divisionIds: number[];
+    donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split';
+  } | null>(null);
 
   const handlePreviewDivision = useCallback(async (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string) => {
     setPreviewDivision({ name, path, regionMapUrl, wikidataId, divisionId, regionId, isAssigned, regionMapLabel, regionName });
@@ -85,6 +91,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const handleClosePreview = useCallback(() => {
     setPreviewDivision(null);
     setPreviewGeometry(null);
+    setPendingTransfer(null);
   }, []);
 
   const handlePreviewUnion = useCallback(async (regionId: number, divisionIds: number[], context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string }) => {
@@ -110,14 +117,21 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
 
   const handlePreviewTransfer = useCallback(async (
     divisionId: number, name: string, path: string | undefined,
-    conflict: { donorDivisionId: number; donorDivisionName: string },
+    conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' },
     wikidataId: string, regionName: string,
+    regionId?: number, allDivisionIds?: number[],
   ) => {
-    setPreviewDivision({ name: `Transfer: ${name}`, path, regionMapUrl: undefined, wikidataId, regionId: undefined, regionName });
+    const movingIds = allDivisionIds ?? [divisionId];
+    const label = movingIds.length > 1 ? `Transfer: ${movingIds.length} divisions` : `Transfer: ${name}`;
+    setPreviewDivision({ name: label, path, regionMapUrl: undefined, wikidataId, regionId: undefined, regionName });
     setPreviewGeometry(null);
     setPreviewLoading(true);
+    setPendingTransfer(regionId != null ? {
+      regionId, divisionIds: movingIds,
+      donorRegionId: conflict.donorRegionId, donorDivisionId: conflict.donorDivisionId, transferType: conflict.type,
+    } : null);
     try {
-      const fc = await getTransferPreview(worldViewId, conflict.donorDivisionId, [divisionId], wikidataId);
+      const fc = await getTransferPreview(worldViewId, conflict.donorDivisionId, movingIds, wikidataId);
       setPreviewGeometry(fc);
     } catch {
       setPreviewGeometry(null);
@@ -234,6 +248,15 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const previewRejectMutation = useMutation({
     mutationFn: ({ regionId, divisionId }: { regionId: number; divisionId: number }) =>
       rejectSuggestion(worldViewId, regionId, divisionId),
+    onSuccess: () => {
+      invalidateAll();
+      handleClosePreview();
+    },
+  });
+
+  const previewTransferMutation = useMutation({
+    mutationFn: (params: { regionId: number; divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }) =>
+      acceptWithTransfer(worldViewId, params.regionId, params.divisionIds, params.donorRegionId, params.donorDivisionId, params.transferType),
     onSuccess: () => {
       invalidateAll();
       handleClosePreview();
@@ -586,11 +609,13 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         worldViewId={worldViewId}
         regionId={previewDivision?.regionId}
         onAccept={
-          previewDivision?.divisionIds && previewDivision.regionId != null
-            ? () => previewAcceptSelectedMutation.mutate({ regionId: previewDivision.regionId!, divisionIds: previewDivision.divisionIds! })
-            : previewDivision?.regionId != null && previewDivision?.divisionId != null && !previewDivision.isAssigned
-              ? () => previewAcceptMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
-              : undefined
+          pendingTransfer
+            ? () => previewTransferMutation.mutate(pendingTransfer)
+            : previewDivision?.divisionIds && previewDivision.regionId != null
+              ? () => previewAcceptSelectedMutation.mutate({ regionId: previewDivision.regionId!, divisionIds: previewDivision.divisionIds! })
+              : previewDivision?.regionId != null && previewDivision?.divisionId != null && !previewDivision.isAssigned
+                ? () => previewAcceptMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
+                : undefined
         }
         onAcceptAndRejectRest={
           previewDivision?.divisionIds && previewDivision.regionId != null
@@ -608,7 +633,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         }
         onSplitDeeper={previewDivision?.divisionIds?.length && previewDivision.wikidataId ? handleSplitDeeper : undefined}
         onVisionMatch={previewDivision?.divisionIds?.length && previewDivision.regionId && previewDivision.regionMapUrl ? handleVisionMatch : undefined}
-        actionPending={previewAcceptMutation.isPending || previewRejectMutation.isPending || previewAcceptAndRejectRestMutation.isPending || previewAcceptSelectedMutation.isPending || previewAcceptSelectedRejectRestMutation.isPending || previewRejectSelectedMutation.isPending || previewLoading}
+        actionPending={previewTransferMutation.isPending || previewAcceptMutation.isPending || previewRejectMutation.isPending || previewAcceptAndRejectRestMutation.isPending || previewAcceptSelectedMutation.isPending || previewAcceptSelectedRejectRestMutation.isPending || previewRejectSelectedMutation.isPending || previewLoading}
       />
 
       {/* Re-match confirmation dialog */}

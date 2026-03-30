@@ -56,7 +56,7 @@ function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, 
   onReject: (regionId: number, divisionId: number) => void;
   onPreview: (divisionId: number, name: string, path?: string) => void;
   onAcceptTransfer?: (regionId: number, divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) => void;
-  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string }) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[]) => void;
   isMutating: boolean;
   checked?: boolean;
   onToggle?: (divisionId: number) => void;
@@ -191,7 +191,7 @@ interface TreeNodeContentProps {
   onAcceptAll: (assignments: Array<{ regionId: number; divisionId: number }>) => void;
   handlePreviewAssigned: (divisionId: number, name: string, path?: string) => void;
   handlePreviewSuggestion: (divisionId: number, name: string, path?: string) => void;
-  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string }) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[]) => void;
   onApproveShadow?: (insertion: ShadowInsertion) => void;
   onRejectShadow?: (insertion: ShadowInsertion) => void;
   onPreviewUnion?: (regionId: number, divisionIds: number[]) => void;
@@ -410,11 +410,18 @@ export function TreeNodeContent({
                 size="small"
                 variant="text"
                 color="success"
-                onClick={() => onAcceptAll(node.suggestions.map(s => ({ regionId: node.id, divisionId: s.divisionId })))}
+                onClick={() => {
+                  const firstConflict = node.suggestions.find(s => s.conflict)?.conflict;
+                  if (firstConflict && onPreviewTransfer) {
+                    onPreviewTransfer(node.suggestions[0].divisionId, node.suggestions[0].name, node.suggestions[0].path, firstConflict, node.id, node.suggestions.map(s => s.divisionId));
+                  } else {
+                    onAcceptAll(node.suggestions.map(s => ({ regionId: node.id, divisionId: s.divisionId })));
+                  }
+                }}
                 disabled={isMutating}
                 sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}
               >
-                Accept all {node.suggestions.length}
+                {node.suggestions.some(s => s.conflict) ? `Preview transfer (${node.suggestions.length})` : `Accept all ${node.suggestions.length}`}
               </Button>
             </>
           )}
