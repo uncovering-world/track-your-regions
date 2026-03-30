@@ -1066,5 +1066,49 @@ export async function acceptWithTransfer(req: AuthenticatedRequest, res: Respons
   }
 }
 
+/**
+ * Return a 3-layer GeoJSON FeatureCollection for previewing a transfer operation.
+ * Features are role-tagged: 'donor' (the division being split), 'moving' (divisions
+ * being transferred), and 'target_outline' (the Wikidata geoshape of the target region).
+ *
+ * POST /api/admin/wv-import/matches/:worldViewId/transfer-preview
+ */
+export async function getTransferPreview(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { donorDivisionId, movingDivisionIds, wikidataId } = req.body as {
+    donorDivisionId: number; movingDivisionIds: number[]; wikidataId: string;
+  };
+
+  const result = await pool.query(`
+    WITH donor AS (
+      SELECT 'donor' AS role, ad.name,
+        ST_AsGeoJSON(ST_ForcePolygonCCW(ST_CollectionExtract(ST_MakeValid(ad.geom_simplified_medium), 3)))::json AS geometry
+      FROM administrative_divisions ad WHERE ad.id = $1 AND ad.geom_simplified_medium IS NOT NULL
+    ),
+    moving AS (
+      SELECT 'moving' AS role, ad.name,
+        ST_AsGeoJSON(ST_ForcePolygonCCW(ST_CollectionExtract(ST_MakeValid(ad.geom_simplified_medium), 3)))::json AS geometry
+      FROM administrative_divisions ad WHERE ad.id = ANY($2) AND ad.geom_simplified_medium IS NOT NULL
+    ),
+    target_outline AS (
+      SELECT 'target_outline' AS role, $3::text AS name,
+        ST_AsGeoJSON(ST_ForcePolygonCCW(ST_CollectionExtract(ST_MakeValid(geom), 3)))::json AS geometry
+      FROM wikidata_geoshapes WHERE wikidata_id = $3 AND not_available = FALSE
+    )
+    SELECT role, name, geometry FROM donor
+    UNION ALL SELECT role, name, geometry FROM moving
+    UNION ALL SELECT role, name, geometry FROM target_outline
+  `, [donorDivisionId, movingDivisionIds, wikidataId]);
+
+  const features = result.rows
+    .filter(r => r.geometry != null)
+    .map(r => ({
+      type: 'Feature' as const,
+      properties: { role: r.role as string, name: r.name as string },
+      geometry: r.geometry,
+    }));
+
+  res.json({ type: 'FeatureCollection', features });
+}
+
 // Re-export CV pipeline from dedicated module (keeps existing import path working)
 export { colorMatchDivisionsSSE } from './wvImportMatchPipeline.js';

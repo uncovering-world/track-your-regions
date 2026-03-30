@@ -38,6 +38,7 @@ import {
   wvImportRegionIdSchema,
   wvImportGeoshapeMatchSchema,
   wvImportAcceptTransferSchema,
+  wvImportTransferPreviewSchema,
   wvImportSelectMapImageSchema,
   wvImportMarkManualFixSchema,
   wikidataIdParamSchema,
@@ -77,7 +78,7 @@ import {
   startWorldViewImport, getWorldViewImportStatus, cancelWorldViewImport, getGeoshape,
   // Match
   getMatchStats, getMatchTree, acceptMatch, rejectMatch, rejectRemaining, clearMembers,
-  acceptAndRejectRest, acceptBatchMatches, acceptWithTransfer, selectMapImage, markManualFix,
+  acceptAndRejectRest, acceptBatchMatches, acceptWithTransfer, getTransferPreview, selectMapImage, markManualFix,
   getUnionGeometry, splitDivisionsDeeper, visionMatchDivisions, colorMatchDivisionsSSE,
   resolveWaterReview, getWaterCropImage, resolveParkReview, getParkCropImage,
   resolveClusterReview, getClusterPreviewImage, getClusterHighlightImage, resolveIcpAdjustment,
@@ -253,6 +254,9 @@ router.post('/wv-import/matches/:worldViewId/accept-batch', validate(worldViewId
 
 // Accept with transfer: atomically move divisions from donor region to target
 router.post('/wv-import/matches/:worldViewId/accept-with-transfer', validate(worldViewIdParamSchema, 'params'), validate(wvImportAcceptTransferSchema), acceptWithTransfer);
+
+// Transfer preview: 3-layer GeoJSON for visualising a proposed transfer operation
+router.post('/wv-import/matches/:worldViewId/transfer-preview', validate(worldViewIdParamSchema, 'params'), validate(wvImportTransferPreviewSchema), getTransferPreview);
 
 // Union geometry for multi-select preview
 router.post('/wv-import/matches/:worldViewId/union-geometry', validate(worldViewIdParamSchema, 'params'), validate(wvImportUnionGeometrySchema), getUnionGeometry);

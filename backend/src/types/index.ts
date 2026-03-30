@@ -511,6 +511,12 @@ export const wvImportAcceptTransferSchema = z.object({
   transferType: z.enum(['direct', 'split']),
 });
 
+export const wvImportTransferPreviewSchema = z.object({
+  donorDivisionId: z.coerce.number().int().positive(),
+  movingDivisionIds: z.array(z.coerce.number().int().positive()).min(1).max(100),
+  wikidataId: z.string().regex(/^Q\d+$/),
+});
+
 export const wvImportMarkManualFixSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   needsManualFix: z.boolean(),
