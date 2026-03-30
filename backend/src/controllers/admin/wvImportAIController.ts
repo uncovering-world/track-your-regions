@@ -243,17 +243,19 @@ export async function aiMatchOneRegion(req: AuthenticatedRequest, res: Response)
 }
 
 /**
- * AI-suggest missing children for a region by fetching its Wikivoyage page,
- * extracting listed sub-regions, and using AI to identify gaps.
+ * AI-review children for a region: full audit + enrichment + verification flow.
+ * Fetches the Wikivoyage "Regions" section, asks AI to audit existing children
+ * (add/remove/rename), enriches with Wikivoyage page titles and Wikidata QIDs,
+ * then programmatically verifies pages exist via the Wikivoyage API.
  * POST /api/admin/wv-import/matches/:worldViewId/ai-suggest-children
  */
 export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
   const { regionId } = req.body;
-  console.log(`[WV Import] POST /matches/${worldViewId}/ai-suggest-children — regionId=${regionId}`);
+  console.log(`[WV Import] POST /matches/${worldViewId}/ai-review-children — regionId=${regionId}`);
 
   try {
-    // 1. Look up source_url + name
+    // 1. Fetch region metadata
     const regionResult = await pool.query(
       `SELECT r.id, r.name, ris.source_url
        FROM regions r
@@ -271,14 +273,21 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
       return;
     }
 
-    // 2. Get existing children
+    // 2. Fetch existing children with metadata
     const childrenResult = await pool.query(
-      'SELECT name FROM regions WHERE parent_region_id = $1',
+      `SELECT r.name, ris.source_url, ris.source_external_id
+       FROM regions r
+       LEFT JOIN region_import_state ris ON ris.region_id = r.id
+       WHERE r.parent_region_id = $1`,
       [regionId],
     );
-    const existingChildren = childrenResult.rows.map((r) => r.name as string);
+    const existingChildren = childrenResult.rows.map((r) => ({
+      name: r.name as string,
+      sourceUrl: (r.source_url as string | null) ?? null,
+      sourceExternalId: (r.source_external_id as string | null) ?? null,
+    }));
 
-    // 3. Extract page title from source URL
+    // 3. Fetch Wikivoyage "Regions" section wikitext
     const pathPart = new URL(sourceUrl).pathname.split('/wiki/')[1];
     if (!pathPart) {
       res.status(400).json({ error: 'Cannot extract page title from source URL' });
@@ -286,7 +295,6 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
     }
     const pageTitle = decodeURIComponent(pathPart);
 
-    // 4. Create fetcher with shared cache
     const progress = {
       cancel: false, status: 'extracting' as const, statusMessage: '',
       regionsFetched: 0, estimatedTotal: 0, currentPage: '', apiRequests: 0,
@@ -298,146 +306,297 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
     };
     const fetcher = new WikivoyageFetcher('data/cache/wikivoyage-cache.json', progress);
 
-    // 5. Fetch sections
     const sectionsData = await fetcher.apiGet({
       action: 'parse', page: pageTitle, prop: 'sections', format: 'json',
     });
     const sections = (sectionsData.parse as { sections: WikiSection[] })?.sections ?? [];
 
-    // 6. Find Regions section
     const regionsSectionIdx = findRegionsSection(sections);
     if (!regionsSectionIdx) {
       fetcher.save();
-      res.json({
-        suggestions: [],
-        analysis: 'No "Regions" section found on the Wikivoyage page.',
-        stats: null,
-      });
+      res.json({ actions: [], analysis: 'No "Regions" section found on the Wikivoyage page.', stats: null });
       return;
     }
 
-    // 7. Fetch section wikitext
     const wikitextData = await fetcher.apiGet({
       action: 'parse', page: pageTitle, prop: 'wikitext',
       section: regionsSectionIdx, format: 'json',
     });
     const wikitext = ((wikitextData.parse as { wikitext: Record<string, string> })?.wikitext?.['*']) ?? '';
-
     fetcher.save();
 
-    // 8. AI extracts sub-regions directly from the raw wikitext (handles all formats:
-    // regionlist templates, bullet links, bold text, subsections, prose, etc.)
-    if (!isOpenAIAvailable()) {
-      res.status(503).json({ error: 'OpenAI API is not configured — AI is required for suggest children' });
-      return;
-    }
-
     if (wikitext.length === 0) {
-      res.json({
-        suggestions: [],
-        analysis: 'The Regions section on the Wikivoyage page is empty.',
-        stats: null,
-      });
+      res.json({ actions: [], analysis: 'The Regions section on the Wikivoyage page is empty.', stats: null });
       return;
     }
 
-    const startTime = Date.now();
-    const model = await getModelForFeature('suggest_children');
+    if (!isOpenAIAvailable()) {
+      res.status(503).json({ error: 'OpenAI API is not configured' });
+      return;
+    }
+
+    // 4. AI Call 1 — Audit
+    const model = await getModelForFeature('review_children');
     const client = getClient();
+    const startTime = Date.now();
 
     const existingList = existingChildren.length > 0
-      ? existingChildren.map(n => `  - ${n}`).join('\n')
+      ? existingChildren.map(c => `  - ${c.name}`).join('\n')
       : '  (none — the region has no children yet)';
 
-    const systemPrompt = `You are a travel geography expert. A user is building a region hierarchy for travel tracking.
+    const auditPrompt = `You are a travel geography expert. A user is building a region hierarchy for travel tracking.
 
 === REGION: "${regionName}" ===
 
-=== EXISTING CHILDREN (${existingChildren.length} total, already in the hierarchy — do NOT suggest these): ===
+=== EXISTING CHILDREN (${existingChildren.length} total): ===
 ${existingList}
 
 === RAW WIKITEXT from the "Regions" section of the Wikivoyage page: ===
 ${wikitext.slice(0, 4000)}
 === END WIKITEXT ===
 
-YOUR TASK:
-1. Read the wikitext carefully and extract ALL sub-regions mentioned as direct children of "${regionName}". The wikitext may use various formats: {{Regionlist}} templates, bullet-point wikilinks, bold text, subsections, or prose. Extract region names from ALL of these.
-2. Compare with the EXISTING CHILDREN list above (${existingChildren.length} entries). Only suggest regions that are NOT already in that list (case-insensitive comparison).
-3. Filter out cities, towns, and other non-region entries — only include actual regions/areas/provinces/states/oblasts.
-4. Provide a brief analysis.
+YOUR TASK — full audit of the children list:
 
-IMPORTANT: The existing children list and the wikitext are SEPARATE things. The existing children are what's already in the hierarchy. The wikitext is the source to extract NEW suggestions from. Do not confuse them.
+1. **Add**: Extract ALL sub-regions from the wikitext that are NOT in the existing children list (case-insensitive). The wikitext may use various formats: {{Regionlist}} templates, bullet-point wikilinks, bold text, subsections, or prose. Only include actual regions/areas/provinces/states — NOT cities or towns.
+
+2. **Remove**: Identify existing children that should NOT be in the list. Reasons: it's a city/town (not a region), it doesn't appear in the Wikivoyage page as a sub-region, or it doesn't geographically belong as a direct child of "${regionName}".
+
+3. **Rename**: Identify existing children whose names don't match the canonical Wikivoyage name. Suggest the correct name.
+
+4. Provide a brief analysis summary.
 
 Respond with JSON only (no markdown fences):
 {
-  "suggestions": [
-    { "name": "Region Name", "reason": "brief reason" }
+  "actions": [
+    { "type": "add", "name": "Region Name", "reason": "brief reason" },
+    { "type": "remove", "childName": "Existing Name", "reason": "brief reason" },
+    { "type": "rename", "childName": "Current Name", "newName": "Correct Name", "reason": "brief reason" }
   ],
   "analysis": "1-2 sentence summary"
 }
 
-- Use the canonical region name (not alternate spellings or abbreviations).
-- Only suggest regions that genuinely belong as direct children of "${regionName}".`;
+Rules:
+- Use canonical region names from the Wikivoyage page (not alternate spellings).
+- Only suggest regions that genuinely belong as direct children of "${regionName}".
+- If everything looks correct, return an empty actions array.
+- For renames, the childName must exactly match an existing child name.`;
 
-    const response = await chatCompletion(client, {
+    const auditResponse = await chatCompletion(client, {
       model,
       temperature: 0.3,
       max_completion_tokens: 4000,
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Extract sub-regions for "${regionName}" from the wikitext that are NOT in the ${existingChildren.length} existing children.` },
+        { role: 'system', content: auditPrompt },
+        { role: 'user', content: `Audit the children of "${regionName}": compare wikitext against the ${existingChildren.length} existing children.` },
       ],
     });
 
-    const promptTokens = response.usage?.prompt_tokens ?? 0;
-    const completionTokens = response.usage?.completion_tokens ?? 0;
-    const cost = calculateCost(promptTokens, completionTokens, model);
+    const auditTokensIn = auditResponse.usage?.prompt_tokens ?? 0;
+    const auditTokensOut = auditResponse.usage?.completion_tokens ?? 0;
+
+    // Parse audit response
+    const auditContent = auditResponse.choices[0]?.message?.content ?? '';
+    let auditResult: {
+      actions: Array<{
+        type: 'add' | 'remove' | 'rename';
+        name?: string;
+        childName?: string;
+        newName?: string;
+        reason: string;
+      }>;
+      analysis: string;
+    };
+    try {
+      let jsonStr = auditContent;
+      const fenceMatch = auditContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) jsonStr = fenceMatch[1];
+      auditResult = JSON.parse(jsonStr.trim());
+    } catch {
+      const auditCost = calculateCost(auditTokensIn, auditTokensOut, model);
+      logAIUsage({
+        feature: 'review_children',
+        model, apiCalls: 1,
+        promptTokens: auditTokensIn, completionTokens: auditTokensOut,
+        totalCost: auditCost.totalCost, durationMs: Date.now() - startTime,
+        description: `Review children for "${regionName}" (region ${regionId}) — parse error`,
+      }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
+      res.json({
+        actions: [],
+        analysis: auditContent || 'AI response could not be parsed.',
+        stats: { inputTokens: auditTokensIn, outputTokens: auditTokensOut, cost: auditCost.totalCost },
+      });
+      return;
+    }
+
+    // Normalize actions: unify name field
+    const actions = (auditResult.actions ?? []).map((a) => ({
+      type: a.type,
+      name: a.type === 'add' ? (a.name ?? '') : (a.childName ?? ''),
+      newName: a.type === 'rename' ? (a.newName ?? '') : undefined,
+      reason: a.reason ?? '',
+    }));
+
+    // If no add/rename actions, skip enrichment
+    const enrichableActions = actions.filter(a => a.type === 'add' || a.type === 'rename');
+
+    if (enrichableActions.length === 0) {
+      const auditCost = calculateCost(auditTokensIn, auditTokensOut, model);
+      logAIUsage({
+        feature: 'review_children',
+        model, apiCalls: 1,
+        promptTokens: auditTokensIn, completionTokens: auditTokensOut,
+        totalCost: auditCost.totalCost, durationMs: Date.now() - startTime,
+        description: `Review children for "${regionName}" (region ${regionId}) — no enrichable actions`,
+      }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
+      res.json({
+        actions: actions.map(a => ({ ...a, sourceUrl: null, sourceExternalId: null, verified: false })),
+        analysis: auditResult.analysis ?? '',
+        stats: { inputTokens: auditTokensIn, outputTokens: auditTokensOut, cost: auditCost.totalCost },
+      });
+      return;
+    }
+
+    // 5. AI Call 2 — Enrichment
+    const enrichTargets = enrichableActions.map(a =>
+      a.type === 'rename' ? (a.newName ?? a.name) : a.name
+    );
+
+    const enrichPrompt = `You are a Wikivoyage and Wikidata expert. Given a list of region names and the raw wikitext they were extracted from, provide the exact Wikivoyage page title and Wikidata QID for each.
+
+=== RAW WIKITEXT: ===
+${wikitext.slice(0, 4000)}
+=== END WIKITEXT ===
+
+=== REGIONS TO ENRICH: ===
+${enrichTargets.map(n => `  - ${n}`).join('\n')}
+
+For each region, extract:
+1. **wikivoyageTitle**: The exact Wikivoyage page title. Look for wikilinks like [[Page Title]] or [[Page Title|Display Name]] in the wikitext. If no wikilink exists, use the region name as-is.
+2. **wikidataQID**: The Wikidata QID (e.g. Q12345) if referenced in the wikitext (e.g. in {{Regionlist}} wikidata= parameters). If not in the wikitext, provide your best guess or null.
+
+Respond with JSON only (no markdown fences):
+{
+  "enrichments": [
+    { "name": "Region Name", "wikivoyageTitle": "Page Title", "wikidataQID": "Q12345" }
+  ]
+}
+
+Rules:
+- The "name" field must exactly match one of the regions listed above.
+- wikivoyageTitle should be the page title WITHOUT the "en.wikivoyage.org/wiki/" prefix.
+- If unsure about a QID, set it to null rather than guessing wrong.`;
+
+    const enrichResponse = await chatCompletion(client, {
+      model,
+      temperature: 0.1,
+      max_completion_tokens: 2000,
+      messages: [
+        { role: 'system', content: enrichPrompt },
+        { role: 'user', content: `Enrich these ${enrichTargets.length} regions with Wikivoyage titles and Wikidata QIDs.` },
+      ],
+    });
+
+    const enrichTokensIn = enrichResponse.usage?.prompt_tokens ?? 0;
+    const enrichTokensOut = enrichResponse.usage?.completion_tokens ?? 0;
+
+    let enrichments: Array<{ name: string; wikivoyageTitle: string | null; wikidataQID: string | null }> = [];
+    try {
+      let jsonStr = enrichResponse.choices[0]?.message?.content ?? '';
+      const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) jsonStr = fenceMatch[1];
+      const parsed = JSON.parse(jsonStr.trim());
+      enrichments = parsed.enrichments ?? [];
+    } catch {
+      console.warn('[AI Review Children] Failed to parse enrichment response');
+    }
+
+    // Build lookup: name (lowercase) -> enrichment
+    const enrichMap = new Map(
+      enrichments.map(e => [e.name.toLowerCase(), e]),
+    );
+
+    // 6. Programmatic verification via Wikivoyage API
+    const titlesToVerify = enrichments
+      .map(e => e.wikivoyageTitle)
+      .filter((t): t is string => t != null && t.length > 0);
+
+    const verifiedPages = new Map<string, { exists: boolean; wikidataQID: string | null }>();
+
+    if (titlesToVerify.length > 0) {
+      // Batch query — MediaWiki API supports up to 50 titles per request
+      for (let i = 0; i < titlesToVerify.length; i += 50) {
+        const batch = titlesToVerify.slice(i, i + 50);
+        try {
+          const verifyData = await fetcher.apiGet({
+            action: 'query',
+            titles: batch.join('|'),
+            prop: 'pageprops',
+            ppprop: 'wikibase_item',
+            format: 'json',
+          });
+          fetcher.save();
+
+          const pages = (verifyData.query as { pages?: Record<string, { title: string; missing?: string; pageprops?: { wikibase_item?: string } }> })?.pages ?? {};
+          for (const page of Object.values(pages)) {
+            const exists = !('missing' in page);
+            const qid = page.pageprops?.wikibase_item ?? null;
+            verifiedPages.set(page.title.toLowerCase(), { exists, wikidataQID: qid });
+          }
+        } catch (err) {
+          console.warn('[AI Review Children] Wikivoyage verification batch failed:', err);
+        }
+      }
+    }
+
+    // 7. Merge enrichment + verification into actions
+    const totalTokensIn = auditTokensIn + enrichTokensIn;
+    const totalTokensOut = auditTokensOut + enrichTokensOut;
+    const totalCost = calculateCost(totalTokensIn, totalTokensOut, model);
     const durationMs = Date.now() - startTime;
 
     logAIUsage({
-      feature: 'suggest_children',
-      model,
-      apiCalls: 1,
-      promptTokens,
-      completionTokens,
-      totalCost: cost.totalCost,
-      durationMs,
-      description: `Suggest children for "${regionName}" (region ${regionId}) in world view ${worldViewId}`,
+      feature: 'review_children',
+      model, apiCalls: 2,
+      promptTokens: totalTokensIn, completionTokens: totalTokensOut,
+      totalCost: totalCost.totalCost, durationMs,
+      description: `Review children for "${regionName}" (region ${regionId}) in wv ${worldViewId} — ${actions.length} actions`,
     }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
 
-    const content = response.choices[0]?.message?.content ?? '';
-    try {
-      let jsonStr = content;
-      const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (fenceMatch) jsonStr = fenceMatch[1];
-      const parsed = JSON.parse(jsonStr.trim()) as {
-        suggestions: Array<{ name: string; reason: string }>;
-        analysis: string;
-      };
+    const enrichedActions = actions.map((action) => {
+      if (action.type === 'remove') {
+        return { ...action, sourceUrl: null, sourceExternalId: null, verified: false };
+      }
 
-      res.json({
-        suggestions: parsed.suggestions ?? [],
-        analysis: parsed.analysis ?? '',
-        stats: {
-          inputTokens: promptTokens,
-          outputTokens: completionTokens,
-          cost: cost.totalCost,
-        },
-      });
-    } catch {
-      res.json({
-        suggestions: [],
-        analysis: content || 'AI response could not be parsed.',
-        stats: {
-          inputTokens: promptTokens,
-          outputTokens: completionTokens,
-          cost: cost.totalCost,
-        },
-      });
-    }
+      const lookupName = action.type === 'rename' ? (action.newName ?? action.name) : action.name;
+      const enrichment = enrichMap.get(lookupName.toLowerCase());
+
+      if (!enrichment?.wikivoyageTitle) {
+        return { ...action, sourceUrl: null, sourceExternalId: null, verified: false };
+      }
+
+      const verification = verifiedPages.get(enrichment.wikivoyageTitle.toLowerCase());
+      if (!verification?.exists) {
+        return { ...action, sourceUrl: null, sourceExternalId: null, verified: false };
+      }
+
+      // Page verified — use real QID from Wikivoyage API (not AI's guess)
+      const encodedTitle = encodeURIComponent(enrichment.wikivoyageTitle.replace(/ /g, '_'));
+      return {
+        ...action,
+        sourceUrl: `https://en.wikivoyage.org/wiki/${encodedTitle}`,
+        sourceExternalId: verification.wikidataQID ?? enrichment.wikidataQID ?? null,
+        verified: true,
+      };
+    });
+
+    res.json({
+      actions: enrichedActions,
+      analysis: auditResult.analysis ?? '',
+      stats: { inputTokens: totalTokensIn, outputTokens: totalTokensOut, cost: totalCost.totalCost },
+    });
   } catch (err) {
-    console.error(`[WV Import] AI suggest children failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'AI suggest children failed' });
+    console.error(`[WV Import] AI review children failed:`, err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'AI review children failed' });
   }
 }
 
