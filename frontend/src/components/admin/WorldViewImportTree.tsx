@@ -68,6 +68,7 @@ interface WorldViewImportTreeProps {
   worldViewId: number;
   onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string) => void;
   onPreviewUnion?: (regionId: number, divisionIds: number[], context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string }) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string }, wikidataId: string, regionName: string) => void;
   onViewMap?: (regionId: number, context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string; divisionIds: number[] }) => void;
   shadowInsertions?: ShadowInsertion[];
   onApproveShadow?: (insertion: ShadowInsertion) => void;
@@ -76,7 +77,7 @@ interface WorldViewImportTreeProps {
   onMatchChange?: () => void;
 }
 
-export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, onViewMap, shadowInsertions, onApproveShadow, onRejectShadow, onMatchChange }: WorldViewImportTreeProps) {
+export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, onPreviewTransfer, onViewMap, shadowInsertions, onApproveShadow, onRejectShadow, onMatchChange }: WorldViewImportTreeProps) {
   const [mapPickerState, setMapPickerState] = useState<MapPickerState | null>(null);
   const [removeDialogState, setRemoveDialogState] = useState<{
     regionId: number;
@@ -422,6 +423,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     onRejectRemaining={(regionId) => rejectRemainingMutation.mutate(regionId)}
                     onAcceptAll={(assignments) => { if (assignments[0]) setLastMutatedRegionId(assignments[0].regionId); acceptAllMutation.mutate(assignments); }}
                     onPreviewUnion={onPreviewUnion}
+                    onPreviewTransfer={onPreviewTransfer}
                     onAcceptSelected={(regionId, divisionIds) => {
                       setLastMutatedRegionId(regionId);
                       acceptSelectedMutation.mutate({ regionId, divisionIds });

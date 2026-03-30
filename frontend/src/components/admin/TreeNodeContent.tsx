@@ -48,7 +48,7 @@ function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }:
 }
 
 /** Render a suggestion with accept + reject + preview buttons */
-function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, onReject, onPreview, onAcceptTransfer, isMutating, checked, onToggle }: {
+function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, onReject, onPreview, onAcceptTransfer, onPreviewTransfer, isMutating, checked, onToggle }: {
   suggestion: { divisionId: number; name: string; path: string; score: number; geoSimilarity?: number | null; conflict?: { type: 'direct' | 'split'; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string } };
   regionId: number;
   onAccept: (regionId: number, divisionId: number) => void;
@@ -56,6 +56,7 @@ function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, 
   onReject: (regionId: number, divisionId: number) => void;
   onPreview: (divisionId: number, name: string, path?: string) => void;
   onAcceptTransfer?: (regionId: number, divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string }) => void;
   isMutating: boolean;
   checked?: boolean;
   onToggle?: (divisionId: number) => void;
@@ -102,7 +103,13 @@ function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, 
         <Typography variant="caption" color="text.disabled" sx={{ flexShrink: 0 }}>—</Typography>
       )}
       <Tooltip title="Preview on map">
-        <IconButton size="small" onClick={() => onPreview(suggestion.divisionId, suggestion.name, suggestion.path)} sx={{ p: 0.25 }}>
+        <IconButton size="small" onClick={() => {
+          if (suggestion.conflict && onPreviewTransfer) {
+            onPreviewTransfer(suggestion.divisionId, suggestion.name, suggestion.path, suggestion.conflict);
+          } else {
+            onPreview(suggestion.divisionId, suggestion.name, suggestion.path);
+          }
+        }} sx={{ p: 0.25 }}>
           <MapIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
@@ -184,6 +191,7 @@ interface TreeNodeContentProps {
   onAcceptAll: (assignments: Array<{ regionId: number; divisionId: number }>) => void;
   handlePreviewAssigned: (divisionId: number, name: string, path?: string) => void;
   handlePreviewSuggestion: (divisionId: number, name: string, path?: string) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string }) => void;
   onApproveShadow?: (insertion: ShadowInsertion) => void;
   onRejectShadow?: (insertion: ShadowInsertion) => void;
   onPreviewUnion?: (regionId: number, divisionIds: number[]) => void;
@@ -219,6 +227,7 @@ export function TreeNodeContent({
   onAcceptAll,
   handlePreviewAssigned,
   handlePreviewSuggestion,
+  onPreviewTransfer,
   onApproveShadow,
   onRejectShadow,
   onPreviewUnion,
@@ -376,6 +385,7 @@ export function TreeNodeContent({
               onAcceptAndRejectRest={onAcceptAndRejectRest}
               onReject={onReject}
               onPreview={handlePreviewSuggestion}
+              onPreviewTransfer={onPreviewTransfer}
               isMutating={isMutating}
               checked={selectedDivIds.has(suggestion.divisionId)}
               onToggle={showCheckboxes ? toggleSelection : undefined}

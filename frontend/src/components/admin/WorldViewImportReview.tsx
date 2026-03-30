@@ -42,6 +42,7 @@ import {
   rejectSuggestion,
   rejectRemaining,
   getUnionGeometry,
+  getTransferPreview,
   splitDivisionsDeeper,
   visionMatchDivisions,
 } from '../../api/adminWorldViewImport';
@@ -102,6 +103,24 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     try {
       const result = await getUnionGeometry(worldViewId, divisionIds, regionId);
       setPreviewGeometry(result.geometry);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [worldViewId]);
+
+  const handlePreviewTransfer = useCallback(async (
+    divisionId: number, name: string, path: string | undefined,
+    conflict: { donorDivisionId: number; donorDivisionName: string },
+    wikidataId: string, regionName: string,
+  ) => {
+    setPreviewDivision({ name: `Transfer: ${name}`, path, regionMapUrl: undefined, wikidataId, regionId: undefined, regionName });
+    setPreviewGeometry(null);
+    setPreviewLoading(true);
+    try {
+      const fc = await getTransferPreview(worldViewId, conflict.donorDivisionId, [divisionId], wikidataId);
+      setPreviewGeometry(fc);
+    } catch {
+      setPreviewGeometry(null);
     } finally {
       setPreviewLoading(false);
     }
@@ -548,6 +567,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         worldViewId={worldViewId}
         onPreview={handlePreviewDivision}
         onPreviewUnion={handlePreviewUnion}
+        onPreviewTransfer={handlePreviewTransfer}
         onViewMap={handleViewMap}
         shadowInsertions={shadowInsertions}
         onApproveShadow={(insertion) => approveShadowMutation.mutate(insertion)}
