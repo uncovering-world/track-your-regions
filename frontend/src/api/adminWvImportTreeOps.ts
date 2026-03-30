@@ -285,7 +285,7 @@ export async function autoResolveChildren(
 // =============================================================================
 
 export interface ReviewChildAction {
-  type: 'add' | 'remove' | 'rename';
+  type: 'add' | 'remove' | 'rename' | 'enrich';
   name: string;
   newName?: string;
   reason: string;

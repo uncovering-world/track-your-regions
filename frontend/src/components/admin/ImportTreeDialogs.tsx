@@ -527,6 +527,7 @@ export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, is
   const addActions = state.result.actions.filter(a => a.type === 'add');
   const removeActions = state.result.actions.filter(a => a.type === 'remove');
   const renameActions = state.result.actions.filter(a => a.type === 'rename');
+  const enrichActions = state.result.actions.filter(a => a.type === 'enrich');
 
   const renderEnrichment = (action: ReviewChildAction) => {
     if (action.type === 'remove' || !action.verified) return null;
@@ -610,6 +611,7 @@ export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, is
         {renderSection('Add', addActions, 'success.main')}
         {renderSection('Remove', removeActions, 'error.main')}
         {renderSection('Rename', renameActions, 'warning.main')}
+        {renderSection('Enrich', enrichActions, 'info.main')}
         {state.result.stats && (
           <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
             {(state.result.stats.inputTokens + state.result.stats.outputTokens).toLocaleString()} tokens

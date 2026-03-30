@@ -436,10 +436,23 @@ Rules:
       reason: a.reason ?? '',
     }));
 
-    // If no add/rename actions, skip enrichment
-    const enrichableActions = actions.filter(a => a.type === 'add' || a.type === 'rename');
+    // Find existing children missing metadata — candidates for enrichment
+    const renamedNames = new Set(actions.filter(a => a.type === 'rename').map(a => a.name.toLowerCase()));
+    const removedNames = new Set(actions.filter(a => a.type === 'remove').map(a => a.name.toLowerCase()));
+    const childrenNeedingEnrichment = existingChildren.filter(c =>
+      (!c.sourceUrl || !c.sourceExternalId) &&
+      !renamedNames.has(c.name.toLowerCase()) &&
+      !removedNames.has(c.name.toLowerCase()),
+    );
 
-    if (enrichableActions.length === 0) {
+    // Combine enrichable audit actions + existing children needing metadata
+    const enrichableActions = actions.filter(a => a.type === 'add' || a.type === 'rename');
+    const allEnrichTargets = [
+      ...enrichableActions.map(a => a.type === 'rename' ? (a.newName ?? a.name) : a.name),
+      ...childrenNeedingEnrichment.map(c => c.name),
+    ];
+
+    if (allEnrichTargets.length === 0) {
       const auditCost = calculateCost(auditTokensIn, auditTokensOut, model);
       logAIUsage({
         feature: 'review_children',
@@ -457,9 +470,7 @@ Rules:
     }
 
     // 5. AI Call 2 — Enrichment
-    const enrichTargets = enrichableActions.map(a =>
-      a.type === 'rename' ? (a.newName ?? a.name) : a.name
-    );
+    const enrichTargets = allEnrichTargets;
 
     const enrichPrompt = `You are a Wikivoyage and Wikidata expert. Given a list of region names and the raw wikitext they were extracted from, provide the exact Wikivoyage page title and Wikidata QID for each.
 
@@ -589,8 +600,37 @@ Rules:
       };
     });
 
+    // Build enrich actions for existing children missing metadata
+    const enrichActions = childrenNeedingEnrichment.map((child) => {
+      const enrichment = enrichMap.get(child.name.toLowerCase());
+      if (!enrichment?.wikivoyageTitle) {
+        return null;
+      }
+      const verification = verifiedPages.get(enrichment.wikivoyageTitle.toLowerCase());
+      if (!verification?.exists) {
+        return null;
+      }
+      const encodedTitle = encodeURIComponent(enrichment.wikivoyageTitle.replace(/ /g, '_'));
+      const newSourceUrl = `https://en.wikivoyage.org/wiki/${encodedTitle}`;
+      const newExternalId = verification.wikidataQID ?? enrichment.wikidataQID ?? null;
+      // Only suggest enrichment if we actually have new data
+      if (child.sourceUrl && child.sourceExternalId) return null;
+      const parts: string[] = [];
+      if (!child.sourceUrl && newSourceUrl) parts.push('Wikivoyage URL');
+      if (!child.sourceExternalId && newExternalId) parts.push('Wikidata QID');
+      if (parts.length === 0) return null;
+      return {
+        type: 'enrich' as const,
+        name: child.name,
+        reason: `add missing ${parts.join(' and ')}`,
+        sourceUrl: newSourceUrl,
+        sourceExternalId: newExternalId,
+        verified: true,
+      };
+    }).filter((a): a is NonNullable<typeof a> => a != null);
+
     res.json({
-      actions: enrichedActions,
+      actions: [...enrichedActions, ...enrichActions],
       analysis: auditResult.analysis ?? '',
       stats: { inputTokens: totalTokensIn, outputTokens: totalTokensOut, cost: totalCost.totalCost },
     });

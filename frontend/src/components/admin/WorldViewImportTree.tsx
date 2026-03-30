@@ -685,6 +685,17 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                   sourceExternalId: action.sourceExternalId ?? undefined,
                 });
               }
+            } else if (action.type === 'enrich') {
+              // Update metadata without changing the name
+              const childId = tree ? findChildIdByName(tree, regionId, action.name) : undefined;
+              if (childId) {
+                renameMutation.mutate({
+                  regionId: childId,
+                  name: action.name,
+                  sourceUrl: action.sourceUrl ?? undefined,
+                  sourceExternalId: action.sourceExternalId ?? undefined,
+                });
+              }
             }
           }
 
