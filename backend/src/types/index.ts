@@ -503,6 +503,14 @@ export const wvImportGeoshapeMatchSchema = z.object({
   scopeAncestorId: z.coerce.number().int().positive().optional(),
 });
 
+export const wvImportAcceptTransferSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(100),
+  donorRegionId: z.coerce.number().int().positive(),
+  donorDivisionId: z.coerce.number().int().positive(),
+  transferType: z.enum(['direct', 'split']),
+});
+
 export const wvImportMarkManualFixSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   needsManualFix: z.boolean(),

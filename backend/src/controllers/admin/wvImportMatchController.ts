@@ -14,6 +14,7 @@ import {
   generateDivisionsSvg,
   fetchMarkersForDivisions,
 } from './wvImportMatchHelpers.js';
+import { invalidateRegionGeometry } from '../worldView/helpers.js';
 
 // Re-export review API for adminRoutes (keeps existing import path working)
 export {
@@ -955,6 +956,114 @@ export async function visionMatchDivisions(req: AuthenticatedRequest, res: Respo
       divisionsMap: pngBase64,
     },
   });
+}
+
+/**
+ * Accept divisions with transfer from a donor region.
+ * For 'split': removes donor division, re-adds its GADM children minus transferred ones.
+ * For 'direct': removes transferred divisions from donor.
+ * Both: assigns transferred divisions to target region.
+ *
+ * POST /api/admin/wv-import/matches/:worldViewId/accept-with-transfer
+ */
+export async function acceptWithTransfer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId, divisionIds, donorRegionId, donorDivisionId, transferType } = req.body as {
+    regionId: number; divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split';
+  };
+  console.log(`[WV Import] POST /matches/${worldViewId}/accept-with-transfer — target=${regionId} donor=${donorRegionId} type=${transferType} divisions=${divisionIds.join(',')}`);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify both regions belong to this world view
+    const regionCheck = await client.query(
+      'SELECT id FROM regions WHERE id = ANY($1) AND world_view_id = $2',
+      [[regionId, donorRegionId], worldViewId],
+    );
+    if (regionCheck.rows.length < 2) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Region or donor region not found in this world view' });
+      return;
+    }
+
+    const divisionIdSet = new Set(divisionIds);
+
+    if (transferType === 'split') {
+      // 1. Remove donor division from donor region
+      await client.query(
+        'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2',
+        [donorRegionId, donorDivisionId],
+      );
+
+      // 2. Get GADM children of the donor division
+      const childrenResult = await client.query(
+        'SELECT id FROM administrative_divisions WHERE parent_id = $1',
+        [donorDivisionId],
+      );
+
+      // 3. Add children NOT being transferred back to donor region
+      const keepIds = childrenResult.rows
+        .map(r => r.id as number)
+        .filter(id => !divisionIdSet.has(id));
+      if (keepIds.length > 0) {
+        await client.query(
+          `INSERT INTO region_members (region_id, division_id)
+           SELECT $1, unnest($2::int[])
+           ON CONFLICT DO NOTHING`,
+          [donorRegionId, keepIds],
+        );
+      }
+    } else {
+      // direct: just remove transferred divisions from donor
+      await client.query(
+        'DELETE FROM region_members WHERE region_id = $1 AND division_id = ANY($2)',
+        [donorRegionId, divisionIds],
+      );
+    }
+
+    // 4. Add transferred divisions to target region
+    await client.query(
+      `INSERT INTO region_members (region_id, division_id)
+       SELECT $1, unnest($2::int[])
+       ON CONFLICT DO NOTHING`,
+      [regionId, divisionIds],
+    );
+
+    // 5. Remove accepted suggestions
+    await client.query(
+      'DELETE FROM region_match_suggestions WHERE region_id = $1 AND division_id = ANY($2) AND rejected = false',
+      [regionId, divisionIds],
+    );
+
+    // 6. Update match status for target region
+    const remainingResult = await client.query(
+      'SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = false',
+      [regionId],
+    );
+    const remainingCount = parseInt(remainingResult.rows[0].count as string);
+    const targetStatus = remainingCount > 0 ? 'needs_review' : 'manual_matched';
+    await client.query(
+      'UPDATE region_import_state SET match_status = $1 WHERE region_id = $2',
+      [targetStatus, regionId],
+    );
+
+    await client.query('COMMIT');
+
+    // Post-commit: invalidate geometry for both regions
+    await Promise.all([
+      invalidateRegionGeometry(regionId),
+      invalidateRegionGeometry(donorRegionId),
+    ]);
+
+    res.json({ transferred: divisionIds.length, transferType });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // Re-export CV pipeline from dedicated module (keeps existing import path working)
