@@ -895,10 +895,11 @@ export async function geoshapeMatchRegion(
       score,
     });
 
+    const conflict = conflictMap.get(c.id);
     await pool.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, geo_similarity)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [regionId, c.id, c.name, c.path, score, geoSimilarity],
+      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, geo_similarity, conflict_type, donor_region_id, donor_division_id, donor_region_name, donor_division_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [regionId, c.id, c.name, c.path, score, geoSimilarity, conflict?.type ?? null, conflict?.donorRegionId ?? null, conflict?.donorDivisionId ?? null, conflict?.donorRegionName ?? null, conflict?.donorDivisionName ?? null],
     );
   }
 

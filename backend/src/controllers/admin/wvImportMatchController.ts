@@ -468,7 +468,11 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
         WHERE wg.wikidata_id = ris.source_external_id
       )) AS geo_available,
       (SELECT COALESCE(json_agg(json_build_object(
-        'divisionId', rms.division_id, 'name', rms.name, 'path', rms.path, 'score', rms.score, 'geoSimilarity', rms.geo_similarity
+        'divisionId', rms.division_id, 'name', rms.name, 'path', rms.path, 'score', rms.score, 'geoSimilarity', rms.geo_similarity,
+        'conflict', CASE WHEN rms.conflict_type IS NOT NULL THEN json_build_object(
+          'type', rms.conflict_type, 'donorRegionId', rms.donor_region_id, 'donorRegionName', rms.donor_region_name,
+          'donorDivisionId', rms.donor_division_id, 'donorDivisionName', rms.donor_division_name
+        ) ELSE NULL END
       ) ORDER BY rms.score DESC), '[]'::json)
       FROM region_match_suggestions rms WHERE rms.region_id = r.id AND rms.rejected = false) AS suggestions,
       (SELECT COALESCE(json_agg(rmi.image_url), '[]'::json)
@@ -505,7 +509,7 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
     name: string;
     isLeaf: boolean;
     matchStatus: string | null;
-    suggestions: Array<{ divisionId: number; name: string; path: string; score: number; geoSimilarity: number | null }>;
+    suggestions: Array<{ divisionId: number; name: string; path: string; score: number; geoSimilarity: number | null; conflict?: { type: string; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string } | null }>;
     sourceUrl: string | null;
     regionMapUrl: string | null;
     mapImageCandidates: string[];
