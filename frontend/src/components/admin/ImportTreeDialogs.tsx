@@ -11,7 +11,10 @@ import {
   Autocomplete,
   Checkbox,
   CircularProgress,
+  Link as MuiLink,
 } from '@mui/material';
+import LinkIcon from '@mui/icons-material/Link';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';
 import { type searchDivisions } from '../../api/divisions';
@@ -25,7 +28,7 @@ import type {
 } from './useImportTreeDialogs';
 import { GapDivisionTree, GapContextMap } from './GapAnalysis';
 import { mergeGeometries, mergeGeomsIntoSibling } from './CvMatchMap';
-import { type MatchTreeNode, getChildrenRegionGeometry } from '../../api/adminWorldViewImport';
+import { type MatchTreeNode, type ReviewChildAction, getChildrenRegionGeometry } from '../../api/adminWorldViewImport';
 
 export const COVERAGE_MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -511,48 +514,103 @@ export function AddChildDialog({ parentRegionId, name, onNameChange, onClose, on
   );
 }
 
-/** Dialog showing AI-suggested child regions with checkboxes */
+/** Dialog showing AI-reviewed children actions grouped by type */
 export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, isPending }: {
   state: SuggestChildrenState | null;
   onClose: () => void;
-  onToggle: (name: string) => void;
+  onToggle: (key: string) => void;
   onSubmit: () => void;
   isPending: boolean;
 }) {
+  if (!state) return null;
+
+  const addActions = state.result.actions.filter(a => a.type === 'add');
+  const removeActions = state.result.actions.filter(a => a.type === 'remove');
+  const renameActions = state.result.actions.filter(a => a.type === 'rename');
+
+  const renderEnrichment = (action: ReviewChildAction) => {
+    if (action.type === 'remove' || !action.verified) return null;
+    return (
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        {action.sourceUrl && (
+          <Typography variant="caption" color="text.secondary">
+            <LinkIcon sx={{ fontSize: 12, mr: 0.25, verticalAlign: 'middle' }} />
+            <MuiLink href={action.sourceUrl} target="_blank" rel="noopener" sx={{ fontSize: 'inherit' }}>
+              {decodeURIComponent(action.sourceUrl.split('/wiki/')[1] ?? '')}
+            </MuiLink>
+          </Typography>
+        )}
+        {action.sourceExternalId && (
+          <Typography variant="caption" color="text.secondary">
+            <MuiLink
+              href={`https://www.wikidata.org/wiki/${action.sourceExternalId}`}
+              target="_blank"
+              rel="noopener"
+              sx={{ fontSize: 'inherit' }}
+            >
+              {action.sourceExternalId}
+            </MuiLink>
+          </Typography>
+        )}
+      </Box>
+    );
+  };
+
+  const renderSection = (
+    title: string,
+    actions: ReviewChildAction[],
+    color: string,
+  ) => {
+    if (actions.length === 0) return null;
+    return (
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="subtitle2" color={color} sx={{ mb: 0.5 }}>
+          {title} ({actions.length})
+        </Typography>
+        {actions.map((a) => {
+          const key = `${a.type}:${a.name}`;
+          return (
+            <Box key={key} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, py: 0.5 }}>
+              <Checkbox
+                size="small"
+                checked={state.selected.has(key)}
+                onChange={() => onToggle(key)}
+                sx={{ p: 0.25, mt: 0.25 }}
+              />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2">
+                  {a.type === 'rename' ? (
+                    <>{a.name} <ArrowForwardIcon sx={{ fontSize: 14, verticalAlign: 'middle', mx: 0.5 }} /> {a.newName}</>
+                  ) : (
+                    a.name
+                  )}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">{a.reason}</Typography>
+                {renderEnrichment(a)}
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  };
+
   return (
-    <Dialog
-      open={state != null}
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-    >
-      <DialogTitle>Suggested Children for &quot;{state?.regionName}&quot;</DialogTitle>
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Review Children for &quot;{state.regionName}&quot;</DialogTitle>
       <DialogContent>
-        {state?.result.analysis && (
+        {state.result.analysis && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             {state.result.analysis}
           </Typography>
         )}
-        {state?.result.suggestions.length === 0 && (
-          <Typography variant="body2">No missing children found.</Typography>
+        {state.result.actions.length === 0 && (
+          <Typography variant="body2">All children look correct — no changes suggested.</Typography>
         )}
-        {state?.result.suggestions.map((s) => (
-          <Box key={s.name} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
-            <Checkbox
-              size="small"
-              checked={state.selected.has(s.name)}
-              onChange={() => onToggle(s.name)}
-              sx={{ p: 0.25 }}
-            />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="body2">
-                {s.name}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">{s.reason}</Typography>
-            </Box>
-          </Box>
-        ))}
-        {state?.result.stats && (
+        {renderSection('Add', addActions, 'success.main')}
+        {renderSection('Remove', removeActions, 'error.main')}
+        {renderSection('Rename', renameActions, 'warning.main')}
+        {state.result.stats && (
           <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
             {(state.result.stats.inputTokens + state.result.stats.outputTokens).toLocaleString()} tokens
             {' \u00b7 '}${state.result.stats.cost.toFixed(4)}
@@ -563,10 +621,10 @@ export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, is
         <Button onClick={onClose}>Cancel</Button>
         <Button
           variant="contained"
-          disabled={!state?.selected.size || isPending}
+          disabled={!state.selected.size || isPending}
           onClick={onSubmit}
         >
-          Create {state?.selected.size ?? 0} Selected
+          Apply {state.selected.size} Selected
         </Button>
       </DialogActions>
     </Dialog>
