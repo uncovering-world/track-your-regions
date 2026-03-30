@@ -34,7 +34,7 @@ export interface TreeNodeRowProps {
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
-  onGeoshapeMatch: (regionId: number) => void;
+  onGeoshapeMatch: (regionId: number, scopeAncestorId?: number) => void;
   onPointMatch: (regionId: number) => void;
   onResetMatch: (regionId: number) => void;
   onRejectRemaining: (regionId: number) => void;
@@ -58,7 +58,7 @@ export interface TreeNodeRowProps {
   /** Nearest ancestor's region map URL — fallback for preview when node has no own image/geoshape */
   parentRegionMapUrl?: string;
   parentRegionMapName?: string;
-  geocodeProgress: { regionId: number; message: string } | null;
+  geocodeProgress: { regionId: number; message: string; nextScope?: { ancestorId: number; ancestorName: string } } | null;
   duplicateUrls: Set<string>;
   syncedUrls: Set<string>;
   shadowsByRegionId: Map<number, ShadowInsertion[]>;
@@ -180,9 +180,9 @@ function arePropsEqual(prev: TreeNodeRowProps, next: TreeNodeRowProps): boolean 
   if (prev.coverageDirtyIds?.has(id) !== next.coverageDirtyIds?.has(id)) return false;
 
   // Geocode progress for this node
-  const prevGeo = prev.geocodeProgress?.regionId === id ? prev.geocodeProgress.message : null;
-  const nextGeo = next.geocodeProgress?.regionId === id ? next.geocodeProgress.message : null;
-  if (prevGeo !== nextGeo) return false;
+  const prevGeo = prev.geocodeProgress?.regionId === id ? prev.geocodeProgress : null;
+  const nextGeo = next.geocodeProgress?.regionId === id ? next.geocodeProgress : null;
+  if (prevGeo?.message !== nextGeo?.message || prevGeo?.nextScope?.ancestorId !== nextGeo?.nextScope?.ancestorId) return false;
 
   // Duplicate/synced URL status for this node
   const url = prev.node.sourceUrl;
@@ -208,7 +208,7 @@ export const TreeNodeRow = memo(function TreeNodeRow({ node, depth, expanded, on
   const hasDuplicate = !!(node.sourceUrl && duplicateUrls.has(node.sourceUrl));
 
   // Geocode progress for this specific node
-  const nodeGeocodeMsg = geocodeProgress?.regionId === node.id ? geocodeProgress.message : null;
+  const nodeGeocode = geocodeProgress?.regionId === node.id ? geocodeProgress : null;
 
   // Intercept preview: if unreviewed candidates and no map URL, open picker first
   const shouldInterceptPreview = node.mapImageCandidates.length > 1 && !node.mapImageReviewed && !node.regionMapUrl;
@@ -393,7 +393,8 @@ export const TreeNodeRow = memo(function TreeNodeRow({ node, depth, expanded, on
           geocodeMatchingRegionId={geocodeMatchingRegionId}
           geoshapeMatchingRegionId={geoshapeMatchingRegionId}
           pointMatchingRegionId={pointMatchingRegionId}
-          nodeGeocodeMsg={nodeGeocodeMsg}
+          nodeGeocodeMsg={nodeGeocode?.message ?? null}
+          nodeGeocodeNextScope={nodeGeocode?.nextScope}
           onDBSearch={onDBSearch}
           onAIMatch={onAIMatch}
           onDismissChildren={onDismissChildren}

@@ -415,7 +415,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     onSync={(regionId) => syncMutation.mutate(regionId)}
                     onHandleAsGrouping={(regionId) => { setLastMutatedRegionId(regionId); groupingMutation.mutate(regionId); }}
                     onGeocodeMatch={(regionId) => geocodeMatchMutation.mutate(regionId)}
-                    onGeoshapeMatch={(regionId) => geoshapeMatchMutation.mutate(regionId)}
+                    onGeoshapeMatch={(regionId, scopeAncestorId) => geoshapeMatchMutation.mutate({ regionId, scopeAncestorId })}
                     onPointMatch={(regionId) => pointMatchMutation.mutate(regionId)}
                     onResetMatch={(regionId) => resetMatchMutation.mutate(regionId)}
                     onRejectRemaining={(regionId) => rejectRemainingMutation.mutate(regionId)}
@@ -508,7 +508,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     syncingRegionId={syncMutation.isPending ? (syncMutation.variables ?? null) : null}
                     groupingRegionId={groupingMutation.isPending ? (groupingMutation.variables ?? null) : null}
                     geocodeMatchingRegionId={geocodeMatchMutation.isPending ? (geocodeMatchMutation.variables ?? null) : null}
-                    geoshapeMatchingRegionId={geoshapeMatchMutation.isPending ? (geoshapeMatchMutation.variables ?? null) : null}
+                    geoshapeMatchingRegionId={geoshapeMatchMutation.isPending ? (geoshapeMatchMutation.variables?.regionId ?? null) : null}
                     pointMatchingRegionId={pointMatchMutation.isPending ? (pointMatchMutation.variables ?? null) : null}
                     parentRegionMapUrl={parentRegionMapUrlById.get(item.node.id)}
                     parentRegionMapName={parentRegionMapNameById.get(item.node.id)}

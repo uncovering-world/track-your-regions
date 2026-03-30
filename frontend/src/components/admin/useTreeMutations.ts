@@ -75,7 +75,11 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   const queryClient = useQueryClient();
 
   // ── Mutation-owned state ─────────────────────────────────────────────────
-  const [geocodeProgress, setGeocodeProgress] = useState<{ regionId: number; message: string } | null>(null);
+  const [geocodeProgress, setGeocodeProgress] = useState<{
+    regionId: number;
+    message: string;
+    nextScope?: { ancestorId: number; ancestorName: string };
+  } | null>(null);
   const [undoSnackbar, setUndoSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -330,22 +334,36 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   });
 
   const geoshapeMatchMutation = useMutation({
-    mutationFn: (regionId: number) => geoshapeMatchRegion(worldViewId, regionId),
-    onMutate: (regionId) => {
+    mutationFn: ({ regionId, scopeAncestorId }: { regionId: number; scopeAncestorId?: number }) =>
+      geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId),
+    onMutate: ({ regionId }) => {
       setGeocodeProgress({ regionId, message: 'Matching by geoshape...' });
     },
-    onSuccess: (data, regionId) => {
+    onSuccess: (data, { regionId }) => {
       const coverageMsg = data.totalCoverage != null
         ? ` (${Math.round(data.totalCoverage * 100)}% coverage)`
         : '';
-      setGeocodeProgress({
-        regionId,
-        message: data.found > 0
-          ? `Covering set: ${data.found} division(s)${coverageMsg}`
-          : 'No geoshape matches found',
-      });
+      if (data.found > 0) {
+        setGeocodeProgress({
+          regionId,
+          message: `Covering set: ${data.found} division(s)${coverageMsg}`,
+        });
+        setTimeout(() => setGeocodeProgress(null), 4000);
+      } else if (data.nextScope) {
+        setGeocodeProgress({
+          regionId,
+          message: `No matches in ${data.scopeAncestorName ?? 'current'} scope`,
+          nextScope: data.nextScope,
+        });
+        // Do NOT auto-dismiss — user needs to decide
+      } else {
+        setGeocodeProgress({
+          regionId,
+          message: 'No geoshape matches found',
+        });
+        setTimeout(() => setGeocodeProgress(null), 4000);
+      }
       invalidateTree(regionId);
-      setTimeout(() => setGeocodeProgress(null), 4000);
     },
     onError: () => {
       setGeocodeProgress(null);
