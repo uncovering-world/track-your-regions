@@ -18,7 +18,12 @@ export async function renameRegion(
   res: Response,
 ): Promise<void> {
   const worldViewId = Number(req.params.worldViewId);
-  const { regionId, name } = req.body as { regionId: number; name: string };
+  const { regionId, name, sourceUrl, sourceExternalId } = req.body as {
+    regionId: number;
+    name: string;
+    sourceUrl?: string;
+    sourceExternalId?: string;
+  };
 
   // Verify region belongs to this world view
   const check = await pool.query(
@@ -35,6 +40,28 @@ export async function renameRegion(
     'UPDATE regions SET name = $1 WHERE id = $2',
     [name.trim(), regionId],
   );
+
+  // Update enrichment in region_import_state if provided
+  if (sourceUrl !== undefined || sourceExternalId !== undefined) {
+    const setClauses: string[] = [];
+    const values: (string | number)[] = [];
+    let paramIdx = 1;
+
+    if (sourceUrl !== undefined) {
+      setClauses.push(`source_url = $${paramIdx++}`);
+      values.push(sourceUrl);
+    }
+    if (sourceExternalId !== undefined) {
+      setClauses.push(`source_external_id = $${paramIdx++}`);
+      values.push(sourceExternalId);
+    }
+    values.push(regionId);
+
+    await pool.query(
+      `UPDATE region_import_state SET ${setClauses.join(', ')} WHERE region_id = $${paramIdx}`,
+      values,
+    );
+  }
 
   res.json({ renamed: true, regionId, oldName, newName: name.trim() });
 }
