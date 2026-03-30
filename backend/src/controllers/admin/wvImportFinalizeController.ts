@@ -102,7 +102,12 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
  */
 export async function addChildRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
-  const { parentRegionId, name } = req.body as { parentRegionId: number; name: string };
+  const { parentRegionId, name, sourceUrl, sourceExternalId } = req.body as {
+    parentRegionId: number;
+    name: string;
+    sourceUrl?: string;
+    sourceExternalId?: string;
+  };
   console.log(`[WV Import] POST /matches/${worldViewId}/add-child-region — parent=${parentRegionId}, name="${name}"`);
 
   // Verify parent belongs to world view
@@ -132,9 +137,9 @@ export async function addChildRegion(req: AuthenticatedRequest, res: Response): 
 
   // Create region_import_state
   await pool.query(
-    `INSERT INTO region_import_state (region_id, import_run_id, match_status)
-     VALUES ($1, $2, 'no_candidates')`,
-    [regionId, importRunId],
+    `INSERT INTO region_import_state (region_id, import_run_id, match_status, source_url, source_external_id)
+     VALUES ($1, $2, 'no_candidates', $3, $4)`,
+    [regionId, importRunId, sourceUrl ?? null, sourceExternalId ?? null],
   );
 
   res.json({ created: true, regionId });

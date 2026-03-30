@@ -520,6 +520,8 @@ export const divisionIdBodySchema = z.object({
 export const wvImportAddChildSchema = z.object({
   parentRegionId: z.coerce.number().int().positive(),
   name: z.string().min(1).max(500),
+  sourceUrl: z.string().url().max(2000).optional(),
+  sourceExternalId: z.string().max(100).optional(),
 });
 
 export const wvImportRemoveRegionSchema = z.object({
@@ -531,6 +533,8 @@ export const wvImportRemoveRegionSchema = z.object({
 export const wvImportRenameRegionSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   name: z.string().min(1).max(500),
+  sourceUrl: z.string().url().max(2000).optional(),
+  sourceExternalId: z.string().max(100).optional(),
 });
 
 export const wvImportReparentRegionSchema = z.object({
