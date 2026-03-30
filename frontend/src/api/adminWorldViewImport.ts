@@ -358,6 +358,7 @@ export {
   aiSuggestChildren,
   aiSuggestClusterRegions,
   simplifyHierarchy,
+  simplifyChildren,
   detectSmartSimplify,
   applySmartSimplifyMove,
 } from './adminWvImportTreeOps';
@@ -366,8 +367,10 @@ export type {
   AutoResolvePreviewMatch,
   AutoResolvePreviewResult,
   AutoResolveResult,
+  ReviewChildAction,
   AISuggestChildrenResult,
   SimplifyHierarchyResult,
+  SimplifyChildrenResult,
   SmartSimplifyDivision,
   SmartSimplifyMove,
   SmartSimplifyResult,

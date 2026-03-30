@@ -277,11 +277,21 @@ export async function autoResolveChildren(
 }
 
 // =============================================================================
-// AI Suggest Children
+// AI Review Children
 // =============================================================================
 
+export interface ReviewChildAction {
+  type: 'add' | 'remove' | 'rename';
+  name: string;
+  newName?: string;
+  reason: string;
+  sourceUrl?: string | null;
+  sourceExternalId?: string | null;
+  verified: boolean;
+}
+
 export interface AISuggestChildrenResult {
-  suggestions: Array<{ name: string; reason: string }>;
+  actions: ReviewChildAction[];
   analysis: string;
   stats: { inputTokens: number; outputTokens: number; cost: number } | null;
 }
@@ -328,6 +338,25 @@ export async function simplifyHierarchy(
   return authFetchJson(
     `${API_URL}/api/admin/wv-import/matches/${worldViewId}/simplify-hierarchy`,
     { method: 'POST', body: JSON.stringify({ regionId }) },
+  );
+}
+
+// =============================================================================
+// Simplify Children
+// =============================================================================
+
+export interface SimplifyChildrenResult {
+  results: Array<{ regionId: number; regionName: string; replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }>; totalReduced: number }>;
+  totalSimplified: number;
+}
+
+export async function simplifyChildren(
+  worldViewId: number,
+  parentRegionId: number,
+): Promise<SimplifyChildrenResult> {
+  return authFetchJson(
+    `${API_URL}/api/admin/wv-import/matches/${worldViewId}/simplify-children`,
+    { method: 'POST', body: JSON.stringify({ regionId: parentRegionId }) },
   );
 }
 
