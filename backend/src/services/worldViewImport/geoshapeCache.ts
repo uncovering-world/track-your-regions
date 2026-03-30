@@ -703,6 +703,7 @@ export async function geoshapeMatchRegion(
   console.log(`[Geoshape Match] Found ${candidateResult.rows.length} spatial candidates for region ${regionId} (${wikidataId})`);
 
   // 5. Load already-rejected, already-suggested, and already-assigned division IDs
+  // For assigned: also include all GADM descendants (children of assigned divisions are already covered)
   const [rejectedResult, existingResult, assignedResult] = await Promise.all([
     pool.query(
       `SELECT division_id FROM region_match_suggestions WHERE region_id = $1 AND rejected = true`,
@@ -713,7 +714,12 @@ export async function geoshapeMatchRegion(
       [regionId],
     ),
     pool.query(
-      `SELECT division_id FROM region_members WHERE region_id = $1`,
+      `WITH RECURSIVE assigned_tree AS (
+        SELECT division_id AS id FROM region_members WHERE region_id = $1
+        UNION ALL
+        SELECT ad.id FROM administrative_divisions ad JOIN assigned_tree at ON ad.parent_id = at.id
+      )
+      SELECT id AS division_id FROM assigned_tree`,
       [regionId],
     ),
   ]);
