@@ -147,7 +147,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
 
   const {
     acceptMutation, rejectMutation, rejectRemainingMutation, acceptAndRejectRestMutation,
-    acceptAllMutation, acceptSelectedMutation, acceptSelectedRejectRestMutation, rejectSelectedMutation,
+    acceptAllMutation, acceptSelectedMutation, acceptSelectedRejectRestMutation, rejectSelectedMutation, onAcceptTransfer,
     dbSearchOneMutation, aiMatchOneMutation, geocodeMatchMutation, geoshapeMatchMutation, pointMatchMutation,
     resetMatchMutation, clearMembersMutation, dismissMutation, pruneMutation, syncMutation, groupingMutation, mergeMutation,
     smartFlattenMutation, removeMutation, collapseToParentMutation, autoResolveMutation, simplifyHierarchyMutation, simplifyChildrenMutation, undoMutation,
@@ -407,6 +407,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
                     highlightedRegionId={nav.highlightedRegionId}
                     onToggle={nav.toggleExpand}
                     onAccept={(regionId, divisionId) => { setLastMutatedRegionId(regionId); acceptMutation.mutate({ regionId, divisionId }); }}
+                    onAcceptTransfer={onAcceptTransfer}
                     onAcceptAndRejectRest={(regionId, divisionId) => { setLastMutatedRegionId(regionId); acceptAndRejectRestMutation.mutate({ regionId, divisionId }); }}
                     onReject={(regionId, divisionId) => rejectMutation.mutate({ regionId, divisionId })}
                     onDBSearch={(regionId) => dbSearchOneMutation.mutate(regionId)}

@@ -27,6 +27,7 @@ import {
   rejectRemaining,
   acceptAndRejectRest as acceptAndRejectRestApi,
   acceptBatchAndRejectRest,
+  acceptWithTransfer,
   rejectBatchSuggestions,
   selectMapImage,
   markManualFix,
@@ -292,6 +293,16 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     mutationFn: ({ regionId, divisionIds }: { regionId: number; divisionIds: number[] }) =>
       rejectBatchSuggestions(worldViewId, regionId, divisionIds),
     onSuccess: (_data, { regionId }) => invalidateTree(regionId),
+  });
+
+  const acceptTransferMutation = useMutation({
+    mutationFn: ({ regionId, divisionIds, donorRegionId, donorDivisionId, transferType }: {
+      regionId: number; divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split';
+    }) => acceptWithTransfer(worldViewId, regionId, divisionIds, donorRegionId, donorDivisionId, transferType),
+    onSuccess: (_data, { regionId }) => {
+      invalidateTree(regionId);
+      deps.onMatchChange?.();
+    },
   });
 
   // ── Search mutations ─────────────────────────────────────────────────────
@@ -644,7 +655,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     acceptMutation.isPending || rejectMutation.isPending || acceptAndRejectRestMutation.isPending ||
     dismissMutation.isPending || pruneMutation.isPending || syncMutation.isPending || groupingMutation.isPending ||
     geocodeMatchMutation.isPending || geoshapeMatchMutation.isPending || pointMatchMutation.isPending || resetMatchMutation.isPending || clearMembersMutation.isPending || rejectRemainingMutation.isPending ||
-    acceptAllMutation.isPending || acceptSelectedMutation.isPending || acceptSelectedRejectRestMutation.isPending || rejectSelectedMutation.isPending ||
+    acceptAllMutation.isPending || acceptSelectedMutation.isPending || acceptSelectedRejectRestMutation.isPending || rejectSelectedMutation.isPending || acceptTransferMutation.isPending ||
     selectMapMutation.isPending || manualFixMutation.isPending ||
     mergeMutation.isPending || smartFlattenMutation.isPending || addChildMutation.isPending ||
     dismissWarningsMutation.isPending || removeMutation.isPending || collapseToParentMutation.isPending ||
@@ -663,6 +674,15 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     acceptSelectedMutation,
     acceptSelectedRejectRestMutation,
     rejectSelectedMutation,
+    acceptTransferMutation,
+    onAcceptTransfer: (regionId: number, divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) =>
+      acceptTransferMutation.mutate({
+        regionId,
+        divisionIds: [divisionId],
+        donorRegionId: conflict.donorRegionId,
+        donorDivisionId: conflict.donorDivisionId,
+        transferType: conflict.type,
+      }),
     dbSearchOneMutation,
     aiMatchOneMutation,
     geocodeMatchMutation,

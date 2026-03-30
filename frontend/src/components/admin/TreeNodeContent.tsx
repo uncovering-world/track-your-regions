@@ -28,7 +28,7 @@ function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }:
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
       <CheckIcon sx={{ fontSize: 14, color: 'success.main' }} />
-      <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
         {div.path || div.name}
       </Typography>
       <Tooltip title="Preview on map">
@@ -48,13 +48,14 @@ function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }:
 }
 
 /** Render a suggestion with accept + reject + preview buttons */
-function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, onReject, onPreview, isMutating, checked, onToggle }: {
-  suggestion: { divisionId: number; name: string; path: string; score: number; geoSimilarity?: number | null };
+function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, onReject, onPreview, onAcceptTransfer, isMutating, checked, onToggle }: {
+  suggestion: { divisionId: number; name: string; path: string; score: number; geoSimilarity?: number | null; conflict?: { type: 'direct' | 'split'; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string } };
   regionId: number;
   onAccept: (regionId: number, divisionId: number) => void;
   onAcceptAndRejectRest: (regionId: number, divisionId: number) => void;
   onReject: (regionId: number, divisionId: number) => void;
   onPreview: (divisionId: number, name: string, path?: string) => void;
+  onAcceptTransfer?: (regionId: number, divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) => void;
   isMutating: boolean;
   checked?: boolean;
   onToggle?: (divisionId: number) => void;
@@ -72,9 +73,27 @@ function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, 
           sx={{ p: 0, '& .MuiSvgIcon-root': { fontSize: 16 } }}
         />
       )}
-      <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
         {suggestion.path || suggestion.name}
       </Typography>
+      {suggestion.conflict && (
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'warning.main',
+            fontSize: '0.6rem',
+            whiteSpace: 'nowrap',
+            border: '1px solid',
+            borderColor: 'warning.main',
+            borderRadius: 0.5,
+            px: 0.5,
+            lineHeight: 1.4,
+          }}
+        >
+          from {suggestion.conflict.donorRegionName}
+          {suggestion.conflict.type === 'split' ? ` (split ${suggestion.conflict.donorDivisionName})` : ''}
+        </Typography>
+      )}
       {geo != null ? (
         <Typography variant="caption" sx={{ color: geoColor, fontWeight: geo >= 0.5 ? 600 : 400, flexShrink: 0 }}>
           {Math.round(geo * 100)}%
@@ -87,8 +106,14 @@ function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, 
           <MapIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
-      <Tooltip title="Accept">
-        <IconButton size="small" color="success" onClick={() => onAccept(regionId, suggestion.divisionId)} disabled={isMutating} sx={{ p: 0.25 }}>
+      <Tooltip title={suggestion.conflict ? `Accept and transfer from ${suggestion.conflict.donorRegionName}` : 'Accept'}>
+        <IconButton size="small" color="success" onClick={() => {
+          if (suggestion.conflict && onAcceptTransfer) {
+            onAcceptTransfer(regionId, suggestion.divisionId, suggestion.conflict);
+          } else {
+            onAccept(regionId, suggestion.divisionId);
+          }
+        }} disabled={isMutating} sx={{ p: 0.25 }}>
           <CheckIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
@@ -125,7 +150,7 @@ function ShadowMemberRow({ shadow, onApprove, onReject, isMutating }: {
       py: 0.25,
       borderRadius: '0 4px 4px 0',
     }}>
-      <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
         {shadow.gapDivisionName}
       </Typography>
       <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.6rem', flexShrink: 0 }}>
@@ -152,6 +177,7 @@ interface TreeNodeContentProps {
   hasChildren: boolean;
   nodeShadows: ShadowInsertion[] | undefined;
   onAccept: (regionId: number, divisionId: number) => void;
+  onAcceptTransfer?: (regionId: number, divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) => void;
   onAcceptAndRejectRest: (regionId: number, divisionId: number) => void;
   onReject: (regionId: number, divisionId: number) => void;
   onRejectRemaining: (regionId: number) => void;
@@ -186,6 +212,7 @@ export function TreeNodeContent({
   hasChildren,
   nodeShadows,
   onAccept,
+  onAcceptTransfer,
   onAcceptAndRejectRest,
   onReject,
   onRejectRemaining,
@@ -345,6 +372,7 @@ export function TreeNodeContent({
               suggestion={suggestion}
               regionId={node.id}
               onAccept={onAccept}
+              onAcceptTransfer={onAcceptTransfer}
               onAcceptAndRejectRest={onAcceptAndRejectRest}
               onReject={onReject}
               onPreview={handlePreviewSuggestion}
