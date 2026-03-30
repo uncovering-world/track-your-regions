@@ -490,7 +490,19 @@ export async function geoshapeMatchRegion(
   scopeAncestorId?: number,
 ): Promise<{
   found: number;
-  suggestions: Array<{ divisionId: number; name: string; path: string; score: number }>;
+  suggestions: Array<{
+    divisionId: number;
+    name: string;
+    path: string;
+    score: number;
+    conflict?: {
+      type: 'direct' | 'split';
+      donorRegionId: number;
+      donorRegionName: string;
+      donorDivisionId: number;
+      donorDivisionName: string;
+    };
+  }>;
   totalCoverage?: number;
   scopeAncestorName?: string;
   nextScope?: { ancestorId: number; ancestorName: string };
@@ -641,6 +653,47 @@ export async function geoshapeMatchRegion(
   }
 
   const candidateResult = await pool.query(candidateQuery, candidateParams);
+
+  // 4b. Conflict detection: when using wider scope, check if candidates are assigned elsewhere
+  const conflictMap = new Map<number, { type: 'direct' | 'split'; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string }>();
+  if (scopeAncestorId != null && candidateResult.rows.length > 0) {
+    const candidateIds = candidateResult.rows.map(r => r.id as number);
+    const conflictResult = await pool.query(`
+      WITH RECURSIVE candidate_ancestors AS (
+        SELECT ad.id AS candidate_id, ad.id AS ancestor_id, ad.name AS ancestor_name, ad.parent_id, 0 AS depth
+        FROM administrative_divisions ad
+        WHERE ad.id = ANY($1)
+        UNION ALL
+        SELECT ca.candidate_id, ad.id, ad.name, ad.parent_id, ca.depth + 1
+        FROM administrative_divisions ad
+        JOIN candidate_ancestors ca ON ad.id = ca.parent_id
+      )
+      SELECT DISTINCT ON (ca.candidate_id)
+        ca.candidate_id,
+        ca.ancestor_id AS donor_division_id,
+        ca.ancestor_name AS donor_division_name,
+        ca.depth,
+        rm.region_id AS donor_region_id,
+        r.name AS donor_region_name
+      FROM candidate_ancestors ca
+      JOIN region_members rm ON rm.division_id = ca.ancestor_id
+      JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
+      WHERE rm.region_id != $3
+      ORDER BY ca.candidate_id, ca.depth ASC
+    `, [candidateIds, worldViewId, regionId]);
+
+    for (const row of conflictResult.rows) {
+      const candidateId = row.candidate_id as number;
+      const donorDivisionId = row.donor_division_id as number;
+      conflictMap.set(candidateId, {
+        type: candidateId === donorDivisionId ? 'direct' : 'split',
+        donorRegionId: row.donor_region_id as number,
+        donorRegionName: row.donor_region_name as string,
+        donorDivisionId,
+        donorDivisionName: row.donor_division_name as string,
+      });
+    }
+  }
 
   if (candidateResult.rows.length === 0) {
     console.log(`[Geoshape Match] No spatial candidates for region ${regionId} (${wikidataId}) in scope ${scopeAncestorName ?? 'global'}`);
@@ -853,7 +906,13 @@ export async function geoshapeMatchRegion(
   suggestions.sort((a, b) => b.score - a.score);
 
   console.log(`[Geoshape Match] Covering set for region ${regionId}: ${suggestions.map(s => `${s.name} (${(s.score / 10).toFixed(1)}%)`).join(', ')} — total coverage: ${roundedTotalCoverage != null ? (roundedTotalCoverage * 100).toFixed(1) : '?'}%`);
-  return { found: suggestions.length, suggestions, totalCoverage: roundedTotalCoverage, scopeAncestorName, nextScope };
+
+  const suggestionsWithConflict = suggestions.map(s => ({
+    ...s,
+    conflict: conflictMap.get(s.divisionId),
+  }));
+
+  return { found: suggestionsWithConflict.length, suggestions: suggestionsWithConflict, totalCoverage: roundedTotalCoverage, scopeAncestorName, nextScope };
 }
 
 /**
