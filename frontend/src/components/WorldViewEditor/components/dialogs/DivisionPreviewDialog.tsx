@@ -303,6 +303,17 @@ export function DivisionPreviewDialog({
     && 'type' in geometry && geometry.type === 'FeatureCollection'
     && (geometry as GeoJSON.FeatureCollection).features.some(f => f.properties?.role === 'donor');
 
+  const transferData = useMemo(() => {
+    if (!isTransferPreview) return null;
+    const fc = geometry as GeoJSON.FeatureCollection;
+    return {
+      donor: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'donor') },
+      moving: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'moving') },
+      outline: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'target_outline') },
+      bounds: turf.bbox(fc) as [number, number, number, number],
+    };
+  }, [isTransferPreview, geometry]);
+
   // Geoshape preferred; fall back to image only when geoshape unavailable/empty
   const geoshapeHasFeatures = !!geoshapeData && geoshapeData.features.length > 0;
   const geoshapeAvailable = !!wikidataId && !geoshapeError && (geoshapeLoading || geoshapeHasFeatures);
@@ -342,51 +353,44 @@ export function DivisionPreviewDialog({
       </DialogTitle>
       <DialogContent sx={{ p: 0 }}>
         {/* Transfer preview: 3-layer map with donor, moving, and target outline */}
-        {isTransferPreview && (() => {
-          const fc = geometry as GeoJSON.FeatureCollection;
-          const donorFeatures: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: fc.features.filter(f => f.properties?.role === 'donor') };
-          const movingFeatures: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: fc.features.filter(f => f.properties?.role === 'moving') };
-          const outlineFeatures: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: fc.features.filter(f => f.properties?.role === 'target_outline') };
-          const allBbox = turf.bbox(fc);
-          return (
-            <Box>
-              <Box sx={{ width: '100%', height: 400 }}>
-                <MapGL
-                  initialViewState={{ bounds: [allBbox[0], allBbox[1], allBbox[2], allBbox[3]] as [number, number, number, number], fitBoundsOptions: { padding: 40 } }}
-                  style={{ width: '100%', height: '100%' }}
-                  mapStyle={MAP_STYLE}
-                >
-                  <NavigationControl position="top-right" />
-                  <Source id="donor" type="geojson" data={donorFeatures}>
-                    <Layer id="donor-fill" type="fill" paint={{ 'fill-color': '#9e9e9e', 'fill-opacity': 0.3 }} />
-                    <Layer id="donor-line" type="line" paint={{ 'line-color': '#757575', 'line-width': 1.5 }} />
-                  </Source>
-                  <Source id="moving" type="geojson" data={movingFeatures}>
-                    <Layer id="moving-fill" type="fill" paint={{ 'fill-color': '#ff9800', 'fill-opacity': 0.5 }} />
-                    <Layer id="moving-line" type="line" paint={{ 'line-color': '#e65100', 'line-width': 2 }} />
-                  </Source>
-                  <Source id="target-outline" type="geojson" data={outlineFeatures}>
-                    <Layer id="target-line" type="line" paint={{ 'line-color': '#1976d2', 'line-width': 2, 'line-dasharray': [4, 3] }} />
-                  </Source>
-                </MapGL>
+        {transferData && (
+          <Box>
+            <Box sx={{ width: '100%', height: 400 }}>
+              <MapGL
+                initialViewState={{ bounds: transferData.bounds, fitBoundsOptions: { padding: 40 } }}
+                style={{ width: '100%', height: '100%' }}
+                mapStyle={MAP_STYLE}
+              >
+                <NavigationControl position="top-right" />
+                <Source id="donor" type="geojson" data={transferData.donor}>
+                  <Layer id="donor-fill" type="fill" paint={{ 'fill-color': '#9e9e9e', 'fill-opacity': 0.3 }} />
+                  <Layer id="donor-line" type="line" paint={{ 'line-color': '#757575', 'line-width': 1.5 }} />
+                </Source>
+                <Source id="moving" type="geojson" data={transferData.moving}>
+                  <Layer id="moving-fill" type="fill" paint={{ 'fill-color': '#ff9800', 'fill-opacity': 0.5 }} />
+                  <Layer id="moving-line" type="line" paint={{ 'line-color': '#e65100', 'line-width': 2 }} />
+                </Source>
+                <Source id="target-outline" type="geojson" data={transferData.outline}>
+                  <Layer id="target-line" type="line" paint={{ 'line-color': '#1976d2', 'line-width': 2, 'line-dasharray': [4, 3] }} />
+                </Source>
+              </MapGL>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2, mt: 1, justifyContent: 'center' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 12, height: 12, bgcolor: '#9e9e9e', opacity: 0.5, borderRadius: 0.5 }} />
+                <Typography variant="caption">Stays with donor</Typography>
               </Box>
-              <Box sx={{ display: 'flex', gap: 2, mt: 1, justifyContent: 'center' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Box sx={{ width: 12, height: 12, bgcolor: '#9e9e9e', opacity: 0.5, borderRadius: 0.5 }} />
-                  <Typography variant="caption">Stays with donor</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Box sx={{ width: 12, height: 12, bgcolor: '#ff9800', borderRadius: 0.5 }} />
-                  <Typography variant="caption">Moving to target</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Box sx={{ width: 12, height: 12, border: '2px dashed #1976d2', borderRadius: 0.5 }} />
-                  <Typography variant="caption">Target geoshape</Typography>
-                </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 12, height: 12, bgcolor: '#ff9800', borderRadius: 0.5 }} />
+                <Typography variant="caption">Moving to target</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 12, height: 12, border: '2px dashed #1976d2', borderRadius: 0.5 }} />
+                <Typography variant="caption">Target geoshape</Typography>
               </Box>
             </Box>
-          );
-        })()}
+          </Box>
+        )}
         {/* Fixed toggle strip between title and maps */}
         {!isTransferPreview && hasSideBySide && (
           <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 2, py: 0.5, borderBottom: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
