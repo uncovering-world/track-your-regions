@@ -239,17 +239,18 @@ export function useImportTreeDialogs(
     setAISuggestingRegionId(regionId);
     try {
       const result = await apiAISuggestChildren(worldViewId, regionId);
-      setSuggestChildrenResult({
-        regionId,
-        regionName,
-        result,
-        selected: new Set(result.suggestions.map(s => s.name)),
-      });
+      // Pre-select add and rename, NOT remove (destructive)
+      const selected = new Set(
+        result.actions
+          .filter(a => a.type !== 'remove')
+          .map(a => `${a.type}:${a.name}`),
+      );
+      setSuggestChildrenResult({ regionId, regionName, result, selected });
     } catch (err) {
-      console.error('AI suggest children failed:', err);
+      console.error('AI review children failed:', err);
       setUndoSnackbar({
         open: true,
-        message: `Suggest children failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        message: `Review children failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
         worldViewId,
       });
     } finally {
