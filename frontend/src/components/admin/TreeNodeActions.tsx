@@ -33,6 +33,7 @@ import {
   Layers as MapshapeMatchIcon,
   ClearAll as ClearAssignedIcon,
   LowPriority as SimplifyIcon,
+  PlaylistAddCheck as SimplifyChildrenIcon,
   SwapHoriz as SmartSimplifyIcon,
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
@@ -98,6 +99,8 @@ interface TreeNodeActionsProps {
   clearingMembersRegionId?: number | null;
   onSimplifyHierarchy?: (regionId: number) => void;
   simplifyingRegionId?: number | null;
+  onSimplifyChildren?: (regionId: number) => void;
+  simplifyingChildrenRegionId?: number | null;
   onSmartSimplify?: (regionId: number) => void;
   /** Whether this is a root node (depth 0) — remove button is hidden for root */
   isRoot?: boolean;
@@ -268,6 +271,8 @@ export function TreeNodeActions({
   clearingMembersRegionId,
   onSimplifyHierarchy,
   simplifyingRegionId,
+  onSimplifyChildren,
+  simplifyingChildrenRegionId,
   onSmartSimplify,
   isRoot,
 }: TreeNodeActionsProps) {
@@ -698,6 +703,25 @@ export function TreeNodeActions({
         </Tooltip>
       )}
 
+      {/* Simplify children — simplify each child region one by one */}
+      {hasChildren && onSimplifyChildren && (
+        <Tooltip title="Simplify children — merge child divisions into parents for each child region">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onSimplifyChildren(node.id)}
+              disabled={isMutating || simplifyingChildrenRegionId != null}
+              sx={{ p: 0.25 }}
+            >
+              {simplifyingChildrenRegionId === node.id
+                ? <CircularProgress size={14} />
+                : <SimplifyChildrenIcon sx={{ fontSize: 16, color: 'info.main' }} />
+              }
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+
       {/* Clear all assigned divisions (keep suggestions) */}
       {role === 'country' && node.assignedDivisions.length > 0 && onClearMembers && (
         <Tooltip title={`Clear all ${node.assignedDivisions.length} assigned division${node.assignedDivisions.length > 1 ? 's' : ''}`}>
@@ -749,9 +773,9 @@ export function TreeNodeActions({
         </Tooltip>
       )}
 
-      {/* AI suggest missing children (Wikivoyage + AI) */}
+      {/* AI review children (Wikivoyage + AI) */}
       {node.sourceUrl && onAISuggestChildren && (
-        <Tooltip title="AI suggest missing children">
+        <Tooltip title="AI review children">
           <span>
             <IconButton
               size="small"
