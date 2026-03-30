@@ -70,10 +70,10 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   } | null>(null);
   const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | GeoJSON.FeatureCollection | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  // Pending transfer: stored when transfer preview is opened, executed on confirm
+  // Pending transfer groups: one entry per donor, executed sequentially on confirm
   const [pendingTransfer, setPendingTransfer] = useState<{
-    regionId: number; divisionIds: number[];
-    donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split';
+    regionId: number;
+    groups: Array<{ divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }>;
   } | null>(null);
 
   const handlePreviewDivision = useCallback(async (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string) => {
@@ -120,19 +120,44 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' },
     wikidataId: string, regionName: string,
     regionId?: number, allDivisionIds?: number[],
+    allSuggestions?: Array<{ divisionId: number; conflict?: { donorDivisionId: number; donorRegionId: number; type: 'direct' | 'split' } }>,
   ) => {
     const movingIds = allDivisionIds ?? [divisionId];
     const label = movingIds.length > 1 ? `Transfer: ${movingIds.length} divisions` : `Transfer: ${name}`;
     setPreviewDivision({ name: label, path, regionMapUrl: undefined, wikidataId, regionId: undefined, regionName });
     setPreviewGeometry(null);
     setPreviewLoading(true);
-    setPendingTransfer(regionId != null ? {
-      regionId, divisionIds: movingIds,
-      donorRegionId: conflict.donorRegionId, donorDivisionId: conflict.donorDivisionId, transferType: conflict.type,
-    } : null);
+
+    // Group by donor for multi-donor support
+    const suggestions = allSuggestions ?? [{ divisionId, conflict }];
+    const groupsByDonor = new Map<number, { divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }>();
+    for (const s of suggestions) {
+      const c = s.conflict ?? conflict;
+      const key = c.donorDivisionId;
+      const existing = groupsByDonor.get(key);
+      if (existing) {
+        existing.divisionIds.push(s.divisionId);
+      } else {
+        groupsByDonor.set(key, { divisionIds: [s.divisionId], donorRegionId: c.donorRegionId, donorDivisionId: c.donorDivisionId, transferType: c.type });
+      }
+    }
+    const groups = [...groupsByDonor.values()];
+    setPendingTransfer(regionId != null ? { regionId, groups } : null);
+
     try {
-      const fc = await getTransferPreview(worldViewId, conflict.donorDivisionId, movingIds, wikidataId);
-      setPreviewGeometry(fc);
+      // Fetch preview for each donor group and merge
+      const fcs = await Promise.all(groups.map(g => getTransferPreview(worldViewId, g.donorDivisionId, g.divisionIds, wikidataId)));
+      const merged: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: fcs.flatMap(fc => fc.features) };
+      // Deduplicate target_outline (same geoshape repeated per group)
+      const seen = new Set<string>();
+      merged.features = merged.features.filter(f => {
+        if (f.properties?.role !== 'target_outline') return true;
+        const key = f.properties.role;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setPreviewGeometry(merged);
     } catch {
       setPreviewGeometry(null);
     } finally {
@@ -255,8 +280,11 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   });
 
   const previewTransferMutation = useMutation({
-    mutationFn: (params: { regionId: number; divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }) =>
-      acceptWithTransfer(worldViewId, params.regionId, params.divisionIds, params.donorRegionId, params.donorDivisionId, params.transferType),
+    mutationFn: async (params: { regionId: number; groups: Array<{ divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }> }) => {
+      for (const g of params.groups) {
+        await acceptWithTransfer(worldViewId, params.regionId, g.divisionIds, g.donorRegionId, g.donorDivisionId, g.transferType);
+      }
+    },
     onSuccess: () => {
       invalidateAll();
       handleClosePreview();

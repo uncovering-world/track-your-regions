@@ -56,7 +56,7 @@ function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, 
   onReject: (regionId: number, divisionId: number) => void;
   onPreview: (divisionId: number, name: string, path?: string) => void;
   onAcceptTransfer?: (regionId: number, divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) => void;
-  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[]) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[], allSuggestions?: Array<{ divisionId: number; conflict?: { donorDivisionId: number; donorRegionId: number; type: 'direct' | 'split' } }>) => void;
   isMutating: boolean;
   checked?: boolean;
   onToggle?: (divisionId: number) => void;
@@ -191,7 +191,7 @@ interface TreeNodeContentProps {
   onAcceptAll: (assignments: Array<{ regionId: number; divisionId: number }>) => void;
   handlePreviewAssigned: (divisionId: number, name: string, path?: string) => void;
   handlePreviewSuggestion: (divisionId: number, name: string, path?: string) => void;
-  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[]) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[], allSuggestions?: Array<{ divisionId: number; conflict?: { donorDivisionId: number; donorRegionId: number; type: 'direct' | 'split' } }>) => void;
   onApproveShadow?: (insertion: ShadowInsertion) => void;
   onRejectShadow?: (insertion: ShadowInsertion) => void;
   onPreviewUnion?: (regionId: number, divisionIds: number[]) => void;
@@ -413,7 +413,8 @@ export function TreeNodeContent({
                 onClick={() => {
                   const firstConflict = node.suggestions.find(s => s.conflict)?.conflict;
                   if (firstConflict && onPreviewTransfer) {
-                    onPreviewTransfer(node.suggestions[0].divisionId, node.suggestions[0].name, node.suggestions[0].path, firstConflict, node.id, node.suggestions.map(s => s.divisionId));
+                    const conflictSuggestions = node.suggestions.filter(s => s.conflict).map(s => ({ divisionId: s.divisionId, conflict: s.conflict! }));
+                    onPreviewTransfer(node.suggestions[0].divisionId, node.suggestions[0].name, node.suggestions[0].path, firstConflict, node.id, node.suggestions.map(s => s.divisionId), conflictSuggestions);
                   } else {
                     onAcceptAll(node.suggestions.map(s => ({ regionId: node.id, divisionId: s.divisionId })));
                   }
@@ -450,22 +451,46 @@ export function TreeNodeContent({
                   Preview union
                 </Button>
               )}
-              {onAcceptSelected && (
-                <Button size="small" variant="text" color="success"
-                  onClick={() => onAcceptSelected(node.id, [...selectedDivIds])}
-                  disabled={isMutating}
-                  sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}>
-                  Accept {selectedDivIds.size}
-                </Button>
-              )}
-              {onAcceptSelectedRejectRest && (
-                <Button size="small" variant="text" color="success"
-                  onClick={() => onAcceptSelectedRejectRest(node.id, [...selectedDivIds])}
-                  disabled={isMutating}
-                  sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}>
-                  Accept {selectedDivIds.size} + reject rest
-                </Button>
-              )}
+              {onAcceptSelected && (() => {
+                const selectedSuggestions = node.suggestions.filter(s => selectedDivIds.has(s.divisionId));
+                const hasConflicts = selectedSuggestions.some(s => s.conflict);
+                const firstConflict = selectedSuggestions.find(s => s.conflict)?.conflict;
+                return (
+                  <Button size="small" variant="text" color="success"
+                    onClick={() => {
+                      if (hasConflicts && firstConflict && onPreviewTransfer) {
+                        const conflictSuggestions = selectedSuggestions.filter(s => s.conflict).map(s => ({ divisionId: s.divisionId, conflict: s.conflict! }));
+                        onPreviewTransfer(selectedSuggestions[0].divisionId, selectedSuggestions[0].name, selectedSuggestions[0].path, firstConflict, node.id, [...selectedDivIds], conflictSuggestions);
+                      } else {
+                        onAcceptSelected(node.id, [...selectedDivIds]);
+                      }
+                    }}
+                    disabled={isMutating}
+                    sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}>
+                    {hasConflicts ? `Preview transfer (${selectedDivIds.size})` : `Accept ${selectedDivIds.size}`}
+                  </Button>
+                );
+              })()}
+              {onAcceptSelectedRejectRest && (() => {
+                const selectedSuggestions = node.suggestions.filter(s => selectedDivIds.has(s.divisionId));
+                const hasConflicts = selectedSuggestions.some(s => s.conflict);
+                const firstConflict = selectedSuggestions.find(s => s.conflict)?.conflict;
+                return (
+                  <Button size="small" variant="text" color="success"
+                    onClick={() => {
+                      if (hasConflicts && firstConflict && onPreviewTransfer) {
+                        const conflictSuggestions = selectedSuggestions.filter(s => s.conflict).map(s => ({ divisionId: s.divisionId, conflict: s.conflict! }));
+                        onPreviewTransfer(selectedSuggestions[0].divisionId, selectedSuggestions[0].name, selectedSuggestions[0].path, firstConflict, node.id, [...selectedDivIds], conflictSuggestions);
+                      } else {
+                        onAcceptSelectedRejectRest(node.id, [...selectedDivIds]);
+                      }
+                    }}
+                    disabled={isMutating}
+                    sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}>
+                    {hasConflicts ? `Preview transfer (${selectedDivIds.size}) + reject rest` : `Accept ${selectedDivIds.size} + reject rest`}
+                  </Button>
+                );
+              })()}
               {onRejectSelected && (
                 <Button size="small" variant="text" color="error"
                   onClick={() => onRejectSelected(node.id, [...selectedDivIds])}

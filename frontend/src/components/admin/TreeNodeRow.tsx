@@ -41,7 +41,7 @@ export interface TreeNodeRowProps {
   onRejectRemaining: (regionId: number) => void;
   onAcceptAll: (assignments: Array<{ regionId: number; divisionId: number }>) => void;
   onPreviewUnion?: (regionId: number, divisionIds: number[], context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string }) => void;
-  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, wikidataId: string, regionName: string, regionId?: number, allDivisionIds?: number[]) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, wikidataId: string, regionName: string, regionId?: number, allDivisionIds?: number[], allSuggestions?: Array<{ divisionId: number; conflict?: { donorDivisionId: number; donorRegionId: number; type: 'direct' | 'split' } }>) => void;
   onAcceptSelected?: (regionId: number, divisionIds: number[]) => void;
   onAcceptSelectedRejectRest?: (regionId: number, divisionIds: number[]) => void;
   onRejectSelected?: (regionId: number, divisionIds: number[]) => void;
@@ -255,9 +255,9 @@ export const TreeNodeRow = memo(function TreeNodeRow({ node, depth, expanded, on
     [onPreviewUnion, node.wikidataId, node.name, effectiveMapUrl, fallbackMapLabel],
   );
   const handlePreviewTransferSuggestion = useCallback(
-    (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[]) => {
+    (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[], allSuggestions?: Array<{ divisionId: number; conflict?: { donorDivisionId: number; donorRegionId: number; type: 'direct' | 'split' } }>) => {
       if (onPreviewTransfer && node.wikidataId) {
-        onPreviewTransfer(divisionId, name, path, conflict, node.wikidataId, node.name, regionId, allDivisionIds);
+        onPreviewTransfer(divisionId, name, path, conflict, node.wikidataId, node.name, regionId, allDivisionIds, allSuggestions);
       }
     },
     [onPreviewTransfer, node.wikidataId, node.name],
