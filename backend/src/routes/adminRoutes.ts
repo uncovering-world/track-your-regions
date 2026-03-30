@@ -36,6 +36,7 @@ import {
   wvImportVisionMatchSchema,
   wvImportColorMatchSchema,
   wvImportRegionIdSchema,
+  wvImportGeoshapeMatchSchema,
   wvImportSelectMapImageSchema,
   wvImportMarkManualFixSchema,
   wikidataIdParamSchema,
@@ -416,7 +417,7 @@ router.get('/wv-import/matches/:worldViewId/ai-match/status', validate(worldView
 router.post('/wv-import/matches/:worldViewId/ai-match/cancel', validate(worldViewIdParamSchema, 'params'), cancelAIMatchEndpoint);
 router.post('/wv-import/matches/:worldViewId/db-search-one', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), dbSearchOneRegion);
 router.post('/wv-import/matches/:worldViewId/geocode-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), geocodeMatch);
-router.post('/wv-import/matches/:worldViewId/geoshape-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), geoshapeMatch);
+router.post('/wv-import/matches/:worldViewId/geoshape-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportGeoshapeMatchSchema), geoshapeMatch);
 router.post('/wv-import/matches/:worldViewId/point-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), pointMatch);
 router.post('/wv-import/matches/:worldViewId/reset-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), resetMatch);
 router.post('/wv-import/matches/:worldViewId/ai-match-one', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiMatchOneRegion);

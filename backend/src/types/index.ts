@@ -498,6 +498,11 @@ export const wvImportRegionIdSchema = z.object({
   regionId: z.coerce.number().int().positive(),
 });
 
+export const wvImportGeoshapeMatchSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  scopeAncestorId: z.coerce.number().int().positive().optional(),
+});
+
 export const wvImportMarkManualFixSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   needsManualFix: z.boolean(),
