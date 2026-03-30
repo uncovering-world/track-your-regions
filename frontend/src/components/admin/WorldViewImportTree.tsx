@@ -29,6 +29,9 @@ import { useQuery } from '@tanstack/react-query';
 import {
   getMatchTree,
   getChildrenCoverage,
+  addChildRegion,
+  removeRegionFromImport,
+  renameRegion,
   type MatchTreeNode,
 } from '../../api/adminWorldViewImport';
 import { MapImagePickerDialog } from './MapImagePickerDialog';
@@ -652,10 +655,13 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
             return { ...prev, selected: next };
           });
         }}
-        onSubmit={() => {
+        onSubmit={async () => {
           if (!dialogs.suggestChildrenResult) return;
-          const { regionId, result, selected } = dialogs.suggestChildrenResult;
+          const { regionId: parentId, result, selected } = dialogs.suggestChildrenResult;
+          dialogs.setSuggestChildrenResult(null);
 
+          // Batch all API calls, then invalidate once
+          const promises: Promise<unknown>[] = [];
           for (const key of selected) {
             const colonIdx = key.indexOf(':');
             const type = key.slice(0, colonIdx);
@@ -664,44 +670,30 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
             if (!action) continue;
 
             if (action.type === 'add') {
-              addChildMutation.mutate({
-                parentRegionId: regionId,
-                name: action.name,
-                sourceUrl: action.sourceUrl ?? undefined,
-                sourceExternalId: action.sourceExternalId ?? undefined,
-              });
+              promises.push(addChildRegion(
+                worldViewId, parentId, action.name,
+                action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
+              ));
             } else if (action.type === 'remove') {
-              const childId = tree ? findChildIdByName(tree, regionId, action.name) : undefined;
+              const childId = tree ? findChildIdByName(tree, parentId, action.name) : undefined;
               if (childId) {
-                removeMutation.mutate({ regionId: childId, reparentChildren: true });
+                promises.push(removeRegionFromImport(worldViewId, childId, true));
               }
-            } else if (action.type === 'rename') {
-              const childId = tree ? findChildIdByName(tree, regionId, action.name) : undefined;
+            } else if (action.type === 'rename' || action.type === 'enrich') {
+              const childId = tree ? findChildIdByName(tree, parentId, action.name) : undefined;
               if (childId) {
-                renameMutation.mutate({
-                  regionId: childId,
-                  name: action.newName ?? action.name,
-                  sourceUrl: action.sourceUrl ?? undefined,
-                  sourceExternalId: action.sourceExternalId ?? undefined,
-                });
-              }
-            } else if (action.type === 'enrich') {
-              // Update metadata without changing the name
-              const childId = tree ? findChildIdByName(tree, regionId, action.name) : undefined;
-              if (childId) {
-                renameMutation.mutate({
-                  regionId: childId,
-                  name: action.name,
-                  sourceUrl: action.sourceUrl ?? undefined,
-                  sourceExternalId: action.sourceExternalId ?? undefined,
-                });
+                promises.push(renameRegion(
+                  worldViewId, childId, action.newName ?? action.name,
+                  action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
+                ));
               }
             }
           }
 
-          dialogs.setSuggestChildrenResult(null);
+          await Promise.allSettled(promises);
+          invalidateTree(parentId);
         }}
-        isPending={addChildMutation.isPending}
+        isPending={false}
       />
       <CoverageCompareDialog
         data={dialogs.coverageCompare}
