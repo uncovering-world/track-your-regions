@@ -147,17 +147,17 @@ function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg,
           </IconButton>
         </span>
       </Tooltip>
-      <Tooltip title={!wikidataId ? 'No Wikidata ID' : geoAvailable === false ? 'No geoshape available' : 'Geoshape match (spatial)'}>
+      <Tooltip title={!wikidataId ? 'No Wikidata ID' : 'Geoshape match (spatial)'}>
         <span>
           <IconButton
             size="small"
             onClick={() => onGeoshapeMatch(nodeId)}
-            disabled={isMutating || anySearching || !wikidataId || geoAvailable === false}
+            disabled={isMutating || anySearching || !wikidataId}
             sx={{ p: 0.25 }}
           >
             {geoshapeMatchingRegionId === nodeId
               ? <CircularProgress size={14} />
-              : <GeoshapeIcon sx={{ fontSize: 16, color: wikidataId && geoAvailable !== false ? 'success.main' : undefined }} />
+              : <GeoshapeIcon sx={{ fontSize: 16, color: wikidataId ? 'success.main' : undefined }} />
             }
           </IconButton>
         </span>
