@@ -28,6 +28,22 @@ export async function getGeoshape(req: AuthenticatedRequest, res: Response): Pro
   const { wikidataId } = req.params;
 
   try {
+    // Check local cache first (includes composite geoshapes built from children)
+    const cached = await pool.query(
+      `SELECT ST_AsGeoJSON(geom)::json AS geometry
+       FROM wikidata_geoshapes
+       WHERE wikidata_id = $1 AND not_available = FALSE AND geom IS NOT NULL`,
+      [wikidataId],
+    );
+    if (cached.rows.length > 0 && cached.rows[0].geometry) {
+      res.json({
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', properties: { id: wikidataId }, geometry: cached.rows[0].geometry }],
+      });
+      return;
+    }
+
+    // Fall back to Wikimedia
     const url = `https://maps.wikimedia.org/geoshape?getgeojson=1&ids=${wikidataId}`;
     const response = await fetch(url, {
       headers: {
