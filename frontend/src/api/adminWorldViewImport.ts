@@ -247,10 +247,11 @@ export async function geoshapeMatchRegion(
 export async function pointMatchRegion(
   worldViewId: number,
   regionId: number,
-): Promise<{ found: number; suggestions: MatchSuggestion[] }> {
+  scopeAncestorId?: number,
+): Promise<GeoshapeMatchResult> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/point-match`, {
     method: 'POST',
-    body: JSON.stringify({ regionId }),
+    body: JSON.stringify({ regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) }),
   });
 }
 

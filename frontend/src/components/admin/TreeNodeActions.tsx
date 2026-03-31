@@ -59,6 +59,7 @@ interface TreeNodeActionsProps {
   pointMatchingRegionId: number | null;
   nodeGeocodeMsg: string | null;
   nodeGeocodeNextScope?: { ancestorId: number; ancestorName: string };
+  nodeGeocodeRetryType?: 'geoshape' | 'point';
   onDBSearch: (regionId: number) => void;
   onAIMatch: (regionId: number) => void;
   onDismissChildren: (regionId: number) => void;
@@ -66,7 +67,7 @@ interface TreeNodeActionsProps {
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
   onGeoshapeMatch: (regionId: number, scopeAncestorId?: number) => void;
-  onPointMatch: (regionId: number) => void;
+  onPointMatch: (regionId: number, scopeAncestorId?: number) => void;
   onResetMatch: (regionId: number) => void;
   onManualFix: (regionId: number, needsManualFix: boolean) => void;
   onMergeChild?: (regionId: number) => void;
@@ -109,12 +110,13 @@ interface TreeNodeActionsProps {
 }
 
 /** Geocode + Geoshape + DB search + AI match button group (shared across multiple status blocks) */
-function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg, nodeGeocodeNextScope, isMutating, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, dbSearchingRegionId, aiMatchingRegionId, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onDBSearch, onAIMatch }: {
+function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg, nodeGeocodeNextScope, nodeGeocodeRetryType, isMutating, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, dbSearchingRegionId, aiMatchingRegionId, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onDBSearch, onAIMatch }: {
   nodeId: number;
   wikidataId: string | null;
   geoAvailable: boolean | null;
   nodeGeocodeMsg: string | null;
   nodeGeocodeNextScope?: { ancestorId: number; ancestorName: string };
+  nodeGeocodeRetryType?: 'geoshape' | 'point';
   isMutating: boolean;
   geocodeMatchingRegionId: number | null;
   geoshapeMatchingRegionId: number | null;
@@ -123,7 +125,7 @@ function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg,
   aiMatchingRegionId: number | null;
   onGeocodeMatch: (regionId: number) => void;
   onGeoshapeMatch: (regionId: number, scopeAncestorId?: number) => void;
-  onPointMatch: (regionId: number) => void;
+  onPointMatch: (regionId: number, scopeAncestorId?: number) => void;
   onDBSearch: (regionId: number) => void;
   onAIMatch: (regionId: number) => void;
 }) {
@@ -184,7 +186,10 @@ function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg,
             <Typography
               variant="caption"
               component="span"
-              onClick={() => onGeoshapeMatch(nodeId, nodeGeocodeNextScope.ancestorId)}
+              onClick={() => {
+                const retry = nodeGeocodeRetryType === 'point' ? onPointMatch : onGeoshapeMatch;
+                retry(nodeId, nodeGeocodeNextScope.ancestorId);
+              }}
               sx={{
                 fontSize: '0.65rem',
                 color: 'primary.main',
@@ -251,6 +256,7 @@ export function TreeNodeActions({
   pointMatchingRegionId,
   nodeGeocodeMsg,
   nodeGeocodeNextScope,
+  nodeGeocodeRetryType,
   onDBSearch,
   onAIMatch,
   onDismissChildren,
@@ -309,6 +315,7 @@ export function TreeNodeActions({
     geoAvailable: node.geoAvailable,
     nodeGeocodeMsg,
     nodeGeocodeNextScope,
+    nodeGeocodeRetryType,
     isMutating,
     geocodeMatchingRegionId,
     geoshapeMatchingRegionId,

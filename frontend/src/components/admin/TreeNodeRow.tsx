@@ -36,7 +36,7 @@ export interface TreeNodeRowProps {
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
   onGeoshapeMatch: (regionId: number, scopeAncestorId?: number) => void;
-  onPointMatch: (regionId: number) => void;
+  onPointMatch: (regionId: number, scopeAncestorId?: number) => void;
   onResetMatch: (regionId: number) => void;
   onRejectRemaining: (regionId: number) => void;
   onAcceptAll: (assignments: Array<{ regionId: number; divisionId: number }>) => void;
@@ -60,7 +60,7 @@ export interface TreeNodeRowProps {
   /** Nearest ancestor's region map URL — fallback for preview when node has no own image/geoshape */
   parentRegionMapUrl?: string;
   parentRegionMapName?: string;
-  geocodeProgress: { regionId: number; message: string; nextScope?: { ancestorId: number; ancestorName: string } } | null;
+  geocodeProgress: { regionId: number; message: string; nextScope?: { ancestorId: number; ancestorName: string }; retryType?: 'geoshape' | 'point' } | null;
   duplicateUrls: Set<string>;
   syncedUrls: Set<string>;
   shadowsByRegionId: Map<number, ShadowInsertion[]>;
@@ -405,6 +405,7 @@ export const TreeNodeRow = memo(function TreeNodeRow({ node, depth, expanded, on
           pointMatchingRegionId={pointMatchingRegionId}
           nodeGeocodeMsg={nodeGeocode?.message ?? null}
           nodeGeocodeNextScope={nodeGeocode?.nextScope}
+          nodeGeocodeRetryType={nodeGeocode?.retryType}
           onDBSearch={onDBSearch}
           onAIMatch={onAIMatch}
           onDismissChildren={onDismissChildren}

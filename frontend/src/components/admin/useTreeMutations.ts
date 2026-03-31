@@ -80,6 +80,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     regionId: number;
     message: string;
     nextScope?: { ancestorId: number; ancestorName: string };
+    retryType?: 'geoshape' | 'point';
   } | null>(null);
   const [undoSnackbar, setUndoSnackbar] = useState<{
     open: boolean;
@@ -365,6 +366,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
           regionId,
           message: `No matches in ${data.scopeAncestorName ?? 'current'} scope`,
           nextScope: data.nextScope,
+          retryType: 'geoshape',
         });
         // Do NOT auto-dismiss — user needs to decide
       } else {
@@ -382,19 +384,33 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
   });
 
   const pointMatchMutation = useMutation({
-    mutationFn: (regionId: number) => pointMatchRegion(worldViewId, regionId),
-    onMutate: (regionId) => {
+    mutationFn: ({ regionId, scopeAncestorId }: { regionId: number; scopeAncestorId?: number }) =>
+      pointMatchRegion(worldViewId, regionId, scopeAncestorId),
+    onMutate: ({ regionId }) => {
       setGeocodeProgress({ regionId, message: 'Matching by markers...' });
     },
-    onSuccess: (data, regionId) => {
-      setGeocodeProgress({
-        regionId,
-        message: data.found > 0
-          ? `Found ${data.found} division(s) from markers`
-          : 'No divisions found from markers',
-      });
+    onSuccess: (data, { regionId }) => {
+      if (data.found > 0) {
+        setGeocodeProgress({
+          regionId,
+          message: `Found ${data.found} division(s) from markers`,
+        });
+        setTimeout(() => setGeocodeProgress(null), 4000);
+      } else if (data.nextScope) {
+        setGeocodeProgress({
+          regionId,
+          message: `No marker matches in ${data.scopeAncestorName ?? 'current'} scope`,
+          nextScope: data.nextScope,
+          retryType: 'point',
+        });
+      } else {
+        setGeocodeProgress({
+          regionId,
+          message: 'No divisions found from markers',
+        });
+        setTimeout(() => setGeocodeProgress(null), 4000);
+      }
       invalidateTree(regionId);
-      setTimeout(() => setGeocodeProgress(null), 4000);
     },
     onError: () => {
       setGeocodeProgress(null);
