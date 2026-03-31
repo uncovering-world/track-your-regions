@@ -97,6 +97,7 @@ export interface MatchTreeNode {
   hierarchyWarnings: string[];
   hierarchyReviewed: boolean;
   geoAvailable: boolean | null;
+  markerPoints: Array<{ name: string; lat: number; lon: number }> | null;
   children: MatchTreeNode[];
 }
 

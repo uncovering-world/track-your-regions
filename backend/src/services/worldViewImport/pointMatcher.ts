@@ -195,6 +195,12 @@ export async function pointMatchRegion(
 
   console.log(`[PointMatcher] ${points.length} points for region ${regionId} ("${pageTitle}")`);
 
+  // 5b. Store resolved marker points for preview
+  await pool.query(
+    `UPDATE region_import_state SET marker_points = $1 WHERE region_id = $2`,
+    [JSON.stringify(points.map(p => ({ name: p.name, lat: p.lat, lon: p.lon }))), regionId],
+  );
+
   // 6. Get sibling-assigned division IDs (divisions assigned to siblings under same parent)
   let siblingDivisionIds = new Set<number>();
   if (parentRegionId != null) {

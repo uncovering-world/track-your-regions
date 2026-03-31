@@ -67,6 +67,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     name: string; path?: string; regionMapUrl?: string; wikidataId?: string;
     divisionId?: number; regionId?: number; isAssigned?: boolean; regionMapLabel?: string; regionName?: string;
     divisionIds?: number[];
+    markerPoints?: Array<{ name: string; lat: number; lon: number }>;
   } | null>(null);
   const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | GeoJSON.FeatureCollection | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -76,8 +77,8 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     groups: Array<{ divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }>;
   } | null>(null);
 
-  const handlePreviewDivision = useCallback(async (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string) => {
-    setPreviewDivision({ name, path, regionMapUrl, wikidataId, divisionId, regionId, isAssigned, regionMapLabel, regionName });
+  const handlePreviewDivision = useCallback(async (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => {
+    setPreviewDivision({ name, path, regionMapUrl, wikidataId, divisionId, regionId, isAssigned, regionMapLabel, regionName, markerPoints });
     setPreviewGeometry(null);
     setPreviewLoading(true);
     try {
@@ -634,6 +635,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         regionMapLabel={previewDivision?.regionMapLabel}
         regionName={previewDivision?.regionName}
         wikidataId={previewDivision?.wikidataId}
+        markerPoints={previewDivision?.markerPoints}
         worldViewId={worldViewId}
         regionId={previewDivision?.regionId}
         onAccept={

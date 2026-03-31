@@ -45,7 +45,7 @@ export interface TreeNodeRowProps {
   onAcceptSelected?: (regionId: number, divisionIds: number[]) => void;
   onAcceptSelectedRejectRest?: (regionId: number, divisionIds: number[]) => void;
   onRejectSelected?: (regionId: number, divisionIds: number[]) => void;
-  onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string) => void;
+  onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => void;
   onOpenMapPicker: (node: MatchTreeNode, pendingPreview?: { divisionId: number; name: string; path?: string; isAssigned: boolean }) => void;
   onManualFix: (regionId: number, needsManualFix: boolean, fixNote?: string) => void;
   isMutating: boolean;
@@ -229,7 +229,7 @@ export const TreeNodeRow = memo(function TreeNodeRow({ node, depth, expanded, on
         onOpenMapPicker(node, { divisionId, name, path, isAssigned: true });
         return;
       }
-      onPreview(divisionId, name, path, effectiveMapUrl, node.wikidataId ?? undefined, node.id, true, fallbackMapLabel, node.name);
+      onPreview(divisionId, name, path, effectiveMapUrl, node.wikidataId ?? undefined, node.id, true, fallbackMapLabel, node.name, node.markerPoints ?? undefined);
     },
     [onPreview, node, shouldInterceptPreview, onOpenMapPicker, effectiveMapUrl, fallbackMapLabel],
   );
@@ -239,7 +239,7 @@ export const TreeNodeRow = memo(function TreeNodeRow({ node, depth, expanded, on
         onOpenMapPicker(node, { divisionId, name, path, isAssigned: false });
         return;
       }
-      onPreview(divisionId, name, path, effectiveMapUrl, node.wikidataId ?? undefined, node.id, false, fallbackMapLabel, node.name);
+      onPreview(divisionId, name, path, effectiveMapUrl, node.wikidataId ?? undefined, node.id, false, fallbackMapLabel, node.name, node.markerPoints ?? undefined);
     },
     [onPreview, node, shouldInterceptPreview, onOpenMapPicker, effectiveMapUrl, fallbackMapLabel],
   );

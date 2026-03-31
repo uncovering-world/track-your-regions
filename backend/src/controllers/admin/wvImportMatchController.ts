@@ -463,6 +463,7 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
       ris.source_external_id AS wikidata_id,
       ris.hierarchy_warnings,
       ris.hierarchy_reviewed,
+      ris.marker_points,
       COALESCE(ris.geo_available, (
         SELECT NOT wg.not_available FROM wikidata_geoshapes wg
         WHERE wg.wikidata_id = ris.source_external_id
@@ -522,6 +523,7 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
     hierarchyWarnings: string[];
     hierarchyReviewed: boolean;
     geoAvailable: boolean | null;
+    markerPoints: Array<{ name: string; lat: number; lon: number }> | null;
     children: TreeNode[];
   }
 
@@ -548,6 +550,7 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
       hierarchyWarnings: (row.hierarchy_warnings as string[]) ?? [],
       hierarchyReviewed: row.hierarchy_reviewed === true,
       geoAvailable: (row.geo_available as boolean | null) ?? null,
+      markerPoints: (row.marker_points as TreeNode['markerPoints']) ?? null,
       children: [],
     });
   }

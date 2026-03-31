@@ -55,6 +55,8 @@ interface DivisionPreviewDialogProps {
   onSplitDeeper?: () => void;
   /** Optional AI vision match callback — suggests divisions via image analysis */
   onVisionMatch?: () => Promise<{ ids: number[]; rejectedIds?: number[]; unclearIds?: number[]; reasoning?: string; debugImages?: { regionMap: string; divisionsMap: string } }>;
+  /** Marker points from point matching (shown when no image/geoshape) */
+  markerPoints?: Array<{ name: string; lat: number; lon: number }>;
   /** Whether accept/reject actions are in progress */
   actionPending?: boolean;
 }
@@ -237,6 +239,7 @@ export function DivisionPreviewDialog({
   onAcceptAndRejectRest,
   onSplitDeeper,
   onVisionMatch,
+  markerPoints,
   actionPending,
 }: DivisionPreviewDialogProps) {
   const mapRef = useRef<MapRef>(null);
@@ -395,7 +398,7 @@ export function DivisionPreviewDialog({
         {!isTransferPreview && hasSideBySide && (
           <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 2, py: 0.5, borderBottom: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {showGeoshape ? 'Source region' : showImage ? (regionMapLabel ?? 'Region map') : 'Source region'}
+              {showGeoshape ? 'Source region' : showImage ? (regionMapLabel ?? 'Region map') : markerPoints?.length ? 'Marker points' : 'Source region'}
               {canToggle && (
                 <Typography component="span" variant="caption" sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }} onClick={() => setPreferImage(prev => !prev)}>
                   switch to {preferImage ? 'geoshape' : 'image'}
@@ -495,8 +498,43 @@ export function DivisionPreviewDialog({
             </Box>
           )}
 
-          {/* Placeholder when neither geoshape nor image is available */}
-          {hasSideBySide && !showGeoshape && !showImage && (
+          {/* Marker points map when neither geoshape nor image is available */}
+          {hasSideBySide && !showGeoshape && !showImage && markerPoints && markerPoints.length > 0 && (
+            <Box sx={{ flex: 1, borderRight: 1, borderColor: 'divider' }}>
+              <MapGL
+                initialViewState={{
+                  bounds: [
+                    Math.min(...markerPoints.map(p => p.lon)) - 0.5,
+                    Math.min(...markerPoints.map(p => p.lat)) - 0.5,
+                    Math.max(...markerPoints.map(p => p.lon)) + 0.5,
+                    Math.max(...markerPoints.map(p => p.lat)) + 0.5,
+                  ] as [number, number, number, number],
+                  fitBoundsOptions: { padding: 40 },
+                }}
+                style={{ width: '100%', height: '100%' }}
+                mapStyle={MAP_STYLE}
+              >
+                <NavigationControl position="top-right" />
+                <Source id="marker-points" type="geojson" data={{
+                  type: 'FeatureCollection',
+                  features: markerPoints.map(p => ({
+                    type: 'Feature' as const,
+                    properties: { name: p.name },
+                    geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
+                  })),
+                }}>
+                  <Layer id="marker-circles" type="circle" paint={{
+                    'circle-radius': 5,
+                    'circle-color': '#e65100',
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#fff',
+                  }} />
+                </Source>
+              </MapGL>
+            </Box>
+          )}
+          {/* Placeholder when no source data at all */}
+          {hasSideBySide && !showGeoshape && !showImage && (!markerPoints || markerPoints.length === 0) && (
             <Box sx={{
               flex: 1,
               display: 'flex',

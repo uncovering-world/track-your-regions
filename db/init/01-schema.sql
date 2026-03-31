@@ -1882,7 +1882,8 @@ CREATE TABLE IF NOT EXISTS region_import_state (
     needs_manual_fix BOOLEAN DEFAULT FALSE,
     fix_note TEXT,
     region_map_url TEXT,
-    map_image_reviewed BOOLEAN DEFAULT FALSE
+    map_image_reviewed BOOLEAN DEFAULT FALSE,
+    marker_points JSONB
 );
 
 CREATE INDEX IF NOT EXISTS idx_ris_status ON region_import_state(match_status);
