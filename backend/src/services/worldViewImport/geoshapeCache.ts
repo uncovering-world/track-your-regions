@@ -94,38 +94,96 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
 
 /**
  * Fallback: build a composite geoshape by unioning geoshapes of child entities.
- * Uses Wikidata P527 (has part) / P361 (part of) to find children.
+ * Sources (merged, deduplicated):
+ *  1. Wikidata P527 (has part) / P361 (part of)
+ *  2. Wikivoyage regionlist subregion links (resolved to Wikidata QIDs)
  * Returns true if a composite geoshape was built and cached.
  */
-async function tryBuildCompositeGeoshape(wikidataId: string): Promise<boolean> {
-  // Find child entities via SPARQL
-  const query = `
-    SELECT DISTINCT ?part WHERE {
-      { wd:${wikidataId} wdt:P527 ?part }
-      UNION
-      { ?part wdt:P361 wd:${wikidataId} }
-    }
-  `;
+async function tryBuildCompositeGeoshape(wikidataId: string, sourceUrl?: string): Promise<boolean> {
+  const childQidSet = new Set<string>();
 
-  let childQids: string[];
+  // Source 1: Wikidata SPARQL — P527 / P361
   try {
+    const query = `
+      SELECT DISTINCT ?part WHERE {
+        { wd:${wikidataId} wdt:P527 ?part }
+        UNION
+        { ?part wdt:P361 wd:${wikidataId} }
+      }
+    `;
     const results = await sparqlQuery(query, '[GeoshapeComposite]', 1);
-    childQids = results.map(r => extractQid(r.part?.value ?? '')).filter(q => q.startsWith('Q'));
+    for (const r of results) {
+      const qid = extractQid(r.part?.value ?? '');
+      if (qid.startsWith('Q')) childQidSet.add(qid);
+    }
   } catch (err) {
     console.warn(`[GeoshapeComposite] SPARQL failed for ${wikidataId}:`, err instanceof Error ? err.message : err);
-    return false;
   }
 
-  if (childQids.length === 0) {
+  // Source 2: Wikivoyage page regionlist subregion links
+  if (sourceUrl) {
+    try {
+      const pageTitle = decodeURIComponent(sourceUrl.replace('https://en.wikivoyage.org/wiki/', ''));
+      const url = new URL('https://en.wikivoyage.org/w/api.php');
+      url.searchParams.set('action', 'parse');
+      url.searchParams.set('page', pageTitle);
+      url.searchParams.set('prop', 'wikitext');
+      url.searchParams.set('format', 'json');
+
+      const resp = await fetch(url.toString(), {
+        headers: { 'User-Agent': USER_AGENT },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (resp.ok) {
+        const data = await resp.json() as { parse?: { wikitext?: { '*': string } } };
+        const wikitext = data.parse?.wikitext?.['*'] ?? '';
+        // Extract regionlist links: region1name=[[Title]], region2name=[[Title]], etc.
+        const regionLinks = new Set<string>();
+        for (const m of wikitext.matchAll(/region\d+name\s*=\s*\[\[([^\]|]+)/g)) {
+          regionLinks.add(m[1].trim());
+        }
+        if (regionLinks.size > 0) {
+          // Resolve Wikivoyage titles → Wikidata QIDs via MediaWiki API
+          const titles = [...regionLinks];
+          for (let i = 0; i < titles.length; i += 50) {
+            const batch = titles.slice(i, i + 50);
+            const qUrl = new URL('https://en.wikivoyage.org/w/api.php');
+            qUrl.searchParams.set('action', 'query');
+            qUrl.searchParams.set('titles', batch.join('|'));
+            qUrl.searchParams.set('redirects', '1');
+            qUrl.searchParams.set('prop', 'pageprops');
+            qUrl.searchParams.set('ppprop', 'wikibase_item');
+            qUrl.searchParams.set('format', 'json');
+            const qResp = await fetch(qUrl.toString(), {
+              headers: { 'User-Agent': USER_AGENT },
+              signal: AbortSignal.timeout(15000),
+            });
+            if (qResp.ok) {
+              const qData = await qResp.json() as { query?: { pages?: Record<string, { pageprops?: { wikibase_item?: string } }> } };
+              for (const page of Object.values(qData.query?.pages ?? {})) {
+                const qid = page.pageprops?.wikibase_item;
+                if (qid) childQidSet.add(qid);
+              }
+            }
+          }
+          console.log(`[GeoshapeComposite] Wikivoyage regionlist added ${regionLinks.size} titles for ${wikidataId}`);
+        }
+      }
+    } catch (err) {
+      console.warn(`[GeoshapeComposite] Wikivoyage parse failed for ${wikidataId}:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  if (childQidSet.size === 0) {
     console.log(`[GeoshapeComposite] No child entities found for ${wikidataId}`);
     return false;
   }
 
-  console.log(`[GeoshapeComposite] Found ${childQids.length} child entities for ${wikidataId}, fetching geoshapes...`);
+  console.log(`[GeoshapeComposite] Found ${childQidSet.size} child entities for ${wikidataId}, fetching geoshapes...`);
 
   // Fetch geoshapes for each child (caches individually)
   const availableQids: string[] = [];
-  for (const qid of childQids) {
+  for (const qid of childQidSet) {
     const available = await getOrFetchGeoshape(qid);
     if (available) availableQids.push(qid);
   }
@@ -135,7 +193,7 @@ async function tryBuildCompositeGeoshape(wikidataId: string): Promise<boolean> {
     return false;
   }
 
-  console.log(`[GeoshapeComposite] ${availableQids.length}/${childQids.length} children have geoshapes, building union...`);
+  console.log(`[GeoshapeComposite] ${availableQids.length}/${childQidSet.size} children have geoshapes, building union...`);
 
   // Union all child geoshapes in PostGIS and store under the parent's wikidataId
   try {
@@ -583,15 +641,16 @@ export async function geoshapeMatchRegion(
   scopeAncestorName?: string;
   nextScope?: { ancestorId: number; ancestorName: string };
 }> {
-  // 1. Get region's Wikidata ID
+  // 1. Get region's Wikidata ID and source URL
   const wdResult = await pool.query(
-    `SELECT ris.source_external_id, r.is_leaf
+    `SELECT ris.source_external_id, ris.source_url, r.is_leaf
      FROM region_import_state ris
      JOIN regions r ON r.id = ris.region_id
      WHERE ris.region_id = $1 AND r.world_view_id = $2`,
     [regionId, worldViewId],
   );
   const wikidataId = wdResult.rows[0]?.source_external_id as string | undefined;
+  const sourceUrl = wdResult.rows[0]?.source_url as string | undefined;
   const isLeaf = wdResult.rows[0]?.is_leaf as boolean | undefined;
   if (!wikidataId) {
     return { found: 0, suggestions: [] };
@@ -600,7 +659,7 @@ export async function geoshapeMatchRegion(
   // 2. Fetch/cache geoshape (with composite fallback) and update geo_available flag
   let available = await getOrFetchGeoshape(wikidataId);
   if (!available) {
-    available = await tryBuildCompositeGeoshape(wikidataId);
+    available = await tryBuildCompositeGeoshape(wikidataId, sourceUrl);
   }
   await pool.query(
     'UPDATE region_import_state SET geo_available = $1 WHERE region_id = $2',
