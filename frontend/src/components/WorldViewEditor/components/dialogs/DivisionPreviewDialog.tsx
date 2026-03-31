@@ -247,7 +247,7 @@ export function DivisionPreviewDialog({
   const [geoshapeData, setGeoshapeData] = useState<GeoJSON.FeatureCollection | null>(null);
   const [geoshapeLoading, setGeoshapeLoading] = useState(false);
   const [geoshapeError, setGeoshapeError] = useState(false);
-  const [preferImage, setPreferImage] = useState(false);
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [aiSuggestedIds, setAiSuggestedIds] = useState<Set<number>>(new Set());
   const [aiRejectedIds, setAiRejectedIds] = useState<Set<number>>(new Set());
   const [aiUnclearIds, setAiUnclearIds] = useState<Set<number>>(new Set());
@@ -282,7 +282,7 @@ export function DivisionPreviewDialog({
     if (!division || !wikidataId) {
       setGeoshapeData(null);
       setGeoshapeError(false);
-      setPreferImage(false);
+      setSelectedSource(null);
       setAiSuggestedIds(new Set());
       setAiRejectedIds(new Set());
       setAiUnclearIds(new Set());
@@ -317,15 +317,27 @@ export function DivisionPreviewDialog({
     };
   }, [isTransferPreview, geometry]);
 
-  // Geoshape preferred; fall back to image only when geoshape unavailable/empty
+  // Build list of available left-panel sources
   const geoshapeHasFeatures = !!geoshapeData && geoshapeData.features.length > 0;
   const geoshapeAvailable = !!wikidataId && !geoshapeError && (geoshapeLoading || geoshapeHasFeatures);
   const imageAvailable = !!regionMapUrl;
-  const canToggle = geoshapeAvailable && imageAvailable;
-  const showGeoshape = geoshapeAvailable && !preferImage;
-  const showImage = imageAvailable && (!geoshapeAvailable || preferImage);
-  // Show side-by-side when we have content OR when we tried to fetch (show placeholder)
-  const hasSideBySide = showGeoshape || showImage || !!wikidataId;
+  const pointsAvailable = !!markerPoints && markerPoints.length > 0;
+
+  const availableSources = useMemo(() => {
+    const sources: Array<{ key: string; label: string }> = [];
+    if (geoshapeAvailable) sources.push({ key: 'geoshape', label: 'Geoshape' });
+    if (imageAvailable) sources.push({ key: 'image', label: regionMapLabel ?? 'Region map' });
+    if (pointsAvailable) sources.push({ key: 'points', label: 'Marker points' });
+    return sources;
+  }, [geoshapeAvailable, imageAvailable, pointsAvailable, regionMapLabel]);
+
+  const activeSource = selectedSource && availableSources.some(s => s.key === selectedSource)
+    ? selectedSource
+    : availableSources[0]?.key ?? null;
+  const showGeoshape = activeSource === 'geoshape';
+  const showImage = activeSource === 'image';
+  const showPoints = activeSource === 'points';
+  const hasSideBySide = availableSources.length > 0 || !!wikidataId;
 
   return (
     <Dialog
@@ -398,12 +410,12 @@ export function DivisionPreviewDialog({
         {!isTransferPreview && hasSideBySide && (
           <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 2, py: 0.5, borderBottom: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {showGeoshape ? 'Source region' : showImage ? (regionMapLabel ?? 'Region map') : markerPoints?.length ? 'Marker points' : 'Source region'}
-              {canToggle && (
-                <Typography component="span" variant="caption" sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }} onClick={() => setPreferImage(prev => !prev)}>
-                  switch to {preferImage ? 'geoshape' : 'image'}
+              {availableSources.find(s => s.key === activeSource)?.label ?? 'Source region'}
+              {availableSources.length > 1 && availableSources.filter(s => s.key !== activeSource).map(s => (
+                <Typography key={s.key} component="span" variant="caption" sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }} onClick={() => setSelectedSource(s.key)}>
+                  {s.label.toLowerCase()}
                 </Typography>
-              )}
+              ))}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               {rightMode === 'children' ? 'Subregions (color-coded)' : <>GADM division <strong>{division?.name}</strong></>}
@@ -498,8 +510,8 @@ export function DivisionPreviewDialog({
             </Box>
           )}
 
-          {/* Marker points map when neither geoshape nor image is available */}
-          {hasSideBySide && !showGeoshape && !showImage && markerPoints && markerPoints.length > 0 && (
+          {/* Marker points map */}
+          {hasSideBySide && showPoints && markerPoints && markerPoints.length > 0 && (
             <Box sx={{ flex: 1, borderRight: 1, borderColor: 'divider' }}>
               <MapGL
                 initialViewState={{
@@ -534,7 +546,7 @@ export function DivisionPreviewDialog({
             </Box>
           )}
           {/* Placeholder when no source data at all */}
-          {hasSideBySide && !showGeoshape && !showImage && (!markerPoints || markerPoints.length === 0) && (
+          {hasSideBySide && !showGeoshape && !showImage && !showPoints && (
             <Box sx={{
               flex: 1,
               display: 'flex',
