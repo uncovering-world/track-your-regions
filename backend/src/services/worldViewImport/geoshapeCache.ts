@@ -1,5 +1,6 @@
 import { pool } from '../../db/index.js';
 import type { PoolClient } from 'pg';
+import { sparqlQuery, extractQid } from '../sync/wikidataUtils.js';
 
 const GEOSHAPE_URL = 'https://maps.wikimedia.org/geoshape';
 const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)';
@@ -87,6 +88,81 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
        ON CONFLICT (wikidata_id) DO NOTHING`,
       [wikidataId],
     );
+    return false;
+  }
+}
+
+/**
+ * Fallback: build a composite geoshape by unioning geoshapes of child entities.
+ * Uses Wikidata P527 (has part) / P361 (part of) to find children.
+ * Returns true if a composite geoshape was built and cached.
+ */
+async function tryBuildCompositeGeoshape(wikidataId: string): Promise<boolean> {
+  // Find child entities via SPARQL
+  const query = `
+    SELECT DISTINCT ?part WHERE {
+      { wd:${wikidataId} wdt:P527 ?part }
+      UNION
+      { ?part wdt:P361 wd:${wikidataId} }
+    }
+  `;
+
+  let childQids: string[];
+  try {
+    const results = await sparqlQuery(query, '[GeoshapeComposite]', 1);
+    childQids = results.map(r => extractQid(r.part?.value ?? '')).filter(q => q.startsWith('Q'));
+  } catch (err) {
+    console.warn(`[GeoshapeComposite] SPARQL failed for ${wikidataId}:`, err instanceof Error ? err.message : err);
+    return false;
+  }
+
+  if (childQids.length === 0) {
+    console.log(`[GeoshapeComposite] No child entities found for ${wikidataId}`);
+    return false;
+  }
+
+  console.log(`[GeoshapeComposite] Found ${childQids.length} child entities for ${wikidataId}, fetching geoshapes...`);
+
+  // Fetch geoshapes for each child (caches individually)
+  const availableQids: string[] = [];
+  for (const qid of childQids) {
+    const available = await getOrFetchGeoshape(qid);
+    if (available) availableQids.push(qid);
+  }
+
+  if (availableQids.length === 0) {
+    console.log(`[GeoshapeComposite] No child geoshapes available for ${wikidataId}`);
+    return false;
+  }
+
+  console.log(`[GeoshapeComposite] ${availableQids.length}/${childQids.length} children have geoshapes, building union...`);
+
+  // Union all child geoshapes in PostGIS and store under the parent's wikidataId
+  try {
+    await pool.query(`
+      INSERT INTO wikidata_geoshapes (wikidata_id, geom, not_available)
+      SELECT $1,
+        ST_Multi(ST_CollectionExtract(ST_Buffer(ST_Union(wg.geom), 0), 3)),
+        FALSE
+      FROM wikidata_geoshapes wg
+      WHERE wg.wikidata_id = ANY($2) AND wg.not_available = FALSE AND wg.geom IS NOT NULL
+      ON CONFLICT (wikidata_id) DO UPDATE SET
+        geom = EXCLUDED.geom,
+        not_available = FALSE
+    `, [wikidataId, availableQids]);
+
+    // Verify the union produced a valid geometry
+    const check = await pool.query(
+      'SELECT geom IS NOT NULL AS valid FROM wikidata_geoshapes WHERE wikidata_id = $1',
+      [wikidataId],
+    );
+    if (check.rows[0]?.valid) {
+      console.log(`[GeoshapeComposite] Built composite geoshape for ${wikidataId} from ${availableQids.length} children`);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error(`[GeoshapeComposite] Union failed for ${wikidataId}:`, err);
     return false;
   }
 }
@@ -521,8 +597,11 @@ export async function geoshapeMatchRegion(
     return { found: 0, suggestions: [] };
   }
 
-  // 2. Fetch/cache geoshape and update geo_available flag
-  const available = await getOrFetchGeoshape(wikidataId);
+  // 2. Fetch/cache geoshape (with composite fallback) and update geo_available flag
+  let available = await getOrFetchGeoshape(wikidataId);
+  if (!available) {
+    available = await tryBuildCompositeGeoshape(wikidataId);
+  }
   await pool.query(
     'UPDATE region_import_state SET geo_available = $1 WHERE region_id = $2',
     [available, regionId],
