@@ -108,7 +108,16 @@ export async function resolveMarkerCoordinates(markers: ParsedMarker[]): Promise
 export async function pointMatchRegion(
   worldViewId: number,
   regionId: number,
-): Promise<{ found: number; suggestions: Array<{ divisionId: number; name: string; path: string; score: number }> }> {
+  scopeAncestorId?: number,
+): Promise<{
+  found: number;
+  suggestions: Array<{
+    divisionId: number; name: string; path: string; score: number;
+    conflict?: { type: 'direct' | 'split'; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string };
+  }>;
+  scopeAncestorName?: string;
+  nextScope?: { ancestorId: number; ancestorName: string };
+}> {
   // 1. Get region info
   const regionResult = await pool.query(
     `SELECT ris.source_url, r.is_leaf, r.parent_region_id
@@ -199,27 +208,60 @@ export async function pointMatchRegion(
     siblingDivisionIds = new Set(siblingResult.rows.map(r => r.division_id as number));
   }
 
-  // 7. Walk up region tree to find nearest ancestor with GADM divisions (scope constraint)
+  // 7. Walk up region tree to find scope ancestor and next scope
   const ancestorResult = await pool.query(`
     WITH RECURSIVE ancestors AS (
-      SELECT id, parent_region_id, 0 AS depth FROM regions WHERE id = $1
+      SELECT id, name, parent_region_id, 0 AS depth FROM regions WHERE id = $1
       UNION ALL
-      SELECT r.id, r.parent_region_id, a.depth + 1
+      SELECT r.id, r.name, r.parent_region_id, a.depth + 1
       FROM regions r JOIN ancestors a ON r.id = a.parent_region_id
     )
-    SELECT a.id,
+    SELECT a.id, a.name,
       (SELECT array_agg(rm.division_id) FROM region_members rm WHERE rm.region_id = a.id) AS division_ids
     FROM ancestors a
     ORDER BY a.depth
   `, [regionId]);
 
   let scopeDivisionIds: number[] = [];
+  let scopeAncestorName: string | undefined;
+  let nextScope: { ancestorId: number; ancestorName: string } | undefined;
+  let foundScope = false;
+  const skipUntilPassed = scopeAncestorId != null;
+  let passedRequestedAncestor = false;
+
   for (const row of ancestorResult.rows) {
-    if ((row.id as number) === regionId) continue;
+    const rowId = row.id as number;
+    const rowName = row.name as string;
     const ids = row.division_ids as number[] | null;
-    if (ids && ids.length > 0) {
-      scopeDivisionIds = ids;
-      break;
+    const hasDivisions = ids != null && ids.length > 0;
+
+    if (rowId === regionId) continue;
+
+    if (skipUntilPassed && !passedRequestedAncestor) {
+      if (rowId === scopeAncestorId) {
+        passedRequestedAncestor = true;
+        if (hasDivisions) {
+          scopeDivisionIds = ids;
+          scopeAncestorName = rowName;
+          foundScope = true;
+          continue;
+        }
+      }
+      continue;
+    }
+
+    if (!foundScope) {
+      if (hasDivisions) {
+        scopeDivisionIds = ids;
+        scopeAncestorName = rowName;
+        foundScope = true;
+        continue;
+      }
+    } else {
+      if (hasDivisions) {
+        nextScope = { ancestorId: rowId, ancestorName: rowName };
+        break;
+      }
     }
   }
 
@@ -286,9 +328,50 @@ export async function pointMatchRegion(
     }
   }
 
+  // 8b. Conflict detection for wider scope
+  const conflictMap = new Map<number, { type: 'direct' | 'split'; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string }>();
+  if (scopeAncestorId != null && pointDivisionMap.size > 0) {
+    const candidateIds = [...pointDivisionMap.keys()];
+    const conflictResult = await pool.query(`
+      WITH RECURSIVE candidate_ancestors AS (
+        SELECT ad.id AS candidate_id, ad.id AS ancestor_id, ad.name AS ancestor_name, ad.parent_id, 0 AS depth
+        FROM administrative_divisions ad
+        WHERE ad.id = ANY($1)
+        UNION ALL
+        SELECT ca.candidate_id, ad.id, ad.name, ad.parent_id, ca.depth + 1
+        FROM administrative_divisions ad
+        JOIN candidate_ancestors ca ON ad.id = ca.parent_id
+      )
+      SELECT DISTINCT ON (ca.candidate_id)
+        ca.candidate_id,
+        ca.ancestor_id AS donor_division_id,
+        ca.ancestor_name AS donor_division_name,
+        ca.depth,
+        rm.region_id AS donor_region_id,
+        r.name AS donor_region_name
+      FROM candidate_ancestors ca
+      JOIN region_members rm ON rm.division_id = ca.ancestor_id
+      JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
+      WHERE rm.region_id != $3
+      ORDER BY ca.candidate_id, ca.depth ASC
+    `, [candidateIds, worldViewId, regionId]);
+
+    for (const row of conflictResult.rows) {
+      const candidateId = row.candidate_id as number;
+      const donorDivisionId = row.donor_division_id as number;
+      conflictMap.set(candidateId, {
+        type: candidateId === donorDivisionId ? 'direct' : 'split',
+        donorRegionId: row.donor_region_id as number,
+        donorRegionName: row.donor_region_name as string,
+        donorDivisionId,
+        donorDivisionName: row.donor_division_name as string,
+      });
+    }
+  }
+
   if (pointDivisionMap.size === 0) {
     console.log(`[PointMatcher] No GADM divisions contain any points for region ${regionId}`);
-    return { found: 0, suggestions: [] };
+    return { found: 0, suggestions: [], scopeAncestorName, nextScope };
   }
 
   // 9. Build covering set: shallowest divisions first, exclude sibling-assigned, skip children of already-selected
@@ -322,10 +405,10 @@ export async function pointMatchRegion(
 
   if (coveringSet.length === 0) {
     console.log(`[PointMatcher] No covering set after filtering for region ${regionId}`);
-    return { found: 0, suggestions: [] };
+    return { found: 0, suggestions: [], scopeAncestorName, nextScope };
   }
 
-  // 10. Filter already-rejected/suggested/assigned division IDs
+  // 10. Filter already-rejected/suggested/assigned division IDs (including descendants)
   const [rejectedResult, existingResult, assignedResult] = await Promise.all([
     pool.query(
       `SELECT division_id FROM region_match_suggestions WHERE region_id = $1 AND rejected = true`,
@@ -336,7 +419,12 @@ export async function pointMatchRegion(
       [regionId],
     ),
     pool.query(
-      `SELECT division_id FROM region_members WHERE region_id = $1`,
+      `WITH RECURSIVE assigned_tree AS (
+        SELECT division_id AS id FROM region_members WHERE region_id = $1
+        UNION ALL
+        SELECT ad.id FROM administrative_divisions ad JOIN assigned_tree at ON ad.parent_id = at.id
+      )
+      SELECT id AS division_id FROM assigned_tree`,
       [regionId],
     ),
   ]);
@@ -350,7 +438,7 @@ export async function pointMatchRegion(
 
   if (filteredSet.length === 0) {
     console.log(`[PointMatcher] All candidates already handled for region ${regionId}`);
-    return { found: 0, suggestions: [] };
+    return { found: 0, suggestions: [], scopeAncestorName, nextScope };
   }
 
   // 11. Write suggestions and update status
@@ -372,13 +460,19 @@ export async function pointMatchRegion(
       score,
     });
 
+    const conflict = conflictMap.get(c.id);
     await pool.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [regionId, c.id, c.name, c.path, score],
+      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, conflict_type, donor_region_id, donor_division_id, donor_region_name, donor_division_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [regionId, c.id, c.name, c.path, score, conflict?.type ?? null, conflict?.donorRegionId ?? null, conflict?.donorDivisionId ?? null, conflict?.donorRegionName ?? null, conflict?.donorDivisionName ?? null],
     );
   }
 
-  console.log(`[PointMatcher] ${suggestions.length} suggestions for region ${regionId}: ${suggestions.map(s => s.name).join(', ')}`);
-  return { found: suggestions.length, suggestions };
+  const suggestionsWithConflict = suggestions.map(s => ({
+    ...s,
+    conflict: conflictMap.get(s.divisionId),
+  }));
+
+  console.log(`[PointMatcher] ${suggestionsWithConflict.length} suggestions for region ${regionId}: ${suggestionsWithConflict.map(s => s.name).join(', ')}`);
+  return { found: suggestionsWithConflict.length, suggestions: suggestionsWithConflict, scopeAncestorName, nextScope };
 }

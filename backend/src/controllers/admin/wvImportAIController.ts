@@ -165,11 +165,11 @@ export async function geoshapeMatch(req: AuthenticatedRequest, res: Response): P
  */
 export async function pointMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId } = req.body;
-  console.log(`[WV Import] POST /matches/${worldViewId}/point-match — regionId=${regionId}`);
+  const { regionId, scopeAncestorId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/point-match — regionId=${regionId}${scopeAncestorId ? ` scopeAncestorId=${scopeAncestorId}` : ''}`);
 
   try {
-    const result = await pointMatchRegion(worldViewId, regionId);
+    const result = await pointMatchRegion(worldViewId, regionId, scopeAncestorId);
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);
     }

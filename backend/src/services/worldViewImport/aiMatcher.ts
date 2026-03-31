@@ -353,7 +353,12 @@ export async function aiMatchSingleRegion(
 
   // Load already-assigned member division IDs to avoid re-suggesting them
   const membersResult = await pool.query(
-    `SELECT division_id FROM region_members WHERE region_id = $1`,
+    `WITH RECURSIVE assigned_tree AS (
+      SELECT division_id AS id FROM region_members WHERE region_id = $1
+      UNION ALL
+      SELECT ad.id FROM administrative_divisions ad JOIN assigned_tree at ON ad.parent_id = at.id
+    )
+    SELECT id AS division_id FROM assigned_tree`,
     [regionId],
   );
   const assignedIds = new Set<number>(membersResult.rows.map(r => r.division_id as number));
