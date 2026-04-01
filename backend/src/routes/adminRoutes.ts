@@ -81,7 +81,7 @@ import {
   acceptAndRejectRest, acceptBatchMatches, acceptWithTransfer, getTransferPreview, selectMapImage, markManualFix,
   getUnionGeometry, splitDivisionsDeeper, visionMatchDivisions, colorMatchDivisionsSSE,
   resolveWaterReview, getWaterCropImage, resolveParkReview, getParkCropImage,
-  resolveClusterReview, getClusterPreviewImage, getClusterHighlightImage, resolveIcpAdjustment,
+  resolveClusterReview, getClusterPreviewImage, getClusterHighlightImage, getClusterOverlayImage, resolveIcpAdjustment,
   // AI
   startAIMatch, getAIMatchStatus, cancelAIMatchEndpoint, dbSearchOneRegion,
   geocodeMatch, geoshapeMatch, pointMatch, resetMatch, aiMatchOneRegion,
@@ -378,9 +378,34 @@ router.get('/wv-import/cluster-highlight/:reviewId/:label', (req: AuthenticatedR
   res.send(png);
 });
 
+// Cluster overlay image (full-image colored overlay for manual paint editor)
+router.get('/wv-import/cluster-overlay/:reviewId', (req: AuthenticatedRequest, res: Response) => {
+  const png = getClusterOverlayImage(String(req.params.reviewId));
+  if (!png) { res.status(404).json({ error: 'Overlay not found' }); return; }
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.send(png);
+});
+
 // Cluster review callback (user merges small artifact clusters during CV match)
 router.post('/wv-import/cluster-review/:reviewId', (req: AuthenticatedRequest, res: Response) => {
   const reviewId = String(req.params.reviewId);
+
+  // Handle manual_clusters decision type (painted overlay replaces automated clustering)
+  if (req.body?.type === 'manual_clusters') {
+    const overlayPng = req.body.overlayPng;
+    const palette = req.body.palette;
+    if (typeof overlayPng !== 'string' || !Array.isArray(palette)) {
+      res.status(400).json({ error: 'manual_clusters requires overlayPng (string) and palette (array)' });
+      return;
+    }
+    console.log(`  [Cluster Review POST] reviewId=${reviewId} type=manual_clusters palette=${palette.length} colors`);
+    const found = resolveClusterReview(reviewId, { type: 'manual_clusters', overlayPng, palette });
+    if (found) { res.json({ ok: true }); } else { res.status(404).json({ error: 'Review not found or expired' }); }
+    return;
+  }
+
   const merges: Record<number, number> = {};
   if (req.body?.merges && typeof req.body.merges === 'object') {
     for (const [from, to] of Object.entries(req.body.merges)) {

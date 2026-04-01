@@ -25,6 +25,7 @@ export {
   resolveClusterReview,
   getClusterPreviewImage,
   getClusterHighlightImage,
+  getClusterOverlayImage,
   pendingClusterReviews,
   clusterPreviewImages,
   resolveIcpAdjustment,

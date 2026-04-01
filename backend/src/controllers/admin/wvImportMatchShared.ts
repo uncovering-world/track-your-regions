@@ -13,8 +13,11 @@ import {
   pendingClusterReviews,
   clusterPreviewImages,
   storeClusterHighlights,
+  storeClusterOverlay,
   pendingIcpAdjustments,
   type IcpAdjustmentDecision,
+  type ClusterReviewDecision,
+  type ClusterReviewResponse,
 } from './wvImportMatchReview.js';
 import { cleanClusters } from './wvImportMatchClusterClean.js';
 import {
@@ -427,6 +430,21 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       }
       storeClusterHighlights(reviewId, highlights);
 
+      // Generate full-image colored overlay for manual paint editor
+      const overlayBuf = Buffer.alloc(tp * 4, 0);
+      for (let i = 0; i < tp; i++) {
+        const lbl = pixelLabels[i];
+        if (lbl === 255 || !colorCentroids[lbl]) continue;
+        const c = colorCentroids[lbl]!;
+        overlayBuf[i * 4] = c[0];
+        overlayBuf[i * 4 + 1] = c[1];
+        overlayBuf[i * 4 + 2] = c[2];
+        overlayBuf[i * 4 + 3] = 200;
+      }
+      const overlayPng = await sharp(overlayBuf, { raw: { width: TW, height: TH, channels: 4 } })
+        .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+      storeClusterOverlay(reviewId, overlayPng);
+
       sendEvent({
         type: 'cluster_review',
         reviewId,
@@ -442,25 +460,50 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       });
       await new Promise(resolve => setImmediate(resolve));
 
-      interface ClusterReviewDecision {
-        merges: Record<number, number>;
-        excludes?: number[];
-        recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy' };
-        split?: number[];
-      }
-
-      const decision = await new Promise<ClusterReviewDecision>((resolve) => {
+      const decision = await new Promise<ClusterReviewResponse>((resolve) => {
         pendingClusterReviews.set(reviewId, resolve);
       });
 
+      // Check for manual_clusters decision — replace pixel labels from painted overlay
+      if ('type' in decision && decision.type === 'manual_clusters') {
+        await logStep('Applying manually painted clusters...');
+        const { overlayPng: pngDataUrl, palette: manualPalette } = decision;
+        const base64Data = pngDataUrl.replace(/^data:image\/png;base64,/, '');
+        const { data: rawPixels, info: rawInfo } = await sharp(Buffer.from(base64Data, 'base64'))
+          .resize(TW, TH, { kernel: 'lanczos3' })
+          .raw().ensureAlpha()
+          .toBuffer({ resolveWithObject: true });
+        const totalPx = rawInfo.width * rawInfo.height;
+        for (let i = 0; i < totalPx; i++) {
+          const ri = i * 4;
+          if (rawPixels[ri + 3] < 128) { pixelLabels[i] = 255; continue; }
+          const r = rawPixels[ri], g = rawPixels[ri + 1], b = rawPixels[ri + 2];
+          let bestLabel = 255, bestDist = Infinity;
+          for (const entry of manualPalette) {
+            const dr = r - entry.color[0], dg = g - entry.color[1], db = b - entry.color[2];
+            const dist = dr * dr + dg * dg + db * db;
+            if (dist < bestDist) { bestDist = dist; bestLabel = entry.label; }
+          }
+          pixelLabels[i] = bestLabel;
+        }
+        for (const entry of manualPalette) colorCentroids[entry.label] = entry.color;
+        finalLabels.clear();
+        for (const entry of manualPalette) finalLabels.add(entry.label);
+        console.log(`  [Manual Clusters] Applied ${manualPalette.length} clusters from manual painting`);
+        break;  // exit reviewLoop, proceed to ICP + assignment
+      }
+
+      // From here decision is guaranteed to be ClusterReviewDecision (manual_clusters handled above)
+      const clusterDecision = decision as ClusterReviewDecision;
+
       // Check for recluster request
-      if (decision.recluster) {
-        console.log(`  [Cluster Review] Recluster requested: ${decision.recluster.preset}`);
-        return { recluster: true, preset: decision.recluster.preset };
+      if (clusterDecision.recluster) {
+        console.log(`  [Cluster Review] Recluster requested: ${clusterDecision.recluster.preset}`);
+        return { recluster: true, preset: clusterDecision.recluster.preset };
       }
 
       // Apply split — erosion-based CCA on each target cluster, assign new labels, loop back
-      const splitLabels = (decision.split ?? []).map(Number).filter(l => finalLabels.has(l));
+      const splitLabels = (clusterDecision.split ?? []).map(Number).filter((l: number) => finalLabels.has(l));
       if (splitLabels.length > 0) {
         await logStep(`Splitting ${splitLabels.length} cluster(s) into connected components...`);
         let nextLabel = Math.max(...finalLabels) + 1;
@@ -488,7 +531,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       if (reviewLoop) continue;
 
       // Apply excludes
-      const excludeLabels = (decision.excludes ?? []).map(Number).filter(l => finalLabels.has(l));
+      const excludeLabels = (clusterDecision.excludes ?? []).map(Number).filter((l: number) => finalLabels.has(l));
       if (excludeLabels.length > 0) {
         await logStep(`Excluding ${excludeLabels.length} cluster(s)...`);
         for (const lbl of excludeLabels) {
@@ -501,7 +544,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       }
 
       // Apply merges
-      const mergeEntries = Object.entries(decision.merges).map(([from, to]) => [Number(from), Number(to)] as [number, number]);
+      const mergeEntries = Object.entries(clusterDecision.merges).map(([from, to]) => [Number(from), Number(to)] as [number, number]);
       if (mergeEntries.length > 0) {
         await logStep(`Applying ${mergeEntries.length} cluster merge(s)...`);
         for (const [fromLabel, toLabel] of mergeEntries) {

@@ -113,13 +113,27 @@ export interface ClusterReviewDecision {
   split?: number[];
 }
 
+/** Manual cluster decision — user paints clusters manually and submits the result */
+export interface ManualClusterDecision {
+  type: 'manual_clusters';
+  /** Base64 data URL of the painted cluster overlay PNG */
+  overlayPng: string;
+  /** Palette mapping label numbers to RGB colors */
+  palette: Array<{ label: number; color: [number, number, number] }>;
+}
+
+/** Union of all possible cluster review responses */
+export type ClusterReviewResponse = ClusterReviewDecision | ManualClusterDecision;
+
 /** Pending cluster review callbacks */
-export const pendingClusterReviews = new Map<string, (decision: ClusterReviewDecision) => void>();
+export const pendingClusterReviews = new Map<string, (decision: ClusterReviewResponse) => void>();
 
 /** Cluster preview images — served via GET endpoint (avoids SSE bloat like water/park crops) */
 export const clusterPreviewImages = new Map<string, string>();
 /** Per-cluster highlight images — key: "{reviewId}:{label}" → PNG buffer */
 const clusterHighlightImages = new Map<string, Buffer>();
+/** Cluster overlay images — full-image colored overlay for manual paint editor */
+const clusterOverlayImages = new Map<string, Buffer>();
 
 /** Get a stored cluster preview image (called from GET endpoint) */
 export function getClusterPreviewImage(reviewId: string): string | undefined {
@@ -143,8 +157,19 @@ export function storeClusterHighlights(reviewId: string, highlights: Array<{ lab
   }, 600000);
 }
 
+/** Get a stored cluster overlay image (called from GET endpoint) */
+export function getClusterOverlayImage(reviewId: string): Buffer | undefined {
+  return clusterOverlayImages.get(reviewId);
+}
+
+/** Store a cluster overlay PNG for a review session */
+export function storeClusterOverlay(reviewId: string, png: Buffer) {
+  clusterOverlayImages.set(reviewId, png);
+  setTimeout(() => { clusterOverlayImages.delete(reviewId); }, 600000);
+}
+
 /** Resolve a pending cluster review (called from POST endpoint) */
-export function resolveClusterReview(reviewId: string, decision: ClusterReviewDecision): boolean {
+export function resolveClusterReview(reviewId: string, decision: ClusterReviewResponse): boolean {
   const resolve = pendingClusterReviews.get(reviewId);
   if (!resolve) return false;
   pendingClusterReviews.delete(reviewId);
