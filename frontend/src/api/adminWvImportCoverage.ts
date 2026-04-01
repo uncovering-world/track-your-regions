@@ -252,10 +252,11 @@ export async function splitDivisionsDeeper(
   divisionIds: number[],
   wikidataId: string,
   regionId: number,
+  source?: 'geoshape' | 'points' | 'image',
 ): Promise<SplitDeeperResult> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/split-deeper`, {
     method: 'POST',
-    body: JSON.stringify({ divisionIds, wikidataId, regionId }),
+    body: JSON.stringify({ divisionIds, wikidataId, regionId, ...(source ? { source } : {}) }),
   });
 }
 

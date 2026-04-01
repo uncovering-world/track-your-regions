@@ -719,14 +719,19 @@ export async function getUnionGeometry(req: AuthenticatedRequest, res: Response)
  */
 export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionIds, wikidataId, regionId } = req.body as { divisionIds: number[]; wikidataId: string; regionId: number };
+  const { divisionIds, wikidataId, regionId, source } = req.body as { divisionIds: number[]; wikidataId: string; regionId: number; source?: 'geoshape' | 'points' | 'image' };
 
-  // Check if geoshape is available for spatial filtering
-  const geoCheck = await pool.query(
-    `SELECT EXISTS(SELECT 1 FROM wikidata_geoshapes WHERE wikidata_id = $1 AND not_available = FALSE AND geom IS NOT NULL) AS available`,
-    [wikidataId],
-  );
-  const hasGeoshape = geoCheck.rows[0]?.available as boolean;
+  // When source is 'points', filter children by marker point containment instead of geoshape
+  const usePointFilter = source === 'points';
+
+  // Check if geoshape is available for spatial filtering (skip when using point filter)
+  const hasGeoshape = usePointFilter ? false : await (async () => {
+    const geoCheck = await pool.query(
+      `SELECT EXISTS(SELECT 1 FROM wikidata_geoshapes WHERE wikidata_id = $1 AND not_available = FALSE AND geom IS NOT NULL) AS available`,
+      [wikidataId],
+    );
+    return geoCheck.rows[0]?.available as boolean;
+  })();
 
   // For each input division, find its children.
   // When geoshape is available, filter by spatial intersection and compute coverage.
@@ -863,8 +868,83 @@ export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Respo
   // Fetch Wikivoyage markers and check which divisions contain points
   const { points, divisionsWithPoints } = await fetchMarkersForDivisions(regionId, resultIds);
 
+  // When filtering by points, also find markers that landed outside the parent scope
+  // (e.g., Kythira marker is under Attica, not under Ionian Islands GADM)
+  if (usePointFilter && points.length > 0) {
+    // For each marker point, find the deepest leaf division globally (5km buffer)
+    // to catch markers that fall outside the parent scope (e.g., Kythira under Attica)
+    const externalResult = await pool.query(`
+      WITH pts AS (
+        SELECT p.lon, p.lat, p.name
+        FROM unnest($1::double precision[], $2::double precision[], $3::text[]) AS p(lon, lat, name)
+      ),
+      matches AS (
+        SELECT DISTINCT ON (p.lon, p.lat) p.lon, p.lat, p.name AS pname,
+          ad.id AS div_id, ad.name AS div_name, ad.parent_id
+        FROM pts p
+        JOIN administrative_divisions ad
+          ON ad.geom_simplified_medium IS NOT NULL
+          AND NOT ad.has_children
+          AND ST_DWithin(ad.geom_simplified_medium::geography, ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography, 5000)
+        ORDER BY p.lon, p.lat, ST_Distance(ad.geom_simplified_medium::geography, ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography)
+      )
+      SELECT m.div_id, m.div_name, m.parent_id,
+        (WITH RECURSIVE anc AS (
+          SELECT m.div_id AS aid, m.div_name AS aname, m.parent_id AS apid
+          UNION ALL
+          SELECT d.id, d.name, d.parent_id FROM administrative_divisions d JOIN anc a ON d.id = a.apid
+        ) SELECT string_agg(aname, ' > ' ORDER BY aid) FROM anc) AS path
+      FROM matches m
+      WHERE m.div_id != ALL($4)
+    `, [points.map(p => p.lon), points.map(p => p.lat), points.map(p => p.name), resultIds]);
+
+    // Add external divisions to the result
+    for (const row of externalResult.rows) {
+      const divId = row.div_id as number;
+      if (resultIds.includes(divId)) continue; // already in result
+      // Check assignment
+      const assignCheck = await pool.query(
+        `SELECT r.name FROM region_members rm JOIN regions r ON r.id = rm.region_id WHERE rm.division_id = $1 AND r.world_view_id = $2`,
+        [divId, worldViewId],
+      );
+      const assignedTo = assignCheck.rows[0]?.name as string | undefined;
+      if (assignedTo) assignedMap.set(divId, assignedTo);
+
+      // Add to result rows
+      result.rows.push({ id: divId, name: row.div_name, parent_id: row.parent_id, coverage: null, path: row.path });
+      resultIds.push(divId);
+      divisionsWithPoints.add(divId);
+
+      // Fetch geometry
+      const geoRow = await pool.query(`
+        SELECT ST_AsGeoJSON(ST_ForcePolygonCCW(ST_CollectionExtract(ST_MakeValid(geom_simplified_medium), 3))) AS geojson
+        FROM administrative_divisions WHERE id = $1 AND geom_simplified_medium IS NOT NULL
+      `, [divId]);
+      if (geoRow.rows[0]?.geojson) {
+        features.push({
+          type: 'Feature',
+          properties: {
+            name: row.div_name as string,
+            divisionId: divId,
+            hasPoints: true,
+            ...(assignedTo ? { assignedTo } : {}),
+          },
+          geometry: JSON.parse(geoRow.rows[0].geojson as string),
+        });
+      }
+    }
+  }
+
+  // When filtering by points, keep only divisions that contain markers
+  const filteredRows = usePointFilter
+    ? result.rows.filter(r => divisionsWithPoints.has(r.id as number))
+    : result.rows;
+  const filteredFeatures = usePointFilter
+    ? features.filter(f => divisionsWithPoints.has(f.properties.divisionId as number))
+    : features;
+
   // Mark features that contain points
-  for (const f of features) {
+  for (const f of filteredFeatures) {
     if (divisionsWithPoints.has(f.properties.divisionId as number)) {
       f.properties.hasPoints = true;
     }
@@ -872,7 +952,7 @@ export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Respo
 
   // Add point markers as features
   for (const p of points) {
-    features.push({
+    filteredFeatures.push({
       type: 'Feature',
       properties: { name: p.name, isMarker: true },
       geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
@@ -880,7 +960,7 @@ export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Respo
   }
 
   res.json({
-    divisions: result.rows.map(r => ({
+    divisions: filteredRows.map(r => ({
       divisionId: r.id as number,
       name: r.name as string,
       path: r.path as string,
@@ -889,8 +969,8 @@ export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Respo
       hasPoints: divisionsWithPoints.has(r.id as number),
       assignedTo: assignedMap.get(r.id as number) ?? null,
     })),
-    geometry: features.length > 0
-      ? { type: 'FeatureCollection', features }
+    geometry: filteredFeatures.length > 0
+      ? { type: 'FeatureCollection', features: filteredFeatures }
       : null,
     points: points.length > 0 ? points : undefined,
   });

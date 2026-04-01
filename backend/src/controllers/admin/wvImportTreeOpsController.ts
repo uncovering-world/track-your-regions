@@ -926,7 +926,7 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
 
     // 3. Verify all memberRowIds belong to children of parentRegionId (security check)
     const memberCheck = await client.query(
-      'SELECT id, region_id FROM region_members WHERE id = ANY($1)',
+      'SELECT id, region_id, division_id FROM region_members WHERE id = ANY($1)',
       [memberRowIds],
     );
     if (memberCheck.rows.length !== memberRowIds.length) {
@@ -946,30 +946,51 @@ export async function applySmartSimplifyMove(req: AuthenticatedRequest, res: Res
     }
     affectedRegionIds.add(ownerRegionId);
 
-    // 4. Move members to the owner region
-    const moveResult = await client.query(
-      'UPDATE region_members SET region_id = $1 WHERE id = ANY($2)',
-      [ownerRegionId, memberRowIds],
+    // 4. Remove members whose division_id already exists in the owner region
+    //    (avoids unique constraint violation on idx_region_members_unique_no_custom)
+    const movingDivisionIds = memberCheck.rows.map((r) => r.division_id as number);
+    const existingInOwner = await client.query(
+      'SELECT division_id FROM region_members WHERE region_id = $1 AND division_id = ANY($2) AND custom_geom IS NULL',
+      [ownerRegionId, movingDivisionIds],
     );
+    const alreadyOwned = new Set(existingInOwner.rows.map((r) => r.division_id as number));
+    const duplicateRowIds = memberCheck.rows
+      .filter((r) => alreadyOwned.has(r.division_id as number))
+      .map((r) => r.id as number);
+    if (duplicateRowIds.length > 0) {
+      await client.query('DELETE FROM region_members WHERE id = ANY($1)', [duplicateRowIds]);
+    }
+
+    // 5. Move remaining members to the owner region
+    const duplicateSet = new Set(duplicateRowIds);
+    const idsToMove = memberRowIds.filter((id: number) => !duplicateSet.has(id));
+    let moveCount = duplicateRowIds.length; // count deleted duplicates as "moved"
+    if (idsToMove.length > 0) {
+      const moveResult = await client.query(
+        'UPDATE region_members SET region_id = $1 WHERE id = ANY($2)',
+        [ownerRegionId, idsToMove],
+      );
+      moveCount += moveResult.rowCount ?? 0;
+    }
 
     await client.query('COMMIT');
 
-    // 5. Post-commit: simplify the owner region (skip if applying a spatial anomaly fix)
+    // 6. Post-commit: simplify the owner region (skip if applying a spatial anomaly fix)
     let replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }> = [];
     if (!skipSimplify) {
       const simplifyResult = await runSimplifyHierarchy(ownerRegionId, worldViewId);
       replacements = simplifyResult.replacements;
     }
 
-    // 6. Invalidate geometry + sync match status for all affected regions
+    // 7. Invalidate geometry + sync match status for all affected regions
     for (const regionId of affectedRegionIds) {
       await invalidateRegionGeometry(regionId);
       await syncImportMatchStatus(regionId);
     }
 
-    console.log(`[WV Import] Smart-simplify applied: moved ${moveResult.rowCount} members to region ${ownerRegionId}, ${replacements.length} simplifications`);
+    console.log(`[WV Import] Smart-simplify applied: moved ${moveCount} members to region ${ownerRegionId}, ${replacements.length} simplifications`);
     res.json({
-      moved: moveResult.rowCount,
+      moved: moveCount,
       simplification: {
         replacements,
         totalReduced: replacements.reduce((sum, r) => sum + r.replacedCount, 0) - replacements.length,

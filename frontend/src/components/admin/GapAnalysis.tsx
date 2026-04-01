@@ -17,11 +17,13 @@ import {
 import type maplibregl from 'maplibre-gl';
 import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';
+import { useQuery } from '@tanstack/react-query';
 import {
   getChildrenRegionGeometry,
   type CoverageGapDivision,
   type SiblingRegionGeometry,
 } from '../../api/adminWorldViewImport';
+import { searchRegions } from '../../api/regions';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
 import { COVERAGE_MAP_STYLE } from './ImportTreeDialogs';
 
@@ -184,6 +186,65 @@ export function GapAssignSelect({ subtreeRegions, defaultRegionId, mapSelectedRe
       >
         Assign{hasGapChildren ? ' all' : ''}
       </Button>
+    </Box>
+  );
+}
+
+/** Inline search for moving a gap to a region outside the current subtree */
+function MoveToSearch({ worldViewId, isMutating, hasGapChildren, onSelect, onClose }: {
+  worldViewId: number;
+  isMutating: boolean;
+  hasGapChildren: boolean;
+  onSelect: (regionId: number) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<number | ''>('');
+
+  const { data: results, isFetching } = useQuery({
+    queryKey: ['admin', 'gapMoveSearch', worldViewId, query],
+    queryFn: () => searchRegions(worldViewId, query),
+    enabled: query.length >= 2,
+  });
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <TextField
+        size="small"
+        placeholder="Search region..."
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setSelected(''); }}
+        autoFocus
+        sx={{ minWidth: 120, '& .MuiInputBase-input': { fontSize: '0.75rem', py: 0.5 } }}
+      />
+      {query.length >= 2 && results && results.length > 0 && (
+        <TextField
+          select
+          size="small"
+          value={selected}
+          onChange={(e) => setSelected(Number(e.target.value))}
+          slotProps={{ select: { native: true } }}
+          sx={{ minWidth: 160, '& .MuiInputBase-input': { fontSize: '0.75rem', py: 0.5 } }}
+        >
+          <option value="">{isFetching ? 'Searching...' : 'Pick region...'}</option>
+          {results.map((r) => (
+            <option key={r.id} value={r.id} title={r.path}>{r.name} ({r.path})</option>
+          ))}
+        </TextField>
+      )}
+      <Button
+        size="small"
+        variant="outlined"
+        color="warning"
+        onClick={() => { if (selected) onSelect(selected as number); }}
+        disabled={isMutating || !selected}
+        sx={{ fontSize: '0.7rem', py: 0.25, minHeight: 0 }}
+      >
+        Move{hasGapChildren ? ' all' : ''}
+      </Button>
+      <IconButton size="small" onClick={onClose} sx={{ p: 0.25 }}>
+        <CloseIcon sx={{ fontSize: 16 }} />
+      </IconButton>
     </Box>
   );
 }
@@ -441,7 +502,7 @@ export function GapContextMap({ gapDivisions, siblingRegions, worldViewId, highl
 }
 
 /** Tree-structured display of gap divisions. Groups children under their GADM parents. */
-export function GapDivisionTree({ gapDivisions, parentRegionId: _parentRegionId, parentRegionName, subtreeRegions, highlightedGapId, onHighlight, isMutating, onAssign, onNewRegion, mapSelectedRegionId }: {
+export function GapDivisionTree({ gapDivisions, parentRegionId: _parentRegionId, parentRegionName, subtreeRegions, highlightedGapId, onHighlight, isMutating, onAssign, onNewRegion, mapSelectedRegionId, worldViewId }: {
   gapDivisions: CoverageGapDivision[];
   parentRegionId: number;
   /** Parent region name — used for building hierarchy path tooltips */
@@ -456,7 +517,11 @@ export function GapDivisionTree({ gapDivisions, parentRegionId: _parentRegionId,
   onNewRegion: (gap: CoverageGapDivision, descendantIds: number[]) => void;
   /** Region selected from the map — synced to all assign dropdowns */
   mapSelectedRegionId?: number | null;
+  /** World view ID — used for searching regions outside the subtree */
+  worldViewId: number;
 }) {
+  // Track which gap row has the "Move to..." search open
+  const [moveSearchOpenFor, setMoveSearchOpenFor] = useState<number | null>(null);
 
   // Build tree: find which gap divisions are children of other gap divisions
   const gapIdSet = new Set(gapDivisions.map(g => g.divisionId));
@@ -543,7 +608,31 @@ export function GapDivisionTree({ gapDivisions, parentRegionId: _parentRegionId,
           >
             New Region
           </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color="warning"
+            onClick={() => setMoveSearchOpenFor(moveSearchOpenFor === gap.divisionId ? null : gap.divisionId)}
+            disabled={isMutating}
+            sx={{ fontSize: '0.7rem', py: 0.25, minHeight: 0 }}
+          >
+            Move...
+          </Button>
         </Box>
+        {moveSearchOpenFor === gap.divisionId && (
+          <Box sx={{ pl: depth * 2.5 + 1, py: 0.5 }}>
+            <MoveToSearch
+              worldViewId={worldViewId}
+              isMutating={isMutating}
+              hasGapChildren={hasGapChildren}
+              onSelect={(regionId) => {
+                setMoveSearchOpenFor(null);
+                onAssign(gap, descendantIds, regionId);
+              }}
+              onClose={() => setMoveSearchOpenFor(null)}
+            />
+          </Box>
+        )}
         {children.map(child => renderGapRow(child, depth + 1))}
       </Box>
     );

@@ -801,6 +801,7 @@ export function GapAnalysisDialog({ state, tree, worldViewId, highlightedGapId, 
             parentRegionName={effectiveState.regionName}
             mapSelectedRegionId={gapMapSelectedRegionId}
             subtreeRegions={subtreeRegions}
+            worldViewId={worldViewId}
             highlightedGapId={highlightedGapId}
             onHighlight={setHighlightedGapId}
             isMutating={isMutating}

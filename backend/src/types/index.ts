@@ -457,6 +457,7 @@ export const wvImportSplitDeeperSchema = z.object({
   divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(500),
   wikidataId: z.string().regex(/^Q\d+$/),
   regionId: z.coerce.number().int().positive(),
+  source: z.enum(['geoshape', 'points', 'image']).optional(),
 });
 
 export const wvImportVisionMatchSchema = z.object({

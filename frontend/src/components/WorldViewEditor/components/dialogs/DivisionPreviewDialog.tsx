@@ -51,8 +51,8 @@ interface DivisionPreviewDialogProps {
   onReject?: () => void;
   /** Optional accept-and-reject-rest callback — accepts this and rejects remaining suggestions */
   onAcceptAndRejectRest?: () => void;
-  /** Optional split-deeper callback — replaces divisions with finer-grained children */
-  onSplitDeeper?: () => void;
+  /** Optional split-deeper callback — replaces divisions with finer-grained children. Receives the active left-panel source. */
+  onSplitDeeper?: (source: 'geoshape' | 'points' | 'image' | null) => void;
   /** Optional AI vision match callback — suggests divisions via image analysis */
   onVisionMatch?: () => Promise<{ ids: number[]; rejectedIds?: number[]; unclearIds?: number[]; reasoning?: string; debugImages?: { regionMap: string; divisionsMap: string } }>;
   /** Marker points from point matching (shown when no image/geoshape) */
@@ -638,7 +638,7 @@ export function DivisionPreviewDialog({
                 color="info"
                 size="small"
                 startIcon={<UnfoldMoreIcon />}
-                onClick={onSplitDeeper}
+                onClick={() => onSplitDeeper((activeSource ?? null) as 'geoshape' | 'points' | 'image' | null)}
                 disabled={actionPending || aiLoading}
               >
                 Split deeper

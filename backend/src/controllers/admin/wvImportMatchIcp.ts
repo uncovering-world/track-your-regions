@@ -8,7 +8,7 @@
  */
 
 import sharp from 'sharp';
-import { parseSvgPathPoints, resamplePath } from './wvImportMatchSvgHelpers.js';
+import { parseSvgPathPoints, parseSvgSubPaths, resamplePath } from './wvImportMatchSvgHelpers.js';
 
 // =============================================================================
 // Types
@@ -82,6 +82,21 @@ export function computeShoelaceArea(points: Array<[number, number]>): number {
   return Math.abs(area) / 2;
 }
 
+/**
+ * Compute polygon area from an SVG path, handling multipolygons correctly.
+ * Unlike computeShoelaceArea on concatenated points, this sums per-ring areas
+ * so archipelago divisions (Azores, Madeira, etc.) get correct land area
+ * instead of inflated phantom-polygon area crossing oceans between islands.
+ */
+export function computeSvgPathArea(svgPath: string): number {
+  const subPaths = parseSvgSubPaths(svgPath);
+  let totalArea = 0;
+  for (const pts of subPaths) {
+    totalArea += computeShoelaceArea(pts);
+  }
+  return totalArea;
+}
+
 /** Compute the tight bounding box enclosing all divisions. */
 export function computeBboxFromDivisions(
   divs: DivisionBbox[],
@@ -141,57 +156,117 @@ export function detectBboxInflation(
       || (meanErrorPct > 0.03);
 }
 
+/** Find connected components of bboxes using union-find with spatial overlap margin. */
+function findSpatialComponents(
+  divBboxes: DivisionBbox[],
+): Map<number, number[]> {
+  const spans = divBboxes.map(d => Math.max(d.maxX - d.minX, d.maxY - d.minY));
+  spans.sort((a, b) => a - b);
+  const margin = spans[Math.floor(spans.length / 2)] * 0.2;
+
+  const n = divBboxes.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (x: number): number => {
+    if (parent[x] !== x) parent[x] = find(parent[x]);
+    return parent[x];
+  };
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = divBboxes[i], b = divBboxes[j];
+      if (a.maxX + margin >= b.minX && b.maxX + margin >= a.minX &&
+          a.maxY + margin >= b.minY && b.maxY + margin >= a.minY) {
+        parent[find(i)] = find(j);
+      }
+    }
+  }
+
+  const components = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    if (!components.has(root)) components.set(root, []);
+    components.get(root)!.push(i);
+  }
+  return components;
+}
+
 /**
- * Strategy B: Find divisions that inflate the GADM bbox disproportionately.
- * Iteratively removes the division whose removal shrinks the bbox the most,
- * until the aspect ratio matches the CV bbox or no significant improvement remains.
+ * Strategy B: Find spatially disconnected island groups that inflate the GADM bbox.
+ *
+ * Uses connected-component analysis: divisions whose bboxes overlap (with margin)
+ * form a spatial cluster. The largest cluster is the "mainland". All smaller
+ * clusters whose total area < 10% of the overall area are excluded as outliers.
+ * This correctly handles multi-division island groups (e.g., Madeira + Selvagens)
+ * that the old per-division iterative approach couldn't remove.
  */
 export function findBboxOutliers(
   divBboxes: DivisionBbox[],
   cBbox: { minX: number; maxX: number; minY: number; maxY: number },
 ): number[] {
-  const totalArea = divBboxes.reduce((sum, d) => sum + d.area, 0);
   const cvW = cBbox.maxX - cBbox.minX;
   const cvH = cBbox.maxY - cBbox.minY;
-  if (cvW <= 0 || cvH <= 0) return [];
+  if (cvW <= 0 || cvH <= 0 || divBboxes.length < 2) return [];
+
   const cvRatio = cvW / cvH;
+  const fullRatio = bboxRatio(computeBboxFromDivisions(divBboxes));
+  if (fullRatio <= 0) return [];
+  const ratioMatch = Math.max(fullRatio, cvRatio) / Math.min(fullRatio, cvRatio);
+  if (ratioMatch <= 1.3) return [];
 
-  const excluded: number[] = [];
-  let remaining = [...divBboxes];
+  const components = findSpatialComponents(divBboxes);
+  if (components.size <= 1) return [];
 
-  for (let iter = 0; iter < divBboxes.length && remaining.length > 1; iter++) {
-    const curBbox = computeBboxFromDivisions(remaining);
-    const curW = curBbox.maxX - curBbox.minX;
-    const curH = curBbox.maxY - curBbox.minY;
-    if (curW <= 0 || curH <= 0) break;
+  const excluded = collectOutlierIds(divBboxes, components);
+  if (excluded.length === 0) return [];
 
-    const curRatio = curW / curH;
-    const ratioMatch = Math.max(curRatio, cvRatio) / Math.min(curRatio, cvRatio);
-    if (ratioMatch <= 1.3) break;
+  // Verify that excluding outliers actually improves the ratio match
+  const newRatio = bboxRatio(computeBboxFromDivisions(divBboxes.filter(d => !excluded.includes(d.id))));
+  if (newRatio <= 0) return [];
+  const newMatch = Math.max(newRatio, cvRatio) / Math.min(newRatio, cvRatio);
 
-    const curArea = curW * curH;
-    let bestReduction = 0;
-    let bestIdx = -1;
+  const mainlandSize = Math.max(...[...components.values()].map(v => v.length));
+  console.log(`  [ICP Adjust B] ${components.size} spatial clusters found, mainland=${mainlandSize} divs, ${excluded.length} outlier divs in ${components.size - 1} island group(s)`);
+  console.log(`  [ICP Adjust B] ratio: ${fullRatio.toFixed(3)} → ${newRatio.toFixed(3)} (cvRatio=${cvRatio.toFixed(3)}, match: ${ratioMatch.toFixed(2)} → ${newMatch.toFixed(2)})`);
 
-    for (let i = 0; i < remaining.length; i++) {
-      if (remaining[i].area > totalArea * 0.1) continue;
-      const without = remaining.filter((_, j) => j !== i);
-      if (without.length === 0) continue;
-      const newBbox = computeBboxFromDivisions(without);
-      const newArea = (newBbox.maxX - newBbox.minX) * (newBbox.maxY - newBbox.minY);
-      const reduction = (curArea - newArea) / curArea;
-      if (reduction > bestReduction) {
-        bestReduction = reduction;
-        bestIdx = i;
-      }
-    }
-
-    if (bestIdx < 0 || bestReduction < 0.05) break;
-
-    excluded.push(remaining[bestIdx].id);
-    remaining = remaining.filter((_, i) => i !== bestIdx);
+  if (newMatch >= ratioMatch) {
+    console.log(`  [ICP Adjust B] Excluding outliers didn't improve ratio — skipping`);
+    return [];
   }
 
+  return excluded;
+}
+
+/** Width/height ratio of a bbox, or 0 for degenerate bboxes. */
+function bboxRatio(bbox: { minX: number; maxX: number; minY: number; maxY: number }): number {
+  const w = bbox.maxX - bbox.minX, h = bbox.maxY - bbox.minY;
+  return w > 0 && h > 0 ? w / h : 0;
+}
+
+/** Collect division IDs from non-mainland spatial components with small area. */
+function collectOutlierIds(
+  divBboxes: DivisionBbox[],
+  components: Map<number, number[]>,
+): number[] {
+  const totalArea = divBboxes.reduce((sum, d) => sum + d.area, 0);
+
+  // Largest component by count is the mainland
+  let mainlandRoot = -1;
+  let mainlandSize = 0;
+  for (const [root, indices] of components) {
+    if (indices.length > mainlandSize) {
+      mainlandSize = indices.length;
+      mainlandRoot = root;
+    }
+  }
+
+  const excluded: number[] = [];
+  for (const [root, indices] of components) {
+    if (root === mainlandRoot) continue;
+    const groupArea = indices.reduce((sum, i) => sum + divBboxes[i].area, 0);
+    if (groupArea <= totalArea * 0.1) {
+      for (const i of indices) excluded.push(divBboxes[i].id);
+    }
+  }
   return excluded;
 }
 

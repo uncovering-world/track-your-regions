@@ -22,7 +22,7 @@ import {
   detectBboxInflation,
   findBboxOutliers,
   findOverlapOutliers,
-  computeShoelaceArea,
+  computeSvgPathArea,
   computeBboxFromDivisions,
   type AlignmentResult,
   type DivisionBbox,
@@ -579,14 +579,16 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
         points: parseSvgPathPoints(d.svgPath),
       }));
 
-      // Compute per-division bboxes + areas
-      const divBboxes: DivisionBbox[] = divParsed.map(d => {
+      // Compute per-division bboxes + areas (using per-ring area to handle
+      // multipolygon archipelagoes correctly — see computeSvgPathArea)
+      const divBboxes: DivisionBbox[] = divPaths.map(d => {
+        const points = divParsed.find(p => p.id === d.id)!.points;
         let dMinX = Infinity, dMaxX = -Infinity, dMinY = Infinity, dMaxY = -Infinity;
-        for (const [x, y] of d.points) {
+        for (const [x, y] of points) {
           if (x < dMinX) dMinX = x; if (x > dMaxX) dMaxX = x;
           if (y < dMinY) dMinY = y; if (y > dMaxY) dMaxY = y;
         }
-        return { id: d.id, minX: dMinX, maxX: dMaxX, minY: dMinY, maxY: dMaxY, area: computeShoelaceArea(d.points) };
+        return { id: d.id, minX: dMinX, maxX: dMaxX, minY: dMinY, maxY: dMaxY, area: computeSvgPathArea(d.svgPath) };
       });
 
       const icpParams = {
@@ -598,7 +600,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
         pxS, pushDebugImage,
       };
 
-      // Strategy B: BBox contribution analysis
+      // Strategy B: Connected-component spatial outlier detection
       const excludedB = findBboxOutliers(divBboxes, cBbox);
       const remainingB = divBboxes.filter(d => !excludedB.includes(d.id));
       let resultB: AlignmentResult | null = null;
@@ -613,9 +615,16 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
       const remainingC = divBboxes.filter(d => !excludedC.includes(d.id));
       let resultC: AlignmentResult | null = null;
       if (excludedC.length > 0 && remainingC.length > 0) {
-        const bboxC = computeBboxFromDivisions(remainingC);
-        console.log(`  [ICP Adjust C] Excluded ${excludedC.length} divisions: [${excludedC}]`);
-        resultC = await alignDivisionsToImage({ ...icpParams, gBboxOverride: bboxC, scaleRange: 0.25 });
+        // Safeguard: if the distorted initial transform causes most centroids to
+        // project outside the CV mask, Strategy C over-excludes mainland divisions.
+        // Discard when >60% are excluded — the transform is too bad for overlap testing.
+        if (excludedC.length > divBboxes.length * 0.6) {
+          console.log(`  [ICP Adjust C] Skipped — excluded ${excludedC.length}/${divBboxes.length} divisions (>60%), transform too distorted for overlap test`);
+        } else {
+          const bboxC = computeBboxFromDivisions(remainingC);
+          console.log(`  [ICP Adjust C] Excluded ${excludedC.length} divisions: [${excludedC}]`);
+          resultC = await alignDivisionsToImage({ ...icpParams, gBboxOverride: bboxC, scaleRange: 0.25 });
+        }
       }
 
       // Pick best result
@@ -630,9 +639,15 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
         console.log(`  [ICP Adjust] Candidate ${c.label}: overflow=${c.overflow.toFixed(1)}, err=${c.error.toFixed(1)}`);
       }
 
+      // Composite score: error is primary quality metric for division assignment
+      // (mean boundary distance), overflow is secondary (max edge overshoot).
+      // Reject candidates with extreme overflow (>10% of image dimension).
+      const overflowCap = Math.max(TW, TH) * 0.10;
       candidates.sort((a, b) => {
-        if (Math.abs(a.overflow - b.overflow) < 3) return a.error - b.error;
-        return a.overflow - b.overflow;
+        const aOk = a.overflow <= overflowCap;
+        const bOk = b.overflow <= overflowCap;
+        if (aOk !== bOk) return aOk ? -1 : 1;
+        return (a.error * 3 + a.overflow) - (b.error * 3 + b.overflow);
       });
 
       const winner = candidates[0];

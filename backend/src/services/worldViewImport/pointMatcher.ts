@@ -3,7 +3,7 @@
  *
  * Fetches Wikivoyage page wikitext, parses {{marker}} templates for POI
  * coordinates, resolves missing coords via Wikidata P625, then finds GADM
- * divisions containing those points via ST_Contains.
+ * divisions containing those points via ST_DWithin (5km buffer for coastal POIs).
  *
  * Less precise than geoshape matching (score base = 500 vs 1000).
  */
@@ -298,7 +298,7 @@ export async function pointMatchRegion(
         FROM administrative_divisions ad
         JOIN scope_descendants sd ON ad.id = sd.id
         WHERE ad.geom_simplified_medium IS NOT NULL
-          AND ST_Contains(ad.geom_simplified_medium, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+          AND ST_DWithin(ad.geom_simplified_medium::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 5000)
       `;
       containsParams = [point.lon, point.lat, scopeDivisionIds];
     } else {
@@ -313,7 +313,7 @@ export async function pointMatchRegion(
           SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
         FROM administrative_divisions ad
         WHERE ad.geom_simplified_medium IS NOT NULL
-          AND ST_Contains(ad.geom_simplified_medium, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+          AND ST_DWithin(ad.geom_simplified_medium::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 5000)
       `;
       containsParams = [point.lon, point.lat];
     }

@@ -281,7 +281,7 @@ export async function fetchMarkersForDivisions(
             WITH ORDINALITY AS p(lon, lat, idx)
         WHERE ad.id = ANY($1)
           AND ad.geom_simplified_medium IS NOT NULL
-          AND ST_Contains(ad.geom_simplified_medium, ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326))
+          AND ST_DWithin(ad.geom_simplified_medium::geography, ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography, 5000)
       `, [divisionIds, resolved.map(p => p.lon), resolved.map(p => p.lat)]);
 
       for (const row of containResult.rows) {

@@ -110,10 +110,9 @@ interface TreeNodeActionsProps {
 }
 
 /** Geocode + Geoshape + DB search + AI match button group (shared across multiple status blocks) */
-function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg, nodeGeocodeNextScope, nodeGeocodeRetryType, isMutating, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, dbSearchingRegionId, aiMatchingRegionId, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onDBSearch, onAIMatch }: {
+function SearchActionButtons({ nodeId, wikidataId, nodeGeocodeMsg, nodeGeocodeNextScope, nodeGeocodeRetryType, isMutating, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, dbSearchingRegionId, aiMatchingRegionId, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onDBSearch, onAIMatch }: {
   nodeId: number;
   wikidataId: string | null;
-  geoAvailable: boolean | null;
   nodeGeocodeMsg: string | null;
   nodeGeocodeNextScope?: { ancestorId: number; ancestorName: string };
   nodeGeocodeRetryType?: 'geoshape' | 'point';
@@ -162,17 +161,17 @@ function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg,
           </IconButton>
         </span>
       </Tooltip>
-      <Tooltip title={!wikidataId ? 'No Wikidata ID' : geoAvailable !== false ? 'Geoshape available — use geoshape match' : 'Point match (Wikivoyage markers)'}>
+      <Tooltip title={!wikidataId ? 'No Wikidata ID' : 'Point match (Wikivoyage markers)'}>
         <span>
           <IconButton
             size="small"
             onClick={() => onPointMatch(nodeId)}
-            disabled={isMutating || anySearching || !wikidataId || geoAvailable !== false}
+            disabled={isMutating || anySearching || !wikidataId}
             sx={{ p: 0.25 }}
           >
             {pointMatchingRegionId === nodeId
               ? <CircularProgress size={14} />
-              : <PointMatchIcon sx={{ fontSize: 16, color: wikidataId && geoAvailable === false ? 'warning.main' : undefined }} />
+              : <PointMatchIcon sx={{ fontSize: 16, color: wikidataId ? 'warning.main' : undefined }} />
             }
           </IconButton>
         </span>
@@ -312,7 +311,6 @@ export function TreeNodeActions({
   const searchButtonProps = {
     nodeId: node.id,
     wikidataId: node.wikidataId,
-    geoAvailable: node.geoAvailable,
     nodeGeocodeMsg,
     nodeGeocodeNextScope,
     nodeGeocodeRetryType,

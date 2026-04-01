@@ -290,7 +290,7 @@ function DivisionLeafItem({ member, depth, isSelected, onSelect }: DivisionLeafI
           secondary={member.path ? (
             <Typography sx={{
               fontFamily: P.font.mono, fontSize: '0.55rem', color: P.dark.textMuted,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              wordBreak: 'break-word',
             }}>
               {member.path}
             </Typography>

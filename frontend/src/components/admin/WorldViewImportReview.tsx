@@ -188,22 +188,25 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     }
   }, [worldViewId]);
 
-  const handleSplitDeeper = useCallback(async () => {
-    if (!previewDivision?.divisionIds?.length || !previewDivision.wikidataId || !previewDivision.regionId) return;
+  const handleSplitDeeper = useCallback(async (source: 'geoshape' | 'points' | 'image' | null) => {
+    const ids = previewDivision?.divisionIds?.length ? previewDivision.divisionIds
+      : previewDivision?.divisionId ? [previewDivision.divisionId] : null;
+    if (!ids || !previewDivision?.wikidataId || !previewDivision.regionId) return;
     setPreviewLoading(true);
     try {
-      const result = await splitDivisionsDeeper(worldViewId, previewDivision.divisionIds, previewDivision.wikidataId, previewDivision.regionId);
+      const result = await splitDivisionsDeeper(worldViewId, ids, previewDivision.wikidataId, previewDivision.regionId, source ?? undefined);
       const newIds = result.divisions.map(d => d.divisionId);
       setPreviewDivision(prev => prev ? {
         ...prev,
         name: `${newIds.length} divisions (refined)`,
         divisionIds: newIds,
+        markerPoints: result.points ?? prev.markerPoints,
       } : prev);
       setPreviewGeometry(result.geometry);
     } finally {
       setPreviewLoading(false);
     }
-  }, [worldViewId, previewDivision?.divisionIds, previewDivision?.wikidataId, previewDivision?.regionId]);
+  }, [worldViewId, previewDivision?.divisionIds, previewDivision?.divisionId, previewDivision?.wikidataId, previewDivision?.regionId]);
 
   const handleVisionMatch = useCallback(async (): Promise<{ ids: number[]; rejectedIds?: number[]; unclearIds?: number[]; reasoning?: string; debugImages?: { regionMap: string; divisionsMap: string } }> => {
     if (!previewDivision?.divisionIds?.length || !previewDivision.regionId || !previewDivision.regionMapUrl) return { ids: [] };
@@ -661,7 +664,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
               ? () => previewRejectMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
               : undefined
         }
-        onSplitDeeper={previewDivision?.divisionIds?.length && previewDivision.wikidataId ? handleSplitDeeper : undefined}
+        onSplitDeeper={(previewDivision?.divisionIds?.length || previewDivision?.divisionId) && previewDivision?.wikidataId ? handleSplitDeeper : undefined}
         onVisionMatch={previewDivision?.divisionIds?.length && previewDivision.regionId && previewDivision.regionMapUrl ? handleVisionMatch : undefined}
         actionPending={previewTransferMutation.isPending || previewAcceptMutation.isPending || previewRejectMutation.isPending || previewAcceptAndRejectRestMutation.isPending || previewAcceptSelectedMutation.isPending || previewAcceptSelectedRejectRestMutation.isPending || previewRejectSelectedMutation.isPending || previewLoading}
       />
