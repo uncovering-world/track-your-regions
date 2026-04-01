@@ -6,6 +6,7 @@
  * cvMatchDialog.clusterReview is present.
  */
 
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -17,11 +18,15 @@ import {
 import {
   CallSplit as SplitIcon,
   Block as BlockIcon,
+  Brush as BrushIcon,
+  FormatPaint as FormatPaintIcon,
 } from '@mui/icons-material';
 import {
   respondToClusterReview,
   clusterHighlightUrl,
 } from '../../api/adminWorldViewImport';
+import { clusterOverlayUrl } from '../../api/adminWvImportCvMatch';
+import ClusterPaintEditor from './ClusterPaintEditor';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 
 export interface CvClusterReviewSectionProps {
@@ -33,6 +38,7 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
   const cr = cvMatchDialog.clusterReview!;
   const sourceImg = cvMatchDialog.debugImages.find(img => img.label === '__source_map__');
   const sorted = [...cr.clusters].sort((a, b) => b.pct - a.pct);
+  const [paintMode, setPaintMode] = useState<'off' | 'fix' | 'scratch'>('off');
   // Targets for "merge into" = any non-excluded cluster
   // Merge targets: only clusters that are "kept" (not excluded or merged into something else)
   const mergeTargets = sorted.filter(c => !cr.excludes.has(c.label) && !cr.merges.has(c.label));
@@ -62,6 +68,30 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
     const m = cr.merges.get(label);
     return m !== undefined ? String(m) : 'keep';
   };
+  if (paintMode !== 'off') {
+    return (
+      <ClusterPaintEditor
+        sourceImageUrl={sourceImg?.dataUrl ?? ''}
+        overlayImageUrl={paintMode === 'fix' ? clusterOverlayUrl(cr.reviewId) : undefined}
+        initialClusters={paintMode === 'fix' ? cr.clusters : undefined}
+        onConfirm={async (response) => {
+          setCVMatchDialog(prev => prev ? {
+            ...prev,
+            clusterReview: undefined,
+            savedRegionAssignments: cr.regionAssignments.size > 0 ? new Map(cr.regionAssignments) : undefined,
+            progressText: 'Applying manually painted clusters...',
+          } : prev);
+          try {
+            await respondToClusterReview(cr.reviewId, response);
+          } catch (e) {
+            console.error('[Manual Clusters] POST failed:', e);
+          }
+        }}
+        onCancel={() => setPaintMode('off')}
+      />
+    );
+  }
+
   return (
     <Box sx={{ p: 1.5, mb: 2, border: '2px solid', borderColor: 'info.main', borderRadius: 1, bgcolor: 'info.50' }}>
       <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5, color: 'info.dark' }}>
@@ -250,6 +280,24 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
       >
         Confirm clusters
       </Button>
+      <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+        <Button
+          size="small" variant="outlined" color="secondary"
+          startIcon={<BrushIcon />}
+          sx={{ fontSize: '0.7rem', py: 0.25, px: 0.75 }}
+          onClick={() => setPaintMode('fix')}
+        >
+          Edit manually
+        </Button>
+        <Button
+          size="small" variant="outlined" color="secondary"
+          startIcon={<FormatPaintIcon />}
+          sx={{ fontSize: '0.7rem', py: 0.25, px: 0.75 }}
+          onClick={() => setPaintMode('scratch')}
+        >
+          Draw from scratch
+        </Button>
+      </Box>
       {/* Split all disconnected + Re-cluster options */}
       <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
         {sorted.some(c => c.componentCount > 1 && getAction(c.label) === 'keep' && !cr.regionAssignments.has(c.label)) && (
