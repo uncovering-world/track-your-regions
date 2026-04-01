@@ -106,6 +106,13 @@ export interface ClusterReviewDecision {
   split?: number[];
 }
 
+/** Manual cluster painting response — sent when admin uses the paint editor */
+export interface ManualClusterResponse {
+  type: 'manual_clusters';
+  overlayPng: string; // base64 data URL
+  palette: Array<{ label: number; color: [number, number, number] }>;
+}
+
 // =============================================================================
 // Park Review Types
 // =============================================================================
@@ -223,8 +230,18 @@ export function clusterHighlightUrl(reviewId: string, label: number): string {
   return token ? `${base}?token=${token}` : base;
 }
 
+/** URL for cluster overlay image (RGBA, all clusters in their colors on transparent bg) */
+export function clusterOverlayUrl(reviewId: string): string {
+  const token = getAccessToken();
+  const base = `${API_URL}/api/admin/wv-import/cluster-overlay/${reviewId}`;
+  return token ? `${base}?token=${token}` : base;
+}
+
 /** Respond to cluster review during CV match */
-export async function respondToClusterReview(reviewId: string, decision: ClusterReviewDecision): Promise<void> {
+export async function respondToClusterReview(
+  reviewId: string,
+  decision: ClusterReviewDecision | ManualClusterResponse,
+): Promise<void> {
   await authFetchJson(`${API_URL}/api/admin/wv-import/cluster-review/${reviewId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
