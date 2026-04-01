@@ -16,7 +16,7 @@ The pipeline has two phases: preprocessing and post-clustering.
 ### Post-Clustering
 
 3. **Cluster cleanup** — Spatial split (connected components), merge (similar small clusters), noise removal
-4. **Interactive cluster review** — SSE pause point for admin to approve/reject/merge clusters
+4. **Interactive cluster review** — SSE pause point for admin to approve/reject/merge clusters, or manually paint cluster boundaries using the canvas editor
 5. **ICP alignment** — Aligns division geometries to image space (3 approaches: centroid, boundary, hybrid)
 6. **Division assignment** — Rasterizes divisions onto the image and matches to clusters by pixel overlap
 7. **Result assembly** — Returns division-to-cluster mappings with confidence scores
@@ -79,11 +79,40 @@ Crop images are stored in-memory Maps with auto-cleanup after 10 minutes, served
 | `CvMatchDialog.tsx` | Full-screen dialog orchestrating all review sections |
 | `CvWaterReviewSection.tsx` | Water component approval UI |
 | `CvParkReviewSection.tsx` | Park component confirmation UI |
-| `CvClusterReviewSection.tsx` | Cluster accept/merge/split UI |
+| `CvClusterReviewSection.tsx` | Cluster accept/merge/split UI + manual paint editor entry |
+| `ClusterPaintEditor.tsx` | Canvas-based manual cluster painting (Atrament brush/eraser + custom flood fill) |
+| `clusterPaintUtils.ts` | Flood fill (source-image-aware), overlay↔pixelLabels conversion, color helpers |
 | `CvMatchMap.tsx` | Interactive MapLibre map for geo preview and paint mode |
 | `useCvMatchPipeline.ts` | Hook managing SSE connection and dialog state |
 
 All frontend components live in `frontend/src/components/admin/`.
+
+### Manual Cluster Editor
+
+When automated K-means clustering produces incorrect results (wrong boundaries, merged regions, color confusion), the admin can switch to a canvas-based paint editor to manually draw or correct cluster boundaries.
+
+**Two entry modes** from the cluster review step:
+- **Fix mode** ("Edit manually") — loads the CV-detected clusters as a starting overlay. Admin corrects problem areas.
+- **Scratch mode** ("Draw from scratch") — blank canvas over the source map image. Admin paints all clusters from scratch.
+
+**Tools:**
+- **Paint bucket** (primary) — flood fill using the source map image for boundary detection. Click inside a region to fill it with the active cluster color. Fill tolerance slider controls edge sensitivity.
+- **Brush** — freehand painting for touch-ups where fill leaked or didn't reach.
+- **Eraser** — removes cluster assignment from pixels.
+
+**Technical details:**
+- Uses Atrament library (~6kB) for brush/eraser rendering on HTML Canvas
+- Custom flood fill reads source image pixel colors for boundary detection (not the overlay), so fill naturally stops at color boundaries on the original map
+- Overlay canvas is layered over the source image with adjustable opacity
+- Undo/redo via ImageData snapshots (max 50 steps)
+- Zoom (scroll wheel) and pan (Space+drag) via CSS transform on the canvas wrapper
+
+**Data flow on submit:**
+1. Frontend reads overlay canvas as PNG data URL
+2. Sends `{ type: 'manual_clusters', overlayPng, palette }` via the existing cluster review POST endpoint
+3. Backend decodes PNG with sharp, maps pixel colors to cluster labels using nearest-color matching
+4. Replaces `pixelLabels` and `colorCentroids` in the pipeline context
+5. Pipeline resumes at ICP alignment + division assignment — completely transparent to downstream code
 
 ## Paint Mode
 
