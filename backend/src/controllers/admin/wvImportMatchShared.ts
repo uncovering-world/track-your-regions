@@ -373,7 +373,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
 
 
   // ── Phase 1: Cluster cleaning (spatial split, merge, patch cleanup, noise exclusion) ──
-  const { finalLabels, quantBuf, icpMask } = await cleanClusters({
+  const { finalLabels, quantBuf, icpMask, borderPaths } = await cleanClusters({
     pixelLabels, colorCentroids, buf, origBuf, countryMask, countrySize,
     TW, TH, origW, origH, pxS, pushDebugImage,
   });
@@ -463,6 +463,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
             isSmall: c.pct < 3,
             componentCount: c.componentCount,
           })),
+          borderPaths,
         },
       });
       await new Promise(resolve => setImmediate(resolve));

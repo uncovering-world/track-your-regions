@@ -10,6 +10,7 @@
  */
 
 import sharp from 'sharp';
+import { traceBorderPaths, type BorderPath } from './wvImportMatchBorderTrace.js';
 
 // =============================================================================
 // Types
@@ -47,6 +48,8 @@ export interface CleanResult {
   quantBuf: Buffer;
   /** ICP mask (active cluster pixels, noise-cleaned) */
   icpMask: Uint8Array;
+  /** Vector border paths traced from pixel labels */
+  borderPaths: BorderPath[];
 }
 
 // =============================================================================
@@ -567,6 +570,9 @@ export async function cleanClusters(params: CleanParams): Promise<CleanResult> {
     }
   }
 
+  const borderPaths = traceBorderPaths(pixelLabels, TW, TH);
+  console.log(`  [Borders] Traced ${borderPaths.length} vector paths`);
+
   // Final cluster pixel counts
   const finalClusters = new Map<number, number>();
   for (let i = 0; i < tp; i++) {
@@ -664,5 +670,5 @@ export async function cleanClusters(params: CleanParams): Promise<CleanResult> {
     }
   }
 
-  return { finalLabels, finalClusters, quantBuf, icpMask };
+  return { finalLabels, finalClusters, quantBuf, icpMask, borderPaths };
 }
