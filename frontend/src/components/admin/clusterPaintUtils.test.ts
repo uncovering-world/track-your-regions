@@ -71,6 +71,55 @@ describe('floodFillFromSource', () => {
     floodFillFromSource(source, overlay, -1, 0, [255, 0, 0, 180], 0);
     expect(getPixel(overlay, 0, 0)).toEqual([0, 0, 0, 0]);
   });
+
+  it('stops at magenta border pixels on overlay', () => {
+    const source = createPixelData(4, 4, [255, 255, 255, 255]);
+    // Overlay has a magenta (#ff00ff) vertical border at column 2
+    const overlay = createPixelData(4, 4);
+    for (let y = 0; y < 4; y++) setPixel(overlay, 2, y, 255, 0, 255, 255);
+
+    // Fill blue from (0,0) — should stop at the magenta border
+    floodFillFromSource(source, overlay, 0, 0, [0, 0, 255, 200], 100);
+    expect(getPixel(overlay, 0, 0)).toEqual([0, 0, 255, 200]); // filled
+    expect(getPixel(overlay, 1, 0)).toEqual([0, 0, 255, 200]); // filled
+    expect(getPixel(overlay, 2, 0)).toEqual([255, 0, 255, 255]); // border untouched
+    expect(getPixel(overlay, 3, 0)).toEqual([0, 0, 0, 0]);     // beyond border, unfilled
+  });
+
+  it('paints over non-border overlay colors (e.g. CV cluster colors)', () => {
+    const source = createPixelData(4, 1, [255, 255, 255, 255]);
+    const overlay = createPixelData(4, 1);
+    // Pre-paint with a red CV cluster color — fill should paint OVER it
+    for (let x = 0; x < 4; x++) setPixel(overlay, x, 0, 255, 0, 0, 200);
+
+    floodFillFromSource(source, overlay, 0, 0, [0, 0, 255, 200], 100);
+    expect(getPixel(overlay, 0, 0)).toEqual([0, 0, 255, 200]); // painted over
+    expect(getPixel(overlay, 3, 0)).toEqual([0, 0, 255, 200]); // painted over
+  });
+
+  it('stops at anti-aliased magenta border edges (low alpha)', () => {
+    const source = createPixelData(4, 1, [255, 255, 255, 255]);
+    const overlay = createPixelData(4, 1);
+    // Anti-aliased magenta border edge: R>200, G<50, B>200, low alpha
+    setPixel(overlay, 2, 0, 255, 0, 255, 40);
+    floodFillFromSource(source, overlay, 0, 0, [0, 0, 255, 200], 100);
+    expect(getPixel(overlay, 1, 0)).toEqual([0, 0, 255, 200]);
+    expect(getPixel(overlay, 2, 0)).toEqual([255, 0, 255, 40]); // border untouched
+  });
+
+  it('passes through overlay pixels of same color', () => {
+    const source = createPixelData(4, 1, [255, 255, 255, 255]);
+    const overlay = createPixelData(4, 1);
+    // Pre-paint pixel 1 with same blue color
+    setPixel(overlay, 1, 0, 0, 0, 255, 200);
+
+    floodFillFromSource(source, overlay, 0, 0, [0, 0, 255, 200], 100);
+    // Fill should cross through the same-color pixel
+    expect(getPixel(overlay, 0, 0)).toEqual([0, 0, 255, 200]);
+    expect(getPixel(overlay, 1, 0)).toEqual([0, 0, 255, 200]);
+    expect(getPixel(overlay, 2, 0)).toEqual([0, 0, 255, 200]);
+    expect(getPixel(overlay, 3, 0)).toEqual([0, 0, 255, 200]);
+  });
 });
 
 describe('overlayToPixelLabels', () => {
