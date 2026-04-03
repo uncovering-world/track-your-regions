@@ -9,6 +9,7 @@ import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import TimelineIcon from '@mui/icons-material/Timeline';
 import Atrament, { MODE_DRAW, MODE_ERASE, MODE_DISABLED } from 'atrament';
 import {
   floodFillFromSource, hexToRgb, rgbToHex,
@@ -17,10 +18,12 @@ import {
 import type { PaletteEntry } from './clusterPaintUtils';
 import type { ClusterReviewCluster, ManualClusterResponse } from '../../api/adminWvImportCvMatch';
 
-type Tool = 'fill' | 'brush' | 'eraser';
+type Tool = 'fill' | 'brush' | 'eraser' | 'line';
 
 interface Props {
   sourceImageUrl: string;
+  processedImageUrl?: string;
+  originalImageUrl?: string;
   overlayImageUrl?: string;
   initialClusters?: ClusterReviewCluster[];
   onConfirm: (response: ManualClusterResponse) => void;
@@ -30,7 +33,8 @@ interface Props {
 const MAX_HISTORY = 50;
 
 export default function ClusterPaintEditor({
-  sourceImageUrl, overlayImageUrl, initialClusters, onConfirm, onCancel,
+  sourceImageUrl, processedImageUrl, originalImageUrl,
+  overlayImageUrl, initialClusters, onConfirm, onCancel,
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,7 +44,7 @@ export default function ClusterPaintEditor({
 
   const [tool, setTool] = useState<Tool>('fill');
   const [brushSize, setBrushSize] = useState(12);
-  const [fillTolerance, setFillTolerance] = useState(30);
+  const [fillTolerance, setFillTolerance] = useState(100);
   const [overlayOpacity, setOverlayOpacity] = useState(55);
   const [zoom, setZoom] = useState(1);
   const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
@@ -48,13 +52,17 @@ export default function ClusterPaintEditor({
   const [activeLabel, setActiveLabel] = useState<number>(-1);
   const [pcts, setPcts] = useState<Map<number, number>>(new Map());
   const [isPanning, setIsPanning] = useState(false);
+  const [polyPoints, setPolyPoints] = useState<Array<{ x: number; y: number }>>([]);
+  const [bgMode, setBgMode] = useState<'original' | 'processed'>('processed');
 
   const historyRef = useRef<ImageData[]>([]);
   const historyIdxRef = useRef(-1);
 
-  // Use ref for palette to avoid stale closures in callbacks
+  // Use refs to avoid stale closures in callbacks
   const paletteRef = useRef(palette);
   paletteRef.current = palette;
+  const polyPointsRef = useRef(polyPoints);
+  polyPointsRef.current = polyPoints;
 
   // Initialize palette from CV clusters (fix mode) or empty (scratch)
   useEffect(() => {
@@ -165,18 +173,102 @@ export default function ClusterPaintEditor({
     } else if (tool === 'eraser') {
       at.mode = MODE_ERASE;
     } else {
+      // fill and line: manual handling, disable Atrament
       at.mode = MODE_DISABLED;
+      if (tool !== 'line') setPolyPoints([]);
     }
     at.weight = brushSize;
   }, [tool, brushSize, activeLabel, palette]);
 
-  // Flood fill click handler
-  const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (tool !== 'fill' || activeLabel < 0) return;
-    const canvas = canvasRef.current;
-    const sourceData = sourceDataRef.current;
-    if (!canvas || !sourceData) return;
+  // Border polygon: bright magenta — visible on any background, distinct from all cluster colors
+  const BORDER_COLOR = '#ff00ff';
+  const closeDist_BASE = 12; // canvas px at zoom=1
+  const closeDist = closeDist_BASE / Math.max(zoom, 0.25); // scale with zoom
 
+  // Close the polygon: draw all segments + close path
+  const closePolygon = useCallback(() => {
+    const pts = polyPointsRef.current;
+    if (pts.length < 3) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = BORDER_COLOR;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.stroke();
+    // Solidify anti-aliased border edges: any pixel touched by the stroke
+    // with alpha > 0 gets boosted to full alpha, preventing fill leaks
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imgData.data;
+    let solidified = 0;
+    // Border = #ff00ff = RGB(255, 0, 255). Anti-aliased edges blend with
+    // underlying colors, so check: R and B channels are dominant, G is low.
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 0 && d[i + 3] < 240) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        // Magenta-ish: R > G+50 AND B > G+50 (R and B dominate over G)
+        if (r > g + 50 && b > g + 50) {
+          d[i] = 255; d[i + 1] = 0; d[i + 2] = 255; d[i + 3] = 255;
+          solidified++;
+        }
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    console.log(`[Paint] Polygon closed: ${pts.length} pts, solidified ${solidified} edge px`);
+    setPolyPoints([]);
+    saveSnapshot();
+  }, [brushSize, saveSnapshot]);
+
+  // Canvas click: fill or polygon border tool
+  const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+
+    if (tool === 'fill') {
+      if (activeLabel < 0 || !sourceDataRef.current) return;
+      const ctx = canvas.getContext('2d')!;
+      const overlayData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const entry = paletteRef.current.find(p => p.label === activeLabel);
+      if (!entry) return;
+      const t0 = performance.now();
+      const filled = floodFillFromSource(
+        sourceDataRef.current, overlayData, x, y,
+        [entry.color[0], entry.color[1], entry.color[2], 200],
+        fillTolerance,
+      );
+      console.log(`[Paint] Fill: ${filled} px in ${(performance.now() - t0).toFixed(0)}ms`);
+      ctx.putImageData(overlayData, 0, 0);
+      saveSnapshot();
+    } else if (tool === 'line') {
+      // Close polygon if clicking near the first point (and we have >= 3 points)
+      if (polyPoints.length >= 3) {
+        const first = polyPoints[0];
+        const dx = x - first.x, dy = y - first.y;
+        if (Math.sqrt(dx * dx + dy * dy) < closeDist) {
+          closePolygon();
+          return;
+        }
+      }
+      setPolyPoints(prev => [...prev, { x, y }]);
+    }
+  }, [tool, activeLabel, fillTolerance, brushSize, polyPoints, saveSnapshot, closePolygon, closeDist]);
+
+  // Polygon preview on mouse move
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (tool !== 'line' || polyPoints.length === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
@@ -184,18 +276,33 @@ export default function ClusterPaintEditor({
     const y = Math.round((e.clientY - rect.top) * scaleY);
 
     const ctx = canvas.getContext('2d')!;
-    const overlayData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const entry = paletteRef.current.find(p => p.label === activeLabel);
-    if (!entry) return;
+    const idx = historyIdxRef.current;
+    if (idx >= 0) ctx.putImageData(historyRef.current[idx], 0, 0);
 
-    floodFillFromSource(
-      sourceData, overlayData, x, y,
-      [entry.color[0], entry.color[1], entry.color[2], 200],
-      fillTolerance,
-    );
-    ctx.putImageData(overlayData, 0, 0);
-    saveSnapshot();
-  }, [tool, activeLabel, fillTolerance, saveSnapshot]);
+    // Draw existing segments + preview line to cursor
+    ctx.strokeStyle = BORDER_COLOR;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(polyPoints[0].x, polyPoints[0].y);
+    for (let i = 1; i < polyPoints.length; i++) ctx.lineTo(polyPoints[i].x, polyPoints[i].y);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    // Close indicator: draw circle at first point
+    if (polyPoints.length >= 3) {
+      const first = polyPoints[0];
+      const dx = x - first.x, dy = y - first.y;
+      if (Math.sqrt(dx * dx + dy * dy) < closeDist) {
+        ctx.fillStyle = BORDER_COLOR;
+        ctx.beginPath();
+        ctx.arc(first.x, first.y, closeDist, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }, [tool, polyPoints, brushSize]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -204,6 +311,9 @@ export default function ClusterPaintEditor({
     if (e.key === 'f' || e.key === 'F') { setTool('fill'); e.preventDefault(); return; }
     if (e.key === 'b' || e.key === 'B') { setTool('brush'); e.preventDefault(); return; }
     if (e.key === 'e' || e.key === 'E') { setTool('eraser'); e.preventDefault(); return; }
+    if (e.key === 'l' || e.key === 'L') { setTool('line'); setPolyPoints([]); e.preventDefault(); return; }
+    if (e.key === 'Escape') { setPolyPoints([]); return; }
+    if (e.key === 'Enter' && tool === 'line') { closePolygon(); e.preventDefault(); return; }
     if (e.key === 'z' && mod && !e.shiftKey) { undo(); e.preventDefault(); return; }
     if ((e.key === 'z' && mod && e.shiftKey) || (e.key === 'Z' && mod)) { redo(); e.preventDefault(); return; }
     if (e.key === '[') { setBrushSize(s => Math.max(1, s - 2)); return; }
@@ -211,7 +321,7 @@ export default function ClusterPaintEditor({
     if (e.key === ' ') { setIsPanning(true); e.preventDefault(); return; }
     const digit = parseInt(e.key);
     if (digit >= 1 && digit <= paletteRef.current.length) setActiveLabel(paletteRef.current[digit - 1].label);
-  }, [undo, redo]);
+  }, [undo, redo, closePolygon, tool]);
 
   useEffect(() => {
     const upHandler = (e: KeyboardEvent) => { if (e.key === ' ') setIsPanning(false); };
@@ -220,10 +330,16 @@ export default function ClusterPaintEditor({
     return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', upHandler); };
   }, [handleKeyDown]);
 
-  // Zoom
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    setZoom(z => Math.min(5, Math.max(0.25, z + (e.deltaY > 0 ? -0.1 : 0.1))));
+  // Zoom — use native listener with { passive: false } to allow preventDefault
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoom(z => Math.min(5, Math.max(0.25, z + (e.deltaY > 0 ? -0.1 : 0.1))));
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
   }, []);
 
   // Pan
@@ -289,11 +405,13 @@ export default function ClusterPaintEditor({
   // Derived values for cursor style
   let wrapperCursor = 'default';
   if (isPanning) wrapperCursor = 'grab';
-  else if (tool === 'fill') wrapperCursor = 'crosshair';
+  else if (tool === 'fill' || tool === 'line') wrapperCursor = 'crosshair';
 
   let canvasCursor: string | undefined;
   if (isPanning) canvasCursor = 'grab';
-  else if (tool === 'fill') canvasCursor = 'crosshair';
+  else if (tool === 'fill' || tool === 'line') canvasCursor = 'crosshair';
+
+  const bgUrl = bgMode === 'original' && originalImageUrl ? originalImageUrl : (processedImageUrl || sourceImageUrl);
 
   // Render
   return (
@@ -315,6 +433,11 @@ export default function ClusterPaintEditor({
             <AutoFixOffIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+        <Tooltip title="Border polygon (L)" placement="right">
+          <IconButton size="small" color={tool === 'line' ? 'primary' : 'default'} onClick={() => { setTool('line'); setPolyPoints([]); }}>
+            <TimelineIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
         <Divider flexItem sx={{ my: 0.5 }} />
         <Tooltip title="Undo (Ctrl+Z)" placement="right">
           <IconButton size="small" onClick={undo}><UndoIcon fontSize="small" /></IconButton>
@@ -328,22 +451,24 @@ export default function ClusterPaintEditor({
           onChange={(_, v) => setBrushSize(v as number)} sx={{ height: 80 }} />
         <Typography variant="caption">{brushSize}px</Typography>
         <Box sx={{ flex: 1 }} />
-        <Typography variant="caption" color="text.secondary">Fill tol.</Typography>
+        <Tooltip title="100 = border-only (ignores image colors)" placement="right">
+          <Typography variant="caption" color="text.secondary">Fill tol.</Typography>
+        </Tooltip>
         <Slider orientation="vertical" size="small" min={0} max={100} value={fillTolerance}
           onChange={(_, v) => setFillTolerance(v as number)} sx={{ height: 60 }} />
-        <Typography variant="caption">{fillTolerance}</Typography>
+        <Typography variant="caption">{fillTolerance}{fillTolerance === 100 ? '*' : ''}</Typography>
       </Box>
 
       {/* Center canvas */}
-      <Box ref={wrapperRef} onWheel={handleWheel} onMouseDown={handlePanStart} onMouseMove={handlePanMove}
+      <Box ref={wrapperRef} onMouseDown={handlePanStart} onMouseMove={handlePanMove}
         sx={{ flex: 1, overflow: 'auto', position: 'relative', bgcolor: '#1a1a2e',
           cursor: wrapperCursor }}>
         <Box sx={{ transform: `scale(${zoom})`, transformOrigin: '0 0', position: 'relative', width: canvasSize.w, height: canvasSize.h }}>
-          {sourceImageUrl && (
-            <img src={sourceImageUrl} alt="Source map"
+          {bgUrl && (
+            <img src={bgUrl} alt="Source map"
               style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
           )}
-          <canvas ref={canvasRef} onClick={handleCanvasClick}
+          <canvas ref={canvasRef} onClick={handleCanvasClick} onMouseMove={handleCanvasMouseMove}
             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
               opacity: overlayOpacity / 100,
               cursor: canvasCursor }} />
@@ -390,6 +515,21 @@ export default function ClusterPaintEditor({
           <Slider size="small" min={0} max={100} value={overlayOpacity}
             onChange={(_, v) => setOverlayOpacity(v as number)} />
         </Box>
+        {processedImageUrl && originalImageUrl && (
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="caption" color="text.secondary">Background</Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+              <Button size="small" variant={bgMode === 'processed' ? 'contained' : 'outlined'}
+                onClick={() => setBgMode('processed')} sx={{ fontSize: '0.65rem', py: 0, minWidth: 0, flex: 1 }}>
+                Processed
+              </Button>
+              <Button size="small" variant={bgMode === 'original' ? 'contained' : 'outlined'}
+                onClick={() => setBgMode('original')} sx={{ fontSize: '0.65rem', py: 0, minWidth: 0, flex: 1 }}>
+                Original
+              </Button>
+            </Box>
+          </Box>
+        )}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
           <Button variant="contained" color="info" size="small" disabled={palette.length === 0} onClick={handleConfirm}>
             Confirm clusters

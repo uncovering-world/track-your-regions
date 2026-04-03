@@ -36,7 +36,10 @@ export interface CvClusterReviewSectionProps {
 
 export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvClusterReviewSectionProps) {
   const cr = cvMatchDialog.clusterReview!;
-  const sourceImg = cvMatchDialog.debugImages.find(img => img.label === '__source_map__');
+  // __source_map__ is pushed after ICP (post-cluster-review), so fall back to last debug image
+  const sourceImg = cvMatchDialog.debugImages.find(img => img.label === '__source_map__')
+    ?? cvMatchDialog.debugImages[cvMatchDialog.debugImages.length - 1];
+  const originalImg = cvMatchDialog.debugImages.find(img => img.label === '__original_map__');
   const sorted = [...cr.clusters].sort((a, b) => b.pct - a.pct);
   const [paintMode, setPaintMode] = useState<'off' | 'fix' | 'scratch'>('off');
   // Targets for "merge into" = any non-excluded cluster
@@ -72,6 +75,8 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
     return (
       <ClusterPaintEditor
         sourceImageUrl={sourceImg?.dataUrl ?? ''}
+        processedImageUrl={sourceImg?.dataUrl}
+        originalImageUrl={originalImg?.dataUrl}
         overlayImageUrl={paintMode === 'fix' ? clusterOverlayUrl(cr.reviewId) : undefined}
         initialClusters={paintMode === 'fix' ? cr.clusters : undefined}
         onConfirm={async (response) => {
