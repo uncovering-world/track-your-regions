@@ -20,8 +20,8 @@ import type { ClusterReviewCluster, ManualClusterResponse } from '../../api/admi
 
 type Tool = 'fill' | 'brush' | 'eraser' | 'line';
 
-/** Border drawing color — dark gray, matches natural map borders */
-const BORDER_DRAW_COLOR = '#333333';
+/** Border drawing color — must match CV pipeline internal border in wvImportMatchClusterClean.ts */
+const BORDER_DRAW_COLOR = 'rgb(21, 101, 192)';
 
 interface Props {
   /** Processed (mean-shift) image — loaded onto the editable border canvas */
@@ -48,7 +48,7 @@ export default function ClusterPaintEditor({
 
   // ─── State ───
   const [tool, setTool] = useState<Tool>('fill');
-  const [brushSize, setBrushSize] = useState(12);
+  const [brushSize, setBrushSize] = useState(5);
   const [fillTolerance, setFillTolerance] = useState(30);
   const [borderOpacity, setBorderOpacity] = useState(100);
   const [zoom, setZoom] = useState(1);

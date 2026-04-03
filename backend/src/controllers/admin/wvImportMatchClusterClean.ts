@@ -561,8 +561,9 @@ export async function cleanClusters(params: CleanParams): Promise<CleanResult> {
         if (pixelLabels[n] === 255) isExt = true; else isInt = true;
       }
       const o = p * 3;
-      if (isExt) { overlayBuf[o] = 213; overlayBuf[o + 1] = 47; overlayBuf[o + 2] = 47; }
-      else if (isInt) { overlayBuf[o] = 21; overlayBuf[o + 1] = 101; overlayBuf[o + 2] = 192; }
+      // Border colors — also used in frontend ClusterPaintEditor.tsx BORDER_DRAW_COLOR
+      if (isExt) { overlayBuf[o] = 213; overlayBuf[o + 1] = 47; overlayBuf[o + 2] = 47; }       // external: red
+      else if (isInt) { overlayBuf[o] = 21; overlayBuf[o + 1] = 101; overlayBuf[o + 2] = 192; } // internal: blue
     }
   }
 
