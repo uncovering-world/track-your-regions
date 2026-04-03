@@ -1,11 +1,13 @@
 /**
- * Chain-tracing algorithm for extracting border paths from pixel label maps.
+ * Border path extraction from pixel label maps using OpenCV findContours.
  *
- * Given a pixelLabels Uint8Array (one label per pixel, 255=background), detects
- * border pixels (where neighboring pixels have different labels), groups them by
- * cluster pair, traces them into ordered polyline paths via 8-connectivity, and
- * simplifies the result with Douglas-Peucker.
+ * For each cluster label in pixelLabels, creates a binary mask and runs
+ * cv.findContours() to get the exact contour polygon. This produces clean,
+ * smooth borders that match the "Detected clusters" preview exactly.
  */
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const G = globalThis as unknown as { __cv?: any };
 
 // =============================================================================
 // Types
@@ -22,239 +24,130 @@ export interface BorderPath {
 // Douglas-Peucker simplification
 // =============================================================================
 
-/**
- * Perpendicular distance from point P to the line defined by A→B.
- */
-function perpendicularDistance(
-  p: [number, number],
-  a: [number, number],
-  b: [number, number],
-): number {
+function perpendicularDistance(p: [number, number], a: [number, number], b: [number, number]): number {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
-  if (dx === 0 && dy === 0) {
-    // A and B are the same point — use direct distance
-    return Math.sqrt((p[0] - a[0]) ** 2 + (p[1] - a[1]) ** 2);
-  }
-  // |cross product| / |AB|
-  return Math.abs(dy * p[0] - dx * p[1] + b[0] * a[1] - b[1] * a[0]) /
-    Math.sqrt(dx * dx + dy * dy);
+  if (dx === 0 && dy === 0) return Math.sqrt((p[0] - a[0]) ** 2 + (p[1] - a[1]) ** 2);
+  return Math.abs(dy * p[0] - dx * p[1] + b[0] * a[1] - b[1] * a[0]) / Math.sqrt(dx * dx + dy * dy);
 }
 
-/**
- * Douglas-Peucker polyline simplification.
- *
- * Recursively removes points that are within `tolerance` of the line between
- * the endpoints. Returns a new array with redundant intermediate points removed.
- */
-export function douglasPeucker(
-  points: Array<[number, number]>,
-  tolerance: number,
-): Array<[number, number]> {
+export function douglasPeucker(points: Array<[number, number]>, tolerance: number): Array<[number, number]> {
   if (points.length <= 2) return points;
-
   const first = points[0];
   const last = points[points.length - 1];
-
-  let maxDist = 0;
-  let maxIdx = 0;
+  let maxDist = 0, maxIdx = 0;
   for (let i = 1; i < points.length - 1; i++) {
     const d = perpendicularDistance(points[i], first, last);
-    if (d > maxDist) {
-      maxDist = d;
-      maxIdx = i;
-    }
+    if (d > maxDist) { maxDist = d; maxIdx = i; }
   }
-
   if (maxDist > tolerance) {
     const left = douglasPeucker(points.slice(0, maxIdx + 1), tolerance);
     const right = douglasPeucker(points.slice(maxIdx), tolerance);
-    // Merge: left includes the split point, right starts at it — drop the duplicate
     return [...left.slice(0, -1), ...right];
   }
-
   return [first, last];
 }
 
 // =============================================================================
-// Border detection
-// =============================================================================
-
-/** 4 cardinal neighbors: [dx, dy] */
-const CARDINAL = [[0, -1], [0, 1], [-1, 0], [1, 0]] as const;
-
-/** 8-connectivity neighbors for chain tracing: [dx, dy] */
-const EIGHT_CONNECTED = [
-  [-1, -1], [0, -1], [1, -1],
-  [-1,  0],          [1,  0],
-  [-1,  1], [0,  1], [1,  1],
-] as const;
-
-/**
- * Build a map from each pixel index to its canonical "cluster pair" key.
- * A border pixel is one where at least one cardinal neighbor has a different label.
- * Edge pixels (x=0, x=TW-1, y=0, y=TH-1) are skipped.
- *
- * The canonical key is "min:max" of the two labels (current + first differing neighbor).
- */
-function detectBorderPixels(
-  labels: Uint8Array,
-  TW: number,
-  TH: number,
-): Map<number, string> {
-  const borderMap = new Map<number, string>();
-
-  for (let y = 1; y < TH - 1; y++) {
-    for (let x = 1; x < TW - 1; x++) {
-      const idx = y * TW + x;
-      const label = labels[idx];
-
-      for (const [dx, dy] of CARDINAL) {
-        const nx = x + dx;
-        const ny = y + dy;
-        const nLabel = labels[ny * TW + nx];
-        if (nLabel !== label) {
-          const lo = Math.min(label, nLabel);
-          const hi = Math.max(label, nLabel);
-          borderMap.set(idx, `${lo}:${hi}`);
-          break; // first differing neighbor wins
-        }
-      }
-    }
-  }
-
-  return borderMap;
-}
-
-// =============================================================================
-// Chain tracing
-// =============================================================================
-
-/**
- * Starting from `startIdx`, walk 8-connected border pixels that share the same
- * cluster-pair key and have not yet been visited. Returns an ordered sequence of
- * pixel coordinates [x, y].
- */
-function chainTrace(
-  startIdx: number,
-  pairKey: string,
-  borderMap: Map<number, string>,
-  visited: Set<number>,
-  TW: number,
-): Array<[number, number]> {
-  const path: Array<[number, number]> = [];
-  const stack: number[] = [startIdx];
-
-  while (stack.length > 0) {
-    const idx = stack.pop()!;
-    if (visited.has(idx)) continue;
-    visited.add(idx);
-
-    const x = idx % TW;
-    const y = (idx - x) / TW;
-    path.push([x, y]);
-
-    for (const [dx, dy] of EIGHT_CONNECTED) {
-      const nIdx = (y + dy) * TW + (x + dx);
-      if (!visited.has(nIdx) && borderMap.get(nIdx) === pairKey) {
-        stack.push(nIdx);
-      }
-    }
-  }
-
-  return path;
-}
-
-// =============================================================================
-// Public API
+// OpenCV contour-based border extraction
 // =============================================================================
 
 const DP_TOLERANCE = 1.5;
 
-/** Group pixel indices from borderMap by their cluster-pair key. */
-function groupBorderPixels(borderMap: Map<number, string>): Map<string, number[]> {
-  const groups = new Map<string, number[]>();
-  for (const [idx, key] of borderMap) {
-    let arr = groups.get(key);
-    if (!arr) { arr = []; groups.set(key, arr); }
-    arr.push(idx);
-  }
-  return groups;
-}
-
-/** Parse a "lo:hi" cluster-pair key and determine border type. */
-function parsePairKey(key: string): { lo: number; hi: number; type: 'internal' | 'external' } {
-  const [loStr, hiStr] = key.split(':');
-  const lo = parseInt(loStr, 10);
-  const hi = parseInt(hiStr, 10);
-  return { lo, hi, type: hi === 255 ? 'external' : 'internal' };
-}
-
-/** Trace all connected components in a single cluster-pair group. */
-function traceGroup(
-  key: string,
-  pixels: number[],
-  borderMap: Map<number, string>,
-  visited: Set<number>,
-  TW: number,
-  nextId: { value: number },
-): BorderPath[] {
-  const paths: BorderPath[] = [];
-  const { lo, hi, type } = parsePairKey(key);
-
-  for (const startIdx of pixels) {
-    if (visited.has(startIdx)) continue;
-
-    const raw = chainTrace(startIdx, key, borderMap, visited, TW);
-    if (raw.length < 2) continue;
-
-    const simplified = douglasPeucker(raw, DP_TOLERANCE);
-    if (simplified.length < 2) continue;
-
-    paths.push({
-      id: `bp-${nextId.value++}`,
-      points: simplified,
-      type,
-      clusters: [lo, hi],
-    });
-  }
-
-  return paths;
-}
-
 /**
- * Trace all border paths in the pixel label map.
+ * Extract border paths using OpenCV findContours on each cluster's binary mask.
  *
- * Steps:
- * 1. Detect border pixels (excluding edge pixels).
- * 2. Group by canonical cluster-pair key.
- * 3. Chain-trace each connected component within a group.
- * 4. Classify as internal (cluster↔cluster) or external (cluster↔background 255).
- * 5. Simplify each path with Douglas-Peucker (tolerance 1.5).
+ * For each unique cluster label (excluding 255/background), creates a binary
+ * mask and runs findContours to get the exact region outline. The contour
+ * is classified as internal or external based on whether adjacent pixels
+ * at the contour boundary belong to another cluster or to background.
  */
 export function traceBorderPaths(
   pixelLabels: Uint8Array,
   TW: number,
   TH: number,
-  minPathPoints = 10,
+  minPathPoints = 5,
 ): BorderPath[] {
-  const borderMap = detectBorderPixels(pixelLabels, TW, TH);
-  if (borderMap.size === 0) return [];
+  const cv = G.__cv;
+  if (!cv) {
+    console.warn('[Borders] OpenCV not loaded — falling back to empty paths');
+    return [];
+  }
 
-  const groups = groupBorderPixels(borderMap);
-  const visited = new Set<number>();
-  const nextId = { value: 0 };
+  // Collect unique labels (excluding background 255)
+  const labels = new Set<number>();
+  for (let i = 0; i < pixelLabels.length; i++) {
+    if (pixelLabels[i] !== 255) labels.add(pixelLabels[i]);
+  }
+
   const paths: BorderPath[] = [];
+  let nextId = 0;
 
-  for (const [key, pixels] of groups) {
-    paths.push(...traceGroup(key, pixels, borderMap, visited, TW, nextId));
+  for (const label of labels) {
+    // Create binary mask for this cluster: 255 where label matches, 0 elsewhere
+    const maskData = new Uint8Array(TW * TH);
+    for (let i = 0; i < pixelLabels.length; i++) {
+      maskData[i] = pixelLabels[i] === label ? 255 : 0;
+    }
+
+    const mat = new cv.Mat(TH, TW, cv.CV_8UC1);
+    mat.data.set(maskData);
+
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+
+    cv.findContours(mat, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE);
+
+    for (let c = 0; c < contours.size(); c++) {
+      const contour = contours.get(c);
+      const numPoints = contour.rows;
+      if (numPoints < 4) continue;
+
+      // Extract contour points
+      const raw: Array<[number, number]> = [];
+      for (let p = 0; p < numPoints; p++) {
+        const x = contour.intAt(p * 2);
+        const y = contour.intAt(p * 2 + 1);
+        raw.push([x, y]);
+      }
+
+      // Simplify
+      const simplified = douglasPeucker(raw, DP_TOLERANCE);
+      if (simplified.length < minPathPoints) continue;
+
+      // Classify: sample a few contour points to see what's on the other side
+      let hasExternal = false;
+      let neighborLabel = -1;
+      for (let si = 0; si < Math.min(10, raw.length); si += Math.max(1, Math.floor(raw.length / 10))) {
+        const [cx, cy] = raw[si];
+        // Check a pixel just outside the contour in each direction
+        for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || nx >= TW || ny < 0 || ny >= TH) continue;
+          const nLabel = pixelLabels[ny * TW + nx];
+          if (nLabel === label) continue;
+          if (nLabel === 255) { hasExternal = true; }
+          else if (neighborLabel === -1) { neighborLabel = nLabel; }
+        }
+      }
+
+      const type = hasExternal && neighborLabel === -1 ? 'external' : 'internal';
+      const clusterB = neighborLabel >= 0 ? neighborLabel : 255;
+
+      paths.push({
+        id: `bp-${nextId++}`,
+        points: simplified,
+        type,
+        clusters: [Math.min(label, clusterB), Math.max(label, clusterB)],
+      });
+    }
+
+    // Clean up OpenCV objects
+    contours.delete();
+    hierarchy.delete();
+    mat.delete();
   }
 
-  // Filter out tiny fragments — real borders are long paths, artifacts are short
-  if (minPathPoints > 0) {
-    const filtered = paths.filter(p => p.points.length >= minPathPoints);
-    console.log(`  [Borders] Filtered: ${paths.length} → ${filtered.length} paths (removed ${paths.length - filtered.length} short fragments < ${minPathPoints} pts)`);
-    return filtered;
-  }
+  console.log(`  [Borders] Extracted ${paths.length} contour paths from ${labels.size} clusters via OpenCV findContours`);
   return paths;
 }
