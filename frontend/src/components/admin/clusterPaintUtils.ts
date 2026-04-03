@@ -9,24 +9,34 @@ export interface PaletteEntry {
   color: [number, number, number];
 }
 
+/**
+ * Flood fill reading boundaries from borderData, writing cluster colors to colorData.
+ *
+ * Border canvas (user-edited processed image):
+ *   - Transparent pixels (alpha < 20) = passable (erased borders)
+ *   - Non-transparent pixels: color similarity check vs start pixel (tolerance)
+ *
+ * Color canvas (existing cluster fills):
+ *   - Different-color fills (alpha > 128, color diff > 30) = boundary
+ *   - Same-color or transparent = passable
+ */
 export function floodFillFromSource(
-  source: PixelData, overlay: PixelData,
+  borderData: PixelData, colorData: PixelData,
   startX: number, startY: number,
   fillColor: [number, number, number, number],
   tolerance: number,
 ): number {
-  const { width: w, height: h } = source;
-  const src = source.data;
-  const dst = overlay.data;
+  const { width: w, height: h } = borderData;
+  const bdr = borderData.data;
+  const clr = colorData.data;
   const sx = Math.round(startX);
   const sy = Math.round(startY);
   if (sx < 0 || sx >= w || sy < 0 || sy >= h) return 0;
 
+  // Sample border canvas color at start point for similarity check
   const si0 = (sy * w + sx) * 4;
-  const targetR = src[si0], targetG = src[si0 + 1], targetB = src[si0 + 2];
+  const targetR = bdr[si0], targetG = bdr[si0 + 1], targetB = bdr[si0 + 2];
   const threshold = Math.round((tolerance / 100) * 255);
-  // At tolerance=100 (threshold=255), skip source image check — fill bounded ONLY by overlay borders
-  const skipSourceCheck = threshold >= 255;
 
   const visited = new Uint8Array(w * h);
   const stack: number[] = [sx, sy];
@@ -40,15 +50,20 @@ export function floodFillFromSource(
     visited[pi] = 1;
     const si = pi * 4;
 
-    // 1. Stop at border-colored pixels (magenta #ff00ff) — drawn polygon borders
-    if (dst[si + 3] > 20 && dst[si] > 200 && dst[si + 1] < 50 && dst[si + 2] > 200) continue;
-
-    // 2. Stop at source image color boundaries (skipped when tolerance=100)
-    if (!skipSourceCheck) {
-      if (Math.abs(src[si] - targetR) > threshold || Math.abs(src[si + 1] - targetG) > threshold || Math.abs(src[si + 2] - targetB) > threshold) continue;
+    // 1. Color canvas: stop at existing different-color cluster fills
+    if (clr[si + 3] > 128) {
+      const dr = Math.abs(clr[si] - fillColor[0]);
+      const dg = Math.abs(clr[si + 1] - fillColor[1]);
+      const db = Math.abs(clr[si + 2] - fillColor[2]);
+      if (dr > 30 || dg > 30 || db > 30) continue;
     }
 
-    dst[si] = fillColor[0]; dst[si + 1] = fillColor[1]; dst[si + 2] = fillColor[2]; dst[si + 3] = fillColor[3];
+    // 2. Border canvas: transparent = passable, opaque = color boundary check
+    if (bdr[si + 3] >= 20) {
+      if (Math.abs(bdr[si] - targetR) > threshold || Math.abs(bdr[si + 1] - targetG) > threshold || Math.abs(bdr[si + 2] - targetB) > threshold) continue;
+    }
+
+    clr[si] = fillColor[0]; clr[si + 1] = fillColor[1]; clr[si + 2] = fillColor[2]; clr[si + 3] = fillColor[3];
     filled++;
 
     if (x > 0 && !visited[pi - 1]) stack.push(x - 1, y);

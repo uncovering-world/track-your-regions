@@ -75,7 +75,6 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
     return (
       <ClusterPaintEditor
         sourceImageUrl={sourceImg?.dataUrl ?? ''}
-        processedImageUrl={sourceImg?.dataUrl}
         originalImageUrl={originalImg?.dataUrl}
         overlayImageUrl={paintMode === 'fix' ? clusterOverlayUrl(cr.reviewId) : undefined}
         initialClusters={paintMode === 'fix' ? cr.clusters : undefined}
