@@ -146,6 +146,7 @@ export interface ColorMatchSSEEvent {
     parkCount?: number; totalParkPct?: number; components?: ParkComponent[];
     clusters?: ClusterReviewCluster[];
     borderPaths?: BorderPath[];
+    pipelineSize?: { w: number; h: number };
   };
   message?: string;
   reviewId?: string;

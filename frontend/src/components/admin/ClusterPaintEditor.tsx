@@ -27,6 +27,7 @@ interface Props {
   sourceImageUrl: string;
   originalImageUrl?: string;
   borderPaths?: BorderPath[];
+  pipelineSize?: { w: number; h: number };
   overlayImageUrl?: string;
   initialClusters?: ClusterReviewCluster[];
   onConfirm: (response: ManualClusterResponse) => void;
@@ -42,7 +43,7 @@ const MAX_HISTORY = 50;
 const SNAP_DISTANCE = 15;
 
 export default function ClusterPaintEditor({
-  sourceImageUrl, originalImageUrl, borderPaths, overlayImageUrl, initialClusters,
+  sourceImageUrl, originalImageUrl, borderPaths, pipelineSize, overlayImageUrl, initialClusters,
   onConfirm, onCancel,
 }: Props) {
   // --- Refs ---
@@ -77,8 +78,10 @@ export default function ClusterPaintEditor({
   const polyPointsRef = useRef(polyPoints);
   polyPointsRef.current = polyPoints;
 
-  // --- Pipeline dimensions from border path bounds ---
+  // --- Pipeline dimensions (from backend, or derived from border paths) ---
   const pipelineDims = useMemo(() => {
+    if (pipelineSize) return pipelineSize;
+    // Fallback: derive from border path bounds
     let maxX = 0, maxY = 0;
     for (const p of (borderPaths ?? [])) {
       for (const [x, y] of p.points) {
@@ -86,9 +89,8 @@ export default function ClusterPaintEditor({
         if (y > maxY) maxY = y;
       }
     }
-    // Add 1px margin; fall back to 500x500 if no paths
     return { w: maxX > 0 ? Math.ceil(maxX) + 1 : 500, h: maxY > 0 ? Math.ceil(maxY) + 1 : 500 };
-  }, [borderPaths]);
+  }, [pipelineSize, borderPaths]);
 
   // --- Open endpoints for SVG rendering ---
   const openEndpoints = useMemo(() => findOpenEndpoints(paths), [paths]);

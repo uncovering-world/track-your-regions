@@ -85,6 +85,7 @@ export interface CvMatchDialogState {
     highlightOverlay?: string;
     /** Border paths between clusters for alignment visualization */
     borderPaths: BorderPath[];
+    pipelineSize?: { w: number; h: number };
   };
   icpAdjustment?: {
     reviewId: string;
@@ -308,6 +309,7 @@ export function useCvMatchPipeline(
                 excludes: restoredExcludes,
                 regionAssignments: restoredRegionAssignments,
                 borderPaths: event.data?.borderPaths ?? [],
+                pipelineSize: event.data?.pipelineSize,
               },
               savedRegionAssignments: undefined,
               savedMerges: undefined,

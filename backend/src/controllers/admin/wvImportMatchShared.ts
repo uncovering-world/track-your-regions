@@ -464,6 +464,7 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
             componentCount: c.componentCount,
           })),
           borderPaths,
+          pipelineSize: { w: TW, h: TH },
         },
       });
       await new Promise(resolve => setImmediate(resolve));
