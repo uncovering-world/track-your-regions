@@ -40,6 +40,7 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
   const sourceImg = cvMatchDialog.debugImages.find(img => img.label === '__source_map__')
     ?? [...cvMatchDialog.debugImages].reverse().find(img => !img.label.startsWith('__'));
   const originalImg = cvMatchDialog.debugImages.find(img => img.label === '__original_map__');
+  const quantizedImg = cvMatchDialog.debugImages.find(img => img.label === '__quantized_map__');
   const sorted = [...cr.clusters].sort((a, b) => b.pct - a.pct);
   const [paintMode, setPaintMode] = useState<'off' | 'fix' | 'scratch'>('off');
   // Targets for "merge into" = any non-excluded cluster
@@ -74,7 +75,7 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
   if (paintMode !== 'off') {
     return (
       <ClusterPaintEditor
-        sourceImageUrl={sourceImg?.dataUrl ?? ''}
+        sourceImageUrl={quantizedImg?.dataUrl ?? sourceImg?.dataUrl ?? ''}
         originalImageUrl={originalImg?.dataUrl}
         overlayImageUrl={paintMode === 'fix' ? clusterOverlayUrl(cr.reviewId) : undefined}
         initialClusters={paintMode === 'fix' ? cr.clusters : undefined}

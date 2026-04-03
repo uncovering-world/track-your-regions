@@ -445,12 +445,15 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
         .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
       storeClusterOverlay(reviewId, overlayPng);
 
-      // Push original (unprocessed) image so the paint editor can use it
+      // Push original (unprocessed) and quantized (flat cluster colors, no borders) images for paint editor
       if (origBuf) {
         const origPng = await sharp(Buffer.from(origBuf), { raw: { width: TW, height: TH, channels: 3 } })
           .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
         await pushDebugImage('__original_map__', `data:image/png;base64,${origPng.toString('base64')}`);
       }
+      const quantPng = await sharp(quantBuf, { raw: { width: TW, height: TH, channels: 3 } })
+        .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+      await pushDebugImage('__quantized_map__', `data:image/png;base64,${quantPng.toString('base64')}`);
 
       sendEvent({
         type: 'cluster_review',
