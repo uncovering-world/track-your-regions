@@ -445,6 +445,13 @@ export async function matchDivisionsFromClusters(params: MatchDivisionsParams): 
         .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
       storeClusterOverlay(reviewId, overlayPng);
 
+      // Push original (unprocessed) image so the paint editor can use it
+      if (origBuf) {
+        const origPng = await sharp(Buffer.from(origBuf), { raw: { width: TW, height: TH, channels: 3 } })
+          .resize(origW, origH, { kernel: 'lanczos3' }).png().toBuffer();
+        await pushDebugImage('__original_map__', `data:image/png;base64,${origPng.toString('base64')}`);
+      }
+
       sendEvent({
         type: 'cluster_review',
         reviewId,

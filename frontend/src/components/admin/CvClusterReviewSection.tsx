@@ -36,9 +36,9 @@ export interface CvClusterReviewSectionProps {
 
 export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvClusterReviewSectionProps) {
   const cr = cvMatchDialog.clusterReview!;
-  // __source_map__ is pushed after ICP (post-cluster-review), so fall back to last debug image
+  // __source_map__ is pushed after ICP (post-cluster-review), so fall back to last non-special debug image
   const sourceImg = cvMatchDialog.debugImages.find(img => img.label === '__source_map__')
-    ?? cvMatchDialog.debugImages[cvMatchDialog.debugImages.length - 1];
+    ?? [...cvMatchDialog.debugImages].reverse().find(img => !img.label.startsWith('__'));
   const originalImg = cvMatchDialog.debugImages.find(img => img.label === '__original_map__');
   const sorted = [...cr.clusters].sort((a, b) => b.pct - a.pct);
   const [paintMode, setPaintMode] = useState<'off' | 'fix' | 'scratch'>('off');
@@ -105,22 +105,16 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
         Review detected color clusters. Exclude artifacts (gray/noise), merge small leftovers into real regions, or keep as-is.
       </Typography>
-      {/* Side-by-side: region map + source map + cluster preview — sticky, max 40vh so cluster list is always visible */}
+      {/* Side-by-side: region map + cluster preview — sticky, max 40vh so cluster list is always visible */}
       <Box sx={{ display: 'flex', gap: 1, mb: 1.5, position: 'sticky', top: 0, zIndex: 10, bgcolor: 'info.50', pb: 1 }}>
         {cvMatchDialog.regionMapUrl && (
-          <Box sx={{ flex: '1 1 30%', textAlign: 'center', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ flex: '1 1 45%', textAlign: 'center', display: 'flex', flexDirection: 'column' }}>
             <Typography variant="caption" color="text.secondary">Region map</Typography>
             <img src={cvMatchDialog.regionMapUrl} style={{ maxWidth: '100%', maxHeight: '35vh', objectFit: 'contain', borderRadius: 4 }} />
           </Box>
         )}
-        {sourceImg && (
-          <Box sx={{ flex: '1 1 30%', textAlign: 'center', display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="caption" color="text.secondary">Processed</Typography>
-            <img src={sourceImg.dataUrl} style={{ maxWidth: '100%', maxHeight: '35vh', objectFit: 'contain', borderRadius: 4 }} />
-          </Box>
-        )}
         {cr.previewImage && (
-          <Box sx={{ flex: '1 1 30%', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <Box sx={{ flex: '1 1 45%', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <Typography variant="caption" color="text.secondary">Detected clusters {cr.highlightedLabel != null ? '(click color circle to highlight)' : '(click a color circle to highlight)'}</Typography>
             <Box sx={{ position: 'relative', display: 'inline-flex', maxHeight: '35vh' }}>
               <img src={cr.previewImage} style={{ maxWidth: '100%', maxHeight: '35vh', objectFit: 'contain', borderRadius: 4, display: 'block' }} />
