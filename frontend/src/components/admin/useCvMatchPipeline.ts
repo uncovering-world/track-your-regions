@@ -19,7 +19,7 @@ import {
   type ClusterGeoInfo,
 } from '../../api/adminWorldViewImport';
 import type { SpatialAnomaly } from '../../api/adminWvImportTreeOps';
-import type { AdjacencyEdge } from '../../api/adminWvImportCvMatch';
+import type { AdjacencyEdge, BorderPath } from '../../api/adminWvImportCvMatch';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -83,6 +83,8 @@ export interface CvMatchDialogState {
     highlightedLabel?: number;
     /** Highlight overlay image URL for the selected cluster */
     highlightOverlay?: string;
+    /** Border paths between clusters for alignment visualization */
+    borderPaths: BorderPath[];
   };
   icpAdjustment?: {
     reviewId: string;
@@ -305,6 +307,7 @@ export function useCvMatchPipeline(
                 merges: restoredMerges,
                 excludes: restoredExcludes,
                 regionAssignments: restoredRegionAssignments,
+                borderPaths: event.data?.borderPaths ?? [],
               },
               savedRegionAssignments: undefined,
               savedMerges: undefined,

@@ -99,6 +99,13 @@ export interface ClusterReviewCluster {
   componentCount: number;
 }
 
+export interface BorderPath {
+  id: string;
+  points: Array<[number, number]>;
+  type: 'internal' | 'external';
+  clusters: [number, number];
+}
+
 export interface ClusterReviewDecision {
   merges: Record<number, number>;
   excludes?: number[];
@@ -138,6 +145,7 @@ export interface ColorMatchSSEEvent {
   data?: ColorMatchResult & {
     parkCount?: number; totalParkPct?: number; components?: ParkComponent[];
     clusters?: ClusterReviewCluster[];
+    borderPaths?: BorderPath[];
   };
   message?: string;
   reviewId?: string;

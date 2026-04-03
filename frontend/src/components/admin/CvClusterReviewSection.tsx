@@ -78,6 +78,7 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
         originalImageUrl={originalImg?.dataUrl}
         overlayImageUrl={paintMode === 'fix' ? clusterOverlayUrl(cr.reviewId) : undefined}
         initialClusters={paintMode === 'fix' ? cr.clusters : undefined}
+        borderPaths={cr.borderPaths}
         onConfirm={async (response) => {
           setCVMatchDialog(prev => prev ? {
             ...prev,
