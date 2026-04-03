@@ -236,6 +236,7 @@ export function traceBorderPaths(
   pixelLabels: Uint8Array,
   TW: number,
   TH: number,
+  minPathPoints = 10,
 ): BorderPath[] {
   const borderMap = detectBorderPixels(pixelLabels, TW, TH);
   if (borderMap.size === 0) return [];
@@ -249,5 +250,11 @@ export function traceBorderPaths(
     paths.push(...traceGroup(key, pixels, borderMap, visited, TW, nextId));
   }
 
+  // Filter out tiny fragments — real borders are long paths, artifacts are short
+  if (minPathPoints > 0) {
+    const filtered = paths.filter(p => p.points.length >= minPathPoints);
+    console.log(`  [Borders] Filtered: ${paths.length} → ${filtered.length} paths (removed ${paths.length - filtered.length} short fragments < ${minPathPoints} pts)`);
+    return filtered;
+  }
   return paths;
 }

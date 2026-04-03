@@ -9,7 +9,7 @@ describe('traceBorderPaths', () => {
       1, 1, 1, 1,
       1, 1, 1, 1,
     ]);
-    const paths = traceBorderPaths(labels, TW, TH);
+    const paths = traceBorderPaths(labels, TW, TH, 0);
     expect(paths.length).toBeGreaterThan(0);
     for (const p of paths) {
       expect(p.type).toBe('internal');
@@ -25,7 +25,7 @@ describe('traceBorderPaths', () => {
       255,   0,   0, 255,
       255, 255, 255, 255,
     ]);
-    const paths = traceBorderPaths(labels, TW, TH);
+    const paths = traceBorderPaths(labels, TW, TH, 0);
     expect(paths.length).toBeGreaterThan(0);
     expect(paths.some(p => p.type === 'external')).toBe(true);
   });
@@ -37,7 +37,7 @@ describe('traceBorderPaths', () => {
   it('assigns unique IDs', () => {
     const TW = 4, TH = 3;
     const labels = new Uint8Array([0, 0, 1, 1, 0, 0, 1, 1, 2, 2, 2, 2]);
-    const paths = traceBorderPaths(labels, TW, TH);
+    const paths = traceBorderPaths(labels, TW, TH, 0);
     const ids = paths.map(p => p.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -49,7 +49,7 @@ describe('traceBorderPaths', () => {
       0, 0, 1, 1,
       0, 0, 1, 1,
     ]);
-    const paths = traceBorderPaths(labels, TW, TH);
+    const paths = traceBorderPaths(labels, TW, TH, 0);
     expect(paths.every(p => p.type === 'internal')).toBe(true);
   });
 
@@ -60,7 +60,7 @@ describe('traceBorderPaths', () => {
       1, 1, 1, 1,
       1, 1, 1, 1,
     ]);
-    const paths = traceBorderPaths(labels, TW, TH);
+    const paths = traceBorderPaths(labels, TW, TH, 0);
     for (const p of paths) {
       expect(p.clusters[0]).toBeLessThanOrEqual(p.clusters[1]);
     }
@@ -69,7 +69,7 @@ describe('traceBorderPaths', () => {
   it('IDs follow bp-N pattern', () => {
     const TW = 4, TH = 3;
     const labels = new Uint8Array([0, 0, 1, 1, 0, 0, 1, 1, 2, 2, 2, 2]);
-    const paths = traceBorderPaths(labels, TW, TH);
+    const paths = traceBorderPaths(labels, TW, TH, 0);
     for (const p of paths) {
       expect(p.id).toMatch(/^bp-\d+$/);
     }
