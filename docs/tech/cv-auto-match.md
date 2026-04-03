@@ -80,8 +80,9 @@ Crop images are stored in-memory Maps with auto-cleanup after 10 minutes, served
 | `CvWaterReviewSection.tsx` | Water component approval UI |
 | `CvParkReviewSection.tsx` | Park component confirmation UI |
 | `CvClusterReviewSection.tsx` | Cluster accept/merge/split UI + manual paint editor entry |
-| `ClusterPaintEditor.tsx` | Canvas-based manual cluster painting (Atrament brush/eraser + custom flood fill) |
-| `clusterPaintUtils.ts` | Flood fill (source-image-aware), overlay↔pixelLabels conversion, color helpers |
+| `ClusterPaintEditor.tsx` | SVG-based vector border editing + canvas flood fill |
+| `svgBorderUtils.ts` | SVG path smoothing, open endpoint detection, border rasterization, eraser intersection |
+| `clusterPaintUtils.ts` | Flood fill, overlay↔pixelLabels conversion, color helpers |
 | `CvMatchMap.tsx` | Interactive MapLibre map for geo preview and paint mode |
 | `useCvMatchPipeline.ts` | Hook managing SSE connection and dialog state |
 
@@ -89,30 +90,32 @@ All frontend components live in `frontend/src/components/admin/`.
 
 ### Manual Cluster Editor
 
-When automated K-means clustering produces incorrect results (wrong boundaries, merged regions, color confusion), the admin can switch to a canvas-based paint editor to manually draw or correct cluster boundaries.
+When automated K-means clustering produces incorrect results, the admin can switch to a vector border editing tool to manually fix region boundaries and assign cluster colors.
 
 **Two entry modes** from the cluster review step:
-- **Fix mode** ("Edit manually") — loads the CV-detected clusters as a starting overlay. Admin corrects problem areas.
-- **Scratch mode** ("Draw from scratch") — blank canvas over the source map image. Admin paints all clusters from scratch.
+- **Fix mode** ("Edit manually") — loads CV-detected borders as editable vector paths + cluster color overlay
+- **Scratch mode** ("Draw from scratch") — borders only, no pre-filled colors
+
+**Architecture — three-layer stack:**
+1. Background `<img>`: processed or original map (toggleable)
+2. SVG overlay: vector border paths as `<path>` elements, open endpoint markers as `<circle>`
+3. Color `<canvas>`: cluster fill colors (flood fill writes here)
 
 **Tools:**
-- **Paint bucket** (primary) — flood fill using the source map image for boundary detection. Click inside a region to fill it with the active cluster color. Fill tolerance slider controls edge sensitivity.
-- **Brush** — freehand painting for touch-ups where fill leaked or didn't reach.
-- **Eraser** — removes cluster assignment from pixels.
+- **Fill (F)** — click inside a bordered region. Rasterizes SVG borders to a hidden canvas, runs flood fill bounded by the rasterized borders + existing fills.
+- **Eraser (E)** — drag across borders to cut them. Intersecting path segments are removed, creating open endpoints (highlighted as orange markers).
+- **Polyline (L)** — click to draw new border segments. Auto-snaps within 15px of open endpoints for clean connections. Enter finishes open polyline, click near first point closes polygon.
 
-**Technical details:**
-- Uses Atrament library (~6kB) for brush/eraser rendering on HTML Canvas
-- Custom flood fill reads source image pixel colors for boundary detection (not the overlay), so fill naturally stops at color boundaries on the original map
-- Overlay canvas is layered over the source image with adjustable opacity
-- Undo/redo via ImageData snapshots (max 50 steps)
-- Zoom (scroll wheel) and pan (Space+drag) via CSS transform on the canvas wrapper
+**Border extraction pipeline:**
+- Backend traces border pixels from `pixelLabels` (neighbor check) into ordered polyline paths using 8-connectivity chain-tracing (`wvImportMatchBorderTrace.ts`)
+- Douglas-Peucker simplification reduces point count (~90% reduction)
+- Paths sent to frontend via the `cluster_review` SSE event alongside cluster metadata
+- Frontend renders paths as SVG with Catmull-Rom curve smoothing
 
 **Data flow on submit:**
-1. Frontend reads overlay canvas as PNG data URL
+1. Frontend reads color canvas as PNG data URL
 2. Sends `{ type: 'manual_clusters', overlayPng, palette }` via the existing cluster review POST endpoint
-3. Backend decodes PNG with sharp, maps pixel colors to cluster labels using nearest-color matching
-4. Replaces `pixelLabels` and `colorCentroids` in the pipeline context
-5. Pipeline resumes at ICP alignment + division assignment — completely transparent to downstream code
+3. Backend decodes PNG → maps to `pixelLabels` → pipeline resumes at ICP alignment
 
 ## Paint Mode
 

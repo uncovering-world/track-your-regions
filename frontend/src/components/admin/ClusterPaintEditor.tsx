@@ -26,7 +26,7 @@ type Tool = 'fill' | 'eraser' | 'line';
 interface Props {
   sourceImageUrl: string;
   originalImageUrl?: string;
-  borderPaths: BorderPath[];
+  borderPaths?: BorderPath[];
   overlayImageUrl?: string;
   initialClusters?: ClusterReviewCluster[];
   onConfirm: (response: ManualClusterResponse) => void;
@@ -51,7 +51,7 @@ export default function ClusterPaintEditor({
 
   // --- State ---
   const [tool, setTool] = useState<Tool>('fill');
-  const [paths, setPaths] = useState<BorderPath[]>(borderPaths);
+  const [paths, setPaths] = useState<BorderPath[]>(borderPaths ?? []);
   const [polyPoints, setPolyPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [palette, setPalette] = useState<PaletteEntry[]>([]);
   const [activeLabel, setActiveLabel] = useState<number>(-1);
@@ -80,7 +80,7 @@ export default function ClusterPaintEditor({
   // --- Pipeline dimensions from border path bounds ---
   const pipelineDims = useMemo(() => {
     let maxX = 0, maxY = 0;
-    for (const p of borderPaths) {
+    for (const p of (borderPaths ?? [])) {
       for (const [x, y] of p.points) {
         if (x > maxX) maxX = x;
         if (y > maxY) maxY = y;
