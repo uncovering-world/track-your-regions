@@ -735,13 +735,6 @@ export async function reviewAndFinalizeWater(
 
     const decision = await new Promise<WaterReviewDecision>((resolve) => {
       pendingWaterReviews.set(reviewId, resolve);
-      setTimeout(() => {
-        if (pendingWaterReviews.has(reviewId)) {
-          console.log(`  [Water] Review ${reviewId} timed out — auto-approving all`);
-          pendingWaterReviews.delete(reviewId);
-          resolve({ approvedIds: waterComponents.map(wc => wc.id), mixDecisions: [] });
-        }
-      }, 300000);
     });
 
     const approvedSet = new Set(decision.approvedIds);
