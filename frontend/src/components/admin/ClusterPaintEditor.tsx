@@ -22,6 +22,8 @@ type Tool = 'fill' | 'brush' | 'eraser' | 'line';
 
 /** Border drawing color — must match CV pipeline internal border in wvImportMatchClusterClean.ts */
 const BORDER_DRAW_COLOR = 'rgb(21, 101, 192)';
+/** Fixed border width — matches CV pipeline border (~1px at TW=500, upscaled ~5px at display res) */
+const BORDER_LINE_WIDTH = 5;
 
 interface Props {
   /** Processed (mean-shift) image — loaded onto the editable border canvas */
@@ -180,37 +182,46 @@ export default function ClusterPaintEditor({
     if (tool === 'brush') {
       at.mode = MODE_DRAW;
       at.color = BORDER_DRAW_COLOR;
+      at.weight = BORDER_LINE_WIDTH; // fixed width, matches CV pipeline
     } else if (tool === 'eraser') {
       at.mode = MODE_ERASE;
+      at.weight = brushSize; // eraser size is adjustable
     } else {
       at.mode = MODE_DISABLED;
       if (tool !== 'line') setPolyPoints([]);
     }
-    at.weight = brushSize;
   }, [tool, brushSize]);
 
-  // ─── Polygon border (draws on border canvas in dark gray) ───
+  // ─── Polyline/polygon border tool ───
   const closeDist = 12 / Math.max(zoom, 0.25);
 
-  const closePolygon = useCallback(() => {
-    const pts = polyPointsRef.current;
-    if (pts.length < 3) return;
-    const bc = borderCanvasRef.current;
-    if (!bc) return;
-    const ctx = bc.getContext('2d')!;
+  /** Draw border path on border canvas with fixed style, resetting any Atrament state */
+  const drawBorderPath = useCallback((ctx: CanvasRenderingContext2D, pts: Array<{ x: number; y: number }>, close: boolean) => {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over'; // reset from eraser's destination-out
     ctx.globalAlpha = 1;
     ctx.strokeStyle = BORDER_DRAW_COLOR;
-    ctx.lineWidth = brushSize;
+    ctx.lineWidth = BORDER_LINE_WIDTH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.closePath();
+    if (close) ctx.closePath();
     ctx.stroke();
+    ctx.restore();
+  }, []);
+
+  /** Finish polyline: close=true if clicking near start, close=false for open polyline (Enter) */
+  const finishPolyline = useCallback((close: boolean) => {
+    const pts = polyPointsRef.current;
+    if (pts.length < 2) return;
+    const bc = borderCanvasRef.current;
+    if (!bc) return;
+    drawBorderPath(bc.getContext('2d')!, pts, close);
     setPolyPoints([]);
     saveSnapshot();
-  }, [brushSize, saveSnapshot]);
+  }, [drawBorderPath, saveSnapshot]);
 
   // ─── Canvas click: fill or polygon ───
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -239,17 +250,18 @@ export default function ClusterPaintEditor({
       cc.getContext('2d')!.putImageData(colorData, 0, 0);
       saveSnapshot();
     } else if (tool === 'line') {
+      // Close polygon if clicking near the first point (>= 3 points)
       if (polyPoints.length >= 3) {
         const first = polyPoints[0];
         const dx = x - first.x, dy = y - first.y;
         if (Math.sqrt(dx * dx + dy * dy) < closeDist) {
-          closePolygon();
+          finishPolyline(true); // closed polygon
           return;
         }
       }
       setPolyPoints(prev => [...prev, { x, y }]);
     }
-  }, [tool, activeLabel, fillTolerance, polyPoints, saveSnapshot, closePolygon, closeDist]);
+  }, [tool, activeLabel, fillTolerance, polyPoints, saveSnapshot, finishPolyline, closeDist]);
 
   // ─── Polygon preview on mouse move ───
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -266,8 +278,10 @@ export default function ClusterPaintEditor({
     const ctx = bc.getContext('2d')!;
     const idx = historyIdxRef.current;
     if (idx >= 0) ctx.putImageData(historyRef.current[idx].border, 0, 0);
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = BORDER_DRAW_COLOR;
-    ctx.lineWidth = brushSize;
+    ctx.lineWidth = BORDER_LINE_WIDTH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.globalAlpha = 0.6;
@@ -276,6 +290,7 @@ export default function ClusterPaintEditor({
     for (let i = 1; i < polyPoints.length; i++) ctx.lineTo(polyPoints[i].x, polyPoints[i].y);
     ctx.lineTo(x, y);
     ctx.stroke();
+    // Close indicator: circle at first point when near enough
     if (polyPoints.length >= 3) {
       const first = polyPoints[0];
       const dx = x - first.x, dy = y - first.y;
@@ -286,8 +301,8 @@ export default function ClusterPaintEditor({
         ctx.fill();
       }
     }
-    ctx.globalAlpha = 1;
-  }, [tool, polyPoints, brushSize, closeDist]);
+    ctx.restore();
+  }, [tool, polyPoints, closeDist]);
 
   // ─── Keyboard shortcuts ───
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -298,7 +313,7 @@ export default function ClusterPaintEditor({
     if (e.key === 'e' || e.key === 'E') { setTool('eraser'); e.preventDefault(); return; }
     if (e.key === 'l' || e.key === 'L') { setTool('line'); setPolyPoints([]); e.preventDefault(); return; }
     if (e.key === 'Escape') { setPolyPoints([]); return; }
-    if (e.key === 'Enter' && tool === 'line') { closePolygon(); e.preventDefault(); return; }
+    if (e.key === 'Enter' && tool === 'line') { finishPolyline(false); e.preventDefault(); return; }
     if (e.key === 'z' && mod && !e.shiftKey) { undo(); e.preventDefault(); return; }
     if ((e.key === 'z' && mod && e.shiftKey) || (e.key === 'Z' && mod)) { redo(); e.preventDefault(); return; }
     if (e.key === '[') { setBrushSize(s => Math.max(1, s - 2)); return; }
@@ -306,7 +321,7 @@ export default function ClusterPaintEditor({
     if (e.key === ' ') { setIsPanning(true); e.preventDefault(); return; }
     const digit = parseInt(e.key);
     if (digit >= 1 && digit <= paletteRef.current.length) setActiveLabel(paletteRef.current[digit - 1].label);
-  }, [undo, redo, closePolygon, tool]);
+  }, [undo, redo, finishPolyline, tool]);
 
   useEffect(() => {
     const upHandler = (e: KeyboardEvent) => { if (e.key === ' ') setIsPanning(false); };
@@ -424,7 +439,7 @@ export default function ClusterPaintEditor({
           <IconButton size="small" onClick={redo}><RedoIcon fontSize="small" /></IconButton>
         </Tooltip>
         <Divider flexItem sx={{ my: 0.5 }} />
-        <Typography variant="caption" color="text.secondary">Size</Typography>
+        <Typography variant="caption" color="text.secondary">Eraser</Typography>
         <Slider orientation="vertical" size="small" min={1} max={60} value={brushSize}
           onChange={(_, v) => setBrushSize(v as number)} sx={{ height: 80 }} />
         <Typography variant="caption">{brushSize}px</Typography>
