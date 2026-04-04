@@ -29,6 +29,7 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       NODE_ENV: development
+      CV_PYTHON_URL: http://cv-python:8000
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       # Authentication
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
@@ -89,6 +90,20 @@ services:
       db:
         condition: service_healthy
     command: ["--config", "/config.yaml"]
+    restart: unless-stopped
+
+  cv-python:
+    build:
+      context: ./cv-python
+      dockerfile: Dockerfile
+    container_name: ${STACK_NAME:-tyr-ng}-cv-python
+    ports:
+      - "${CV_PYTHON_PORT:-8000}:8000"
+    volumes:
+      - ./cv-python/app:/app/app:ro
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
     restart: unless-stopped
 
 volumes:
