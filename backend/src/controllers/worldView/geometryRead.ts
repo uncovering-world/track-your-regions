@@ -44,8 +44,7 @@ export async function getDisplayGeometryStatus(req: Request, res: Response): Pro
  * Does NOT auto-compute geometry - use computeWorldViewGeometries for that
  */
 export async function getRegionGeometry(req: Request, res: Response): Promise<void> {
-  // Support both new (regionId) and legacy (groupId) param names
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
   const detail = req.query.detail as string | undefined;
 
   // Get cached geometry (including custom boundaries and anchor point)
@@ -319,8 +318,7 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
  * Includes both direct member regions AND child region geometries
  */
 export async function getSubregionGeometries(req: Request, res: Response): Promise<void> {
-  // Support both new (regionId) and legacy (groupId) param names
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
 
   // Query param: useDisplay=true to use hull geometries (atlas-style) for hull regions
   const useDisplayGeom = req.query.useDisplay === 'true';

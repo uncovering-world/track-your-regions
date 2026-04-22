@@ -17,26 +17,15 @@ import { invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
  * - childIds: number[] - If provided, only add these specific children. If omitted, add all children.
  * - removeOriginal: boolean - If true (default), remove the original division. If false, keep it.
  * - inheritColor: boolean - If true (default), inherit parent region's color. If false, use default blue.
- * - createAsSubregions/createAsSubgroups: boolean - If true (default), create subregions for each child. If false, just add as GADM members.
+ * - createAsSubregions: boolean - If true (default), create subregions for each child. If false, just add as GADM members.
  */
 export async function addChildDivisionsAsSubregions(req: Request, res: Response): Promise<void> {
-  // For legacy route: /groups/:groupId/members/:regionId/add-children
-  //   - groupId = user-defined region, regionId = GADM division
-  // For new route: /regions/:regionId/members/:divisionId/add-children
-  //   - regionId = user-defined region, divisionId = GADM division
+  // Route: /regions/:regionId/members/:divisionId/add-children
+  //   regionId = user-defined region, divisionId = GADM division
+  const userRegionId = parseInt(String(req.params.regionId));
+  const gadmDivisionId = parseInt(String(req.params.divisionId));
 
-  // If groupId exists, we're on legacy route
-  const isLegacyRoute = !!req.params.groupId;
-  const userRegionId = isLegacyRoute
-    ? parseInt(String(req.params.groupId))
-    : parseInt(String(req.params.regionId));
-  const gadmDivisionId = isLegacyRoute
-    ? parseInt(String(req.params.regionId))
-    : parseInt(String(req.params.divisionId));
-
-  const { childIds, removeOriginal = true, inheritColor = true, createAsSubregions, createAsSubgroups = true, assignments } = req.body || {};
-  // Support both new (createAsSubregions) and legacy (createAsSubgroups) param names
-  const shouldCreateAsSubregions = createAsSubregions ?? createAsSubgroups;
+  const { childIds, removeOriginal = true, inheritColor = true, createAsSubregions = true, assignments } = req.body || {};
 
   // Build explicit assignment map: GADM child ID → existing region ID
   const assignmentMap = new Map<number, number>();
@@ -46,7 +35,7 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
     }
   }
 
-  console.log(`[AddChildren] Request: userRegionId=${userRegionId}, gadmDivisionId=${gadmDivisionId}, childIds=${childIds ? childIds.length : 'all'}, removeOriginal=${removeOriginal}, inheritColor=${inheritColor}, createAsSubregions=${shouldCreateAsSubregions}`);
+  console.log(`[AddChildren] Request: userRegionId=${userRegionId}, gadmDivisionId=${gadmDivisionId}, childIds=${childIds ? childIds.length : 'all'}, removeOriginal=${removeOriginal}, inheritColor=${inheritColor}, createAsSubregions=${createAsSubregions}`);
 
   // Get the region's world view ID and color
   const regionInfo = await pool.query(
@@ -106,7 +95,7 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
   const createdRegions: { id: number; name: string; divisionId: number }[] = [];
   const affectedRegionIds = new Set<number>();
 
-  if (shouldCreateAsSubregions) {
+  if (createAsSubregions) {
     // Create subregions for each child (or assign to existing regions)
     for (const child of childrenToAdd) {
       let childSubregionId: number;
@@ -214,8 +203,8 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
  * This converts a hierarchy structure back to flat GADM members
  */
 export async function flattenSubregion(req: Request, res: Response): Promise<void> {
-  const parentRegionId = parseInt(String(req.params.parentRegionId || req.params.parentGroupId));
-  const subregionId = parseInt(String(req.params.subregionId || req.params.subgroupId));
+  const parentRegionId = parseInt(String(req.params.parentRegionId));
+  const subregionId = parseInt(String(req.params.subregionId));
 
   console.log(`[Flatten] Request: parentRegionId=${parentRegionId}, subregionId=${subregionId}`);
 
@@ -317,8 +306,7 @@ export async function flattenSubregion(req: Request, res: Response): Promise<voi
  * This is the opposite of flattenSubregion
  */
 export async function expandToSubregions(req: Request, res: Response): Promise<void> {
-  // Support both new (regionId) and legacy (groupId) param names
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
   const { inheritColor = true } = req.body;
 
   // Get the region info
@@ -398,12 +386,9 @@ export async function expandToSubregions(req: Request, res: Response): Promise<v
  */
 export async function getDivisionUsageCounts(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
-  const { divisionIds, regionIds } = req.body;
+  const { divisionIds } = req.body;
 
-  // Support both new (divisionIds) and legacy (regionIds) param names
-  const ids = divisionIds || regionIds;
-
-  if (!Array.isArray(ids) || ids.length === 0) {
+  if (!Array.isArray(divisionIds) || divisionIds.length === 0) {
     res.json({});
     return;
   }
@@ -418,7 +403,7 @@ export async function getDivisionUsageCounts(req: Request, res: Response): Promi
     WHERE cg.world_view_id = $1
       AND rm.division_id = ANY($2::int[])
     GROUP BY rm.division_id
-  `, [worldViewId, ids]);
+  `, [worldViewId, divisionIds]);
 
   const usageCounts: Record<number, number> = {};
   for (const row of result.rows) {

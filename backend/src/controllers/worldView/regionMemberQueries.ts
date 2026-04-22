@@ -13,7 +13,7 @@ import { pool } from '../../db/index.js';
  * Excludes admin divisions that are already represented as subregions (to avoid duplicates)
  */
 export async function getRegionMembers(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
 
   // Get subregions first (child regions of this region)
   const subregions = await pool.query(`
@@ -94,7 +94,7 @@ export async function getRegionMembers(req: Request, res: Response): Promise<voi
  * Returns a GeoJSON FeatureCollection with geometries (using custom_geom if available)
  */
 export async function getRegionMemberGeometries(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
 
   const result = await pool.query(`
     SELECT
@@ -144,7 +144,7 @@ export async function getRegionMemberGeometries(req: Request, res: Response): Pr
  * Uses more aggressive simplification (0.005) since these are context-only.
  */
 export async function getDescendantMemberGeometries(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
 
   const result = await pool.query(`
     WITH RECURSIVE descendant_regions AS (

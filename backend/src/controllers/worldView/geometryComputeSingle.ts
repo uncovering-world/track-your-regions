@@ -16,8 +16,7 @@ import { generateSingleHull } from '../../services/hull/index.js';
  * Skips regions with custom boundaries
  */
 export async function computeSingleRegionGeometry(req: Request, res: Response): Promise<void> {
-  // Support both new (regionId) and legacy (groupId) param names
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
   // Force recalculation of all geometries (extent box, hull) even if they already exist
   const force = req.query.force === 'true';
 

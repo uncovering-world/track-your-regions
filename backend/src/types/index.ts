@@ -447,7 +447,6 @@ export const createRegionBodySchema = z.object({
   name: z.string().min(1).max(500),
   description: z.string().max(2000).optional(),
   parentRegionId: z.number().int().positive().optional(),
-  parentGroupId: z.number().int().positive().optional(),
   color: z.string().max(50).optional(),
   customGeometry: z.any().optional(),
 });
@@ -456,7 +455,6 @@ export const updateRegionBodySchema = z.object({
   name: z.string().min(1).max(500).optional(),
   description: z.string().max(2000).optional(),
   parentRegionId: z.number().int().positive().nullable().optional(),
-  parentGroupId: z.number().int().positive().nullable().optional(),
   color: z.string().max(50).nullable().optional(),
   usesHull: z.boolean().optional(),
 });
@@ -472,21 +470,16 @@ export const regionSearchQuerySchema = z.object({
 
 export const addDivisionsToRegionBodySchema = z.object({
   divisionIds: z.array(z.number().int().positive()).optional(),
-  regionIds: z.array(z.number().int().positive()).optional(),
-  createAsGroups: z.boolean().optional(),
   createAsSubregions: z.boolean().optional(),
-  includeSiblings: z.boolean().optional(),
   includeChildren: z.boolean().optional(),
   inheritColor: z.boolean().default(true),
   childIds: z.array(z.number().int().positive()).optional(),
-  customGroupName: z.string().max(500).optional(),
   customName: z.string().max(500).optional(),
   customGeometry: z.any().optional(),
 });
 
 export const removeDivisionsFromRegionBodySchema = z.object({
   divisionIds: z.array(z.number().int().positive()).optional(),
-  regionIds: z.array(z.number().int().positive()).optional(),
   memberRowIds: z.array(z.number().int().positive()).optional(),
 });
 
@@ -500,7 +493,6 @@ export const addChildDivisionsBodySchema = z.object({
   removeOriginal: z.boolean().default(true),
   inheritColor: z.boolean().default(true),
   createAsSubregions: z.boolean().default(true),
-  createAsSubgroups: z.boolean().default(true),
   /** Explicit GADM child → existing region assignments (skips name-match, skips create) */
   assignments: z.array(z.object({
     gadmChildId: z.number().int().positive(),
@@ -514,7 +506,6 @@ export const expandToSubregionsBodySchema = z.object({
 
 export const divisionUsageBodySchema = z.object({
   divisionIds: z.array(z.number().int().positive()).optional(),
-  regionIds: z.array(z.number().int().positive()).optional(),
 });
 
 export const hullPreviewBodySchema = z.object({
