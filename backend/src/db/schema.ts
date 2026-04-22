@@ -38,42 +38,6 @@ export const administrativeDivisionsRelations = relations(administrativeDivision
 }));
 
 // =============================================================================
-// Views (saved collections of divisions)
-// =============================================================================
-
-export const views = pgTable('views', {
-  id: serial('id').primaryKey(),
-  name: varchar('name', { length: 255 }).notNull(),
-  description: varchar('description', { length: 1000 }),
-  isActive: boolean('is_active').default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
-
-export const viewDivisionMapping = pgTable('view_division_mapping', {
-  id: serial('id').primaryKey(),
-  viewId: integer('view_id').notNull().references(() => views.id, { onDelete: 'cascade' }),
-  divisionId: integer('division_id').notNull().references(() => administrativeDivisions.id, { onDelete: 'cascade' }),
-}, (table) => ({
-  viewIdx: index('idx_view_mapping_view').on(table.viewId),
-  divisionIdx: index('idx_view_mapping_division').on(table.divisionId),
-}));
-
-export const viewsRelations = relations(views, ({ many }) => ({
-  divisionMappings: many(viewDivisionMapping),
-}));
-
-export const viewDivisionMappingRelations = relations(viewDivisionMapping, ({ one }) => ({
-  view: one(views, {
-    fields: [viewDivisionMapping.viewId],
-    references: [views.id],
-  }),
-  division: one(administrativeDivisions, {
-    fields: [viewDivisionMapping.divisionId],
-    references: [administrativeDivisions.id],
-  }),
-}));
-
-// =============================================================================
 // World Views (custom hierarchies)
 // =============================================================================
 

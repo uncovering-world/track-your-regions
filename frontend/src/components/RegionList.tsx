@@ -16,7 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNavigation } from '../hooks/useNavigation';
 import { useVisitedRegions } from '../hooks/useVisitedRegions';
-import { fetchRootDivisions, fetchSubdivisions, fetchViewDivisions, fetchSubregions, fetchRootRegions } from '../api';
+import { fetchRootDivisions, fetchSubdivisions, fetchSubregions, fetchRootRegions } from '../api';
 import { LoadingSpinner } from './shared/LoadingSpinner';
 import type { AdministrativeDivision, Region } from '../types';
 
@@ -25,7 +25,6 @@ export function RegionList() {
     selectedWorldView,
     selectedDivision,
     setSelectedDivision,
-    selectedView,
     hoveredRegionId,
     setHoveredRegionId,
     isCustomWorldView,
@@ -44,14 +43,9 @@ export function RegionList() {
 
   // Fetch divisions for GADM hierarchy
   const { data: divisions = [], isLoading: divisionsLoading } = useQuery({
-    queryKey: ['divisions', selectedWorldView?.id, selectedDivision?.id, selectedView?.id],
+    queryKey: ['divisions', selectedWorldView?.id, selectedDivision?.id],
     queryFn: async () => {
       if (!selectedWorldView) return [];
-
-      // If a view is selected, show view divisions
-      if (selectedView) {
-        return fetchViewDivisions(selectedView.id);
-      }
 
       // If a division is selected, show its subdivisions
       if (selectedDivision) {

@@ -40,12 +40,6 @@ export {
   searchDivisions,
 } from './divisions.js';
 
-// Re-export Views API
-export {
-  fetchViews,
-  fetchViewDivisions,
-} from './views.js';
-
 // Re-export Regions API
 export {
   searchRegions,

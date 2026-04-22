@@ -73,20 +73,6 @@ export interface RegionMember {
 }
 
 // =============================================================================
-// Views
-// =============================================================================
-
-export interface View {
-  id: number;
-  name: string;
-  description: string | null;
-  worldViewId: number;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// =============================================================================
 // GeoJSON types
 // =============================================================================
 
@@ -108,7 +94,6 @@ export interface GeoJSONFeature {
 export const worldViewIdSchema = z.coerce.number().int().positive().default(1);
 export const divisionIdSchema = z.coerce.number().int().positive();
 export const regionIdSchema = z.coerce.number().int().positive();
-export const viewIdSchema = z.coerce.number().int().positive();
 export const detailLevelSchema = z.enum(['low', 'medium', 'high']).default('medium');
 export const booleanStringSchema = z.enum(['true', 'false']).default('false');
 export const limitSchema = z.coerce.number().int().min(1).max(1000).default(100);
@@ -135,27 +120,6 @@ export const searchQuerySchema = z.object({
   query: z.string().max(255).optional().transform(v => v ?? ''),
   worldViewId: worldViewIdSchema,
   limit: limitSchema,
-});
-
-export const createViewSchema = z.object({
-  name: z.string().min(1).max(255),
-  description: z.string().max(1000).optional(),
-  worldViewId: z.number().int().positive(),
-  isActive: z.boolean().default(true),
-});
-
-export const updateViewSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  description: z.string().max(1000).optional(),
-  isActive: z.boolean().optional(),
-});
-
-export const addDivisionsToViewSchema = z.object({
-  divisionIds: z.array(z.number().int().positive()).min(1),
-});
-
-export const removeDivisionsFromViewSchema = z.object({
-  divisionIds: z.array(z.number().int().positive()).min(1),
 });
 
 // =============================================================================
@@ -665,5 +629,3 @@ export const generateDescriptionsBodySchema = z.object({
 export type GetSubdivisionsQuery = z.infer<typeof getSubdivisionsQuerySchema>;
 export type GetGeometryQuery = z.infer<typeof getGeometryQuerySchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
-export type CreateViewBody = z.infer<typeof createViewSchema>;
-export type UpdateViewBody = z.infer<typeof updateViewSchema>;

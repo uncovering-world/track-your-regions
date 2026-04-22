@@ -2,7 +2,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { AdministrativeDivision, WorldView, View, Region } from '../types';
+import type { AdministrativeDivision, WorldView, Region } from '../types';
 import { fetchWorldViews, fetchDivisionAncestors, fetchRootRegions, fetchRegionAncestors } from '../api';
 import { useAuth } from './useAuth';
 
@@ -31,10 +31,6 @@ interface NavigationContextType {
   divisionBreadcrumbs: AdministrativeDivision[];
   regionBreadcrumbs: Region[];
 
-  // View
-  selectedView: View | null;
-  setSelectedView: (view: View | null) => void;
-
   // Tile cache busting - increment to force tile reload
   tileVersion: number;
   invalidateTileCache: () => void;
@@ -52,7 +48,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [selectedWorldView, setSelectedWorldView] = useState<WorldView | null>(null);
   const [selectedDivision, setSelectedDivision] = useState<AdministrativeDivision | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
-  const [selectedView, setSelectedView] = useState<View | null>(null);
   const [divisionBreadcrumbs, setDivisionBreadcrumbs] = useState<AdministrativeDivision[]>([]);
   const [regionBreadcrumbs, setRegionBreadcrumbs] = useState<Region[]>([]);
   const [hoveredRegionId, setHoveredRegionId] = useState<number | null>(null);
@@ -192,7 +187,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     setTileVersion(worldView.tileVersion ?? 0);
     setSelectedDivision(null);
     setSelectedRegion(null);
-    setSelectedView(null);
     setDivisionBreadcrumbs([]);
     setRegionBreadcrumbs([]);
 
@@ -237,8 +231,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     setHoveredRegionId,
     divisionBreadcrumbs,
     regionBreadcrumbs,
-    selectedView,
-    setSelectedView,
     tileVersion,
     invalidateTileCache,
     isLoading: worldViewsLoading,
@@ -257,7 +249,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     hoveredRegionId,
     divisionBreadcrumbs,
     regionBreadcrumbs,
-    selectedView,
     tileVersion,
     invalidateTileCache,
     worldViewsLoading,
