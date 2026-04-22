@@ -95,20 +95,6 @@ export interface RegionMember {
 }
 
 // =============================================================================
-// Views (for filtering/displaying specific sets)
-// =============================================================================
-
-export interface View {
-  id: number;
-  name: string;
-  description: string | null;
-  worldViewId: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// =============================================================================
 // GeoJSON Types
 // =============================================================================
 

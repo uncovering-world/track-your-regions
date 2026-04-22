@@ -8,7 +8,6 @@
 -- - world_views: Custom hierarchies for organizing regions
 -- - regions: User-defined groupings within a WorldView
 -- - region_members: Links regions to administrative divisions
--- - views / view_division_mapping: Saved collections of divisions
 -- - users / user_visited_regions: User tracking
 -- =============================================================================
 
@@ -246,32 +245,6 @@ FROM regions r;
 -- Comments
 COMMENT ON TABLE region_members IS 'Maps administrative divisions to regions. A division can appear multiple times in the same region if each has a different custom_geom (for splitting divisions into parts).';
 COMMENT ON COLUMN region_members.custom_name IS 'Optional display name for this division part (e.g., "Marshall Islands - Part 1")';
-
--- =============================================================================
--- Views (saved collections of divisions)
--- =============================================================================
--- Simple saved collections of administrative divisions for quick access.
-
-CREATE TABLE IF NOT EXISTS views (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- View-Division mapping
-CREATE TABLE IF NOT EXISTS view_division_mapping (
-    id SERIAL PRIMARY KEY,
-    view_id INTEGER NOT NULL REFERENCES views(id) ON DELETE CASCADE,
-    division_id INTEGER NOT NULL REFERENCES administrative_divisions(id) ON DELETE CASCADE,
-    UNIQUE(view_id, division_id)
-);
-
--- Indexes for view_division_mapping
-CREATE INDEX IF NOT EXISTS idx_view_mapping_view ON view_division_mapping(view_id);
-CREATE INDEX IF NOT EXISTS idx_view_mapping_division ON view_division_mapping(division_id);
 
 -- =============================================================================
 -- Authentication Enums

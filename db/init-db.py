@@ -578,10 +578,6 @@ def print_stats(cursor):
     with_geom = cursor.fetchone()[0]
     print(f"  Divisions with geometry: {with_geom:,}")
 
-    cursor.execute("SELECT COUNT(*) FROM views")
-    views = cursor.fetchone()[0]
-    print(f"  Views: {views:,}")
-
     print("="*50)
 
 
