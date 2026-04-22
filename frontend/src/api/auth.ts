@@ -208,32 +208,6 @@ export function clearLastGoogleEmail(): void {
   localStorage.removeItem(LAST_GOOGLE_EMAIL_KEY);
 }
 
-// Legacy functions for backward compatibility - now only used for display purposes
-const LAST_EMAIL_KEY = 'tyr-last-email';
-
-/**
- * Store the last used email (any provider) - for display in UI
- */
-export function setLastUsedEmail(email: string | null): void {
-  if (email) {
-    localStorage.setItem(LAST_EMAIL_KEY, email);
-  }
-}
-
-/**
- * Get the last used email (any provider)
- */
-export function getLastUsedEmail(): string | null {
-  return localStorage.getItem(LAST_EMAIL_KEY);
-}
-
-/**
- * Clear the last used email
- */
-export function clearLastUsedEmail(): void {
-  localStorage.removeItem(LAST_EMAIL_KEY);
-}
-
 /**
  * Get Google OAuth URL with optional login_hint for faster re-login
  */

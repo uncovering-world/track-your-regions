@@ -16,7 +16,6 @@ import {
   refreshTokens,
   getCurrentUser,
   verifyEmail as apiVerifyEmail,
-  setLastUsedEmail,
   setLastGoogleEmail,
 } from '../api/auth';
 import { setAccessToken as setGlobalAccessToken } from '../api/fetchUtils';
@@ -153,11 +152,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setUser(response.user);
 
-    // Save email for quick re-login
-    if (response.user.email) {
-      setLastUsedEmail(response.user.email);
-    }
-
     // Invalidate all cached queries to refetch with new auth state
     queryClient.clear();
   }, [queryClient]);
@@ -180,11 +174,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser(response.user);
-
-    // Save email for quick re-login
-    if (response.user.email) {
-      setLastUsedEmail(response.user.email);
-    }
 
     // Invalidate all cached queries to refetch with new auth state
     queryClient.clear();
@@ -270,12 +259,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userProfile = await getCurrentUser(oauthAccessToken);
         setUser(userProfile);
 
-        // Save email for quick re-login
-        if (userProfile.email) {
-          setLastUsedEmail(userProfile.email);
-          if (userProfile.authProvider === 'google') {
-            setLastGoogleEmail(userProfile.email);
-          }
+        // Save email for quick re-login (Google only)
+        if (userProfile.email && userProfile.authProvider === 'google') {
+          setLastGoogleEmail(userProfile.email);
         }
 
         // Invalidate all cached queries to refetch with new auth state
