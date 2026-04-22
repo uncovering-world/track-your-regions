@@ -63,8 +63,7 @@ export async function regenerateDisplayGeometries(req: Request, res: Response): 
  * Also updates 3857 projections and simplified versions for vector tiles
  */
 export async function updateRegionGeometry(req: Request, res: Response): Promise<void> {
-  // Support both new (regionId) and legacy (groupId) param names
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
   const { geometry, isCustomBoundary = true, hullGeometry } = req.body;
 
   if (!geometry) {
@@ -99,7 +98,7 @@ export async function updateRegionGeometry(req: Request, res: Response): Promise
  * Also updates 3857 projections and simplified versions for vector tiles
  */
 export async function resetRegionToGADM(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
 
   console.log(`[ResetToGADM] Resetting region ${regionId} to GADM boundaries`);
 

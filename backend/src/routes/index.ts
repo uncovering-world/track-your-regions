@@ -38,8 +38,4 @@ router.use('/api/admin', requireAuth, requireAdmin, adminRoutes);  // Admin dash
 router.use('/api/experiences', experienceRoutes);  // Experiences - public read
 router.use('/api/geocode', geocodeRoutes);  // Geocode/place search - public
 
-// Legacy routes for backward compatibility (admin only)
-router.use('/api/regions', requireAuth, requireAdmin, divisionRoutes);
-router.use('/api/hierarchies', worldViewRoutes);
-
 export default router;

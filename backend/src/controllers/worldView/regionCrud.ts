@@ -85,7 +85,7 @@ export async function getRootRegions(req: Request, res: Response): Promise<void>
  * Get subregions of a region
  */
 export async function getSubregions(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
 
   const result = await pool.query(`
     SELECT
@@ -338,9 +338,8 @@ export async function searchRegions(req: Request, res: Response): Promise<void> 
  */
 export async function createRegion(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
-  // Support both new (parentRegionId) and legacy (parentGroupId) param names
-  const { name, description, parentRegionId, parentGroupId, color, customGeometry } = req.body;
-  const parentId = parentRegionId ?? parentGroupId;
+  const { name, description, parentRegionId, color, customGeometry } = req.body;
+  const parentId = parentRegionId;
 
   console.log(`[CreateRegion] name=${name}, hasCustomGeometry=${!!customGeometry}, customGeometryType=${customGeometry?.type}`);
 
@@ -381,11 +380,9 @@ export async function createRegion(req: Request, res: Response): Promise<void> {
  * Update a region
  */
 export async function updateRegion(req: Request, res: Response): Promise<void> {
-  // Support both new (regionId) and legacy (groupId) param names
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
-  // Support both new (parentRegionId) and legacy (parentGroupId) param names
-  const { name, description, parentRegionId, parentGroupId, color, usesHull } = req.body;
-  const newParentId = parentRegionId ?? parentGroupId;
+  const regionId = parseInt(String(req.params.regionId));
+  const { name, description, parentRegionId, color, usesHull } = req.body;
+  const newParentId = parentRegionId;
 
   // Get current region info before update (needed for parent change logic)
   const currentRegion = await pool.query(`
@@ -500,8 +497,7 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
  * - moveChildrenToParent: if true, move children to this region's parent instead of deleting them
  */
 export async function deleteRegion(req: Request, res: Response): Promise<void> {
-  // Support both new (regionId) and legacy (groupId) param names
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
   const moveChildrenToParent = req.query.moveChildrenToParent === 'true';
 
   // Get region info before deleting

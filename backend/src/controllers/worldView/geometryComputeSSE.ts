@@ -20,7 +20,7 @@ interface ProgressEvent {
  * GET /api/world-views/regions/:regionId/geometry/compute-stream
  */
 export async function computeSingleRegionGeometrySSE(req: Request, res: Response): Promise<void> {
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
+  const regionId = parseInt(String(req.params.regionId));
   const _force = req.query.force === 'true'; // Reserved for future use
   const skipSnapping = req.query.skipSnapping === 'true';
 

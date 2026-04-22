@@ -12,27 +12,17 @@ import { invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
  * Add administrative divisions to a region
  *
  * Options:
- * - createAsGroups: boolean - If true, also create each admin division as a subregion
- * - includeChildren/includeSiblings: boolean - If true (and createAsSubregions is true), also add all GADM children as subregions
+ * - createAsSubregions: boolean - If true, also create each admin division as a subregion
+ * - includeChildren: boolean - If true (and createAsSubregions is true), also add all GADM children as subregions
  * - inheritColor: boolean - If true (default), inherit parent region's color for new subregions
  * - childIds: number[] - If provided, only add these specific child admin divisions (used with includeChildren)
- * - customName/customGroupName: string - If provided, use this name for the created region instead of the GADM name
+ * - customName: string - If provided, use this name for the created region instead of the GADM name
  */
 export async function addDivisionsToRegion(req: Request, res: Response): Promise<void> {
-  // Support both new (regionId) and legacy (groupId) param names
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
-  const { divisionIds, regionIds, createAsGroups, createAsSubregions, includeSiblings, includeChildren, inheritColor = true, childIds, customGroupName, customName, customGeometry } = req.body;
+  const regionId = parseInt(String(req.params.regionId));
+  const { divisionIds, createAsSubregions, includeChildren, inheritColor = true, childIds, customName, customGeometry } = req.body;
 
-  // Support both new (divisionIds) and legacy (regionIds) param names
-  const ids = divisionIds || regionIds;
-  // Support both new (createAsSubregions) and legacy (createAsGroups) param names
-  const shouldCreateAsSubregions = createAsSubregions ?? createAsGroups;
-  // Support both new (includeChildren) and legacy (includeSiblings) param names
-  const shouldIncludeChildren = includeChildren ?? includeSiblings;
-  // Support both new (customName) and legacy (customGroupName) param names
-  const customRegionName = customName ?? customGroupName;
-
-  if (!Array.isArray(ids) || ids.length === 0) {
+  if (!Array.isArray(divisionIds) || divisionIds.length === 0) {
     res.status(400).json({ error: 'divisionIds must be a non-empty array' });
     return;
   }
@@ -55,9 +45,9 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
   const affectedRegionIds = new Set<number>();
 
   // Insert all division mappings
-  for (const divisionId of ids) {
+  for (const divisionId of divisionIds) {
     // If createAsSubregions is true, create a subregion and add division there instead
-    if (shouldCreateAsSubregions) {
+    if (createAsSubregions) {
       // Get GADM division info
       const divisionInfo = await pool.query(
         'SELECT name, has_children FROM administrative_divisions WHERE id = $1',
@@ -69,7 +59,7 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
         const hasChildren = divisionInfo.rows[0].has_children;
 
         // Use custom name if provided, otherwise use GADM division name
-        const subregionName = customRegionName && customRegionName.trim() ? customRegionName.trim() : divisionName;
+        const subregionName = customName && customName.trim() ? customName.trim() : divisionName;
 
         // Check if a region with this name already exists under this parent
         const existingRegion = await pool.query(
@@ -119,7 +109,7 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
         }
 
         // If includeChildren is true and division has children, add them as subregions too
-        if (shouldIncludeChildren && hasChildren) {
+        if (includeChildren && hasChildren) {
           const childrenResult = await pool.query(
             'SELECT id, name FROM administrative_divisions WHERE parent_id = $1 ORDER BY name',
             [divisionId]
@@ -214,7 +204,7 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
           await pool.query(
             `INSERT INTO region_members (region_id, division_id, custom_geom, custom_name)
              VALUES ($1, $2, validate_multipolygon(ST_GeomFromGeoJSON($3)), $4)`,
-            [regionId, divisionId, JSON.stringify(customGeometry), customRegionName || null]
+            [regionId, divisionId, JSON.stringify(customGeometry), customName || null]
           );
         } else {
           // No custom geometry - check if already exists before inserting
@@ -242,8 +232,8 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
   }
 
   res.status(201).json({
-    added: ids.length,
-    createdRegions: shouldCreateAsSubregions ? createdRegions : undefined,
+    added: divisionIds.length,
+    createdRegions: createAsSubregions ? createdRegions : undefined,
   });
 }
 
@@ -254,12 +244,8 @@ export async function addDivisionsToRegion(req: Request, res: Response): Promise
  * - memberRowIds: removes specific records by their row ID (for custom geometry parts)
  */
 export async function removeDivisionsFromRegion(req: Request, res: Response): Promise<void> {
-  // Support both new (regionId) and legacy (groupId) param names
-  const regionId = parseInt(String(req.params.regionId || req.params.groupId));
-  const { divisionIds, regionIds, memberRowIds } = req.body;
-
-  // Support both new (divisionIds) and legacy (regionIds) param names
-  const ids = divisionIds || regionIds;
+  const regionId = parseInt(String(req.params.regionId));
+  const { divisionIds, memberRowIds } = req.body;
 
   // If memberRowIds provided, delete by row ID (for custom geometry parts)
   if (Array.isArray(memberRowIds) && memberRowIds.length > 0) {
@@ -276,12 +262,12 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
     return;
   }
 
-  if (!Array.isArray(ids) || ids.length === 0) {
+  if (!Array.isArray(divisionIds) || divisionIds.length === 0) {
     res.status(400).json({ error: 'divisionIds or memberRowIds must be a non-empty array' });
     return;
   }
 
-  for (const divisionId of ids) {
+  for (const divisionId of divisionIds) {
     // Only delete records WITHOUT custom_geom (original divisions)
     // Records with custom_geom are split parts and should be deleted via memberRowIds
     await pool.query(
@@ -294,7 +280,7 @@ export async function removeDivisionsFromRegion(req: Request, res: Response): Pr
   await invalidateRegionGeometry(regionId);
   await syncImportMatchStatus(regionId);
 
-  res.status(200).json({ removed: ids.length });
+  res.status(200).json({ removed: divisionIds.length });
 }
 
 /**

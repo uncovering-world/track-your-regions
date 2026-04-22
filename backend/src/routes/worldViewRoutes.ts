@@ -89,16 +89,10 @@ router.get('/:worldViewId/regions/leaf', publicReadLimiter, validate(worldViewId
 // Write operations require admin
 router.post('/:worldViewId/regions', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, validate(createRegionBodySchema), createRegion);
 
-// Legacy routes (groups -> regions)
-router.get('/:worldViewId/groups', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getRegions);
-router.get('/:worldViewId/groups/root', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getRootRegions);
-router.post('/:worldViewId/groups', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, validate(createRegionBodySchema), createRegion);
-
 // =============================================================================
 // World View geometry operations
 // =============================================================================
 router.get('/:worldViewId/regions/root/geometries', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getRootRegionGeometries);
-router.get('/:worldViewId/groups/root/geometries', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getRootRegionGeometries);  // Legacy
 router.post('/:worldViewId/compute-geometries', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, computeWorldViewGeometries);
 router.get('/:worldViewId/compute-geometries/status', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getComputationStatus);
 router.post('/:worldViewId/compute-geometries/cancel', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, cancelComputation);
@@ -116,11 +110,6 @@ router.get('/regions/:regionId/subregions', publicReadLimiter, validate(regionId
 router.put('/regions/:regionId', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(updateRegionBodySchema), updateRegion);
 router.delete('/regions/:regionId', validate(regionIdParamSchema, 'params'), validate(deleteRegionQuerySchema, 'query'), requireAuth, requireAdmin, deleteRegion);
 
-// Legacy routes (groups -> regions)
-router.get('/groups/:groupId/subgroups', publicReadLimiter, optionalAuth, getSubregions);
-router.put('/groups/:groupId', requireAuth, requireAdmin, validate(updateRegionBodySchema), updateRegion);
-router.delete('/groups/:groupId', validate(deleteRegionQuerySchema, 'query'), requireAuth, requireAdmin, deleteRegion);
-
 // =============================================================================
 // Region members (administrative divisions and subregions)
 // =============================================================================
@@ -133,14 +122,6 @@ router.post('/regions/:regionId/members/move', validate(regionIdParamSchema, 'pa
 router.post('/regions/:regionId/members/:divisionId/add-children', requireAuth, requireAdmin, validate(addChildDivisionsBodySchema), addChildDivisionsAsSubregions);
 router.post('/regions/:parentRegionId/flatten/:subregionId', requireAuth, requireAdmin, flattenSubregion);
 router.post('/regions/:regionId/expand', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(expandToSubregionsBodySchema), expandToSubregions);
-
-// Legacy routes for members (groups -> regions)
-router.get('/groups/:groupId/members', publicReadLimiter, optionalAuth, getRegionMembers);
-router.post('/groups/:groupId/members', requireAuth, requireAdmin, validate(addDivisionsToRegionBodySchema), addDivisionsToRegion);
-router.delete('/groups/:groupId/members', requireAuth, requireAdmin, validate(removeDivisionsFromRegionBodySchema), removeDivisionsFromRegion);
-router.post('/groups/:groupId/members/:regionId/add-children', requireAuth, requireAdmin, validate(addChildDivisionsBodySchema), addChildDivisionsAsSubregions);
-router.post('/groups/:parentGroupId/flatten/:subgroupId', requireAuth, requireAdmin, flattenSubregion);
-router.post('/groups/:groupId/expand', requireAuth, requireAdmin, validate(expandToSubregionsBodySchema), expandToSubregions);
 
 // =============================================================================
 // Region geometry
@@ -156,11 +137,5 @@ router.get('/regions/:regionId/subregions/geometries', publicReadLimiter, valida
 router.post('/regions/:regionId/hull/preview', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(hullPreviewBodySchema), previewHullGeometry);
 router.post('/regions/:regionId/hull/save', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(hullSaveBodySchema), saveHullGeometry);
 router.get('/regions/:regionId/hull/params', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getSavedHullParams);
-
-// Legacy routes for geometry (groups -> regions)
-router.get('/groups/:groupId/geometry', publicReadLimiter, validate(regionGeometryDetailQuerySchema, 'query'), optionalAuth, getRegionGeometry);
-router.put('/groups/:groupId/geometry', requireAuth, requireAdmin, validate(updateGeometryBodySchema), updateRegionGeometry);
-router.post('/groups/:groupId/geometry/compute', validate(computeGeometryQuerySchema, 'query'), requireAuth, requireAdmin, computeSingleRegionGeometry);
-router.get('/groups/:groupId/subgroups/geometries', publicReadLimiter, validate(subregionGeometriesQuerySchema, 'query'), optionalAuth, getSubregionGeometries);
 
 export default router;
