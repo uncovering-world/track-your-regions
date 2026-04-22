@@ -16,7 +16,7 @@ import {
 import GoogleIcon from '@mui/icons-material/Google';
 import AppleIcon from '@mui/icons-material/Apple';
 import { useAuth } from '../../hooks/useAuth';
-import { AuthError, getGoogleAuthUrl, getAppleAuthUrl, getLastGoogleEmail, setLastUsedEmail, clearLastGoogleEmail, resendVerification } from '../../api/auth';
+import { AuthError, getGoogleAuthUrl, getAppleAuthUrl, getLastGoogleEmail, clearLastGoogleEmail, resendVerification } from '../../api/auth';
 
 interface LoginDialogProps {
   open: boolean;
@@ -49,8 +49,6 @@ export function LoginDialog({ open, onClose, onSwitchToRegister }: LoginDialogPr
 
     try {
       await login({ email, password });
-      // Save last used email for display purposes (not for Google login_hint)
-      setLastUsedEmail(email);
       onClose();
       // Reset form
       setEmail('');
