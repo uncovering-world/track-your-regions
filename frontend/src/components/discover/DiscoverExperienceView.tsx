@@ -936,7 +936,6 @@ export function DiscoverExperienceView({
                   onMouseLeave={handleCardMouseLeave}
                   onVisitedToggle={(e) => handleVisitedToggle(exp.id, visitedIds.has(exp.id), e)}
                   showCheckbox={isAuthenticated}
-                  compact
                   onCurate={hasCuratorScope ? () => setCurationTarget(exp) : undefined}
                 />
               ))
