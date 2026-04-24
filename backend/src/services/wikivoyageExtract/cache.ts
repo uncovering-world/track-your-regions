@@ -6,6 +6,7 @@
  * Auto-saves every 200 writes.
  */
 
+/* eslint-disable security/detect-non-literal-fs-filename -- paths are internally constructed, not user-controlled */
 import fs from 'fs';
 import path from 'path';
 import type { CacheStore } from './types.js';
