@@ -6,6 +6,7 @@
  * re.findall → matchAll().
  */
 
+/* eslint-disable security/detect-non-literal-regexp, security/detect-unsafe-regex -- patterns built from static keyword arrays, not user input */
 import type { WikiSection, RegionEntry } from './types.js';
 
 const COMMONS_FILE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/';

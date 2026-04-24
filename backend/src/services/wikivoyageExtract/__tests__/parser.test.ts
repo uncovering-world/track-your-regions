@@ -15,6 +15,7 @@ import {
 const FIXTURES = path.join(__dirname, 'fixtures');
 
 function loadFixture(name: string): string {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- test fixtures from fixed dir
   return fs.readFileSync(path.join(FIXTURES, name), 'utf-8');
 }
 
