@@ -17,6 +17,7 @@ and mark the old one as `Superseded by ADR-XXXX`.
 | [0006](0006-martin-for-vector-tiles.md) | Martin for vector tile serving | Accepted | 2025-01-01 |
 | [0007](0007-jwt-with-httponly-refresh-tokens.md) | JWT with httpOnly refresh tokens | Accepted | 2025-02-01 |
 | [0008](0008-tanstack-query-for-server-state.md) | TanStack Query for server state | Accepted | 2025-01-01 |
+| [0009](0009-import-controller-domain-split.md) | Split worldViewImportController by domain | Accepted | 2026-04-25 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
