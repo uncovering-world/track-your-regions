@@ -4,32 +4,16 @@
  * Presents an "Adjust alignment" / "Continue anyway" choice to the user.
  * The backend SSE stream pauses at this point awaiting the POST response.
  *
- * NOTE: This component uses a local CvIcpDialogView interface that exposes only
- * the ICP-relevant fields. It will be replaced by the full CvMatchDialogState
- * (from useCvMatchPipeline) when Chain D wires the CV pipeline UI. The import
- * path and interface shape are kept compatible with the feat-branch version.
- *
  * ADR-0011: ICP adaptive alignment for CV-GADM division matching.
  */
 
 import { Box, Typography, Button, Alert, Stack } from '@mui/material';
 import { respondToIcpAdjustment } from '../../api/adminWorldViewImport';
-
-// Minimal view type — Chain D will replace this with the full CvMatchDialogState
-// from useCvMatchPipeline once the CV pipeline UI is wired.
-export interface CvIcpDialogView {
-  progressText: string;
-  progressColor: string;
-  icpAdjustment?: {
-    reviewId: string;
-    message: string;
-    metrics: { overflow: number; error: number; icpOption: string };
-  };
-}
+import type { CvMatchDialogState } from './useCvMatchPipeline';
 
 export interface CvIcpAdjustmentSectionProps {
-  cvMatchDialog: CvIcpDialogView;
-  setCVMatchDialog: React.Dispatch<React.SetStateAction<CvIcpDialogView | null>>;
+  cvMatchDialog: CvMatchDialogState;
+  setCVMatchDialog: React.Dispatch<React.SetStateAction<CvMatchDialogState | null>>;
 }
 
 export function CvIcpAdjustmentSection({ cvMatchDialog, setCVMatchDialog }: CvIcpAdjustmentSectionProps) {

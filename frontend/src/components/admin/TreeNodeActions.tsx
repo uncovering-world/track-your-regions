@@ -20,6 +20,8 @@ import {
   Terrain as GeoshapeIcon,
   ScatterPlot as PointMatchIcon,
   RateReview as ReviewChildrenIcon,
+  Palette as CVMatchIcon,
+  Map as MapshapeMatchIcon,
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
 import { Tooltip } from './treeNodeShared';
@@ -54,6 +56,10 @@ interface TreeNodeActionsProps {
   onSmartSimplify?: (regionId: number) => void;
   onAISuggestChildren?: (regionId: number) => void;
   aiSuggestingRegionId?: number | null;
+  onCVMatch?: (regionId: number) => void;
+  cvMatchingRegionId?: number | null;
+  onMapshapeMatch?: (regionId: number) => void;
+  mapshapeMatchingRegionId?: number | null;
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
@@ -221,6 +227,10 @@ export function TreeNodeActions({
   onSmartSimplify,
   onAISuggestChildren,
   aiSuggestingRegionId,
+  onCVMatch,
+  cvMatchingRegionId,
+  onMapshapeMatch,
+  mapshapeMatchingRegionId,
   onSync,
   onHandleAsGrouping,
   onGeocodeMatch,
@@ -480,6 +490,44 @@ export function TreeNodeActions({
         <Typography variant="caption" color="error" sx={{ fontSize: '0.65rem', fontStyle: 'italic' }}>
           {node.fixNote}
         </Typography>
+      )}
+
+      {/* CV color match — for parent nodes with children and a region map image */}
+      {onCVMatch && hasChildren && !!node.regionMapUrl && (
+        <Tooltip title="CV color match (gap divisions only)">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onCVMatch(node.id)}
+              disabled={isMutating || cvMatchingRegionId === node.id}
+              sx={{ p: 0.25 }}
+            >
+              {cvMatchingRegionId === node.id
+                ? <CircularProgress size={14} />
+                : <CVMatchIcon sx={{ fontSize: 16, color: 'info.main' }} />
+              }
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+
+      {/* Mapshape match — for parent nodes with children and a Wikivoyage source page */}
+      {onMapshapeMatch && hasChildren && !!node.sourceUrl && (
+        <Tooltip title="Mapshape match (Kartographer region boundaries from Wikivoyage)">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onMapshapeMatch(node.id)}
+              disabled={isMutating || mapshapeMatchingRegionId === node.id}
+              sx={{ p: 0.25 }}
+            >
+              {mapshapeMatchingRegionId === node.id
+                ? <CircularProgress size={14} />
+                : <MapshapeMatchIcon sx={{ fontSize: 16, color: 'secondary.main' }} />
+              }
+            </IconButton>
+          </span>
+        </Tooltip>
       )}
 
       {/* AI review children (Wikivoyage + AI audit + enrichment) */}
