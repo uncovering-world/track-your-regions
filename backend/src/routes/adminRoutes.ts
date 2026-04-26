@@ -43,6 +43,9 @@ import {
   wvImportGeoshapeMatchSchema,
   wvImportAcceptTransferSchema,
   wvImportTransferPreviewSchema,
+  wvImportAddChildSchema,
+  wvImportRemoveRegionSchema,
+  wvImportRenameRegionSchema,
 } from '../types/index.js';
 import {
   startSync,
@@ -85,6 +88,10 @@ import {
   resetMatch,
   rejectRemaining,
   aiMatchOneRegion,
+  aiSuggestChildren,
+  addChildRegion,
+  removeRegionFromImport,
+  renameRegion,
   dismissChildren,
   simplifyHierarchy,
   simplifyChildren,
@@ -256,6 +263,18 @@ router.post('/wv-import/matches/:worldViewId/geoshape-match', validate(worldView
 router.post('/wv-import/matches/:worldViewId/point-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportGeoshapeMatchSchema), pointMatch);
 router.post('/wv-import/matches/:worldViewId/reset-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), resetMatch);
 router.post('/wv-import/matches/:worldViewId/ai-match-one', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiMatchOneRegion);
+
+// Add a child region manually during hierarchy review
+router.post('/wv-import/matches/:worldViewId/add-child-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportAddChildSchema), addChildRegion);
+
+// Remove a region from the import tree (with optional child/division reparenting)
+router.post('/wv-import/matches/:worldViewId/remove-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportRemoveRegionSchema), removeRegionFromImport);
+
+// Rename a region (optionally updating source URL and Wikidata QID)
+router.post('/wv-import/matches/:worldViewId/rename-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportRenameRegionSchema), renameRegion);
+
+// AI review children — audit + enrichment + verification
+router.post('/wv-import/matches/:worldViewId/ai-suggest-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiSuggestChildren);
 
 // Dismiss subregions (make parent a leaf)
 router.post('/wv-import/matches/:worldViewId/dismiss-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), dismissChildren);

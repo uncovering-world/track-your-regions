@@ -3,6 +3,7 @@
  *
  * Owns: finalize the import review (close-out + import-state cleanup).
  * - finalizeReview: marks the world view as done after all matches are resolved
+ * - addChildRegion: add a child region manually during hierarchy review
  * See ADR-0009 for the domain-split rationale.
  */
 
@@ -99,4 +100,69 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
 
   console.log(`[WV Import] Finalized review for worldView ${worldViewId}`);
   res.json({ finalized: true, worldViewId });
+}
+
+// =============================================================================
+// addChildRegion
+// =============================================================================
+
+/**
+ * Add a child region under a parent during hierarchy review.
+ * POST /api/admin/wv-import/matches/:worldViewId/add-child-region
+ */
+export async function addChildRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { parentRegionId, name, sourceUrl, sourceExternalId } = req.body as {
+    parentRegionId: number;
+    name: string;
+    sourceUrl?: string;
+    sourceExternalId?: string;
+  };
+  console.log(`[WV Import] POST /matches/${worldViewId}/add-child-region — parent=${parentRegionId}, name="${name}"`);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify parent belongs to world view
+    const parent = await client.query(
+      'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+      [parentRegionId, worldViewId],
+    );
+    if (parent.rows.length === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Parent region not found in this world view' });
+      return;
+    }
+
+    // Get import_run_id from parent's import state
+    const parentState = await client.query(
+      'SELECT import_run_id FROM region_import_state WHERE region_id = $1',
+      [parentRegionId],
+    );
+    const importRunId = parentState.rows[0]?.import_run_id ?? null;
+
+    // Create child region
+    const result = await client.query(
+      `INSERT INTO regions (world_view_id, name, parent_region_id)
+       VALUES ($1, $2, $3) RETURNING id`,
+      [worldViewId, name, parentRegionId],
+    );
+    const regionId = result.rows[0].id as number;
+
+    // Create region_import_state
+    await client.query(
+      `INSERT INTO region_import_state (region_id, import_run_id, match_status, source_url, source_external_id)
+       VALUES ($1, $2, 'no_candidates', $3, $4)`,
+      [regionId, importRunId, sourceUrl ?? null, sourceExternalId ?? null],
+    );
+
+    await client.query('COMMIT');
+    res.json({ created: true, regionId });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
