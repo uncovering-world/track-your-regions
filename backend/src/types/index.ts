@@ -427,6 +427,21 @@ export const wvImportApproveCoverageSchema = z.object({
   gapName: z.string().max(255).optional(),
 });
 
+export const wvImportSmartSimplifySchema = z.object({
+  parentRegionId: z.coerce.number().int().positive(),
+});
+
+export const wvImportSmartSimplifyApplySchema = z.object({
+  parentRegionId: z.coerce.number().int().positive(),
+  ownerRegionId: z.coerce.number().int().positive(),
+  memberRowIds: z.array(z.number().int().positive()).min(1),
+});
+
+export const worldViewRegionIdParamSchema = z.object({
+  worldViewId: z.coerce.number().int().positive(),
+  regionId: z.coerce.number().int().positive(),
+});
+
 // =============================================================================
 // World View schemas
 // =============================================================================

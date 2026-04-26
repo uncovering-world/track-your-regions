@@ -703,6 +703,124 @@ export async function undismissCoverageGap(req: AuthenticatedRequest, res: Respo
   res.json({ undismissed: true });
 }
 
+// =============================================================================
+// Children region geometry
+// =============================================================================
+
+/** Map from direct-child root ID to the set of its descendant division IDs. */
+async function loadChildRegionDivIds(
+  worldViewId: number,
+  regionId: number,
+): Promise<Map<number, number[]>> {
+  const perChildResult = await pool.query(`
+    WITH RECURSIVE tree AS (
+      SELECT r.id, r.id AS root_child_id
+      FROM regions r
+      WHERE r.parent_region_id = $1 AND r.world_view_id = $2
+      UNION ALL
+      SELECT r.id, t.root_child_id
+      FROM regions r JOIN tree t ON r.parent_region_id = t.id
+    )
+    SELECT t.root_child_id, array_agg(DISTINCT rm.division_id) FILTER (WHERE rm.division_id IS NOT NULL) AS div_ids
+    FROM tree t
+    JOIN region_members rm ON rm.region_id = t.id
+    GROUP BY t.root_child_id
+  `, [regionId, worldViewId]);
+
+  const childRegionDivIds = new Map<number, number[]>();
+  for (const row of perChildResult.rows) {
+    const rootId = row.root_child_id as number;
+    const divIds = (row.div_ids as number[] | null) ?? [];
+    if (divIds.length > 0) childRegionDivIds.set(rootId, divIds);
+  }
+  return childRegionDivIds;
+}
+
+/**
+ * Union simplified GADM geometries per root-child region and return GeoJSON
+ * metadata per child.
+ */
+async function buildChildRegionGeometries(
+  childRegionDivIds: Map<number, number[]>,
+  childNames: Map<number, string>,
+): Promise<Array<{ regionId: number; name: string; geometry: GeoJSON.Geometry }>> {
+  const results: Array<{ regionId: number; name: string; geometry: GeoJSON.Geometry }> = [];
+  if (childRegionDivIds.size === 0) return results;
+
+  const allDivIdsFlat: number[] = [];
+  const rootIds: number[] = [];
+  for (const [rId, divIds] of childRegionDivIds) {
+    for (const dId of divIds) {
+      allDivIdsFlat.push(dId);
+      rootIds.push(rId);
+    }
+  }
+
+  const geoResult = await pool.query(`
+    WITH input AS (
+      SELECT unnest($1::int[]) AS div_id, unnest($2::int[]) AS root_child_id
+    )
+    SELECT i.root_child_id,
+           ST_AsGeoJSON(
+             ST_SimplifyPreserveTopology(
+               ST_ForcePolygonCCW(ST_CollectionExtract(ST_MakeValid(ST_Union(ad.geom_simplified_medium)), 3)),
+               0.01
+             )
+           ) AS geojson
+    FROM input i
+    JOIN administrative_divisions ad ON ad.id = i.div_id AND ad.geom_simplified_medium IS NOT NULL
+    GROUP BY i.root_child_id
+  `, [allDivIdsFlat, rootIds]);
+
+  for (const row of geoResult.rows) {
+    const rId = row.root_child_id as number;
+    if (row.geojson) {
+      results.push({
+        regionId: rId,
+        name: childNames.get(rId) ?? `Region ${rId}`,
+        geometry: JSON.parse(row.geojson as string) as GeoJSON.Geometry,
+      });
+    }
+  }
+  return results;
+}
+
+/**
+ * Get per-child region geometries for a given parent region.
+ * Used by Smart Simplify to show color-coded child region boundaries on the map.
+ * GET /api/admin/wv-import/matches/:worldViewId/children-geometry/:regionId
+ */
+export async function getChildrenRegionGeometry(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const regionId = parseInt(String(req.params.regionId));
+
+  try {
+    const childrenResult = await pool.query(
+      'SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2 ORDER BY name',
+      [regionId, worldViewId],
+    );
+    if (childrenResult.rows.length === 0) {
+      res.json({ childRegions: [] });
+      return;
+    }
+
+    const childRegionDivIds = await loadChildRegionDivIds(worldViewId, regionId);
+    const childNames = new Map(
+      childrenResult.rows.map(r => [r.id as number, r.name as string]),
+    );
+    const childRegions = await buildChildRegionGeometries(childRegionDivIds, childNames);
+
+    res.json({ childRegions });
+  } catch (err) {
+    console.error('[WV Import] Children region geometry failed:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Children region geometry failed' });
+  }
+}
+
+// =============================================================================
+// Gap operations
+// =============================================================================
+
 /**
  * Approve a coverage suggestion — add gap division to an existing region,
  * or create a new region and add it there.

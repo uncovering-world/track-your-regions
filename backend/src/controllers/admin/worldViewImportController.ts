@@ -47,3 +47,5 @@ export { undoLastOperation } from './wvImportHierarchyController.js';
 export { syncInstances, handleAsGrouping } from './wvImportFlattenController.js';
 export { finalizeReview } from './wvImportFinalizeController.js';
 export { rematchWorldView, getRematchStatus } from './wvImportRematchController.js';
+export { detectSmartSimplify, applySmartSimplifyMove } from './wvImportSmartSimplifyController.js';
+export { getChildrenRegionGeometry } from './wvImportCoverageController.js';
