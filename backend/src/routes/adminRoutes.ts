@@ -128,6 +128,10 @@ import {
   getWikivoyageExtractionStatus,
   cancelWikivoyageExtraction,
 } from '../controllers/admin/wikivoyageExtractController.js';
+import {
+  getAISettings,
+  updateAISetting,
+} from '../controllers/admin/aiSettingsController.js';
 
 const router = Router();
 
