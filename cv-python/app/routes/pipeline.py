@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from ..cv.cleanup import run_cleanup
 from ..cv.cluster import kmeans_cielab
+from ..cv.match import run_matching
 from ..cv.preprocess import run_phase1
 from ..cv.superpixel import compute_slic
 from ..utils.borders import extract_contour_paths
@@ -215,6 +216,46 @@ async def phase2(
             "debugImages": [],
             "pipelineSize": {"w": tw, "h": th},
         }
+
+    return StreamingResponse(
+        _ndjson_stream(worker),
+        media_type="application/x-ndjson",
+    )
+
+
+@router.post("/match")
+async def match(
+    pixelLabels: Annotated[UploadFile, File(...)],
+    icpMask: Annotated[UploadFile, File(...)],
+    params: Annotated[UploadFile, File(...)],
+):
+    """Match GADM divisions to color clusters via RANSAC affine estimation. Streams NDJSON progress."""
+    cfg = json.loads(await params.read())
+
+    pl_img = decode_image(await pixelLabels.read())
+    pl = pl_img[:, :, 0] if len(pl_img.shape) == 3 else pl_img
+
+    icp_img = decode_image(await icpMask.read())
+    icp = icp_img[:, :, 0] if len(icp_img.shape) == 3 else icp_img
+
+    country_mask = (pl < 255).astype(np.uint8)
+
+    def worker(progress, _await_review):
+        return run_matching(
+            pixel_labels=pl,
+            icp_mask=icp,
+            country_mask=country_mask,
+            division_paths=cfg["divisionPaths"],
+            centroids=cfg["centroids"],
+            color_centroids=cfg["colorCentroids"],
+            country_path=cfg["countryPath"],
+            country_bbox=cfg["countryBbox"],
+            tw=cfg["tw"],
+            th=cfg["th"],
+            orig_w=cfg["origW"],
+            orig_h=cfg["origH"],
+            on_progress=progress,
+        )
 
     return StreamingResponse(
         _ndjson_stream(worker),
