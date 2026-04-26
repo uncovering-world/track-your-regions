@@ -4,7 +4,7 @@
  * Handles import and match review operations.
  */
 
-import { authFetchJson, ensureFreshToken } from './fetchUtils';
+import { authFetchJson, ensureFreshToken, getAccessToken } from './fetchUtils';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -737,6 +737,70 @@ export async function getTransferPreview(
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/transfer-preview`, {
     method: 'POST',
     body: JSON.stringify({ donorDivisionId, movingDivisionIds, wikidataId }),
+  });
+}
+
+// =============================================================================
+// Cluster Review Types + URLs
+// =============================================================================
+
+/** Cluster info for interactive cluster review (used by CvClusterReviewSection) */
+export interface ClusterReviewCluster {
+  label: number;
+  color: string;
+  pct: number;
+  isSmall: boolean;
+  componentCount: number;
+}
+
+/** Normal cluster review decision — merges, excludes, recluster, or split */
+export interface ClusterReviewDecision {
+  merges: Record<number, number>;
+  excludes?: number[];
+  recluster?: { preset: 'more_clusters' | 'different_seed' | 'boost_chroma' | 'remove_roads' | 'fill_holes' | 'clean_light' | 'clean_heavy' };
+  split?: number[];
+}
+
+/** Manual cluster painting response — sent when admin uses the paint editor */
+export interface ManualClusterResponse {
+  type: 'manual_clusters';
+  /** Base64 data URL of the painted cluster overlay PNG */
+  overlayPng: string;
+  palette: Array<{ label: number; color: [number, number, number] }>;
+}
+
+// These URLs are used as `<img src>` (and also passed to `new Image().src` in the
+// canvas editor), where browsers will not attach the `Authorization` header.
+// `requireAuth` accepts `?token=` as a fallback for exactly this case.
+function withTokenQuery(path: string): string {
+  const token = getAccessToken();
+  return token ? `${path}?token=${token}` : path;
+}
+
+/** URL for cluster preview image served from backend memory */
+export function clusterPreviewUrl(reviewId: string): string {
+  return withTokenQuery(`${API_URL}/api/admin/wv-import/cluster-preview/${reviewId}`);
+}
+
+/** URL for per-cluster highlight image (red-outline overlay for selected cluster) */
+export function clusterHighlightUrl(reviewId: string, label: number): string {
+  return withTokenQuery(`${API_URL}/api/admin/wv-import/cluster-highlight/${reviewId}/${label}`);
+}
+
+/** URL for cluster overlay image (RGBA, all clusters in their colors on transparent bg) */
+export function clusterOverlayUrl(reviewId: string): string {
+  return withTokenQuery(`${API_URL}/api/admin/wv-import/cluster-overlay/${reviewId}`);
+}
+
+/** Respond to cluster review during CV match */
+export async function respondToClusterReview(
+  reviewId: string,
+  decision: ClusterReviewDecision | ManualClusterResponse,
+): Promise<void> {
+  await authFetchJson(`${API_URL}/api/admin/wv-import/cluster-review/${reviewId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(decision),
   });
 }
 
