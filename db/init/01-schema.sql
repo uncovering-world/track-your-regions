@@ -1916,5 +1916,43 @@ COMMENT ON TABLE ai_settings IS 'Admin-configurable AI settings: model selection
 COMMENT ON COLUMN ai_settings.key IS 'Setting key, e.g. model.matching, cv_pipeline_implementation';
 
 -- =============================================================================
+-- AI Usage Logging
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ai_usage_log (
+    id SERIAL PRIMARY KEY,
+    feature VARCHAR(100) NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    description TEXT,
+    api_calls INTEGER DEFAULT 1,
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    total_cost NUMERIC(10,6) DEFAULT 0,
+    duration_ms INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_log_created ON ai_usage_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_log_feature ON ai_usage_log(feature, model);
+
+COMMENT ON TABLE ai_usage_log IS 'Per-session AI API usage logs for cost tracking and dashboard';
+
+-- =============================================================================
+-- AI Learned Rules
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ai_learned_rules (
+    id SERIAL PRIMARY KEY,
+    feature VARCHAR(100) NOT NULL,
+    rule_text TEXT NOT NULL,
+    context TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_learned_rules_feature ON ai_learned_rules(feature);
+
+COMMENT ON TABLE ai_learned_rules IS 'User-provided rules injected into AI prompts to improve future extractions';
+
+-- =============================================================================
 -- Schema Complete
 -- =============================================================================

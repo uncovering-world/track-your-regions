@@ -26,6 +26,7 @@ import {
   adminUserSearchQuerySchema,
   worldViewIdParamSchema,
   wvExtractStartSchema,
+  wvExtractAnswerSchema,
   wvImportBodySchema,
   wvImportAcceptMatchSchema,
   wvImportAcceptBatchSchema,
@@ -140,11 +141,20 @@ import {
   startWikivoyageExtraction,
   getWikivoyageExtractionStatus,
   cancelWikivoyageExtraction,
+  // answerExtractionQuestion and deleteCacheFile added in PR-31 (wikivoyage-ai)
 } from '../controllers/admin/wikivoyageExtractController.js';
 import {
   getAISettings,
   updateAISetting,
-} from '../controllers/admin/aiSettingsController.js';
+  getAIUsage,
+  updatePricing,
+  getLearnedRules,
+  addLearnedRule,
+  deleteLearnedRule,
+  reviewLearnedRules,
+  applyRuleReviewSuggestion,
+} from '../controllers/admin/aiController.js';
+import { hierarchyReview } from '../controllers/admin/aiHierarchyReviewController.js';
 
 const router = Router();
 
@@ -581,22 +591,38 @@ router.get('/image-proxy', validate(imageProxyQuerySchema, 'query'), async (req:
 });
 
 // =============================================================================
-// AI Settings Routes
+// AI Settings & Usage Routes
 // =============================================================================
-// Key-value settings for AI model selection and CV pipeline implementation toggle.
-router.get('/ai/settings', getAISettings);
+
 router.put(
   '/ai/settings/:key',
   validate(z.object({ key: z.string().trim().min(1) }), 'params'),
   validate(z.object({ value: z.string().trim().min(1) })),
   updateAISetting,
 );
+router.get('/ai/usage', getAIUsage);
+router.post('/ai/update-pricing', updatePricing);
+router.get('/ai/rules', getLearnedRules);
+router.post(
+  '/ai/rules',
+  validate(z.object({
+    feature: z.string().trim().min(1),
+    ruleText: z.string().trim().min(1),
+    context: z.string().optional(),
+  })),
+  addLearnedRule,
+);
+router.delete('/ai/rules/:id', validate(z.object({ id: z.coerce.number().int().positive() }), 'params'), deleteLearnedRule);
+router.post('/ai/rules/review', reviewLearnedRules);
+router.post('/ai/rules/apply-review', validate(z.object({
+  keepId: z.number().int().positive(),
+  deleteIds: z.array(z.number().int().positive()),
+  replacementText: z.string().nullable().optional(),
+})), applyRuleReviewSuggestion);
 
-// =============================================================================
-// Geometry Routes (to be moved from worldViewRoutes in future)
-// =============================================================================
-// TODO: Move geometry computation endpoints here from worldViewRoutes
-// POST /geometry/world-views/:id/compute
-// GET /geometry/world-views/:id/status
+// AI hierarchy review
+router.post('/ai/hierarchy-review/:worldViewId', validate(worldViewIdParamSchema, 'params'), validate(z.object({
+  regionId: z.number().int().positive().optional(),
+})), hierarchyReview);
 
 export default router;

@@ -362,6 +362,21 @@ export const wvExtractStartSchema = z.object({
   useCache: z.boolean().default(true),
 });
 
+export const wvExtractAnswerSchema = z.object({
+  questionId: z.number().int().positive(),
+  action: z.enum(['accept', 'skip', 'answer', 'delete_rule']),
+  /** Selected option value or custom text (for 'answer' action) */
+  answer: z.string().max(10000).optional(),
+  /** Rule ID to delete (for 'delete_rule' action) */
+  ruleId: z.number().int().positive().optional(),
+}).refine(
+  data => data.action !== 'answer' || data.answer !== undefined,
+  { message: "answer is required when action is 'answer'", path: ['answer'] },
+).refine(
+  data => data.action !== 'delete_rule' || data.ruleId !== undefined,
+  { message: "ruleId is required when action is 'delete_rule'", path: ['ruleId'] },
+);
+
 // =============================================================================
 // WorldView import schemas
 // =============================================================================
