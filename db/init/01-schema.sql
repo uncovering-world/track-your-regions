@@ -1874,7 +1874,13 @@ CREATE TABLE IF NOT EXISTS region_match_suggestions (
     name TEXT NOT NULL,
     path TEXT,
     score INTEGER DEFAULT 0,
-    rejected BOOLEAN DEFAULT FALSE
+    rejected BOOLEAN DEFAULT FALSE,
+    conflict_type TEXT,
+    donor_region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
+    donor_division_id INTEGER REFERENCES administrative_divisions(id) ON DELETE SET NULL,
+    donor_region_name TEXT,
+    donor_division_name TEXT,
+    geo_similarity FLOAT
 );
 
 CREATE INDEX IF NOT EXISTS idx_rms_region ON region_match_suggestions(region_id);
