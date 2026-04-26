@@ -143,7 +143,7 @@ export function AISettingsPanel() {
     mutationFn: updatePricing,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
-      setSnackbar({ open: true, message: `Pricing updated: ${data.totalModels} models (+${data.modelsAdded} new)`, severity: 'success' });
+      setSnackbar({ open: true, message: `Pricing reloaded: ${data.reloaded} model${data.reloaded === 1 ? '' : 's'}`, severity: 'success' });
     },
     onError: (err: Error) => {
       setSnackbar({ open: true, message: `Failed to update pricing: ${err.message}`, severity: 'error' });
