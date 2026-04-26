@@ -33,7 +33,7 @@ export async function getAIUsage(_req: AuthenticatedRequest, res: Response): Pro
 
 export async function updatePricing(_req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const result = updatePricingFromRemote();
+    const result = await updatePricingFromRemote();
     res.json(result);
   } catch (err) {
     res.status(502).json({

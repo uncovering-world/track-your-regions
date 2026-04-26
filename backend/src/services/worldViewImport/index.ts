@@ -12,8 +12,9 @@ import { matchCountryLevel } from './matcher.js';
 import type { ImportTreeNode, ImportProgress, MatchingPolicy } from './types.js';
 import { createInitialProgress } from './types.js';
 
-export type { ImportTreeNode, ImportProgress, MatchSuggestion, MatchingPolicy, RegionImportState } from './types.js';
-export { matchCountryLevel, matchChildrenAsCountries } from './matcher.js';
+export type { ImportTreeNode, ImportProgress, MatchSuggestion, MatchingPolicy } from './types.js';
+export { matchCountryLevel } from './matcher.js';
+export { matchChildrenAsCountries } from './matcherGrouping.js';
 
 /** In-memory progress map, keyed by operation ID */
 const runningImports = new Map<string, ImportProgress>();
@@ -50,13 +51,6 @@ export function startImport(
   });
 
   return opId;
-}
-
-/**
- * Get the status of a running or recently-completed import.
- */
-export function getImportStatus(opId: string): ImportProgress | null {
-  return runningImports.get(opId) ?? null;
 }
 
 /**
