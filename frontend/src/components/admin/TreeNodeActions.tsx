@@ -13,6 +13,8 @@ import {
   Place as GeocodeIcon,
   RestartAlt as ResetIcon,
   Build as ManualFixIcon,
+  LowPriority as SimplifyIcon,
+  PlaylistAddCheck as SimplifyChildrenIcon,
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
 import { Tooltip } from './treeNodeShared';
@@ -36,6 +38,10 @@ interface TreeNodeActionsProps {
   onDBSearch: (regionId: number) => void;
   onAIMatch: (regionId: number) => void;
   onDismissChildren: (regionId: number) => void;
+  onSimplifyHierarchy?: (regionId: number) => void;
+  simplifyingRegionId?: number | null;
+  onSimplifyChildren?: (regionId: number) => void;
+  simplifyingChildrenRegionId?: number | null;
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
@@ -123,6 +129,8 @@ export function TreeNodeActions({
   dbSearchingRegionId,
   aiMatchingRegionId,
   dismissingRegionId,
+  simplifyingRegionId,
+  simplifyingChildrenRegionId,
   syncingRegionId,
   groupingRegionId,
   geocodeMatchingRegionId,
@@ -130,6 +138,8 @@ export function TreeNodeActions({
   onDBSearch,
   onAIMatch,
   onDismissChildren,
+  onSimplifyHierarchy,
+  onSimplifyChildren,
   onSync,
   onHandleAsGrouping,
   onGeocodeMatch,
@@ -194,6 +204,46 @@ export function TreeNodeActions({
               {dismissingRegionId === node.id
                 ? <CircularProgress size={14} />
                 : <DismissChildrenIcon sx={{ fontSize: 16 }} />
+              }
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+
+      {/* Simplify hierarchy — merge child divisions into parents where all siblings assigned */}
+      {node.assignedDivisions.length >= 2 &&
+        (node.matchStatus === 'auto_matched' || node.matchStatus === 'manual_matched') &&
+        !!onSimplifyHierarchy && (
+        <Tooltip title="Simplify — merge child divisions into parents where all children are assigned">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onSimplifyHierarchy(node.id)}
+              disabled={isMutating || simplifyingRegionId != null}
+              sx={{ p: 0.25 }}
+            >
+              {simplifyingRegionId === node.id
+                ? <CircularProgress size={14} />
+                : <SimplifyIcon sx={{ fontSize: 16, color: 'info.main' }} />
+              }
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+
+      {/* Simplify children — apply simplification to each direct child independently */}
+      {hasChildren && !!onSimplifyChildren && (
+        <Tooltip title="Simplify children — merge child divisions into parents for each child region">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onSimplifyChildren(node.id)}
+              disabled={isMutating || simplifyingChildrenRegionId != null}
+              sx={{ p: 0.25 }}
+            >
+              {simplifyingChildrenRegionId === node.id
+                ? <CircularProgress size={14} />
+                : <SimplifyChildrenIcon sx={{ fontSize: 16, color: 'info.main' }} />
               }
             </IconButton>
           </span>

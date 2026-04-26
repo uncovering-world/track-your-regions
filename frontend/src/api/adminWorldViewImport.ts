@@ -195,6 +195,36 @@ export async function dismissChildren(
   });
 }
 
+export interface SimplifyHierarchyResult {
+  replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }>;
+  totalReduced: number;
+}
+
+export async function simplifyHierarchy(
+  worldViewId: number,
+  regionId: number,
+): Promise<SimplifyHierarchyResult> {
+  return authFetchJson(
+    `${API_URL}/api/admin/wv-import/matches/${worldViewId}/simplify-hierarchy`,
+    { method: 'POST', body: JSON.stringify({ regionId }) },
+  );
+}
+
+export interface SimplifyChildrenResult {
+  results: Array<{ regionId: number; regionName: string; replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }>; totalReduced: number }>;
+  totalSimplified: number;
+}
+
+export async function simplifyChildren(
+  worldViewId: number,
+  parentRegionId: number,
+): Promise<SimplifyChildrenResult> {
+  return authFetchJson(
+    `${API_URL}/api/admin/wv-import/matches/${worldViewId}/simplify-children`,
+    { method: 'POST', body: JSON.stringify({ regionId: parentRegionId }) },
+  );
+}
+
 export async function undoLastOperation(
   worldViewId: number,
 ): Promise<{ undone: boolean; operation: string }> {
