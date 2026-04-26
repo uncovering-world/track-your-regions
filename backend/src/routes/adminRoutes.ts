@@ -498,6 +498,18 @@ router.get('/image-proxy', validate(imageProxyQuerySchema, 'query'), async (req:
 });
 
 // =============================================================================
+// AI Settings Routes
+// =============================================================================
+// Key-value settings for AI model selection and CV pipeline implementation toggle.
+router.get('/ai/settings', getAISettings);
+router.put(
+  '/ai/settings/:key',
+  validate(z.object({ key: z.string().trim().min(1) }), 'params'),
+  validate(z.object({ value: z.string().trim().min(1) })),
+  updateAISetting,
+);
+
+// =============================================================================
 // Geometry Routes (to be moved from worldViewRoutes in future)
 // =============================================================================
 // TODO: Move geometry computation endpoints here from worldViewRoutes

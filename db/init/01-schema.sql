@@ -1900,5 +1900,21 @@ CREATE INDEX IF NOT EXISTS idx_rmi_region ON region_map_images(region_id);
 COMMENT ON TABLE region_map_images IS 'Candidate map images for imported regions (from Wikimedia Commons etc.)';
 
 -- =============================================================================
+-- AI Settings
+-- =============================================================================
+-- Key-value store for admin-configurable AI settings (model selections,
+-- pipeline implementation toggles, etc.). Loaded by aiSettingsService.ts
+-- with a 60s in-memory cache.
+
+CREATE TABLE IF NOT EXISTS ai_settings (
+    key VARCHAR(255) PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE ai_settings IS 'Admin-configurable AI settings: model selections, feature toggles, etc.';
+COMMENT ON COLUMN ai_settings.key IS 'Setting key, e.g. model.matching, cv_pipeline_implementation';
+
+-- =============================================================================
 -- Schema Complete
 -- =============================================================================

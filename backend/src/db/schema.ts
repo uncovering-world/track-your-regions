@@ -454,6 +454,19 @@ export const experienceCurationLog = pgTable('experience_curation_log', {
 }));
 
 /**
+ * AI / CV settings (key-value, admin-managed)
+ *
+ * Stores admin-tunable strings: model selection, CV pipeline implementation
+ * toggle ("javascript" vs "python"), etc. Values are typed as TEXT and
+ * interpreted by the consuming service.
+ */
+export const aiSettings = pgTable('ai_settings', {
+  key: varchar('key', { length: 100 }).primaryKey(),
+  value: varchar('value', { length: 1000 }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+/**
  * Experience rejections (per region)
  */
 export const experienceRejections = pgTable('experience_rejections', {

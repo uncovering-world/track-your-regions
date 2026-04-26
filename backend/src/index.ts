@@ -115,6 +115,12 @@ const startServer = async () => {
   const { default: routes } = await import('./routes/index.js');
   const { errorHandler } = await import('./middleware/errorHandler.js');
 
+  // Install undici dispatcher with extended timeouts for long-running CV calls.
+  // Explicit init at startup keeps the global side-effect visible here rather
+  // than firing on first import of the CV client.
+  const { initCvDispatcher } = await import('./services/cv/pythonCvClient.js');
+  initCvDispatcher();
+
   // Routes
   app.use(routes);
 
