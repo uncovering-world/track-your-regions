@@ -48,6 +48,14 @@ export interface MatchSuggestion {
   name: string;
   path: string;
   score: number;
+  geoSimilarity: number | null;
+  conflict?: {
+    type: 'direct' | 'split';
+    donorRegionId: number;
+    donorRegionName: string;
+    donorDivisionId: number;
+    donorDivisionName: string;
+  };
 }
 
 export interface AssignedDivision {
@@ -245,11 +253,19 @@ export async function geocodeMatchRegion(
   });
 }
 
+export interface GeoshapeMatchResult {
+  found: number;
+  suggestions: MatchSuggestion[];
+  totalCoverage?: number;
+  scopeAncestorName?: string;
+  nextScope?: { ancestorId: number; ancestorName: string };
+}
+
 export async function geoshapeMatchRegion(
   worldViewId: number,
   regionId: number,
   scopeAncestorId?: number,
-): Promise<{ found: number; suggestions: MatchSuggestion[]; totalCoverage?: number; scopeAncestorName?: string; nextScope?: { ancestorId: number; ancestorName: string } }> {
+): Promise<GeoshapeMatchResult> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geoshape-match`, {
     method: 'POST',
     body: JSON.stringify({ regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) }),
@@ -259,10 +275,11 @@ export async function geoshapeMatchRegion(
 export async function pointMatchRegion(
   worldViewId: number,
   regionId: number,
-): Promise<{ found: number; suggestions: MatchSuggestion[] }> {
+  scopeAncestorId?: number,
+): Promise<GeoshapeMatchResult> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/point-match`, {
     method: 'POST',
-    body: JSON.stringify({ regionId }),
+    body: JSON.stringify({ regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) }),
   });
 }
 
@@ -619,6 +636,36 @@ export async function getChildrenRegionGeometry(
   return authFetchJson(
     `${API_URL}/api/admin/wv-import/matches/${worldViewId}/children-geometry/${regionId}`,
   );
+}
+
+// =============================================================================
+// Transfer operations (scope fallback — ADR-0012)
+// =============================================================================
+
+export async function acceptWithTransfer(
+  worldViewId: number,
+  regionId: number,
+  divisionIds: number[],
+  donorRegionId: number,
+  donorDivisionId: number,
+  transferType: 'direct' | 'split',
+): Promise<{ transferred: number; transferType: string }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/accept-with-transfer`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId, divisionIds, donorRegionId, donorDivisionId, transferType }),
+  });
+}
+
+export async function getTransferPreview(
+  worldViewId: number,
+  donorDivisionId: number,
+  movingDivisionIds: number[],
+  wikidataId: string,
+): Promise<GeoJSON.FeatureCollection> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/transfer-preview`, {
+    method: 'POST',
+    body: JSON.stringify({ donorDivisionId, movingDivisionIds, wikidataId }),
+  });
 }
 
 // =============================================================================

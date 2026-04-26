@@ -49,6 +49,7 @@ import {
   acceptAndRejectRest as acceptAndRejectRestApi,
   selectMapImage,
   markManualFix,
+  acceptWithTransfer as acceptWithTransferApi,
   type MatchTreeNode,
 } from '../../api/adminWorldViewImport';
 import { MapImagePickerDialog } from './MapImagePickerDialog';
@@ -117,16 +118,17 @@ function ManualFixDialog({ state, onClose, onSubmit, isPending }: {
 interface WorldViewImportTreeProps {
   worldViewId: number;
   onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, wikidataId: string, regionName: string, regionId?: number, allDivisionIds?: number[]) => void;
   shadowInsertions?: ShadowInsertion[];
   onApproveShadow?: (insertion: ShadowInsertion) => void;
   onRejectShadow?: (insertion: ShadowInsertion) => void;
 }
 
-export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, onApproveShadow, onRejectShadow }: WorldViewImportTreeProps) {
+export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer, shadowInsertions, onApproveShadow, onRejectShadow }: WorldViewImportTreeProps) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const skipAnimationRef = useRef(false);
-  const [geocodeProgress, setGeocodeProgress] = useState<{ regionId: number; message: string } | null>(null);
+  const [geocodeProgress, setGeocodeProgress] = useState<{ regionId: number; message: string; nextScope?: { ancestorId: number; ancestorName: string }; retryType?: 'geoshape' | 'point' } | null>(null);
   const [fixDialogState, setFixDialogState] = useState<{ regionId: number; regionName: string } | null>(null);
   const [mapPickerState, setMapPickerState] = useState<{
     regionId: number;
@@ -265,13 +267,94 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
   });
 
   const geoshapeMatchMutation = useMutation({
-    mutationFn: (regionId: number) => geoshapeMatchRegion(worldViewId, regionId),
-    onSuccess: invalidateTree,
+    mutationFn: ({ regionId, scopeAncestorId }: { regionId: number; scopeAncestorId?: number }) =>
+      geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId),
+    onMutate: ({ regionId }) => {
+      setGeocodeProgress({ regionId, message: 'Matching by geoshape...' });
+    },
+    onSuccess: (data, { regionId }) => {
+      const coverageMsg = data.totalCoverage != null
+        ? ` (${Math.round(data.totalCoverage * 100)}% coverage)`
+        : '';
+      if (data.found > 0) {
+        setGeocodeProgress({
+          regionId,
+          message: `Covering set: ${data.found} division(s)${coverageMsg}`,
+        });
+        setTimeout(() => setGeocodeProgress(null), 4000);
+      } else if (data.nextScope) {
+        setGeocodeProgress({
+          regionId,
+          message: `No matches in ${data.scopeAncestorName ?? 'current'} scope`,
+          nextScope: data.nextScope,
+          retryType: 'geoshape',
+        });
+        // Do NOT auto-dismiss — user needs to decide
+      } else {
+        setGeocodeProgress({
+          regionId,
+          message: 'No geoshape matches found',
+        });
+        setTimeout(() => setGeocodeProgress(null), 4000);
+      }
+      invalidateTree();
+    },
+    onError: () => {
+      setGeocodeProgress(null);
+    },
   });
 
+  const acceptTransferMutation = useMutation({
+    mutationFn: ({ regionId, divisionIds, donorRegionId, donorDivisionId, transferType }: {
+      regionId: number; divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split';
+    }) => acceptWithTransferApi(worldViewId, regionId, divisionIds, donorRegionId, donorDivisionId, transferType),
+    onSuccess: (_data, { regionId }) => {
+      invalidateTree();
+      if (regionId) setGeocodeProgress(null);
+    },
+  });
+
+  const onAcceptTransfer = (regionId: number, divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) =>
+    acceptTransferMutation.mutate({
+      regionId,
+      divisionIds: [divisionId],
+      donorRegionId: conflict.donorRegionId,
+      donorDivisionId: conflict.donorDivisionId,
+      transferType: conflict.type,
+    });
+
   const pointMatchMutation = useMutation({
-    mutationFn: (regionId: number) => pointMatchRegion(worldViewId, regionId),
-    onSuccess: invalidateTree,
+    mutationFn: ({ regionId, scopeAncestorId }: { regionId: number; scopeAncestorId?: number }) =>
+      pointMatchRegion(worldViewId, regionId, scopeAncestorId),
+    onMutate: ({ regionId }) => {
+      setGeocodeProgress({ regionId, message: 'Matching by markers...' });
+    },
+    onSuccess: (data, { regionId }) => {
+      if (data.found > 0) {
+        setGeocodeProgress({
+          regionId,
+          message: `Found ${data.found} division(s) from markers`,
+        });
+        setTimeout(() => setGeocodeProgress(null), 4000);
+      } else if (data.nextScope) {
+        setGeocodeProgress({
+          regionId,
+          message: `No marker matches in ${data.scopeAncestorName ?? 'current'} scope`,
+          nextScope: data.nextScope,
+          retryType: 'point',
+        });
+      } else {
+        setGeocodeProgress({
+          regionId,
+          message: 'No divisions found from markers',
+        });
+        setTimeout(() => setGeocodeProgress(null), 4000);
+      }
+      invalidateTree();
+    },
+    onError: () => {
+      setGeocodeProgress(null);
+    },
   });
 
   const resetMatchMutation = useMutation({
@@ -489,7 +572,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
     });
   }, [tree, shadowInsertions]);
 
-  const isMutating = acceptMutation.isPending || rejectMutation.isPending || acceptAndRejectRestMutation.isPending || dismissMutation.isPending || simplifyHierarchyMutation.isPending || simplifyChildrenMutation.isPending || syncMutation.isPending || groupingMutation.isPending || geocodeMatchMutation.isPending || geoshapeMatchMutation.isPending || pointMatchMutation.isPending || resetMatchMutation.isPending || rejectRemainingMutation.isPending || acceptAllMutation.isPending || selectMapMutation.isPending || manualFixMutation.isPending;
+  const isMutating = acceptMutation.isPending || rejectMutation.isPending || acceptAndRejectRestMutation.isPending || dismissMutation.isPending || simplifyHierarchyMutation.isPending || simplifyChildrenMutation.isPending || syncMutation.isPending || groupingMutation.isPending || geocodeMatchMutation.isPending || geoshapeMatchMutation.isPending || pointMatchMutation.isPending || resetMatchMutation.isPending || rejectRemainingMutation.isPending || acceptAllMutation.isPending || acceptTransferMutation.isPending || selectMapMutation.isPending || manualFixMutation.isPending;
 
   if (isLoading) {
     return (
@@ -530,6 +613,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
           ancestorIsMatched={false}
           onToggle={toggleExpand}
           onAccept={(regionId, divisionId) => acceptMutation.mutate({ regionId, divisionId })}
+          onAcceptTransfer={onAcceptTransfer}
           onAcceptAndRejectRest={(regionId, divisionId) => acceptAndRejectRestMutation.mutate({ regionId, divisionId })}
           onReject={(regionId, divisionId) => rejectMutation.mutate({ regionId, divisionId })}
           onDBSearch={(regionId) => dbSearchOneMutation.mutate(regionId)}
@@ -541,12 +625,13 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
           onSync={(regionId) => syncMutation.mutate(regionId)}
           onHandleAsGrouping={(regionId) => groupingMutation.mutate(regionId)}
           onGeocodeMatch={(regionId) => geocodeMatchMutation.mutate(regionId)}
-          onGeoshapeMatch={(regionId) => geoshapeMatchMutation.mutate(regionId)}
-          onPointMatch={(regionId) => pointMatchMutation.mutate(regionId)}
+          onGeoshapeMatch={(regionId, scopeAncestorId) => geoshapeMatchMutation.mutate({ regionId, scopeAncestorId })}
+          onPointMatch={(regionId, scopeAncestorId) => pointMatchMutation.mutate({ regionId, scopeAncestorId })}
           onResetMatch={(regionId) => resetMatchMutation.mutate(regionId)}
           onRejectRemaining={(regionId) => rejectRemainingMutation.mutate(regionId)}
           onAcceptAll={(assignments) => acceptAllMutation.mutate(assignments)}
           onPreview={onPreview}
+          onPreviewTransfer={onPreviewTransfer}
           onOpenMapPicker={handleOpenMapPicker}
           onManualFix={(regionId, needsManualFix) => {
             if (needsManualFix) {
@@ -573,8 +658,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
           syncingRegionId={syncMutation.isPending ? (syncMutation.variables ?? null) : null}
           groupingRegionId={groupingMutation.isPending ? (groupingMutation.variables ?? null) : null}
           geocodeMatchingRegionId={geocodeMatchMutation.isPending ? (geocodeMatchMutation.variables ?? null) : null}
-          geoshapeMatchingRegionId={geoshapeMatchMutation.isPending ? (geoshapeMatchMutation.variables ?? null) : null}
-          pointMatchingRegionId={pointMatchMutation.isPending ? (pointMatchMutation.variables ?? null) : null}
+          geoshapeMatchingRegionId={geoshapeMatchMutation.isPending ? (geoshapeMatchMutation.variables?.regionId ?? null) : null}
+          pointMatchingRegionId={pointMatchMutation.isPending ? (pointMatchMutation.variables?.regionId ?? null) : null}
           geocodeProgress={geocodeProgress}
           duplicateUrls={duplicateUrls}
           syncedUrls={syncedUrls}
