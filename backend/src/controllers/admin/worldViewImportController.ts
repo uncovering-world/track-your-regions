@@ -21,6 +21,8 @@ export {
   rejectRemaining,
   acceptAndRejectRest,
   acceptBatchMatches,
+  acceptWithTransfer,
+  getTransferPreview,
   getMatchTree,
   selectMapImage,
   markManualFix,
