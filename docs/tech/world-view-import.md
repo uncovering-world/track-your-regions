@@ -36,7 +36,7 @@ Import state is stored in dedicated relational tables (not JSONB):
 
 - **`import_runs`** — tracks each import operation (world_view_id, source_type, status, data_path, stats, timestamps)
 - **`region_import_state`** — 1:1 with region (region_id PK, import_run_id, source_url, source_external_id, match_status, needs_manual_fix, fix_note, region_map_url, map_image_reviewed)
-- **`region_match_suggestions`** — 1:N per region (division_id, name, path, score, rejected flag)
+- **`region_match_suggestions`** — 1:N per region (division_id, name, path, score, geo_similarity, rejected flag, `conflict_type`, `donor_region_id`, `donor_division_id`, `donor_region_name`, `donor_division_name` — the last five are non-null when the suggestion conflicts with a sibling assignment, see ADR-0012)
 - **`region_map_images`** — 1:N per region (image_url candidates)
 - **`world_views.source_type`** (VARCHAR) — `'manual'` (default), `'wikivoyage'`/`'imported'` (import in review), or `'wikivoyage_done'`/`'imported_done'` (review finalized)
 - **`world_views.dismissed_coverage_ids`** (INTEGER[]) — GADM division IDs that the admin has explicitly dismissed from coverage checks (e.g., Caspian Sea). Reset on re-match
@@ -191,9 +191,30 @@ Each unmatched region (`no_candidates` or `needs_review`) has up to five action 
    - Unions all available child geoshapes into a composite polygon and caches it in `wikidata_geoshapes`
    The geoshape proxy endpoint (`GET /api/admin/wv-import/geoshape/:wikidataId`) checks the local `wikidata_geoshapes` cache (including composites) before calling `maps.wikimedia.org`. Suggestions are automatically accepted/rejected when IoU is high enough (configurable thresholds in `geoshapeCache.ts`).
 
-5. **Point Match** (scatter plot icon) — fetches Wikivoyage marker coordinates from the region's article (parsing `{{marker}}` and `{{geo}}` templates), then queries GADM using `ST_Contains` to find all divisions containing at least one marker point. Only active when `geoAvailable === false` (no geoshape available). Resolved marker points are stored in `region_import_state.marker_points` (JSONB) for later preview. GADM descendants of already-assigned divisions are excluded from candidates.
+   **Scope fallback** (ADR-0012): geoshape match searches within the GADM parent that contains the region's geoshape centroid (typically the country-level division). If the centroid falls outside all GADM polygons (island groups, disputed territories), the search returns zero candidates and the backend includes `nextScope: { ancestorId, ancestorName }` in the response. The UI then shows a **"Try wider: `<ancestorName>`"** link inline with the status message. Clicking the link retries the geoshape search with `scopeAncestorId` set to that ancestor (country → continent → world), widening the scope without auto-triggering. The link appears at most 2–3 times before the scope is global.
+
+   **Conflict detection** (ADR-0012): if a covering GADM division is already assigned to a sibling region, the suggestion is annotated with a conflict chip — e.g. **"from Mexico (split Baja California Sur)"** — indicating that accepting this match requires a transfer from that donor region.
+
+5. **Point Match** (scatter plot icon) — fetches Wikivoyage marker coordinates from the region's article (parsing `{{marker}}` and `{{geo}}` templates), then queries GADM using `ST_Contains` to find all divisions containing at least one marker point. Only active when `geoAvailable === false` (no geoshape available). Resolved marker points are stored in `region_import_state.marker_points` (JSONB) for later preview. GADM descendants of already-assigned divisions are excluded from candidates. Supports the same **scope fallback** and **conflict detection** as Geoshape Match.
 
 Geocode Match, DB Search, AI Match, and Point Match never auto-assign — results become suggestions that the admin must accept or reject. Geoshape Match can auto-assign suggestions when the IoU score is high enough (configurable thresholds in `geoshapeCache.ts`). Previously rejected suggestions (`region_match_suggestions` with `rejected = true`) are excluded from results.
+
+### Accept-With-Transfer (ADR-0012)
+
+When a suggestion carries a conflict chip, accepting it is a two-stage flow:
+
+1. **Preview**: clicking Accept (or the map icon) calls `POST /transfer-preview` and opens the Division Preview Dialog in **transfer preview mode** — a full-width three-layer map showing:
+   - **Red** — the donor region's full geometry (the sibling that currently owns the division)
+   - **Orange** — the moving divisions (what would be transferred)
+   - **Dashed blue** — the target region outline (the Wikidata geoshape of the region being matched)
+
+2. **Accept Transfer**: clicking "Accept Transfer" in the dialog calls `POST /accept-with-transfer`. This atomically:
+   - `transferType = "direct"`: removes the division from the donor's `region_members`
+   - `transferType = "split"`: leaves the GADM parent in the donor; only the listed child divisions move
+   - Adds the divisions to the target's `region_members` and sets `match_status = 'manual_matched'`
+   - Triggers geometry recomputation for both donor and target via `invalidateRegionGeometry`
+
+If multiple suggestions all have conflicts (e.g. after a wide-scope geoshape match), the **"Accept all N"** button becomes **"Preview transfer (N)"** — opening the same preview dialog for the batch.
 
 ### Additional Per-Region Actions
 
@@ -235,6 +256,12 @@ Clicking the map icon on any suggestion or assigned division opens a preview dia
    - `markerPoints` are stored in `region_import_state.marker_points` (JSONB) after a Point Match operation and returned with the tree API
 
 4. **GADM only** (none of the above available) — single map, `sm` width, no labels
+
+5. **Transfer preview** (ADR-0012) — triggered when a suggestion has a conflict chip. The dialog receives a `GeoJSON.FeatureCollection` with role-tagged features instead of a plain geometry. It shows a full-width single map with three layers:
+   - **Red** (filled + outline) — `role: "donor"` — the donor region's full geometry
+   - **Orange** (filled + outline) — `role: "moving"` — divisions that would be transferred
+   - **Dashed blue** (line only) — `role: "target_outline"` — the Wikidata geoshape of the region being matched
+   A colour legend is shown above the map. The Accept button becomes **"Accept Transfer"**; Reject and Accept-and-reject-rest are hidden in this mode.
 
 This helps the operator visually verify whether a suggested GADM division matches the Wikivoyage region's expected boundaries.
 
@@ -379,6 +406,8 @@ All require admin auth.
 | POST | `/matches/:worldViewId/dismiss-gap` | Dismiss a GADM division from coverage checks (body: `{ divisionId }`) |
 | POST | `/matches/:worldViewId/undismiss-gap` | Restore a dismissed GADM division to active gaps (body: `{ divisionId }`) |
 | POST | `/matches/:worldViewId/approve-coverage` | Approve coverage suggestion — add member or create new region (body: `{ divisionId, regionId, action, gapName? }`) |
+| POST | `/matches/:worldViewId/accept-with-transfer` | Atomically transfer conflicting division from donor to target, accept match (ADR-0012) |
+| POST | `/matches/:worldViewId/transfer-preview` | Build 3-layer FeatureCollection (donor/moving/target_outline) for conflict preview (ADR-0012) |
 | POST | `/matches/:worldViewId/finalize` | Close review — appends `'_done'` to current `source_type` |
 | POST | `/matches/:worldViewId/rematch` | Reset all matches and re-run country-level matcher |
 | GET | `/matches/:worldViewId/rematch/status` | Poll re-match progress |

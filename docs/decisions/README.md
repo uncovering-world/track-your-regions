@@ -20,6 +20,7 @@ and mark the old one as `Superseded by ADR-XXXX`.
 | [0009](0009-import-controller-domain-split.md) | Split worldViewImportController by domain | Accepted | 2026-04-25 |
 | [0010](0010-spatial-anomaly-detection.md) | Spatial anomaly detection algorithm (BFS adjacency) | Accepted | 2026-04-26 |
 | [0011](0011-icp-adaptive-alignment.md) | ICP adaptive alignment for CV-GADM division matching | Accepted | 2026-04-26 |
+| [0012](0012-scope-fallback-and-accept-with-transfer.md) | Scope fallback and accept-with-transfer for geoshape/point matching | Accepted | 2026-04-25 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
