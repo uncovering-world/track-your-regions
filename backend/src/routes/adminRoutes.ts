@@ -74,6 +74,8 @@ import {
   rejectRemaining,
   aiMatchOneRegion,
   dismissChildren,
+  simplifyHierarchy,
+  simplifyChildren,
   syncInstances,
   handleAsGrouping,
   undoLastOperation,
@@ -233,6 +235,12 @@ router.post('/wv-import/matches/:worldViewId/ai-match-one', validate(worldViewId
 
 // Dismiss subregions (make parent a leaf)
 router.post('/wv-import/matches/:worldViewId/dismiss-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), dismissChildren);
+
+// Simplify hierarchy — merge child divisions into parents when 100% coverage found
+router.post('/wv-import/matches/:worldViewId/simplify-hierarchy', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyHierarchy);
+
+// Simplify children — apply simplification independently to each direct child
+router.post('/wv-import/matches/:worldViewId/simplify-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyChildren);
 
 // Handle region as sub-continental grouping (match children as countries)
 router.post('/wv-import/matches/:worldViewId/handle-as-grouping', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), handleAsGrouping);
