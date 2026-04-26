@@ -6,6 +6,7 @@
  */
 
 import { Router, Response } from 'express';
+import { z } from 'zod';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { pool } from '../db/index.js';
 import { validate } from '../middleware/errorHandler.js';
@@ -49,6 +50,12 @@ import {
   wvImportAddChildSchema,
   wvImportRemoveRegionSchema,
   wvImportRenameRegionSchema,
+  wvImportWaterCropParamSchema,
+  wvImportWaterReviewBodySchema,
+  wvImportColorMatchSchema,
+  wvImportUnionGeometrySchema,
+  wvImportSplitDeeperSchema,
+  wvImportVisionMatchSchema,
 } from '../types/index.js';
 import {
   startSync,
@@ -104,6 +111,13 @@ import {
   selectMapImage,
   markManualFix,
   acceptAndRejectRest,
+  clearMembers,
+  getUnionGeometry,
+  splitDivisionsDeeper,
+  visionMatchDivisions,
+  colorMatchDivisionsSSE,
+  resolveWaterReview,
+  getWaterCropImage,
   getCoverage,
   getCoverageSSE,
   geoSuggestGap,
@@ -121,7 +135,6 @@ import {
   resolveClusterReview,
   getClusterPreviewImage,
   getClusterHighlightImage,
-  getClusterOverlayImage,
 } from '../controllers/admin/worldViewImportController.js';
 import {
   startWikivoyageExtraction,
@@ -255,6 +268,9 @@ router.post('/wv-import/matches/:worldViewId/reject-remaining', validate(worldVi
 // Accept a match and reject all remaining suggestions in one transaction
 router.post('/wv-import/matches/:worldViewId/accept-and-reject', validate(worldViewIdParamSchema, 'params'), validate(wvImportAcceptMatchSchema), acceptAndRejectRest);
 
+// Clear all assigned divisions from a region (keep suggestions)
+router.post('/wv-import/matches/:worldViewId/clear-members', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), clearMembers);
+
 // Accept a batch of matches
 router.post('/wv-import/matches/:worldViewId/accept-batch', validate(worldViewIdParamSchema, 'params'), validate(wvImportAcceptBatchSchema), acceptBatchMatches);
 
@@ -263,6 +279,19 @@ router.post('/wv-import/matches/:worldViewId/accept-with-transfer', validate(wor
 
 // Transfer preview: 3-layer GeoJSON for visualising a proposed transfer operation
 router.post('/wv-import/matches/:worldViewId/transfer-preview', validate(worldViewIdParamSchema, 'params'), validate(wvImportTransferPreviewSchema), getTransferPreview);
+
+// Union geometry for multi-select preview
+router.post('/wv-import/matches/:worldViewId/union-geometry', validate(worldViewIdParamSchema, 'params'), validate(wvImportUnionGeometrySchema), getUnionGeometry);
+
+// Split divisions deeper: replace divisions with their GADM children that intersect geoshape
+router.post('/wv-import/matches/:worldViewId/split-deeper', validate(worldViewIdParamSchema, 'params'), validate(wvImportSplitDeeperSchema), splitDivisionsDeeper);
+
+// AI vision-based division matching
+router.post('/wv-import/matches/:worldViewId/vision-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportVisionMatchSchema), visionMatchDivisions);
+
+// Local CV color-based division matching (SSE stream)
+// ADR-0015: Python CV microservice for color-based region matching
+router.get('/wv-import/matches/:worldViewId/color-match-stream', validate(worldViewIdParamSchema, 'params'), validate(wvImportColorMatchSchema, 'query'), colorMatchDivisionsSSE);
 
 // AI-assisted re-matching
 router.post('/wv-import/matches/:worldViewId/ai-match', validate(worldViewIdParamSchema, 'params'), startAIMatch);
@@ -365,22 +394,88 @@ router.post(
 );
 
 // =============================================================================
+// Water review + crop image endpoints (CV color-match pipeline)
+// =============================================================================
+
+// Helper: parse "data:image/<type>;base64,<payload>" and stream as image response.
+function sendDataUrlAsImage(res: Response, dataUrl: string): void {
+  const match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!match) {
+    res.status(500).json({ error: 'Invalid crop data' });
+    return;
+  }
+  const buffer = Buffer.from(match[2], 'base64');
+  res.type(`image/${match[1]}`);
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.end(buffer);
+}
+
+// Water review callback (user approves/rejects/mixes water components during CV match)
+router.post(
+  '/wv-import/water-review/:reviewId',
+  validate(reviewIdParamSchema, 'params'),
+  validate(wvImportWaterReviewBodySchema),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { reviewId } = req.params as unknown as { reviewId: string };
+    const body = req.body as { approvedIds: number[]; mixDecisions: Array<{ componentId: number; approvedSubClusters: number[] }> };
+
+    // Python-originated reviews go through the pythonReviewBridge: the
+    // Python worker thread is blocked waiting on /pipeline/respond. The
+    // forwarding to Python happens inside the onReview callback in
+    // wvImportMatchPipeline.ts.
+    const { isPythonReviewId, resolvePythonReview } = await import('../services/cv/pythonReviewBridge.js');
+    if (isPythonReviewId(reviewId)) {
+      const forwarded = resolvePythonReview(reviewId, body);
+      if (forwarded) {
+        res.json({ ok: true });
+      } else {
+        res.status(404).json({ error: 'Review not found or expired' });
+      }
+      return;
+    }
+
+    const { approvedIds, mixDecisions } = body;
+    const found = resolveWaterReview(reviewId, { approvedIds, mixDecisions });
+    if (found) {
+      res.json({ ok: true });
+    } else {
+      res.status(404).json({ error: 'Review not found or expired' });
+    }
+  },
+);
+
+// Water crop image (served from memory to avoid SSE stalling)
+router.get(
+  '/wv-import/water-crop/:reviewId/:componentId/:subCluster',
+  validate(wvImportWaterCropParamSchema, 'params'),
+  (req: AuthenticatedRequest, res: Response) => {
+    const { reviewId, componentId, subCluster } = req.params as unknown as { reviewId: string; componentId: number; subCluster: number };
+    const dataUrl = getWaterCropImage(reviewId, componentId, subCluster);
+    if (!dataUrl) {
+      res.status(404).json({ error: 'Crop not found' });
+      return;
+    }
+    sendDataUrlAsImage(res, dataUrl);
+  },
+);
+
+// =============================================================================
 // Cluster review endpoints (manual paint editor + overlay image serving)
 // =============================================================================
 
-// Cluster preview image (in-memory, served like water crops)
+// Cluster preview image (served from memory — same pattern as water crops)
 router.get(
   '/wv-import/cluster-preview/:reviewId',
   validate(reviewIdParamSchema, 'params'),
   (req: AuthenticatedRequest, res: Response) => {
     const { reviewId } = req.params as unknown as { reviewId: string };
     const dataUrl = getClusterPreviewImage(reviewId);
-    if (!dataUrl) { res.status(404).json({ error: 'Preview not found' }); return; }
-    const base64Data = dataUrl.replace(/^data:[^;]+;base64,/, '');
-    const buf = Buffer.from(base64Data, 'base64');
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'private, max-age=300');
-    res.send(buf);
+    if (!dataUrl) {
+      res.status(404).json({ error: 'Preview not found' });
+      return;
+    }
+    sendDataUrlAsImage(res, dataUrl);
   },
 );
 
@@ -392,21 +487,6 @@ router.get(
     const { reviewId, label } = req.params as unknown as { reviewId: string; label: number };
     const png = getClusterHighlightImage(reviewId, label);
     if (!png) { res.status(404).json({ error: 'Highlight not found' }); return; }
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'private, max-age=300');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.send(png);
-  },
-);
-
-// Cluster overlay image (full-image colored overlay for manual paint editor)
-router.get(
-  '/wv-import/cluster-overlay/:reviewId',
-  validate(reviewIdParamSchema, 'params'),
-  (req: AuthenticatedRequest, res: Response) => {
-    const { reviewId } = req.params as unknown as { reviewId: string };
-    const png = getClusterOverlayImage(reviewId);
-    if (!png) { res.status(404).json({ error: 'Overlay not found' }); return; }
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -461,7 +541,6 @@ router.post(
 // =============================================================================
 // Image proxy (for CORS-blocked Wikimedia images used as map overlays)
 // =============================================================================
-import { z } from 'zod';
 
 const imageProxyQuerySchema = z.object({
   url: z.string().url().refine(

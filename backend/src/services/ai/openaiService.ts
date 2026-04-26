@@ -805,3 +805,10 @@ Respond with valid JSON only, no markdown. Format:
 
   return JSON.parse(jsonStr.trim()) as AIGeocodeResult;
 }
+
+// Re-export vision-match utilities (used by wvImportMatchController)
+export {
+  matchDivisionsByVision,
+  type VisionMatchDivision,
+  type VisionMatchResult,
+} from './openaiVisionMatch.js';
