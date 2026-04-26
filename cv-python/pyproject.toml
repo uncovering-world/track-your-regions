@@ -1,0 +1,24 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = ["__pycache__", ".venv", "data", "dist", "build"]
+
+[tool.ruff.lint]
+# E, F: pyflakes + pycodestyle errors
+# W: pycodestyle warnings
+# B: flake8-bugbear (real bugs)
+# I: isort (import sorting)
+# UP: pyupgrade (modern Python idioms)
+# C4: flake8-comprehensions
+# SIM: flake8-simplify
+# RET: flake8-return
+select = ["E", "F", "W", "B", "I", "UP", "C4", "SIM", "RET"]
+ignore = [
+  "E501",  # line too long — we set line-length=120, but some strings legitimately exceed
+  "E741",  # ambiguous variable name (l, I, O) — we use `l` for label in CV code
+  "UP015", # mode='r' is default — explicit is fine for readability
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test_*.py" = ["F401", "F841"]  # test files may have unused imports / vars during development
+"__init__.py" = ["F401"]         # re-exports
