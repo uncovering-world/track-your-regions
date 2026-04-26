@@ -19,6 +19,7 @@ import {
   SwapHoriz as SmartSimplifyIcon,
   Terrain as GeoshapeIcon,
   ScatterPlot as PointMatchIcon,
+  RateReview as ReviewChildrenIcon,
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
 import { Tooltip } from './treeNodeShared';
@@ -51,6 +52,8 @@ interface TreeNodeActionsProps {
   onSimplifyChildren?: (regionId: number) => void;
   simplifyingChildrenRegionId?: number | null;
   onSmartSimplify?: (regionId: number) => void;
+  onAISuggestChildren?: (regionId: number) => void;
+  aiSuggestingRegionId?: number | null;
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
@@ -216,6 +219,8 @@ export function TreeNodeActions({
   onSimplifyHierarchy,
   onSimplifyChildren,
   onSmartSimplify,
+  onAISuggestChildren,
+  aiSuggestingRegionId,
   onSync,
   onHandleAsGrouping,
   onGeocodeMatch,
@@ -475,6 +480,25 @@ export function TreeNodeActions({
         <Typography variant="caption" color="error" sx={{ fontSize: '0.65rem', fontStyle: 'italic' }}>
           {node.fixNote}
         </Typography>
+      )}
+
+      {/* AI review children (Wikivoyage + AI audit + enrichment) */}
+      {node.sourceUrl && onAISuggestChildren && (
+        <Tooltip title="AI review children">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onAISuggestChildren(node.id)}
+              disabled={isMutating || aiSuggestingRegionId != null}
+              sx={{ p: 0.25 }}
+            >
+              {aiSuggestingRegionId === node.id
+                ? <CircularProgress size={14} />
+                : <ReviewChildrenIcon sx={{ fontSize: 16, color: 'secondary.main' }} />
+              }
+            </IconButton>
+          </span>
+        </Tooltip>
       )}
     </>
   );

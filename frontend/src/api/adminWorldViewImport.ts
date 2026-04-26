@@ -346,6 +346,78 @@ export async function aiMatchOneRegion(
   });
 }
 
+// =============================================================================
+// Add / Remove / Rename region
+// =============================================================================
+
+export async function addChildRegion(
+  worldViewId: number,
+  parentRegionId: number,
+  name: string,
+  sourceUrl?: string,
+  sourceExternalId?: string,
+): Promise<{ created: boolean; regionId: number }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/add-child-region`, {
+    method: 'POST',
+    body: JSON.stringify({ parentRegionId, name, sourceUrl, sourceExternalId }),
+  });
+}
+
+export async function removeRegionFromImport(
+  worldViewId: number,
+  regionId: number,
+  reparentChildren: boolean,
+  reparentDivisions?: boolean,
+): Promise<{ removed: boolean; regionName: string }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/remove-region`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId, reparentChildren, reparentDivisions }),
+  });
+}
+
+export async function renameRegion(
+  worldViewId: number,
+  regionId: number,
+  name: string,
+  sourceUrl?: string,
+  sourceExternalId?: string,
+): Promise<{ renamed: boolean; regionId: number; oldName: string; newName: string }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/rename-region`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId, name, sourceUrl, sourceExternalId }),
+  });
+}
+
+// =============================================================================
+// AI Review Children
+// =============================================================================
+
+export interface ReviewChildAction {
+  type: 'add' | 'remove' | 'rename';
+  name: string;
+  newName?: string;
+  reason: string;
+  sourceUrl?: string | null;
+  sourceExternalId?: string | null;
+  verified: boolean;
+}
+
+export interface AIReviewChildrenResult {
+  actions: ReviewChildAction[];
+  analysis: string;
+  stats: { inputTokens: number; outputTokens: number; cost: number } | null;
+}
+
+export async function aiReviewChildren(
+  worldViewId: number,
+  regionId: number,
+): Promise<AIReviewChildrenResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-children`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
 export interface SubtreeNode {
   id: number;
   name: string;
