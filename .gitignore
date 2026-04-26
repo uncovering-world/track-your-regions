@@ -81,3 +81,10 @@ docs/inbox/
 
 # Repomix output
 repomix-output.*
+
+# Generated cache files (Wikivoyage extraction cache, CV test data)
+data/cache/
+data/cv-python-tests/
+
+# Python CV model artifacts (downloaded at runtime)
+backend/data/models/
