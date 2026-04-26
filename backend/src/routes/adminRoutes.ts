@@ -26,7 +26,6 @@ import {
   adminUserSearchQuerySchema,
   worldViewIdParamSchema,
   wvExtractStartSchema,
-  wvExtractAnswerSchema,
   wvImportBodySchema,
   wvImportAcceptMatchSchema,
   wvImportAcceptBatchSchema,
@@ -594,6 +593,7 @@ router.get('/image-proxy', validate(imageProxyQuerySchema, 'query'), async (req:
 // AI Settings & Usage Routes
 // =============================================================================
 
+router.get('/ai/settings', getAISettings);
 router.put(
   '/ai/settings/:key',
   validate(z.object({ key: z.string().trim().min(1) }), 'params'),

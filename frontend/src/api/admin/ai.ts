@@ -65,7 +65,10 @@ export async function getAIUsage(): Promise<UsageSummaryResponse> {
   return authFetchJson(`${API_URL}/api/admin/ai/usage`);
 }
 
-export async function updatePricing(): Promise<{ modelsUpdated: number; modelsAdded: number; totalModels: number }> {
+export async function updatePricing(): Promise<{
+  reloaded: number;
+  pricing: Array<{ model: string; inputPer1M: number; outputPer1M: number }>;
+}> {
   return authFetchJson(`${API_URL}/api/admin/ai/update-pricing`, { method: 'POST' });
 }
 

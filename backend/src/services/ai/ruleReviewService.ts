@@ -5,12 +5,12 @@
  * suggests consolidation. Returns structured suggestions for admin review.
  */
 
-import OpenAI from 'openai';
 import { getAllRules, PREDEFINED_RULES } from './learnedRulesService.js';
 import { getModelForFeature } from './aiSettingsService.js';
 import { chatCompletion } from './chatCompletion.js';
 import { calculateCost } from './pricingService.js';
 import { logAIUsage } from './aiUsageLogger.js';
+import { getOpenAIClient } from './openaiShared.js';
 
 export interface ReviewSuggestion {
   /** What to do: merge duplicates, resolve contradiction, or remove obsolete */
@@ -82,7 +82,14 @@ export async function reviewRules(): Promise<RuleReviewResult> {
   }
 
   const model = await getModelForFeature('rule_review');
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const openai = getOpenAIClient();
+  if (!openai) {
+    return {
+      suggestions: [],
+      summary: 'OpenAI is not configured — rule review unavailable.',
+      consolidatedCount: allRules.length,
+    };
+  }
 
   // Sequential numbering: predefined 1..P, learned P+1..P+L (matches frontend table)
   const predefinedCount = PREDEFINED_RULES.length;

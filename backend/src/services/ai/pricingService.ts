@@ -165,3 +165,18 @@ export function getAllPricing(): ModelPricing[] {
   loadPricing();
   return Array.from(pricingCache.values());
 }
+
+/**
+ * Force-reload pricing from the local CSV (admin can trigger this from the
+ * settings panel after editing the CSV). Returns the new pricing list.
+ *
+ * Future-proofed name: when an upstream pricing source is wired up, this can
+ * fetch from there; for now it just resets the cache and re-loads from disk.
+ */
+export function updatePricingFromRemote(): { reloaded: number; pricing: ModelPricing[] } {
+  pricingCache.clear();
+  pricingLoaded = false;
+  loadPricing();
+  const pricing = getAllPricing();
+  return { reloaded: pricing.length, pricing };
+}

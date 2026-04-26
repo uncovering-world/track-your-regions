@@ -78,6 +78,8 @@ export async function reviewLearnedRules(_req: AuthenticatedRequest, res: Respon
 }
 
 export async function applyRuleReviewSuggestion(req: AuthenticatedRequest, res: Response): Promise<void> {
+  // Body is Zod-validated at the route layer (keepId positive int, deleteIds array of positive ints,
+  // replacementText nullable string). No defensive guard needed here.
   const suggestion = req.body as ReviewSuggestion;
 
   // Update the kept rule's text if a replacement was provided. Abort the
