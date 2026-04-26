@@ -19,7 +19,7 @@ import {
   type SpatialAnomaly,
   type AdjacencyEdge,
   type BorderPath,
-} from '../../api/adminWorldViewImport';
+} from '../../api/admin/worldViewImport';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

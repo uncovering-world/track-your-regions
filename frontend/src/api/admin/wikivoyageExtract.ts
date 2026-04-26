@@ -2,7 +2,7 @@
  * Admin Wikivoyage Extraction API client
  */
 
-import { authFetchJson } from './fetchUtils';
+import { authFetchJson } from '../fetchUtils';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 

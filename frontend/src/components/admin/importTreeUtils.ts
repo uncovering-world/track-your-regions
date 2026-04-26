@@ -1,4 +1,4 @@
-import type { MatchTreeNode } from '../../api/adminWorldViewImport';
+import type { MatchTreeNode } from '../../api/admin/worldViewImport';
 
 /**
  * Is a node blocking the Coverage Check?

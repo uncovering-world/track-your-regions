@@ -6,7 +6,7 @@
  */
 
 import { Box, Typography, Button } from '@mui/material';
-import { respondToWaterReview } from '../../api/adminWorldViewImport';
+import { respondToWaterReview } from '../../api/admin/worldViewImport';
 import { AuthImage } from '../shared/AuthImage';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 

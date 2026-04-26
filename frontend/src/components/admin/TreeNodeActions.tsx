@@ -23,7 +23,7 @@ import {
   Palette as CVMatchIcon,
   Map as MapshapeMatchIcon,
 } from '@mui/icons-material';
-import type { MatchTreeNode } from '../../api/adminWorldViewImport';
+import type { MatchTreeNode } from '../../api/admin/worldViewImport';
 import { Tooltip } from './treeNodeShared';
 
 interface TreeNodeActionsProps {

@@ -42,12 +42,12 @@ import {
   startWorldViewImport,
   getImportStatus,
   cancelImport,
-} from '../../api/adminWorldViewImport';
+} from '../../api/admin/worldViewImport';
 import {
   startWikivoyageExtraction,
   getExtractionStatus,
   cancelExtraction,
-} from '../../api/adminWikivoyageExtract';
+} from '../../api/admin/wikivoyageExtract';
 import { WorldViewImportReview } from './WorldViewImportReview';
 
 export function WorldViewImportPanel() {

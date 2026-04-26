@@ -37,7 +37,7 @@ import {
   type SmartSimplifyMove,
   type SiblingRegionGeometry,
   type SpatialAnomaly,
-} from '../../api/adminWorldViewImport';
+} from '../../api/admin/worldViewImport';
 import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
 

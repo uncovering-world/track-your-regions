@@ -14,7 +14,7 @@ import {
   OpenInNew as OpenInNewIcon,
   Image as ImageIcon,
 } from '@mui/icons-material';
-import type { MatchTreeNode } from '../../api/adminWorldViewImport';
+import type { MatchTreeNode } from '../../api/admin/worldViewImport';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
 import { TreeNodeActions } from './TreeNodeActions';
 import { TreeNodeContent } from './TreeNodeContent';

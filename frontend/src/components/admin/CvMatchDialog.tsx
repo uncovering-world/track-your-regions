@@ -23,7 +23,7 @@ import AccordionDetails from '@mui/material/AccordionDetails';
 import {
   respondToWaterReview,
   respondToClusterReview,
-} from '../../api/adminWorldViewImport';
+} from '../../api/admin/worldViewImport';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 import { CvWaterReviewSection } from './CvWaterReviewSection';
 import { CvIcpAdjustmentSection } from './CvIcpAdjustmentSection';

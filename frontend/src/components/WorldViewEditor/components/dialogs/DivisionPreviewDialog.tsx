@@ -14,7 +14,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
 import MapGL, { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';
-import { fetchGeoshape } from '../../../../api/adminWorldViewImport';
+import { fetchGeoshape } from '../../../../api/admin/worldViewImport';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 

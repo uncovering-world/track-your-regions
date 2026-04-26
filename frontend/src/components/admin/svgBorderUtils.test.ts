@@ -3,7 +3,7 @@ import {
   pointsToSmoothSvgPath, findOpenEndpoints, pointToSegmentDistance,
   findEraserIntersection,
 } from './svgBorderUtils';
-import type { BorderPath } from '../../api/adminWorldViewImport';
+import type { BorderPath } from '../../api/admin/worldViewImport';
 
 describe('pointsToSmoothSvgPath', () => {
   it('returns empty for 0-1 points', () => {

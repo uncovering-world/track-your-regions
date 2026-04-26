@@ -8,7 +8,7 @@
  */
 
 import { Box, Typography, Button, Alert, Stack } from '@mui/material';
-import { respondToIcpAdjustment } from '../../api/adminWorldViewImport';
+import { respondToIcpAdjustment } from '../../api/admin/worldViewImport';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 
 export interface CvIcpAdjustmentSectionProps {

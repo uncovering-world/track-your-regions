@@ -61,7 +61,7 @@ import {
   type MatchTreeNode,
   type AIReviewChildrenResult,
   type ReviewChildAction,
-} from '../../api/adminWorldViewImport';
+} from '../../api/admin/worldViewImport';
 import { MapImagePickerDialog } from './MapImagePickerDialog';
 import { SmartSimplifyDialog } from './SmartSimplifyDialog';
 import { useCvMatchPipeline } from './useCvMatchPipeline';

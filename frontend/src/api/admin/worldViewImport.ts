@@ -4,7 +4,7 @@
  * Handles import and match review operations.
  */
 
-import { authFetchJson, ensureFreshToken, getAccessToken } from './fetchUtils';
+import { authFetchJson, ensureFreshToken, getAccessToken } from '../fetchUtils';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
