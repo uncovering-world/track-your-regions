@@ -2,7 +2,7 @@
  * Admin WorldView Import — Tree operations controller
  *
  * Owns: destructive tree operations on regions during the review phase.
- * Currently: dismissChildren, simplifyHierarchy, simplifyChildren.
+ * Currently: removeRegionFromImport, renameRegion, dismissChildren, simplifyHierarchy, simplifyChildren.
  * See ADR-0009 for the domain-split rationale.
  */
 
@@ -17,6 +17,165 @@ import {
 } from './wvImportSharedState.js';
 import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
 import { runSimplifyHierarchy } from './wvImportSimplifyShared.js';
+
+// =============================================================================
+// removeRegionFromImport
+// =============================================================================
+
+/**
+ * Remove a region from the import tree.
+ * If reparentChildren=true, moves children up to the region's parent.
+ * POST /api/admin/wv-import/matches/:worldViewId/remove-region
+ */
+export async function removeRegionFromImport(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId, reparentChildren, reparentDivisions } = req.body as {
+    regionId: number;
+    reparentChildren: boolean;
+    reparentDivisions?: boolean;
+  };
+  console.log(`[WV Import] POST /matches/${worldViewId}/remove-region — regionId=${regionId}, reparentChildren=${reparentChildren}`);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify region belongs to this world view
+    const region = await client.query(
+      'SELECT id, name, parent_region_id FROM regions WHERE id = $1 AND world_view_id = $2',
+      [regionId, worldViewId],
+    );
+    if (region.rows.length === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Region not found in this world view' });
+      return;
+    }
+
+    const regionName = region.rows[0].name as string;
+    const parentRegionId = region.rows[0].parent_region_id as number | null;
+
+    // Move divisions to parent if requested
+    let divisionsReparented = 0;
+    if (reparentDivisions && parentRegionId != null) {
+      const moved = await client.query(
+        `INSERT INTO region_members (region_id, division_id)
+         SELECT $1, division_id FROM region_members WHERE region_id = $2
+         ON CONFLICT DO NOTHING`,
+        [parentRegionId, regionId],
+      );
+      divisionsReparented = moved.rowCount ?? 0;
+    }
+
+    if (reparentChildren) {
+      // Move children up to this region's parent
+      const reparented = await client.query(
+        'UPDATE regions SET parent_region_id = $1 WHERE parent_region_id = $2 AND world_view_id = $3',
+        [parentRegionId, regionId, worldViewId],
+      );
+
+      // Delete the region itself (CASCADE cleans up region_import_state, members, etc.)
+      await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
+
+      await client.query('COMMIT');
+      console.log(`[WV Import] Removed region "${regionName}" (${regionId}), reparented ${reparented.rowCount} children, ${divisionsReparented} divisions`);
+      res.json({ removed: true, regionName, childrenReparented: reparented.rowCount, divisionsReparented });
+    } else {
+      // Delete entire branch: all descendants first, then the region
+      const descendants = await client.query(`
+        WITH RECURSIVE desc_regions AS (
+          SELECT id, 1 AS depth FROM regions WHERE parent_region_id = $1
+          UNION ALL
+          SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
+        )
+        SELECT id FROM desc_regions ORDER BY depth DESC
+      `, [regionId]);
+
+      const descendantIds = descendants.rows.map(r => r.id as number);
+      if (descendantIds.length > 0) {
+        await client.query('DELETE FROM regions WHERE id = ANY($1)', [descendantIds]);
+      }
+
+      await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
+      await client.query('COMMIT');
+      console.log(`[WV Import] Removed region "${regionName}" (${regionId}) and ${descendantIds.length} descendant(s)`);
+      res.json({ removed: true, regionName, descendantsRemoved: descendantIds.length });
+    }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// =============================================================================
+// renameRegion
+// =============================================================================
+
+/**
+ * Rename a region within the import tree.
+ * Optionally updates source_url and source_external_id in region_import_state.
+ * POST /api/admin/wv-import/matches/:worldViewId/rename-region
+ */
+export async function renameRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId, name, sourceUrl, sourceExternalId } = req.body as {
+    regionId: number;
+    name: string;
+    sourceUrl?: string;
+    sourceExternalId?: string;
+  };
+  console.log(`[WV Import] POST /matches/${worldViewId}/rename-region — regionId=${regionId}, name="${name}"`);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify region belongs to this world view
+    const check = await client.query(
+      'SELECT id, name FROM regions WHERE id = $1 AND world_view_id = $2',
+      [regionId, worldViewId],
+    );
+    if (check.rows.length === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Region not found in this world view' });
+      return;
+    }
+
+    const oldName = check.rows[0].name as string;
+    await client.query('UPDATE regions SET name = $1 WHERE id = $2', [name.trim(), regionId]);
+
+    // Update enrichment in region_import_state if provided
+    if (sourceUrl !== undefined || sourceExternalId !== undefined) {
+      const setClauses: string[] = [];
+      const values: (string | number)[] = [];
+      let paramIdx = 1;
+
+      if (sourceUrl !== undefined) {
+        setClauses.push(`source_url = $${paramIdx++}`);
+        values.push(sourceUrl);
+      }
+      if (sourceExternalId !== undefined) {
+        setClauses.push(`source_external_id = $${paramIdx++}`);
+        values.push(sourceExternalId);
+      }
+      values.push(regionId);
+
+      await client.query(
+        `UPDATE region_import_state SET ${setClauses.join(', ')} WHERE region_id = $${paramIdx}`,
+        values,
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ renamed: true, regionId, oldName, newName: name.trim() });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
 // =============================================================================
 // dismissChildren

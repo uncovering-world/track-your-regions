@@ -46,11 +46,12 @@ export {
   pointMatch,
   resetMatch,
   aiMatchOneRegion,
+  aiSuggestChildren,
 } from './wvImportAIController.js';
-export { dismissChildren, simplifyHierarchy, simplifyChildren } from './wvImportTreeOpsController.js';
+export { removeRegionFromImport, renameRegion, dismissChildren, simplifyHierarchy, simplifyChildren } from './wvImportTreeOpsController.js';
+export { finalizeReview, addChildRegion } from './wvImportFinalizeController.js';
 export { undoLastOperation } from './wvImportHierarchyController.js';
 export { syncInstances, handleAsGrouping } from './wvImportFlattenController.js';
-export { finalizeReview } from './wvImportFinalizeController.js';
 export { rematchWorldView, getRematchStatus } from './wvImportRematchController.js';
 export { detectSmartSimplify, applySmartSimplifyMove } from './wvImportSmartSimplifyController.js';
 export { getChildrenRegionGeometry } from './wvImportCoverageController.js';
