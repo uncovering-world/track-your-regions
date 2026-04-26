@@ -35,7 +35,6 @@ const FEATURE_DEFAULTS: Record<string, string> = {
 /** Get the model ID configured for a feature. Uses per-feature default, then global default (gpt-4.1-mini). */
 export async function getModelForFeature(feature: string): Promise<string> {
   const settings = await loadCache();
-  // eslint-disable-next-line security/detect-object-injection -- feature is a known internal identifier (e.g., 'groupSuggestion'); FEATURE_DEFAULTS is a module-level const map. Missing keys return undefined (safe).
   return settings.get(`model.${feature}`) ?? FEATURE_DEFAULTS[feature] ?? 'gpt-4.1-mini';
 }
 

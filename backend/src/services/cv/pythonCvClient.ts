@@ -10,7 +10,7 @@
 
 import { Agent, setGlobalDispatcher } from 'undici';
 
-// eslint-disable-next-line sonarjs/no-clear-text-protocols -- Internal Docker-network fallback URL; container-to-container traffic is on a private bridge, not public internet
+// Internal Docker-network URL: container-to-container traffic is on a private bridge, not public internet
 const CV_PYTHON_URL = process.env.CV_PYTHON_URL ?? 'http://cv-python:8000';
 
 // undici (used by Node's built-in fetch) defaults bodyTimeout to 5 min — long
