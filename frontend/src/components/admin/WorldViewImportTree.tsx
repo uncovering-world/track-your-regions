@@ -1,10 +1,9 @@
 /**
  * WorldView Import Tree View
  *
- * Clean hierarchical tree showing match results at the country level.
- * Containers (continents, sub-regions) show summary counts.
- * Countries show their match status and GADM assignment.
- * Children of drilled-down regions appear as regular country nodes.
+ * Virtualized hierarchical tree showing match results at the country level.
+ * Uses @tanstack/react-virtual to render only visible rows (~40 at a time),
+ * keeping the DOM lightweight even when hundreds of nodes are expanded.
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
@@ -13,14 +12,7 @@ import {
   Typography,
   Button,
   CircularProgress,
-  Checkbox,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
   Snackbar,
-  Link as MuiLink,
 } from '@mui/material';
 
 import {
@@ -28,488 +20,168 @@ import {
   UnfoldLess as CollapseAllIcon,
   ErrorOutline as UnresolvedIcon,
   Layers as GapsIcon,
-  Link as LinkIcon,
-  ArrowForward as ArrowForwardIcon,
+  CallMerge as SingleChildIcon,
+  WarningAmber as WarningIcon,
+  Psychology as ReviewIcon,
+  PieChartOutline as CoverageIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   getMatchTree,
-  acceptMatch,
-  acceptBatchMatches,
-  rejectSuggestion,
-  dbSearchOneRegion,
-  aiMatchOneRegion,
-  aiReviewChildren,
+  getChildrenCoverage,
   addChildRegion,
   removeRegionFromImport,
   renameRegion,
-  dismissChildren,
-  simplifyHierarchy,
-  simplifyChildren,
-  undoLastOperation,
-  syncInstances,
-  handleAsGrouping,
-  geocodeMatchRegion,
-  geoshapeMatchRegion,
-  pointMatchRegion,
-  resetMatchRegion,
-  rejectRemaining,
-  acceptAndRejectRest as acceptAndRejectRestApi,
-  selectMapImage,
-  markManualFix,
-  acceptWithTransfer as acceptWithTransferApi,
   type MatchTreeNode,
-  type AIReviewChildrenResult,
-  type ReviewChildAction,
 } from '../../api/admin/worldViewImport';
 import { MapImagePickerDialog } from './MapImagePickerDialog';
-import { SmartSimplifyDialog } from './SmartSimplifyDialog';
-import { useCvMatchPipeline } from './useCvMatchPipeline';
-import { CvMatchDialog } from './CvMatchDialog';
+import { SmartFlattenPreviewDialog } from './SmartFlattenPreviewDialog';
 import { type ShadowInsertion } from './treeNodeShared';
 import { TreeNodeRow } from './TreeNodeRow';
-import { collectAncestorsOfUnresolved, collectAncestorsOfIds } from './importTreeUtils';
+import { useTreeMutations, type MapPickerState } from './useTreeMutations';
+import {
+  ManualFixDialog, RemoveRegionDialog, CoverageCompareDialog,
+  RenameRegionDialog, ReparentRegionDialog, AddChildDialog,
+  AISuggestChildrenDialog, DivisionSearchDialog, GapAnalysisDialog,
+} from './ImportTreeDialogs';
+import { ShadowCreateRow, NavControls } from './GapAnalysis';
+import { useCvMatchPipeline } from './useCvMatchPipeline';
+import { useNavigationState } from './useNavigationState';
+import { useImportTreeDialogs } from './useImportTreeDialogs';
+import { CvMatchDialog } from './CvMatchDialog';
+import { AIReviewDrawer } from './AIReviewDrawer';
+import { SmartSimplifyDialog } from './SmartSimplifyDialog';
+import { OverlapResolutionDialog } from './OverlapResolutionDialog';
+import type { DivisionOverlapResult } from '../../api/admin/worldViewImport';
 
-/** Extracted to avoid re-rendering the entire tree on every keystroke */
-function ManualFixDialog({ state, onClose, onSubmit, isPending }: {
-  state: { regionId: number; regionName: string } | null;
-  onClose: () => void;
-  onSubmit: (regionId: number, fixNote: string | undefined) => void;
-  isPending: boolean;
-}) {
-  const [fixNote, setFixNote] = useState('');
-
-  // Reset note when dialog opens with a new region
-  const prevRegionId = state?.regionId;
-  const [lastRegionId, setLastRegionId] = useState<number | undefined>();
-  if (prevRegionId !== lastRegionId) {
-    setLastRegionId(prevRegionId);
-    if (prevRegionId != null) setFixNote('');
+/** Find a child region's ID by name under a specific parent */
+function findChildIdByName(nodes: MatchTreeNode[], parentId: number, childName: string): number | undefined {
+  for (const node of nodes) {
+    if (node.id === parentId) {
+      return node.children.find(c => c.name === childName)?.id;
+    }
+    const found = findChildIdByName(node.children, parentId, childName);
+    if (found) return found;
   }
-
-  return (
-    <Dialog open={!!state} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Mark as Needing Manual Fix</DialogTitle>
-      <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {state?.regionName}
-        </Typography>
-        <TextField
-          autoFocus
-          fullWidth
-          multiline
-          minRows={2}
-          maxRows={4}
-          label="What needs to be fixed?"
-          placeholder="e.g., Borders don't match GADM, need to split into sub-regions..."
-          value={fixNote}
-          onChange={(e) => setFixNote(e.target.value)}
-          slotProps={{ htmlInput: { maxLength: 500 } }}
-        />
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          variant="contained"
-          color="warning"
-          onClick={() => {
-            if (state) {
-              onSubmit(state.regionId, fixNote || undefined);
-              onClose();
-            }
-          }}
-          disabled={isPending}
-        >
-          Mark for Fix
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
+  return undefined;
 }
 
 interface WorldViewImportTreeProps {
   worldViewId: number;
-  onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => void;
-  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, wikidataId: string, regionName: string, regionId?: number, allDivisionIds?: number[]) => void;
+  onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string) => void;
+  onPreviewUnion?: (regionId: number, divisionIds: number[], context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string }) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, wikidataId: string, regionName: string, regionId?: number, allDivisionIds?: number[], allSuggestions?: Array<{ divisionId: number; conflict?: { donorDivisionId: number; donorRegionId: number; type: 'direct' | 'split' } }>) => void;
+  onViewMap?: (regionId: number, context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string; divisionIds: number[] }) => void;
   shadowInsertions?: ShadowInsertion[];
   onApproveShadow?: (insertion: ShadowInsertion) => void;
   onRejectShadow?: (insertion: ShadowInsertion) => void;
+  /** Called when division assignments change, so parent can mark coverage as stale */
+  onMatchChange?: () => void;
 }
 
-export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer, shadowInsertions, onApproveShadow, onRejectShadow }: WorldViewImportTreeProps) {
-  const queryClient = useQueryClient();
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const skipAnimationRef = useRef(false);
-  const [geocodeProgress, setGeocodeProgress] = useState<{ regionId: number; message: string; nextScope?: { ancestorId: number; ancestorName: string }; retryType?: 'geoshape' | 'point' } | null>(null);
-  const [fixDialogState, setFixDialogState] = useState<{ regionId: number; regionName: string } | null>(null);
-  const [mapPickerState, setMapPickerState] = useState<{
+export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, onPreviewTransfer, onViewMap, shadowInsertions, onApproveShadow, onRejectShadow, onMatchChange }: WorldViewImportTreeProps) {
+  const [mapPickerState, setMapPickerState] = useState<MapPickerState | null>(null);
+  const [removeDialogState, setRemoveDialogState] = useState<{
     regionId: number;
     regionName: string;
-    candidates: string[];
-    currentSelection: string | null;
-    wikidataId: string | null;
-    pendingPreview?: {
-      divisionId: number;
-      name: string;
-      path?: string;
-      isAssigned: boolean;
-    };
+    hasChildren: boolean;
+    hasDivisions: boolean;
   } | null>(null);
-
-  const [undoSnackbar, setUndoSnackbar] = useState<{
-    open: boolean;
-    message: string;
-    worldViewId: number;
-  } | null>(null);
-
-  const [smartSimplifyDialog, setSmartSimplifyDialog] = useState<{
-    regionId: number;
-    regionName: string;
-    regionMapUrl: string | null;
-  } | null>(null);
-
-  const [aiReviewDialog, setAIReviewDialog] = useState<{
-    regionId: number;
-    regionName: string;
-    result: AIReviewChildrenResult;
-    selected: Set<string>;
-  } | null>(null);
-  const [aiSuggestingRegionId, setAISuggestingRegionId] = useState<number | null>(null);
-
-  /** Find a child region ID by name under a specific parent node */
-  function findChildIdByName(nodes: MatchTreeNode[], parentId: number, childName: string): number | undefined {
-    for (const node of nodes) {
-      if (node.id === parentId) {
-        return node.children.find(c => c.name === childName)?.id;
-      }
-      const found = findChildIdByName(node.children, parentId, childName);
-      if (found !== undefined) return found;
-    }
-    return undefined;
-  }
 
   const { data: tree, isLoading } = useQuery({
     queryKey: ['admin', 'wvImport', 'matchTree', worldViewId],
     queryFn: () => getMatchTree(worldViewId),
   });
 
-  const invalidateTree = () => {
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] });
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
-  };
+  // Children coverage query (separate from tree to avoid slowing every tree load).
+  // staleTime=Infinity: we manage updates manually via setQueryData in refreshCoverage,
+  // so prevent TanStack Query from auto-refetching (which would recompute ALL containers).
+  const { data: coverageData, isRefetching: coverageRefetching, isLoading: coverageLoading } = useQuery({
+    queryKey: ['admin', 'wvImport', 'childrenCoverage', worldViewId],
+    queryFn: () => getChildrenCoverage(worldViewId),
+    staleTime: Infinity,
+  });
+
+  // Track which region was last mutated so we only show spinner on affected ancestors
+  const [lastMutatedRegionId, setLastMutatedRegionId] = useState<number | null>(null);
+  const [simplifySnackbar, setSimplifySnackbar] = useState<string | null>(null);
+  const [overlapDialog, setOverlapDialog] = useState<{
+    regionId: number;
+    regionName: string;
+    regionMapUrl: string | null;
+    data: DivisionOverlapResult;
+  } | null>(null);
+
+  // Clear the dirty marker once coverage refetch completes
+  useEffect(() => {
+    if (!coverageRefetching && lastMutatedRegionId != null) {
+      setLastMutatedRegionId(null);
+    }
+  }, [coverageRefetching, lastMutatedRegionId]);
+
+
+  // Compute the set of ancestor IDs for the last mutated region
+  const coverageDirtyIds = useMemo<ReadonlySet<number>>(() => {
+    if (!coverageRefetching || lastMutatedRegionId == null || !tree) return new Set();
+    // Build parent map from tree
+    const parentOf = new Map<number, number | null>();
+    const walkTree = (nodes: MatchTreeNode[], parentId: number | null) => {
+      for (const n of nodes) {
+        parentOf.set(n.id, parentId);
+        walkTree(n.children, n.id);
+      }
+    };
+    walkTree(tree, null);
+    // Walk up from mutated region collecting ancestors
+    const dirtyIds = new Set<number>();
+    let current: number | null = lastMutatedRegionId;
+    while (current != null) {
+      dirtyIds.add(current);
+      current = parentOf.get(current) ?? null;
+    }
+    return dirtyIds;
+  }, [coverageRefetching, lastMutatedRegionId, tree]);
+
+  // Ref for mapPickerState — needed by selectMapMutation to read pending preview
+  const mapPickerStateRef = useRef(mapPickerState);
+  mapPickerStateRef.current = mapPickerState;
+
+  const mutations = useTreeMutations(worldViewId, {
+    onPreview,
+    mapPickerStateRef,
+    setMapPickerState,
+    setRemoveDialogState,
+    onMatchChange,
+  });
 
   const {
-    cvMatchDialog,
-    setCVMatchDialog,
-    cvMatchingRegionId,
-    mapshapeMatchingRegionId,
-    handleCVMatch,
-    handleMapshapeMatch,
-    cancelCvMatch,
-  } = useCvMatchPipeline(worldViewId, tree, (regionId) => {
-    // Invalidate tree when CV match completes so match status refreshes
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] });
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
-    // Expand the node so newly assigned divisions are visible
-    setExpanded(prev => new Set([...prev, regionId]));
+    acceptMutation, rejectMutation, rejectRemainingMutation, acceptAndRejectRestMutation,
+    acceptAllMutation, acceptSelectedMutation, acceptSelectedRejectRestMutation, rejectSelectedMutation, onAcceptTransfer,
+    dbSearchOneMutation, aiMatchOneMutation, geocodeMatchMutation, geoshapeMatchMutation, pointMatchMutation,
+    resetMatchMutation, clearMembersMutation, dismissMutation, pruneMutation, syncMutation, groupingMutation, mergeMutation,
+    smartFlattenMutation, removeMutation, collapseToParentMutation, autoResolveMutation, simplifyHierarchyMutation, simplifyChildrenMutation, overlapCheckMutation, undoMutation,
+    selectMapMutation, manualFixMutation, addChildMutation,
+    dismissWarningsMutation, renameMutation, reparentMutation,
+    renamingRegionId, reparentingRegionId,
+    geocodeProgress, undoSnackbar, setUndoSnackbar,
+    isMutating, invalidateTree,
+  } = mutations;
+
+  // ── Extracted hooks ────────────────────────────────────────────────────────
+
+  const dialogs = useImportTreeDialogs(worldViewId, tree, {
+    renameMutation,
+    reparentMutation,
+    setRemoveDialogState,
+    setUndoSnackbar,
+    invalidateTree,
   });
 
-  const acceptMutation = useMutation({
-    mutationFn: ({ regionId, divisionId }: { regionId: number; divisionId: number }) =>
-      acceptMatch(worldViewId, regionId, divisionId),
-    onSuccess: invalidateTree,
-  });
+  const cvPipeline = useCvMatchPipeline(worldViewId, tree, dialogs.handleSmartSimplify);
 
-  const rejectMutation = useMutation({
-    mutationFn: ({ regionId, divisionId }: { regionId: number; divisionId: number }) =>
-      rejectSuggestion(worldViewId, regionId, divisionId),
-    onSuccess: invalidateTree,
-  });
+  const nav = useNavigationState(tree, shadowInsertions, coverageData);
 
-  const dbSearchOneMutation = useMutation({
-    mutationFn: (regionId: number) => dbSearchOneRegion(worldViewId, regionId),
-    onSuccess: invalidateTree,
-  });
-
-  const aiMatchOneMutation = useMutation({
-    mutationFn: (regionId: number) => aiMatchOneRegion(worldViewId, regionId),
-    onSuccess: invalidateTree,
-  });
-
-  const dismissMutation = useMutation({
-    mutationFn: (regionId: number) => dismissChildren(worldViewId, regionId),
-    onSuccess: (data) => {
-      invalidateTree();
-      if (data.undoAvailable) {
-        setUndoSnackbar({
-          open: true,
-          message: `Dismissed ${data.dismissed} descendant(s)`,
-          worldViewId,
-        });
-      }
-    },
-  });
-
-  const simplifyHierarchyMutation = useMutation({
-    mutationFn: (regionId: number) => simplifyHierarchy(worldViewId, regionId),
-    onSuccess: invalidateTree,
-  });
-
-  const simplifyChildrenMutation = useMutation({
-    mutationFn: (parentRegionId: number) => simplifyChildren(worldViewId, parentRegionId),
-    onSuccess: invalidateTree,
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: (regionId: number) => syncInstances(worldViewId, regionId),
-    onSuccess: invalidateTree,
-  });
-
-  const groupingMutation = useMutation({
-    mutationFn: (regionId: number) => handleAsGrouping(worldViewId, regionId),
-    onSuccess: (data) => {
-      invalidateTree();
-      if (data.undoAvailable) {
-        setUndoSnackbar({
-          open: true,
-          message: `Matched ${data.matched}/${data.total} children`,
-          worldViewId,
-        });
-      }
-    },
-  });
-
-  const undoMutation = useMutation({
-    mutationFn: () => undoLastOperation(worldViewId),
-    onSuccess: () => {
-      setUndoSnackbar(null);
-      invalidateTree();
-    },
-  });
-
-  const geocodeMatchMutation = useMutation({
-    mutationFn: (regionId: number) => geocodeMatchRegion(worldViewId, regionId),
-    onMutate: (regionId) => {
-      setGeocodeProgress({ regionId, message: 'Geocoding via Nominatim...' });
-    },
-    onSuccess: (data, regionId) => {
-      if (data.geocodedName) {
-        const radiusMsg = data.searchRadiusKm
-          ? ` within ${data.searchRadiusKm}km`
-          : ' (exact)';
-        setGeocodeProgress({
-          regionId,
-          message: data.found > 0
-            ? `Found ${data.found} division(s)${radiusMsg}`
-            : `No divisions found — ${data.geocodedName}`,
-        });
-      } else {
-        setGeocodeProgress({ regionId, message: 'Not found in Nominatim' });
-      }
-      invalidateTree();
-      setTimeout(() => setGeocodeProgress(null), 4000);
-    },
-    onError: () => {
-      setGeocodeProgress(null);
-    },
-  });
-
-  const geoshapeMatchMutation = useMutation({
-    mutationFn: ({ regionId, scopeAncestorId }: { regionId: number; scopeAncestorId?: number }) =>
-      geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId),
-    onMutate: ({ regionId }) => {
-      setGeocodeProgress({ regionId, message: 'Matching by geoshape...' });
-    },
-    onSuccess: (data, { regionId }) => {
-      const coverageMsg = data.totalCoverage != null
-        ? ` (${Math.round(data.totalCoverage * 100)}% coverage)`
-        : '';
-      if (data.found > 0) {
-        setGeocodeProgress({
-          regionId,
-          message: `Covering set: ${data.found} division(s)${coverageMsg}`,
-        });
-        setTimeout(() => setGeocodeProgress(null), 4000);
-      } else if (data.nextScope) {
-        setGeocodeProgress({
-          regionId,
-          message: `No matches in ${data.scopeAncestorName ?? 'current'} scope`,
-          nextScope: data.nextScope,
-          retryType: 'geoshape',
-        });
-        // Do NOT auto-dismiss — user needs to decide
-      } else {
-        setGeocodeProgress({
-          regionId,
-          message: 'No geoshape matches found',
-        });
-        setTimeout(() => setGeocodeProgress(null), 4000);
-      }
-      invalidateTree();
-    },
-    onError: () => {
-      setGeocodeProgress(null);
-    },
-  });
-
-  const acceptTransferMutation = useMutation({
-    mutationFn: ({ regionId, divisionIds, donorRegionId, donorDivisionId, transferType }: {
-      regionId: number; divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split';
-    }) => acceptWithTransferApi(worldViewId, regionId, divisionIds, donorRegionId, donorDivisionId, transferType),
-    onSuccess: (_data, { regionId }) => {
-      invalidateTree();
-      if (regionId) setGeocodeProgress(null);
-    },
-  });
-
-  const onAcceptTransfer = (regionId: number, divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) =>
-    acceptTransferMutation.mutate({
-      regionId,
-      divisionIds: [divisionId],
-      donorRegionId: conflict.donorRegionId,
-      donorDivisionId: conflict.donorDivisionId,
-      transferType: conflict.type,
-    });
-
-  const pointMatchMutation = useMutation({
-    mutationFn: ({ regionId, scopeAncestorId }: { regionId: number; scopeAncestorId?: number }) =>
-      pointMatchRegion(worldViewId, regionId, scopeAncestorId),
-    onMutate: ({ regionId }) => {
-      setGeocodeProgress({ regionId, message: 'Matching by markers...' });
-    },
-    onSuccess: (data, { regionId }) => {
-      if (data.found > 0) {
-        setGeocodeProgress({
-          regionId,
-          message: `Found ${data.found} division(s) from markers`,
-        });
-        setTimeout(() => setGeocodeProgress(null), 4000);
-      } else if (data.nextScope) {
-        setGeocodeProgress({
-          regionId,
-          message: `No marker matches in ${data.scopeAncestorName ?? 'current'} scope`,
-          nextScope: data.nextScope,
-          retryType: 'point',
-        });
-      } else {
-        setGeocodeProgress({
-          regionId,
-          message: 'No divisions found from markers',
-        });
-        setTimeout(() => setGeocodeProgress(null), 4000);
-      }
-      invalidateTree();
-    },
-    onError: () => {
-      setGeocodeProgress(null);
-    },
-  });
-
-  const resetMatchMutation = useMutation({
-    mutationFn: (regionId: number) => resetMatchRegion(worldViewId, regionId),
-    onSuccess: invalidateTree,
-  });
-
-  const rejectRemainingMutation = useMutation({
-    mutationFn: (regionId: number) => rejectRemaining(worldViewId, regionId),
-    onSuccess: invalidateTree,
-  });
-
-  const acceptAndRejectRestMutation = useMutation({
-    mutationFn: ({ regionId, divisionId }: { regionId: number; divisionId: number }) =>
-      acceptAndRejectRestApi(worldViewId, regionId, divisionId),
-    onSuccess: invalidateTree,
-  });
-
-  const acceptAllMutation = useMutation({
-    mutationFn: (assignments: Array<{ regionId: number; divisionId: number }>) =>
-      acceptBatchMatches(worldViewId, assignments),
-    onSuccess: invalidateTree,
-  });
-
-  const selectMapMutation = useMutation({
-    mutationFn: ({ regionId, imageUrl }: { regionId: number; imageUrl: string | null }) =>
-      selectMapImage(worldViewId, regionId, imageUrl),
-    onSuccess: (_data, variables) => {
-      const pending = mapPickerState?.pendingPreview;
-      const wikidataId = mapPickerState?.wikidataId;
-      const pickerRegionId = mapPickerState?.regionId;
-      setMapPickerState(null);
-      invalidateTree();
-      // If preview was intercepted, proceed to the regular preview now
-      if (pending) {
-        onPreview(
-          pending.divisionId,
-          pending.name,
-          pending.path,
-          variables.imageUrl ?? undefined,
-          wikidataId ?? undefined,
-          pickerRegionId,
-          pending.isAssigned,
-        );
-      }
-    },
-  });
-
-  const manualFixMutation = useMutation({
-    mutationFn: ({ regionId, needsManualFix, fixNote }: { regionId: number; needsManualFix: boolean; fixNote?: string }) =>
-      markManualFix(worldViewId, regionId, needsManualFix, fixNote),
-    onSuccess: invalidateTree,
-  });
-
-  const handleSmartSimplify = useCallback((regionId: number) => {
-    if (!tree) return;
-    const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
-      for (const n of nodes) {
-        if (n.id === regionId) return n;
-        const found = findNode(n.children);
-        if (found) return found;
-      }
-      return null;
-    };
-    const node = findNode(tree);
-    if (!node) return;
-    setSmartSimplifyDialog({
-      regionId,
-      regionName: node.name,
-      regionMapUrl: node.regionMapUrl,
-    });
-  }, [tree]);
-
-  const handleAIReviewChildren = useCallback(async (regionId: number) => {
-    if (!tree) return;
-    const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
-      for (const n of nodes) {
-        if (n.id === regionId) return n;
-        const found = findNode(n.children);
-        if (found) return found;
-      }
-      return null;
-    };
-    const node = findNode(tree);
-    if (!node) return;
-
-    setAISuggestingRegionId(regionId);
-    try {
-      const result = await aiReviewChildren(worldViewId, regionId);
-      // Pre-select add and rename actions (not remove — destructive)
-      const selected = new Set(
-        result.actions
-          .filter((a: ReviewChildAction) => a.type !== 'remove')
-          .map((a: ReviewChildAction) => `${a.type}:${a.name}`),
-      );
-      setAIReviewDialog({ regionId, regionName: node.name, result, selected });
-    } catch (err) {
-      console.error('AI review children failed:', err);
-      setUndoSnackbar({
-        open: true,
-        message: `AI review children failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
-        worldViewId,
-      });
-    } finally {
-      setAISuggestingRegionId(null);
-    }
-  }, [tree, worldViewId]);
+  // ── Callbacks ──────────────────────────────────────────────────────────────
 
   const handleOpenMapPicker = useCallback((node: MatchTreeNode, pendingPreview?: { divisionId: number; name: string; path?: string; isAssigned: boolean }) => {
     setMapPickerState({
@@ -521,6 +193,258 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
       pendingPreview,
     });
   }, []);
+
+  const handleSimplifyHierarchy = useCallback((regionId: number) => {
+    simplifyHierarchyMutation.mutate(regionId, {
+      onSuccess: (data) => {
+        if (data.replacements.length === 0) {
+          setSimplifySnackbar('Nothing to simplify');
+        } else {
+          const summary = data.replacements
+            .map(r => `${r.parentName} (${r.replacedCount} → 1)`)
+            .join(', ');
+          setSimplifySnackbar(`Simplified: ${summary}`);
+        }
+      },
+    });
+  }, [simplifyHierarchyMutation]);
+
+  const handleSimplifyChildren = useCallback((regionId: number) => {
+    simplifyChildrenMutation.mutate(regionId, {
+      onSuccess: (data) => {
+        if (data.totalSimplified === 0) {
+          setSimplifySnackbar('No children could be simplified');
+        } else {
+          const summary = data.results.map(r => `${r.regionName} (${r.totalReduced} reduced)`).join(', ');
+          setSimplifySnackbar(`Simplified ${data.totalSimplified} children: ${summary}`);
+        }
+      },
+    });
+  }, [simplifyChildrenMutation]);
+
+  const handleCheckOverlap = useCallback((regionId: number) => {
+    // Find node in tree for name/mapUrl
+    function findNode(nodes: MatchTreeNode[], id: number): MatchTreeNode | null {
+      for (const n of nodes) {
+        if (n.id === id) return n;
+        const found = findNode(n.children, id);
+        if (found) return found;
+      }
+      return null;
+    }
+    const node = tree ? findNode(tree, regionId) : null;
+    overlapCheckMutation.mutate(regionId, {
+      onSuccess: (data) => {
+        if (data.overlaps.length === 0) {
+          setSimplifySnackbar('No division overlaps found among children');
+        } else {
+          setOverlapDialog({
+            regionId,
+            regionName: node?.name ?? `Region ${regionId}`,
+            regionMapUrl: node?.regionMapUrl ?? null,
+            data,
+          });
+        }
+      },
+    });
+  }, [overlapCheckMutation, tree]);
+
+  // Build a pending promise for a single AI-suggested action
+  const buildSuggestChildrenActionPromise = useCallback((
+    parentId: number,
+    action: { type: 'add' | 'remove' | 'rename' | 'enrich'; name: string; newName?: string; sourceUrl?: string | null; sourceExternalId?: string | null },
+  ): Promise<unknown> | undefined => {
+    if (action.type === 'add') {
+      return addChildRegion(
+        worldViewId, parentId, action.name,
+        action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
+      );
+    }
+    if (action.type === 'remove') {
+      const childId = tree ? findChildIdByName(tree, parentId, action.name) : undefined;
+      if (!childId) return undefined;
+      // Reparent both children AND assigned GADM divisions up to the parent;
+      // otherwise CASCADE would silently delete `region_members` rows the admin
+      // had already accepted.
+      return removeRegionFromImport(worldViewId, childId, true, true);
+    }
+    // rename or enrich
+    const childId = tree ? findChildIdByName(tree, parentId, action.name) : undefined;
+    if (!childId) return undefined;
+    return renameRegion(
+      worldViewId, childId, action.newName ?? action.name,
+      action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
+    );
+  }, [worldViewId, tree]);
+
+  // Handler bundle for TreeNodeRow, extracted to reduce complexity of the render
+  // virtualization map callback below. Each handler is a narrow wrapper around a
+  // mutation so the JSX doesn't inline dozens of arrow functions.
+  const handleAccept = useCallback((regionId: number, divisionId: number) => {
+    setLastMutatedRegionId(regionId);
+    acceptMutation.mutate({ regionId, divisionId });
+  }, [acceptMutation]);
+
+  const handleAcceptAndRejectRest = useCallback((regionId: number, divisionId: number) => {
+    setLastMutatedRegionId(regionId);
+    acceptAndRejectRestMutation.mutate({ regionId, divisionId });
+  }, [acceptAndRejectRestMutation]);
+
+  const handleReject = useCallback((regionId: number, divisionId: number) => {
+    rejectMutation.mutate({ regionId, divisionId });
+  }, [rejectMutation]);
+
+  const handleDBSearch = useCallback((regionId: number) => dbSearchOneMutation.mutate(regionId), [dbSearchOneMutation]);
+  const handleAIMatch = useCallback((regionId: number) => aiMatchOneMutation.mutate(regionId), [aiMatchOneMutation]);
+  const handleDismissChildren = useCallback((regionId: number) => dismissMutation.mutate(regionId), [dismissMutation]);
+  const handleSync = useCallback((regionId: number) => syncMutation.mutate(regionId), [syncMutation]);
+  const handleHandleAsGrouping = useCallback((regionId: number) => {
+    setLastMutatedRegionId(regionId);
+    groupingMutation.mutate(regionId);
+  }, [groupingMutation]);
+  const handleGeocodeMatch = useCallback((regionId: number) => geocodeMatchMutation.mutate(regionId), [geocodeMatchMutation]);
+  const handleGeoshapeMatch = useCallback((regionId: number, scopeAncestorId?: number) =>
+    geoshapeMatchMutation.mutate({ regionId, scopeAncestorId }), [geoshapeMatchMutation]);
+  const handlePointMatch = useCallback((regionId: number, scopeAncestorId?: number) =>
+    pointMatchMutation.mutate({ regionId, scopeAncestorId }), [pointMatchMutation]);
+  const handleResetMatch = useCallback((regionId: number) => resetMatchMutation.mutate(regionId), [resetMatchMutation]);
+  const handleRejectRemaining = useCallback((regionId: number) => rejectRemainingMutation.mutate(regionId), [rejectRemainingMutation]);
+
+  const handleAcceptAll = useCallback((assignments: Array<{ regionId: number; divisionId: number }>) => {
+    if (assignments[0]) setLastMutatedRegionId(assignments[0].regionId);
+    acceptAllMutation.mutate(assignments);
+  }, [acceptAllMutation]);
+
+  const handleAcceptSelected = useCallback((regionId: number, divisionIds: number[]) => {
+    setLastMutatedRegionId(regionId);
+    acceptSelectedMutation.mutate({ regionId, divisionIds });
+  }, [acceptSelectedMutation]);
+
+  const handleAcceptSelectedRejectRest = useCallback((regionId: number, divisionIds: number[]) => {
+    setLastMutatedRegionId(regionId);
+    acceptSelectedRejectRestMutation.mutate({ regionId, divisionIds });
+  }, [acceptSelectedRejectRestMutation]);
+
+  const handleRejectSelected = useCallback((regionId: number, divisionIds: number[]) => {
+    rejectSelectedMutation.mutate({ regionId, divisionIds });
+  }, [rejectSelectedMutation]);
+
+  const handleMergeChild = useCallback((regionId: number) => mergeMutation.mutate(regionId), [mergeMutation]);
+  const handleDismissHierarchyWarnings = useCallback((regionId: number) => dismissWarningsMutation.mutate(regionId), [dismissWarningsMutation]);
+  const handleCollapseToParent = useCallback((regionId: number) => collapseToParentMutation.mutate(regionId), [collapseToParentMutation]);
+  const handleAutoResolve = useCallback((regionId: number) => autoResolveMutation.mutate(regionId), [autoResolveMutation]);
+  const handleReviewSubtree = useCallback((regionId: number) => dialogs.handleReview(regionId), [dialogs]);
+
+  const handleRename = useCallback((regionId: number, currentName: string) => {
+    dialogs.setRenameDialog({ regionId, currentName, newName: currentName });
+  }, [dialogs]);
+
+  const handleReparent = useCallback((regionId: number) => {
+    const region = dialogs.flatRegionList.find(r => r.id === regionId);
+    dialogs.setReparentDialog({ regionId, regionName: region?.name ?? '', selectedParentId: null });
+  }, [dialogs]);
+
+  const handlePruneToLeaves = useCallback((regionId: number) => pruneMutation.mutate(regionId), [pruneMutation]);
+  const handleClearMembers = useCallback((regionId: number) => clearMembersMutation.mutate(regionId), [clearMembersMutation]);
+
+  // Compute pending region IDs for each mutation via a single memo, so the
+  // JSX below doesn't need to inline dozens of ternaries (and the enclosing
+  // component function stays under the cognitive-complexity cap).
+  const pendingIds = useMemo(() => {
+    const simple = <V,>(m: { isPending: boolean; variables?: V }): V | null =>
+      (m.isPending ? (m.variables ?? null) : null);
+    const nested = <V,>(m: { isPending: boolean; variables?: { regionId?: V } }): V | null =>
+      (m.isPending ? (m.variables?.regionId ?? null) : null);
+    return {
+      mergingRegionId: simple(mergeMutation),
+      flatteningRegionId: dialogs.flattenPreviewLoading ?? simple(smartFlattenMutation),
+      removingRegionId: nested(removeMutation),
+      collapsingRegionId: simple(collapseToParentMutation),
+      autoResolvingRegionId: simple(autoResolveMutation),
+      reviewingRegionId: dialogs.reviewLoading?.key.startsWith('region-')
+        ? Number(dialogs.reviewLoading.key.replace('region-', ''))
+        : null,
+      pruningRegionId: simple(pruneMutation),
+      clearingMembersRegionId: simple(clearMembersMutation),
+      simplifyingRegionId: simple(simplifyHierarchyMutation),
+      simplifyingChildrenRegionId: simple(simplifyChildrenMutation),
+      checkingOverlapRegionId: simple(overlapCheckMutation),
+      dbSearchingRegionId: simple(dbSearchOneMutation),
+      aiMatchingRegionId: simple(aiMatchOneMutation),
+      dismissingRegionId: simple(dismissMutation),
+      syncingRegionId: simple(syncMutation),
+      groupingRegionId: simple(groupingMutation),
+      geocodeMatchingRegionId: simple(geocodeMatchMutation),
+      geoshapeMatchingRegionId: nested(geoshapeMatchMutation),
+      pointMatchingRegionId: nested(pointMatchMutation),
+    };
+  }, [
+    mergeMutation, smartFlattenMutation, removeMutation, collapseToParentMutation,
+    autoResolveMutation, pruneMutation, clearMembersMutation, simplifyHierarchyMutation,
+    simplifyChildrenMutation, overlapCheckMutation, dbSearchOneMutation, aiMatchOneMutation,
+    dismissMutation, syncMutation, groupingMutation, geocodeMatchMutation,
+    geoshapeMatchMutation, pointMatchMutation, dialogs.flattenPreviewLoading, dialogs.reviewLoading,
+  ]);
+
+  const handleContentResize = useCallback(() => {
+    // Re-measure visible items after DOM update (don't use virtualizer.measure()
+    // which clears ALL cached sizes and causes layout thrash)
+    const measureVisibleElement = (el: HTMLElement) => {
+      nav.virtualizer.measureElement(el);
+    };
+    const performMeasurements = () => {
+      nav.parentRef.current?.querySelectorAll<HTMLElement>('[data-index]').forEach(measureVisibleElement);
+    };
+    requestAnimationFrame(performMeasurements);
+  }, [nav]);
+
+  const findNodeName = useCallback((regionId: number): string => {
+    if (!tree) return '';
+    const walk = (nodes: MatchTreeNode[]): string => {
+      for (const n of nodes) {
+        if (n.id === regionId) return n.name;
+        const found = walk(n.children);
+        if (found) return found;
+      }
+      return '';
+    };
+    return walk(tree);
+  }, [tree]);
+
+  const handleManualFix = useCallback((regionId: number, needsManualFix: boolean) => {
+    if (needsManualFix) {
+      dialogs.setFixDialogState({ regionId, regionName: findNodeName(regionId) });
+    } else {
+      manualFixMutation.mutate({ regionId, needsManualFix: false });
+    }
+  }, [dialogs, findNodeName, manualFixMutation]);
+
+  const handleSuggestChildrenSubmit = useCallback(async () => {
+    if (!dialogs.suggestChildrenResult) return;
+    const { regionId: parentId, result, selected } = dialogs.suggestChildrenResult;
+    dialogs.setSuggestChildrenResult(null);
+
+    const promises: Promise<unknown>[] = [];
+    for (const key of selected) {
+      const colonIdx = key.indexOf(':');
+      const type = key.slice(0, colonIdx);
+      const name = key.slice(colonIdx + 1);
+      const action = result.actions.find(a => a.type === type && a.name === name);
+      if (!action) continue;
+      const promise = buildSuggestChildrenActionPromise(parentId, action);
+      if (promise) promises.push(promise);
+    }
+
+    const results = await Promise.allSettled(promises);
+    const failures = results.filter(r => r.status === 'rejected');
+    if (failures.length > 0) {
+      for (const f of failures) {
+        console.error('[AI Review Children] action failed:', (f as PromiseRejectedResult).reason);
+      }
+      alert(`AI Review Children: ${failures.length} of ${results.length} action(s) failed. See browser console for details. The tree will refresh to reflect the partial result.`);
+    }
+    invalidateTree(parentId);
+  }, [dialogs, buildSuggestChildrenActionPromise, invalidateTree]);
 
   // Compute which sourceUrls appear on multiple nodes (duplicates)
   // and which are already synced (same matchStatus and same division set)
@@ -556,106 +480,59 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
     return { duplicateUrls: dups, syncedUrls: synced };
   }, [tree]);
 
-  const toggleExpand = useCallback((id: number) => {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
-
-  const allBranchIds = useMemo(() => {
-    if (!tree) return new Set<number>();
-    const ids = new Set<number>();
-    function walk(nodes: MatchTreeNode[]) {
+  // Build maps from node ID -> direct parent's regionMapUrl and name (for fallback in preview)
+  const { parentRegionMapUrlById, parentRegionMapNameById } = useMemo(() => {
+    const urlMap = new Map<number, string>();
+    const nameMap = new Map<number, string>();
+    if (!tree) return { parentRegionMapUrlById: urlMap, parentRegionMapNameById: nameMap };
+    function walk(nodes: MatchTreeNode[], parentMapUrl: string | null, parentMapName: string | null) {
       for (const node of nodes) {
-        if (node.children.length > 0) {
-          ids.add(node.id);
-          walk(node.children);
-        }
+        if (parentMapUrl) urlMap.set(node.id, parentMapUrl);
+        if (parentMapName) nameMap.set(node.id, parentMapName);
+        // Only pass THIS node's own map to children — don't propagate inherited ancestor maps
+        walk(node.children, node.regionMapUrl ?? null, node.regionMapUrl ? node.name : null);
       }
     }
-    walk(tree);
-    return ids;
+    walk(tree, null, null);
+    return { parentRegionMapUrlById: urlMap, parentRegionMapNameById: nameMap };
   }, [tree]);
 
-  const expandAll = useCallback(() => {
-    skipAnimationRef.current = true;
-    setExpanded(new Set(allBranchIds));
-    requestAnimationFrame(() => { skipAnimationRef.current = false; });
-  }, [allBranchIds]);
-
-  const collapseAll = useCallback(() => {
-    skipAnimationRef.current = true;
-    setExpanded(new Set());
-    requestAnimationFrame(() => { skipAnimationRef.current = false; });
-  }, []);
-
-  const expandToUnresolved = useCallback(() => {
-    if (!tree) return;
-    skipAnimationRef.current = true;
-    setExpanded(collectAncestorsOfUnresolved(tree));
-    requestAnimationFrame(() => { skipAnimationRef.current = false; });
-  }, [tree]);
-
-  const expandToShadows = useCallback(() => {
-    if (!tree || !shadowInsertions?.length) return;
-    skipAnimationRef.current = true;
-    const targetIds = new Set(shadowInsertions.map(s => s.targetRegionId));
-    const ancestorIds = collectAncestorsOfIds(tree, targetIds);
-    setExpanded(new Set([...ancestorIds, ...targetIds]));
-    // Scroll to first target
-    requestAnimationFrame(() => {
-      skipAnimationRef.current = false;
-      setTimeout(() => {
-        const firstId = shadowInsertions[0].targetRegionId;
-        document.querySelector(`[data-region-id="${firstId}"]`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 100);
-    });
-  }, [tree, shadowInsertions]);
-
-  // Compute per-region shadow map
-  const shadowsByRegionId = useMemo(() => {
-    const map = new Map<number, ShadowInsertion[]>();
-    for (const s of shadowInsertions ?? []) {
-      const arr = map.get(s.targetRegionId) ?? [];
-      arr.push(s);
-      map.set(s.targetRegionId, arr);
+  // Render nav-category toolbar: either NavControls (when active) or a count button.
+  // Extracted to keep the component body's cognitive complexity under the cap.
+  const renderNavCategoryButton = (params: {
+    category: 'unresolved' | 'warnings' | 'single-child' | 'incomplete-coverage';
+    ids: ReadonlyArray<number>;
+    label: string;
+    icon: React.ReactNode;
+    buttonText: string;
+    buttonColor?: 'warning' | 'info' | 'secondary' | 'error' | 'inherit';
+    buttonSx?: { color: string };
+  }) => {
+    if (params.ids.length === 0) return null;
+    if (nav.activeNav?.category === params.category) {
+      return (
+        <NavControls
+          label={params.label}
+          idx={nav.activeNav.idx}
+          total={params.ids.length}
+          onPrev={() => nav.navigateTo(params.category, nav.activeNav!.idx - 1)}
+          onNext={() => nav.navigateTo(params.category, nav.activeNav!.idx + 1)}
+          onClose={() => nav.setActiveNav(null)}
+        />
+      );
     }
-    return map;
-  }, [shadowInsertions]);
-
-  // Auto-expand tree ancestors when shadow insertions appear
-  const prevShadowCount = useRef(0);
-  useEffect(() => {
-    if (!tree || !shadowInsertions?.length) {
-      prevShadowCount.current = 0;
-      return;
-    }
-    if (prevShadowCount.current === shadowInsertions.length) return;
-    prevShadowCount.current = shadowInsertions.length;
-
-    const targetIds = new Set(shadowInsertions.map(s => s.targetRegionId));
-    const ancestorIds = collectAncestorsOfIds(tree, targetIds);
-    // Also expand the target nodes themselves (for create_region, shadows appear as children)
-    setExpanded(prev => new Set([...prev, ...ancestorIds, ...targetIds]));
-
-    // Scroll to first target
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        const firstId = shadowInsertions[0].targetRegionId;
-        document.querySelector(`[data-region-id="${firstId}"]`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 100);
-    });
-  }, [tree, shadowInsertions]);
-
-  const isMutating = acceptMutation.isPending || rejectMutation.isPending || acceptAndRejectRestMutation.isPending || dismissMutation.isPending || simplifyHierarchyMutation.isPending || simplifyChildrenMutation.isPending || syncMutation.isPending || groupingMutation.isPending || geocodeMatchMutation.isPending || geoshapeMatchMutation.isPending || pointMatchMutation.isPending || resetMatchMutation.isPending || rejectRemainingMutation.isPending || acceptAllMutation.isPending || acceptTransferMutation.isPending || selectMapMutation.isPending || manualFixMutation.isPending;
+    return (
+      <Button
+        size="small"
+        startIcon={params.icon}
+        onClick={() => nav.navigateTo(params.category, 0)}
+        color={params.buttonColor}
+        sx={params.buttonSx}
+      >
+        {params.buttonText}
+      </Button>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -670,94 +547,186 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
   }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-        <Button size="small" startIcon={<ExpandAllIcon />} onClick={expandAll}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 250px)' }}>
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Button size="small" startIcon={<ExpandAllIcon />} onClick={nav.expandAll}>
           Expand All
         </Button>
-        <Button size="small" startIcon={<CollapseAllIcon />} onClick={collapseAll}>
+        <Button size="small" startIcon={<CollapseAllIcon />} onClick={nav.collapseAll}>
           Collapse All
         </Button>
-        <Button size="small" startIcon={<UnresolvedIcon />} onClick={expandToUnresolved} color="warning">
-          Show Unresolved
-        </Button>
+        {renderNavCategoryButton({
+          category: 'unresolved',
+          ids: nav.unresolvedIds,
+          label: 'unresolved',
+          icon: <UnresolvedIcon />,
+          buttonText: `${nav.unresolvedIds.length} Unresolved`,
+          buttonColor: 'warning',
+        })}
         {shadowInsertions && shadowInsertions.length > 0 && (
-          <Button size="small" startIcon={<GapsIcon />} onClick={expandToShadows} color="info">
+          <Button size="small" startIcon={<GapsIcon />} onClick={nav.expandToShadows} color="info">
             Show {shadowInsertions.length} Gap{shadowInsertions.length !== 1 ? 's' : ''} to Review
           </Button>
         )}
+        {renderNavCategoryButton({
+          category: 'warnings',
+          ids: nav.warningIds,
+          label: 'warnings',
+          icon: <WarningIcon />,
+          buttonText: `${nav.warningIds.length} Hierarchy Warning${nav.warningIds.length !== 1 ? 's' : ''}`,
+          buttonSx: { color: 'warning.main' },
+        })}
+        {renderNavCategoryButton({
+          category: 'single-child',
+          ids: nav.singleChildIds,
+          label: 'single-child',
+          icon: <SingleChildIcon />,
+          buttonText: `${nav.singleChildIds.length} Single-Child`,
+          buttonColor: 'secondary',
+        })}
+        {renderNavCategoryButton({
+          category: 'incomplete-coverage',
+          ids: nav.incompleteCoverageIds,
+          label: 'incomplete coverage',
+          icon: <CoverageIcon />,
+          buttonText: `${nav.incompleteCoverageIds.length} Incomplete Coverage`,
+          buttonColor: 'error',
+        })}
+        <Button
+          size="small"
+          startIcon={dialogs.reviewLoading ? <CircularProgress size={14} /> : <ReviewIcon />}
+          onClick={() => dialogs.handleReview()}
+          disabled={!!dialogs.reviewLoading}
+        >
+          AI Review
+        </Button>
       </Box>
-      {tree.map(node => (
-        <TreeNodeRow
-          key={node.id}
-          node={node}
-          depth={0}
-          expanded={expanded}
-          ancestorIsMatched={false}
-          onToggle={toggleExpand}
-          onAccept={(regionId, divisionId) => acceptMutation.mutate({ regionId, divisionId })}
-          onAcceptTransfer={onAcceptTransfer}
-          onAcceptAndRejectRest={(regionId, divisionId) => acceptAndRejectRestMutation.mutate({ regionId, divisionId })}
-          onReject={(regionId, divisionId) => rejectMutation.mutate({ regionId, divisionId })}
-          onDBSearch={(regionId) => dbSearchOneMutation.mutate(regionId)}
-          onAIMatch={(regionId) => aiMatchOneMutation.mutate(regionId)}
-          onDismissChildren={(regionId) => dismissMutation.mutate(regionId)}
-          onSimplifyHierarchy={(regionId) => simplifyHierarchyMutation.mutate(regionId)}
-          onSimplifyChildren={(regionId) => simplifyChildrenMutation.mutate(regionId)}
-          onSmartSimplify={handleSmartSimplify}
-          onAISuggestChildren={handleAIReviewChildren}
-          aiSuggestingRegionId={aiSuggestingRegionId}
-          onCVMatch={handleCVMatch}
-          cvMatchingRegionId={cvMatchingRegionId}
-          onMapshapeMatch={handleMapshapeMatch}
-          mapshapeMatchingRegionId={mapshapeMatchingRegionId}
-          onSync={(regionId) => syncMutation.mutate(regionId)}
-          onHandleAsGrouping={(regionId) => groupingMutation.mutate(regionId)}
-          onGeocodeMatch={(regionId) => geocodeMatchMutation.mutate(regionId)}
-          onGeoshapeMatch={(regionId, scopeAncestorId) => geoshapeMatchMutation.mutate({ regionId, scopeAncestorId })}
-          onPointMatch={(regionId, scopeAncestorId) => pointMatchMutation.mutate({ regionId, scopeAncestorId })}
-          onResetMatch={(regionId) => resetMatchMutation.mutate(regionId)}
-          onRejectRemaining={(regionId) => rejectRemainingMutation.mutate(regionId)}
-          onAcceptAll={(assignments) => acceptAllMutation.mutate(assignments)}
-          onPreview={onPreview}
-          onPreviewTransfer={onPreviewTransfer}
-          onOpenMapPicker={handleOpenMapPicker}
-          onManualFix={(regionId, needsManualFix) => {
-            if (needsManualFix) {
-              // Find the node name for the dialog title
-              const findName = (nodes: MatchTreeNode[]): string => {
-                for (const n of nodes) {
-                  if (n.id === regionId) return n.name;
-                  const found = findName(n.children);
-                  if (found) return found;
-                }
-                return '';
-              };
-              setFixDialogState({ regionId, regionName: findName(tree!) });
-            } else {
-              manualFixMutation.mutate({ regionId, needsManualFix: false });
-            }
-          }}
-          isMutating={isMutating}
-          dbSearchingRegionId={dbSearchOneMutation.isPending ? (dbSearchOneMutation.variables ?? null) : null}
-          aiMatchingRegionId={aiMatchOneMutation.isPending ? (aiMatchOneMutation.variables ?? null) : null}
-          dismissingRegionId={dismissMutation.isPending ? (dismissMutation.variables ?? null) : null}
-          simplifyingRegionId={simplifyHierarchyMutation.isPending ? (simplifyHierarchyMutation.variables ?? null) : null}
-          simplifyingChildrenRegionId={simplifyChildrenMutation.isPending ? (simplifyChildrenMutation.variables ?? null) : null}
-          syncingRegionId={syncMutation.isPending ? (syncMutation.variables ?? null) : null}
-          groupingRegionId={groupingMutation.isPending ? (groupingMutation.variables ?? null) : null}
-          geocodeMatchingRegionId={geocodeMatchMutation.isPending ? (geocodeMatchMutation.variables ?? null) : null}
-          geoshapeMatchingRegionId={geoshapeMatchMutation.isPending ? (geoshapeMatchMutation.variables?.regionId ?? null) : null}
-          pointMatchingRegionId={pointMatchMutation.isPending ? (pointMatchMutation.variables?.regionId ?? null) : null}
-          geocodeProgress={geocodeProgress}
-          duplicateUrls={duplicateUrls}
-          syncedUrls={syncedUrls}
-          shadowsByRegionId={shadowsByRegionId}
-          onApproveShadow={onApproveShadow}
-          onRejectShadow={onRejectShadow}
-          skipAnimationRef={skipAnimationRef}
-        />
-      ))}
+
+      {/* Virtualized scroll container */}
+      <Box ref={nav.parentRef} sx={{ flex: 1, overflow: 'auto' }}>
+        <Box sx={{ height: nav.virtualizer.getTotalSize(), position: 'relative' }}>
+          {nav.virtualizer.getVirtualItems().map(virtualRow => {
+            const item = nav.flatItems[virtualRow.index];
+            return (
+              <Box
+                key={virtualRow.key}
+                ref={nav.virtualizer.measureElement}
+                data-index={virtualRow.index}
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                {item.kind === 'node' ? (
+                  <TreeNodeRow
+                    node={item.node}
+                    depth={item.depth}
+                    expanded={nav.expanded}
+                    ancestorIsMatched={item.ancestorIsMatched}
+                    highlightedRegionId={nav.highlightedRegionId}
+                    onToggle={nav.toggleExpand}
+                    onAccept={handleAccept}
+                    onAcceptTransfer={onAcceptTransfer}
+                    onAcceptAndRejectRest={handleAcceptAndRejectRest}
+                    onReject={handleReject}
+                    onDBSearch={handleDBSearch}
+                    onAIMatch={handleAIMatch}
+                    onDismissChildren={handleDismissChildren}
+                    onSync={handleSync}
+                    onHandleAsGrouping={handleHandleAsGrouping}
+                    onGeocodeMatch={handleGeocodeMatch}
+                    onGeoshapeMatch={handleGeoshapeMatch}
+                    onPointMatch={handlePointMatch}
+                    onResetMatch={handleResetMatch}
+                    onRejectRemaining={handleRejectRemaining}
+                    onAcceptAll={handleAcceptAll}
+                    onPreviewUnion={onPreviewUnion}
+                    onPreviewTransfer={onPreviewTransfer}
+                    onAcceptSelected={handleAcceptSelected}
+                    onAcceptSelectedRejectRest={handleAcceptSelectedRejectRest}
+                    onRejectSelected={handleRejectSelected}
+                    onPreview={onPreview}
+                    onOpenMapPicker={handleOpenMapPicker}
+                    onMergeChild={handleMergeChild}
+                    mergingRegionId={pendingIds.mergingRegionId}
+                    onSmartFlatten={dialogs.handleSmartFlatten}
+                    flatteningRegionId={pendingIds.flatteningRegionId}
+                    onDismissHierarchyWarnings={handleDismissHierarchyWarnings}
+                    onAddChild={dialogs.handleAddChild}
+                    onRemoveRegion={dialogs.handleRemoveRegion}
+                    removingRegionId={pendingIds.removingRegionId}
+                    onCollapseToParent={handleCollapseToParent}
+                    collapsingRegionId={pendingIds.collapsingRegionId}
+                    onAutoResolve={handleAutoResolve}
+                    autoResolvingRegionId={pendingIds.autoResolvingRegionId}
+                    onReviewSubtree={handleReviewSubtree}
+                    reviewingRegionId={pendingIds.reviewingRegionId}
+                    onRename={handleRename}
+                    renamingRegionId={renamingRegionId}
+                    onReparent={handleReparent}
+                    reparentingRegionId={reparentingRegionId}
+                    onAISuggestChildren={dialogs.handleAISuggestChildren}
+                    aiSuggestingRegionId={dialogs.aiSuggestingRegionId}
+                    onManualDivisionSearch={dialogs.handleManualDivisionSearch}
+                    onPruneToLeaves={handlePruneToLeaves}
+                    pruningRegionId={pendingIds.pruningRegionId}
+                    onViewMap={onViewMap}
+                    onCVMatch={cvPipeline.handleCVMatch}
+                    cvMatchingRegionId={cvPipeline.cvMatchingRegionId}
+                    onMapshapeMatch={cvPipeline.handleMapshapeMatch}
+                    mapshapeMatchingRegionId={cvPipeline.mapshapeMatchingRegionId}
+                    onClearMembers={handleClearMembers}
+                    clearingMembersRegionId={pendingIds.clearingMembersRegionId}
+                    onSimplifyHierarchy={handleSimplifyHierarchy}
+                    simplifyingRegionId={pendingIds.simplifyingRegionId}
+                    onSimplifyChildren={handleSimplifyChildren}
+                    simplifyingChildrenRegionId={pendingIds.simplifyingChildrenRegionId}
+                    onSmartSimplify={dialogs.handleSmartSimplify}
+                    onCheckOverlap={handleCheckOverlap}
+                    checkingOverlapRegionId={pendingIds.checkingOverlapRegionId}
+                    coverageData={coverageData?.coverage}
+                    coverageLoading={coverageLoading}
+                    coverageDirtyIds={coverageDirtyIds}
+                    onCoverageClick={dialogs.handleCoverageClick}
+                    onContentResize={handleContentResize}
+                    onManualFix={handleManualFix}
+                    isMutating={isMutating}
+                    dbSearchingRegionId={pendingIds.dbSearchingRegionId}
+                    aiMatchingRegionId={pendingIds.aiMatchingRegionId}
+                    dismissingRegionId={pendingIds.dismissingRegionId}
+                    syncingRegionId={pendingIds.syncingRegionId}
+                    groupingRegionId={pendingIds.groupingRegionId}
+                    geocodeMatchingRegionId={pendingIds.geocodeMatchingRegionId}
+                    geoshapeMatchingRegionId={pendingIds.geoshapeMatchingRegionId}
+                    pointMatchingRegionId={pendingIds.pointMatchingRegionId}
+                    parentRegionMapUrl={parentRegionMapUrlById.get(item.node.id)}
+                    parentRegionMapName={parentRegionMapNameById.get(item.node.id)}
+                    geocodeProgress={geocodeProgress}
+                    duplicateUrls={duplicateUrls}
+                    syncedUrls={syncedUrls}
+                    shadowsByRegionId={nav.shadowsByRegionId}
+                    onApproveShadow={onApproveShadow}
+                    onRejectShadow={onRejectShadow}
+                  />
+                ) : (
+                  <ShadowCreateRow
+                    shadow={item.shadow}
+                    depth={item.depth}
+                    onApproveShadow={onApproveShadow}
+                    onRejectShadow={onRejectShadow}
+                    isMutating={isMutating}
+                  />
+                )}
+              </Box>
+            );
+          })}
+        </Box>
+      </Box>
+
+      {/* Dialogs rendered outside the scroll container */}
       {mapPickerState && (
         <MapImagePickerDialog
           open
@@ -787,213 +756,177 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
           </Button>
         }
       />
+      <Snackbar
+        open={simplifySnackbar !== null}
+        autoHideDuration={simplifySnackbar && simplifySnackbar.includes('\n') ? 15000 : 6000}
+        onClose={() => setSimplifySnackbar(null)}
+        message={simplifySnackbar}
+        slotProps={{ content: { sx: { whiteSpace: 'pre-line', maxWidth: 600 } } }}
+      />
       <ManualFixDialog
-        state={fixDialogState}
-        onClose={() => setFixDialogState(null)}
+        state={dialogs.fixDialogState}
+        onClose={() => dialogs.setFixDialogState(null)}
         onSubmit={(regionId, note) => manualFixMutation.mutate({ regionId, needsManualFix: true, fixNote: note })}
         isPending={manualFixMutation.isPending}
       />
-      {smartSimplifyDialog && (
+      <RemoveRegionDialog
+        state={removeDialogState}
+        onClose={() => setRemoveDialogState(null)}
+        onConfirm={(regionId, reparentChildren, reparentDivisions) => removeMutation.mutate({ regionId, reparentChildren, reparentDivisions })}
+        isPending={removeMutation.isPending}
+      />
+      {/* CV color match dialog with SSE progress + suggestions */}
+      <CvMatchDialog
+        cvMatchDialog={cvPipeline.cvMatchDialog}
+        setCVMatchDialog={cvPipeline.setCVMatchDialog}
+        onClose={() => cvPipeline.cancelCvMatch()}
+        highlightClusterId={cvPipeline.highlightClusterId}
+        setHighlightClusterId={cvPipeline.setHighlightClusterId}
+        worldViewId={worldViewId}
+        invalidateTree={invalidateTree}
+        aiModelOverride={cvPipeline.aiModelOverride}
+        setAiModelOverride={cvPipeline.setAiModelOverride}
+        modelPickerOpen={cvPipeline.modelPickerOpen}
+        setModelPickerOpen={cvPipeline.setModelPickerOpen}
+        modelPickerModels={cvPipeline.modelPickerModels}
+        setModelPickerModels={cvPipeline.setModelPickerModels}
+        modelPickerGlobal={cvPipeline.modelPickerGlobal}
+        setModelPickerGlobal={cvPipeline.setModelPickerGlobal}
+        modelPickerSelected={cvPipeline.modelPickerSelected}
+        setModelPickerSelected={cvPipeline.setModelPickerSelected}
+      />
+      <AddChildDialog
+        parentRegionId={dialogs.addChildDialogRegionId}
+        name={dialogs.addChildName}
+        onNameChange={dialogs.setAddChildName}
+        onClose={() => { dialogs.setAddChildDialogRegionId(null); dialogs.setAddChildName(''); }}
+        onSubmit={() => {
+          if (dialogs.addChildDialogRegionId && dialogs.addChildName.trim()) {
+            addChildMutation.mutate({ parentRegionId: dialogs.addChildDialogRegionId, name: dialogs.addChildName.trim() });
+            dialogs.setAddChildDialogRegionId(null);
+            dialogs.setAddChildName('');
+          }
+        }}
+        isPending={addChildMutation.isPending}
+      />
+      <SmartFlattenPreviewDialog
+        open={dialogs.flattenPreview != null}
+        regionName={dialogs.flattenPreview?.regionName ?? ''}
+        geometry={dialogs.flattenPreview?.geometry ?? null}
+        regionMapUrl={dialogs.flattenPreview?.regionMapUrl ?? null}
+        descendants={dialogs.flattenPreview?.descendants ?? 0}
+        divisions={dialogs.flattenPreview?.divisions ?? 0}
+        onConfirm={() => {
+          if (dialogs.flattenPreview) {
+            smartFlattenMutation.mutate(dialogs.flattenPreview.regionId);
+            dialogs.setFlattenPreview(null);
+          }
+        }}
+        onCancel={() => dialogs.setFlattenPreview(null)}
+        confirming={smartFlattenMutation.isPending}
+      />
+      {dialogs.smartSimplifyDialog && (
         <SmartSimplifyDialog
           open
-          onClose={() => setSmartSimplifyDialog(null)}
+          onClose={() => dialogs.setSmartSimplifyDialog(null)}
           worldViewId={worldViewId}
-          parentRegionId={smartSimplifyDialog.regionId}
-          parentRegionName={smartSimplifyDialog.regionName}
-          regionMapUrl={smartSimplifyDialog.regionMapUrl}
-          onApplied={() => invalidateTree()}
+          parentRegionId={dialogs.smartSimplifyDialog.regionId}
+          parentRegionName={dialogs.smartSimplifyDialog.regionName}
+          regionMapUrl={dialogs.smartSimplifyDialog.regionMapUrl}
+          onApplied={() => invalidateTree(dialogs.smartSimplifyDialog?.regionId)}
         />
       )}
-
-      <CvMatchDialog
-        cvMatchDialog={cvMatchDialog}
-        setCVMatchDialog={setCVMatchDialog}
-        onClose={cancelCvMatch}
+      {overlapDialog && (
+        <OverlapResolutionDialog
+          open
+          onClose={() => setOverlapDialog(null)}
+          worldViewId={worldViewId}
+          parentRegionId={overlapDialog.regionId}
+          parentRegionName={overlapDialog.regionName}
+          regionMapUrl={overlapDialog.regionMapUrl}
+          overlapData={overlapDialog.data}
+          onApplied={() => invalidateTree(overlapDialog.regionId)}
+        />
+      )}
+      <AISuggestChildrenDialog
+        state={dialogs.suggestChildrenResult}
+        onClose={() => dialogs.setSuggestChildrenResult(null)}
+        onToggle={(key) => {
+          dialogs.setSuggestChildrenResult(prev => {
+            if (!prev) return prev;
+            const next = new Set(prev.selected);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return { ...prev, selected: next };
+          });
+        }}
+        onSubmit={handleSuggestChildrenSubmit}
+        isPending={false}
       />
-
-      {/* AI Review Children dialog */}
-      {aiReviewDialog && (
-        <AIReviewChildrenDialog
-          state={aiReviewDialog}
-          onClose={() => setAIReviewDialog(null)}
-          onToggle={(key) => {
-            setAIReviewDialog(prev => {
-              if (!prev) return prev;
-              const next = new Set(prev.selected);
-              if (next.has(key)) next.delete(key);
-              else next.add(key);
-              return { ...prev, selected: next };
-            });
-          }}
-          onSubmit={async () => {
-            if (!aiReviewDialog) return;
-            const { regionId: parentId, result, selected } = aiReviewDialog;
-            setAIReviewDialog(null);
-
-            // Batch all API calls, then invalidate once
-            const promises: Promise<unknown>[] = [];
-            for (const key of selected) {
-              const colonIdx = key.indexOf(':');
-              const type = key.slice(0, colonIdx);
-              const name = key.slice(colonIdx + 1);
-              const action = result.actions.find((a: ReviewChildAction) => a.type === type && a.name === name);
-              if (!action) continue;
-
-              if (action.type === 'add') {
-                promises.push(addChildRegion(
-                  worldViewId, parentId, action.name,
-                  action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
-                ));
-              } else if (action.type === 'remove') {
-                const childId = tree ? findChildIdByName(tree, parentId, action.name) : undefined;
-                if (childId) {
-                  // Reparent both children AND assigned GADM divisions up to the parent;
-                  // otherwise CASCADE would silently delete `region_members` rows the admin
-                  // had already accepted.
-                  promises.push(removeRegionFromImport(worldViewId, childId, true, true));
-                }
-              } else if (action.type === 'rename') {
-                const childId = tree ? findChildIdByName(tree, parentId, action.name) : undefined;
-                if (childId) {
-                  promises.push(renameRegion(
-                    worldViewId, childId, action.newName ?? action.name,
-                    action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
-                  ));
-                }
-              }
-            }
-
-            const results = await Promise.allSettled(promises);
-            const failures = results.filter(r => r.status === 'rejected');
-            if (failures.length > 0) {
-              for (const f of failures) {
-                console.error('[AI Review Children] action failed:', (f as PromiseRejectedResult).reason);
-              }
-              alert(`AI Review Children: ${failures.length} of ${results.length} action(s) failed. See browser console for details. The tree will refresh to reflect the partial result.`);
-            }
-            invalidateTree();
-          }}
+      <CoverageCompareDialog
+        data={dialogs.coverageCompare}
+        onClose={() => dialogs.setCoverageCompare(null)}
+        onAnalyzeGaps={dialogs.handleAnalyzeGaps}
+      />
+      {dialogs.gapAnalysis && (
+        <GapAnalysisDialog
+          state={dialogs.gapAnalysis}
+          tree={tree}
+          worldViewId={worldViewId}
+          highlightedGapId={dialogs.highlightedGapId}
+          setHighlightedGapId={dialogs.setHighlightedGapId}
+          gapMapSelectedRegionId={dialogs.gapMapSelectedRegionId}
+          setGapMapSelectedRegionId={dialogs.setGapMapSelectedRegionId}
+          onClose={() => { dialogs.setGapAnalysis(null); dialogs.setGapMapSelectedRegionId(null); invalidateTree(); }}
+          setLastMutatedRegionId={setLastMutatedRegionId}
+          acceptAllMutation={acceptAllMutation}
+          addChildMutation={addChildMutation}
+          isMutating={isMutating}
         />
       )}
+      <DivisionSearchDialog
+        state={dialogs.divisionSearchDialog}
+        onClose={() => dialogs.setDivisionSearchDialog(null)}
+        onSelect={(divisionId) => {
+          if (dialogs.divisionSearchDialog) {
+            setLastMutatedRegionId(dialogs.divisionSearchDialog.regionId);
+            acceptAllMutation.mutate([{
+              regionId: dialogs.divisionSearchDialog.regionId,
+              divisionId,
+            }]);
+            dialogs.setDivisionSearchDialog(null);
+          }
+        }}
+        query={dialogs.divSearchQuery}
+        results={dialogs.divSearchResults}
+        loading={dialogs.divSearchLoading}
+        onInputChange={dialogs.handleDivSearchInput}
+      />
+      <RenameRegionDialog
+        state={dialogs.renameDialog}
+        onClose={() => dialogs.setRenameDialog(null)}
+        onSubmit={dialogs.handleRenameSubmit}
+        onNameChange={(value) => dialogs.setRenameDialog(prev => prev ? { ...prev, newName: value } : prev)}
+      />
+      <ReparentRegionDialog
+        state={dialogs.reparentDialog}
+        onClose={() => dialogs.setReparentDialog(null)}
+        onSubmit={dialogs.handleReparentSubmit}
+        onParentChange={(parentId) => dialogs.setReparentDialog(prev => prev ? { ...prev, selectedParentId: parentId } : prev)}
+        flatRegionList={dialogs.flatRegionList}
+      />
+      {/* AI Hierarchy Review Drawer */}
+      <AIReviewDrawer
+        activeReviewKey={dialogs.activeReviewKey}
+        setActiveReviewKey={dialogs.setActiveReviewKey}
+        reviewReports={dialogs.reviewReports}
+        setReviewReports={dialogs.setReviewReports}
+        reviewLoading={dialogs.reviewLoading}
+        handleReview={dialogs.handleReview}
+        regionNameRegex={dialogs.regionNameRegex}
+        regionNameToId={dialogs.regionNameToId}
+        navigateToRegion={nav.navigateToRegion}
+      />
     </Box>
-  );
-}
-
-/** Dialog showing AI-reviewed children actions grouped by type */
-function AIReviewChildrenDialog({ state, onClose, onToggle, onSubmit }: {
-  state: {
-    regionId: number;
-    regionName: string;
-    result: AIReviewChildrenResult;
-    selected: Set<string>;
-  };
-  onClose: () => void;
-  onToggle: (key: string) => void;
-  onSubmit: () => void;
-}) {
-  const addActions = state.result.actions.filter((a: ReviewChildAction) => a.type === 'add');
-  const removeActions = state.result.actions.filter((a: ReviewChildAction) => a.type === 'remove');
-  const renameActions = state.result.actions.filter((a: ReviewChildAction) => a.type === 'rename');
-
-  const renderEnrichment = (action: ReviewChildAction) => {
-    if (action.type === 'remove' || !action.verified) return null;
-    return (
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-        {action.sourceUrl && (
-          <Typography variant="caption" color="text.secondary">
-            <LinkIcon sx={{ fontSize: 12, mr: 0.25, verticalAlign: 'middle' }} />
-            <MuiLink href={action.sourceUrl} target="_blank" rel="noopener" sx={{ fontSize: 'inherit' }}>
-              {decodeURIComponent(action.sourceUrl.split('/wiki/')[1] ?? '')}
-            </MuiLink>
-          </Typography>
-        )}
-        {action.sourceExternalId && (
-          <Typography variant="caption" color="text.secondary">
-            <MuiLink
-              href={`https://www.wikidata.org/wiki/${action.sourceExternalId}`}
-              target="_blank"
-              rel="noopener"
-              sx={{ fontSize: 'inherit' }}
-            >
-              {action.sourceExternalId}
-            </MuiLink>
-          </Typography>
-        )}
-      </Box>
-    );
-  };
-
-  const renderSection = (
-    title: string,
-    actions: ReviewChildAction[],
-    color: string,
-  ) => {
-    if (actions.length === 0) return null;
-    return (
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle2" color={color} sx={{ mb: 0.5 }}>
-          {title} ({actions.length})
-        </Typography>
-        {actions.map((a) => {
-          const key = `${a.type}:${a.name}`;
-          return (
-            <Box key={key} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, py: 0.5 }}>
-              <Checkbox
-                size="small"
-                checked={state.selected.has(key)}
-                onChange={() => onToggle(key)}
-                sx={{ p: 0.25, mt: 0.25 }}
-              />
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="body2">
-                  {a.type === 'rename' ? (
-                    <>{a.name} <ArrowForwardIcon sx={{ fontSize: 14, verticalAlign: 'middle', mx: 0.5 }} /> {a.newName}</>
-                  ) : (
-                    a.name
-                  )}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">{a.reason}</Typography>
-                {renderEnrichment(a)}
-              </Box>
-            </Box>
-          );
-        })}
-      </Box>
-    );
-  };
-
-  return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Review Children for &quot;{state.regionName}&quot;</DialogTitle>
-      <DialogContent>
-        {state.result.analysis && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {state.result.analysis}
-          </Typography>
-        )}
-        {state.result.actions.length === 0 && (
-          <Typography variant="body2">All children look correct — no changes suggested.</Typography>
-        )}
-        {renderSection('Add', addActions, 'success.main')}
-        {renderSection('Remove', removeActions, 'error.main')}
-        {renderSection('Rename', renameActions, 'warning.main')}
-        {state.result.stats && (
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-            {(state.result.stats.inputTokens + state.result.stats.outputTokens).toLocaleString()} tokens
-            {' · '}${state.result.stats.cost.toFixed(4)}
-          </Typography>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          variant="contained"
-          disabled={!state.selected.size}
-          onClick={onSubmit}
-        >
-          Apply {state.selected.size} Selected
-        </Button>
-      </DialogActions>
-    </Dialog>
   );
 }
