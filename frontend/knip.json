@@ -3,13 +3,8 @@
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": [
     "src/dev/**",
-    "src/utils/spatialAnomalyDetector.ts",
-    "src/components/admin/ClusterPaintEditor.tsx",
-    "src/components/admin/AIReviewDrawer.tsx",
-    "src/components/admin/AISettingsPanel.tsx",
-    "src/components/admin/ExtractionRulesPanel.tsx",
-    "src/components/admin/importTreeLinkify.tsx"
+    "src/components/admin/ClusterPaintEditor.tsx"
   ],
-  "ignoreDependencies": ["@react-buddy/ide-toolbox", "globals", "@vitest/coverage-v8", "react-markdown"],
+  "ignoreDependencies": ["@react-buddy/ide-toolbox", "globals", "@vitest/coverage-v8"],
   "ignoreExportsUsedInFile": true
 }
