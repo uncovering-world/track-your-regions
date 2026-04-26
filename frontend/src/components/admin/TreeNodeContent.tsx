@@ -24,7 +24,7 @@ function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }:
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
       <CheckIcon sx={{ fontSize: 14, color: 'success.main' }} />
-      <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
         {div.path || div.name}
       </Typography>
       <Tooltip title="Preview on map">
@@ -42,27 +42,60 @@ function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }:
 }
 
 /** Render a suggestion with accept + reject + preview buttons */
-function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, onReject, onPreview, isMutating }: {
-  suggestion: { divisionId: number; name: string; path: string; score: number };
+function SuggestionRow({ suggestion, regionId, onAccept, onAcceptAndRejectRest, onReject, onPreview, onPreviewTransfer, isMutating }: {
+  suggestion: { divisionId: number; name: string; path: string; score: number; geoSimilarity?: number | null; conflict?: { type: 'direct' | 'split'; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string } };
   regionId: number;
   onAccept: (regionId: number, divisionId: number) => void;
   onAcceptAndRejectRest: (regionId: number, divisionId: number) => void;
   onReject: (regionId: number, divisionId: number) => void;
   onPreview: (divisionId: number, name: string, path?: string) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[]) => void;
   isMutating: boolean;
 }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
         {suggestion.path || suggestion.name}
       </Typography>
+      {suggestion.conflict && (
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'warning.main',
+            fontSize: '0.6rem',
+            whiteSpace: 'nowrap',
+            border: '1px solid',
+            borderColor: 'warning.main',
+            borderRadius: 0.5,
+            px: 0.5,
+            lineHeight: 1.4,
+          }}
+        >
+          from {suggestion.conflict.donorRegionName}
+          {suggestion.conflict.type === 'split' ? ` (split ${suggestion.conflict.donorDivisionName})` : ''}
+        </Typography>
+      )}
       <Tooltip title="Preview on map">
-        <IconButton size="small" onClick={() => onPreview(suggestion.divisionId, suggestion.name, suggestion.path)} sx={{ p: 0.25 }}>
+        <IconButton size="small" onClick={() => {
+          if (suggestion.conflict && onPreviewTransfer) {
+            onPreviewTransfer(suggestion.divisionId, suggestion.name, suggestion.path, suggestion.conflict);
+          } else {
+            onPreview(suggestion.divisionId, suggestion.name, suggestion.path);
+          }
+        }} sx={{ p: 0.25 }}>
           <MapIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
-      <Tooltip title="Accept">
-        <IconButton size="small" color="success" onClick={() => onAccept(regionId, suggestion.divisionId)} disabled={isMutating} sx={{ p: 0.25 }}>
+      <Tooltip title={suggestion.conflict ? `Preview transfer from ${suggestion.conflict.donorRegionName}` : 'Accept'}>
+        <IconButton size="small" color="success" onClick={() => {
+          // Conflict accepts must go through the Transfer Preview Dialog so the admin
+          // sees what they're moving before the destructive transfer is committed.
+          if (suggestion.conflict && onPreviewTransfer) {
+            onPreviewTransfer(suggestion.divisionId, suggestion.name, suggestion.path, suggestion.conflict);
+          } else {
+            onAccept(regionId, suggestion.divisionId);
+          }
+        }} disabled={isMutating} sx={{ p: 0.25 }}>
           <CheckIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
@@ -99,7 +132,7 @@ function ShadowMemberRow({ shadow, onApprove, onReject, isMutating }: {
       py: 0.25,
       borderRadius: '0 4px 4px 0',
     }}>
-      <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
         {shadow.gapDivisionName}
       </Typography>
       <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.6rem', flexShrink: 0 }}>
@@ -132,6 +165,7 @@ interface TreeNodeContentProps {
   onAcceptAll: (assignments: Array<{ regionId: number; divisionId: number }>) => void;
   handlePreviewAssigned: (divisionId: number, name: string, path?: string) => void;
   handlePreviewSuggestion: (divisionId: number, name: string, path?: string) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[]) => void;
   onApproveShadow?: (insertion: ShadowInsertion) => void;
   onRejectShadow?: (insertion: ShadowInsertion) => void;
   isMutating: boolean;
@@ -150,6 +184,7 @@ export function TreeNodeContent({
   onAcceptAll,
   handlePreviewAssigned,
   handlePreviewSuggestion,
+  onPreviewTransfer,
   onApproveShadow,
   onRejectShadow,
   isMutating,
@@ -189,6 +224,7 @@ export function TreeNodeContent({
               onAcceptAndRejectRest={onAcceptAndRejectRest}
               onReject={onReject}
               onPreview={handlePreviewSuggestion}
+              onPreviewTransfer={onPreviewTransfer}
               isMutating={isMutating}
             />
           ))}
@@ -197,11 +233,18 @@ export function TreeNodeContent({
               size="small"
               variant="text"
               color="success"
-              onClick={() => onAcceptAll(node.suggestions.map(s => ({ regionId: node.id, divisionId: s.divisionId })))}
+              onClick={() => {
+                const conflictSuggestion = node.suggestions.find(s => s.conflict);
+                if (conflictSuggestion?.conflict && onPreviewTransfer) {
+                  onPreviewTransfer(conflictSuggestion.divisionId, conflictSuggestion.name, conflictSuggestion.path, conflictSuggestion.conflict, node.id, node.suggestions.map(s => s.divisionId));
+                } else {
+                  onAcceptAll(node.suggestions.map(s => ({ regionId: node.id, divisionId: s.divisionId })));
+                }
+              }}
               disabled={isMutating}
               sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}
             >
-              Accept all {node.suggestions.length}
+              {node.suggestions.some(s => s.conflict) ? `Preview transfer (${node.suggestions.length})` : `Accept all ${node.suggestions.length}`}
             </Button>
           )}
           {node.suggestions.length > 0 && (

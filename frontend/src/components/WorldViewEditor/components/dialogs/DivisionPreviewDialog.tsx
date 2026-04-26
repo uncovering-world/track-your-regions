@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -25,7 +25,8 @@ interface PreviewDivision {
 
 interface DivisionPreviewDialogProps {
   division: PreviewDivision | null;
-  geometry: GeoJSON.Geometry | null;
+  /** GADM division geometry, or a role-tagged FeatureCollection for transfer preview */
+  geometry: GeoJSON.Geometry | GeoJSON.FeatureCollection | null;
   loading: boolean;
   onClose: () => void;
   /** Region map image URL for side-by-side comparison */
@@ -40,6 +41,8 @@ interface DivisionPreviewDialogProps {
   onAcceptAndRejectRest?: () => void;
   /** Whether accept/reject actions are in progress */
   actionPending?: boolean;
+  /** Override label for the Accept button (default: "Accept") */
+  acceptLabel?: string;
   /** Marker points extracted from Wikivoyage article (shown when no geoshape/image) */
   markerPoints?: Array<{ name: string; lat: number; lon: number }>;
 }
@@ -55,6 +58,7 @@ export function DivisionPreviewDialog({
   onReject,
   onAcceptAndRejectRest,
   actionPending,
+  acceptLabel,
   markerPoints,
 }: DivisionPreviewDialogProps) {
   const mapRef = useRef<MapRef>(null);
@@ -81,9 +85,25 @@ export function DivisionPreviewDialog({
     return () => { stale = true; };
   }, [division, regionMapUrl, wikidataId]);
 
-  const hasImageSideBySide = !!regionMapUrl;
-  const hasGeoshapeSideBySide = !regionMapUrl && !!wikidataId && !geoshapeError;
-  const hasMarkerPointsSideBySide = !regionMapUrl && (!wikidataId || geoshapeError) && !!markerPoints && markerPoints.length > 0;
+  // Detect transfer preview: a FeatureCollection with role-tagged features
+  const isTransferPreview = geometry != null
+    && 'type' in geometry && geometry.type === 'FeatureCollection'
+    && (geometry as GeoJSON.FeatureCollection).features.some(f => f.properties?.role === 'donor');
+
+  const transferData = useMemo(() => {
+    if (!isTransferPreview) return null;
+    const fc = geometry as GeoJSON.FeatureCollection;
+    return {
+      donor: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'donor') },
+      moving: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'moving') },
+      outline: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'target_outline') },
+      bounds: turf.bbox(fc) as [number, number, number, number],
+    };
+  }, [isTransferPreview, geometry]);
+
+  const hasImageSideBySide = !isTransferPreview && !!regionMapUrl;
+  const hasGeoshapeSideBySide = !isTransferPreview && !regionMapUrl && !!wikidataId && !geoshapeError;
+  const hasMarkerPointsSideBySide = !isTransferPreview && !regionMapUrl && (!wikidataId || geoshapeError) && !!markerPoints && markerPoints.length > 0;
   const hasSideBySide = hasImageSideBySide || hasGeoshapeSideBySide || hasMarkerPointsSideBySide;
 
   // Build GeoJSON FeatureCollection for marker points
@@ -252,81 +272,127 @@ export function DivisionPreviewDialog({
             </Box>
           )}
 
-          {/* GADM division map (right side, or full width if no WV image/geoshape) */}
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <CircularProgress />
+          {/* Transfer preview map — full-width 3-layer map (donor/moving/target_outline) */}
+          {isTransferPreview && transferData && (
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, pt: 0.5, pb: 0.25 }}>
+                <Typography variant="caption" sx={{ color: '#e53935', fontSize: '0.65rem' }}>■ donor region</Typography>
+                <Typography variant="caption" sx={{ color: '#ff9800', fontSize: '0.65rem' }}>■ moving divisions</Typography>
+                <Typography variant="caption" sx={{ color: '#3388ff', fontSize: '0.65rem' }}>□ target outline</Typography>
               </Box>
-            ) : geometry ? (
-              <>
-                {hasSideBySide && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', pt: 0.5 }}>
-                    GADM division
-                  </Typography>
-                )}
-                <MapGL
-                  ref={mapRef}
-                  initialViewState={{
-                    longitude: 0,
-                    latitude: 0,
-                    zoom: 1,
-                  }}
-                  style={{ width: '100%', height: hasSideBySide ? 'calc(100% - 20px)' : '100%' }}
-                  mapStyle={MAP_STYLE}
-                  onLoad={() => {
-                    if (mapRef.current && geometry) {
-                      try {
-                        const fc: GeoJSON.FeatureCollection = {
-                          type: 'FeatureCollection',
-                          features: [{ type: 'Feature', properties: {}, geometry }],
-                        };
-                        const bbox = turf.bbox(fc) as [number, number, number, number];
-                        mapRef.current.fitBounds(
-                          [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-                          { padding: 40, duration: 500 }
-                        );
-                      } catch (e) {
-                        console.error('Failed to fit bounds:', e);
-                      }
+              <MapGL
+                ref={mapRef}
+                initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
+                style={{ width: '100%', height: 'calc(100% - 26px)' }}
+                mapStyle={MAP_STYLE}
+                onLoad={() => {
+                  if (mapRef.current) {
+                    try {
+                      const b = transferData.bounds;
+                      mapRef.current.fitBounds(
+                        [[b[0], b[1]], [b[2], b[3]]],
+                        { padding: 40, duration: 500 },
+                      );
+                    } catch (e) {
+                      console.error('Failed to fit transfer bounds:', e);
                     }
-                  }}
-                >
-                  <NavigationControl position="top-right" showCompass={false} />
-                  <Source
-                    id="preview-division"
-                    type="geojson"
-                    data={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry,
+                  }
+                }}
+              >
+                <NavigationControl position="top-right" showCompass={false} />
+                <Source id="transfer-donor" type="geojson" data={transferData.donor}>
+                  <Layer id="transfer-donor-fill" type="fill" paint={{ 'fill-color': '#e53935', 'fill-opacity': 0.2 }} />
+                  <Layer id="transfer-donor-outline" type="line" paint={{ 'line-color': '#e53935', 'line-width': 2 }} />
+                </Source>
+                <Source id="transfer-moving" type="geojson" data={transferData.moving}>
+                  <Layer id="transfer-moving-fill" type="fill" paint={{ 'fill-color': '#ff9800', 'fill-opacity': 0.45 }} />
+                  <Layer id="transfer-moving-outline" type="line" paint={{ 'line-color': '#ff9800', 'line-width': 2 }} />
+                </Source>
+                <Source id="transfer-outline" type="geojson" data={transferData.outline}>
+                  <Layer id="transfer-outline-line" type="line" paint={{ 'line-color': '#3388ff', 'line-width': 2, 'line-dasharray': [4, 3] }} />
+                </Source>
+              </MapGL>
+            </Box>
+          )}
+
+          {/* GADM division map (right side, or full width if no WV image/geoshape) */}
+          {!isTransferPreview && (
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              {loading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                  <CircularProgress />
+                </Box>
+              ) : geometry ? (
+                <>
+                  {hasSideBySide && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', pt: 0.5 }}>
+                      GADM division
+                    </Typography>
+                  )}
+                  <MapGL
+                    ref={mapRef}
+                    initialViewState={{
+                      longitude: 0,
+                      latitude: 0,
+                      zoom: 1,
+                    }}
+                    style={{ width: '100%', height: hasSideBySide ? 'calc(100% - 20px)' : '100%' }}
+                    mapStyle={MAP_STYLE}
+                    onLoad={() => {
+                      if (mapRef.current && geometry) {
+                        try {
+                          const geom = geometry as GeoJSON.Geometry;
+                          const fc: GeoJSON.FeatureCollection = {
+                            type: 'FeatureCollection',
+                            features: [{ type: 'Feature', properties: {}, geometry: geom }],
+                          };
+                          const bbox = turf.bbox(fc) as [number, number, number, number];
+                          mapRef.current.fitBounds(
+                            [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+                            { padding: 40, duration: 500 }
+                          );
+                        } catch (e) {
+                          console.error('Failed to fit bounds:', e);
+                        }
+                      }
                     }}
                   >
-                    <Layer
-                      id="preview-division-fill"
-                      type="fill"
-                      paint={{
-                        'fill-color': '#3388ff',
-                        'fill-opacity': 0.4,
+                    <NavigationControl position="top-right" showCompass={false} />
+                    <Source
+                      id="preview-division"
+                      type="geojson"
+                      data={{
+                        type: 'Feature',
+                        properties: {},
+                        geometry: geometry as GeoJSON.Geometry,
                       }}
-                    />
-                    <Layer
-                      id="preview-division-outline"
-                      type="line"
-                      paint={{
-                        'line-color': '#3388ff',
-                        'line-width': 2,
-                      }}
-                    />
-                  </Source>
-                </MapGL>
-              </>
-            ) : (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <Typography color="text.secondary">No geometry available</Typography>
-              </Box>
-            )}
-          </Box>
+                    >
+                      <Layer
+                        id="preview-division-fill"
+                        type="fill"
+                        paint={{
+                          'fill-color': '#3388ff',
+                          'fill-opacity': 0.4,
+                        }}
+                      />
+                      <Layer
+                        id="preview-division-outline"
+                        type="line"
+                        paint={{
+                          'line-color': '#3388ff',
+                          'line-width': 2,
+                        }}
+                      />
+                    </Source>
+                  </MapGL>
+                </>
+              ) : (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                  <Typography color="text.secondary">No geometry available</Typography>
+                </Box>
+              )}
+            </Box>
+          )}
         </Box>
       </DialogContent>
       {(onAccept || onReject) && (
@@ -364,7 +430,7 @@ export function DivisionPreviewDialog({
               onClick={onAccept}
               disabled={actionPending}
             >
-              Accept
+              {acceptLabel ?? 'Accept'}
             </Button>
           )}
         </DialogActions>

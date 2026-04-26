@@ -1,4 +1,5 @@
 import {
+  Box,
   Chip,
   IconButton,
   Typography,
@@ -40,6 +41,8 @@ interface TreeNodeActionsProps {
   geoshapeMatchingRegionId: number | null;
   pointMatchingRegionId: number | null;
   nodeGeocodeMsg: string | null;
+  nodeGeocodeNextScope?: { ancestorId: number; ancestorName: string };
+  nodeGeocodeRetryType?: 'geoshape' | 'point';
   onDBSearch: (regionId: number) => void;
   onAIMatch: (regionId: number) => void;
   onDismissChildren: (regionId: number) => void;
@@ -51,18 +54,20 @@ interface TreeNodeActionsProps {
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
-  onGeoshapeMatch: (regionId: number) => void;
-  onPointMatch: (regionId: number) => void;
+  onGeoshapeMatch: (regionId: number, scopeAncestorId?: number) => void;
+  onPointMatch: (regionId: number, scopeAncestorId?: number) => void;
   onResetMatch: (regionId: number) => void;
   onManualFix: (regionId: number, needsManualFix: boolean) => void;
 }
 
 /** Geocode + DB search + AI match + geoshape + point-match button group (shared across multiple status blocks) */
-function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg, isMutating, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, dbSearchingRegionId, aiMatchingRegionId, onGeocodeMatch, onDBSearch, onAIMatch, onGeoshapeMatch, onPointMatch }: {
+function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg, nodeGeocodeNextScope, nodeGeocodeRetryType, isMutating, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, dbSearchingRegionId, aiMatchingRegionId, onGeocodeMatch, onDBSearch, onAIMatch, onGeoshapeMatch, onPointMatch }: {
   nodeId: number;
   wikidataId: string | null;
   geoAvailable: boolean | null;
   nodeGeocodeMsg: string | null;
+  nodeGeocodeNextScope?: { ancestorId: number; ancestorName: string };
+  nodeGeocodeRetryType?: 'geoshape' | 'point';
   isMutating: boolean;
   geocodeMatchingRegionId: number | null;
   geoshapeMatchingRegionId: number | null;
@@ -72,8 +77,8 @@ function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg,
   onGeocodeMatch: (regionId: number) => void;
   onDBSearch: (regionId: number) => void;
   onAIMatch: (regionId: number) => void;
-  onGeoshapeMatch: (regionId: number) => void;
-  onPointMatch: (regionId: number) => void;
+  onGeoshapeMatch: (regionId: number, scopeAncestorId?: number) => void;
+  onPointMatch: (regionId: number, scopeAncestorId?: number) => void;
 }) {
   const anySearching = geocodeMatchingRegionId !== null || geoshapeMatchingRegionId !== null || pointMatchingRegionId !== null || dbSearchingRegionId !== null || aiMatchingRegionId !== null;
   return (
@@ -94,9 +99,30 @@ function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg,
         </span>
       </Tooltip>
       {nodeGeocodeMsg && (
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', ml: -0.5 }}>
-          {nodeGeocodeMsg}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: -0.5 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+            {nodeGeocodeMsg}
+          </Typography>
+          {nodeGeocodeNextScope && (
+            <Typography
+              variant="caption"
+              component="span"
+              onClick={() => {
+                const retry = nodeGeocodeRetryType === 'point' ? onPointMatch : onGeoshapeMatch;
+                retry(nodeId, nodeGeocodeNextScope.ancestorId);
+              }}
+              sx={{
+                fontSize: '0.65rem',
+                color: 'primary.main',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                '&:hover': { color: 'primary.dark' },
+              }}
+            >
+              Try wider: {nodeGeocodeNextScope.ancestorName}
+            </Typography>
+          )}
+        </Box>
       )}
       <Tooltip title="DB search">
         <span>
@@ -182,6 +208,8 @@ export function TreeNodeActions({
   geoshapeMatchingRegionId,
   pointMatchingRegionId,
   nodeGeocodeMsg,
+  nodeGeocodeNextScope,
+  nodeGeocodeRetryType,
   onDBSearch,
   onAIMatch,
   onDismissChildren,
@@ -209,6 +237,8 @@ export function TreeNodeActions({
     wikidataId: node.wikidataId ?? null,
     geoAvailable: node.geoAvailable ?? null,
     nodeGeocodeMsg,
+    nodeGeocodeNextScope,
+    nodeGeocodeRetryType,
     isMutating,
     geocodeMatchingRegionId,
     geoshapeMatchingRegionId,

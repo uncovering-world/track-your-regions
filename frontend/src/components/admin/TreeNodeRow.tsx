@@ -26,6 +26,7 @@ export interface TreeNodeRowProps {
   expanded: Set<number>;
   onToggle: (id: number) => void;
   onAccept: (regionId: number, divisionId: number) => void;
+  onAcceptTransfer?: (regionId: number, divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) => void;
   onAcceptAndRejectRest: (regionId: number, divisionId: number) => void;
   onReject: (regionId: number, divisionId: number) => void;
   onDBSearch: (regionId: number) => void;
@@ -37,8 +38,9 @@ export interface TreeNodeRowProps {
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
-  onGeoshapeMatch: (regionId: number) => void;
-  onPointMatch: (regionId: number) => void;
+  onGeoshapeMatch: (regionId: number, scopeAncestorId?: number) => void;
+  onPointMatch: (regionId: number, scopeAncestorId?: number) => void;
+  onPreviewTransfer?: (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, wikidataId: string, regionName: string, regionId?: number, allDivisionIds?: number[]) => void;
   onResetMatch: (regionId: number) => void;
   onRejectRemaining: (regionId: number) => void;
   onAcceptAll: (assignments: Array<{ regionId: number; divisionId: number }>) => void;
@@ -56,7 +58,7 @@ export interface TreeNodeRowProps {
   geocodeMatchingRegionId: number | null;
   geoshapeMatchingRegionId: number | null;
   pointMatchingRegionId: number | null;
-  geocodeProgress: { regionId: number; message: string } | null;
+  geocodeProgress: { regionId: number; message: string; nextScope?: { ancestorId: number; ancestorName: string }; retryType?: 'geoshape' | 'point' } | null;
   duplicateUrls: Set<string>;
   syncedUrls: Set<string>;
   shadowsByRegionId: Map<number, ShadowInsertion[]>;
@@ -85,7 +87,7 @@ function getNodeRole(node: MatchTreeNode): 'container' | 'country' | 'subdivisio
   return 'container';
 }
 
-export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAcceptAndRejectRest, onReject, onDBSearch, onAIMatch, onDismissChildren, onSimplifyHierarchy, onSimplifyChildren, onSmartSimplify, onSync, onHandleAsGrouping, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onResetMatch, onRejectRemaining, onAcceptAll, onPreview, onOpenMapPicker, onManualFix, isMutating, dbSearchingRegionId, aiMatchingRegionId, dismissingRegionId, simplifyingRegionId, simplifyingChildrenRegionId, syncingRegionId, groupingRegionId, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, geocodeProgress, duplicateUrls, syncedUrls, shadowsByRegionId, onApproveShadow, onRejectShadow, skipAnimationRef, ancestorIsMatched }: TreeNodeRowProps) {
+export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAcceptTransfer, onAcceptAndRejectRest, onReject, onDBSearch, onAIMatch, onDismissChildren, onSimplifyHierarchy, onSimplifyChildren, onSmartSimplify, onSync, onHandleAsGrouping, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onResetMatch, onRejectRemaining, onAcceptAll, onPreview, onPreviewTransfer, onOpenMapPicker, onManualFix, isMutating, dbSearchingRegionId, aiMatchingRegionId, dismissingRegionId, simplifyingRegionId, simplifyingChildrenRegionId, syncingRegionId, groupingRegionId, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, geocodeProgress, duplicateUrls, syncedUrls, shadowsByRegionId, onApproveShadow, onRejectShadow, skipAnimationRef, ancestorIsMatched }: TreeNodeRowProps) {
   const isExpanded = expanded.has(node.id);
   const hasChildren = node.children.length > 0;
   const role = getNodeRole(node);
@@ -94,7 +96,7 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
   const nodeIsMatched = ancestorIsMatched || node.matchStatus === 'auto_matched' || node.matchStatus === 'manual_matched' || node.memberCount > 0;
 
   // Geocode progress for this specific node
-  const nodeGeocodeMsg = geocodeProgress?.regionId === node.id ? geocodeProgress.message : null;
+  const nodeGeocode = geocodeProgress?.regionId === node.id ? geocodeProgress : null;
 
   // Intercept preview: if unreviewed candidates and no map URL, open picker first
   const shouldInterceptPreview = node.mapImageCandidates.length > 1 && !node.mapImageReviewed && !node.regionMapUrl;
@@ -119,6 +121,19 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
       onPreview(divisionId, name, path, node.regionMapUrl ?? undefined, node.wikidataId ?? undefined, node.id, false, node.markerPoints ?? undefined);
     },
     [onPreview, node, shouldInterceptPreview, onOpenMapPicker],
+  );
+  const handlePreviewTransferSuggestion = useCallback(
+    (divisionId: number, name: string, path: string | undefined, conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' }, regionId?: number, allDivisionIds?: number[]) => {
+      if (onPreviewTransfer && node.wikidataId) {
+        onPreviewTransfer(divisionId, name, path, conflict, node.wikidataId, node.name, regionId, allDivisionIds);
+      } else if (!node.wikidataId) {
+        // Transfer preview needs the target's Wikidata geoshape for the dashed-blue outline.
+        // Fall back to a regular division preview so the click is not a silent no-op.
+        console.warn(`[TreeNodeRow] Cannot show transfer preview for region "${node.name}" — no wikidataId; falling back to division preview.`);
+        onPreview(divisionId, name, path, node.regionMapUrl ?? undefined, undefined, node.id, false, node.markerPoints ?? undefined);
+      }
+    },
+    [onPreviewTransfer, onPreview, node.wikidataId, node.name, node.regionMapUrl, node.id, node.markerPoints],
   );
 
   // For nodes with children, count resolved direct children
@@ -209,7 +224,9 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
           geocodeMatchingRegionId={geocodeMatchingRegionId}
           geoshapeMatchingRegionId={geoshapeMatchingRegionId}
           pointMatchingRegionId={pointMatchingRegionId}
-          nodeGeocodeMsg={nodeGeocodeMsg}
+          nodeGeocodeMsg={nodeGeocode?.message ?? null}
+          nodeGeocodeNextScope={nodeGeocode?.nextScope}
+          nodeGeocodeRetryType={nodeGeocode?.retryType}
           onDBSearch={onDBSearch}
           onAIMatch={onAIMatch}
           onDismissChildren={onDismissChildren}
@@ -242,6 +259,7 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
         onAcceptAll={onAcceptAll}
         handlePreviewAssigned={handlePreviewAssigned}
         handlePreviewSuggestion={handlePreviewSuggestion}
+        onPreviewTransfer={handlePreviewTransferSuggestion}
         onApproveShadow={onApproveShadow}
         onRejectShadow={onRejectShadow}
         isMutating={isMutating}
@@ -258,6 +276,7 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
               expanded={expanded}
               onToggle={onToggle}
               onAccept={onAccept}
+              onAcceptTransfer={onAcceptTransfer}
               onAcceptAndRejectRest={onAcceptAndRejectRest}
               onReject={onReject}
               onDBSearch={onDBSearch}
@@ -275,6 +294,7 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
               onRejectRemaining={onRejectRemaining}
               onAcceptAll={onAcceptAll}
               onPreview={onPreview}
+              onPreviewTransfer={onPreviewTransfer}
               onOpenMapPicker={onOpenMapPicker}
               onManualFix={onManualFix}
               isMutating={isMutating}

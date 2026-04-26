@@ -34,6 +34,8 @@ import {
   acceptMatch,
   rejectSuggestion,
   rejectRemaining,
+  acceptWithTransfer as acceptWithTransferApi,
+  getTransferPreview,
 } from '../../api/adminWorldViewImport';
 import type { CoverageResult } from '../../api/adminWorldViewImport';
 
@@ -56,8 +58,17 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     divisionId?: number; regionId?: number; isAssigned?: boolean;
     markerPoints?: Array<{ name: string; lat: number; lon: number }>;
   } | null>(null);
-  const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | null>(null);
+  const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | GeoJSON.FeatureCollection | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Pending transfer info — kept while transfer preview dialog is open
+  const [pendingTransfer, setPendingTransfer] = useState<{
+    regionId: number;
+    divisionIds: number[];
+    donorRegionId: number;
+    donorDivisionId: number;
+    transferType: 'direct' | 'split';
+  } | null>(null);
 
   const handlePreviewDivision = useCallback(async (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => {
     setPreviewDivision({ name, path, regionMapUrl, wikidataId, divisionId, regionId, isAssigned, markerPoints });
@@ -74,6 +85,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const handleClosePreview = useCallback(() => {
     setPreviewDivision(null);
     setPreviewGeometry(null);
+    setPendingTransfer(null);
   }, []);
 
   const [shadowInsertions, setShadowInsertions] = useState<ShadowInsertion[]>([]);
@@ -155,6 +167,58 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       handleClosePreview();
     },
   });
+
+  // Transfer preview — fetches 3-layer GeoJSON and opens dialog
+  const previewTransferMutation = useMutation({
+    mutationFn: ({ donorDivisionId, movingDivisionIds, wikidataId }: { donorDivisionId: number; movingDivisionIds: number[]; wikidataId: string }) =>
+      getTransferPreview(worldViewId, donorDivisionId, movingDivisionIds, wikidataId),
+    onSuccess: (featureCollection) => {
+      setPreviewGeometry(featureCollection);
+      setPreviewLoading(false);
+    },
+    onError: (err) => {
+      console.error('[WorldViewImportReview] Transfer preview failed:', err);
+      setPreviewLoading(false);
+      setPendingTransfer(null);
+      handleClosePreview();
+    },
+  });
+
+  // Accept transfer from the preview dialog
+  const acceptTransferFromPreviewMutation = useMutation({
+    mutationFn: ({ regionId, divisionIds, donorRegionId, donorDivisionId, transferType }: {
+      regionId: number; divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split';
+    }) => acceptWithTransferApi(worldViewId, regionId, divisionIds, donorRegionId, donorDivisionId, transferType),
+    onSuccess: () => {
+      invalidateAll();
+      setPendingTransfer(null);
+      handleClosePreview();
+    },
+  });
+
+  const handlePreviewTransfer = useCallback((
+    divisionId: number,
+    name: string,
+    _path: string | undefined,
+    conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' },
+    wikidataId: string,
+    regionName: string,
+    regionId?: number,
+    allDivisionIds?: number[],
+  ) => {
+    const movingIds = allDivisionIds ?? [divisionId];
+    setPreviewDivision({ name: regionName, path: name });
+    setPreviewGeometry(null);
+    setPreviewLoading(true);
+    setPendingTransfer(regionId != null ? {
+      regionId,
+      divisionIds: movingIds,
+      donorRegionId: conflict.donorRegionId,
+      donorDivisionId: conflict.donorDivisionId,
+      transferType: conflict.type,
+    } : null);
+    previewTransferMutation.mutate({ donorDivisionId: conflict.donorDivisionId, movingDivisionIds: movingIds, wikidataId });
+  }, [previewTransferMutation]);
 
   const finalizeMutation = useMutation({
     mutationFn: () => finalizeReview(worldViewId),
@@ -349,6 +413,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       <WorldViewImportTree
         worldViewId={worldViewId}
         onPreview={handlePreviewDivision}
+        onPreviewTransfer={handlePreviewTransfer}
         shadowInsertions={shadowInsertions}
         onApproveShadow={(insertion) => approveShadowMutation.mutate(insertion)}
         onRejectShadow={handleRejectShadow}
@@ -362,16 +427,21 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         regionMapUrl={previewDivision?.regionMapUrl}
         wikidataId={previewDivision?.wikidataId}
         markerPoints={previewDivision?.markerPoints}
-        onAccept={previewDivision?.regionId != null && previewDivision?.divisionId != null && !previewDivision.isAssigned
-          ? () => previewAcceptMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
-          : undefined}
-        onAcceptAndRejectRest={previewDivision?.regionId != null && previewDivision?.divisionId != null && !previewDivision.isAssigned
+        acceptLabel={pendingTransfer ? 'Accept Transfer' : undefined}
+        onAccept={
+          pendingTransfer
+            ? () => acceptTransferFromPreviewMutation.mutate(pendingTransfer)
+            : previewDivision?.regionId != null && previewDivision?.divisionId != null && !previewDivision.isAssigned
+              ? () => previewAcceptMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
+              : undefined
+        }
+        onAcceptAndRejectRest={!pendingTransfer && previewDivision?.regionId != null && previewDivision?.divisionId != null && !previewDivision.isAssigned
           ? () => previewAcceptAndRejectRestMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
           : undefined}
-        onReject={previewDivision?.regionId != null && previewDivision?.divisionId != null
+        onReject={!pendingTransfer && previewDivision?.regionId != null && previewDivision?.divisionId != null
           ? () => previewRejectMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
           : undefined}
-        actionPending={previewAcceptMutation.isPending || previewRejectMutation.isPending || previewAcceptAndRejectRestMutation.isPending}
+        actionPending={previewAcceptMutation.isPending || previewRejectMutation.isPending || previewAcceptAndRejectRestMutation.isPending || previewTransferMutation.isPending || acceptTransferFromPreviewMutation.isPending}
       />
 
       {/* Re-match confirmation dialog */}
