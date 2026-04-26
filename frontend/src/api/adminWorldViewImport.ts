@@ -531,8 +531,26 @@ export interface SmartSimplifyMove {
   divisions: SmartSimplifyDivision[];
 }
 
+export interface SpatialAnomalyDivision {
+  divisionId: number;
+  name: string;
+  memberRowId: number | null;
+  sourceRegionId: number;
+  sourceRegionName: string;
+}
+
+export interface SpatialAnomaly {
+  divisions: SpatialAnomalyDivision[];
+  suggestedTargetRegionId: number;
+  suggestedTargetRegionName: string;
+  fragmentSize: number;
+  totalRegionSize: number;
+  score: number;
+}
+
 export interface SmartSimplifyResult {
   moves: SmartSimplifyMove[];
+  spatialAnomalies: SpatialAnomaly[];
 }
 
 export interface ApplySmartSimplifyResult {
