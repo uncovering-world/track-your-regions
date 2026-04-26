@@ -411,6 +411,10 @@ All require admin auth.
 | POST | `/matches/:worldViewId/finalize` | Close review — appends `'_done'` to current `source_type` |
 | POST | `/matches/:worldViewId/rematch` | Reset all matches and re-run country-level matcher |
 | GET | `/matches/:worldViewId/rematch/status` | Poll re-match progress |
+| POST | `/matches/:worldViewId/add-child-region` | Create a new child region under a parent (sets `match_status = 'no_candidates'`) |
+| POST | `/matches/:worldViewId/remove-region` | Delete a region from the import tree (with optional child/division reparenting) |
+| POST | `/matches/:worldViewId/rename-region` | Rename a region and optionally update its source URL / external ID |
+| POST | `/matches/:worldViewId/ai-suggest-children` | AI audit + enrichment + verification — returns `ReviewChildAction[]` |
 | GET | `/geoshape/:wikidataId` | Proxy Wikidata geoshape GeoJSON (validated `Q\d+`) |
 
 ## Backend Structure
@@ -474,6 +478,66 @@ Admin panel section "WorldView Import" (`WorldViewImportPanel.tsx`) with these v
 3. Select matching policy: "Country-based" (default) or "None" (skip auto-matching)
 4. Click "Start Import"
 5. Continue with match review as above
+
+## AI Review Children
+
+The **AI Review Children** feature lets an admin audit the current child set of any region against its live Wikivoyage article. It is available on tree rows where `region_import_state.source_url` is set. A sparkle icon button triggers the flow; the button is disabled while another region is being reviewed.
+
+### Three-Phase Pipeline
+
+The backend handler `aiSuggestChildren` (`wvImportAIController.ts`) runs three sequential phases:
+
+1. **AI Audit** — fetches the region's Wikivoyage article wikitext via `WikivoyageFetcher`, extracts the "Regions" section, and sends it to OpenAI together with the list of current child region names. The AI returns a JSON array of `AuditAction` objects:
+   - `type: 'add'` — child present in Wikivoyage but missing from the tree
+   - `type: 'remove'` — child in the tree that no longer appears in the article
+   - `type: 'rename'` — child whose name in the article differs from the stored name
+
+   The model is selected via `getModel()` with the `review_children` feature key.
+
+2. **AI Enrichment** — for `add` and `rename` actions, a second AI call resolves each target into a canonical Wikivoyage page title and a Wikidata QID. The AI is given the article wikitext as context and asked to produce `{ name, wikivoyageTitle, wikidataId }` for each target.
+
+3. **Programmatic Verification** — the enriched Wikivoyage titles are verified in parallel batches via the MediaWiki `action=query&prop=info` API. Each action is marked `verified: true` if the page exists and `verified: false` otherwise.
+
+The response shape is:
+
+```typescript
+interface ReviewChildAction {
+  type: 'add' | 'remove' | 'rename';
+  name: string;        // current tree name (or add target name)
+  newName?: string;    // only for 'rename'
+  reason: string;      // AI-provided reasoning
+  sourceUrl?: string | null;   // verified Wikivoyage URL (add/rename only)
+  sourceExternalId?: string | null;  // Wikidata QID (add/rename only)
+  verified: boolean;   // whether the Wikivoyage page was confirmed to exist
+}
+
+interface AIReviewChildrenResult {
+  actions: ReviewChildAction[];
+  tokensUsed: number;
+}
+```
+
+### Frontend Dialog
+
+`WorldViewImportTree.tsx` shows the results in a grouped dialog (`AIReviewChildrenDialog`):
+
+- **Add** section — actions pre-selected by default. Each row shows the new region name, a reason chip, and (if verified) a source URL link with a check icon.
+- **Remove** section — actions **not** pre-selected (destructive). Each row shows the existing region name and a reason chip. Unverified remove actions show a warning.
+- **Rename** section — actions pre-selected by default. Each row shows "old name → new name", a reason chip, and an optional source URL link.
+
+The admin checks/unchecks individual actions, then clicks **Apply**. The dialog calls the matching REST endpoints (`add-child-region`, `remove-region`, `rename-region`) using `Promise.allSettled` for all selected actions, then invalidates the tree query once for a single refresh.
+
+### Supporting Endpoints
+
+Three new endpoints support the dialog's apply phase:
+
+| Endpoint | Body | Effect |
+|----------|------|--------|
+| `POST /add-child-region` | `{ parentRegionId, name, sourceUrl?, sourceExternalId? }` | Creates region + `region_import_state` (`no_candidates`) |
+| `POST /remove-region` | `{ regionId, reparentChildren, reparentDivisions? }` | Deletes region; optionally reparents children/members to grandparent |
+| `POST /rename-region` | `{ regionId, name, sourceUrl?, sourceExternalId? }` | Updates region name and import state metadata |
+
+All three are validated with Zod schemas (`wvImportAddChildSchema`, `wvImportRemoveRegionSchema`, `wvImportRenameRegionSchema`) and require admin auth.
 
 ## Future Enhancements
 
