@@ -10,7 +10,7 @@ import {
   Map as MapIcon,
   DoneAll as AcceptAndRejectRestIcon,
 } from '@mui/icons-material';
-import type { MatchTreeNode } from '../../api/adminWorldViewImport';
+import type { MatchTreeNode } from '../../api/admin/worldViewImport';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
 
 /** Render a single assigned division (already accepted) */

@@ -4,7 +4,7 @@
  * All admin endpoints require authentication with admin role.
  */
 
-import { authFetchJson } from './fetchUtils';
+import { authFetchJson } from '../fetchUtils';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 

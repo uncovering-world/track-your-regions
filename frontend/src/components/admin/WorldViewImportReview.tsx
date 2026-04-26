@@ -36,8 +36,8 @@ import {
   rejectRemaining,
   acceptWithTransfer as acceptWithTransferApi,
   getTransferPreview,
-} from '../../api/adminWorldViewImport';
-import type { CoverageResult } from '../../api/adminWorldViewImport';
+} from '../../api/admin/worldViewImport';
+import type { CoverageResult } from '../../api/admin/worldViewImport';
 
 import { WorldViewImportTree } from './WorldViewImportTree';
 import { CoverageResolveDialog } from './CoverageResolveDialog';

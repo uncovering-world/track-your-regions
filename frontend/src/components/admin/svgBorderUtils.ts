@@ -1,4 +1,4 @@
-import type { BorderPath } from '../../api/adminWorldViewImport';
+import type { BorderPath } from '../../api/admin/worldViewImport';
 
 // ---------------------------------------------------------------------------
 // Public types

@@ -14,7 +14,7 @@ import {
   parseRgbString, getDistinctColor, computeClusterPercentages,
 } from './clusterPaintUtils';
 import type { PaletteEntry } from './clusterPaintUtils';
-import type { BorderPath, ClusterReviewCluster, ManualClusterResponse } from '../../api/adminWorldViewImport';
+import type { BorderPath, ClusterReviewCluster, ManualClusterResponse } from '../../api/admin/worldViewImport';
 import {
   pointsToSmoothSvgPath, findOpenEndpoints, rasterizeBorderPaths,
   findEraserIntersection,

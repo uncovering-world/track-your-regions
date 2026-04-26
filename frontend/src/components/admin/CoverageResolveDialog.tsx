@@ -45,14 +45,14 @@ import {
   geoSuggestGap,
   dismissCoverageGap,
   undismissCoverageGap,
-} from '../../api/adminWorldViewImport';
+} from '../../api/admin/worldViewImport';
 import type {
   CoverageResult,
   CoverageGap,
   SubtreeNode,
   GeoSuggestResult,
   RegionContextNode,
-} from '../../api/adminWorldViewImport';
+} from '../../api/admin/worldViewImport';
 import { searchRegions, type RegionSearchResult } from '../../api/regions';
 import type { ShadowInsertion } from './WorldViewImportReview';
 
