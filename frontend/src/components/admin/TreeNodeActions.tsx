@@ -15,6 +15,7 @@ import {
   Build as ManualFixIcon,
   LowPriority as SimplifyIcon,
   PlaylistAddCheck as SimplifyChildrenIcon,
+  SwapHoriz as SmartSimplifyIcon,
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
 import { Tooltip } from './treeNodeShared';
@@ -42,6 +43,7 @@ interface TreeNodeActionsProps {
   simplifyingRegionId?: number | null;
   onSimplifyChildren?: (regionId: number) => void;
   simplifyingChildrenRegionId?: number | null;
+  onSmartSimplify?: (regionId: number) => void;
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
@@ -140,6 +142,7 @@ export function TreeNodeActions({
   onDismissChildren,
   onSimplifyHierarchy,
   onSimplifyChildren,
+  onSmartSimplify,
   onSync,
   onHandleAsGrouping,
   onGeocodeMatch,
@@ -245,6 +248,22 @@ export function TreeNodeActions({
                 ? <CircularProgress size={14} />
                 : <SimplifyChildrenIcon sx={{ fontSize: 16, color: 'info.main' }} />
               }
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+
+      {/* Smart Simplify — detect and fix cross-sibling division splits */}
+      {hasChildren && !!onSmartSimplify && (
+        <Tooltip title="Smart Simplify — detect divisions split across sibling regions">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onSmartSimplify(node.id)}
+              disabled={isMutating}
+              sx={{ p: 0.25 }}
+            >
+              <SmartSimplifyIcon sx={{ fontSize: 16, color: 'secondary.main' }} />
             </IconButton>
           </span>
         </Tooltip>

@@ -508,3 +508,74 @@ export async function selectMapImage(
 export async function fetchGeoshape(wikidataId: string): Promise<GeoJSON.FeatureCollection> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/geoshape/${wikidataId}`);
 }
+
+// =============================================================================
+// Smart Simplify
+// =============================================================================
+
+export interface SmartSimplifyDivision {
+  divisionId: number;
+  name: string;
+  fromRegionId: number;
+  fromRegionName: string;
+  memberRowId: number;
+}
+
+export interface SmartSimplifyMove {
+  gadmParentId: number;
+  gadmParentName: string;
+  gadmParentPath: string;
+  totalChildren: number;
+  ownerRegionId: number;
+  ownerRegionName: string;
+  divisions: SmartSimplifyDivision[];
+}
+
+export interface SmartSimplifyResult {
+  moves: SmartSimplifyMove[];
+}
+
+export interface ApplySmartSimplifyResult {
+  moved: number;
+}
+
+export async function detectSmartSimplify(
+  worldViewId: number,
+  parentRegionId: number,
+): Promise<SmartSimplifyResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify`, {
+    method: 'POST',
+    body: JSON.stringify({ parentRegionId }),
+  });
+}
+
+export async function applySmartSimplifyMove(
+  worldViewId: number,
+  parentRegionId: number,
+  ownerRegionId: number,
+  memberRowIds: number[],
+): Promise<ApplySmartSimplifyResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify/apply-move`, {
+    method: 'POST',
+    body: JSON.stringify({ parentRegionId, ownerRegionId, memberRowIds }),
+  });
+}
+
+// =============================================================================
+// Children Region Geometry (used by SmartSimplifyDialog)
+// =============================================================================
+
+export interface SiblingRegionGeometry {
+  regionId: number;
+  name: string;
+  geometry: GeoJSON.Geometry;
+}
+
+export async function getChildrenRegionGeometry(
+  worldViewId: number,
+  regionId: number,
+): Promise<{ childRegions: SiblingRegionGeometry[] }> {
+  return authFetchJson(
+    `${API_URL}/api/admin/wv-import/matches/${worldViewId}/children-geometry/${regionId}`,
+  );
+}

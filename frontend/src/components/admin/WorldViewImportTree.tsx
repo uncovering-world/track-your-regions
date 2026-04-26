@@ -50,6 +50,7 @@ import {
   type MatchTreeNode,
 } from '../../api/adminWorldViewImport';
 import { MapImagePickerDialog } from './MapImagePickerDialog';
+import { SmartSimplifyDialog } from './SmartSimplifyDialog';
 import { type ShadowInsertion } from './treeNodeShared';
 import { TreeNodeRow } from './TreeNodeRow';
 import { collectAncestorsOfUnresolved, collectAncestorsOfIds } from './importTreeUtils';
@@ -143,6 +144,12 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
     open: boolean;
     message: string;
     worldViewId: number;
+  } | null>(null);
+
+  const [smartSimplifyDialog, setSmartSimplifyDialog] = useState<{
+    regionId: number;
+    regionName: string;
+    regionMapUrl: string | null;
   } | null>(null);
 
   const { data: tree, isLoading } = useQuery({
@@ -306,6 +313,25 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
       markManualFix(worldViewId, regionId, needsManualFix, fixNote),
     onSuccess: invalidateTree,
   });
+
+  const handleSmartSimplify = useCallback((regionId: number) => {
+    if (!tree) return;
+    const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
+      for (const n of nodes) {
+        if (n.id === regionId) return n;
+        const found = findNode(n.children);
+        if (found) return found;
+      }
+      return null;
+    };
+    const node = findNode(tree);
+    if (!node) return;
+    setSmartSimplifyDialog({
+      regionId,
+      regionName: node.name,
+      regionMapUrl: node.regionMapUrl,
+    });
+  }, [tree]);
 
   const handleOpenMapPicker = useCallback((node: MatchTreeNode, pendingPreview?: { divisionId: number; name: string; path?: string; isAssigned: boolean }) => {
     setMapPickerState({
@@ -499,6 +525,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
           onDismissChildren={(regionId) => dismissMutation.mutate(regionId)}
           onSimplifyHierarchy={(regionId) => simplifyHierarchyMutation.mutate(regionId)}
           onSimplifyChildren={(regionId) => simplifyChildrenMutation.mutate(regionId)}
+          onSmartSimplify={handleSmartSimplify}
           onSync={(regionId) => syncMutation.mutate(regionId)}
           onHandleAsGrouping={(regionId) => groupingMutation.mutate(regionId)}
           onGeocodeMatch={(regionId) => geocodeMatchMutation.mutate(regionId)}
@@ -576,6 +603,17 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
         onSubmit={(regionId, note) => manualFixMutation.mutate({ regionId, needsManualFix: true, fixNote: note })}
         isPending={manualFixMutation.isPending}
       />
+      {smartSimplifyDialog && (
+        <SmartSimplifyDialog
+          open
+          onClose={() => setSmartSimplifyDialog(null)}
+          worldViewId={worldViewId}
+          parentRegionId={smartSimplifyDialog.regionId}
+          parentRegionName={smartSimplifyDialog.regionName}
+          regionMapUrl={smartSimplifyDialog.regionMapUrl}
+          onApplied={() => invalidateTree()}
+        />
+      )}
     </Box>
   );
 }
