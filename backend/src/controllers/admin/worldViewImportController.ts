@@ -24,6 +24,7 @@ export {
   getMatchTree,
   selectMapImage,
   markManualFix,
+  resolveIcpAdjustment,
 } from './wvImportMatchController.js';
 export {
   getCoverage,

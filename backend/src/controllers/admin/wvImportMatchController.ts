@@ -10,6 +10,9 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
+// Re-export ICP review handler for adminRoutes
+export { resolveIcpAdjustment } from './wvImportMatchReview.js';
+
 // =============================================================================
 // Match statistics + retrieval
 // =============================================================================

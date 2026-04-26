@@ -38,6 +38,8 @@ import {
   wvImportSmartSimplifySchema,
   wvImportSmartSimplifyApplySchema,
   worldViewRegionIdParamSchema,
+  reviewIdParamSchema,
+  wvImportIcpAdjustmentBodySchema,
 } from '../types/index.js';
 import {
   startSync,
@@ -98,6 +100,7 @@ import {
   detectSmartSimplify,
   applySmartSimplifyMove,
   getChildrenRegionGeometry,
+  resolveIcpAdjustment,
 } from '../controllers/admin/worldViewImportController.js';
 import {
   startWikivoyageExtraction,
@@ -297,6 +300,24 @@ router.get('/wv-import/matches/:worldViewId/rematch/status', validate(worldViewI
 
 // Geoshape proxy (Wikidata → Wikimedia maps)
 router.get('/wv-import/geoshape/:wikidataId', validate(wikidataIdParamSchema, 'params'), getGeoshape);
+
+// ICP adjustment callback (user approves/skips ICP realignment during CV match)
+// ADR-0011: ICP adaptive alignment for CV-GADM division matching
+router.post(
+  '/wv-import/icp-adjustment/:reviewId',
+  validate(reviewIdParamSchema, 'params'),
+  validate(wvImportIcpAdjustmentBodySchema),
+  (req: AuthenticatedRequest, res: Response) => {
+    const { reviewId } = req.params as unknown as { reviewId: string };
+    const { action } = req.body as { action: 'adjust' | 'continue' };
+    const found = resolveIcpAdjustment(reviewId, { action });
+    if (found) {
+      res.json({ ok: true });
+    } else {
+      res.status(404).json({ error: 'Review not found or expired' });
+    }
+  },
+);
 
 // =============================================================================
 // Image proxy (for CORS-blocked Wikimedia images used as map overlays)
