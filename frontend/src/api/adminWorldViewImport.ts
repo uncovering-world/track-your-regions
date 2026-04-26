@@ -81,6 +81,8 @@ export interface MatchTreeNode {
   wikidataId: string | null;
   memberCount: number;
   assignedDivisions: AssignedDivision[];
+  geoAvailable: boolean | null;
+  markerPoints: Array<{ name: string; lat: number; lon: number }> | null;
   children: MatchTreeNode[];
 }
 
@@ -238,6 +240,27 @@ export async function geocodeMatchRegion(
   regionId: number,
 ): Promise<{ found: number; suggestions: MatchSuggestion[]; geocodedName?: string; searchRadiusKm?: number }> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geocode-match`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+export async function geoshapeMatchRegion(
+  worldViewId: number,
+  regionId: number,
+  scopeAncestorId?: number,
+): Promise<{ found: number; suggestions: MatchSuggestion[]; totalCoverage?: number; scopeAncestorName?: string; nextScope?: { ancestorId: number; ancestorName: string } }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/geoshape-match`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId, ...(scopeAncestorId != null ? { scopeAncestorId } : {}) }),
+  });
+}
+
+export async function pointMatchRegion(
+  worldViewId: number,
+  regionId: number,
+): Promise<{ found: number; suggestions: MatchSuggestion[] }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/point-match`, {
     method: 'POST',
     body: JSON.stringify({ regionId }),
   });

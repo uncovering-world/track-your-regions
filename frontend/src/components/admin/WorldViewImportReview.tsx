@@ -54,12 +54,13 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const [previewDivision, setPreviewDivision] = useState<{
     name: string; path?: string; regionMapUrl?: string; wikidataId?: string;
     divisionId?: number; regionId?: number; isAssigned?: boolean;
+    markerPoints?: Array<{ name: string; lat: number; lon: number }>;
   } | null>(null);
   const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  const handlePreviewDivision = useCallback(async (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean) => {
-    setPreviewDivision({ name, path, regionMapUrl, wikidataId, divisionId, regionId, isAssigned });
+  const handlePreviewDivision = useCallback(async (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => {
+    setPreviewDivision({ name, path, regionMapUrl, wikidataId, divisionId, regionId, isAssigned, markerPoints });
     setPreviewGeometry(null);
     setPreviewLoading(true);
     try {
@@ -360,6 +361,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         onClose={handleClosePreview}
         regionMapUrl={previewDivision?.regionMapUrl}
         wikidataId={previewDivision?.wikidataId}
+        markerPoints={previewDivision?.markerPoints}
         onAccept={previewDivision?.regionId != null && previewDivision?.divisionId != null && !previewDivision.isAssigned
           ? () => previewAcceptMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
           : undefined}

@@ -16,6 +16,8 @@ import {
   LowPriority as SimplifyIcon,
   PlaylistAddCheck as SimplifyChildrenIcon,
   SwapHoriz as SmartSimplifyIcon,
+  Terrain as GeoshapeIcon,
+  ScatterPlot as PointMatchIcon,
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../api/adminWorldViewImport';
 import { Tooltip } from './treeNodeShared';
@@ -35,6 +37,8 @@ interface TreeNodeActionsProps {
   syncingRegionId: number | null;
   groupingRegionId: number | null;
   geocodeMatchingRegionId: number | null;
+  geoshapeMatchingRegionId: number | null;
+  pointMatchingRegionId: number | null;
   nodeGeocodeMsg: string | null;
   onDBSearch: (regionId: number) => void;
   onAIMatch: (regionId: number) => void;
@@ -47,22 +51,31 @@ interface TreeNodeActionsProps {
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
+  onGeoshapeMatch: (regionId: number) => void;
+  onPointMatch: (regionId: number) => void;
   onResetMatch: (regionId: number) => void;
   onManualFix: (regionId: number, needsManualFix: boolean) => void;
 }
 
-/** Geocode + DB search + AI match button group (shared across multiple status blocks) */
-function SearchActionButtons({ nodeId, nodeGeocodeMsg, isMutating, geocodeMatchingRegionId, dbSearchingRegionId, aiMatchingRegionId, onGeocodeMatch, onDBSearch, onAIMatch }: {
+/** Geocode + DB search + AI match + geoshape + point-match button group (shared across multiple status blocks) */
+function SearchActionButtons({ nodeId, wikidataId, geoAvailable, nodeGeocodeMsg, isMutating, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, dbSearchingRegionId, aiMatchingRegionId, onGeocodeMatch, onDBSearch, onAIMatch, onGeoshapeMatch, onPointMatch }: {
   nodeId: number;
+  wikidataId: string | null;
+  geoAvailable: boolean | null;
   nodeGeocodeMsg: string | null;
   isMutating: boolean;
   geocodeMatchingRegionId: number | null;
+  geoshapeMatchingRegionId: number | null;
+  pointMatchingRegionId: number | null;
   dbSearchingRegionId: number | null;
   aiMatchingRegionId: number | null;
   onGeocodeMatch: (regionId: number) => void;
   onDBSearch: (regionId: number) => void;
   onAIMatch: (regionId: number) => void;
+  onGeoshapeMatch: (regionId: number) => void;
+  onPointMatch: (regionId: number) => void;
 }) {
+  const anySearching = geocodeMatchingRegionId !== null || geoshapeMatchingRegionId !== null || pointMatchingRegionId !== null || dbSearchingRegionId !== null || aiMatchingRegionId !== null;
   return (
     <>
       <Tooltip title={nodeGeocodeMsg ?? 'Geocode match'}>
@@ -70,7 +83,7 @@ function SearchActionButtons({ nodeId, nodeGeocodeMsg, isMutating, geocodeMatchi
           <IconButton
             size="small"
             onClick={() => onGeocodeMatch(nodeId)}
-            disabled={isMutating || geocodeMatchingRegionId !== null || dbSearchingRegionId !== null || aiMatchingRegionId !== null}
+            disabled={isMutating || anySearching}
             sx={{ p: 0.25 }}
           >
             {geocodeMatchingRegionId === nodeId
@@ -115,6 +128,36 @@ function SearchActionButtons({ nodeId, nodeGeocodeMsg, isMutating, geocodeMatchi
           </IconButton>
         </span>
       </Tooltip>
+      <Tooltip title="Geoshape match — union Wikidata geoshape with GADM divisions">
+        <span>
+          <IconButton
+            size="small"
+            onClick={() => onGeoshapeMatch(nodeId)}
+            disabled={isMutating || anySearching || !wikidataId}
+            sx={{ p: 0.25 }}
+          >
+            {geoshapeMatchingRegionId === nodeId
+              ? <CircularProgress size={14} />
+              : <GeoshapeIcon sx={{ fontSize: 16, color: wikidataId ? 'success.main' : undefined }} />
+            }
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="Point match — extract Wikivoyage marker coords and find GADM divisions">
+        <span>
+          <IconButton
+            size="small"
+            onClick={() => onPointMatch(nodeId)}
+            disabled={isMutating || anySearching || !wikidataId || geoAvailable !== false}
+            sx={{ p: 0.25 }}
+          >
+            {pointMatchingRegionId === nodeId
+              ? <CircularProgress size={14} />
+              : <PointMatchIcon sx={{ fontSize: 16, color: (wikidataId && geoAvailable === false) ? 'warning.main' : undefined }} />
+            }
+          </IconButton>
+        </span>
+      </Tooltip>
     </>
   );
 }
@@ -136,6 +179,8 @@ export function TreeNodeActions({
   syncingRegionId,
   groupingRegionId,
   geocodeMatchingRegionId,
+  geoshapeMatchingRegionId,
+  pointMatchingRegionId,
   nodeGeocodeMsg,
   onDBSearch,
   onAIMatch,
@@ -146,6 +191,8 @@ export function TreeNodeActions({
   onSync,
   onHandleAsGrouping,
   onGeocodeMatch,
+  onGeoshapeMatch,
+  onPointMatch,
   onResetMatch,
   onManualFix,
 }: TreeNodeActionsProps) {
@@ -159,14 +206,20 @@ export function TreeNodeActions({
 
   const searchButtonProps = {
     nodeId: node.id,
+    wikidataId: node.wikidataId ?? null,
+    geoAvailable: node.geoAvailable ?? null,
     nodeGeocodeMsg,
     isMutating,
     geocodeMatchingRegionId,
+    geoshapeMatchingRegionId,
+    pointMatchingRegionId,
     dbSearchingRegionId,
     aiMatchingRegionId,
     onGeocodeMatch,
     onDBSearch,
     onAIMatch,
+    onGeoshapeMatch,
+    onPointMatch,
   };
 
   return (

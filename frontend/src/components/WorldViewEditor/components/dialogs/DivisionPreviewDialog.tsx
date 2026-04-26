@@ -40,6 +40,8 @@ interface DivisionPreviewDialogProps {
   onAcceptAndRejectRest?: () => void;
   /** Whether accept/reject actions are in progress */
   actionPending?: boolean;
+  /** Marker points extracted from Wikivoyage article (shown when no geoshape/image) */
+  markerPoints?: Array<{ name: string; lat: number; lon: number }>;
 }
 
 export function DivisionPreviewDialog({
@@ -53,6 +55,7 @@ export function DivisionPreviewDialog({
   onReject,
   onAcceptAndRejectRest,
   actionPending,
+  markerPoints,
 }: DivisionPreviewDialogProps) {
   const mapRef = useRef<MapRef>(null);
   const geoshapeMapRef = useRef<MapRef>(null);
@@ -80,7 +83,18 @@ export function DivisionPreviewDialog({
 
   const hasImageSideBySide = !!regionMapUrl;
   const hasGeoshapeSideBySide = !regionMapUrl && !!wikidataId && !geoshapeError;
-  const hasSideBySide = hasImageSideBySide || hasGeoshapeSideBySide;
+  const hasMarkerPointsSideBySide = !regionMapUrl && (!wikidataId || geoshapeError) && !!markerPoints && markerPoints.length > 0;
+  const hasSideBySide = hasImageSideBySide || hasGeoshapeSideBySide || hasMarkerPointsSideBySide;
+
+  // Build GeoJSON FeatureCollection for marker points
+  const markerPointsGeoJSON: GeoJSON.FeatureCollection | null = hasMarkerPointsSideBySide && markerPoints ? {
+    type: 'FeatureCollection',
+    features: markerPoints.map(p => ({
+      type: 'Feature' as const,
+      properties: { name: p.name },
+      geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
+    })),
+  } : null;
 
   return (
     <Dialog
@@ -190,6 +204,51 @@ export function DivisionPreviewDialog({
                   <Typography variant="caption" color="text.secondary">No geoshape available</Typography>
                 </Box>
               )}
+            </Box>
+          )}
+
+          {/* Wikivoyage marker points map (left side, fallback when no regionMapUrl and no geoshape) */}
+          {hasMarkerPointsSideBySide && markerPointsGeoJSON && (
+            <Box sx={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              borderRight: 1,
+              borderColor: 'divider',
+            }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', pt: 0.5 }}>
+                Marker points ({markerPoints!.length})
+              </Typography>
+              <MapGL
+                initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
+                style={{ width: '100%', flex: 1 }}
+                mapStyle={MAP_STYLE}
+                onLoad={(e) => {
+                  try {
+                    const bbox = turf.bbox(markerPointsGeoJSON) as [number, number, number, number];
+                    e.target.fitBounds(
+                      [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+                      { padding: 60, duration: 500, maxZoom: 10 },
+                    );
+                  } catch (err) {
+                    console.error('Failed to fit marker points bounds:', err);
+                  }
+                }}
+              >
+                <NavigationControl position="top-right" showCompass={false} />
+                <Source id="marker-points" type="geojson" data={markerPointsGeoJSON}>
+                  <Layer
+                    id="marker-points-circle"
+                    type="circle"
+                    paint={{
+                      'circle-color': '#ff9800',
+                      'circle-radius': 5,
+                      'circle-stroke-color': '#e65100',
+                      'circle-stroke-width': 1,
+                    }}
+                  />
+                </Source>
+              </MapGL>
             </Box>
           )}
 
