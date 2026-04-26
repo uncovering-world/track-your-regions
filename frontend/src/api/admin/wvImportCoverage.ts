@@ -190,3 +190,136 @@ export async function getChildrenRegionGeometry(
 ): Promise<{ childRegions: SiblingRegionGeometry[] }> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/children-geometry/${regionId}`);
 }
+
+// =============================================================================
+// Children Coverage (per-region container coverage %)
+// =============================================================================
+
+/**
+ * Per-region coverage cache:
+ * - `coverage[regionId]` — fraction (0..1) of the region's GADM coverage relative to its members
+ * - `geoshapeCoverage[regionId]` — fraction relative to the matched Wikidata geoshape (when available)
+ */
+export interface ChildrenCoverageResult {
+  coverage: Record<string, number>;
+  geoshapeCoverage: Record<string, number>;
+}
+
+/**
+ * Fetch children-coverage for a world view. Three call shapes:
+ * - getChildrenCoverage(worldViewId)                   → all regions
+ * - getChildrenCoverage(worldViewId, regionId)         → ancestors of regionId
+ * - getChildrenCoverage(worldViewId, undefined, ancestorId) → single ancestor only
+ */
+export async function getChildrenCoverage(
+  worldViewId: number,
+  regionId?: number,
+  ancestorId?: number,
+): Promise<ChildrenCoverageResult> {
+  const params = new URLSearchParams();
+  if (regionId != null) params.set('regionId', String(regionId));
+  if (ancestorId != null) params.set('ancestorId', String(ancestorId));
+  const query = params.toString();
+  const url = `${API_URL}/api/admin/wv-import/matches/${worldViewId}/children-coverage${query ? '?' + query : ''}`;
+  return authFetchJson(url);
+}
+
+// =============================================================================
+// Coverage Geometry / Gap Analysis
+// =============================================================================
+
+export interface CoverageGeometryResult {
+  parentGeometry: GeoJSON.Geometry | null;
+  childrenGeometry: GeoJSON.Geometry | null;
+  geoshapeGeometry?: GeoJSON.Geometry | null;
+}
+
+export async function getCoverageGeometry(
+  worldViewId: number,
+  regionId: number,
+): Promise<CoverageGeometryResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/coverage-geometry/${regionId}`);
+}
+
+export interface CoverageGapDivision {
+  divisionId: number;
+  name: string;
+  path: string;
+  geometry?: GeoJSON.Geometry | null;
+  areaKm2: number;
+  gadmParentId: number | null;
+  suggestedTarget?: { regionId: number } | null;
+}
+
+export interface AnalyzeCoverageGapsResult {
+  gapDivisions: CoverageGapDivision[];
+  siblingRegions: SiblingRegionGeometry[];
+}
+
+export async function analyzeCoverageGaps(
+  worldViewId: number,
+  regionId: number,
+): Promise<AnalyzeCoverageGapsResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/analyze-coverage-gaps`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+// =============================================================================
+// Geometry preview (union / split / vision-match)
+// =============================================================================
+
+export interface UnionGeometryResult {
+  geometry: GeoJSON.FeatureCollection;
+}
+
+export async function getUnionGeometry(
+  worldViewId: number,
+  divisionIds: number[],
+  regionId?: number,
+): Promise<UnionGeometryResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/union-geometry`, {
+    method: 'POST',
+    body: JSON.stringify({ divisionIds, regionId }),
+  });
+}
+
+export interface SplitDeeperResult {
+  divisions: Array<{ divisionId: number; name: string; path?: string }>;
+  geometry: GeoJSON.FeatureCollection;
+  points?: Array<{ name: string; lat: number; lon: number }>;
+}
+
+export async function splitDivisionsDeeper(
+  worldViewId: number,
+  divisionIds: number[],
+  wikidataId: string,
+  regionId: number,
+  source?: 'geoshape' | 'points' | 'image',
+): Promise<SplitDeeperResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/split-divisions-deeper`, {
+    method: 'POST',
+    body: JSON.stringify({ divisionIds, wikidataId, regionId, source }),
+  });
+}
+
+export interface VisionMatchDivisionsResult {
+  suggestedIds: number[];
+  rejectedIds?: number[];
+  unclearIds?: number[];
+  reasoning?: string;
+  debugImages?: { regionMap: string; divisionsMap: string };
+}
+
+export async function visionMatchDivisions(
+  worldViewId: number,
+  divisionIds: number[],
+  regionId: number,
+  regionMapUrl: string,
+): Promise<VisionMatchDivisionsResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/vision-match-divisions`, {
+    method: 'POST',
+    body: JSON.stringify({ divisionIds, regionId, regionMapUrl }),
+  });
+}

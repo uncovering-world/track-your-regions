@@ -33,11 +33,11 @@ import * as turf from '@turf/turf';
 import {
   detectSmartSimplify,
   applySmartSimplifyMove,
-  getChildrenRegionGeometry,
   type SmartSimplifyMove,
-  type SiblingRegionGeometry,
   type SpatialAnomaly,
 } from '../../api/admin/worldViewImport';
+import { getChildrenRegionGeometry } from '../../api/admin/wvImportCoverage';
+import type { SiblingRegionGeometry } from '../../api/admin/wvImportCoverage';
 import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
 
@@ -108,18 +108,18 @@ export function SmartSimplifyDialog({
   const [divisionGeometries, setDivisionGeometries] = useState<Map<number, GeoJSONGeometry>>(new Map());
   const [divGeoLoading, setDivGeoLoading] = useState(false);
 
+  // Spatial anomaly state
+  const [spatialAnomalies, setSpatialAnomalies] = useState<SpatialAnomaly[] | null>(null);
+  const [appliedAnomalyIndices, setAppliedAnomalyIndices] = useState<Set<number>>(new Set());
+  const [selectedAnomalyIndex, setSelectedAnomalyIndex] = useState<number | null>(null);
+  const [applyingAnomaly, setApplyingAnomaly] = useState(false);
+
   // Interaction state
   const [selectedMoveIndex, setSelectedMoveIndex] = useState<number | null>(null);
   const [appliedGadmParentIds, setAppliedGadmParentIds] = useState<Set<number>>(new Set());
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'current' | 'proposed'>('current');
-
-  // Spatial anomaly state
-  const [spatialAnomalies, setSpatialAnomalies] = useState<SpatialAnomaly[] | null>(null);
-  const [appliedAnomalyIndices, setAppliedAnomalyIndices] = useState<Set<number>>(new Set());
-  const [selectedAnomalyIndex, setSelectedAnomalyIndex] = useState<number | null>(null);
-  const [applyingAnomaly, setApplyingAnomaly] = useState(false);
 
   // Load data on open
   useEffect(() => {
@@ -156,9 +156,10 @@ export function SmartSimplifyDialog({
       });
   }, [open, worldViewId, parentRegionId]);
 
-  const selectedMove = moves && selectedMoveIndex != null ? moves[selectedMoveIndex] : null;
-
   // Derived: the active selection (either a GADM move or a spatial anomaly)
+  // eslint-disable-next-line security/detect-object-injection -- selectedMoveIndex is a typed number|null state; moves[] is the source of valid indices
+  const selectedMove = moves && selectedMoveIndex != null ? moves[selectedMoveIndex] : null;
+  // eslint-disable-next-line security/detect-object-injection -- selectedAnomalyIndex is a typed number|null state; spatialAnomalies[] is the source of valid indices
   const selectedAnomaly = spatialAnomalies && selectedAnomalyIndex != null ? spatialAnomalies[selectedAnomalyIndex] : null;
 
   // Active division IDs to show on the map (from whichever selection is active)
@@ -262,6 +263,7 @@ export function SmartSimplifyDialog({
   // Handle Apply
   const handleApply = useCallback(async () => {
     if (moves == null || selectedMoveIndex == null) return;
+    // eslint-disable-next-line security/detect-object-injection -- selectedMoveIndex is a typed number state, moves[] is the source of valid indices
     const move = moves[selectedMoveIndex];
     if (!move) return;
 
@@ -303,6 +305,7 @@ export function SmartSimplifyDialog({
   // Handle Apply Anomaly
   const handleApplyAnomaly = useCallback(async (index: number) => {
     if (!spatialAnomalies) return;
+    // eslint-disable-next-line security/detect-object-injection -- index is a typed number param from a click handler on spatialAnomalies[]
     const anomaly = spatialAnomalies[index];
     const memberRowIds = anomaly.divisions
       .map(d => d.memberRowId)
@@ -578,7 +581,7 @@ export function SmartSimplifyDialog({
               </Box>
             </Box>
 
-            {/* Bottom section: moves + anomalies list */}
+            {/* Bottom section: moves list */}
             {((moves && moves.length > 0) || (spatialAnomalies && spatialAnomalies.length > 0)) && (
               <Box sx={{
                 borderTop: 1,

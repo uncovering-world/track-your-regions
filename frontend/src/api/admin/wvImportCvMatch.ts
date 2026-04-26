@@ -166,6 +166,40 @@ export async function mapshapeMatch(
 }
 
 // =============================================================================
+// AI Suggest Cluster Regions
+// =============================================================================
+
+/** Per-cluster info supplied to the AI for region matching */
+export interface AISuggestClusterRegionsCluster {
+  clusterId: number;
+  color: string;
+  pixelShare: number;
+  /** Flattened list of GADM division names already associated with the cluster */
+  divisionNames: string[];
+}
+
+export interface AISuggestClusterRegionsResult {
+  matches: Array<{ clusterId: number; regionId: number | null }>;
+  stats: { inputTokens: number; outputTokens: number; cost: number };
+}
+
+/**
+ * Ask the AI to assign each CV cluster to one of the given child regions
+ * (or to none). Used by the geo-preview section after a CV color match.
+ */
+export async function aiSuggestClusterRegions(
+  worldViewId: number,
+  clusters: AISuggestClusterRegionsCluster[],
+  childRegions: Array<{ id: number; name: string }>,
+  modelOverride?: string,
+): Promise<AISuggestClusterRegionsResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/ai-suggest-cluster-regions`, {
+    method: 'POST',
+    body: JSON.stringify({ clusters, childRegions, modelOverride }),
+  });
+}
+
+// =============================================================================
 // Cluster / Water Preview URLs & Review Responses
 // =============================================================================
 

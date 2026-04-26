@@ -127,11 +127,11 @@ export async function renameRegion(
 }
 
 // =============================================================================
-// AI Review Children
+// AI Review / Suggest Children
 // =============================================================================
 
 export interface ReviewChildAction {
-  type: 'add' | 'remove' | 'rename';
+  type: 'add' | 'remove' | 'rename' | 'enrich';
   name: string;
   newName?: string;
   reason: string;
@@ -146,6 +146,9 @@ export interface AIReviewChildrenResult {
   stats: { inputTokens: number; outputTokens: number; cost: number } | null;
 }
 
+/** Same shape as AIReviewChildrenResult — modern alias used by the suggest-children dialog */
+export type AISuggestChildrenResult = AIReviewChildrenResult;
+
 export async function aiReviewChildren(
   worldViewId: number,
   regionId: number,
@@ -155,6 +158,9 @@ export async function aiReviewChildren(
     body: JSON.stringify({ regionId }),
   });
 }
+
+/** Modern alias for aiReviewChildren — same endpoint, different name in newer call sites */
+export const aiSuggestChildren = aiReviewChildren;
 
 // =============================================================================
 // Mark Manual Fix / Select Map Image
@@ -241,7 +247,7 @@ export async function detectSmartSimplify(
   });
 }
 
-export async function applySmartSimplifyMove(
+export async function applySmartFlatten(
   worldViewId: number,
   parentRegionId: number,
   ownerRegionId: number,
@@ -250,5 +256,233 @@ export async function applySmartSimplifyMove(
   return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-simplify/apply-move`, {
     method: 'POST',
     body: JSON.stringify({ parentRegionId, ownerRegionId, memberRowIds }),
+  });
+}
+
+// Backward-compat alias for older call-sites
+export const applySmartSimplifyMove = applySmartFlatten;
+
+// =============================================================================
+// Prune / Smart Flatten / Merge / Collapse / Auto-Resolve
+// =============================================================================
+
+export interface PruneResult {
+  pruned: number;
+  undoAvailable?: boolean;
+}
+
+export async function pruneToLeaves(
+  worldViewId: number,
+  regionId: number,
+): Promise<PruneResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/prune-to-leaves`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+export interface SmartFlattenResult {
+  absorbed: number;
+  divisions: number;
+  unmatched?: Array<{ id: number; name: string }>;
+  undoAvailable?: boolean;
+}
+
+export async function smartFlatten(
+  worldViewId: number,
+  regionId: number,
+): Promise<SmartFlattenResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-flatten`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+export interface SmartFlattenPreviewResult {
+  geometry?: GeoJSON.Geometry | null;
+  regionMapUrl?: string | null;
+  descendants?: number;
+  divisions?: number;
+  unmatched?: Array<{ id: number; name: string }>;
+}
+
+export async function smartFlattenPreview(
+  worldViewId: number,
+  regionId: number,
+): Promise<SmartFlattenPreviewResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/smart-flatten/preview`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+export async function mergeChildIntoParent(
+  worldViewId: number,
+  regionId: number,
+): Promise<{ merged: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/merge-child-into-parent`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+export interface CollapseToParentResult {
+  collapsed: number;
+  parentSuggestions: number;
+  undoAvailable?: boolean;
+}
+
+export async function collapseToParent(
+  worldViewId: number,
+  regionId: number,
+): Promise<CollapseToParentResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/collapse-to-parent`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+export interface AutoResolveChildrenResult {
+  resolved: number;
+  review: number;
+  failed: Array<{ id: number; name: string }>;
+  total: number;
+  undoAvailable?: boolean;
+}
+
+export async function autoResolveChildren(
+  worldViewId: number,
+  regionId: number,
+): Promise<AutoResolveChildrenResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/auto-resolve-children`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+export async function reparentRegion(
+  worldViewId: number,
+  regionId: number,
+  newParentId: number | null,
+): Promise<{ reparented: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/reparent-region`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId, newParentId }),
+  });
+}
+
+export async function dismissHierarchyWarnings(
+  worldViewId: number,
+  regionId: number,
+): Promise<{ dismissed: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/dismiss-hierarchy-warnings`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+export async function clearRegionMembers(
+  worldViewId: number,
+  regionId: number,
+): Promise<{ cleared: number }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/clear-region-members`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
+  });
+}
+
+// =============================================================================
+// Batch accept/reject
+// =============================================================================
+
+export async function acceptBatchAndRejectRest(
+  worldViewId: number,
+  regionId: number,
+  divisionIds: number[],
+): Promise<{ accepted: number; rejected: number }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/accept-batch-and-reject-rest`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId, divisionIds }),
+  });
+}
+
+export async function rejectBatchSuggestions(
+  worldViewId: number,
+  regionId: number,
+  divisionIds: number[],
+): Promise<{ rejected: number }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/reject-batch`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId, divisionIds }),
+  });
+}
+
+// =============================================================================
+// Division Overlap Detection / Resolution
+// =============================================================================
+
+export interface DivisionOverlapResult {
+  overlaps: Array<{
+    divisionId: number;
+    divisionName: string;
+    /** GADM hierarchy path (e.g., "World > France > Île-de-France") for display */
+    divisionPath: string;
+    regions: Array<{
+      regionId: number;
+      regionName: string;
+      viaDivisionId: number;
+      viaDivisionName: string;
+      /** True for direct (region's own member); false when this region holds the
+       * division via a coarser ancestor (containment overlap). */
+      isDirect: boolean;
+    }>;
+  }>;
+}
+
+export interface OverlapGadmChild {
+  divisionId: number;
+  name: string;
+  areaKm2?: number;
+  assignedToRegionId?: number;
+}
+
+export async function checkDivisionOverlap(
+  worldViewId: number,
+  parentRegionId: number,
+): Promise<DivisionOverlapResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/check-division-overlap`, {
+    method: 'POST',
+    body: JSON.stringify({ parentRegionId }),
+  });
+}
+
+export async function getOverlapDivisionChildren(
+  worldViewId: number,
+  divisionId: number,
+  regionIds: number[],
+): Promise<{ children: OverlapGadmChild[] }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/overlap-division-children`, {
+    method: 'POST',
+    body: JSON.stringify({ divisionId, regionIds }),
+  });
+}
+
+export type OverlapResolution =
+  | { action: 'keep'; divisionId: number; keepInRegionId: number; removeFromRegionIds: number[] }
+  | {
+      action: 'split';
+      divisionId: number;
+      /** Region whose coarse parent division is being split into GADM children */
+      splitRegionId: number;
+      assignments: Array<{ gadmChildId: number; targetRegionId: number }>;
+    };
+
+export async function resolveOverlap(
+  worldViewId: number,
+  resolution: OverlapResolution,
+): Promise<{ resolved: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/resolve-overlap`, {
+    method: 'POST',
+    body: JSON.stringify(resolution),
   });
 }
