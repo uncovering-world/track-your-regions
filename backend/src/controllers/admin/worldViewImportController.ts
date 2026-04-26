@@ -27,6 +27,10 @@ export {
   selectMapImage,
   markManualFix,
   resolveIcpAdjustment,
+  resolveClusterReview,
+  getClusterPreviewImage,
+  getClusterHighlightImage,
+  getClusterOverlayImage,
 } from './wvImportMatchController.js';
 export {
   getCoverage,
