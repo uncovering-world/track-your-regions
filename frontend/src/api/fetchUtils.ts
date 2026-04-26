@@ -174,3 +174,55 @@ export async function authFetchJson<T>(url: string, options?: RequestInit): Prom
 
   return response.json();
 }
+
+/**
+ * Authenticated fetch returning a Blob (for image/binary endpoints).
+ * Mirrors authFetchJson but returns response.blob() instead of response.json().
+ */
+export async function authFetchBlob(url: string, options?: RequestInit): Promise<Blob> {
+  await ensureFreshToken();
+
+  const buildHeaders = (): Headers => {
+    const h = new Headers(options?.headers);
+    h.delete('Content-Type');
+    if (accessToken) h.set('Authorization', `Bearer ${accessToken}`);
+    return h;
+  };
+
+  let response = await fetch(url, { ...options, headers: buildHeaders() });
+
+  if (response.status === 401) {
+    if (!pendingRefresh) {
+      pendingRefresh = (async () => {
+        try {
+          const refreshResponse = await fetch(`${API_URL}/api/auth/refresh`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (refreshResponse.ok) {
+            const data = await refreshResponse.json();
+            accessToken = data.accessToken;
+            return true;
+          }
+          return false;
+        } catch {
+          return false;
+        } finally {
+          pendingRefresh = null;
+        }
+      })();
+    }
+    const refreshed = await pendingRefresh;
+    if (refreshed) {
+      response = await fetch(url, { ...options, headers: buildHeaders() });
+    } else {
+      window.dispatchEvent(new CustomEvent('auth:session-expired'));
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.blob();
+}

@@ -597,3 +597,27 @@ export async function getChildrenRegionGeometry(
     `${API_URL}/api/admin/wv-import/matches/${worldViewId}/children-geometry/${regionId}`,
   );
 }
+
+// =============================================================================
+// ICP Adaptive Alignment (ADR-0011)
+// =============================================================================
+
+export interface IcpAdjustmentDecision {
+  action: 'adjust' | 'continue';
+}
+
+/**
+ * Respond to an ICP adjustment suggestion during CV match.
+ * Called when the user clicks "Adjust alignment" or "Continue anyway".
+ * POST /api/admin/wv-import/icp-adjustment/:reviewId
+ */
+export async function respondToIcpAdjustment(
+  reviewId: string,
+  decision: IcpAdjustmentDecision,
+): Promise<void> {
+  await authFetchJson(`${API_URL}/api/admin/wv-import/icp-adjustment/${reviewId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(decision),
+  });
+}
