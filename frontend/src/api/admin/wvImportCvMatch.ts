@@ -121,6 +121,12 @@ export interface ClusterReviewDecision {
   split?: number[];
 }
 
+export interface ManualClusterResponse {
+  type: 'manual_clusters';
+  overlayPng: string;
+  palette: Array<{ label: number; color: [number, number, number] }>;
+}
+
 // =============================================================================
 // Mapshape Match
 // =============================================================================

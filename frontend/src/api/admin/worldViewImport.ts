@@ -363,23 +363,6 @@ export async function getTransferPreview(
 }
 
 // =============================================================================
-// Manual Cluster Painting (used by ClusterPaintEditor)
-// =============================================================================
-//
-// Defined here (not in wvImportCvMatch.ts) because the existing
-// `respondToClusterReview` signature takes only `ClusterReviewDecision`.
-// The follow-up commit moves this type into wvImportCvMatch.ts and widens
-// `respondToClusterReview` to accept the union.
-
-/** Manual cluster painting response — sent when admin uses the paint editor */
-export interface ManualClusterResponse {
-  type: 'manual_clusters';
-  /** Base64 data URL of the painted cluster overlay PNG */
-  overlayPng: string;
-  palette: Array<{ label: number; color: [number, number, number] }>;
-}
-
-// =============================================================================
 // Re-exports for backward compatibility
 // =============================================================================
 
@@ -460,4 +443,5 @@ export type {
   IcpAdjustmentDecision,
   ColorMatchSSEEvent,
   MapshapeMatchResult,
+  ManualClusterResponse,
 } from './wvImportCvMatch';
