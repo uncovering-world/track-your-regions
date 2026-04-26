@@ -1,14 +1,12 @@
 /**
- * Admin WorldView Import — AI Match controller
+ * WorldView Import AI Controller
  *
- * Owns: AI-assisted matching endpoints (start/status/cancel), single-region
- * fallbacks (DB search, geocode), reset, AI-match-one-region, and
- * AI-review-children (audit + enrichment + verification).
- * See ADR-0009 for the domain-split rationale.
+ * AI-assisted matching endpoints: batch AI match, db search, geocode, reset, single AI match,
+ * AI suggest children.
  */
 
-import OpenAI from 'openai';
 import { Response } from 'express';
+import OpenAI from 'openai';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import {
@@ -19,16 +17,45 @@ import {
   dbSearchSingleRegion,
   geocodeMatchRegion,
 } from '../../services/worldViewImport/aiMatcher.js';
-import { isOpenAIAvailable, getModel } from '../../services/ai/openaiService.js';
+import { isOpenAIAvailable } from '../../services/ai/openaiService.js';
+import { getModelForFeature } from '../../services/ai/aiSettingsService.js';
 import { calculateCost } from '../../services/ai/pricingService.js';
-import { geoshapeMatchRegion, computeGeoSimilarityForRegion } from '../../services/worldViewImport/geoshapeCache.js';
-import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
+import { chatCompletion } from '../../services/ai/chatCompletion.js';
+import { logAIUsage } from '../../services/ai/aiUsageLogger.js';
 import { WikivoyageFetcher } from '../../services/wikivoyageExtract/fetcher.js';
 import { findRegionsSection } from '../../services/wikivoyageExtract/parser.js';
 import type { WikiSection } from '../../services/wikivoyageExtract/types.js';
+import { geoshapeMatchRegion } from '../../services/worldViewImport/geoshapeCoverage.js';
+import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
+import { computeGeoSimilarityIfNeeded } from './wvImportUtils.js';
+
+// Lazy OpenAI singleton (same pattern as aiHierarchyReviewController.ts)
+let openaiClient: OpenAI | null = null;
+function getClient(): OpenAI {
+  if (!openaiClient) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+    openaiClient = new OpenAI({ apiKey });
+  }
+  return openaiClient;
+}
+
+// Code-fence regex — no `\s*` inside to avoid super-linear backtracking.
+// Captured content is trimmed before JSON.parse.
+const FENCE_REGEX = /```(?:json)?([\s\S]*?)```/;
+
+/** Format a scope-ancestor suffix for log messages. Avoids nested template literals. */
+function formatScopeSuffix(scopeAncestorId: unknown): string {
+  return scopeAncestorId ? ` scopeAncestorId=${String(scopeAncestorId)}` : '';
+}
+
+/** Format a model-override suffix for log messages. Avoids nested template literals. */
+function formatModelOverrideSuffix(modelOverride: string | undefined): string {
+  return modelOverride ? ` (model override: ${modelOverride})` : '';
+}
 
 // =============================================================================
-// AI match orchestration
+// AI-assisted matching endpoints
 // =============================================================================
 
 /**
@@ -79,10 +106,6 @@ export function cancelAIMatchEndpoint(req: AuthenticatedRequest, res: Response):
   res.json({ cancelled });
 }
 
-// =============================================================================
-// Single-region operations
-// =============================================================================
-
 /**
  * DB search a single region using trigram similarity.
  * POST /api/admin/wv-import/matches/:worldViewId/db-search-one
@@ -94,6 +117,10 @@ export async function dbSearchOneRegion(req: AuthenticatedRequest, res: Response
 
   try {
     const result = await dbSearchSingleRegion(worldViewId, regionId);
+    // Compute geo similarity if region now has multiple suggestions
+    if (result.found > 0) {
+      await computeGeoSimilarityIfNeeded(regionId);
+    }
     res.json(result);
   } catch (err) {
     console.error(`[WV Import] DB search one failed:`, err);
@@ -102,7 +129,7 @@ export async function dbSearchOneRegion(req: AuthenticatedRequest, res: Response
 }
 
 /**
- * Geocode-match a single region: name → Nominatim coordinates → ST_Contains on GADM.
+ * Geocode-match a single region: name -> Nominatim coordinates -> ST_Contains on GADM.
  * POST /api/admin/wv-import/matches/:worldViewId/geocode-match
  */
 export async function geocodeMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -112,10 +139,58 @@ export async function geocodeMatch(req: AuthenticatedRequest, res: Response): Pr
 
   try {
     const result = await geocodeMatchRegion(worldViewId, regionId);
+    // Compute geo similarity if region now has multiple suggestions
+    if (result.found > 0) {
+      await computeGeoSimilarityIfNeeded(regionId);
+    }
     res.json(result);
   } catch (err) {
     console.error(`[WV Import] Geocode match failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Geocode match failed' });
+  }
+}
+
+/**
+ * Match a region by comparing its Wikidata geoshape geometry against GADM divisions.
+ * Scopes search to the relevant GADM subtree for performance.
+ * POST /api/admin/wv-import/matches/:worldViewId/geoshape-match
+ */
+export async function geoshapeMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId, scopeAncestorId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/geoshape-match — regionId=${regionId}${formatScopeSuffix(scopeAncestorId)}`);
+
+  try {
+    const result = await geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId);
+    // Compute geo similarity if region now has multiple suggestions
+    if (result.found > 0) {
+      await computeGeoSimilarityIfNeeded(regionId);
+    }
+    res.json(result);
+  } catch (err) {
+    console.error(`[WV Import] Geoshape match failed:`, err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Geoshape match failed' });
+  }
+}
+
+/**
+ * Match a region using Wikivoyage marker coordinates → GADM point containment.
+ * POST /api/admin/wv-import/matches/:worldViewId/point-match
+ */
+export async function pointMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId, scopeAncestorId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/point-match — regionId=${regionId}${formatScopeSuffix(scopeAncestorId)}`);
+
+  try {
+    const result = await pointMatchRegion(worldViewId, regionId, scopeAncestorId);
+    if (result.found > 0) {
+      await computeGeoSimilarityIfNeeded(regionId);
+    }
+    res.json(result);
+  } catch (err) {
+    console.error(`[WV Import] Point match failed:`, err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Point match failed' });
   }
 }
 
@@ -172,6 +247,8 @@ export async function aiMatchOneRegion(req: AuthenticatedRequest, res: Response)
 
   try {
     const result = await aiMatchSingleRegion(worldViewId, regionId);
+    // Compute geo similarity if region now has multiple suggestions
+    await computeGeoSimilarityIfNeeded(regionId);
     res.json(result);
   } catch (err) {
     console.error(`[WV Import] AI match one failed:`, err);
@@ -179,94 +256,16 @@ export async function aiMatchOneRegion(req: AuthenticatedRequest, res: Response)
   }
 }
 
-// =============================================================================
-// Geo similarity helper
-// =============================================================================
-
 /**
- * Compute geo similarity if the region now has multiple suggestions.
- * Called after geoshape/point match to score and auto-accept/reject candidates.
+ * AI-review children for a region: full audit + enrichment + verification flow.
+ * Fetches the Wikivoyage "Regions" section, asks AI to audit existing children
+ * (add/remove/rename), enriches with Wikivoyage page titles and Wikidata QIDs,
+ * then programmatically verifies pages exist via the Wikivoyage API.
+ * POST /api/admin/wv-import/matches/:worldViewId/ai-suggest-children
  */
-async function computeGeoSimilarityIfNeeded(regionId: number): Promise<void> {
-  const sugResult = await pool.query(
-    `SELECT division_id AS "divisionId" FROM region_match_suggestions WHERE region_id = $1 AND rejected = false`,
-    [regionId],
-  );
-  if (sugResult.rows.length <= 1) return;
-
-  const client = await pool.connect();
-  try {
-    await computeGeoSimilarityForRegion(client, regionId, sugResult.rows as Array<{ divisionId: number }>);
-  } finally {
-    client.release();
-  }
-}
-
 // =============================================================================
-// Geoshape and point matching
+// aiSuggestChildren helpers
 // =============================================================================
-
-/**
- * Match a region by comparing its Wikidata geoshape geometry against GADM divisions.
- * Scopes search to the relevant GADM subtree for performance.
- * POST /api/admin/wv-import/matches/:worldViewId/geoshape-match
- */
-export async function geoshapeMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, scopeAncestorId } = req.body;
-  console.log(`[WV Import] POST /matches/${worldViewId}/geoshape-match — regionId=${regionId}${scopeAncestorId ? ` scopeAncestorId=${scopeAncestorId}` : ''}`);
-
-  try {
-    const result = await geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId);
-    // Compute geo similarity if region now has multiple suggestions
-    if (result.found > 0) {
-      await computeGeoSimilarityIfNeeded(regionId);
-    }
-    res.json(result);
-  } catch (err) {
-    console.error(`[WV Import] Geoshape match failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Geoshape match failed' });
-  }
-}
-
-/**
- * Match a region using Wikivoyage marker coordinates → GADM point containment.
- * POST /api/admin/wv-import/matches/:worldViewId/point-match
- */
-export async function pointMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, scopeAncestorId } = req.body;
-  console.log(`[WV Import] POST /matches/${worldViewId}/point-match — regionId=${regionId}${scopeAncestorId ? ` scopeAncestorId=${scopeAncestorId}` : ''}`);
-
-  try {
-    const result = await pointMatchRegion(worldViewId, regionId, scopeAncestorId);
-    if (result.found > 0) {
-      await computeGeoSimilarityIfNeeded(regionId);
-    }
-    res.json(result);
-  } catch (err) {
-    console.error(`[WV Import] Point match failed:`, err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Point match failed' });
-  }
-}
-
-// =============================================================================
-// aiSuggestChildren — AI Review Children
-// =============================================================================
-
-// Lazy OpenAI singleton for this controller
-let openaiClient: OpenAI | null = null;
-function getAIClient(): OpenAI {
-  if (!openaiClient) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
-    openaiClient = new OpenAI({ apiKey });
-  }
-  return openaiClient;
-}
-
-// Code-fence regex (no inner \s* to avoid super-linear backtracking)
-const FENCE_REGEX = /```(?:json)?([\s\S]*?)```/;
 
 interface ExistingChild {
   name: string;
@@ -305,6 +304,12 @@ interface PageVerification {
   wikidataQID: string | null;
 }
 
+interface RegionContext {
+  regionName: string;
+  pageTitle: string;
+  existingChildren: ExistingChild[];
+}
+
 /** Strip an optional ```json ... ``` code fence and JSON-parse the result. */
 function parseFencedJson<T>(raw: string): T {
   let jsonStr = raw;
@@ -313,9 +318,56 @@ function parseFencedJson<T>(raw: string): T {
   return JSON.parse(jsonStr.trim()) as T;
 }
 
-/** Encode a Wikivoyage page title as a URL (spaces become underscores). */
+/** Encode a Wikivoyage page title as a URL fragment (spaces → underscores, then URL-encode). */
 function wikivoyagePageUrl(title: string): string {
-  return `https://en.wikivoyage.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+  const encodedTitle = encodeURIComponent(title.replace(/ /g, '_'));
+  return `https://en.wikivoyage.org/wiki/${encodedTitle}`;
+}
+
+/** Load the region's name, source URL, and existing children; sends a 4xx response on failure. */
+async function fetchRegionContext(
+  worldViewId: number,
+  regionId: number,
+  res: Response,
+): Promise<RegionContext | null> {
+  const regionResult = await pool.query(
+    `SELECT r.id, r.name, ris.source_url
+     FROM regions r
+     LEFT JOIN region_import_state ris ON ris.region_id = r.id
+     WHERE r.id = $1 AND r.world_view_id = $2`,
+    [regionId, worldViewId],
+  );
+  if (regionResult.rows.length === 0) {
+    res.status(404).json({ error: 'Region not found in this world view' });
+    return null;
+  }
+  const { name: regionName, source_url: sourceUrl } = regionResult.rows[0];
+  if (!sourceUrl) {
+    res.status(400).json({ error: 'Region has no source URL' });
+    return null;
+  }
+
+  const pathPart = new URL(sourceUrl).pathname.split('/wiki/')[1];
+  if (!pathPart) {
+    res.status(400).json({ error: 'Cannot extract page title from source URL' });
+    return null;
+  }
+  const pageTitle = decodeURIComponent(pathPart);
+
+  const childrenResult = await pool.query(
+    `SELECT r.name, ris.source_url, ris.source_external_id
+     FROM regions r
+     LEFT JOIN region_import_state ris ON ris.region_id = r.id
+     WHERE r.parent_region_id = $1`,
+    [regionId],
+  );
+  const existingChildren: ExistingChild[] = childrenResult.rows.map((r) => ({
+    name: r.name as string,
+    sourceUrl: (r.source_url as string | null) ?? null,
+    sourceExternalId: (r.source_external_id as string | null) ?? null,
+  }));
+
+  return { regionName: regionName as string, pageTitle, existingChildren };
 }
 
 /** Build an initial progress stub for the WikivoyageFetcher constructor. */
@@ -331,7 +383,10 @@ function buildFetcherProgress() {
   };
 }
 
-/** Fetch the raw "Regions" section wikitext. Returns null when missing or empty. */
+/**
+ * Fetch the raw "Regions" section wikitext for a Wikivoyage page.
+ * Returns null when the section is missing or empty.
+ */
 async function fetchRegionsSectionWikitext(
   fetcher: WikivoyageFetcher,
   pageTitle: string,
@@ -353,6 +408,7 @@ async function fetchRegionsSectionWikitext(
   });
   const wikitext = ((wikitextData.parse as { wikitext: Record<string, string> })?.wikitext?.['*']) ?? '';
   fetcher.save();
+
   return wikitext.length === 0 ? null : wikitext;
 }
 
@@ -413,7 +469,7 @@ ${enrichTargets.map(n => `  - ${n}`).join('\n')}
 
 For each region, extract:
 1. **wikivoyageTitle**: The exact Wikivoyage page title. Look for wikilinks like [[Page Title]] or [[Page Title|Display Name]] in the wikitext. If no wikilink exists, use the region name as-is.
-2. **wikidataQID**: The Wikidata QID (e.g. Q12345) if referenced in the wikitext. If not present, set to null.
+2. **wikidataQID**: The Wikidata QID (e.g. Q12345) if referenced in the wikitext (e.g. in {{Regionlist}} wikidata= parameters). If not in the wikitext, provide your best guess or null.
 
 Respond with JSON only (no markdown fences):
 {
@@ -438,11 +494,30 @@ function normalizeAuditActions(actions: AuditAction[]): NormalizedAction[] {
   }));
 }
 
-/** Collect all names that need Wikivoyage enrichment. */
-function collectEnrichTargets(actions: NormalizedAction[]): string[] {
-  return actions
-    .filter(a => a.type === 'add' || a.type === 'rename')
-    .map(a => a.type === 'rename' ? (a.newName ?? a.name) : a.name);
+/** Identify existing children missing Wikivoyage metadata that weren't renamed/removed. */
+function findChildrenNeedingEnrichment(
+  existingChildren: ExistingChild[],
+  actions: NormalizedAction[],
+): ExistingChild[] {
+  const renamedNames = new Set(actions.filter(a => a.type === 'rename').map(a => a.name.toLowerCase()));
+  const removedNames = new Set(actions.filter(a => a.type === 'remove').map(a => a.name.toLowerCase()));
+  return existingChildren.filter(c =>
+    (!c.sourceUrl || !c.sourceExternalId) &&
+    !renamedNames.has(c.name.toLowerCase()) &&
+    !removedNames.has(c.name.toLowerCase()),
+  );
+}
+
+/** Collect all names that need Wikivoyage enrichment across actions + missing-metadata children. */
+function collectEnrichTargets(
+  actions: NormalizedAction[],
+  childrenNeedingEnrichment: ExistingChild[],
+): string[] {
+  const enrichableActions = actions.filter(a => a.type === 'add' || a.type === 'rename');
+  return [
+    ...enrichableActions.map(a => a.type === 'rename' ? (a.newName ?? a.name) : a.name),
+    ...childrenNeedingEnrichment.map(c => c.name),
+  ];
 }
 
 /** Parse the AI enrichment response. Returns [] on malformed JSON. */
@@ -456,7 +531,7 @@ function parseEnrichmentResponse(raw: string): Enrichment[] {
   }
 }
 
-/** Verify a batch of Wikivoyage page titles via the MediaWiki API. */
+/** Verify one batch of up to 50 Wikivoyage page titles; swallows network errors. */
 async function verifyBatch(
   batch: string[],
   fetcher: WikivoyageFetcher,
@@ -483,14 +558,15 @@ async function verifyBatch(
   }
 }
 
-/** Verify which Wikivoyage page titles exist (batches of 50). */
+/** Verify which Wikivoyage page titles exist via the MediaWiki API (batches of 50). */
 async function verifyWikivoyagePages(
   titles: string[],
   fetcher: WikivoyageFetcher,
 ): Promise<Map<string, PageVerification>> {
   const verifiedPages = new Map<string, PageVerification>();
   for (let i = 0; i < titles.length; i += 50) {
-    await verifyBatch(titles.slice(i, i + 50), fetcher, verifiedPages);
+    const batch = titles.slice(i, i + 50);
+    await verifyBatch(batch, fetcher, verifiedPages);
   }
   return verifiedPages;
 }
@@ -523,58 +599,48 @@ function buildEnrichedActions(
   });
 }
 
-/**
- * AI-review children for a region: full audit + enrichment + verification flow.
- * Fetches the Wikivoyage "Regions" section, asks AI to audit existing children
- * (add/remove/rename), enriches with Wikivoyage page titles and Wikidata QIDs,
- * then programmatically verifies pages exist via the Wikivoyage API.
- * POST /api/admin/wv-import/matches/:worldViewId/ai-suggest-children
- */
+/** Build additional "enrich" actions for existing children that gained metadata. */
+function buildExtraEnrichActions(
+  childrenNeedingEnrichment: ExistingChild[],
+  enrichMap: Map<string, Enrichment>,
+  verifiedPages: Map<string, PageVerification>,
+) {
+  return childrenNeedingEnrichment.flatMap((child) => {
+    const enrichment = enrichMap.get(child.name.toLowerCase());
+    if (!enrichment?.wikivoyageTitle) return [];
+
+    const verification = verifiedPages.get(enrichment.wikivoyageTitle.toLowerCase());
+    if (!verification?.exists) return [];
+
+    if (child.sourceUrl && child.sourceExternalId) return [];
+
+    const newSourceUrl = wikivoyagePageUrl(enrichment.wikivoyageTitle);
+    const newExternalId = verification.wikidataQID ?? enrichment.wikidataQID ?? null;
+    const parts: string[] = [];
+    if (!child.sourceUrl && newSourceUrl) parts.push('Wikivoyage URL');
+    if (!child.sourceExternalId && newExternalId) parts.push('Wikidata QID');
+    if (parts.length === 0) return [];
+
+    return [{
+      type: 'enrich' as const,
+      name: child.name,
+      reason: `add missing ${parts.join(' and ')}`,
+      sourceUrl: newSourceUrl,
+      sourceExternalId: newExternalId,
+      verified: true as const,
+    }];
+  });
+}
+
 export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/ai-review-children — regionId=${regionId}`);
 
   try {
-    // 1. Fetch region metadata
-    const regionResult = await pool.query(
-      `SELECT r.id, r.name, ris.source_url
-       FROM regions r
-       LEFT JOIN region_import_state ris ON ris.region_id = r.id
-       WHERE r.id = $1 AND r.world_view_id = $2`,
-      [regionId, worldViewId],
-    );
-    if (regionResult.rows.length === 0) {
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
-    }
-    const { name: regionName, source_url: sourceUrl } = regionResult.rows[0] as { name: string; source_url: string | null };
-    if (!sourceUrl) {
-      res.status(400).json({ error: 'Region has no source URL' });
-      return;
-    }
-
-    // 2. Fetch existing children with metadata
-    const childrenResult = await pool.query(
-      `SELECT r.name, ris.source_url, ris.source_external_id
-       FROM regions r
-       LEFT JOIN region_import_state ris ON ris.region_id = r.id
-       WHERE r.parent_region_id = $1`,
-      [regionId],
-    );
-    const existingChildren: ExistingChild[] = childrenResult.rows.map((r) => ({
-      name: r.name as string,
-      sourceUrl: (r.source_url as string | null) ?? null,
-      sourceExternalId: (r.source_external_id as string | null) ?? null,
-    }));
-
-    // 3. Fetch Wikivoyage "Regions" section wikitext
-    const pathPart = new URL(sourceUrl).pathname.split('/wiki/')[1];
-    if (!pathPart) {
-      res.status(400).json({ error: 'Cannot extract page title from source URL' });
-      return;
-    }
-    const pageTitle = decodeURIComponent(pathPart);
+    const context = await fetchRegionContext(worldViewId, regionId, res);
+    if (!context) return;
+    const { regionName, pageTitle, existingChildren } = context;
 
     const fetcher = new WikivoyageFetcher('data/cache/wikivoyage-cache.json', buildFetcherProgress());
 
@@ -590,13 +656,13 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
     }
 
     // 4. AI Call 1 — Audit
-    const model = getModel();
-    const client = getAIClient();
+    const model = await getModelForFeature('review_children');
+    const client = getClient();
     const startTime = Date.now();
 
     const auditPrompt = buildAuditPrompt(regionName, existingChildren, wikitext);
 
-    const auditResponse = await client.chat.completions.create({
+    const auditResponse = await chatCompletion(client, {
       model,
       temperature: 0.3,
       max_completion_tokens: 4000,
@@ -616,6 +682,13 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
       auditResult = parseFencedJson<AuditResult>(auditContent);
     } catch {
       const auditCost = calculateCost(auditTokensIn, auditTokensOut, model);
+      logAIUsage({
+        feature: 'review_children',
+        model, apiCalls: 1,
+        promptTokens: auditTokensIn, completionTokens: auditTokensOut,
+        totalCost: auditCost.totalCost, durationMs: Date.now() - startTime,
+        description: `Review children for "${regionName}" (region ${regionId}) — parse error`,
+      }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
       res.json({
         actions: [],
         analysis: auditContent || 'AI response could not be parsed.',
@@ -625,10 +698,18 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
     }
 
     const actions = normalizeAuditActions(auditResult.actions ?? []);
-    const enrichTargets = collectEnrichTargets(actions);
+    const childrenNeedingEnrichment = findChildrenNeedingEnrichment(existingChildren, actions);
+    const enrichTargets = collectEnrichTargets(actions, childrenNeedingEnrichment);
 
     if (enrichTargets.length === 0) {
       const auditCost = calculateCost(auditTokensIn, auditTokensOut, model);
+      logAIUsage({
+        feature: 'review_children',
+        model, apiCalls: 1,
+        promptTokens: auditTokensIn, completionTokens: auditTokensOut,
+        totalCost: auditCost.totalCost, durationMs: Date.now() - startTime,
+        description: `Review children for "${regionName}" (region ${regionId}) — no enrichable actions`,
+      }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
       res.json({
         actions: actions.map(a => ({ ...a, sourceUrl: null, sourceExternalId: null, verified: false })),
         analysis: auditResult.analysis ?? '',
@@ -640,7 +721,7 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
     // 5. AI Call 2 — Enrichment
     const enrichPrompt = buildEnrichPrompt(enrichTargets, wikitext);
 
-    const enrichResponse = await client.chat.completions.create({
+    const enrichResponse = await chatCompletion(client, {
       model,
       temperature: 0.1,
       max_completion_tokens: 2000,
@@ -667,18 +748,139 @@ export async function aiSuggestChildren(req: AuthenticatedRequest, res: Response
     const totalTokensIn = auditTokensIn + enrichTokensIn;
     const totalTokensOut = auditTokensOut + enrichTokensOut;
     const totalCost = calculateCost(totalTokensIn, totalTokensOut, model);
+    const durationMs = Date.now() - startTime;
 
-    console.log(`[WV Import] AI review children for "${regionName}" (${regionId}) — ${actions.length} actions, ${Date.now() - startTime}ms, $${totalCost.totalCost.toFixed(4)}`);
+    logAIUsage({
+      feature: 'review_children',
+      model, apiCalls: 2,
+      promptTokens: totalTokensIn, completionTokens: totalTokensOut,
+      totalCost: totalCost.totalCost, durationMs,
+      description: `Review children for "${regionName}" (region ${regionId}) in wv ${worldViewId} — ${actions.length} actions`,
+    }).catch((err) => console.warn('[AI Usage] Failed to log:', err));
 
     const enrichedActions = buildEnrichedActions(actions, enrichMap, verifiedPages);
+    const extraEnrichActions = buildExtraEnrichActions(childrenNeedingEnrichment, enrichMap, verifiedPages);
 
     res.json({
-      actions: enrichedActions,
+      actions: [...enrichedActions, ...extraEnrichActions],
       analysis: auditResult.analysis ?? '',
       stats: { inputTokens: totalTokensIn, outputTokens: totalTokensOut, cost: totalCost.totalCost },
     });
   } catch (err) {
     console.error(`[WV Import] AI review children failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'AI review children failed' });
+  }
+}
+
+/**
+ * AI-assisted cluster-to-region matching.
+ * Given K-means color clusters (each containing GADM division names) and a list
+ * of child region names, asks the AI to match each cluster to a region.
+ */
+export async function aiSuggestClusterRegions(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { clusters, childRegions, model: modelOverride } = req.body as {
+    clusters: Array<{ clusterId: number; color: string; pixelShare: number; divisionNames: string[] }>;
+    childRegions: Array<{ id: number; name: string }>;
+    model?: string;
+  };
+  console.log(`[WV Import] POST /matches/${worldViewId}/ai-suggest-clusters — ${clusters.length} clusters, ${childRegions.length} regions${formatModelOverrideSuffix(modelOverride)}`);
+
+  if (!isOpenAIAvailable()) {
+    res.status(503).json({ error: 'OpenAI API not configured' });
+    return;
+  }
+
+  const startMs = Date.now();
+  const model = modelOverride || await getModelForFeature('cv_cluster_match');
+  const client = getClient();
+
+  const clusterDescriptions = clusters.map(c =>
+    `Cluster ${c.clusterId} (${Math.round(c.pixelShare * 100)}% of map): ${c.divisionNames.join(', ')}`
+  ).join('\n');
+
+  const regionNames = childRegions.map(r => r.name).join(', ');
+
+  const systemPrompt = `You are an expert in world geography and administrative divisions.
+You are given clusters of GADM administrative divisions detected on a Wikivoyage travel region map, and a list of Wikivoyage sub-region names.
+Your job: match each cluster to the most likely Wikivoyage sub-region based on geographic knowledge.
+
+Rules:
+- Each cluster should map to exactly one region (or null if no match).
+- CRITICAL: Each region name must appear AT MOST ONCE across all matches. Never assign the same region to two different clusters. If two clusters seem to match the same region, pick the better fit and set the other to null.
+- Use your knowledge of where these divisions are located geographically.
+- The division names are official GADM names. The region names are Wikivoyage travel region names (may be informal, e.g. "Wild Coast" for the Transkei area).
+- It is OK to leave some clusters unmatched (null) if there is no good fit. Do not force a match.
+- Return valid JSON only.`;
+
+  const userPrompt = `Available Wikivoyage regions: ${regionNames}
+
+Clusters of GADM divisions:
+${clusterDescriptions}
+
+Return JSON: { "matches": [{ "clusterId": <number>, "regionName": <string|null> }] }
+Match each cluster to the best Wikivoyage region name, or null if no match.`;
+
+  try {
+    const response = await chatCompletion(client, {
+      model,
+      temperature: 0.1,
+      max_completion_tokens: 1000,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content ?? '{}';
+    let matches: Array<{ clusterId: number; regionName: string | null }>;
+    try {
+      const parsed = JSON.parse(content);
+      matches = Array.isArray(parsed) ? parsed : parsed.matches ?? parsed.result ?? [];
+    } catch {
+      matches = [];
+    }
+
+    // Map region names back to IDs (case-insensitive) + dedup (keep first occurrence)
+    const regionMap = new Map(childRegions.map(r => [r.name.toLowerCase(), r.id]));
+    const usedRegionIds = new Set<number>();
+    const result = matches.map(m => {
+      const regionId = m.regionName ? (regionMap.get(m.regionName.toLowerCase()) ?? null) : null;
+      if (regionId && usedRegionIds.has(regionId)) {
+        console.log(`  [AI Suggest Clusters] Dedup: cluster ${m.clusterId} tried to use already-assigned region "${m.regionName}" → null`);
+        return { clusterId: m.clusterId, regionId: null, regionName: null };
+      }
+      if (regionId) usedRegionIds.add(regionId);
+      return { clusterId: m.clusterId, regionId, regionName: m.regionName };
+    });
+
+    // Log usage stats
+    const usage = response.usage;
+    const promptTokens = usage?.prompt_tokens ?? 0;
+    const completionTokens = usage?.completion_tokens ?? 0;
+    const costResult = calculateCost(promptTokens, completionTokens, model, false);
+    const durationMs = Date.now() - startMs;
+
+    logAIUsage({
+      feature: 'cv_cluster_match',
+      model,
+      description: `${clusters.length} clusters → ${childRegions.length} regions (wv ${worldViewId})`,
+      apiCalls: 1,
+      promptTokens,
+      completionTokens,
+      totalCost: costResult.totalCost,
+      durationMs,
+    }).catch((err) => console.warn('[AI Usage] Failed to log cv_cluster_match:', err instanceof Error ? err.message : err));
+
+    console.log(`  [AI Suggest Clusters] model=${model} ${promptTokens} in, ${completionTokens} out, cost=$${costResult.totalCost.toFixed(4)}, ${durationMs}ms, matched=${result.filter(r => r.regionId).length}/${clusters.length}`);
+
+    res.json({
+      matches: result,
+      stats: { model, promptTokens, completionTokens, cost: costResult.totalCost, durationMs },
+    });
+  } catch (err) {
+    console.error('[AI Suggest Clusters] Error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'AI suggestion failed' });
   }
 }

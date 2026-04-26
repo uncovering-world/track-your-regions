@@ -1,23 +1,17 @@
 /**
- * Admin WorldView Import — Finalize controller
+ * WorldView Import Finalize Controller
  *
- * Owns: finalize the import review (close-out + import-state cleanup).
- * - finalizeReview: marks the world view as done after all matches are resolved
- * - addChildRegion: add a child region manually during hierarchy review
- * See ADR-0009 for the domain-split rationale.
+ * Finalization, hierarchy review endpoints: finalizeReview, addChildRegion,
+ * dismissHierarchyWarnings.
  */
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
-// =============================================================================
-// finalizeReview
-// =============================================================================
-
 /**
- * Finalize review — mark the world view as done.
- * Appends '_done' to current source_type (e.g. 'wikivoyage' → 'wikivoyage_done', 'imported' → 'imported_done').
+ * Finalize review -- mark the world view as done.
+ * Appends '_done' to current source_type (e.g. 'wikivoyage' -> 'wikivoyage_done', 'imported' -> 'imported_done').
  * The world view remains editable from the WorldView Editor.
  * POST /api/admin/wv-import/matches/:worldViewId/finalize
  */
@@ -85,7 +79,7 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
     return;
   }
 
-  // Derive finalized source_type from current (e.g. 'wikivoyage' → 'wikivoyage_done')
+  // Derive finalized source_type from current (e.g. 'wikivoyage' -> 'wikivoyage_done')
   const result = await pool.query(
     `UPDATE world_views SET source_type = source_type || '_done', updated_at = NOW()
      WHERE id = $1 AND source_type IN ('wikivoyage', 'imported')
@@ -101,10 +95,6 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
   console.log(`[WV Import] Finalized review for worldView ${worldViewId}`);
   res.json({ finalized: true, worldViewId });
 }
-
-// =============================================================================
-// addChildRegion
-// =============================================================================
 
 /**
  * Add a child region under a parent during hierarchy review.
@@ -165,4 +155,31 @@ export async function addChildRegion(req: AuthenticatedRequest, res: Response): 
   } finally {
     client.release();
   }
+}
+
+/**
+ * Dismiss hierarchy warnings for a region (mark as reviewed).
+ * POST /api/admin/wv-import/matches/:worldViewId/dismiss-hierarchy-warnings
+ */
+export async function dismissHierarchyWarnings(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId } = req.body as { regionId: number };
+  console.log(`[WV Import] POST /matches/${worldViewId}/dismiss-hierarchy-warnings — regionId=${regionId}`);
+
+  // Verify region belongs to world view
+  const region = await pool.query(
+    'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+    [regionId, worldViewId],
+  );
+  if (region.rows.length === 0) {
+    res.status(404).json({ error: 'Region not found in this world view' });
+    return;
+  }
+
+  await pool.query(
+    `UPDATE region_import_state SET hierarchy_reviewed = true WHERE region_id = $1`,
+    [regionId],
+  );
+
+  res.json({ dismissed: true });
 }

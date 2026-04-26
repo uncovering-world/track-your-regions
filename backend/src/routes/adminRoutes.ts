@@ -6,10 +6,10 @@
  */
 
 import { Router, Response } from 'express';
-import { z } from 'zod';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { pool } from '../db/index.js';
 import { validate } from '../middleware/errorHandler.js';
+import { z } from 'zod';
 import {
   categoryIdParamSchema,
   logIdParamSchema,
@@ -25,39 +25,43 @@ import {
   curatorActivityQuerySchema,
   adminUserSearchQuerySchema,
   worldViewIdParamSchema,
+  worldViewRegionIdParamSchema,
   wvExtractStartSchema,
   wvExtractAnswerSchema,
   wvCacheNameParamSchema,
   wvImportBodySchema,
   wvImportAcceptMatchSchema,
   wvImportAcceptBatchSchema,
+  wvImportUnionGeometrySchema,
+  wvImportSplitDeeperSchema,
+  wvImportVisionMatchSchema,
+  wvImportColorMatchSchema,
+  reviewIdParamSchema,
+  wvImportWaterCropParamSchema,
+  wvImportClusterHighlightParamSchema,
+  wvImportWaterReviewBodySchema,
+  wvImportClusterReviewBodySchema,
+  wvImportIcpAdjustmentBodySchema,
   wvImportRegionIdSchema,
+  wvImportGeoshapeMatchSchema,
+  wvImportAcceptTransferSchema,
+  wvImportTransferPreviewSchema,
   wvImportSelectMapImageSchema,
   wvImportMarkManualFixSchema,
   wikidataIdParamSchema,
   divisionIdBodySchema,
   wvImportApproveCoverageSchema,
-  coverageSSEQuerySchema,
-  wvImportSmartSimplifySchema,
-  wvImportSmartSimplifyApplySchema,
-  worldViewRegionIdParamSchema,
-  reviewIdParamSchema,
-  wvImportIcpAdjustmentBodySchema,
-  wvImportClusterHighlightParamSchema,
-  wvImportClusterReviewBodySchema,
   wvImportManualClusterReviewBodySchema,
-  wvImportGeoshapeMatchSchema,
-  wvImportAcceptTransferSchema,
-  wvImportTransferPreviewSchema,
   wvImportAddChildSchema,
   wvImportRemoveRegionSchema,
   wvImportRenameRegionSchema,
-  wvImportWaterCropParamSchema,
-  wvImportWaterReviewBodySchema,
-  wvImportColorMatchSchema,
-  wvImportUnionGeometrySchema,
-  wvImportSplitDeeperSchema,
-  wvImportVisionMatchSchema,
+  wvImportReparentRegionSchema,
+  wvImportSmartSimplifySchema,
+  wvImportSmartSimplifyApplySchema,
+  wvImportOverlapChildrenSchema,
+  wvImportResolveOverlapSchema,
+  coverageSSEQuerySchema,
+  childrenCoverageQuerySchema,
 } from '../types/index.js';
 import {
   startSync,
@@ -80,63 +84,35 @@ import {
   getCuratorActivity,
 } from '../controllers/admin/curatorController.js';
 import {
-  startWorldViewImport,
-  getWorldViewImportStatus,
-  cancelWorldViewImport,
-  getMatchStats,
-  getMatchTree,
-  acceptMatch,
-  rejectMatch,
-  acceptBatchMatches,
-  acceptWithTransfer,
-  getTransferPreview,
-  startAIMatch,
-  getAIMatchStatus,
-  cancelAIMatchEndpoint,
-  dbSearchOneRegion,
-  geocodeMatch,
-  geoshapeMatch,
-  pointMatch,
-  resetMatch,
-  rejectRemaining,
-  aiMatchOneRegion,
-  aiSuggestChildren,
-  addChildRegion,
-  removeRegionFromImport,
-  renameRegion,
-  dismissChildren,
-  simplifyHierarchy,
-  simplifyChildren,
-  syncInstances,
-  handleAsGrouping,
-  undoLastOperation,
-  selectMapImage,
-  markManualFix,
-  acceptAndRejectRest,
-  clearMembers,
-  getUnionGeometry,
-  splitDivisionsDeeper,
-  visionMatchDivisions,
-  colorMatchDivisionsSSE,
-  resolveWaterReview,
-  getWaterCropImage,
-  getCoverage,
-  getCoverageSSE,
-  geoSuggestGap,
-  dismissCoverageGap,
-  undismissCoverageGap,
-  approveCoverageSuggestion,
-  finalizeReview,
-  rematchWorldView,
-  getRematchStatus,
-  getGeoshape,
-  detectSmartSimplify,
-  applySmartSimplifyMove,
-  getChildrenRegionGeometry,
-  resolveIcpAdjustment,
-  resolveClusterReview,
-  getClusterPreviewImage,
-  getClusterHighlightImage,
+  // Lifecycle
+  startWorldViewImport, getWorldViewImportStatus, cancelWorldViewImport, getGeoshape,
+  // Match
+  getMatchStats, getMatchTree, acceptMatch, rejectMatch, rejectRemaining, clearMembers,
+  acceptAndRejectRest, acceptBatchMatches, acceptWithTransfer, getTransferPreview, selectMapImage, markManualFix,
+  getUnionGeometry, splitDivisionsDeeper, visionMatchDivisions, colorMatchDivisionsSSE,
+  resolveWaterReview, getWaterCropImage,
+  resolveClusterReview, getClusterPreviewImage, getClusterHighlightImage, resolveIcpAdjustment,
+  // AI
+  startAIMatch, getAIMatchStatus, cancelAIMatchEndpoint, dbSearchOneRegion,
+  geocodeMatch, geoshapeMatch, pointMatch, resetMatch, aiMatchOneRegion,
+  aiSuggestChildren, aiSuggestClusterRegions,
+  // Tree ops
+  mergeChildIntoParent, removeRegionFromImport, dismissChildren, pruneToLeaves, simplifyHierarchy, simplifyChildren, detectSmartSimplify, applySmartSimplifyMove, checkDivisionOverlap, getOverlapDivisionChildren, resolveOverlap,
+  // Flatten
+  collapseToParent, smartFlattenPreview, smartFlatten, syncInstances, handleAsGrouping,
+  // Hierarchy
+  undoLastOperation, autoResolveChildrenPreview, autoResolveChildren,
+  // Coverage
+  getCoverage, getCoverageSSE, geoSuggestGap, dismissCoverageGap,
+  undismissCoverageGap, approveCoverageSuggestion,
+  // Rematch
+  rematchWorldView, getRematchStatus,
+  // Finalize
+  finalizeReview, addChildRegion, dismissHierarchyWarnings,
+  // Coverage compare
+  getChildrenCoverage, getCoverageGeometry, analyzeCoverageGaps, getChildrenRegionGeometry,
+  // Mapshape + rename + guided match
+  mapshapeMatchDivisions, renameRegion, reparentRegion,
 } from '../controllers/admin/worldViewImportController.js';
 import {
   startWikivoyageExtraction,
@@ -146,15 +122,9 @@ import {
   deleteCacheFile,
 } from '../controllers/admin/wikivoyageExtractController.js';
 import {
-  getAISettings,
-  updateAISetting,
-  getAIUsage,
-  updatePricing,
-  getLearnedRules,
-  addLearnedRule,
-  deleteLearnedRule,
-  reviewLearnedRules,
-  applyRuleReviewSuggestion,
+  getAISettings, updateAISetting, getAIUsage, updatePricing,
+  getLearnedRules, addLearnedRule, deleteLearnedRule,
+  reviewLearnedRules, applyRuleReviewSuggestion,
 } from '../controllers/admin/aiController.js';
 import { hierarchyReview } from '../controllers/admin/aiHierarchyReviewController.js';
 
@@ -308,112 +278,7 @@ router.post('/wv-import/matches/:worldViewId/split-deeper', validate(worldViewId
 router.post('/wv-import/matches/:worldViewId/vision-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportVisionMatchSchema), visionMatchDivisions);
 
 // Local CV color-based division matching (SSE stream)
-// ADR-0015: Python CV microservice for color-based region matching
 router.get('/wv-import/matches/:worldViewId/color-match-stream', validate(worldViewIdParamSchema, 'params'), validate(wvImportColorMatchSchema, 'query'), colorMatchDivisionsSSE);
-
-// AI-assisted re-matching
-router.post('/wv-import/matches/:worldViewId/ai-match', validate(worldViewIdParamSchema, 'params'), startAIMatch);
-router.get('/wv-import/matches/:worldViewId/ai-match/status', validate(worldViewIdParamSchema, 'params'), getAIMatchStatus);
-router.post('/wv-import/matches/:worldViewId/ai-match/cancel', validate(worldViewIdParamSchema, 'params'), cancelAIMatchEndpoint);
-router.post('/wv-import/matches/:worldViewId/db-search-one', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), dbSearchOneRegion);
-router.post('/wv-import/matches/:worldViewId/geocode-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), geocodeMatch);
-router.post('/wv-import/matches/:worldViewId/geoshape-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportGeoshapeMatchSchema), geoshapeMatch);
-router.post('/wv-import/matches/:worldViewId/point-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportGeoshapeMatchSchema), pointMatch);
-router.post('/wv-import/matches/:worldViewId/reset-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), resetMatch);
-router.post('/wv-import/matches/:worldViewId/ai-match-one', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiMatchOneRegion);
-
-// Add a child region manually during hierarchy review
-router.post('/wv-import/matches/:worldViewId/add-child-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportAddChildSchema), addChildRegion);
-
-// Remove a region from the import tree (with optional child/division reparenting)
-router.post('/wv-import/matches/:worldViewId/remove-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportRemoveRegionSchema), removeRegionFromImport);
-
-// Rename a region (optionally updating source URL and Wikidata QID)
-router.post('/wv-import/matches/:worldViewId/rename-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportRenameRegionSchema), renameRegion);
-
-// AI review children — audit + enrichment + verification
-router.post('/wv-import/matches/:worldViewId/ai-suggest-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiSuggestChildren);
-
-// Dismiss subregions (make parent a leaf)
-router.post('/wv-import/matches/:worldViewId/dismiss-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), dismissChildren);
-
-// Simplify hierarchy — merge child divisions into parents when 100% coverage found
-router.post('/wv-import/matches/:worldViewId/simplify-hierarchy', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyHierarchy);
-
-// Simplify children — apply simplification independently to each direct child
-router.post('/wv-import/matches/:worldViewId/simplify-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyChildren);
-
-// Smart simplify: detect cross-sibling division moves for simplification
-router.post('/wv-import/matches/:worldViewId/smart-simplify', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifySchema), detectSmartSimplify);
-
-// Smart simplify: apply a single move (reassign divisions + simplify)
-router.post('/wv-import/matches/:worldViewId/smart-simplify/apply-move', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifyApplySchema), applySmartSimplifyMove);
-
-// Get per-child region geometries (used by SmartSimplifyDialog map)
-router.get('/wv-import/matches/:worldViewId/children-geometry/:regionId', validate(worldViewRegionIdParamSchema, 'params'), getChildrenRegionGeometry);
-
-// Handle region as sub-continental grouping (match children as countries)
-router.post('/wv-import/matches/:worldViewId/handle-as-grouping', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), handleAsGrouping);
-
-// Select map image from candidates
-router.post('/wv-import/matches/:worldViewId/select-map-image', validate(worldViewIdParamSchema, 'params'), validate(wvImportSelectMapImageSchema), selectMapImage);
-
-// Mark/unmark region as needing manual fixes
-router.post('/wv-import/matches/:worldViewId/mark-manual-fix', validate(worldViewIdParamSchema, 'params'), validate(wvImportMarkManualFixSchema), markManualFix);
-
-// Undo last dismiss-children or handle-as-grouping operation
-router.post('/wv-import/matches/:worldViewId/undo', validate(worldViewIdParamSchema, 'params'), undoLastOperation);
-
-// Sync match decisions to other instances of same region
-router.post('/wv-import/matches/:worldViewId/sync-instances', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), syncInstances);
-
-// Check GADM coverage — find uncovered root divisions
-router.get('/wv-import/matches/:worldViewId/coverage', validate(worldViewIdParamSchema, 'params'), getCoverage);
-
-// Check GADM coverage with SSE streaming progress
-router.get('/wv-import/matches/:worldViewId/coverage-stream', validate(worldViewIdParamSchema, 'params'), validate(coverageSSEQuerySchema, 'query'), getCoverageSSE);
-
-// Geographic suggestion for a single gap (centroid vs region anchor_points)
-router.post('/wv-import/matches/:worldViewId/geo-suggest-gap', validate(worldViewIdParamSchema, 'params'), validate(divisionIdBodySchema), geoSuggestGap);
-
-// Dismiss/undismiss coverage gaps
-router.post('/wv-import/matches/:worldViewId/dismiss-gap', validate(worldViewIdParamSchema, 'params'), validate(divisionIdBodySchema), dismissCoverageGap);
-router.post('/wv-import/matches/:worldViewId/undismiss-gap', validate(worldViewIdParamSchema, 'params'), validate(divisionIdBodySchema), undismissCoverageGap);
-
-// Approve coverage suggestion (add to existing region or create new)
-router.post('/wv-import/matches/:worldViewId/approve-coverage', validate(worldViewIdParamSchema, 'params'), validate(wvImportApproveCoverageSchema), approveCoverageSuggestion);
-
-// Finalize review — mark world view as done
-router.post('/wv-import/matches/:worldViewId/finalize', validate(worldViewIdParamSchema, 'params'), finalizeReview);
-
-// Re-run matching from scratch
-router.post('/wv-import/matches/:worldViewId/rematch', validate(worldViewIdParamSchema, 'params'), rematchWorldView);
-router.get('/wv-import/matches/:worldViewId/rematch/status', validate(worldViewIdParamSchema, 'params'), getRematchStatus);
-
-// Geoshape proxy (Wikidata → Wikimedia maps)
-router.get('/wv-import/geoshape/:wikidataId', validate(wikidataIdParamSchema, 'params'), getGeoshape);
-
-// ICP adjustment callback (user approves/skips ICP realignment during CV match)
-// ADR-0011: ICP adaptive alignment for CV-GADM division matching
-router.post(
-  '/wv-import/icp-adjustment/:reviewId',
-  validate(reviewIdParamSchema, 'params'),
-  validate(wvImportIcpAdjustmentBodySchema),
-  (req: AuthenticatedRequest, res: Response) => {
-    const { reviewId } = req.params as unknown as { reviewId: string };
-    const { action } = req.body as { action: 'adjust' | 'continue' };
-    const found = resolveIcpAdjustment(reviewId, { action });
-    if (found) {
-      res.json({ ok: true });
-    } else {
-      res.status(404).json({ error: 'Review not found or expired' });
-    }
-  },
-);
-
-// =============================================================================
-// Water review + crop image endpoints (CV color-match pipeline)
-// =============================================================================
 
 // Helper: parse "data:image/<type>;base64,<payload>" and stream as image response.
 function sendDataUrlAsImage(res: Response, dataUrl: string): void {
@@ -425,6 +290,7 @@ function sendDataUrlAsImage(res: Response, dataUrl: string): void {
   const buffer = Buffer.from(match[2], 'base64');
   res.type(`image/${match[1]}`);
   res.setHeader('Cache-Control', 'private, max-age=300');
+  // Allow cross-origin <img> loading (different CDN host) while keeping auth via cookie/header.
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.end(buffer);
 }
@@ -478,10 +344,6 @@ router.get(
   },
 );
 
-// =============================================================================
-// Cluster review endpoints (manual paint editor + overlay image serving)
-// =============================================================================
-
 // Cluster preview image (served from memory — same pattern as water crops)
 router.get(
   '/wv-import/cluster-preview/:reviewId',
@@ -504,7 +366,10 @@ router.get(
   (req: AuthenticatedRequest, res: Response) => {
     const { reviewId, label } = req.params as unknown as { reviewId: string; label: number };
     const png = getClusterHighlightImage(reviewId, label);
-    if (!png) { res.status(404).json({ error: 'Highlight not found' }); return; }
+    if (!png) {
+      res.status(404).json({ error: 'Highlight not found' });
+      return;
+    }
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -540,21 +405,166 @@ router.post(
       return;
     }
     const body = parsed.data;
+    // merges use stringified keys in JSON; convert to numeric keys.
     const merges: Record<number, number> = {};
     if (body.merges) {
       for (const [from, to] of Object.entries(body.merges)) {
         merges[Number(from)] = to;
       }
     }
+    const excludes = body.excludes ?? [];
+    const split = body.split ?? [];
     const found = resolveClusterReview(reviewId, {
       merges,
-      excludes: body.excludes ?? [],
+      excludes,
       recluster: body.recluster,
-      split: body.split && body.split.length > 0 ? body.split : undefined,
+      split: split.length > 0 ? split : undefined,
     });
-    if (found) { res.json({ ok: true }); } else { res.status(404).json({ error: 'Review not found or expired' }); }
+    if (found) {
+      res.json({ ok: true });
+    } else {
+      res.status(404).json({ error: 'Review not found or expired' });
+    }
   },
 );
+
+// ICP adjustment callback (user approves/skips ICP realignment during CV match)
+router.post(
+  '/wv-import/icp-adjustment/:reviewId',
+  validate(reviewIdParamSchema, 'params'),
+  validate(wvImportIcpAdjustmentBodySchema),
+  (req: AuthenticatedRequest, res: Response) => {
+    const { reviewId } = req.params as unknown as { reviewId: string };
+    const { action } = req.body as { action: 'adjust' | 'continue' };
+    const found = resolveIcpAdjustment(reviewId, { action });
+    if (found) {
+      res.json({ ok: true });
+    } else {
+      res.status(404).json({ error: 'Review not found or expired' });
+    }
+  },
+);
+
+// Mapshape-based division matching (Kartographer map regions)
+router.post('/wv-import/matches/:worldViewId/mapshape-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), mapshapeMatchDivisions);
+
+// AI-assisted re-matching
+router.post('/wv-import/matches/:worldViewId/ai-match', validate(worldViewIdParamSchema, 'params'), startAIMatch);
+router.get('/wv-import/matches/:worldViewId/ai-match/status', validate(worldViewIdParamSchema, 'params'), getAIMatchStatus);
+router.post('/wv-import/matches/:worldViewId/ai-match/cancel', validate(worldViewIdParamSchema, 'params'), cancelAIMatchEndpoint);
+router.post('/wv-import/matches/:worldViewId/db-search-one', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), dbSearchOneRegion);
+router.post('/wv-import/matches/:worldViewId/geocode-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), geocodeMatch);
+router.post('/wv-import/matches/:worldViewId/geoshape-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportGeoshapeMatchSchema), geoshapeMatch);
+router.post('/wv-import/matches/:worldViewId/point-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportGeoshapeMatchSchema), pointMatch);
+router.post('/wv-import/matches/:worldViewId/reset-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), resetMatch);
+router.post('/wv-import/matches/:worldViewId/ai-match-one', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiMatchOneRegion);
+
+// Dismiss subregions (make parent a leaf)
+router.post('/wv-import/matches/:worldViewId/dismiss-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), dismissChildren);
+
+// Prune to leaves: keep direct children, remove grandchildren+
+router.post('/wv-import/matches/:worldViewId/prune-to-leaves', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), pruneToLeaves);
+
+// Collapse to parent: clear children's data, generate suggestions for parent
+router.post('/wv-import/matches/:worldViewId/collapse-to-parent', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), collapseToParent);
+
+// Smart flatten: auto-match children, absorb divisions into parent, delete descendants
+router.post('/wv-import/matches/:worldViewId/smart-flatten', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), smartFlatten);
+router.post('/wv-import/matches/:worldViewId/smart-flatten/preview', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), smartFlattenPreview);
+
+// Auto-resolve children: batch-match all unmatched leaf descendants
+router.post('/wv-import/matches/:worldViewId/auto-resolve-children/preview', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), autoResolveChildrenPreview);
+router.post('/wv-import/matches/:worldViewId/auto-resolve-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), autoResolveChildren);
+
+// Handle region as sub-continental grouping (match children as countries)
+router.post('/wv-import/matches/:worldViewId/handle-as-grouping', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), handleAsGrouping);
+
+// Select map image from candidates
+router.post('/wv-import/matches/:worldViewId/select-map-image', validate(worldViewIdParamSchema, 'params'), validate(wvImportSelectMapImageSchema), selectMapImage);
+
+// Mark/unmark region as needing manual fixes
+router.post('/wv-import/matches/:worldViewId/mark-manual-fix', validate(worldViewIdParamSchema, 'params'), validate(wvImportMarkManualFixSchema), markManualFix);
+
+// Merge single-child parent's only child into the parent
+router.post('/wv-import/matches/:worldViewId/merge-child', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), mergeChildIntoParent);
+
+// Simplify hierarchy: replace single-child chains with direct parent→grandchild links
+router.post('/wv-import/matches/:worldViewId/simplify-hierarchy', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyHierarchy);
+
+// Simplify children: simplify all child regions one by one
+router.post('/wv-import/matches/:worldViewId/simplify-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyChildren);
+
+// Smart simplify: detect cross-sibling division moves for simplification
+router.post('/wv-import/matches/:worldViewId/smart-simplify', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifySchema), detectSmartSimplify);
+
+// Smart simplify: apply a single move (reassign divisions + simplify)
+router.post('/wv-import/matches/:worldViewId/smart-simplify/apply-move', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifyApplySchema), applySmartSimplifyMove);
+
+// Check division overlaps among children (shared/contained divisions)
+router.post('/wv-import/matches/:worldViewId/check-overlap', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifySchema), checkDivisionOverlap);
+
+// Overlap resolution: get GADM children for split preview
+router.post('/wv-import/matches/:worldViewId/overlap-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportOverlapChildrenSchema), getOverlapDivisionChildren);
+
+// Overlap resolution: apply keep or split
+router.post('/wv-import/matches/:worldViewId/resolve-overlap', validate(worldViewIdParamSchema, 'params'), validate(wvImportResolveOverlapSchema), resolveOverlap);
+
+// Remove a region from the import tree (optionally reparenting children)
+router.post('/wv-import/matches/:worldViewId/remove-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportRemoveRegionSchema), removeRegionFromImport);
+
+// Rename a region
+router.post('/wv-import/matches/:worldViewId/rename-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportRenameRegionSchema), renameRegion);
+
+// Move a region to a new parent
+router.post('/wv-import/matches/:worldViewId/reparent-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportReparentRegionSchema), reparentRegion);
+
+// Undo last dismiss-children or handle-as-grouping operation
+router.post('/wv-import/matches/:worldViewId/undo', validate(worldViewIdParamSchema, 'params'), undoLastOperation);
+
+// Sync match decisions to other instances of same region
+router.post('/wv-import/matches/:worldViewId/sync-instances', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), syncInstances);
+
+// Hierarchy review
+router.post('/wv-import/matches/:worldViewId/add-child-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportAddChildSchema), addChildRegion);
+router.post('/wv-import/matches/:worldViewId/dismiss-hierarchy-warnings', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), dismissHierarchyWarnings);
+
+// AI suggest children for a region (Wikivoyage page + AI analysis)
+router.post('/wv-import/matches/:worldViewId/ai-suggest-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiSuggestChildren);
+
+// AI suggest cluster-to-region mapping (CV match pipeline)
+router.post('/wv-import/matches/:worldViewId/ai-suggest-clusters', validate(worldViewIdParamSchema, 'params'), aiSuggestClusterRegions);
+
+// Children coverage % (how much of parent's geometry children cover)
+router.get('/wv-import/matches/:worldViewId/children-coverage', validate(worldViewIdParamSchema, 'params'), validate(childrenCoverageQuerySchema, 'query'), getChildrenCoverage);
+router.get('/wv-import/matches/:worldViewId/coverage-geometry/:regionId', validate(worldViewRegionIdParamSchema, 'params'), getCoverageGeometry);
+router.get('/wv-import/matches/:worldViewId/children-geometry/:regionId', validate(worldViewRegionIdParamSchema, 'params'), getChildrenRegionGeometry);
+router.post('/wv-import/matches/:worldViewId/coverage-gap-analysis/:regionId', validate(worldViewRegionIdParamSchema, 'params'), analyzeCoverageGaps);
+
+// Check GADM coverage — find uncovered root divisions
+router.get('/wv-import/matches/:worldViewId/coverage', validate(worldViewIdParamSchema, 'params'), getCoverage);
+
+// Check GADM coverage with SSE streaming progress
+router.get('/wv-import/matches/:worldViewId/coverage-stream', validate(worldViewIdParamSchema, 'params'), validate(coverageSSEQuerySchema, 'query'), getCoverageSSE);
+
+// Geographic suggestion for a single gap (centroid vs region anchor_points)
+router.post('/wv-import/matches/:worldViewId/geo-suggest-gap', validate(worldViewIdParamSchema, 'params'), validate(divisionIdBodySchema), geoSuggestGap);
+
+// Dismiss/undismiss coverage gaps
+router.post('/wv-import/matches/:worldViewId/dismiss-gap', validate(worldViewIdParamSchema, 'params'), validate(divisionIdBodySchema), dismissCoverageGap);
+router.post('/wv-import/matches/:worldViewId/undismiss-gap', validate(worldViewIdParamSchema, 'params'), validate(divisionIdBodySchema), undismissCoverageGap);
+
+// Approve coverage suggestion (add to existing region or create new)
+router.post('/wv-import/matches/:worldViewId/approve-coverage', validate(worldViewIdParamSchema, 'params'), validate(wvImportApproveCoverageSchema), approveCoverageSuggestion);
+
+// Finalize review — mark world view as done
+router.post('/wv-import/matches/:worldViewId/finalize', validate(worldViewIdParamSchema, 'params'), finalizeReview);
+
+// Re-run matching from scratch
+router.post('/wv-import/matches/:worldViewId/rematch', validate(worldViewIdParamSchema, 'params'), rematchWorldView);
+router.get('/wv-import/matches/:worldViewId/rematch/status', validate(worldViewIdParamSchema, 'params'), getRematchStatus);
+
+// Geoshape proxy (Wikidata → Wikimedia maps)
+router.get('/wv-import/geoshape/:wikidataId', validate(wikidataIdParamSchema, 'params'), getGeoshape);
 
 // =============================================================================
 // Image proxy (for CORS-blocked Wikimedia images used as map overlays)
