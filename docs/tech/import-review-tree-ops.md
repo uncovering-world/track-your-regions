@@ -91,5 +91,25 @@ at medium LOD) for rendering the color-coded map in `SmartSimplifyDialog`.
 - Current/Proposed toggle: "Current" shows division overlays with dashed red borders; "Proposed" recolors them to the owner region's color.
 - Move list: each detected move shows the GADM parent name, how many divisions move where, and Apply/Skip buttons.
 - Applied moves are dimmed with a green "Applied" chip; the view auto-advances to the next pending move.
+- **Spatial Anomalies section**: below the moves list, disconnected fragments and exclaves are highlighted.
+  Each anomaly shows the fragment's divisions, the size ratio (fragment/total), and the suggested target region.
+  "Accept" applies the reassignment via the existing apply-move endpoint; "Skip" advances to the next anomaly.
+  Selecting an anomaly flies the map to the fragment's divisions and highlights the source/target regions.
+
+### Spatial Anomaly Detection
+
+`backend/src/services/worldViewImport/spatialAnomalyDetector.ts`:
+- `detectSpatialAnomalies(assignments, edges)` — pure BFS function; groups divisions by region, finds
+  connected components, identifies non-largest components as fragments, votes on the dominant neighboring
+  region for each fragment. Returns results sorted by score (fragmentSize/totalSize) ascending.
+- `getAdjacencyGraph(divisionIds)` — PostGIS query: two divisions adjacent ⟺ they touch or are within
+  0.0001° (~11m) of each other (handles sliver gaps in simplified geometries).
+- `detectAnomaliesForRegion(worldViewId, parentRegionId)` — convenience wrapper that queries child regions,
+  members, and adjacency, then calls `detectSpatialAnomalies`.
+
+`frontend/src/utils/spatialAnomalyDetector.ts` — client-side mirror of the pure function for future
+interactive use (e.g. paint mode re-checks without a round-trip to the server).
+
+See ADR-0010 for the algorithm choice rationale.
 
 Triggered via the Smart Simplify button (swap icon) on any container node in `WorldViewImportTree`.
