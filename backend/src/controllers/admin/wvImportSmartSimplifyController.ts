@@ -10,6 +10,7 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
+import { detectAnomaliesForRegion } from '../../services/worldViewImport/spatialAnomalyDetector.js';
 
 // =============================================================================
 // Types
@@ -156,6 +157,20 @@ function buildSmartSimplifyMove(
   };
 }
 
+async function runAnomalyDetectionSafely(
+  worldViewId: number,
+  parentRegionId: number,
+): Promise<Awaited<ReturnType<typeof detectAnomaliesForRegion>>> {
+  try {
+    const anomalies = await detectAnomaliesForRegion(worldViewId, parentRegionId);
+    console.log(`[WV Import] Smart-simplify spatial anomalies: ${anomalies.length} found for parent=${parentRegionId}`);
+    return anomalies;
+  } catch (err) {
+    console.error('[WV Import] Spatial anomaly detection failed:', err);
+    return [];
+  }
+}
+
 /**
  * Detect cross-sibling division moves that would allow simplification.
  * READ-ONLY — no mutations. Finds GADM parents whose children are fully present
@@ -182,7 +197,7 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
       [parentRegionId, worldViewId],
     );
     if (childrenResult.rows.length === 0) {
-      res.json({ moves: [] });
+      res.json({ moves: [], spatialAnomalies: [] });
       return;
     }
 
@@ -195,7 +210,8 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
 
     const byGadmParent = await loadGroupedSiblingMembers(childIds);
     if (byGadmParent.size === 0) {
-      res.json({ moves: [] });
+      const spatialAnomalies = await runAnomalyDetectionSafely(worldViewId, parentRegionId);
+      res.json({ moves: [], spatialAnomalies });
       return;
     }
 
@@ -203,7 +219,8 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
     const candidateParentIds = findCandidateGadmParents(byGadmParent, gadmChildCounts);
 
     if (candidateParentIds.length === 0) {
-      res.json({ moves: [] });
+      const spatialAnomalies = await runAnomalyDetectionSafely(worldViewId, parentRegionId);
+      res.json({ moves: [], spatialAnomalies });
       return;
     }
 
@@ -218,7 +235,8 @@ export async function detectSmartSimplify(req: AuthenticatedRequest, res: Respon
 
     moves.sort((a, b) => b.divisions.length - a.divisions.length);
 
-    res.json({ moves });
+    const spatialAnomalies = await runAnomalyDetectionSafely(worldViewId, parentRegionId);
+    res.json({ moves, spatialAnomalies });
   } catch (err) {
     console.error('[WV Import] Smart simplify detect failed:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Smart simplify detect failed' });
