@@ -42,7 +42,7 @@ export {
   resetMatch,
   aiMatchOneRegion,
 } from './wvImportAIController.js';
-export { dismissChildren } from './wvImportTreeOpsController.js';
+export { dismissChildren, simplifyHierarchy, simplifyChildren } from './wvImportTreeOpsController.js';
 export { undoLastOperation } from './wvImportHierarchyController.js';
 export { syncInstances, handleAsGrouping } from './wvImportFlattenController.js';
 export { finalizeReview } from './wvImportFinalizeController.js';

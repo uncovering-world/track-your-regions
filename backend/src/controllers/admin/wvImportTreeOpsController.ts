@@ -2,7 +2,7 @@
  * Admin WorldView Import — Tree operations controller
  *
  * Owns: destructive tree operations on regions during the review phase.
- * Currently: dismissChildren.
+ * Currently: dismissChildren, simplifyHierarchy, simplifyChildren.
  * See ADR-0009 for the domain-split rationale.
  */
 
@@ -15,6 +15,8 @@ import {
   type SuggestionSnapshot,
   type UndoEntry,
 } from './wvImportSharedState.js';
+import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
+import { runSimplifyHierarchy } from './wvImportSimplifyShared.js';
 
 // =============================================================================
 // dismissChildren
@@ -149,4 +151,93 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
   } finally {
     client.release();
   }
+}
+
+// =============================================================================
+// Simplify hierarchy
+// =============================================================================
+
+/**
+ * Simplify hierarchy by merging child divisions into parents when 100% coverage is found.
+ * Recursive: keeps merging upward until no more simplifications possible.
+ * POST /api/admin/wv-import/matches/:worldViewId/simplify-hierarchy
+ */
+export async function simplifyHierarchy(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/simplify-hierarchy — regionId=${regionId}`);
+
+  // Verify region belongs to this world view
+  const region = await pool.query(
+    'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+    [regionId, worldViewId],
+  );
+  if (region.rows.length === 0) {
+    res.status(404).json({ error: 'Region not found in this world view' });
+    return;
+  }
+
+  const { replacements } = await runSimplifyHierarchy(regionId, worldViewId);
+
+  // Post-transaction: invalidate geometry and sync match status
+  if (replacements.length > 0) {
+    await invalidateRegionGeometry(regionId);
+    await syncImportMatchStatus(regionId);
+  }
+
+  const totalReduced = replacements.reduce((sum, r) => sum + r.replacedCount, 0) - replacements.length;
+  res.json({ replacements, totalReduced });
+}
+
+/**
+ * Simplify all children of a parent region, one by one.
+ * POST /api/admin/wv-import/matches/:worldViewId/simplify-children
+ */
+export async function simplifyChildren(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/simplify-children — parentRegionId=${regionId}`);
+
+  // Verify region belongs to this world view (mirror simplifyHierarchy's guard
+  // so cross-world-view IDs get a 404 instead of a silent 200 with empty results)
+  const region = await pool.query(
+    'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+    [regionId, worldViewId],
+  );
+  if (region.rows.length === 0) {
+    res.status(404).json({ error: 'Region not found in this world view' });
+    return;
+  }
+
+  // Get child regions that have 2+ divisions (simplification candidates)
+  const childrenResult = await pool.query(
+    `SELECT r.id, r.name,
+       (SELECT count(*)::int FROM region_members rm WHERE rm.region_id = r.id AND rm.custom_geom IS NULL) AS member_count
+     FROM regions r
+     WHERE r.parent_region_id = $1 AND r.world_view_id = $2
+     ORDER BY r.name`,
+    [regionId, worldViewId],
+  );
+
+  const results: Array<{ regionId: number; regionName: string; replacements: Array<{ parentName: string; parentPath: string; replacedCount: number }>; totalReduced: number }> = [];
+  const affectedRegionIds: number[] = [];
+
+  for (const child of childrenResult.rows) {
+    if ((child.member_count as number) < 2) continue;
+
+    const { replacements } = await runSimplifyHierarchy(child.id as number, worldViewId);
+    if (replacements.length > 0) {
+      affectedRegionIds.push(child.id as number);
+      const totalReduced = replacements.reduce((sum, r) => sum + r.replacedCount, 0) - replacements.length;
+      results.push({ regionId: child.id as number, regionName: child.name as string, replacements, totalReduced });
+    }
+  }
+
+  // Post-transaction: invalidate geometry and sync match status for affected regions
+  for (const id of affectedRegionIds) {
+    await invalidateRegionGeometry(id);
+    await syncImportMatchStatus(id);
+  }
+
+  res.json({ results, totalSimplified: results.length });
 }
