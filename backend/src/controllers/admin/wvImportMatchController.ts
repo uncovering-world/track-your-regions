@@ -9,6 +9,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { invalidateRegionGeometry } from '../worldView/helpers.js';
 
 // Re-export ICP review handler for adminRoutes
 export { resolveIcpAdjustment } from './wvImportMatchReview.js';
@@ -121,7 +122,11 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
         WHERE wg.wikidata_id = ris.source_external_id
       )) AS geo_available,
       (SELECT COALESCE(json_agg(json_build_object(
-        'divisionId', rms.division_id, 'name', rms.name, 'path', rms.path, 'score', rms.score
+        'divisionId', rms.division_id, 'name', rms.name, 'path', rms.path, 'score', rms.score, 'geoSimilarity', rms.geo_similarity,
+        'conflict', CASE WHEN rms.conflict_type IS NOT NULL THEN json_build_object(
+          'type', rms.conflict_type, 'donorRegionId', rms.donor_region_id, 'donorRegionName', rms.donor_region_name,
+          'donorDivisionId', rms.donor_division_id, 'donorDivisionName', rms.donor_division_name
+        ) ELSE NULL END
       ) ORDER BY rms.score DESC), '[]'::json)
       FROM region_match_suggestions rms WHERE rms.region_id = r.id AND rms.rejected = false) AS suggestions,
       (SELECT COALESCE(json_agg(rmi.image_url), '[]'::json)
@@ -158,7 +163,7 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
     name: string;
     isLeaf: boolean;
     matchStatus: string | null;
-    suggestions: Array<{ divisionId: number; name: string; path: string; score: number }>;
+    suggestions: Array<{ divisionId: number; name: string; path: string; score: number; geoSimilarity: number | null; conflict?: { type: string; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string } | null }>;
     sourceUrl: string | null;
     regionMapUrl: string | null;
     mapImageCandidates: string[];
@@ -566,4 +571,216 @@ export async function markManualFix(req: AuthenticatedRequest, res: Response): P
   );
 
   res.json({ updated: true });
+}
+
+/**
+ * Accept divisions with transfer from a donor region.
+ * For 'split': removes donor division, re-adds its GADM children minus transferred ones.
+ * For 'direct': removes transferred divisions from donor.
+ * Both: assigns transferred divisions to target region.
+ *
+ * POST /api/admin/wv-import/matches/:worldViewId/accept-with-transfer
+ */
+export async function acceptWithTransfer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId, divisionIds, donorRegionId, donorDivisionId, transferType } = req.body as {
+    regionId: number; divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split';
+  };
+  console.log(`[WV Import] POST /matches/${worldViewId}/accept-with-transfer — target=${regionId} donor=${donorRegionId} type=${transferType} divisions=${divisionIds.join(',')}`);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify both regions belong to this world view
+    const regionCheck = await client.query(
+      'SELECT id FROM regions WHERE id = ANY($1) AND world_view_id = $2',
+      [[regionId, donorRegionId], worldViewId],
+    );
+    if (regionCheck.rows.length < 2) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Region or donor region not found in this world view' });
+      return;
+    }
+
+    // Verify the donor currently owns the divisions we're transferring (IDOR guard).
+    // For 'direct': donor must own each id in divisionIds.
+    // For 'split': donor must own donorDivisionId (the GADM parent we're splitting).
+    if (transferType === 'split') {
+      const ownsParent = await client.query(
+        'SELECT 1 FROM region_members WHERE region_id = $1 AND division_id = $2',
+        [donorRegionId, donorDivisionId],
+      );
+      if (ownsParent.rows.length === 0) {
+        await client.query('ROLLBACK');
+        res.status(409).json({ error: 'Donor region does not currently own the parent division being split' });
+        return;
+      }
+      // Verify every divisionId is an actual GADM child of donorDivisionId — without
+      // this guard a crafted body could insert arbitrary division IDs into the target.
+      const childrenCheck = await client.query(
+        'SELECT id FROM administrative_divisions WHERE parent_id = $1 AND id = ANY($2)',
+        [donorDivisionId, divisionIds],
+      );
+      if (childrenCheck.rows.length !== divisionIds.length) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: 'One or more divisionIds are not GADM children of donorDivisionId' });
+        return;
+      }
+    } else {
+      const ownedResult = await client.query(
+        'SELECT division_id FROM region_members WHERE region_id = $1 AND division_id = ANY($2)',
+        [donorRegionId, divisionIds],
+      );
+      if (ownedResult.rows.length !== divisionIds.length) {
+        await client.query('ROLLBACK');
+        res.status(409).json({ error: 'Donor region does not currently own all listed divisions' });
+        return;
+      }
+    }
+
+    const divisionIdSet = new Set(divisionIds);
+
+    if (transferType === 'split') {
+      // 1. Remove donor division from donor region
+      await client.query(
+        'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2',
+        [donorRegionId, donorDivisionId],
+      );
+
+      // 2. Get GADM children of the donor division
+      const childrenResult = await client.query(
+        'SELECT id FROM administrative_divisions WHERE parent_id = $1',
+        [donorDivisionId],
+      );
+
+      // 3. Add children NOT being transferred back to donor region
+      const keepIds = childrenResult.rows
+        .map(r => r.id as number)
+        .filter(id => !divisionIdSet.has(id));
+      if (keepIds.length > 0) {
+        await client.query(
+          `INSERT INTO region_members (region_id, division_id)
+           SELECT $1, unnest($2::int[])
+           ON CONFLICT DO NOTHING`,
+          [donorRegionId, keepIds],
+        );
+      }
+    } else {
+      // direct: just remove transferred divisions from donor
+      await client.query(
+        'DELETE FROM region_members WHERE region_id = $1 AND division_id = ANY($2)',
+        [donorRegionId, divisionIds],
+      );
+    }
+
+    // 4. Add transferred divisions to target region
+    await client.query(
+      `INSERT INTO region_members (region_id, division_id)
+       SELECT $1, unnest($2::int[])
+       ON CONFLICT DO NOTHING`,
+      [regionId, divisionIds],
+    );
+
+    // 5. Remove accepted suggestions
+    await client.query(
+      'DELETE FROM region_match_suggestions WHERE region_id = $1 AND division_id = ANY($2) AND rejected = false',
+      [regionId, divisionIds],
+    );
+
+    // 6. Update match status for target region
+    const remainingResult = await client.query(
+      'SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = false',
+      [regionId],
+    );
+    const remainingCount = parseInt(remainingResult.rows[0].count as string);
+    const targetStatus = remainingCount > 0 ? 'needs_review' : 'manual_matched';
+    await client.query(
+      'UPDATE region_import_state SET match_status = $1 WHERE region_id = $2',
+      [targetStatus, regionId],
+    );
+
+    // 7. Recompute donor's match_status: if all divisions transferred away, the
+    //    donor may now be empty and should not stay 'manual_matched'.
+    const donorMembers = await client.query(
+      'SELECT 1 FROM region_members WHERE region_id = $1 LIMIT 1',
+      [donorRegionId],
+    );
+    if (donorMembers.rows.length === 0) {
+      const donorSuggestions = await client.query(
+        'SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = false',
+        [donorRegionId],
+      );
+      const donorPendingCount = parseInt(donorSuggestions.rows[0].count as string);
+      await client.query(
+        'UPDATE region_import_state SET match_status = $1 WHERE region_id = $2',
+        [donorPendingCount > 0 ? 'needs_review' : 'no_candidates', donorRegionId],
+      );
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // Post-commit side effects: log failures but don't surface as 500 — the transfer
+  // itself succeeded, and a 500 would tempt the admin to retry, which would
+  // double-process and corrupt geometry. Geometry invalidation can be re-run safely.
+  try {
+    await Promise.all([
+      invalidateRegionGeometry(regionId),
+      invalidateRegionGeometry(donorRegionId),
+    ]);
+  } catch (geomErr) {
+    console.error('[acceptWithTransfer] post-commit geometry invalidation failed:', geomErr);
+  }
+
+  res.json({ transferred: divisionIds.length, transferType });
+}
+
+/**
+ * Return a 3-layer GeoJSON FeatureCollection for previewing a transfer operation.
+ * Features are role-tagged: 'donor' (the division being split), 'moving' (divisions
+ * being transferred), and 'target_outline' (the Wikidata geoshape of the target region).
+ *
+ * POST /api/admin/wv-import/matches/:worldViewId/transfer-preview
+ */
+export async function getTransferPreview(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { donorDivisionId, movingDivisionIds, wikidataId } = req.body as {
+    donorDivisionId: number; movingDivisionIds: number[]; wikidataId: string;
+  };
+
+  const result = await pool.query(`
+    WITH donor AS (
+      SELECT 'donor' AS role, ad.name,
+        ST_AsGeoJSON(ST_ForcePolygonCCW(ST_CollectionExtract(ST_MakeValid(ad.geom_simplified_medium), 3)))::json AS geometry
+      FROM administrative_divisions ad WHERE ad.id = $1 AND ad.geom_simplified_medium IS NOT NULL
+    ),
+    moving AS (
+      SELECT 'moving' AS role, ad.name,
+        ST_AsGeoJSON(ST_ForcePolygonCCW(ST_CollectionExtract(ST_MakeValid(ad.geom_simplified_medium), 3)))::json AS geometry
+      FROM administrative_divisions ad WHERE ad.id = ANY($2) AND ad.geom_simplified_medium IS NOT NULL
+    ),
+    target_outline AS (
+      SELECT 'target_outline' AS role, $3::text AS name,
+        ST_AsGeoJSON(ST_ForcePolygonCCW(ST_CollectionExtract(ST_MakeValid(geom), 3)))::json AS geometry
+      FROM wikidata_geoshapes WHERE wikidata_id = $3 AND not_available = FALSE
+    )
+    SELECT role, name, geometry FROM donor
+    UNION ALL SELECT role, name, geometry FROM moving
+    UNION ALL SELECT role, name, geometry FROM target_outline
+  `, [donorDivisionId, movingDivisionIds, wikidataId]);
+
+  const features = result.rows
+    .filter(r => r.geometry != null)
+    .map(r => ({
+      type: 'Feature' as const,
+      properties: { role: r.role as string, name: r.name as string },
+      geometry: r.geometry,
+    }));
+
+  res.json({ type: 'FeatureCollection', features });
 }

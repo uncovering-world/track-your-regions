@@ -41,6 +41,8 @@ import {
   reviewIdParamSchema,
   wvImportIcpAdjustmentBodySchema,
   wvImportGeoshapeMatchSchema,
+  wvImportAcceptTransferSchema,
+  wvImportTransferPreviewSchema,
 } from '../types/index.js';
 import {
   startSync,
@@ -71,6 +73,8 @@ import {
   acceptMatch,
   rejectMatch,
   acceptBatchMatches,
+  acceptWithTransfer,
+  getTransferPreview,
   startAIMatch,
   getAIMatchStatus,
   cancelAIMatchEndpoint,
@@ -236,6 +240,12 @@ router.post('/wv-import/matches/:worldViewId/accept-and-reject', validate(worldV
 // Accept a batch of matches
 router.post('/wv-import/matches/:worldViewId/accept-batch', validate(worldViewIdParamSchema, 'params'), validate(wvImportAcceptBatchSchema), acceptBatchMatches);
 
+// Accept with transfer: atomically move divisions from donor region to target
+router.post('/wv-import/matches/:worldViewId/accept-with-transfer', validate(worldViewIdParamSchema, 'params'), validate(wvImportAcceptTransferSchema), acceptWithTransfer);
+
+// Transfer preview: 3-layer GeoJSON for visualising a proposed transfer operation
+router.post('/wv-import/matches/:worldViewId/transfer-preview', validate(worldViewIdParamSchema, 'params'), validate(wvImportTransferPreviewSchema), getTransferPreview);
+
 // AI-assisted re-matching
 router.post('/wv-import/matches/:worldViewId/ai-match', validate(worldViewIdParamSchema, 'params'), startAIMatch);
 router.get('/wv-import/matches/:worldViewId/ai-match/status', validate(worldViewIdParamSchema, 'params'), getAIMatchStatus);
@@ -243,7 +253,7 @@ router.post('/wv-import/matches/:worldViewId/ai-match/cancel', validate(worldVie
 router.post('/wv-import/matches/:worldViewId/db-search-one', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), dbSearchOneRegion);
 router.post('/wv-import/matches/:worldViewId/geocode-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), geocodeMatch);
 router.post('/wv-import/matches/:worldViewId/geoshape-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportGeoshapeMatchSchema), geoshapeMatch);
-router.post('/wv-import/matches/:worldViewId/point-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), pointMatch);
+router.post('/wv-import/matches/:worldViewId/point-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportGeoshapeMatchSchema), pointMatch);
 router.post('/wv-import/matches/:worldViewId/reset-match', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), resetMatch);
 router.post('/wv-import/matches/:worldViewId/ai-match-one', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), aiMatchOneRegion);
 
