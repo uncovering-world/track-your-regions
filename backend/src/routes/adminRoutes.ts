@@ -26,6 +26,8 @@ import {
   adminUserSearchQuerySchema,
   worldViewIdParamSchema,
   wvExtractStartSchema,
+  wvExtractAnswerSchema,
+  wvCacheNameParamSchema,
   wvImportBodySchema,
   wvImportAcceptMatchSchema,
   wvImportAcceptBatchSchema,
@@ -140,7 +142,8 @@ import {
   startWikivoyageExtraction,
   getWikivoyageExtractionStatus,
   cancelWikivoyageExtraction,
-  // answerExtractionQuestion and deleteCacheFile added in PR-31 (wikivoyage-ai)
+  answerExtractionQuestion,
+  deleteCacheFile,
 } from '../controllers/admin/wikivoyageExtractController.js';
 import {
   getAISettings,
@@ -247,6 +250,12 @@ router.get('/wv-extract/status', getWikivoyageExtractionStatus);
 
 // Cancel extraction
 router.post('/wv-extract/cancel', cancelWikivoyageExtraction);
+
+// Answer a pending AI question during extraction
+router.post('/wv-extract/answer', validate(wvExtractAnswerSchema), answerExtractionQuestion);
+
+// Delete a cache file
+router.delete('/wv-extract/caches/:name', validate(wvCacheNameParamSchema, 'params'), deleteCacheFile);
 
 // =============================================================================
 // WorldView Import Routes

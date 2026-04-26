@@ -359,6 +359,16 @@ After import, each instance is a separate region in the database. Match decision
 
 Some Wikivoyage pages list themselves as sub-regions (e.g. Moldova lists "Moldova" + "Transnistria"). Others redirect to the parent (e.g. "Coastal Eritrea" → Eritrea). The script detects both patterns and includes these as leaf nodes representing "the rest of" the parent territory.
 
+### AI Extraction Interview
+
+When the extraction AI is uncertain about a page (e.g. ambiguous region/city distinction, low subregion page coverage), the page is queued for an admin interview. The interview AI (`backend/src/services/wikivoyageExtract/aiInterviewer.ts`) reads existing learned rules, formulates **one** structured question with 2–4 clickable options plus "Other", and surfaces a recommendation. Two outcomes per page:
+
+1. **Generic rule (soft, global)** — `processAnswer` produces a sentence-long rule when the answer generalizes ("Cities should always be leaf nodes"). Rules dedupe against existing ones via the interview AI's prompt: contradicting answers supersede the older rule, aligned answers produce no new rule. Rules inform future recommendations but never bypass the admin.
+2. **Page is final** — `applyAnswerResult` in `wikivoyageExtractController.ts` re-extracts the page once with the admin's answer injected as `adminFeedback`, then marks the question resolved unconditionally. Even if the re-extraction surfaces fresh uncertainties about the same page, the admin is **not** asked again. This prevents the "same question in different words on every retry" loop.
+
+The endpoint is `POST /api/admin/wv-extract/answer` with `{ questionId, action: 'answer' | 'accept' | 'skip' | 'delete_rule', answer?, ruleId? }`. `delete_rule` (with `ruleId` required) re-formulates the current question after removing a rule the admin disagrees with.
+
+
 ## API Endpoints
 
 ### Wikivoyage Extraction (`/api/admin/wv-extract/`)
