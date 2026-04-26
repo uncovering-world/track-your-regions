@@ -35,3 +35,61 @@ Implementation: shared helpers \`findFullyCoveredParents\` and
 \`backend/src/controllers/admin/wvImportSimplifyShared.ts\`. Both endpoints
 ultimately call the wrapper \`runSimplifyHierarchy\` which puts the loop in
 a single transaction per region.
+
+## Smart Simplify
+
+Detects cross-sibling division splits and proposes consolidation moves.
+A "split" is when a GADM parent's children are distributed across two or more
+sibling regions — all children are present, but in different regions. Smart
+Simplify finds these cases and proposes moving the minority children to the
+region that already owns the majority.
+
+### Detection
+
+`POST /api/admin/wv-import/matches/:worldViewId/smart-simplify`
+
+Body: `{ parentRegionId }`. Read-only — no mutations.
+
+Algorithm:
+1. Load all `region_members` for direct children of `parentRegionId`, grouped by `ad.parent_id` (GADM parent).
+2. Count total GADM children for each candidate parent.
+3. Candidate = GADM parent where (a) all its children are present across siblings and (b) those children are spread across 2+ regions.
+4. For each candidate, pick the "owner" region (the one with the most children; tie-break by lower ID).
+5. Build move: divisions to move = children not already in the owner region.
+6. Return moves sorted by number of divisions to move (largest first).
+
+### Apply
+
+`POST /api/admin/wv-import/matches/:worldViewId/smart-simplify/apply-move`
+
+Body: `{ parentRegionId, ownerRegionId, memberRowIds }`.
+
+Steps:
+1. Verify `parentRegionId` and `ownerRegionId` belong to the world view.
+2. Verify `ownerRegionId` is a direct child of `parentRegionId`.
+3. Verify all `memberRowIds` belong to direct children of `parentRegionId` (IDOR guard).
+4. Deduplicate: if a division already exists in the owner region, delete the duplicate rather than moving.
+5. Move remaining rows to the owner region.
+6. Invalidate geometry and sync match status for all affected regions.
+
+The Simplify Hierarchy step (folding fully-covered subtrees up to their GADM
+parent) is **not** applied automatically after a Smart Simplify move — it
+remains a separate explicit operator action via the simplify icon on the
+tree row.
+
+### Map Support
+
+`GET /api/admin/wv-import/matches/:worldViewId/children-geometry/:regionId`
+
+Returns per-child region geometries (union of assigned GADM divisions, simplified
+at medium LOD) for rendering the color-coded map in `SmartSimplifyDialog`.
+
+### Frontend
+
+`SmartSimplifyDialog` (`frontend/src/components/admin/SmartSimplifyDialog.tsx`):
+- Split view: source region map image (left) + MapLibre map with color-coded child regions (right).
+- Current/Proposed toggle: "Current" shows division overlays with dashed red borders; "Proposed" recolors them to the owner region's color.
+- Move list: each detected move shows the GADM parent name, how many divisions move where, and Apply/Skip buttons.
+- Applied moves are dimmed with a green "Applied" chip; the view auto-advances to the next pending move.
+
+Triggered via the Smart Simplify button (swap icon) on any container node in `WorldViewImportTree`.
