@@ -35,6 +35,7 @@ export interface TreeNodeRowProps {
   onSimplifyHierarchy: (regionId: number) => void;
   onSimplifyChildren: (regionId: number) => void;
   onSmartSimplify: (regionId: number) => void;
+  onAISuggestChildren?: (regionId: number) => void;
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
@@ -53,6 +54,7 @@ export interface TreeNodeRowProps {
   dismissingRegionId: number | null;
   simplifyingRegionId: number | null;
   simplifyingChildrenRegionId: number | null;
+  aiSuggestingRegionId?: number | null;
   syncingRegionId: number | null;
   groupingRegionId: number | null;
   geocodeMatchingRegionId: number | null;
@@ -87,7 +89,7 @@ function getNodeRole(node: MatchTreeNode): 'container' | 'country' | 'subdivisio
   return 'container';
 }
 
-export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAcceptTransfer, onAcceptAndRejectRest, onReject, onDBSearch, onAIMatch, onDismissChildren, onSimplifyHierarchy, onSimplifyChildren, onSmartSimplify, onSync, onHandleAsGrouping, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onResetMatch, onRejectRemaining, onAcceptAll, onPreview, onPreviewTransfer, onOpenMapPicker, onManualFix, isMutating, dbSearchingRegionId, aiMatchingRegionId, dismissingRegionId, simplifyingRegionId, simplifyingChildrenRegionId, syncingRegionId, groupingRegionId, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, geocodeProgress, duplicateUrls, syncedUrls, shadowsByRegionId, onApproveShadow, onRejectShadow, skipAnimationRef, ancestorIsMatched }: TreeNodeRowProps) {
+export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAcceptTransfer, onAcceptAndRejectRest, onReject, onDBSearch, onAIMatch, onDismissChildren, onSimplifyHierarchy, onSimplifyChildren, onSmartSimplify, onAISuggestChildren, onSync, onHandleAsGrouping, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onResetMatch, onRejectRemaining, onAcceptAll, onPreview, onPreviewTransfer, onOpenMapPicker, onManualFix, isMutating, dbSearchingRegionId, aiMatchingRegionId, dismissingRegionId, simplifyingRegionId, simplifyingChildrenRegionId, aiSuggestingRegionId, syncingRegionId, groupingRegionId, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, geocodeProgress, duplicateUrls, syncedUrls, shadowsByRegionId, onApproveShadow, onRejectShadow, skipAnimationRef, ancestorIsMatched }: TreeNodeRowProps) {
   const isExpanded = expanded.has(node.id);
   const hasChildren = node.children.length > 0;
   const role = getNodeRole(node);
@@ -235,6 +237,8 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
           simplifyingRegionId={simplifyingRegionId}
           simplifyingChildrenRegionId={simplifyingChildrenRegionId}
           onSmartSimplify={onSmartSimplify}
+          onAISuggestChildren={onAISuggestChildren}
+          aiSuggestingRegionId={aiSuggestingRegionId}
           onSync={onSync}
           onHandleAsGrouping={onHandleAsGrouping}
           onGeocodeMatch={onGeocodeMatch}
@@ -285,6 +289,7 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
               onSimplifyHierarchy={onSimplifyHierarchy}
               onSimplifyChildren={onSimplifyChildren}
               onSmartSimplify={onSmartSimplify}
+              onAISuggestChildren={onAISuggestChildren}
               onSync={onSync}
               onHandleAsGrouping={onHandleAsGrouping}
               onGeocodeMatch={onGeocodeMatch}
@@ -303,6 +308,7 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
               dismissingRegionId={dismissingRegionId}
               simplifyingRegionId={simplifyingRegionId}
               simplifyingChildrenRegionId={simplifyingChildrenRegionId}
+              aiSuggestingRegionId={aiSuggestingRegionId}
               syncingRegionId={syncingRegionId}
               groupingRegionId={groupingRegionId}
               geocodeMatchingRegionId={geocodeMatchingRegionId}

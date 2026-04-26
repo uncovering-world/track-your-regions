@@ -13,12 +13,14 @@ import {
   Typography,
   Button,
   CircularProgress,
+  Checkbox,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
   Snackbar,
+  Link as MuiLink,
 } from '@mui/material';
 
 import {
@@ -26,6 +28,8 @@ import {
   UnfoldLess as CollapseAllIcon,
   ErrorOutline as UnresolvedIcon,
   Layers as GapsIcon,
+  Link as LinkIcon,
+  ArrowForward as ArrowForwardIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -35,6 +39,10 @@ import {
   rejectSuggestion,
   dbSearchOneRegion,
   aiMatchOneRegion,
+  aiReviewChildren,
+  addChildRegion,
+  removeRegionFromImport,
+  renameRegion,
   dismissChildren,
   simplifyHierarchy,
   simplifyChildren,
@@ -51,6 +59,8 @@ import {
   markManualFix,
   acceptWithTransfer as acceptWithTransferApi,
   type MatchTreeNode,
+  type AIReviewChildrenResult,
+  type ReviewChildAction,
 } from '../../api/adminWorldViewImport';
 import { MapImagePickerDialog } from './MapImagePickerDialog';
 import { SmartSimplifyDialog } from './SmartSimplifyDialog';
@@ -155,6 +165,26 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
     regionName: string;
     regionMapUrl: string | null;
   } | null>(null);
+
+  const [aiReviewDialog, setAIReviewDialog] = useState<{
+    regionId: number;
+    regionName: string;
+    result: AIReviewChildrenResult;
+    selected: Set<string>;
+  } | null>(null);
+  const [aiSuggestingRegionId, setAISuggestingRegionId] = useState<number | null>(null);
+
+  /** Find a child region ID by name under a specific parent node */
+  function findChildIdByName(nodes: MatchTreeNode[], parentId: number, childName: string): number | undefined {
+    for (const node of nodes) {
+      if (node.id === parentId) {
+        return node.children.find(c => c.name === childName)?.id;
+      }
+      const found = findChildIdByName(node.children, parentId, childName);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
 
   const { data: tree, isLoading } = useQuery({
     queryKey: ['admin', 'wvImport', 'matchTree', worldViewId],
@@ -428,6 +458,41 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
     });
   }, [tree]);
 
+  const handleAIReviewChildren = useCallback(async (regionId: number) => {
+    if (!tree) return;
+    const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
+      for (const n of nodes) {
+        if (n.id === regionId) return n;
+        const found = findNode(n.children);
+        if (found) return found;
+      }
+      return null;
+    };
+    const node = findNode(tree);
+    if (!node) return;
+
+    setAISuggestingRegionId(regionId);
+    try {
+      const result = await aiReviewChildren(worldViewId, regionId);
+      // Pre-select add and rename actions (not remove — destructive)
+      const selected = new Set(
+        result.actions
+          .filter((a: ReviewChildAction) => a.type !== 'remove')
+          .map((a: ReviewChildAction) => `${a.type}:${a.name}`),
+      );
+      setAIReviewDialog({ regionId, regionName: node.name, result, selected });
+    } catch (err) {
+      console.error('AI review children failed:', err);
+      setUndoSnackbar({
+        open: true,
+        message: `AI review children failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        worldViewId,
+      });
+    } finally {
+      setAISuggestingRegionId(null);
+    }
+  }, [tree, worldViewId]);
+
   const handleOpenMapPicker = useCallback((node: MatchTreeNode, pendingPreview?: { divisionId: number; name: string; path?: string; isAssigned: boolean }) => {
     setMapPickerState({
       regionId: node.id,
@@ -622,6 +687,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
           onSimplifyHierarchy={(regionId) => simplifyHierarchyMutation.mutate(regionId)}
           onSimplifyChildren={(regionId) => simplifyChildrenMutation.mutate(regionId)}
           onSmartSimplify={handleSmartSimplify}
+          onAISuggestChildren={handleAIReviewChildren}
+          aiSuggestingRegionId={aiSuggestingRegionId}
           onSync={(regionId) => syncMutation.mutate(regionId)}
           onHandleAsGrouping={(regionId) => groupingMutation.mutate(regionId)}
           onGeocodeMatch={(regionId) => geocodeMatchMutation.mutate(regionId)}
@@ -715,6 +782,190 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
           onApplied={() => invalidateTree()}
         />
       )}
+
+      {/* AI Review Children dialog */}
+      {aiReviewDialog && (
+        <AIReviewChildrenDialog
+          state={aiReviewDialog}
+          onClose={() => setAIReviewDialog(null)}
+          onToggle={(key) => {
+            setAIReviewDialog(prev => {
+              if (!prev) return prev;
+              const next = new Set(prev.selected);
+              if (next.has(key)) next.delete(key);
+              else next.add(key);
+              return { ...prev, selected: next };
+            });
+          }}
+          onSubmit={async () => {
+            if (!aiReviewDialog) return;
+            const { regionId: parentId, result, selected } = aiReviewDialog;
+            setAIReviewDialog(null);
+
+            // Batch all API calls, then invalidate once
+            const promises: Promise<unknown>[] = [];
+            for (const key of selected) {
+              const colonIdx = key.indexOf(':');
+              const type = key.slice(0, colonIdx);
+              const name = key.slice(colonIdx + 1);
+              const action = result.actions.find((a: ReviewChildAction) => a.type === type && a.name === name);
+              if (!action) continue;
+
+              if (action.type === 'add') {
+                promises.push(addChildRegion(
+                  worldViewId, parentId, action.name,
+                  action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
+                ));
+              } else if (action.type === 'remove') {
+                const childId = tree ? findChildIdByName(tree, parentId, action.name) : undefined;
+                if (childId) {
+                  // Reparent both children AND assigned GADM divisions up to the parent;
+                  // otherwise CASCADE would silently delete `region_members` rows the admin
+                  // had already accepted.
+                  promises.push(removeRegionFromImport(worldViewId, childId, true, true));
+                }
+              } else if (action.type === 'rename') {
+                const childId = tree ? findChildIdByName(tree, parentId, action.name) : undefined;
+                if (childId) {
+                  promises.push(renameRegion(
+                    worldViewId, childId, action.newName ?? action.name,
+                    action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
+                  ));
+                }
+              }
+            }
+
+            const results = await Promise.allSettled(promises);
+            const failures = results.filter(r => r.status === 'rejected');
+            if (failures.length > 0) {
+              for (const f of failures) {
+                console.error('[AI Review Children] action failed:', (f as PromiseRejectedResult).reason);
+              }
+              alert(`AI Review Children: ${failures.length} of ${results.length} action(s) failed. See browser console for details. The tree will refresh to reflect the partial result.`);
+            }
+            invalidateTree();
+          }}
+        />
+      )}
     </Box>
+  );
+}
+
+/** Dialog showing AI-reviewed children actions grouped by type */
+function AIReviewChildrenDialog({ state, onClose, onToggle, onSubmit }: {
+  state: {
+    regionId: number;
+    regionName: string;
+    result: AIReviewChildrenResult;
+    selected: Set<string>;
+  };
+  onClose: () => void;
+  onToggle: (key: string) => void;
+  onSubmit: () => void;
+}) {
+  const addActions = state.result.actions.filter((a: ReviewChildAction) => a.type === 'add');
+  const removeActions = state.result.actions.filter((a: ReviewChildAction) => a.type === 'remove');
+  const renameActions = state.result.actions.filter((a: ReviewChildAction) => a.type === 'rename');
+
+  const renderEnrichment = (action: ReviewChildAction) => {
+    if (action.type === 'remove' || !action.verified) return null;
+    return (
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        {action.sourceUrl && (
+          <Typography variant="caption" color="text.secondary">
+            <LinkIcon sx={{ fontSize: 12, mr: 0.25, verticalAlign: 'middle' }} />
+            <MuiLink href={action.sourceUrl} target="_blank" rel="noopener" sx={{ fontSize: 'inherit' }}>
+              {decodeURIComponent(action.sourceUrl.split('/wiki/')[1] ?? '')}
+            </MuiLink>
+          </Typography>
+        )}
+        {action.sourceExternalId && (
+          <Typography variant="caption" color="text.secondary">
+            <MuiLink
+              href={`https://www.wikidata.org/wiki/${action.sourceExternalId}`}
+              target="_blank"
+              rel="noopener"
+              sx={{ fontSize: 'inherit' }}
+            >
+              {action.sourceExternalId}
+            </MuiLink>
+          </Typography>
+        )}
+      </Box>
+    );
+  };
+
+  const renderSection = (
+    title: string,
+    actions: ReviewChildAction[],
+    color: string,
+  ) => {
+    if (actions.length === 0) return null;
+    return (
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="subtitle2" color={color} sx={{ mb: 0.5 }}>
+          {title} ({actions.length})
+        </Typography>
+        {actions.map((a) => {
+          const key = `${a.type}:${a.name}`;
+          return (
+            <Box key={key} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, py: 0.5 }}>
+              <Checkbox
+                size="small"
+                checked={state.selected.has(key)}
+                onChange={() => onToggle(key)}
+                sx={{ p: 0.25, mt: 0.25 }}
+              />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2">
+                  {a.type === 'rename' ? (
+                    <>{a.name} <ArrowForwardIcon sx={{ fontSize: 14, verticalAlign: 'middle', mx: 0.5 }} /> {a.newName}</>
+                  ) : (
+                    a.name
+                  )}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">{a.reason}</Typography>
+                {renderEnrichment(a)}
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  };
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Review Children for &quot;{state.regionName}&quot;</DialogTitle>
+      <DialogContent>
+        {state.result.analysis && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {state.result.analysis}
+          </Typography>
+        )}
+        {state.result.actions.length === 0 && (
+          <Typography variant="body2">All children look correct — no changes suggested.</Typography>
+        )}
+        {renderSection('Add', addActions, 'success.main')}
+        {renderSection('Remove', removeActions, 'error.main')}
+        {renderSection('Rename', renameActions, 'warning.main')}
+        {state.result.stats && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+            {(state.result.stats.inputTokens + state.result.stats.outputTokens).toLocaleString()} tokens
+            {' · '}${state.result.stats.cost.toFixed(4)}
+          </Typography>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          disabled={!state.selected.size}
+          onClick={onSubmit}
+        >
+          Apply {state.selected.size} Selected
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
