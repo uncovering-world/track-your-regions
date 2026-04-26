@@ -411,6 +411,48 @@ export const wvImportIcpAdjustmentBodySchema = z.object({
   action: z.enum(['adjust', 'continue']),
 });
 
+export const wvImportClusterHighlightParamSchema = z.object({
+  reviewId: reviewIdFieldSchema,
+  label: z.coerce.number().int().min(0).max(255),
+});
+
+const clusterReclusterPresetSchema = z.enum([
+  'more_clusters', 'different_seed', 'boost_chroma',
+  'remove_roads', 'fill_holes', 'clean_light', 'clean_heavy',
+]);
+
+// K-means label range is uint8 (0-255); 256 entries is the cap per field.
+const MAX_PALETTE_ENTRIES = 256;
+
+export const wvImportClusterReviewBodySchema = z.object({
+  merges: z.record(
+    z.string().regex(/^\d+$/),
+    z.coerce.number().int().min(0).max(255),
+  ).optional(),
+  excludes: z.array(z.coerce.number().int().min(0).max(255)).max(MAX_PALETTE_ENTRIES).optional(),
+  split: z.array(z.coerce.number().int().min(0).max(255)).max(MAX_PALETTE_ENTRIES).optional(),
+  recluster: z.object({
+    preset: clusterReclusterPresetSchema,
+  }).optional(),
+});
+
+const clusterPaletteEntrySchema = z.object({
+  label: z.coerce.number().int().min(0).max(255),
+  color: z.tuple([
+    z.coerce.number().int().min(0).max(255),
+    z.coerce.number().int().min(0).max(255),
+    z.coerce.number().int().min(0).max(255),
+  ]),
+});
+
+// Painted-overlay decision body: replaces automated clustering with the admin's
+// canvas-edited result before ICP alignment.
+export const wvImportManualClusterReviewBodySchema = z.object({
+  type: z.literal('manual_clusters'),
+  overlayPng: z.string().min(1),
+  palette: z.array(clusterPaletteEntrySchema).min(1).max(MAX_PALETTE_ENTRIES),
+});
+
 export const wvImportGeoshapeMatchSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   scopeAncestorId: z.coerce.number().int().positive().optional(),

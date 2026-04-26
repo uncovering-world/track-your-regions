@@ -11,8 +11,14 @@ import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { invalidateRegionGeometry } from '../worldView/helpers.js';
 
-// Re-export ICP review handler for adminRoutes
-export { resolveIcpAdjustment } from './wvImportMatchReview.js';
+// Re-export review handlers for adminRoutes
+export {
+  resolveIcpAdjustment,
+  resolveClusterReview,
+  getClusterPreviewImage,
+  getClusterHighlightImage,
+  getClusterOverlayImage,
+} from './wvImportMatchReview.js';
 
 // =============================================================================
 // Match statistics + retrieval

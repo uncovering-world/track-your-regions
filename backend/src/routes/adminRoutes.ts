@@ -40,6 +40,9 @@ import {
   worldViewRegionIdParamSchema,
   reviewIdParamSchema,
   wvImportIcpAdjustmentBodySchema,
+  wvImportClusterHighlightParamSchema,
+  wvImportClusterReviewBodySchema,
+  wvImportManualClusterReviewBodySchema,
   wvImportGeoshapeMatchSchema,
   wvImportAcceptTransferSchema,
   wvImportTransferPreviewSchema,
@@ -115,6 +118,10 @@ import {
   applySmartSimplifyMove,
   getChildrenRegionGeometry,
   resolveIcpAdjustment,
+  resolveClusterReview,
+  getClusterPreviewImage,
+  getClusterHighlightImage,
+  getClusterOverlayImage,
 } from '../controllers/admin/worldViewImportController.js';
 import {
   startWikivoyageExtraction,
@@ -350,6 +357,100 @@ router.post(
     } else {
       res.status(404).json({ error: 'Review not found or expired' });
     }
+  },
+);
+
+// =============================================================================
+// Cluster review endpoints (manual paint editor + overlay image serving)
+// =============================================================================
+
+// Cluster preview image (in-memory, served like water crops)
+router.get(
+  '/wv-import/cluster-preview/:reviewId',
+  validate(reviewIdParamSchema, 'params'),
+  (req: AuthenticatedRequest, res: Response) => {
+    const { reviewId } = req.params as unknown as { reviewId: string };
+    const dataUrl = getClusterPreviewImage(reviewId);
+    if (!dataUrl) { res.status(404).json({ error: 'Preview not found' }); return; }
+    const base64Data = dataUrl.replace(/^data:[^;]+;base64,/, '');
+    const buf = Buffer.from(base64Data, 'base64');
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(buf);
+  },
+);
+
+// Per-cluster highlight image (red outline overlay for selected cluster)
+router.get(
+  '/wv-import/cluster-highlight/:reviewId/:label',
+  validate(wvImportClusterHighlightParamSchema, 'params'),
+  (req: AuthenticatedRequest, res: Response) => {
+    const { reviewId, label } = req.params as unknown as { reviewId: string; label: number };
+    const png = getClusterHighlightImage(reviewId, label);
+    if (!png) { res.status(404).json({ error: 'Highlight not found' }); return; }
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.send(png);
+  },
+);
+
+// Cluster overlay image (full-image colored overlay for manual paint editor)
+router.get(
+  '/wv-import/cluster-overlay/:reviewId',
+  validate(reviewIdParamSchema, 'params'),
+  (req: AuthenticatedRequest, res: Response) => {
+    const { reviewId } = req.params as unknown as { reviewId: string };
+    const png = getClusterOverlayImage(reviewId);
+    if (!png) { res.status(404).json({ error: 'Overlay not found' }); return; }
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.send(png);
+  },
+);
+
+// Cluster review callback — normal merges/excludes/splits, or manual_clusters painted overlay
+router.post(
+  '/wv-import/cluster-review/:reviewId',
+  validate(reviewIdParamSchema, 'params'),
+  (req: AuthenticatedRequest, res: Response) => {
+    const { reviewId } = req.params as unknown as { reviewId: string };
+
+    // manual_clusters: painted overlay replaces automated clustering
+    if (req.body?.type === 'manual_clusters') {
+      const parsedManual = wvImportManualClusterReviewBodySchema.safeParse(req.body);
+      if (!parsedManual.success) {
+        res.status(400).json({ error: 'Invalid manual_clusters body', details: parsedManual.error.format() });
+        return;
+      }
+      const { overlayPng, palette } = parsedManual.data;
+      console.log(`  [Cluster Review POST] reviewId=${reviewId} type=manual_clusters palette=${palette.length} colors`);
+      const found = resolveClusterReview(reviewId, { type: 'manual_clusters', overlayPng, palette });
+      if (found) { res.json({ ok: true }); } else { res.status(404).json({ error: 'Review not found or expired' }); }
+      return;
+    }
+
+    // Normal cluster review decision — validate with Zod schema
+    const parsed = wvImportClusterReviewBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid cluster review body', details: parsed.error.format() });
+      return;
+    }
+    const body = parsed.data;
+    const merges: Record<number, number> = {};
+    if (body.merges) {
+      for (const [from, to] of Object.entries(body.merges)) {
+        merges[Number(from)] = to;
+      }
+    }
+    const found = resolveClusterReview(reviewId, {
+      merges,
+      excludes: body.excludes ?? [],
+      recluster: body.recluster,
+      split: body.split && body.split.length > 0 ? body.split : undefined,
+    });
+    if (found) { res.json({ ok: true }); } else { res.status(404).json({ error: 'Review not found or expired' }); }
   },
 );
 
