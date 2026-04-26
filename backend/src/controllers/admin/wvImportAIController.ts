@@ -18,6 +18,8 @@ import {
   geocodeMatchRegion,
 } from '../../services/worldViewImport/aiMatcher.js';
 import { isOpenAIAvailable } from '../../services/ai/openaiService.js';
+import { geoshapeMatchRegion, computeGeoSimilarityForRegion } from '../../services/worldViewImport/geoshapeCache.js';
+import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
 
 // =============================================================================
 // AI match orchestration
@@ -168,5 +170,76 @@ export async function aiMatchOneRegion(req: AuthenticatedRequest, res: Response)
   } catch (err) {
     console.error(`[WV Import] AI match one failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'AI matching failed' });
+  }
+}
+
+// =============================================================================
+// Geo similarity helper
+// =============================================================================
+
+/**
+ * Compute geo similarity if the region now has multiple suggestions.
+ * Called after geoshape/point match to score and auto-accept/reject candidates.
+ */
+async function computeGeoSimilarityIfNeeded(regionId: number): Promise<void> {
+  const sugResult = await pool.query(
+    `SELECT division_id AS "divisionId" FROM region_match_suggestions WHERE region_id = $1 AND rejected = false`,
+    [regionId],
+  );
+  if (sugResult.rows.length <= 1) return;
+
+  const client = await pool.connect();
+  try {
+    await computeGeoSimilarityForRegion(client, regionId, sugResult.rows as Array<{ divisionId: number }>);
+  } finally {
+    client.release();
+  }
+}
+
+// =============================================================================
+// Geoshape and point matching
+// =============================================================================
+
+/**
+ * Match a region by comparing its Wikidata geoshape geometry against GADM divisions.
+ * Scopes search to the relevant GADM subtree for performance.
+ * POST /api/admin/wv-import/matches/:worldViewId/geoshape-match
+ */
+export async function geoshapeMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId, scopeAncestorId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/geoshape-match — regionId=${regionId}${scopeAncestorId ? ` scopeAncestorId=${scopeAncestorId}` : ''}`);
+
+  try {
+    const result = await geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId);
+    // Compute geo similarity if region now has multiple suggestions
+    if (result.found > 0) {
+      await computeGeoSimilarityIfNeeded(regionId);
+    }
+    res.json(result);
+  } catch (err) {
+    console.error(`[WV Import] Geoshape match failed:`, err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Geoshape match failed' });
+  }
+}
+
+/**
+ * Match a region using Wikivoyage marker coordinates → GADM point containment.
+ * POST /api/admin/wv-import/matches/:worldViewId/point-match
+ */
+export async function pointMatch(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/point-match — regionId=${regionId}`);
+
+  try {
+    const result = await pointMatchRegion(worldViewId, regionId);
+    if (result.found > 0) {
+      await computeGeoSimilarityIfNeeded(regionId);
+    }
+    res.json(result);
+  } catch (err) {
+    console.error(`[WV Import] Point match failed:`, err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Point match failed' });
   }
 }

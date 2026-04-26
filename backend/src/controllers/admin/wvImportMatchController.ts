@@ -115,6 +115,11 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
       ris.needs_manual_fix,
       ris.fix_note,
       ris.source_external_id AS wikidata_id,
+      ris.marker_points,
+      COALESCE(ris.geo_available, (
+        SELECT NOT wg.not_available FROM wikidata_geoshapes wg
+        WHERE wg.wikidata_id = ris.source_external_id
+      )) AS geo_available,
       (SELECT COALESCE(json_agg(json_build_object(
         'divisionId', rms.division_id, 'name', rms.name, 'path', rms.path, 'score', rms.score
       ) ORDER BY rms.score DESC), '[]'::json)
@@ -163,6 +168,8 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
     wikidataId: string | null;
     memberCount: number;
     assignedDivisions: Array<{ divisionId: number; name: string; path: string; hasCustomGeom: boolean }>;
+    geoAvailable: boolean | null;
+    markerPoints: Array<{ name: string; lat: number; lon: number }> | null;
     children: TreeNode[];
   }
 
@@ -186,6 +193,8 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
       wikidataId: row.wikidata_id as string | null,
       memberCount: parseInt(row.member_count as string),
       assignedDivisions: (row.assigned_divisions as TreeNode['assignedDivisions']) ?? [],
+      geoAvailable: (row.geo_available as boolean | null) ?? null,
+      markerPoints: (row.marker_points as TreeNode['markerPoints']) ?? null,
       children: [],
     });
   }
