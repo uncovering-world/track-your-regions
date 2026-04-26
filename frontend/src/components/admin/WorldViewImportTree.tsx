@@ -36,6 +36,8 @@ import {
   dbSearchOneRegion,
   aiMatchOneRegion,
   dismissChildren,
+  simplifyHierarchy,
+  simplifyChildren,
   undoLastOperation,
   syncInstances,
   handleAsGrouping,
@@ -187,6 +189,16 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
         });
       }
     },
+  });
+
+  const simplifyHierarchyMutation = useMutation({
+    mutationFn: (regionId: number) => simplifyHierarchy(worldViewId, regionId),
+    onSuccess: invalidateTree,
+  });
+
+  const simplifyChildrenMutation = useMutation({
+    mutationFn: (parentRegionId: number) => simplifyChildren(worldViewId, parentRegionId),
+    onSuccess: invalidateTree,
   });
 
   const syncMutation = useMutation({
@@ -439,7 +451,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
     });
   }, [tree, shadowInsertions]);
 
-  const isMutating = acceptMutation.isPending || rejectMutation.isPending || acceptAndRejectRestMutation.isPending || dismissMutation.isPending || syncMutation.isPending || groupingMutation.isPending || geocodeMatchMutation.isPending || resetMatchMutation.isPending || rejectRemainingMutation.isPending || acceptAllMutation.isPending || selectMapMutation.isPending || manualFixMutation.isPending;
+  const isMutating = acceptMutation.isPending || rejectMutation.isPending || acceptAndRejectRestMutation.isPending || dismissMutation.isPending || simplifyHierarchyMutation.isPending || simplifyChildrenMutation.isPending || syncMutation.isPending || groupingMutation.isPending || geocodeMatchMutation.isPending || resetMatchMutation.isPending || rejectRemainingMutation.isPending || acceptAllMutation.isPending || selectMapMutation.isPending || manualFixMutation.isPending;
 
   if (isLoading) {
     return (
@@ -485,6 +497,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
           onDBSearch={(regionId) => dbSearchOneMutation.mutate(regionId)}
           onAIMatch={(regionId) => aiMatchOneMutation.mutate(regionId)}
           onDismissChildren={(regionId) => dismissMutation.mutate(regionId)}
+          onSimplifyHierarchy={(regionId) => simplifyHierarchyMutation.mutate(regionId)}
+          onSimplifyChildren={(regionId) => simplifyChildrenMutation.mutate(regionId)}
           onSync={(regionId) => syncMutation.mutate(regionId)}
           onHandleAsGrouping={(regionId) => groupingMutation.mutate(regionId)}
           onGeocodeMatch={(regionId) => geocodeMatchMutation.mutate(regionId)}
@@ -513,6 +527,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
           dbSearchingRegionId={dbSearchOneMutation.isPending ? (dbSearchOneMutation.variables ?? null) : null}
           aiMatchingRegionId={aiMatchOneMutation.isPending ? (aiMatchOneMutation.variables ?? null) : null}
           dismissingRegionId={dismissMutation.isPending ? (dismissMutation.variables ?? null) : null}
+          simplifyingRegionId={simplifyHierarchyMutation.isPending ? (simplifyHierarchyMutation.variables ?? null) : null}
+          simplifyingChildrenRegionId={simplifyChildrenMutation.isPending ? (simplifyChildrenMutation.variables ?? null) : null}
           syncingRegionId={syncMutation.isPending ? (syncMutation.variables ?? null) : null}
           groupingRegionId={groupingMutation.isPending ? (groupingMutation.variables ?? null) : null}
           geocodeMatchingRegionId={geocodeMatchMutation.isPending ? (geocodeMatchMutation.variables ?? null) : null}
