@@ -1,27 +1,33 @@
 /**
- * Admin WorldView Import — Match operations controller
+ * WorldView Import Match Controller
  *
- * Owns: accept/reject/batch match operations, match tree retrieval,
- * map-image selection, manual-fix flagging.
- * See ADR-0009 for the domain-split rationale.
+ * Match review endpoints: stats, accept, reject, batch accept, tree, map images, manual fix.
  */
 
 import { Response } from 'express';
+import sharp from 'sharp';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { matchDivisionsByVision } from '../../services/ai/openaiService.js';
+import {
+  type PointInfo,
+  generateDivisionsSvg,
+  fetchMarkersForDivisions,
+} from './wvImportMatchHelpers.js';
 import { invalidateRegionGeometry } from '../worldView/helpers.js';
 
-// Re-export review handlers for adminRoutes
+// Re-export review API for adminRoutes (keeps existing import path working)
 export {
-  resolveIcpAdjustment,
+  resolveWaterReview,
+  getWaterCropImage,
   resolveClusterReview,
   getClusterPreviewImage,
   getClusterHighlightImage,
-  getClusterOverlayImage,
+  resolveIcpAdjustment,
 } from './wvImportMatchReview.js';
 
 // =============================================================================
-// Match statistics + retrieval
+// Match review endpoints
 // =============================================================================
 
 /**
@@ -92,7 +98,11 @@ export async function getMatchStats(req: AuthenticatedRequest, res: Response): P
       COUNT(*) FILTER (WHERE ris.match_status = 'suggested') AS suggested,
       COUNT(*) FILTER (WHERE ris.match_status IS NOT NULL) AS total_matched,
       COUNT(*) FILTER (WHERE r.is_leaf = true) AS total_leaves,
-      COUNT(*) AS total_regions
+      COUNT(*) AS total_regions,
+      COUNT(*) FILTER (
+        WHERE array_length(ris.hierarchy_warnings, 1) > 0
+          AND ris.hierarchy_reviewed = false
+      ) AS hierarchy_warnings_count
     FROM regions r
     LEFT JOIN region_import_state ris ON ris.region_id = r.id
     WHERE r.world_view_id = $1
@@ -100,133 +110,6 @@ export async function getMatchStats(req: AuthenticatedRequest, res: Response): P
 
   res.json(result.rows[0]);
 }
-
-/**
- * Get region tree with match status for hierarchical review.
- * GET /api/admin/wv-import/matches/:worldViewId/tree
- */
-export async function getMatchTree(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  console.log(`[WV Import] GET /matches/${worldViewId}/tree`);
-
-  const result = await pool.query(`
-    SELECT
-      r.id,
-      r.name,
-      r.parent_region_id,
-      r.is_leaf,
-      ris.match_status,
-      ris.source_url,
-      ris.region_map_url,
-      ris.map_image_reviewed,
-      ris.needs_manual_fix,
-      ris.fix_note,
-      ris.source_external_id AS wikidata_id,
-      ris.marker_points,
-      COALESCE(ris.geo_available, (
-        SELECT NOT wg.not_available FROM wikidata_geoshapes wg
-        WHERE wg.wikidata_id = ris.source_external_id
-      )) AS geo_available,
-      (SELECT COALESCE(json_agg(json_build_object(
-        'divisionId', rms.division_id, 'name', rms.name, 'path', rms.path, 'score', rms.score, 'geoSimilarity', rms.geo_similarity,
-        'conflict', CASE WHEN rms.conflict_type IS NOT NULL THEN json_build_object(
-          'type', rms.conflict_type, 'donorRegionId', rms.donor_region_id, 'donorRegionName', rms.donor_region_name,
-          'donorDivisionId', rms.donor_division_id, 'donorDivisionName', rms.donor_division_name
-        ) ELSE NULL END
-      ) ORDER BY rms.score DESC), '[]'::json)
-      FROM region_match_suggestions rms WHERE rms.region_id = r.id AND rms.rejected = false) AS suggestions,
-      (SELECT COALESCE(json_agg(rmi.image_url), '[]'::json)
-      FROM region_map_images rmi WHERE rmi.region_id = r.id) AS map_image_candidates,
-      (SELECT COUNT(*) FROM region_members rm WHERE rm.region_id = r.id) AS member_count,
-      (
-        SELECT COALESCE(json_agg(json_build_object(
-          'divisionId', ad.id,
-          'name', ad.name,
-          'path', (
-            WITH RECURSIVE div_ancestors AS (
-              SELECT ad.id, ad.name, ad.parent_id
-              UNION ALL
-              SELECT d.id, d.name, d.parent_id
-              FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.parent_id
-            )
-            SELECT string_agg(name, ' > ' ORDER BY id) FROM div_ancestors
-          ),
-          'hasCustomGeom', rm.custom_geom IS NOT NULL
-        ) ORDER BY ad.name), '[]'::json)
-        FROM region_members rm
-        JOIN administrative_divisions ad ON rm.division_id = ad.id
-        WHERE rm.region_id = r.id
-      ) AS assigned_divisions
-    FROM regions r
-    LEFT JOIN region_import_state ris ON ris.region_id = r.id
-    WHERE r.world_view_id = $1
-    ORDER BY r.name
-  `, [worldViewId]);
-
-  // Build tree in memory
-  interface TreeNode {
-    id: number;
-    name: string;
-    isLeaf: boolean;
-    matchStatus: string | null;
-    suggestions: Array<{ divisionId: number; name: string; path: string; score: number; geoSimilarity: number | null; conflict?: { type: string; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string } | null }>;
-    sourceUrl: string | null;
-    regionMapUrl: string | null;
-    mapImageCandidates: string[];
-    mapImageReviewed: boolean;
-    needsManualFix: boolean;
-    fixNote: string | null;
-    wikidataId: string | null;
-    memberCount: number;
-    assignedDivisions: Array<{ divisionId: number; name: string; path: string; hasCustomGeom: boolean }>;
-    geoAvailable: boolean | null;
-    markerPoints: Array<{ name: string; lat: number; lon: number }> | null;
-    children: TreeNode[];
-  }
-
-  const nodesById = new Map<number, TreeNode>();
-  const roots: TreeNode[] = [];
-
-  // Create all nodes
-  for (const row of result.rows) {
-    nodesById.set(row.id as number, {
-      id: row.id as number,
-      name: row.name as string,
-      isLeaf: row.is_leaf as boolean,
-      matchStatus: row.match_status as string | null,
-      suggestions: (row.suggestions as TreeNode['suggestions']) ?? [],
-      sourceUrl: row.source_url as string | null,
-      regionMapUrl: row.region_map_url as string | null,
-      mapImageCandidates: (row.map_image_candidates as string[]) ?? [],
-      mapImageReviewed: row.map_image_reviewed === true,
-      needsManualFix: row.needs_manual_fix === true,
-      fixNote: row.fix_note as string | null,
-      wikidataId: row.wikidata_id as string | null,
-      memberCount: parseInt(row.member_count as string),
-      assignedDivisions: (row.assigned_divisions as TreeNode['assignedDivisions']) ?? [],
-      geoAvailable: (row.geo_available as boolean | null) ?? null,
-      markerPoints: (row.marker_points as TreeNode['markerPoints']) ?? null,
-      children: [],
-    });
-  }
-
-  // Wire parent-child relationships
-  for (const row of result.rows) {
-    const node = nodesById.get(row.id as number)!;
-    const parentId = row.parent_region_id as number | null;
-    if (parentId && nodesById.has(parentId)) {
-      nodesById.get(parentId)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-
-  res.json(roots);
-}
-
-// =============================================================================
-// Match acceptance
-// =============================================================================
 
 /**
  * Accept a single match (assign division to region).
@@ -276,123 +159,6 @@ export async function acceptMatch(req: AuthenticatedRequest, res: Response): Pro
 
   res.json({ accepted: true });
 }
-
-/**
- * Accept a match AND reject all remaining suggestions in a single transaction.
- * Replaces the chained acceptMatch + rejectRemaining calls.
- * POST /api/admin/wv-import/matches/:worldViewId/accept-and-reject
- */
-export async function acceptAndRejectRest(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  const { regionId, divisionId } = req.body;
-  console.log(`[WV Import] POST /matches/${worldViewId}/accept-and-reject — regionId=${regionId}, divisionId=${divisionId}`);
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Verify region exists and belongs to the specified world view
-    const region = await client.query(
-      'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
-      [regionId, worldViewId],
-    );
-    if (region.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.status(404).json({ error: 'Region not found in this world view' });
-      return;
-    }
-
-    // Create region member
-    await client.query(
-      `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
-      [regionId, divisionId],
-    );
-
-    // Reject all remaining non-rejected suggestions (except the accepted one, which we delete)
-    await client.query(
-      `UPDATE region_match_suggestions SET rejected = true
-       WHERE region_id = $1 AND division_id != $2 AND rejected = false`,
-      [regionId, divisionId],
-    );
-
-    // Delete the accepted suggestion itself
-    await client.query(
-      `DELETE FROM region_match_suggestions WHERE region_id = $1 AND division_id = $2 AND rejected = false`,
-      [regionId, divisionId],
-    );
-
-    // Set status to manual_matched (we accepted one and rejected all others)
-    await client.query(
-      `UPDATE region_import_state SET match_status = 'manual_matched' WHERE region_id = $1`,
-      [regionId],
-    );
-
-    await client.query('COMMIT');
-    res.json({ accepted: true, rejected: true });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Accept a batch of matches.
- * POST /api/admin/wv-import/matches/:worldViewId/accept-batch
- */
-export async function acceptBatchMatches(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-  console.log(`[WV Import] POST /matches/${worldViewId}/accept-batch — ${req.body?.assignments?.length ?? 0} assignments`);
-  const { assignments } = req.body as {
-    assignments: Array<{ regionId: number; divisionId: number }>;
-  };
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    let accepted = 0;
-    for (const { regionId, divisionId } of assignments) {
-      // Verify region belongs to this world view
-      const check = await client.query(
-        'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
-        [regionId, worldViewId],
-      );
-      if (check.rows.length === 0) continue;
-
-      // Create region member
-      const result = await client.query(
-        `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)
-         ON CONFLICT DO NOTHING RETURNING id`,
-        [regionId, divisionId],
-      );
-
-      if (result.rows.length > 0) {
-        accepted++;
-      }
-
-      // Update import state
-      await client.query(
-        `UPDATE region_import_state SET match_status = 'manual_matched' WHERE region_id = $1`,
-        [regionId],
-      );
-    }
-
-    await client.query('COMMIT');
-    res.json({ accepted });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
-// =============================================================================
-// Match rejection
-// =============================================================================
 
 /**
  * Reject (dismiss) a single suggestion without accepting it.
@@ -503,9 +269,307 @@ export async function rejectRemaining(req: AuthenticatedRequest, res: Response):
   res.json({ rejected: suggestionCount });
 }
 
-// =============================================================================
-// Manual review affordances
-// =============================================================================
+/**
+ * Remove all assigned divisions (region_members) for a region, keeping suggestions intact.
+ * POST /api/admin/wv-import/matches/:worldViewId/clear-members
+ */
+export async function clearMembers(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/clear-members — regionId=${regionId}`);
+
+  const region = await pool.query(
+    'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+    [regionId, worldViewId],
+  );
+  if (region.rows.length === 0) {
+    res.status(404).json({ error: 'Region not found in this world view' });
+    return;
+  }
+
+  const deleted = await pool.query(
+    'DELETE FROM region_members WHERE region_id = $1 RETURNING id',
+    [regionId],
+  );
+
+  // Update status based on remaining suggestions
+  const remaining = await pool.query(
+    'SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = false',
+    [regionId],
+  );
+  const hasSuggestions = parseInt(remaining.rows[0].count as string) > 0;
+  const newStatus = hasSuggestions ? 'needs_review' : 'no_candidates';
+
+  await pool.query(
+    'UPDATE region_import_state SET match_status = $1 WHERE region_id = $2',
+    [newStatus, regionId],
+  );
+
+  res.json({ cleared: deleted.rowCount });
+}
+
+/**
+ * Accept a match AND reject all remaining suggestions in a single transaction.
+ * Replaces the chained acceptMatch + rejectRemaining calls.
+ * POST /api/admin/wv-import/matches/:worldViewId/accept-and-reject
+ */
+export async function acceptAndRejectRest(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId, divisionId } = req.body;
+  console.log(`[WV Import] POST /matches/${worldViewId}/accept-and-reject — regionId=${regionId}, divisionId=${divisionId}`);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify region exists and belongs to the specified world view
+    const region = await client.query(
+      'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+      [regionId, worldViewId],
+    );
+    if (region.rows.length === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Region not found in this world view' });
+      return;
+    }
+
+    // Create region member
+    await client.query(
+      `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [regionId, divisionId],
+    );
+
+    // Reject all remaining non-rejected suggestions (except the accepted one, which we delete)
+    await client.query(
+      `UPDATE region_match_suggestions SET rejected = true
+       WHERE region_id = $1 AND division_id != $2 AND rejected = false`,
+      [regionId, divisionId],
+    );
+
+    // Delete the accepted suggestion itself
+    await client.query(
+      `DELETE FROM region_match_suggestions WHERE region_id = $1 AND division_id = $2 AND rejected = false`,
+      [regionId, divisionId],
+    );
+
+    // Set status to manual_matched (we accepted one and rejected all others)
+    await client.query(
+      `UPDATE region_import_state SET match_status = 'manual_matched' WHERE region_id = $1`,
+      [regionId],
+    );
+
+    await client.query('COMMIT');
+    res.json({ accepted: true, rejected: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Accept a batch of matches.
+ * POST /api/admin/wv-import/matches/:worldViewId/accept-batch
+ */
+export async function acceptBatchMatches(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  console.log(`[WV Import] POST /matches/${worldViewId}/accept-batch — ${req.body?.assignments?.length ?? 0} assignments`);
+  const { assignments } = req.body as {
+    assignments: Array<{ regionId: number; divisionId: number }>;
+  };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Track region IDs whose ownership check passed — only these should have
+    // their import status recomputed below. Using all input regionIds (including
+    // those rejected by the world-view ownership check) would overwrite the
+    // status of regions that belong to a different world view.
+    const processedRegionIds = new Set<number>();
+
+    let accepted = 0;
+    for (const { regionId, divisionId } of assignments) {
+      // Verify region belongs to this world view
+      const check = await client.query(
+        'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
+        [regionId, worldViewId],
+      );
+      if (check.rows.length === 0) continue;
+
+      // Create region member
+      const result = await client.query(
+        `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)
+         ON CONFLICT DO NOTHING RETURNING id`,
+        [regionId, divisionId],
+      );
+
+      if (result.rows.length > 0) {
+        accepted++;
+      }
+
+      // Remove accepted suggestion
+      await client.query(
+        `DELETE FROM region_match_suggestions WHERE region_id = $1 AND division_id = $2 AND rejected = false`,
+        [regionId, divisionId],
+      );
+      processedRegionIds.add(regionId);
+    }
+
+    // Update import state for each unique region whose ownership check passed
+    for (const regionId of processedRegionIds) {
+      const remainingResult = await client.query(
+        `SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = false`,
+        [regionId],
+      );
+      const remainingCount = parseInt(remainingResult.rows[0].count as string);
+      const newStatus = remainingCount > 0 ? 'needs_review' : 'manual_matched';
+      await client.query(
+        `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
+        [newStatus, regionId],
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ accepted });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Get region tree with match status for hierarchical review.
+ * GET /api/admin/wv-import/matches/:worldViewId/tree
+ */
+export async function getMatchTree(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  console.log(`[WV Import] GET /matches/${worldViewId}/tree`);
+
+  const result = await pool.query(`
+    SELECT
+      r.id,
+      r.name,
+      r.parent_region_id,
+      r.is_leaf,
+      ris.match_status,
+      ris.source_url,
+      ris.region_map_url,
+      ris.map_image_reviewed,
+      ris.needs_manual_fix,
+      ris.fix_note,
+      ris.source_external_id AS wikidata_id,
+      ris.hierarchy_warnings,
+      ris.hierarchy_reviewed,
+      ris.marker_points,
+      COALESCE(ris.geo_available, (
+        SELECT NOT wg.not_available FROM wikidata_geoshapes wg
+        WHERE wg.wikidata_id = ris.source_external_id
+      )) AS geo_available,
+      (SELECT COALESCE(json_agg(json_build_object(
+        'divisionId', rms.division_id, 'name', rms.name, 'path', rms.path, 'score', rms.score, 'geoSimilarity', rms.geo_similarity,
+        'conflict', CASE WHEN rms.conflict_type IS NOT NULL THEN json_build_object(
+          'type', rms.conflict_type, 'donorRegionId', rms.donor_region_id, 'donorRegionName', rms.donor_region_name,
+          'donorDivisionId', rms.donor_division_id, 'donorDivisionName', rms.donor_division_name
+        ) ELSE NULL END
+      ) ORDER BY rms.score DESC), '[]'::json)
+      FROM region_match_suggestions rms WHERE rms.region_id = r.id AND rms.rejected = false) AS suggestions,
+      (SELECT COALESCE(json_agg(rmi.image_url), '[]'::json)
+      FROM region_map_images rmi WHERE rmi.region_id = r.id) AS map_image_candidates,
+      (SELECT COUNT(*) FROM region_members rm WHERE rm.region_id = r.id) AS member_count,
+      (
+        SELECT COALESCE(json_agg(json_build_object(
+          'divisionId', ad.id,
+          'name', ad.name,
+          'path', (
+            WITH RECURSIVE div_ancestors AS (
+              SELECT ad.id, ad.name, ad.parent_id
+              UNION ALL
+              SELECT d.id, d.name, d.parent_id
+              FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.parent_id
+            )
+            SELECT string_agg(name, ' > ' ORDER BY id) FROM div_ancestors
+          ),
+          'hasCustomGeom', rm.custom_geom IS NOT NULL
+        ) ORDER BY ad.name), '[]'::json)
+        FROM region_members rm
+        JOIN administrative_divisions ad ON rm.division_id = ad.id
+        WHERE rm.region_id = r.id
+      ) AS assigned_divisions
+    FROM regions r
+    LEFT JOIN region_import_state ris ON ris.region_id = r.id
+    WHERE r.world_view_id = $1
+    ORDER BY r.name
+  `, [worldViewId]);
+
+  // Build tree in memory
+  interface TreeNode {
+    id: number;
+    name: string;
+    isLeaf: boolean;
+    matchStatus: string | null;
+    suggestions: Array<{ divisionId: number; name: string; path: string; score: number; geoSimilarity: number | null; conflict?: { type: string; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string } | null }>;
+    sourceUrl: string | null;
+    regionMapUrl: string | null;
+    mapImageCandidates: string[];
+    mapImageReviewed: boolean;
+    needsManualFix: boolean;
+    fixNote: string | null;
+    wikidataId: string | null;
+    memberCount: number;
+    assignedDivisions: Array<{ divisionId: number; name: string; path: string; hasCustomGeom: boolean }>;
+    hierarchyWarnings: string[];
+    hierarchyReviewed: boolean;
+    geoAvailable: boolean | null;
+    markerPoints: Array<{ name: string; lat: number; lon: number }> | null;
+    children: TreeNode[];
+  }
+
+  const nodesById = new Map<number, TreeNode>();
+  const roots: TreeNode[] = [];
+
+  // Create all nodes
+  for (const row of result.rows) {
+    nodesById.set(row.id as number, {
+      id: row.id as number,
+      name: row.name as string,
+      isLeaf: row.is_leaf as boolean,
+      matchStatus: row.match_status as string | null,
+      suggestions: (row.suggestions as TreeNode['suggestions']) ?? [],
+      sourceUrl: row.source_url as string | null,
+      regionMapUrl: row.region_map_url as string | null,
+      mapImageCandidates: (row.map_image_candidates as string[]) ?? [],
+      mapImageReviewed: row.map_image_reviewed === true,
+      needsManualFix: row.needs_manual_fix === true,
+      fixNote: row.fix_note as string | null,
+      wikidataId: row.wikidata_id as string | null,
+      memberCount: parseInt(row.member_count as string),
+      assignedDivisions: (row.assigned_divisions as TreeNode['assignedDivisions']) ?? [],
+      hierarchyWarnings: (row.hierarchy_warnings as string[]) ?? [],
+      hierarchyReviewed: row.hierarchy_reviewed === true,
+      geoAvailable: (row.geo_available as boolean | null) ?? null,
+      markerPoints: (row.marker_points as TreeNode['markerPoints']) ?? null,
+      children: [],
+    });
+  }
+
+  // Wire parent-child relationships
+  for (const row of result.rows) {
+    const node = nodesById.get(row.id as number)!;
+    const parentId = row.parent_region_id as number | null;
+    if (parentId && nodesById.has(parentId)) {
+      nodesById.get(parentId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  res.json(roots);
+}
 
 /**
  * Select a map image from candidates for a region.
@@ -577,6 +641,457 @@ export async function markManualFix(req: AuthenticatedRequest, res: Response): P
   );
 
   res.json({ updated: true });
+}
+
+/**
+ * Return per-division geometries as a FeatureCollection with assignment info.
+ * POST /api/admin/wv-import/matches/:worldViewId/union-geometry
+ */
+export async function getUnionGeometry(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { divisionIds, regionId } = req.body as { divisionIds: number[]; regionId?: number };
+
+  // Check which divisions are already assigned to regions in this world view
+  const assignedResult = await pool.query(`
+    SELECT rm.division_id, r.name AS region_name
+    FROM region_members rm
+    JOIN regions r ON r.id = rm.region_id
+    WHERE rm.division_id = ANY($1) AND r.world_view_id = $2
+  `, [divisionIds, worldViewId]);
+  const assignedMap = new Map<number, string>();
+  for (const row of assignedResult.rows) {
+    assignedMap.set(row.division_id as number, row.region_name as string);
+  }
+
+  const result = await pool.query(`
+    SELECT ad.id, ad.name, ST_AsGeoJSON(
+      ST_ForcePolygonCCW(ST_CollectionExtract(
+        ST_MakeValid(ad.geom_simplified_medium), 3
+      ))
+    ) AS geojson
+    FROM administrative_divisions ad
+    WHERE ad.id = ANY($1) AND ad.geom_simplified_medium IS NOT NULL
+  `, [divisionIds]);
+
+  // Fetch markers when regionId is provided
+  const { points, divisionsWithPoints } = regionId
+    ? await fetchMarkersForDivisions(regionId, divisionIds)
+    : { points: [] as PointInfo[], divisionsWithPoints: new Set<number>() };
+
+  const features: Array<{ type: 'Feature'; properties: Record<string, unknown>; geometry: unknown }> = [];
+  for (const row of result.rows) {
+    if (row.geojson) {
+      const divId = row.id as number;
+      const assignedTo = assignedMap.get(divId);
+      features.push({
+        type: 'Feature',
+        properties: {
+          name: row.name as string,
+          divisionId: divId,
+          hasPoints: divisionsWithPoints.has(divId),
+          ...(assignedTo ? { assignedTo } : {}),
+        },
+        geometry: JSON.parse(row.geojson as string),
+      });
+    }
+  }
+
+  // Add point markers
+  for (const p of points) {
+    features.push({
+      type: 'Feature',
+      properties: { name: p.name, isMarker: true },
+      geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+    });
+  }
+
+  if (features.length === 0) {
+    res.status(404).json({ error: 'No geometry found for given divisions' });
+    return;
+  }
+  res.json({ geometry: { type: 'FeatureCollection', features } });
+}
+
+/**
+ * Check whether a geoshape is available for spatial filtering.
+ */
+async function hasAvailableGeoshape(wikidataId: string): Promise<boolean> {
+  const geoCheck = await pool.query(
+    `SELECT EXISTS(SELECT 1 FROM wikidata_geoshapes WHERE wikidata_id = $1 AND not_available = FALSE AND geom IS NOT NULL) AS available`,
+    [wikidataId],
+  );
+  return geoCheck.rows[0]?.available as boolean;
+}
+
+/**
+ * Query the split-deeper results for divisions, either with geoshape-based coverage
+ * or without spatial filtering.
+ */
+async function queryDeeperDivisions(
+  divisionIds: number[],
+  wikidataId: string,
+  hasGeoshape: boolean,
+): Promise<{ rows: Array<Record<string, unknown>> }> {
+  if (hasGeoshape) {
+    return pool.query(`
+      WITH wiki AS (
+        SELECT ST_ForcePolygonCCW(geom) AS geom
+        FROM wikidata_geoshapes
+        WHERE wikidata_id = $2 AND not_available = FALSE
+      ),
+      wiki_area AS (
+        SELECT safe_geo_area(geom) AS area FROM wiki
+      ),
+      parent_children AS (
+        SELECT child.id, child.name, child.parent_id,
+          safe_geo_area(
+            ST_ForcePolygonCCW(ST_CollectionExtract(
+              ST_MakeValid(ST_Intersection(w.geom, child.geom_simplified_medium)), 3
+            ))
+          ) / NULLIF(wa.area, 0) AS coverage
+        FROM administrative_divisions child, wiki w, wiki_area wa
+        WHERE child.parent_id = ANY($1)
+          AND child.geom_simplified_medium IS NOT NULL
+          AND ST_Intersects(child.geom_simplified_medium, w.geom)
+      ),
+      leaf_divisions AS (
+        SELECT ad.id, ad.name, ad.parent_id,
+          safe_geo_area(
+            ST_ForcePolygonCCW(ST_CollectionExtract(
+              ST_MakeValid(ST_Intersection(w.geom, ad.geom_simplified_medium)), 3
+            ))
+          ) / NULLIF(wa.area, 0) AS coverage
+        FROM administrative_divisions ad, wiki w, wiki_area wa
+        WHERE ad.id = ANY($1)
+          AND NOT ad.has_children
+          AND ad.geom_simplified_medium IS NOT NULL
+      ),
+      all_results AS (
+        SELECT * FROM parent_children
+        UNION ALL
+        SELECT * FROM leaf_divisions
+      )
+      SELECT r.id, r.name, r.parent_id,
+        ROUND(r.coverage::numeric, 4) AS coverage,
+        (WITH RECURSIVE div_ancestors AS (
+          SELECT r.id AS aid, r.name AS aname, r.parent_id AS apid
+          UNION ALL
+          SELECT d.id, d.name, d.parent_id
+          FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.apid
+        )
+        SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
+      FROM all_results r
+      WHERE r.coverage > 0.005
+      ORDER BY r.coverage DESC
+    `, [divisionIds, wikidataId]);
+  }
+  return pool.query(`
+    WITH parent_children AS (
+      SELECT child.id, child.name, child.parent_id, NULL::numeric AS coverage
+      FROM administrative_divisions child
+      WHERE child.parent_id = ANY($1)
+        AND child.geom_simplified_medium IS NOT NULL
+    ),
+    leaf_divisions AS (
+      SELECT ad.id, ad.name, ad.parent_id, NULL::numeric AS coverage
+      FROM administrative_divisions ad
+      WHERE ad.id = ANY($1)
+        AND NOT ad.has_children
+    ),
+    all_results AS (
+      SELECT * FROM parent_children
+      UNION ALL
+      SELECT * FROM leaf_divisions
+    )
+    SELECT r.id, r.name, r.parent_id, r.coverage,
+      (WITH RECURSIVE div_ancestors AS (
+        SELECT r.id AS aid, r.name AS aname, r.parent_id AS apid
+        UNION ALL
+        SELECT d.id, d.name, d.parent_id
+        FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.apid
+      )
+      SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
+    FROM all_results r
+    ORDER BY r.name
+  `, [divisionIds]);
+}
+
+type DeeperFeature = { type: 'Feature'; properties: Record<string, unknown>; geometry: unknown };
+
+/**
+ * Fetch per-division geometry features and populate the assigned-to map.
+ */
+async function loadDivisionGeometries(
+  resultIds: number[],
+  worldViewId: number,
+  assignedMap: Map<number, string>,
+): Promise<DeeperFeature[]> {
+  const features: DeeperFeature[] = [];
+  if (resultIds.length === 0) return features;
+
+  const assignedResult = await pool.query(`
+    SELECT rm.division_id, r.name AS region_name
+    FROM region_members rm
+    JOIN regions r ON r.id = rm.region_id
+    WHERE rm.division_id = ANY($1) AND r.world_view_id = $2
+  `, [resultIds, worldViewId]);
+  for (const row of assignedResult.rows) {
+    assignedMap.set(row.division_id as number, row.region_name as string);
+  }
+
+  const geoResult = await pool.query(`
+    SELECT ad.id, ad.name, ST_AsGeoJSON(
+      ST_ForcePolygonCCW(ST_CollectionExtract(
+        ST_MakeValid(ad.geom_simplified_medium), 3
+      ))
+    ) AS geojson
+    FROM administrative_divisions ad
+    WHERE ad.id = ANY($1) AND ad.geom_simplified_medium IS NOT NULL
+  `, [resultIds]);
+  for (const row of geoResult.rows) {
+    if (!row.geojson) continue;
+    const divId = row.id as number;
+    const assignedTo = assignedMap.get(divId);
+    features.push({
+      type: 'Feature',
+      properties: {
+        name: row.name as string,
+        divisionId: divId,
+        hasPoints: false,
+        ...(assignedTo ? { assignedTo } : {}),
+      },
+      geometry: JSON.parse(row.geojson as string),
+    });
+  }
+  return features;
+}
+
+/**
+ * Find markers that landed outside the parent scope (e.g. Kythira under Attica)
+ * and append those divisions to the result set.
+ */
+async function appendExternalPointMatches(
+  points: PointInfo[],
+  resultIds: number[],
+  rows: Array<Record<string, unknown>>,
+  features: DeeperFeature[],
+  assignedMap: Map<number, string>,
+  divisionsWithPoints: Set<number>,
+  worldViewId: number,
+): Promise<void> {
+  const externalResult = await pool.query(`
+    WITH pts AS (
+      SELECT p.lon, p.lat, p.name
+      FROM unnest($1::double precision[], $2::double precision[], $3::text[]) AS p(lon, lat, name)
+    ),
+    matches AS (
+      SELECT DISTINCT ON (p.lon, p.lat) p.lon, p.lat, p.name AS pname,
+        ad.id AS div_id, ad.name AS div_name, ad.parent_id
+      FROM pts p
+      JOIN administrative_divisions ad
+        ON ad.geom_simplified_medium IS NOT NULL
+        AND NOT ad.has_children
+        AND ST_DWithin(ad.geom_simplified_medium::geography, ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography, 5000)
+      ORDER BY p.lon, p.lat, ST_Distance(ad.geom_simplified_medium::geography, ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography)
+    )
+    SELECT m.div_id, m.div_name, m.parent_id,
+      (WITH RECURSIVE anc AS (
+        SELECT m.div_id AS aid, m.div_name AS aname, m.parent_id AS apid
+        UNION ALL
+        SELECT d.id, d.name, d.parent_id FROM administrative_divisions d JOIN anc a ON d.id = a.apid
+      ) SELECT string_agg(aname, ' > ' ORDER BY aid) FROM anc) AS path
+    FROM matches m
+    WHERE m.div_id != ALL($4)
+  `, [points.map(p => p.lon), points.map(p => p.lat), points.map(p => p.name), resultIds]);
+
+  for (const row of externalResult.rows) {
+    const divId = row.div_id as number;
+    if (resultIds.includes(divId)) continue; // already in result
+    // Check assignment
+    const assignCheck = await pool.query(
+      `SELECT r.name FROM region_members rm JOIN regions r ON r.id = rm.region_id WHERE rm.division_id = $1 AND r.world_view_id = $2`,
+      [divId, worldViewId],
+    );
+    const assignedTo = assignCheck.rows[0]?.name as string | undefined;
+    if (assignedTo) assignedMap.set(divId, assignedTo);
+
+    // Add to result rows
+    rows.push({ id: divId, name: row.div_name, parent_id: row.parent_id, coverage: null, path: row.path });
+    resultIds.push(divId);
+    divisionsWithPoints.add(divId);
+
+    // Fetch geometry
+    const geoRow = await pool.query(`
+      SELECT ST_AsGeoJSON(ST_ForcePolygonCCW(ST_CollectionExtract(ST_MakeValid(geom_simplified_medium), 3))) AS geojson
+      FROM administrative_divisions WHERE id = $1 AND geom_simplified_medium IS NOT NULL
+    `, [divId]);
+    if (geoRow.rows[0]?.geojson) {
+      features.push({
+        type: 'Feature',
+        properties: {
+          name: row.div_name as string,
+          divisionId: divId,
+          hasPoints: true,
+          ...(assignedTo ? { assignedTo } : {}),
+        },
+        geometry: JSON.parse(geoRow.rows[0].geojson as string),
+      });
+    }
+  }
+}
+
+/**
+ * Split divisions deeper: replace each given division with its GADM children
+ * that intersect the region's geoshape. Returns the new set of division IDs
+ * with their coverage and union geometry.
+ *
+ * POST /api/admin/wv-import/matches/:worldViewId/split-deeper
+ */
+export async function splitDivisionsDeeper(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { divisionIds, wikidataId, regionId, source } = req.body as { divisionIds: number[]; wikidataId: string; regionId: number; source?: 'geoshape' | 'points' | 'image' };
+
+  // When source is 'points', filter children by marker point containment instead of geoshape
+  const usePointFilter = source === 'points';
+
+  // Check if geoshape is available for spatial filtering (skip when using point filter)
+  const hasGeoshape = usePointFilter ? false : await hasAvailableGeoshape(wikidataId);
+
+  // For each input division, find its children.
+  // When geoshape is available, filter by spatial intersection and compute coverage.
+  // When not, return all children (no spatial filter).
+  // Divisions without children (leaves) are kept as-is.
+  const result = await queryDeeperDivisions(divisionIds, wikidataId, hasGeoshape);
+
+  const resultIds = result.rows.map(r => r.id as number);
+
+  // Check which divisions are already assigned to regions in this world view
+  const assignedMap = new Map<number, string>(); // divisionId → regionName
+  const features = await loadDivisionGeometries(resultIds, worldViewId, assignedMap);
+
+  // Fetch Wikivoyage markers and check which divisions contain points
+  const { points, divisionsWithPoints } = await fetchMarkersForDivisions(regionId, resultIds);
+
+  // When filtering by points, also find markers that landed outside the parent scope
+  // (e.g., Kythira marker is under Attica, not under Ionian Islands GADM)
+  if (usePointFilter && points.length > 0) {
+    await appendExternalPointMatches(
+      points, resultIds, result.rows, features, assignedMap, divisionsWithPoints, worldViewId,
+    );
+  }
+
+  // When filtering by points, keep only divisions that contain markers
+  const filteredRows = usePointFilter
+    ? result.rows.filter(r => divisionsWithPoints.has(r.id as number))
+    : result.rows;
+  const filteredFeatures = usePointFilter
+    ? features.filter(f => divisionsWithPoints.has(f.properties.divisionId as number))
+    : features;
+
+  // Mark features that contain points
+  for (const f of filteredFeatures) {
+    if (divisionsWithPoints.has(f.properties.divisionId as number)) {
+      f.properties.hasPoints = true;
+    }
+  }
+
+  // Add point markers as features
+  for (const p of points) {
+    filteredFeatures.push({
+      type: 'Feature',
+      properties: { name: p.name, isMarker: true },
+      geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+    });
+  }
+
+  res.json({
+    divisions: filteredRows.map(r => ({
+      divisionId: r.id as number,
+      name: r.name as string,
+      path: r.path as string,
+      parentId: r.parent_id as number | null,
+      coverage: r.coverage != null ? parseFloat(r.coverage as string) : null,
+      hasPoints: divisionsWithPoints.has(r.id as number),
+      assignedTo: assignedMap.get(r.id as number) ?? null,
+    })),
+    geometry: filteredFeatures.length > 0
+      ? { type: 'FeatureCollection', features: filteredFeatures }
+      : null,
+    points: points.length > 0 ? points : undefined,
+  });
+}
+
+/**
+ * Use AI vision to suggest which divisions belong to a region based on its map image.
+ * POST /api/admin/wv-import/matches/:worldViewId/vision-match
+ */
+export async function visionMatchDivisions(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { divisionIds, regionId, imageUrl } = req.body as { divisionIds: number[]; regionId: number; imageUrl: string };
+
+  // Get the region name
+  const regionResult = await pool.query(
+    `SELECT name FROM regions WHERE id = $1 AND world_view_id = $2`,
+    [regionId, worldViewId],
+  );
+
+  if (regionResult.rows.length === 0) {
+    res.status(404).json({ error: 'Region not found' });
+    return;
+  }
+
+  const regionName = regionResult.rows[0].name as string;
+  const regionMapUrl = imageUrl;
+
+  // Fetch division SVG paths, centroids, and bounding boxes
+  const divResult = await pool.query(`
+    SELECT id, name,
+      ST_AsSVG(geom_simplified_medium, 0, 2) AS svg_path,
+      ST_X(ST_Centroid(geom_simplified_medium)) AS cx,
+      ST_Y(ST_Centroid(geom_simplified_medium)) AS cy
+    FROM administrative_divisions
+    WHERE id = ANY($1) AND geom_simplified_medium IS NOT NULL
+  `, [divisionIds]);
+
+  if (divResult.rows.length === 0) {
+    res.status(400).json({ error: 'No valid divisions found' });
+    return;
+  }
+
+  const divisions = divResult.rows.map(r => ({
+    id: r.id as number,
+    name: r.name as string,
+    svgPath: r.svg_path as string,
+    cx: parseFloat(r.cx as string),
+    cy: parseFloat(r.cy as string),
+  }));
+
+  // Generate numbered SVG map of all candidate divisions
+  const divisionsSvg = generateDivisionsSvg(divisions);
+  // Convert SVG to PNG (OpenAI doesn't accept SVG)
+  const pngBuffer = await sharp(Buffer.from(divisionsSvg)).flatten({ background: '#f0f2f5' }).png().toBuffer();
+  const pngBase64 = `data:image/png;base64,${pngBuffer.toString('base64')}`;
+
+  // Use a high-res version of the region map image. Use URL+searchParams so an
+  // already-parameterised URL (e.g. one already carrying `?width=...`) is
+  // updated correctly instead of producing a malformed `?foo=bar?width=1280`.
+  const urlObj = new URL(regionMapUrl);
+  urlObj.searchParams.set('width', '1280');
+  const hiresImageUrl = urlObj.toString();
+
+  const result = await matchDivisionsByVision(regionName, hiresImageUrl, pngBase64, divisions);
+
+  res.json({
+    suggestedIds: result.suggestedIds,
+    rejectedIds: result.rejectedIds,
+    unclearIds: result.unclearIds,
+    reasoning: result.reasoning,
+    cost: result.usage.cost.totalCost,
+    debugImages: {
+      regionMap: hiresImageUrl,
+      divisionsMap: pngBase64,
+    },
+  });
 }
 
 /**
@@ -790,3 +1305,6 @@ export async function getTransferPreview(req: AuthenticatedRequest, res: Respons
 
   res.json({ type: 'FeatureCollection', features });
 }
+
+// Re-export CV pipeline from dedicated module (keeps existing import path working)
+export { colorMatchDivisionsSSE } from './wvImportMatchPipeline.js';

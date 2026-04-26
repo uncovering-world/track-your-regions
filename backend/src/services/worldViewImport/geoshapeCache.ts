@@ -310,6 +310,7 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
     // Extract metadata from first feature's properties
     const props = features[0].properties ?? {};
     const rawTitle = props['title'] ?? '';
+    // eslint-disable-next-line security/detect-unsafe-regex -- pattern matches wikilinks [[target|label]]; negated classes are bounded by ']' which prevents exponential backtracking
     const title = rawTitle.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1').trim();
     const color = props['fill'] ?? '';
 

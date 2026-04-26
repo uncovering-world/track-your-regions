@@ -533,6 +533,86 @@ export const worldViewRegionIdParamSchema = z.object({
   regionId: z.coerce.number().int().positive(),
 });
 
+// ---------------------------------------------------------------------------
+// CV pipeline — water review + crop
+// ---------------------------------------------------------------------------
+
+export const wvImportWaterCropParamSchema = z.object({
+  reviewId: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/),
+  componentId: z.coerce.number().int(),
+  subCluster: z.coerce.number().int(),
+});
+
+export const wvImportWaterReviewBodySchema = z.object({
+  approvedIds: z.array(z.coerce.number().int()).max(1000).default([]),
+  mixDecisions: z.array(z.object({
+    componentId: z.coerce.number().int(),
+    approvedSubClusters: z.array(z.coerce.number().int()).max(256).default([]),
+  })).max(1000).default([]),
+});
+
+// ---------------------------------------------------------------------------
+// CV pipeline — color match, union geometry, split deeper, vision match
+// ---------------------------------------------------------------------------
+
+export const wvImportColorMatchSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  token: z.string().optional(),
+});
+
+export const wvImportUnionGeometrySchema = z.object({
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(500),
+  regionId: z.coerce.number().int().positive().optional(),
+});
+
+export const wvImportSplitDeeperSchema = z.object({
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(500),
+  wikidataId: z.string().regex(/^Q\d+$/),
+  regionId: z.coerce.number().int().positive(),
+  source: z.enum(['geoshape', 'points', 'image']).optional(),
+});
+
+export const wvImportVisionMatchSchema = z.object({
+  divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(200),
+  regionId: z.coerce.number().int().positive(),
+  imageUrl: z.string().url(),
+});
+
+// ---------------------------------------------------------------------------
+// Region tree ops — reparent, overlap
+// ---------------------------------------------------------------------------
+
+export const wvImportReparentRegionSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  newParentId: z.coerce.number().int().positive().nullable(),
+});
+
+export const wvImportOverlapChildrenSchema = z.object({
+  divisionId: z.coerce.number().int().positive(),
+  childRegionIds: z.array(z.number().int().positive()).min(1),
+});
+
+export const wvImportResolveOverlapSchema = z.object({
+  action: z.enum(['keep', 'split']),
+  divisionId: z.coerce.number().int().positive(),
+  keepInRegionId: z.coerce.number().int().positive().optional(),
+  removeFromRegionIds: z.array(z.number().int().positive()).optional(),
+  splitRegionId: z.coerce.number().int().positive().optional(),
+  assignments: z.array(z.object({
+    gadmChildId: z.number().int().positive(),
+    targetRegionId: z.number().int().positive(),
+  })).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Coverage comparison
+// ---------------------------------------------------------------------------
+
+export const childrenCoverageQuerySchema = z.object({
+  regionId: z.coerce.number().int().positive().optional(),
+  onlyId: z.coerce.number().int().positive().optional(),
+});
+
 // =============================================================================
 // World View schemas
 // =============================================================================

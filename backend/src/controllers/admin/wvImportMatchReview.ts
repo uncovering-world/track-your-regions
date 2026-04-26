@@ -34,7 +34,7 @@ export function registerWaterReview(reviewId: string, resolver: (decision: Water
 /** Resolve a pending water review (called from POST endpoint) */
 export function resolveWaterReview(reviewId: string, decision: WaterReviewDecision): boolean {
   const resolve = pendingWaterReviews.get(reviewId);
-  if (!resolve) return false;
+  if (typeof resolve !== 'function') return false;
   pendingWaterReviews.delete(reviewId);
   resolve(decision);
   return true;
