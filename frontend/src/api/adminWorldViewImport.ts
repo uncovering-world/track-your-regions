@@ -744,6 +744,18 @@ export async function getTransferPreview(
 // Cluster Review Types + URLs
 // =============================================================================
 
+/**
+ * A single vector border path extracted from the cluster label map via
+ * OpenCV findContours. Transferred to the frontend as part of the cluster
+ * review SSE event so the paint editor can render an SVG overlay.
+ */
+export interface BorderPath {
+  id: string;
+  points: Array<[number, number]>;
+  type: 'internal' | 'external';
+  clusters: [number, number];
+}
+
 /** Cluster info for interactive cluster review (used by CvClusterReviewSection) */
 export interface ClusterReviewCluster {
   label: number;
