@@ -13,12 +13,11 @@ import {
   login as apiLogin,
   register as apiRegister,
   logout as apiLogout,
-  refreshTokens,
   getCurrentUser,
   verifyEmail as apiVerifyEmail,
   setLastGoogleEmail,
 } from '../api/auth';
-import { setAccessToken as setGlobalAccessToken } from '../api/fetchUtils';
+import { setAccessToken as setGlobalAccessToken, refreshSession, setRefreshSuccessListener } from '../api/fetchUtils';
 
 // =============================================================================
 // JWT Payload Type
@@ -87,29 +86,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ==========================================================================
 
   const silentRefresh = useCallback(async (): Promise<boolean> => {
-    try {
-      const response = await refreshTokens();
-
-      // Update in-memory access token
-      accessToken = response.accessToken;
-      setGlobalAccessToken(response.accessToken);
-
-      // Parse expiry from token
-      const payload = parseToken(response.accessToken);
-      if (payload) {
-        tokenExpiresAt = payload.exp * 1000;
-        setUser(response.user);
-        return true;
-      }
-
-      return false;
-    } catch {
-      // Refresh failed (no cookie, expired, etc.) — clear state
+    // Uses centralized refreshSession() to share deduplication with authFetchJson,
+    // preventing token rotation race conditions that would revoke the entire family.
+    const result = await refreshSession();
+    if (!result) {
       accessToken = null;
       setGlobalAccessToken(null);
       tokenExpiresAt = null;
       return false;
     }
+
+    accessToken = result.accessToken;
+    setGlobalAccessToken(result.accessToken);
+
+    const payload = parseToken(result.accessToken);
+    if (payload) {
+      tokenExpiresAt = payload.exp * 1000;
+      setUser(result.user as User);
+      return true;
+    }
+
+    return false;
   }, []);
 
   // ==========================================================================
@@ -134,6 +131,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initAuth();
   }, [silentRefresh]);
+
+  // Clear auth state when session expires (fired by authFetchJson when refresh fails)
+  useEffect(() => {
+    const handleExpired = () => {
+      accessToken = null;
+      setGlobalAccessToken(null);
+      tokenExpiresAt = null;
+      setUser(null);
+      // Mirror logout(): drop TanStack Query's cache so authenticated data
+      // isn't displayed after the session is forcibly expired (e.g. expired
+      // refresh cookie detected mid-session).
+      queryClient.clear();
+    };
+    window.addEventListener('auth:session-expired', handleExpired);
+    return () => window.removeEventListener('auth:session-expired', handleExpired);
+  }, [queryClient]);
+
+  // Keep useAuth's local tokenExpiresAt + user state in sync with refreshes
+  // triggered from outside the hook (ensureFreshToken before SSE, authFetchJson
+  // 401 retry). Without this, authFetch would still see the old expiry and
+  // burn an extra /api/auth/refresh round-trip per token lifecycle.
+  useEffect(() => {
+    setRefreshSuccessListener((data) => {
+      accessToken = data.accessToken as string;
+      const payload = parseToken(data.accessToken as string);
+      if (payload) tokenExpiresAt = payload.exp * 1000;
+      if (data.user) setUser(data.user as User);
+    });
+    return () => setRefreshSuccessListener(null);
+  }, []);
 
   // ==========================================================================
   // Auth Actions
