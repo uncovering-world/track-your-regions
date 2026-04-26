@@ -487,52 +487,61 @@ export function CustomSubdivisionDialog({
   const handleCreateSubregions = useCallback(async () => {
     if (!selectedRegion) return;
 
-    setIsCreating(true);
-    try {
-      // Refresh members from DB first to get real memberRowIds
-      const dbMembers = await fetchRegionMembers(selectedRegion.id);
+    const sourceRegionId = selectedRegion.id;
 
-      const memberLookup = new Map<string, number>();
+    const buildMemberLookup = (dbMembers: Awaited<ReturnType<typeof fetchRegionMembers>>) => {
+      const lookup = new Map<string, number>();
       for (const m of dbMembers) {
         if (m.memberRowId) {
-          const key = `${m.id}-${m.name}`;
-          memberLookup.set(key, m.memberRowId);
+          lookup.set(`${m.id}-${m.name}`, m.memberRowId);
         }
       }
+      return lookup;
+    };
+
+    const resolveTargetRegionId = async (group: typeof subdivisionGroups[number]): Promise<number> => {
+      if (group.existingRegionId) return group.existingRegionId;
+      const newRegion = await createRegion(worldViewId, {
+        name: group.name,
+        parentRegionId: sourceRegionId,
+        color: selectedRegion.color || undefined,
+      });
+      return newRegion.id;
+    };
+
+    const moveMember = async (
+      member: typeof subdivisionGroups[number]['members'][number],
+      targetRegionId: number,
+      memberLookup: Map<string, number>,
+    ) => {
+      const realMemberRowId = memberLookup.get(`${member.id}-${member.name}`);
+      if (realMemberRowId && realMemberRowId > 0) {
+        await moveMemberToRegion(sourceRegionId, realMemberRowId, targetRegionId);
+        return;
+      }
+      if (member.memberRowId && member.memberRowId > 0) {
+        await moveMemberToRegion(sourceRegionId, member.memberRowId, targetRegionId);
+        return;
+      }
+      await addDivisionsToRegion(targetRegionId, [member.id]);
+      await removeDivisionsFromRegion(sourceRegionId, [member.id]);
+    };
+
+    setIsCreating(true);
+    try {
+      const dbMembers = await fetchRegionMembers(sourceRegionId);
+      const memberLookup = buildMemberLookup(dbMembers);
 
       for (const group of subdivisionGroups) {
         if (group.members.length === 0) continue;
-
-        // Use existing region or create a new one
-        let targetRegionId: number;
-        if (group.existingRegionId) {
-          targetRegionId = group.existingRegionId;
-        } else {
-          const newRegion = await createRegion(worldViewId, {
-            name: group.name,
-            parentRegionId: selectedRegion.id,
-            color: selectedRegion.color || undefined,
-          });
-          targetRegionId = newRegion.id;
-        }
-
+        const targetRegionId = await resolveTargetRegionId(group);
         for (const member of group.members) {
-          const lookupKey = `${member.id}-${member.name}`;
-          const realMemberRowId = memberLookup.get(lookupKey);
-
-          if (realMemberRowId && realMemberRowId > 0) {
-            await moveMemberToRegion(selectedRegion.id, realMemberRowId, targetRegionId);
-          } else if (member.memberRowId && member.memberRowId > 0) {
-            await moveMemberToRegion(selectedRegion.id, member.memberRowId, targetRegionId);
-          } else {
-            await addDivisionsToRegion(targetRegionId, [member.id]);
-            await removeDivisionsFromRegion(selectedRegion.id, [member.id]);
-          }
+          await moveMember(member, targetRegionId, memberLookup);
         }
       }
 
       queryClient.invalidateQueries({ queryKey: ['regions', worldViewId] });
-      queryClient.invalidateQueries({ queryKey: ['regionMembers', selectedRegion.id] });
+      queryClient.invalidateQueries({ queryKey: ['regionMembers', sourceRegionId] });
 
       clearSavedState();
       onComplete();
