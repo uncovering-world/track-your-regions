@@ -196,7 +196,6 @@ describe('detectSpatialAnomalies', () => {
     expect(result.every((a) => a.suggestedTargetRegionId === 100)).toBe(true);
     // Scores should be ascending
     for (let i = 1; i < result.length; i++) {
-      // eslint-disable-next-line security/detect-object-injection -- loop-counter index into test-produced typed result[] array
       expect(result[i].score).toBeGreaterThanOrEqual(result[i - 1].score);
     }
     // First two have score 0.25, last has score ~0.333

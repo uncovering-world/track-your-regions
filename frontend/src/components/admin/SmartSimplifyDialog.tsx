@@ -36,6 +36,7 @@ import {
   getChildrenRegionGeometry,
   type SmartSimplifyMove,
   type SiblingRegionGeometry,
+  type SpatialAnomaly,
 } from '../../api/adminWorldViewImport';
 import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
@@ -52,14 +53,21 @@ function titleStatus(
   loading: boolean,
   error: string | null,
   moves: SmartSimplifyMove[] | null,
+  spatialAnomalies: SpatialAnomaly[] | null,
   pendingMoves: number,
 ): string {
   if (loading) return 'Detecting misplaced divisions...';
   if (error) return error;
   const movesLen = moves?.length ?? 0;
-  if (movesLen === 0) return 'No misplaced divisions detected';
+  const anomaliesLen = spatialAnomalies?.length ?? 0;
+  if (movesLen === 0 && anomaliesLen === 0) return 'No misplaced divisions detected';
   const moveWord = movesLen !== 1 ? 'moves' : 'move';
-  return `${movesLen} ${moveWord}, ${pendingMoves} pending`;
+  let summary = `${movesLen} ${moveWord}, ${pendingMoves} pending`;
+  if (anomaliesLen > 0) {
+    const anomalyWord = anomaliesLen !== 1 ? 'anomalies' : 'anomaly';
+    summary += ` + ${anomaliesLen} ${anomalyWord}`;
+  }
+  return summary;
 }
 
 /** Background color expression for a move row in the move list. */
@@ -107,6 +115,12 @@ export function SmartSimplifyDialog({
   const [applyError, setApplyError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'current' | 'proposed'>('current');
 
+  // Spatial anomaly state
+  const [spatialAnomalies, setSpatialAnomalies] = useState<SpatialAnomaly[] | null>(null);
+  const [appliedAnomalyIndices, setAppliedAnomalyIndices] = useState<Set<number>>(new Set());
+  const [selectedAnomalyIndex, setSelectedAnomalyIndex] = useState<number | null>(null);
+  const [applyingAnomaly, setApplyingAnomaly] = useState(false);
+
   // Load data on open
   useEffect(() => {
     if (!open) return;
@@ -118,6 +132,9 @@ export function SmartSimplifyDialog({
     setAppliedGadmParentIds(new Set());
     setDivisionGeometries(new Map());
     setViewMode('current');
+    setSpatialAnomalies(null);
+    setAppliedAnomalyIndices(new Set());
+    setSelectedAnomalyIndex(null);
 
     Promise.all([
       detectSmartSimplify(worldViewId, parentRegionId),
@@ -125,6 +142,7 @@ export function SmartSimplifyDialog({
     ])
       .then(([detectResult, geoResult]) => {
         setMoves(detectResult.moves);
+        setSpatialAnomalies(detectResult.spatialAnomalies);
         setChildGeometries(geoResult.childRegions);
         if (detectResult.moves.length > 0) {
           setSelectedMoveIndex(0);
@@ -140,11 +158,15 @@ export function SmartSimplifyDialog({
 
   const selectedMove = moves && selectedMoveIndex != null ? moves[selectedMoveIndex] : null;
 
-  // Active division IDs to show on the map (from selected move)
+  // Derived: the active selection (either a GADM move or a spatial anomaly)
+  const selectedAnomaly = spatialAnomalies && selectedAnomalyIndex != null ? spatialAnomalies[selectedAnomalyIndex] : null;
+
+  // Active division IDs to show on the map (from whichever selection is active)
   const activeDivIds = useMemo(() => {
     if (selectedMove) return selectedMove.divisions.map(d => d.divisionId);
+    if (selectedAnomaly) return selectedAnomaly.divisions.map(d => d.divisionId);
     return [];
-  }, [selectedMove]);
+  }, [selectedMove, selectedAnomaly]);
 
   // Fetch division geometries when active selection changes
   useEffect(() => {
@@ -160,14 +182,14 @@ export function SmartSimplifyDialog({
         setDivisionGeometries(prev => {
           const next = new Map(prev);
           for (const { id, feat } of results) {
-            if (feat?.geometry) next.set(id, feat.geometry as GeoJSONGeometry);
+            if (feat?.geometry) next.set(id, feat.geometry);
           }
           return next;
         });
       })
       .finally(() => setDivGeoLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fetch when selection key changes
-  }, [selectedMove?.gadmParentId, worldViewId]);
+  }, [selectedMove?.gadmParentId, selectedAnomalyIndex, worldViewId]);
 
   // Fly to selected move's divisions when geometries are ready
   useEffect(() => {
@@ -188,6 +210,26 @@ export function SmartSimplifyDialog({
       );
     } catch { /* ignore */ }
   }, [selectedMove, divisionGeometries]);
+
+  // Fly to selected anomaly's divisions when geometries are ready
+  useEffect(() => {
+    if (!selectedAnomaly || !mapRef.current) return;
+    const geoms = selectedAnomaly.divisions
+      .map(d => divisionGeometries.get(d.divisionId))
+      .filter((g): g is GeoJSONGeometry => !!g);
+    if (geoms.length === 0) return;
+    try {
+      const fc: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: geoms.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g as GeoJSON.Geometry })),
+      };
+      const bounds = turf.bbox(fc) as [number, number, number, number];
+      mapRef.current.fitBounds(
+        [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+        { padding: 60, duration: 500 },
+      );
+    } catch { /* ignore */ }
+  }, [selectedAnomaly, divisionGeometries]);
 
   // Fit map bounds when geometries load
   useEffect(() => {
@@ -258,7 +300,51 @@ export function SmartSimplifyDialog({
     setSelectedMoveIndex(nextIndex >= 0 ? nextIndex : null);
   }, [moves, selectedMoveIndex, appliedGadmParentIds]);
 
-  // Highlight region IDs involved in the selected move
+  // Handle Apply Anomaly
+  const handleApplyAnomaly = useCallback(async (index: number) => {
+    if (!spatialAnomalies) return;
+    const anomaly = spatialAnomalies[index];
+    const memberRowIds = anomaly.divisions
+      .map(d => d.memberRowId)
+      .filter((id): id is number => id !== null);
+    if (memberRowIds.length === 0) {
+      setApplyError('Cannot apply: fragment has no committed member rows yet.');
+      return;
+    }
+
+    try {
+      setApplyError(null);
+      setApplyingAnomaly(true);
+      await applySmartSimplifyMove(
+        worldViewId,
+        parentRegionId,
+        anomaly.suggestedTargetRegionId,
+        memberRowIds,
+      );
+      setAppliedAnomalyIndices(prev => new Set(prev).add(index));
+      onApplied();
+      // Advance to next non-applied anomaly
+      const nextIndex = spatialAnomalies.findIndex(
+        (_, i) => i > index && !appliedAnomalyIndices.has(i),
+      );
+      setSelectedAnomalyIndex(nextIndex >= 0 ? nextIndex : null);
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'Failed to apply');
+    } finally {
+      setApplyingAnomaly(false);
+    }
+  }, [spatialAnomalies, worldViewId, parentRegionId, appliedAnomalyIndices, onApplied]);
+
+  // Handle Skip Anomaly
+  const handleSkipAnomaly = useCallback((index: number) => {
+    if (!spatialAnomalies) return;
+    const nextIndex = spatialAnomalies.findIndex(
+      (_, i) => i > index && !appliedAnomalyIndices.has(i),
+    );
+    setSelectedAnomalyIndex(nextIndex >= 0 ? nextIndex : null);
+  }, [spatialAnomalies, appliedAnomalyIndices]);
+
+  // Highlight region IDs involved in the selected move or anomaly
   const highlightedRegionIds = useMemo(() => {
     const set = new Set<number>();
     if (selectedMove) {
@@ -266,9 +352,13 @@ export function SmartSimplifyDialog({
       for (const div of selectedMove.divisions) {
         set.add(div.fromRegionId);
       }
+    } else if (selectedAnomaly) {
+      set.add(selectedAnomaly.suggestedTargetRegionId);
+      const first = selectedAnomaly.divisions[0];
+      if (first) set.add(first.sourceRegionId);
     }
     return set;
-  }, [selectedMove]);
+  }, [selectedMove, selectedAnomaly]);
 
   const hasSideBySide = !!regionMapUrl;
   const pendingMoves = moves ? moves.filter((m) => !appliedGadmParentIds.has(m.gadmParentId)).length : 0;
@@ -282,8 +372,14 @@ export function SmartSimplifyDialog({
       const div = selectedMove.divisions.find(d => d.divisionId === divisionId);
       return div ? (colorMap.get(div.fromRegionId) ?? '#ff5252') : '#ff5252';
     }
+    if (selectedAnomaly) {
+      if (viewMode === 'proposed') {
+        return colorMap.get(selectedAnomaly.suggestedTargetRegionId) ?? '#4CAF50';
+      }
+      return colorMap.get(selectedAnomaly.divisions[0]?.sourceRegionId) ?? '#ff5252';
+    }
     return '#ff5252';
-  }, [selectedMove, viewMode, colorMap]);
+  }, [selectedMove, selectedAnomaly, viewMode, colorMap]);
 
   return (
     <Dialog
@@ -297,7 +393,7 @@ export function SmartSimplifyDialog({
           <Box>
             <Typography variant="h6">Smart Simplify: {parentRegionName}</Typography>
             <Typography variant="caption" color="text.secondary">
-              {titleStatus(loading, error, moves, pendingMoves)}
+              {titleStatus(loading, error, moves, spatialAnomalies, pendingMoves)}
             </Typography>
           </Box>
           <IconButton onClick={onClose} size="small">
@@ -437,13 +533,15 @@ export function SmartSimplifyDialog({
                       );
                     })}
 
-                    {/* Per-division overlays for the selected move */}
+                    {/* Per-division overlays for the selected move or anomaly */}
                     {activeDivIds.map(divId => {
                       const geom = divisionGeometries.get(divId);
                       if (!geom) return null;
                       const overlayColor = getDivisionOverlayColor(divId);
                       const isCurrent = viewMode === 'current';
-                      const divName = selectedMove?.divisions.find(d => d.divisionId === divId)?.name ?? '';
+                      const divName = selectedMove?.divisions.find(d => d.divisionId === divId)?.name
+                        ?? selectedAnomaly?.divisions.find(d => d.divisionId === divId)?.name
+                        ?? '';
                       return (
                         <Source
                           key={`div-${divId}`}
@@ -480,8 +578,8 @@ export function SmartSimplifyDialog({
               </Box>
             </Box>
 
-            {/* Bottom section: moves list */}
-            {moves && moves.length > 0 && (
+            {/* Bottom section: moves + anomalies list */}
+            {((moves && moves.length > 0) || (spatialAnomalies && spatialAnomalies.length > 0)) && (
               <Box sx={{
                 borderTop: 1,
                 borderColor: 'divider',
@@ -495,16 +593,18 @@ export function SmartSimplifyDialog({
                     {applyError}
                   </Typography>
                 )}
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Detected Moves
-                </Typography>
-                {moves.map((move, idx) => {
+                {moves && moves.length > 0 && (
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Detected Moves
+                  </Typography>
+                )}
+                {moves?.map((move, idx) => {
                   const isApplied = appliedGadmParentIds.has(move.gadmParentId);
                   const isSelected = selectedMoveIndex === idx;
                   return (
                     <Box
                       key={move.gadmParentId}
-                      onClick={() => { if (!isApplied) { setSelectedMoveIndex(idx); } }}
+                      onClick={() => { if (!isApplied) { setSelectedMoveIndex(idx); setSelectedAnomalyIndex(null); } }}
                       sx={{
                         display: 'flex',
                         alignItems: 'center',
@@ -580,6 +680,70 @@ export function SmartSimplifyDialog({
                     </Box>
                   );
                 })}
+
+                {/* Spatial anomalies section */}
+                {spatialAnomalies && spatialAnomalies.length > 0 && (
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Spatial Anomalies ({spatialAnomalies.length})
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                      Disconnected fragments or exclaves detected. Each fragment could be reassigned to the surrounding region.
+                    </Typography>
+                    {spatialAnomalies.map((anomaly, idx) => {
+                      const isApplied = appliedAnomalyIndices.has(idx);
+                      const isSelected = selectedAnomalyIndex === idx;
+                      return (
+                        <Box
+                          key={`anomaly-${idx}`}
+                          onClick={() => { if (!isApplied) { setSelectedAnomalyIndex(idx); setSelectedMoveIndex(null); } }}
+                          sx={{
+                            p: 1, mb: 0.5, borderRadius: 1, cursor: isApplied ? 'default' : 'pointer',
+                            border: 1, borderColor: isSelected ? 'info.main' : 'divider',
+                            opacity: isApplied ? 0.5 : 1,
+                            bgcolor: isSelected ? 'action.selected' : undefined,
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Typography variant="body2" fontWeight={500}>
+                              {anomaly.divisions.length} div{anomaly.divisions.length > 1 ? 's' : ''} of {anomaly.divisions[0]?.sourceRegionName}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              ({anomaly.fragmentSize}/{anomaly.totalRegionSize} divisions)
+                            </Typography>
+                            <Typography variant="caption">
+                              &rarr; {anomaly.suggestedTargetRegionName}
+                            </Typography>
+                            {isApplied && (
+                              <Chip label="Applied" size="small" color="success" sx={{ height: 20, fontSize: '0.65rem' }} />
+                            )}
+                          </Box>
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
+                            {anomaly.divisions.map(d => (
+                              <Chip key={d.divisionId} label={d.name} size="small" variant="outlined"
+                                sx={{ height: 20, fontSize: '0.65rem' }} />
+                            ))}
+                          </Box>
+                          {isSelected && !isApplied && (
+                            <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                              <Button size="small" variant="contained" color="success"
+                                startIcon={applyingAnomaly ? <CircularProgress size={14} /> : undefined}
+                                disabled={applyingAnomaly}
+                                onClick={(e) => { e.stopPropagation(); handleApplyAnomaly(idx); }}>
+                                Accept
+                              </Button>
+                              <Button size="small" variant="outlined"
+                                disabled={applyingAnomaly}
+                                onClick={(e) => { e.stopPropagation(); handleSkipAnomaly(idx); }}>
+                                Skip
+                              </Button>
+                            </Box>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
               </Box>
             )}
           </>

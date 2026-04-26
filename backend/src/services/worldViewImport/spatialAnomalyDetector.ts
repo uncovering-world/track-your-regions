@@ -123,7 +123,6 @@ function findFragments(
 
   let largestIdx = 0;
   for (let i = 1; i < components.length; i++) {
-    // eslint-disable-next-line security/detect-object-injection -- loop-counter + derived-from-same-loop indices into typed Set<number>[]
     if (components[i].size > components[largestIdx].size) largestIdx = i;
   }
   return components.filter((_, i) => i !== largestIdx);

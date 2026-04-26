@@ -7,10 +7,6 @@
  * divisions in paint mode.
  */
 
-/* eslint-disable security/detect-object-injection -- mirror of backend file:
- * bracket accesses index typed adjacency / component arrays by loop counter
- * or Set-derived integer division IDs. No user-controlled keys. */
-
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
 export interface AdjacencyEdge {
