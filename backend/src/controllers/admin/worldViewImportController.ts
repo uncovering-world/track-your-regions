@@ -40,6 +40,8 @@ export {
   cancelAIMatchEndpoint,
   dbSearchOneRegion,
   geocodeMatch,
+  geoshapeMatch,
+  pointMatch,
   resetMatch,
   aiMatchOneRegion,
 } from './wvImportAIController.js';

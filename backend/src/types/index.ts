@@ -411,6 +411,11 @@ export const wvImportIcpAdjustmentBodySchema = z.object({
   action: z.enum(['adjust', 'continue']),
 });
 
+export const wvImportGeoshapeMatchSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  scopeAncestorId: z.coerce.number().int().positive().optional(),
+});
+
 export const wvImportMarkManualFixSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   needsManualFix: z.boolean(),
