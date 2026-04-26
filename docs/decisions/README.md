@@ -21,6 +21,7 @@ and mark the old one as `Superseded by ADR-XXXX`.
 | [0010](0010-spatial-anomaly-detection.md) | Spatial anomaly detection algorithm (BFS adjacency) | Accepted | 2026-04-26 |
 | [0011](0011-icp-adaptive-alignment.md) | ICP adaptive alignment for CV-GADM division matching | Accepted | 2026-04-26 |
 | [0012](0012-scope-fallback-and-accept-with-transfer.md) | Scope fallback and accept-with-transfer for geoshape/point matching | Accepted | 2026-04-25 |
+| [0013](0013-manual-paint-editor.md) | Manual cluster-paint editor for CV match recovery | Accepted | 2026-04-26 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
