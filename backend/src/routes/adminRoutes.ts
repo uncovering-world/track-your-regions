@@ -35,6 +35,9 @@ import {
   divisionIdBodySchema,
   wvImportApproveCoverageSchema,
   coverageSSEQuerySchema,
+  wvImportSmartSimplifySchema,
+  wvImportSmartSimplifyApplySchema,
+  worldViewRegionIdParamSchema,
 } from '../types/index.js';
 import {
   startSync,
@@ -92,6 +95,9 @@ import {
   rematchWorldView,
   getRematchStatus,
   getGeoshape,
+  detectSmartSimplify,
+  applySmartSimplifyMove,
+  getChildrenRegionGeometry,
 } from '../controllers/admin/worldViewImportController.js';
 import {
   startWikivoyageExtraction,
@@ -241,6 +247,15 @@ router.post('/wv-import/matches/:worldViewId/simplify-hierarchy', validate(world
 
 // Simplify children — apply simplification independently to each direct child
 router.post('/wv-import/matches/:worldViewId/simplify-children', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), simplifyChildren);
+
+// Smart simplify: detect cross-sibling division moves for simplification
+router.post('/wv-import/matches/:worldViewId/smart-simplify', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifySchema), detectSmartSimplify);
+
+// Smart simplify: apply a single move (reassign divisions + simplify)
+router.post('/wv-import/matches/:worldViewId/smart-simplify/apply-move', validate(worldViewIdParamSchema, 'params'), validate(wvImportSmartSimplifyApplySchema), applySmartSimplifyMove);
+
+// Get per-child region geometries (used by SmartSimplifyDialog map)
+router.get('/wv-import/matches/:worldViewId/children-geometry/:regionId', validate(worldViewRegionIdParamSchema, 'params'), getChildrenRegionGeometry);
 
 // Handle region as sub-continental grouping (match children as countries)
 router.post('/wv-import/matches/:worldViewId/handle-as-grouping', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdSchema), handleAsGrouping);
