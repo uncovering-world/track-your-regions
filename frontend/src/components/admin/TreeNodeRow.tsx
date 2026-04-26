@@ -37,10 +37,12 @@ export interface TreeNodeRowProps {
   onSync: (regionId: number) => void;
   onHandleAsGrouping: (regionId: number) => void;
   onGeocodeMatch: (regionId: number) => void;
+  onGeoshapeMatch: (regionId: number) => void;
+  onPointMatch: (regionId: number) => void;
   onResetMatch: (regionId: number) => void;
   onRejectRemaining: (regionId: number) => void;
   onAcceptAll: (assignments: Array<{ regionId: number; divisionId: number }>) => void;
-  onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean) => void;
+  onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => void;
   onOpenMapPicker: (node: MatchTreeNode, pendingPreview?: { divisionId: number; name: string; path?: string; isAssigned: boolean }) => void;
   onManualFix: (regionId: number, needsManualFix: boolean, fixNote?: string) => void;
   isMutating: boolean;
@@ -52,6 +54,8 @@ export interface TreeNodeRowProps {
   syncingRegionId: number | null;
   groupingRegionId: number | null;
   geocodeMatchingRegionId: number | null;
+  geoshapeMatchingRegionId: number | null;
+  pointMatchingRegionId: number | null;
   geocodeProgress: { regionId: number; message: string } | null;
   duplicateUrls: Set<string>;
   syncedUrls: Set<string>;
@@ -81,7 +85,7 @@ function getNodeRole(node: MatchTreeNode): 'container' | 'country' | 'subdivisio
   return 'container';
 }
 
-export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAcceptAndRejectRest, onReject, onDBSearch, onAIMatch, onDismissChildren, onSimplifyHierarchy, onSimplifyChildren, onSmartSimplify, onSync, onHandleAsGrouping, onGeocodeMatch, onResetMatch, onRejectRemaining, onAcceptAll, onPreview, onOpenMapPicker, onManualFix, isMutating, dbSearchingRegionId, aiMatchingRegionId, dismissingRegionId, simplifyingRegionId, simplifyingChildrenRegionId, syncingRegionId, groupingRegionId, geocodeMatchingRegionId, geocodeProgress, duplicateUrls, syncedUrls, shadowsByRegionId, onApproveShadow, onRejectShadow, skipAnimationRef, ancestorIsMatched }: TreeNodeRowProps) {
+export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAcceptAndRejectRest, onReject, onDBSearch, onAIMatch, onDismissChildren, onSimplifyHierarchy, onSimplifyChildren, onSmartSimplify, onSync, onHandleAsGrouping, onGeocodeMatch, onGeoshapeMatch, onPointMatch, onResetMatch, onRejectRemaining, onAcceptAll, onPreview, onOpenMapPicker, onManualFix, isMutating, dbSearchingRegionId, aiMatchingRegionId, dismissingRegionId, simplifyingRegionId, simplifyingChildrenRegionId, syncingRegionId, groupingRegionId, geocodeMatchingRegionId, geoshapeMatchingRegionId, pointMatchingRegionId, geocodeProgress, duplicateUrls, syncedUrls, shadowsByRegionId, onApproveShadow, onRejectShadow, skipAnimationRef, ancestorIsMatched }: TreeNodeRowProps) {
   const isExpanded = expanded.has(node.id);
   const hasChildren = node.children.length > 0;
   const role = getNodeRole(node);
@@ -95,14 +99,14 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
   // Intercept preview: if unreviewed candidates and no map URL, open picker first
   const shouldInterceptPreview = node.mapImageCandidates.length > 1 && !node.mapImageReviewed && !node.regionMapUrl;
 
-  // Wrap onPreview to inject this node's regionMapUrl, wikidataId, regionId, and isAssigned
+  // Wrap onPreview to inject this node's regionMapUrl, wikidataId, regionId, markerPoints, and isAssigned
   const handlePreviewAssigned = useCallback(
     (divisionId: number, name: string, path?: string) => {
       if (shouldInterceptPreview) {
         onOpenMapPicker(node, { divisionId, name, path, isAssigned: true });
         return;
       }
-      onPreview(divisionId, name, path, node.regionMapUrl ?? undefined, node.wikidataId ?? undefined, node.id, true);
+      onPreview(divisionId, name, path, node.regionMapUrl ?? undefined, node.wikidataId ?? undefined, node.id, true, node.markerPoints ?? undefined);
     },
     [onPreview, node, shouldInterceptPreview, onOpenMapPicker],
   );
@@ -112,7 +116,7 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
         onOpenMapPicker(node, { divisionId, name, path, isAssigned: false });
         return;
       }
-      onPreview(divisionId, name, path, node.regionMapUrl ?? undefined, node.wikidataId ?? undefined, node.id, false);
+      onPreview(divisionId, name, path, node.regionMapUrl ?? undefined, node.wikidataId ?? undefined, node.id, false, node.markerPoints ?? undefined);
     },
     [onPreview, node, shouldInterceptPreview, onOpenMapPicker],
   );
@@ -203,6 +207,8 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
           syncingRegionId={syncingRegionId}
           groupingRegionId={groupingRegionId}
           geocodeMatchingRegionId={geocodeMatchingRegionId}
+          geoshapeMatchingRegionId={geoshapeMatchingRegionId}
+          pointMatchingRegionId={pointMatchingRegionId}
           nodeGeocodeMsg={nodeGeocodeMsg}
           onDBSearch={onDBSearch}
           onAIMatch={onAIMatch}
@@ -215,6 +221,8 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
           onSync={onSync}
           onHandleAsGrouping={onHandleAsGrouping}
           onGeocodeMatch={onGeocodeMatch}
+          onGeoshapeMatch={onGeoshapeMatch}
+          onPointMatch={onPointMatch}
           onResetMatch={onResetMatch}
           onManualFix={onManualFix}
         />
@@ -261,6 +269,8 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
               onSync={onSync}
               onHandleAsGrouping={onHandleAsGrouping}
               onGeocodeMatch={onGeocodeMatch}
+              onGeoshapeMatch={onGeoshapeMatch}
+              onPointMatch={onPointMatch}
               onResetMatch={onResetMatch}
               onRejectRemaining={onRejectRemaining}
               onAcceptAll={onAcceptAll}
@@ -276,6 +286,8 @@ export function TreeNodeRow({ node, depth, expanded, onToggle, onAccept, onAccep
               syncingRegionId={syncingRegionId}
               groupingRegionId={groupingRegionId}
               geocodeMatchingRegionId={geocodeMatchingRegionId}
+              geoshapeMatchingRegionId={geoshapeMatchingRegionId}
+              pointMatchingRegionId={pointMatchingRegionId}
               geocodeProgress={geocodeProgress}
               duplicateUrls={duplicateUrls}
               syncedUrls={syncedUrls}

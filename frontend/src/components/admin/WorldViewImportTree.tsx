@@ -42,6 +42,8 @@ import {
   syncInstances,
   handleAsGrouping,
   geocodeMatchRegion,
+  geoshapeMatchRegion,
+  pointMatchRegion,
   resetMatchRegion,
   rejectRemaining,
   acceptAndRejectRest as acceptAndRejectRestApi,
@@ -114,7 +116,7 @@ function ManualFixDialog({ state, onClose, onSubmit, isPending }: {
 
 interface WorldViewImportTreeProps {
   worldViewId: number;
-  onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean) => void;
+  onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => void;
   shadowInsertions?: ShadowInsertion[];
   onApproveShadow?: (insertion: ShadowInsertion) => void;
   onRejectShadow?: (insertion: ShadowInsertion) => void;
@@ -260,6 +262,16 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
     onError: () => {
       setGeocodeProgress(null);
     },
+  });
+
+  const geoshapeMatchMutation = useMutation({
+    mutationFn: (regionId: number) => geoshapeMatchRegion(worldViewId, regionId),
+    onSuccess: invalidateTree,
+  });
+
+  const pointMatchMutation = useMutation({
+    mutationFn: (regionId: number) => pointMatchRegion(worldViewId, regionId),
+    onSuccess: invalidateTree,
   });
 
   const resetMatchMutation = useMutation({
@@ -477,7 +489,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
     });
   }, [tree, shadowInsertions]);
 
-  const isMutating = acceptMutation.isPending || rejectMutation.isPending || acceptAndRejectRestMutation.isPending || dismissMutation.isPending || simplifyHierarchyMutation.isPending || simplifyChildrenMutation.isPending || syncMutation.isPending || groupingMutation.isPending || geocodeMatchMutation.isPending || resetMatchMutation.isPending || rejectRemainingMutation.isPending || acceptAllMutation.isPending || selectMapMutation.isPending || manualFixMutation.isPending;
+  const isMutating = acceptMutation.isPending || rejectMutation.isPending || acceptAndRejectRestMutation.isPending || dismissMutation.isPending || simplifyHierarchyMutation.isPending || simplifyChildrenMutation.isPending || syncMutation.isPending || groupingMutation.isPending || geocodeMatchMutation.isPending || geoshapeMatchMutation.isPending || pointMatchMutation.isPending || resetMatchMutation.isPending || rejectRemainingMutation.isPending || acceptAllMutation.isPending || selectMapMutation.isPending || manualFixMutation.isPending;
 
   if (isLoading) {
     return (
@@ -529,6 +541,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
           onSync={(regionId) => syncMutation.mutate(regionId)}
           onHandleAsGrouping={(regionId) => groupingMutation.mutate(regionId)}
           onGeocodeMatch={(regionId) => geocodeMatchMutation.mutate(regionId)}
+          onGeoshapeMatch={(regionId) => geoshapeMatchMutation.mutate(regionId)}
+          onPointMatch={(regionId) => pointMatchMutation.mutate(regionId)}
           onResetMatch={(regionId) => resetMatchMutation.mutate(regionId)}
           onRejectRemaining={(regionId) => rejectRemainingMutation.mutate(regionId)}
           onAcceptAll={(assignments) => acceptAllMutation.mutate(assignments)}
@@ -559,6 +573,8 @@ export function WorldViewImportTree({ worldViewId, onPreview, shadowInsertions, 
           syncingRegionId={syncMutation.isPending ? (syncMutation.variables ?? null) : null}
           groupingRegionId={groupingMutation.isPending ? (groupingMutation.variables ?? null) : null}
           geocodeMatchingRegionId={geocodeMatchMutation.isPending ? (geocodeMatchMutation.variables ?? null) : null}
+          geoshapeMatchingRegionId={geoshapeMatchMutation.isPending ? (geoshapeMatchMutation.variables ?? null) : null}
+          pointMatchingRegionId={pointMatchMutation.isPending ? (pointMatchMutation.variables ?? null) : null}
           geocodeProgress={geocodeProgress}
           duplicateUrls={duplicateUrls}
           syncedUrls={syncedUrls}
