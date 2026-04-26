@@ -741,6 +741,83 @@ export async function getTransferPreview(
 }
 
 // =============================================================================
+// Color Match SSE Types
+// =============================================================================
+
+/** Cluster info for interactive map preview */
+export interface ClusterGeoInfo {
+  clusterId: number;
+  color: string;
+  regionId: number | null;
+  regionName: string | null;
+}
+
+export interface ColorMatchCluster {
+  clusterId: number;
+  color: string;
+  pixelShare: number;
+  suggestedRegion: { id: number; name: string } | null;
+  divisions: Array<{ id: number; name: string; confidence: number; depth: number; parentDivisionId?: number }>;
+  unsplittable: Array<{ id: number; name: string; confidence: number; splitClusters: Array<{ clusterId: number; share: number }> }>;
+}
+
+export interface AdjacencyEdge {
+  divA: number;
+  divB: number;
+}
+
+export interface DebugImage {
+  label: string;
+  dataUrl: string;
+}
+
+export interface ColorMatchResult {
+  clusters: ColorMatchCluster[];
+  childRegions?: Array<{ id: number; name: string }>;
+  /** Divisions whose centroids fall outside the source map coverage */
+  outOfBounds?: Array<{ id: number; name: string }>;
+  debugImages?: DebugImage[];
+  /** Interactive map preview -- GeoJSON FeatureCollection with cluster assignment properties */
+  geoPreview?: {
+    featureCollection: GeoJSON.FeatureCollection;
+    clusterInfos: ClusterGeoInfo[];
+  };
+  stats?: {
+    totalDivisions: number;
+    assignedDivisions: number;
+    cvClusters?: number;
+    cvAssignedDivisions?: number;
+    cvUnsplittable?: number;
+    cvOutOfBounds?: number;
+    countryName?: string;
+  };
+  spatialAnomalies?: SpatialAnomaly[];
+  adjacencyEdges?: AdjacencyEdge[];
+}
+
+// =============================================================================
+// Water Review Types
+// =============================================================================
+
+export interface WaterSubCluster {
+  idx: number;
+  pct: number;
+  cropDataUrl: string;
+}
+
+export interface WaterComponent {
+  id: number;
+  pct: number;
+  cropDataUrl: string;
+  subClusters: WaterSubCluster[];
+}
+
+export interface WaterReviewDecision {
+  approvedIds: number[];
+  mixDecisions: Array<{ componentId: number; approvedSubClusters: number[] }>;
+}
+
+// =============================================================================
 // Cluster Review Types + URLs
 // =============================================================================
 
@@ -837,5 +914,136 @@ export async function respondToIcpAdjustment(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(decision),
+  });
+}
+
+// =============================================================================
+// Color Match SSE Streaming
+// =============================================================================
+
+export interface ColorMatchSSEEvent {
+  type: 'progress' | 'debug_image' | 'complete' | 'error' | 'water_review' | 'cluster_review' | 'icp_adjustment_available';
+  step?: string;
+  elapsed?: number;
+  debugImage?: DebugImage;
+  data?: ColorMatchResult & {
+    clusters?: ClusterReviewCluster[];
+    borderPaths?: BorderPath[];
+    pipelineSize?: { w: number; h: number };
+  };
+  message?: string;
+  reviewId?: string;
+  waterMaskImage?: string;
+  waterPxPercent?: number;
+  waterComponents?: WaterComponent[];
+  metrics?: { overflow: number; error: number; icpOption: string };
+}
+
+/** URL for water crop image during water review (served from backend memory) */
+export function waterCropUrl(reviewId: string, componentId: number, subCluster: number): string {
+  return `${API_URL}/api/admin/wv-import/water-crop/${reviewId}/${componentId}/${subCluster}`;
+}
+
+/** Respond to a per-component water review during CV match */
+export async function respondToWaterReview(reviewId: string, decision: WaterReviewDecision): Promise<void> {
+  await authFetchJson(`${API_URL}/api/admin/wv-import/water-review/${reviewId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(decision),
+  });
+}
+
+/**
+ * Stream CV color match progress via SSE.
+ * Calls onEvent for each event; resolves when complete, rejects on error.
+ */
+export function colorMatchWithProgress(
+  worldViewId: number,
+  regionId: number,
+  onEvent: (event: ColorMatchSSEEvent) => void,
+  signal?: AbortSignal,
+): Promise<ColorMatchResult> {
+  return new Promise((resolve, reject) => {
+    ensureFreshToken().then(token => {
+      const params = new URLSearchParams({ regionId: String(regionId) });
+      if (token) params.append('token', token);
+      const url = `${API_URL}/api/admin/wv-import/matches/${worldViewId}/color-match-stream?${params}`;
+
+      if (signal?.aborted) {
+        reject(new DOMException('Aborted', 'AbortError'));
+        return;
+      }
+
+      const eventSource = new EventSource(url);
+
+      const onAbort = () => {
+        eventSource.close();
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as ColorMatchSSEEvent;
+          onEvent(data);
+
+          if (data.type === 'complete' || data.type === 'error') {
+            signal?.removeEventListener('abort', onAbort);
+            eventSource.close();
+            if (data.type === 'error') {
+              reject(new Error(data.message || 'CV match failed'));
+            } else {
+              resolve(data.data!);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse CV match SSE event:', e);
+        }
+      };
+
+      eventSource.onerror = () => {
+        signal?.removeEventListener('abort', onAbort);
+        eventSource.close();
+        reject(new Error('Connection to server lost'));
+      };
+    }).catch(reject);
+  });
+}
+
+// =============================================================================
+// Mapshape Match
+// =============================================================================
+
+export interface MapshapeMatchResult {
+  found: boolean;
+  message?: string;
+  mapshapes?: Array<{
+    title: string;
+    color: string;
+    wikidataIds: string[];
+    matchedRegion: { id: number; name: string } | null;
+    divisions: Array<{ id: number; name: string; coverage: number }>;
+  }>;
+  childRegions?: Array<{ id: number; name: string }>;
+  geoPreview?: {
+    featureCollection: GeoJSON.FeatureCollection;
+    clusterInfos: ClusterGeoInfo[];
+  };
+  /** Wikivoyage mapshape geoshape boundaries for side-by-side comparison */
+  wikivoyagePreview?: GeoJSON.FeatureCollection;
+  stats?: {
+    totalMapshapes: number;
+    matchedMapshapes: number;
+    totalDivisions: number;
+  };
+}
+
+export async function mapshapeMatch(
+  worldViewId: number,
+  regionId: number,
+): Promise<MapshapeMatchResult> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/mapshape-match`, {
+    method: 'POST',
+    body: JSON.stringify({ regionId }),
   });
 }

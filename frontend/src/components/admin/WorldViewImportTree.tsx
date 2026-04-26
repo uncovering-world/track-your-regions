@@ -64,6 +64,8 @@ import {
 } from '../../api/adminWorldViewImport';
 import { MapImagePickerDialog } from './MapImagePickerDialog';
 import { SmartSimplifyDialog } from './SmartSimplifyDialog';
+import { useCvMatchPipeline } from './useCvMatchPipeline';
+import { CvMatchDialog } from './CvMatchDialog';
 import { type ShadowInsertion } from './treeNodeShared';
 import { TreeNodeRow } from './TreeNodeRow';
 import { collectAncestorsOfUnresolved, collectAncestorsOfIds } from './importTreeUtils';
@@ -195,6 +197,22 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
     queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] });
     queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
   };
+
+  const {
+    cvMatchDialog,
+    setCVMatchDialog,
+    cvMatchingRegionId,
+    mapshapeMatchingRegionId,
+    handleCVMatch,
+    handleMapshapeMatch,
+    cancelCvMatch,
+  } = useCvMatchPipeline(worldViewId, tree, (regionId) => {
+    // Invalidate tree when CV match completes so match status refreshes
+    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] });
+    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
+    // Expand the node so newly assigned divisions are visible
+    setExpanded(prev => new Set([...prev, regionId]));
+  });
 
   const acceptMutation = useMutation({
     mutationFn: ({ regionId, divisionId }: { regionId: number; divisionId: number }) =>
@@ -689,6 +707,10 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
           onSmartSimplify={handleSmartSimplify}
           onAISuggestChildren={handleAIReviewChildren}
           aiSuggestingRegionId={aiSuggestingRegionId}
+          onCVMatch={handleCVMatch}
+          cvMatchingRegionId={cvMatchingRegionId}
+          onMapshapeMatch={handleMapshapeMatch}
+          mapshapeMatchingRegionId={mapshapeMatchingRegionId}
           onSync={(regionId) => syncMutation.mutate(regionId)}
           onHandleAsGrouping={(regionId) => groupingMutation.mutate(regionId)}
           onGeocodeMatch={(regionId) => geocodeMatchMutation.mutate(regionId)}
@@ -782,6 +804,12 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewTransfer,
           onApplied={() => invalidateTree()}
         />
       )}
+
+      <CvMatchDialog
+        cvMatchDialog={cvMatchDialog}
+        setCVMatchDialog={setCVMatchDialog}
+        onClose={cancelCvMatch}
+      />
 
       {/* AI Review Children dialog */}
       {aiReviewDialog && (
