@@ -542,7 +542,7 @@ All three are validated with Zod schemas (`wvImportAddChildSchema`, `wvImportRem
 ## Manual Cluster Paint Editor
 
 When CV auto-clustering produces incorrect division assignments, admins can switch to a
-canvas-based paint editor to manually reassign pixels to clusters (ADR-0013).
+vector-border paint editor to manually reassign pixels to clusters (ADR-0013, ADR-0014).
 
 ### Entry Modes
 
@@ -552,25 +552,26 @@ From the cluster review step in the CV pipeline (wired in Chain D):
 
 ### Architecture
 
-Two-canvas stack:
-- **Border canvas** (Layer 2): holds the processed (mean-shift) image. Brush and polygon
-  tools draw border lines directly on this canvas. Eraser makes pixels transparent.
-- **Color canvas** (Layer 3): holds cluster color fills only. Flood fill reads boundaries
-  from the border canvas — stops at border-colored (CV-pipeline blue) or magenta (user-drawn)
-  pixels.
-- **Background image** (Layer 1): original unprocessed map (non-editable).
+Three-layer stack:
+- **Background image** (Layer 1): source or original map image (non-editable). Toggle
+  between "processed" (quantized/mean-shift) and "original" with the Background control.
+- **SVG border overlay** (Layer 2): vector paths extracted from the cluster label map via
+  OpenCV `findContours` (backend), rendered as smooth `<path>` elements (Catmull-Rom →
+  cubic Bezier). The eraser tool splits these paths; the line tool draws new polylines.
+  Internal borders render blue; external (cluster-to-background) render red. Open endpoints
+  are shown as orange circles for snapping.
+- **Color canvas** (Layer 3): holds cluster color fills only. Flood fill rasterizes the
+  SVG paths on demand to an off-screen canvas, then runs boundary-aware flood fill.
 
-The processed-image opacity slider controls Layer 2 visibility — 0% shows only the original,
-100% shows only the processed image.
+Border opacity slider (0–100%) controls SVG layer visibility.
 
 ### Tools
 
 | Tool | Key | Behaviour |
 |------|-----|-----------|
-| Paint bucket | F | Flood fill from border canvas; stops at CV borders and magenta polygon borders |
-| Brush | B | Fixed 5px line (CV pipeline blue) for freehand border drawing via Atrament |
-| Eraser | E | Adjustable eraser size; removes border pixels (source shows through) |
-| Border polygon | L | Click vertices; Enter = open polyline, click near start = closed polygon |
+| Paint bucket | F | Rasterizes SVG borders, then flood fills from that boundary image |
+| Eraser | E | Drag over SVG paths to split them at the hit segment |
+| Line | L | Click vertices to draw polyline; snaps to open endpoints; Enter = open polyline, click near start = closed polygon |
 
 ### Data Flow on Submit
 
@@ -586,10 +587,12 @@ The processed-image opacity slider controls Layer 2 visibility — 0% shows only
 
 | File | Role |
 |------|------|
-| `ClusterPaintEditor.tsx` | Two-canvas paint editor with flood fill, brush/eraser/polygon tools, undo/redo, zoom/pan |
-| `clusterPaintUtils.ts` | Flood fill (magenta-border-aware), overlay↔pixelLabels conversion, color helpers |
+| `ClusterPaintEditor.tsx` | SVG border overlay + color canvas; fill/eraser/line tools, undo/redo, zoom/pan |
+| `clusterPaintUtils.ts` | Flood fill (border-aware), overlay↔pixelLabels conversion, color helpers |
+| `svgBorderUtils.ts` | Catmull-Rom path smoothing, endpoint detection, rasterization for fill, eraser hit detection |
+| `wvImportMatchBorderTrace.ts` | OpenCV findContours border extraction, Douglas-Peucker simplification |
 | `wvImportMatchReview.ts` | `ManualClusterDecision` type, `ClusterReviewResponse` union, overlay image store |
-| `adminWorldViewImport.ts` (frontend API) | `ManualClusterResponse`, `ClusterReviewCluster`, `clusterOverlayUrl()` |
+| `adminWorldViewImport.ts` (frontend API) | `BorderPath`, `ManualClusterResponse`, `ClusterReviewCluster`, `clusterOverlayUrl()` |
 
 Zod validation schemas: `wvImportClusterReviewBodySchema`, `wvImportClusterHighlightParamSchema` in `backend/src/types/index.ts`.
 
