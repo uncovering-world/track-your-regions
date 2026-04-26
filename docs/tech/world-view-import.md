@@ -177,15 +177,23 @@ The match review interface (Admin Panel) and the WorldView Editor both modify `r
 
 ### Per-Region Matching (Two Buttons)
 
-Each unmatched region (`no_candidates` or `needs_review`) has three action buttons:
+Each unmatched region (`no_candidates` or `needs_review`) has up to five action buttons:
 
 1. **Geocode Match** (pin icon) — geocodes the region name via Nominatim (OpenStreetMap) to get coordinates, then uses `ST_Contains` on GADM geometries to find all divisions containing that point. Returns the full hierarchy (country → state → district) sorted deepest-first. Works even when names don't match at all — as long as Nominatim can locate the place, the spatial query finds the correct GADM division. Adds ancestor context to the search query for geo-disambiguation (e.g., "Kabardino-Balkaria, Russia"). Free, no API key needed, 1 request/second rate limit per Nominatim policy.
 
 2. **DB Search** (magnifying glass icon) — searches GADM divisions using PostgreSQL `pg_trgm` trigram similarity. Returns up to 5 candidates sorted by similarity (threshold > 0.3). Catches name variations like "Ingushetia" ↔ "Ingush", "Kabardino-Balkaria" ↔ "Kabardin-Balkar". Results are added as suggestions for the admin to accept/reject. Fast and free — no external API calls.
 
-3. **AI Match** (sparkle icon) — uses OpenAI (`gpt-4.1-mini`) for intelligent matching. Includes any existing suggestions (including DB search results) as context. The AI can identify correct GADM names even for disputed territories, name changes, and regions with completely different administrative names (e.g., "South Ossetia" → "Shida Kartli"). Supports **multi-division regions** via `additionalDivisions` — when a Wikivoyage region spans multiple GADM divisions (e.g., "Donbas" → Donetsk + Luhansk oblasts), each is returned as a separate suggestion the admin can accept independently (like Portugal's European + African parts). Name lookup strips geographic suffixes (Oblast, Province, Region, etc.) and apostrophes for matching, and prefers higher-level divisions when names are ambiguous. Includes low-confidence results for per-region matching (user reviews all). When OpenAI is not configured, the AI button is hidden.
+3. **AI Match** (sparkle icon) — uses OpenAI (`gpt-4.1-mini`) for intelligent matching.
 
-All three buttons never auto-assign — all results become suggestions that the admin must accept or reject. Previously rejected suggestions (`region_match_suggestions` with `rejected = true`) are excluded from results.
+4. **Geoshape Match** (terrain icon) — fetches the Wikidata geoshape for the region, computes IoU (Intersection over Union) against GADM divisions, and returns the best-covering set of divisions as suggestions. Uses a precision drill-down: if the covering set has low precision (<0.5), each imprecise GADM division is replaced by its children and re-evaluated. GADM descendants of already-assigned divisions are excluded from candidates to avoid double-counting. Requires `wikidataId` on the node (button disabled otherwise). If no geoshape exists in Wikidata, the backend builds a **composite geoshape** from child entities:
+   - Fetches P527 (has part) and P361 (part of) children via SPARQL
+   - Fetches the Wikivoyage article's `{{regionlist}}` children (resolves article titles → Wikidata QIDs via `action=query&prop=pageprops`)
+   - Unions all available child geoshapes into a composite polygon and caches it in `wikidata_geoshapes`
+   The geoshape proxy endpoint (`GET /api/admin/wv-import/geoshape/:wikidataId`) checks the local `wikidata_geoshapes` cache (including composites) before calling `maps.wikimedia.org`. Suggestions are automatically accepted/rejected when IoU is high enough (configurable thresholds in `geoshapeCache.ts`).
+
+5. **Point Match** (scatter plot icon) — fetches Wikivoyage marker coordinates from the region's article (parsing `{{marker}}` and `{{geo}}` templates), then queries GADM using `ST_Contains` to find all divisions containing at least one marker point. Only active when `geoAvailable === false` (no geoshape available). Resolved marker points are stored in `region_import_state.marker_points` (JSONB) for later preview. GADM descendants of already-assigned divisions are excluded from candidates.
+
+Geocode Match, DB Search, AI Match, and Point Match never auto-assign — results become suggestions that the admin must accept or reject. Geoshape Match can auto-assign suggestions when the IoU score is high enough (configurable thresholds in `geoshapeCache.ts`). Previously rejected suggestions (`region_match_suggestions` with `rejected = true`) are excluded from results.
 
 ### Additional Per-Region Actions
 
@@ -209,18 +217,24 @@ Implementation: **in-memory** undo store (`Map<worldViewId, UndoEntry>`), one en
 
 ### Division Preview Dialog
 
-Clicking the map icon on any suggestion or assigned division opens a preview dialog showing the GADM division polygon on an interactive map. The dialog supports three modes depending on available data:
+Clicking the map icon on any suggestion or assigned division opens a preview dialog showing the GADM division polygon on an interactive map. The dialog supports four modes depending on available data:
 
 1. **Region map image** (`regionMapUrl` present) — widens to `md`, shows the Wikivoyage region map image on the left and the GADM polygon on the right. ~1,066 regions have static map images.
 
 2. **Wikidata geoshape fallback** (`wikidataId` present, no `regionMapUrl`) — widens to `md`, shows two maps side-by-side:
-   - **Left map**: Wikivoyage (Wikidata) geoshape — red fill + outline, labeled "Wikivoyage region", auto-fit bounds
+   - **Left map**: Wikivoyage (Wikidata) geoshape — red fill + outline, labeled "Source region", auto-fit bounds
    - **Right map**: GADM division polygon — blue fill + outline, labeled "GADM division"
    - Geoshape fetched via backend proxy (`GET /api/admin/wv-import/geoshape/:wikidataId`) on dialog open, with spinner while loading
+   - The proxy checks `wikidata_geoshapes` cache first (includes composite geoshapes built from child entities), then falls back to `maps.wikimedia.org`
    - ~4,000 regions have Wikidata geoshapes via `{{mapframe}}`/`{{mapshape}}` Kartographer maps
    - Backend proxy needed because `maps.wikimedia.org/geoshape` requires `User-Agent` + `Referer` headers
 
-3. **GADM only** (neither available) — single map, `sm` width, no labels
+3. **Marker points fallback** (no `regionMapUrl`, no `wikidataId` or geoshape unavailable, `markerPoints` present) — widens to `md`, shows two maps side-by-side:
+   - **Left map**: orange circle markers from Wikivoyage `{{marker}}`/`{{geo}}` templates, labeled "Marker points (N)", auto-fit bounds with maxZoom=10
+   - **Right map**: GADM division polygon
+   - `markerPoints` are stored in `region_import_state.marker_points` (JSONB) after a Point Match operation and returned with the tree API
+
+4. **GADM only** (none of the above available) — single map, `sm` width, no labels
 
 This helps the operator visually verify whether a suggested GADM division matches the Wikivoyage region's expected boundaries.
 
@@ -348,6 +362,8 @@ All require admin auth.
 | GET | `/matches/:worldViewId/ai-match/status` | AI matching progress |
 | POST | `/matches/:worldViewId/ai-match/cancel` | Cancel AI matching |
 | POST | `/matches/:worldViewId/geocode-match` | Geocode name via Nominatim, find containing GADM division |
+| POST | `/matches/:worldViewId/geoshape-match` | Fetch Wikidata geoshape (or build composite), IoU-score GADM divisions |
+| POST | `/matches/:worldViewId/point-match` | Parse Wikivoyage marker coords, find containing GADM divisions |
 | POST | `/matches/:worldViewId/db-search-one` | DB trigram search for a single region |
 | POST | `/matches/:worldViewId/ai-match-one` | AI-match a single region (synchronous) |
 | POST | `/matches/:worldViewId/handle-as-grouping` | Drill into children — match them independently against GADM |
@@ -381,11 +397,16 @@ backend/src/services/wikivoyageExtract/
 └── index.ts              — Service entry: start/status/cancel + full pipeline
 
 backend/src/services/worldViewImport/
-├── types.ts      — Type definitions (ImportTreeNode, ImportProgress, RegionImportState, etc.)
-├── importer.ts   — JSON tree → WorldView + regions
-├── matcher.ts    — Leaf region → GADM division matching (optimized)
-├── aiMatcher.ts  — AI-assisted re-matching via OpenAI
-└── index.ts      — Exports, in-memory progress management
+├── types.ts          — Type definitions (ImportTreeNode, ImportProgress, RegionImportState, etc.)
+├── importer.ts       — JSON tree → WorldView + regions
+├── matcher.ts        — Leaf region → GADM division matching (optimized)
+├── aiMatcher.ts      — AI-assisted re-matching via OpenAI
+├── geoshapeCache.ts  — Wikidata geoshape fetch, cache, IoU scoring, covering-set matching with precision drill-down and composite fallback
+├── pointMatcher.ts   — Wikivoyage marker coord extraction → GADM ST_Contains matching, stores marker_points in region_import_state
+└── index.ts          — Exports, in-memory progress management
+
+backend/src/services/wikivoyageExtract/
+├── markerParser.ts   — Pure parser for {{marker}} and {{geo}} Wikivoyage wikitext templates
 
 backend/src/controllers/admin/wikivoyageExtractController.ts — Extraction endpoints
 backend/src/controllers/admin/worldViewImportController.ts   — Import + match review endpoints
