@@ -1,7 +1,7 @@
 /**
  * CvMatchDialog — Full-screen dialog for CV color-match / mapshape-match workflow.
  *
- * Orchestrates water review, cluster review, ICP adjustment, geo preview,
+ * Orchestrates water review, park review, cluster review, geo preview,
  * cluster suggestions, and debug images. Each major review section is
  * extracted into its own component file.
  */
@@ -26,6 +26,8 @@ import {
 } from '../../api/admin/worldViewImport';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 import { CvWaterReviewSection } from './CvWaterReviewSection';
+import { CvClusterReviewSection } from './CvClusterReviewSection';
+import { CvGeoPreviewSection, CvClusterSuggestionsSection } from './CvGeoPreviewSection';
 import { CvIcpAdjustmentSection } from './CvIcpAdjustmentSection';
 
 export interface CvMatchDialogProps {
@@ -33,12 +35,42 @@ export interface CvMatchDialogProps {
   setCVMatchDialog: React.Dispatch<React.SetStateAction<CvMatchDialogState | null>>;
   /** Called when user clicks Close to dismiss the dialog */
   onClose: () => void;
+  highlightClusterId: number | null;
+  setHighlightClusterId: React.Dispatch<React.SetStateAction<number | null>>;
+  worldViewId: number;
+  invalidateTree: (regionId?: number) => void;
+
+  // Settings
+  aiModelOverride: string | null;
+  setAiModelOverride: React.Dispatch<React.SetStateAction<string | null>>;
+  modelPickerOpen: boolean;
+  setModelPickerOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  modelPickerModels: Array<{ id: string }>;
+  setModelPickerModels: React.Dispatch<React.SetStateAction<Array<{ id: string }>>>;
+  modelPickerGlobal: string;
+  setModelPickerGlobal: React.Dispatch<React.SetStateAction<string>>;
+  modelPickerSelected: string;
+  setModelPickerSelected: React.Dispatch<React.SetStateAction<string>>;
 }
 
 export function CvMatchDialog({
   cvMatchDialog,
   setCVMatchDialog,
   onClose,
+  highlightClusterId,
+  setHighlightClusterId,
+  worldViewId,
+  invalidateTree,
+  aiModelOverride,
+  setAiModelOverride,
+  modelPickerOpen,
+  setModelPickerOpen,
+  modelPickerModels,
+  setModelPickerModels,
+  modelPickerGlobal,
+  setModelPickerGlobal,
+  modelPickerSelected,
+  setModelPickerSelected,
 }: CvMatchDialogProps) {
   return (
     <Dialog
@@ -64,25 +96,45 @@ export function CvMatchDialog({
               </Typography>
             </Box>
             {/* Interactive per-component water review — pipeline paused waiting for user approval */}
-            {cvMatchDialog.waterReview && (
-              <CvWaterReviewSection cvMatchDialog={cvMatchDialog} setCVMatchDialog={setCVMatchDialog} />
-            )}
-            {/* Cluster review — merge small artifact clusters before final assignment */}
+            {cvMatchDialog.waterReview && <CvWaterReviewSection cvMatchDialog={cvMatchDialog} setCVMatchDialog={setCVMatchDialog} />}
             {cvMatchDialog.clusterReview && (
-              <Box sx={{ mb: 2, p: 2, bgcolor: 'info.50', borderRadius: 1, border: '1px solid', borderColor: 'info.200' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  Cluster review — reviewId: {cvMatchDialog.clusterReview.reviewId}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {cvMatchDialog.clusterReview.clusters.length} clusters detected.
-                  Full cluster review UI is available in the feat branch.
-                </Typography>
-              </Box>
+              <CvClusterReviewSection cvMatchDialog={cvMatchDialog} setCVMatchDialog={setCVMatchDialog} />
             )}
             {cvMatchDialog.icpAdjustment && (
               <CvIcpAdjustmentSection
                 cvMatchDialog={cvMatchDialog}
                 setCVMatchDialog={setCVMatchDialog}
+              />
+            )}
+            {/* Interactive geo preview: side-by-side source map + MapLibre division map */}
+            {cvMatchDialog.done && (
+              <CvGeoPreviewSection
+                cvMatchDialog={cvMatchDialog}
+                setCVMatchDialog={setCVMatchDialog}
+                highlightClusterId={highlightClusterId}
+                worldViewId={worldViewId}
+                invalidateTree={invalidateTree}
+              />
+            )}
+            {/* Cluster suggestions (shown when complete) */}
+            {cvMatchDialog.done && cvMatchDialog.clusters.length > 0 && (
+              <CvClusterSuggestionsSection
+                cvMatchDialog={cvMatchDialog}
+                setCVMatchDialog={setCVMatchDialog}
+                highlightClusterId={highlightClusterId}
+                setHighlightClusterId={setHighlightClusterId}
+                worldViewId={worldViewId}
+                invalidateTree={invalidateTree}
+                aiModelOverride={aiModelOverride}
+                setAiModelOverride={setAiModelOverride}
+                modelPickerOpen={modelPickerOpen}
+                setModelPickerOpen={setModelPickerOpen}
+                modelPickerModels={modelPickerModels}
+                setModelPickerModels={setModelPickerModels}
+                modelPickerGlobal={modelPickerGlobal}
+                setModelPickerGlobal={setModelPickerGlobal}
+                modelPickerSelected={modelPickerSelected}
+                setModelPickerSelected={setModelPickerSelected}
               />
             )}
             {/* Latest pipeline image — always visible */}

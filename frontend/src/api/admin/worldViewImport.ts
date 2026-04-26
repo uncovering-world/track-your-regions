@@ -45,6 +45,8 @@ export interface MatchStats {
   total_matched: string;
   total_leaves: string;
   total_regions: string;
+  /** Count of regions whose hierarchy review surfaced unreviewed warnings (string for parity with the other counts) */
+  hierarchy_warnings_count: string;
 }
 
 export interface MatchSuggestion {
@@ -95,6 +97,10 @@ export interface MatchTreeNode {
   assignedDivisions: AssignedDivision[];
   geoAvailable: boolean | null;
   markerPoints: Array<{ name: string; lat: number; lon: number }> | null;
+  /** Hierarchy-review warnings surfaced by AI/automated review (e.g., overlapping siblings, single-child branches) */
+  hierarchyWarnings: string[];
+  /** True once a curator has dismissed/acknowledged the warnings on this node */
+  hierarchyReviewed: boolean;
   children: MatchTreeNode[];
 }
 
@@ -377,22 +383,47 @@ export {
   removeRegionFromImport,
   renameRegion,
   aiReviewChildren,
+  aiSuggestChildren,
   markManualFix,
   selectMapImage,
   detectSmartSimplify,
   applySmartSimplifyMove,
+  applySmartFlatten,
+  pruneToLeaves,
+  smartFlatten,
+  smartFlattenPreview,
+  mergeChildIntoParent,
+  collapseToParent,
+  autoResolveChildren,
+  reparentRegion,
+  dismissHierarchyWarnings,
+  clearRegionMembers,
+  acceptBatchAndRejectRest,
+  rejectBatchSuggestions,
+  checkDivisionOverlap,
+  getOverlapDivisionChildren,
+  resolveOverlap,
 } from './wvImportTreeOps';
 export type {
   SimplifyHierarchyResult,
   SimplifyChildrenResult,
   ReviewChildAction,
   AIReviewChildrenResult,
+  AISuggestChildrenResult,
   SmartSimplifyDivision,
   SmartSimplifyMove,
   SpatialAnomalyDivision,
   SpatialAnomaly,
   SmartSimplifyResult,
   ApplySmartSimplifyResult,
+  PruneResult,
+  SmartFlattenResult,
+  SmartFlattenPreviewResult,
+  CollapseToParentResult,
+  AutoResolveChildrenResult,
+  DivisionOverlapResult,
+  OverlapGadmChild,
+  OverlapResolution,
 } from './wvImportTreeOps';
 
 export {
@@ -405,6 +436,12 @@ export {
   undismissCoverageGap,
   finalizeReview,
   getChildrenRegionGeometry,
+  getChildrenCoverage,
+  getCoverageGeometry,
+  analyzeCoverageGaps,
+  getUnionGeometry,
+  splitDivisionsDeeper,
+  visionMatchDivisions,
 } from './wvImportCoverage';
 export type {
   SubtreeNode,
@@ -414,6 +451,13 @@ export type {
   RegionContextNode,
   GeoSuggestResult,
   SiblingRegionGeometry,
+  ChildrenCoverageResult,
+  CoverageGeometryResult,
+  CoverageGapDivision,
+  AnalyzeCoverageGapsResult,
+  UnionGeometryResult,
+  SplitDeeperResult,
+  VisionMatchDivisionsResult,
 } from './wvImportCoverage';
 
 export {
@@ -427,6 +471,7 @@ export {
   respondToWaterReview,
   respondToIcpAdjustment,
   colorMatchWithProgress,
+  aiSuggestClusterRegions,
 } from './wvImportCvMatch';
 export type {
   ClusterGeoInfo,
@@ -444,4 +489,6 @@ export type {
   ColorMatchSSEEvent,
   MapshapeMatchResult,
   ManualClusterResponse,
+  AISuggestClusterRegionsCluster,
+  AISuggestClusterRegionsResult,
 } from './wvImportCvMatch';

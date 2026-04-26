@@ -5,7 +5,7 @@
  * for imported regions. Uses the hierarchical tree view.
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Alert,
   Box,
@@ -14,6 +14,7 @@ import {
   Card,
   CardContent,
   Chip,
+  LinearProgress,
   Stack,
   Tooltip,
   Dialog,
@@ -22,6 +23,11 @@ import {
   DialogActions,
 } from '@mui/material';
 import { fetchDivisionGeometry } from '../../api/divisions';
+import {
+  startWorldViewGeometryComputation,
+  fetchWorldViewComputationStatus,
+  cancelWorldViewGeometryComputation,
+} from '../../api/geometry';
 import { DivisionPreviewDialog } from '../WorldViewEditor/components/dialogs/DivisionPreviewDialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,10 +38,14 @@ import {
   startRematch,
   getRematchStatus,
   acceptMatch,
+  acceptBatchMatches,
   rejectSuggestion,
   rejectRemaining,
-  acceptWithTransfer as acceptWithTransferApi,
+  getUnionGeometry,
   getTransferPreview,
+  acceptWithTransfer,
+  splitDivisionsDeeper,
+  visionMatchDivisions,
 } from '../../api/admin/worldViewImport';
 import type { CoverageResult } from '../../api/admin/worldViewImport';
 
@@ -50,28 +60,223 @@ interface WorldViewImportReviewProps {
   onFinalize?: () => void;
 }
 
+// Geometry computation progress Alert — extracted to reduce parent cognitive complexity
+interface GeomStatus {
+  percent: number;
+  computed: number;
+  total: number;
+  errors: number;
+  currentRegion?: string;
+  status?: string;
+}
+
+type PreviewDivisionState = {
+  divisionId?: number;
+  regionId?: number;
+  isAssigned?: boolean;
+  divisionIds?: number[];
+} | null;
+
+type PreviewMutationWithMutate = { mutate: (args: { regionId: number; divisionId: number }) => void };
+type PreviewBatchMutationWithMutate = { mutate: (args: { regionId: number; divisionIds: number[] }) => void };
+type PreviewTransferMutationWithMutate = {
+  mutate: (args: { regionId: number; groups: Array<{ divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }> }) => void;
+};
+
+// Computes onAccept / onAcceptAndRejectRest / onReject handlers for the
+// DivisionPreviewDialog based on current preview state — factored out so the
+// parent component stays under the cognitive-complexity cap.
+function computePreviewDialogHandlers(params: {
+  previewDivision: PreviewDivisionState;
+  pendingTransfer: { regionId: number; groups: Array<{ divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }> } | null;
+  previewAcceptMutation: PreviewMutationWithMutate;
+  previewAcceptSelectedMutation: PreviewBatchMutationWithMutate;
+  previewTransferMutation: PreviewTransferMutationWithMutate;
+  previewAcceptAndRejectRestMutation: PreviewMutationWithMutate;
+  previewAcceptSelectedRejectRestMutation: PreviewBatchMutationWithMutate;
+  previewRejectMutation: PreviewMutationWithMutate;
+  previewRejectSelectedMutation: PreviewBatchMutationWithMutate;
+}): { onAccept?: () => void; onAcceptAndRejectRest?: () => void; onReject?: () => void } {
+  const {
+    previewDivision, pendingTransfer,
+    previewAcceptMutation, previewAcceptSelectedMutation, previewTransferMutation,
+    previewAcceptAndRejectRestMutation, previewAcceptSelectedRejectRestMutation,
+    previewRejectMutation, previewRejectSelectedMutation,
+  } = params;
+
+  const hasSelectedDivisions = !!(previewDivision?.divisionIds && previewDivision.regionId != null);
+  const hasSingleDivision = previewDivision?.regionId != null && previewDivision?.divisionId != null;
+  const singleDivisionNotYetAssigned = hasSingleDivision && !previewDivision!.isAssigned;
+
+  const buildAccept = (): (() => void) | undefined => {
+    if (pendingTransfer) return () => previewTransferMutation.mutate(pendingTransfer);
+    if (hasSelectedDivisions) {
+      return () => previewAcceptSelectedMutation.mutate({
+        regionId: previewDivision!.regionId!,
+        divisionIds: previewDivision!.divisionIds!,
+      });
+    }
+    if (singleDivisionNotYetAssigned) {
+      return () => previewAcceptMutation.mutate({
+        regionId: previewDivision!.regionId!,
+        divisionId: previewDivision!.divisionId!,
+      });
+    }
+    return undefined;
+  };
+
+  const buildAcceptAndRejectRest = (): (() => void) | undefined => {
+    if (hasSelectedDivisions) {
+      return () => previewAcceptSelectedRejectRestMutation.mutate({
+        regionId: previewDivision!.regionId!,
+        divisionIds: previewDivision!.divisionIds!,
+      });
+    }
+    if (singleDivisionNotYetAssigned) {
+      return () => previewAcceptAndRejectRestMutation.mutate({
+        regionId: previewDivision!.regionId!,
+        divisionId: previewDivision!.divisionId!,
+      });
+    }
+    return undefined;
+  };
+
+  const buildReject = (): (() => void) | undefined => {
+    if (hasSelectedDivisions) {
+      return () => previewRejectSelectedMutation.mutate({
+        regionId: previewDivision!.regionId!,
+        divisionIds: previewDivision!.divisionIds!,
+      });
+    }
+    if (hasSingleDivision) {
+      return () => previewRejectMutation.mutate({
+        regionId: previewDivision!.regionId!,
+        divisionId: previewDivision!.divisionId!,
+      });
+    }
+    return undefined;
+  };
+
+  return {
+    onAccept: buildAccept(),
+    onAcceptAndRejectRest: buildAcceptAndRejectRest(),
+    onReject: buildReject(),
+  };
+}
+
+// Hook that bundles all preview accept/reject mutations. Factored out to keep
+// WorldViewImportReview's cognitive complexity under the Sonar cap.
+function usePreviewMutations(worldViewId: number, onDone: () => void) {
+  const onSuccess = () => { onDone(); };
+  const previewAcceptMutation = useMutation({
+    mutationFn: ({ regionId, divisionId }: { regionId: number; divisionId: number }) =>
+      acceptMatch(worldViewId, regionId, divisionId),
+    onSuccess,
+  });
+  const previewRejectMutation = useMutation({
+    mutationFn: ({ regionId, divisionId }: { regionId: number; divisionId: number }) =>
+      rejectSuggestion(worldViewId, regionId, divisionId),
+    onSuccess,
+  });
+  const previewTransferMutation = useMutation({
+    mutationFn: async (params: { regionId: number; groups: Array<{ divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }> }) => {
+      for (const g of params.groups) {
+        await acceptWithTransfer(worldViewId, params.regionId, g.divisionIds, g.donorRegionId, g.donorDivisionId, g.transferType);
+      }
+    },
+    onSuccess,
+  });
+  const previewAcceptAndRejectRestMutation = useMutation({
+    mutationFn: async ({ regionId, divisionId }: { regionId: number; divisionId: number }) => {
+      await acceptMatch(worldViewId, regionId, divisionId);
+      await rejectRemaining(worldViewId, regionId);
+    },
+    onSuccess,
+  });
+  const previewAcceptSelectedMutation = useMutation({
+    mutationFn: ({ regionId, divisionIds }: { regionId: number; divisionIds: number[] }) =>
+      acceptBatchMatches(worldViewId, divisionIds.map(d => ({ regionId, divisionId: d }))),
+    onSuccess,
+  });
+  const previewAcceptSelectedRejectRestMutation = useMutation({
+    mutationFn: async ({ regionId, divisionIds }: { regionId: number; divisionIds: number[] }) => {
+      await acceptBatchMatches(worldViewId, divisionIds.map(d => ({ regionId, divisionId: d })));
+      await rejectRemaining(worldViewId, regionId);
+    },
+    onSuccess,
+  });
+  const previewRejectSelectedMutation = useMutation({
+    mutationFn: ({ regionId, divisionIds }: { regionId: number; divisionIds: number[] }) =>
+      Promise.all(divisionIds.map(d => rejectSuggestion(worldViewId, regionId, d))).then(() => {}),
+    onSuccess,
+  });
+  return {
+    previewAcceptMutation,
+    previewRejectMutation,
+    previewTransferMutation,
+    previewAcceptAndRejectRestMutation,
+    previewAcceptSelectedMutation,
+    previewAcceptSelectedRejectRestMutation,
+    previewRejectSelectedMutation,
+  };
+}
+
+function GeomComputationAlert({
+  geomStatus, geomComputing, onCancel,
+}: {
+  geomStatus: GeomStatus;
+  geomComputing: boolean;
+  onCancel: () => void;
+}) {
+  let severity: 'info' | 'warning' | 'success';
+  if (geomComputing) severity = 'info';
+  else if (geomStatus.errors > 0) severity = 'warning';
+  else severity = 'success';
+
+  const currentRegionSuffix = geomStatus.currentRegion ? ` — ${geomStatus.currentRegion}` : '';
+  const errorsSuffix = geomStatus.errors > 0 ? `, ${geomStatus.errors} errors` : '';
+  const statusLabel = geomStatus.status ?? 'Complete';
+  const progressText = geomComputing
+    ? `Computing geometries... ${geomStatus.computed}/${geomStatus.total}${currentRegionSuffix}`
+    : `${statusLabel} — ${geomStatus.computed} computed${errorsSuffix}`;
+
+  return (
+    <Alert
+      severity={severity}
+      sx={{ mb: 2 }}
+      action={geomComputing ? (
+        <Button color="inherit" size="small" onClick={onCancel}>Cancel</Button>
+      ) : undefined}
+    >
+      <Box sx={{ width: '100%' }}>
+        <Typography variant="body2">{progressText}</Typography>
+        {geomComputing && (
+          <LinearProgress variant="determinate" value={geomStatus.percent} sx={{ mt: 0.5 }} />
+        )}
+      </Box>
+    </Alert>
+  );
+}
+
 export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImportReviewProps) {
   const queryClient = useQueryClient();
   const [rematchDialogOpen, setRematchDialogOpen] = useState(false);
   const [previewDivision, setPreviewDivision] = useState<{
     name: string; path?: string; regionMapUrl?: string; wikidataId?: string;
-    divisionId?: number; regionId?: number; isAssigned?: boolean;
+    divisionId?: number; regionId?: number; isAssigned?: boolean; regionMapLabel?: string; regionName?: string;
+    divisionIds?: number[];
     markerPoints?: Array<{ name: string; lat: number; lon: number }>;
   } | null>(null);
   const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | GeoJSON.FeatureCollection | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-
-  // Pending transfer info — kept while transfer preview dialog is open
+  // Pending transfer groups: one entry per donor, executed sequentially on confirm
   const [pendingTransfer, setPendingTransfer] = useState<{
     regionId: number;
-    divisionIds: number[];
-    donorRegionId: number;
-    donorDivisionId: number;
-    transferType: 'direct' | 'split';
+    groups: Array<{ divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }>;
   } | null>(null);
 
-  const handlePreviewDivision = useCallback(async (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => {
-    setPreviewDivision({ name, path, regionMapUrl, wikidataId, divisionId, regionId, isAssigned, markerPoints });
+  const handlePreviewDivision = useCallback(async (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean, regionMapLabel?: string, regionName?: string, markerPoints?: Array<{ name: string; lat: number; lon: number }>) => {
+    setPreviewDivision({ name, path, regionMapUrl, wikidataId, divisionId, regionId, isAssigned, regionMapLabel, regionName, markerPoints });
     setPreviewGeometry(null);
     setPreviewLoading(true);
     try {
@@ -87,6 +292,133 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     setPreviewGeometry(null);
     setPendingTransfer(null);
   }, []);
+
+  const handlePreviewUnion = useCallback(async (regionId: number, divisionIds: number[], context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string }) => {
+    setPreviewDivision({
+      name: `${divisionIds.length} divisions (union)`,
+      regionId,
+      isAssigned: false,
+      divisionIds,
+      wikidataId: context.wikidataId,
+      regionMapUrl: context.regionMapUrl,
+      regionMapLabel: context.regionMapLabel,
+      regionName: context.regionName,
+    });
+    setPreviewGeometry(null);
+    setPreviewLoading(true);
+    try {
+      const result = await getUnionGeometry(worldViewId, divisionIds, regionId);
+      setPreviewGeometry(result.geometry);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [worldViewId]);
+
+  const handlePreviewTransfer = useCallback(async (
+    divisionId: number, name: string, path: string | undefined,
+    conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' },
+    wikidataId: string, regionName: string,
+    regionId?: number, allDivisionIds?: number[],
+    allSuggestions?: Array<{ divisionId: number; conflict?: { donorDivisionId: number; donorRegionId: number; type: 'direct' | 'split' } }>,
+  ) => {
+    const movingIds = allDivisionIds ?? [divisionId];
+    const label = movingIds.length > 1 ? `Transfer: ${movingIds.length} divisions` : `Transfer: ${name}`;
+    setPreviewDivision({ name: label, path, regionMapUrl: undefined, wikidataId, regionId: undefined, regionName });
+    setPreviewGeometry(null);
+    setPreviewLoading(true);
+
+    // Group by donor for multi-donor support
+    const suggestions = allSuggestions ?? [{ divisionId, conflict }];
+    const groupsByDonor = new Map<number, { divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split' }>();
+    for (const s of suggestions) {
+      const c = s.conflict ?? conflict;
+      const key = c.donorDivisionId;
+      const existing = groupsByDonor.get(key);
+      if (existing) {
+        existing.divisionIds.push(s.divisionId);
+      } else {
+        groupsByDonor.set(key, { divisionIds: [s.divisionId], donorRegionId: c.donorRegionId, donorDivisionId: c.donorDivisionId, transferType: c.type });
+      }
+    }
+    const groups = [...groupsByDonor.values()];
+    setPendingTransfer(regionId != null ? { regionId, groups } : null);
+
+    try {
+      // Fetch preview for each donor group and merge
+      const fcs = await Promise.all(groups.map(g => getTransferPreview(worldViewId, g.donorDivisionId, g.divisionIds, wikidataId)));
+      const merged: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: fcs.flatMap(fc => fc.features) };
+      // Deduplicate target_outline (same geoshape repeated per group)
+      const seen = new Set<string>();
+      merged.features = merged.features.filter(f => {
+        if (f.properties?.role !== 'target_outline') return true;
+        const key = f.properties.role;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setPreviewGeometry(merged);
+    } catch {
+      setPreviewGeometry(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [worldViewId]);
+
+  const handleViewMap = useCallback(async (regionId: number, context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string; divisionIds: number[] }) => {
+    const hasDivisions = context.divisionIds.length > 0;
+    const divSuffix = context.divisionIds.length > 1 ? 's' : '';
+    const previewName = hasDivisions
+      ? `${context.regionName} — ${context.divisionIds.length} division${divSuffix}`
+      : context.regionName;
+    setPreviewDivision({
+      name: previewName,
+      wikidataId: context.wikidataId,
+      regionMapUrl: context.regionMapUrl,
+      regionMapLabel: context.regionMapLabel,
+      regionName: context.regionName,
+      regionId,
+    });
+    setPreviewGeometry(null);
+    if (hasDivisions) {
+      setPreviewLoading(true);
+      try {
+        const result = await getUnionGeometry(worldViewId, context.divisionIds);
+        setPreviewGeometry(result.geometry);
+      } finally {
+        setPreviewLoading(false);
+      }
+    }
+  }, [worldViewId]);
+
+  const handleSplitDeeper = useCallback(async (source: 'geoshape' | 'points' | 'image' | null) => {
+    const computeIds = (): number[] | null => {
+      if (previewDivision?.divisionIds?.length) return previewDivision.divisionIds;
+      if (previewDivision?.divisionId) return [previewDivision.divisionId];
+      return null;
+    };
+    const ids = computeIds();
+    if (!ids || !previewDivision?.wikidataId || !previewDivision.regionId) return;
+    setPreviewLoading(true);
+    try {
+      const result = await splitDivisionsDeeper(worldViewId, ids, previewDivision.wikidataId, previewDivision.regionId, source ?? undefined);
+      const newIds = result.divisions.map(d => d.divisionId);
+      setPreviewDivision(prev => prev ? {
+        ...prev,
+        name: `${newIds.length} divisions (refined)`,
+        divisionIds: newIds,
+        markerPoints: result.points ?? prev.markerPoints,
+      } : prev);
+      setPreviewGeometry(result.geometry);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [worldViewId, previewDivision?.divisionIds, previewDivision?.divisionId, previewDivision?.wikidataId, previewDivision?.regionId]);
+
+  const handleVisionMatch = useCallback(async (): Promise<{ ids: number[]; rejectedIds?: number[]; unclearIds?: number[]; reasoning?: string; debugImages?: { regionMap: string; divisionsMap: string } }> => {
+    if (!previewDivision?.divisionIds?.length || !previewDivision.regionId || !previewDivision.regionMapUrl) return { ids: [] };
+    const result = await visionMatchDivisions(worldViewId, previewDivision.divisionIds, previewDivision.regionId, previewDivision.regionMapUrl);
+    return { ids: result.suggestedIds, rejectedIds: result.rejectedIds, unclearIds: result.unclearIds, reasoning: result.reasoning, debugImages: result.debugImages };
+  }, [worldViewId, previewDivision?.divisionIds, previewDivision?.regionId, previewDivision?.regionMapUrl]);
 
   const [shadowInsertions, setShadowInsertions] = useState<ShadowInsertion[]>([]);
 
@@ -138,87 +470,20 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     setCoverageStale(true);
   }, [queryClient, worldViewId]);
 
-  // Preview accept/reject
-  const previewAcceptMutation = useMutation({
-    mutationFn: ({ regionId, divisionId }: { regionId: number; divisionId: number }) =>
-      acceptMatch(worldViewId, regionId, divisionId),
-    onSuccess: () => {
-      invalidateAll();
-      handleClosePreview();
-    },
-  });
-
-  const previewRejectMutation = useMutation({
-    mutationFn: ({ regionId, divisionId }: { regionId: number; divisionId: number }) =>
-      rejectSuggestion(worldViewId, regionId, divisionId),
-    onSuccess: () => {
-      invalidateAll();
-      handleClosePreview();
-    },
-  });
-
-  const previewAcceptAndRejectRestMutation = useMutation({
-    mutationFn: async ({ regionId, divisionId }: { regionId: number; divisionId: number }) => {
-      await acceptMatch(worldViewId, regionId, divisionId);
-      await rejectRemaining(worldViewId, regionId);
-    },
-    onSuccess: () => {
-      invalidateAll();
-      handleClosePreview();
-    },
-  });
-
-  // Transfer preview — fetches 3-layer GeoJSON and opens dialog
-  const previewTransferMutation = useMutation({
-    mutationFn: ({ donorDivisionId, movingDivisionIds, wikidataId }: { donorDivisionId: number; movingDivisionIds: number[]; wikidataId: string }) =>
-      getTransferPreview(worldViewId, donorDivisionId, movingDivisionIds, wikidataId),
-    onSuccess: (featureCollection) => {
-      setPreviewGeometry(featureCollection);
-      setPreviewLoading(false);
-    },
-    onError: (err) => {
-      console.error('[WorldViewImportReview] Transfer preview failed:', err);
-      setPreviewLoading(false);
-      setPendingTransfer(null);
-      handleClosePreview();
-    },
-  });
-
-  // Accept transfer from the preview dialog
-  const acceptTransferFromPreviewMutation = useMutation({
-    mutationFn: ({ regionId, divisionIds, donorRegionId, donorDivisionId, transferType }: {
-      regionId: number; divisionIds: number[]; donorRegionId: number; donorDivisionId: number; transferType: 'direct' | 'split';
-    }) => acceptWithTransferApi(worldViewId, regionId, divisionIds, donorRegionId, donorDivisionId, transferType),
-    onSuccess: () => {
-      invalidateAll();
-      setPendingTransfer(null);
-      handleClosePreview();
-    },
-  });
-
-  const handlePreviewTransfer = useCallback((
-    divisionId: number,
-    name: string,
-    _path: string | undefined,
-    conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' },
-    wikidataId: string,
-    regionName: string,
-    regionId?: number,
-    allDivisionIds?: number[],
-  ) => {
-    const movingIds = allDivisionIds ?? [divisionId];
-    setPreviewDivision({ name: regionName, path: name });
-    setPreviewGeometry(null);
-    setPreviewLoading(true);
-    setPendingTransfer(regionId != null ? {
-      regionId,
-      divisionIds: movingIds,
-      donorRegionId: conflict.donorRegionId,
-      donorDivisionId: conflict.donorDivisionId,
-      transferType: conflict.type,
-    } : null);
-    previewTransferMutation.mutate({ donorDivisionId: conflict.donorDivisionId, movingDivisionIds: movingIds, wikidataId });
-  }, [previewTransferMutation]);
+  // Preview accept/reject — all mutations bundled in a helper hook
+  const onPreviewMutationSuccess = useCallback(() => {
+    invalidateAll();
+    handleClosePreview();
+  }, [invalidateAll, handleClosePreview]);
+  const {
+    previewAcceptMutation,
+    previewRejectMutation,
+    previewTransferMutation,
+    previewAcceptAndRejectRestMutation,
+    previewAcceptSelectedMutation,
+    previewAcceptSelectedRejectRestMutation,
+    previewRejectSelectedMutation,
+  } = usePreviewMutations(worldViewId, onPreviewMutationSuccess);
 
   const finalizeMutation = useMutation({
     mutationFn: () => finalizeReview(worldViewId),
@@ -243,13 +508,80 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       const st = query.state.data;
       if (st?.status === 'matching') return 1000;
       if (st?.status === 'complete') {
-        invalidateAll();
+        // Invalidate tree + stats + children coverage but NOT rematch status
+        // itself — otherwise the invalidation triggers a refetch, which sees
+        // 'complete' again, calls invalidateAll again → infinite loop that
+        // freezes the page.
+        queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchStats', worldViewId] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'childrenCoverage', worldViewId] });
+        setCoverageStale(true);
       }
       return false;
     },
   });
 
   const rematchRunning = rematchStatus?.status === 'matching';
+
+  // ── Geometry computation (polling-based) ──────────────────────────────────
+  const [geomComputing, setGeomComputing] = useState(false);
+  const [geomStatus, setGeomStatus] = useState<{
+    percent: number; computed: number; total: number; errors: number;
+    currentRegion?: string; status?: string;
+  } | null>(null);
+  const geomPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopGeomPolling = useCallback(() => {
+    if (geomPollRef.current) { clearInterval(geomPollRef.current); geomPollRef.current = null; }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => stopGeomPolling, [stopGeomPolling]);
+
+  const startGeomPolling = useCallback(() => {
+    stopGeomPolling();
+    setGeomComputing(true);
+    geomPollRef.current = setInterval(async () => {
+      try {
+        const s = await fetchWorldViewComputationStatus(worldViewId);
+        setGeomStatus({
+          percent: s.percent ?? 0,
+          computed: s.progress ?? 0,
+          total: s.total ?? 0,
+          errors: s.errors ?? 0,
+          currentRegion: s.currentRegion,
+          status: s.status,
+        });
+        if (!s.running) {
+          stopGeomPolling();
+          setGeomComputing(false);
+        }
+      } catch {
+        stopGeomPolling();
+        setGeomComputing(false);
+      }
+    }, 1500);
+  }, [worldViewId, stopGeomPolling]);
+
+  const handleComputeGeometries = useCallback(async () => {
+    try {
+      const result = await startWorldViewGeometryComputation(worldViewId, false, true);
+      if (result.started) {
+        setGeomStatus({ percent: 0, computed: 0, total: result.total ?? 0, errors: 0, status: 'Starting...' });
+        startGeomPolling();
+      } else {
+        setGeomStatus({ percent: 100, computed: result.alreadyComputed ?? 0, total: result.total ?? 0, errors: 0, status: result.message });
+      }
+    } catch (err) {
+      console.error('Failed to start geometry computation:', err);
+    }
+  }, [worldViewId, startGeomPolling]);
+
+  const handleCancelGeomComputation = useCallback(async () => {
+    try {
+      await cancelWorldViewGeometryComputation(worldViewId);
+    } catch { /* poll will detect stopped state */ }
+  }, [worldViewId]);
 
   const matchingDone = stats
     && parseInt(stats.needs_review_blocking) === 0
@@ -331,6 +663,44 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
 
   const coverageChecking = coverageProgress.running;
 
+  // Label for the coverage button: shows "Checking...", "Coverage OK", "Coverage (N gaps)", or "Check Coverage"
+  let coverageButtonLabel: string;
+  if (coverageChecking) {
+    coverageButtonLabel = 'Checking...';
+  } else if (coverageData && !coverageStale) {
+    coverageButtonLabel = coverageData.gaps.length === 0
+      ? 'Coverage OK'
+      : `Coverage (${coverageData.gaps.length} gaps)`;
+  } else {
+    coverageButtonLabel = 'Check Coverage';
+  }
+
+  // Compute handlers for the DivisionPreviewDialog actions based on preview state.
+  // Extracted to a memo to avoid deeply nested ternaries and reduce component complexity.
+  const previewDialogHandlers = useMemo(() => {
+    return computePreviewDialogHandlers({
+      previewDivision,
+      pendingTransfer,
+      previewAcceptMutation,
+      previewAcceptSelectedMutation,
+      previewTransferMutation,
+      previewAcceptAndRejectRestMutation,
+      previewAcceptSelectedRejectRestMutation,
+      previewRejectMutation,
+      previewRejectSelectedMutation,
+    });
+  }, [
+    previewDivision,
+    pendingTransfer,
+    previewAcceptMutation,
+    previewAcceptSelectedMutation,
+    previewTransferMutation,
+    previewAcceptAndRejectRestMutation,
+    previewAcceptSelectedRejectRestMutation,
+    previewRejectMutation,
+    previewRejectSelectedMutation,
+  ]);
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
@@ -345,16 +715,17 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
               onClick={handleCheckCoverage}
               disabled={!matchingDone || coverageChecking}
             >
-              {coverageChecking
-                ? 'Checking...'
-                : coverageData && !coverageStale
-                  ? coverageData.gaps.length === 0
-                    ? 'Coverage OK'
-                    : `Coverage (${coverageData.gaps.length} gaps)`
-                  : 'Check Coverage'}
+              {coverageButtonLabel}
             </Button>
           </span>
         </Tooltip>
+        <Button
+          variant="outlined"
+          onClick={handleComputeGeometries}
+          disabled={geomComputing || rematchRunning}
+        >
+          {geomComputing ? 'Computing...' : 'Compute Geometries'}
+        </Button>
         <Tooltip title={closeReviewTooltip}>
           <span>
             <Button
@@ -398,6 +769,23 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         </Card>
       )}
 
+      {/* Geometry computation progress */}
+      {geomStatus && (
+        <GeomComputationAlert
+          geomStatus={geomStatus}
+          geomComputing={geomComputing}
+          onCancel={handleCancelGeomComputation}
+        />
+      )}
+
+      {/* Hierarchy warnings banner */}
+      {stats && parseInt(stats.hierarchy_warnings_count) > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {stats.hierarchy_warnings_count} region{parseInt(stats.hierarchy_warnings_count) !== 1 ? 's have' : ' has'} parsing ambiguities — some sub-regions may have been dropped during extraction.
+          Use the <strong>Hierarchy Warnings</strong> button in the tree toolbar to review.
+        </Alert>
+      )}
+
       {/* Re-match progress */}
       {rematchRunning && rematchStatus && (
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -413,7 +801,9 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       <WorldViewImportTree
         worldViewId={worldViewId}
         onPreview={handlePreviewDivision}
+        onPreviewUnion={handlePreviewUnion}
         onPreviewTransfer={handlePreviewTransfer}
+        onViewMap={handleViewMap}
         shadowInsertions={shadowInsertions}
         onApproveShadow={(insertion) => approveShadowMutation.mutate(insertion)}
         onRejectShadow={handleRejectShadow}
@@ -425,23 +815,18 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         loading={previewLoading}
         onClose={handleClosePreview}
         regionMapUrl={previewDivision?.regionMapUrl}
+        regionMapLabel={previewDivision?.regionMapLabel}
+        regionName={previewDivision?.regionName}
         wikidataId={previewDivision?.wikidataId}
         markerPoints={previewDivision?.markerPoints}
-        acceptLabel={pendingTransfer ? 'Accept Transfer' : undefined}
-        onAccept={
-          pendingTransfer
-            ? () => acceptTransferFromPreviewMutation.mutate(pendingTransfer)
-            : previewDivision?.regionId != null && previewDivision?.divisionId != null && !previewDivision.isAssigned
-              ? () => previewAcceptMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
-              : undefined
-        }
-        onAcceptAndRejectRest={!pendingTransfer && previewDivision?.regionId != null && previewDivision?.divisionId != null && !previewDivision.isAssigned
-          ? () => previewAcceptAndRejectRestMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
-          : undefined}
-        onReject={!pendingTransfer && previewDivision?.regionId != null && previewDivision?.divisionId != null
-          ? () => previewRejectMutation.mutate({ regionId: previewDivision.regionId!, divisionId: previewDivision.divisionId! })
-          : undefined}
-        actionPending={previewAcceptMutation.isPending || previewRejectMutation.isPending || previewAcceptAndRejectRestMutation.isPending || previewTransferMutation.isPending || acceptTransferFromPreviewMutation.isPending}
+        worldViewId={worldViewId}
+        regionId={previewDivision?.regionId}
+        onAccept={previewDialogHandlers.onAccept}
+        onAcceptAndRejectRest={previewDialogHandlers.onAcceptAndRejectRest}
+        onReject={previewDialogHandlers.onReject}
+        onSplitDeeper={(previewDivision?.divisionIds?.length || previewDivision?.divisionId) && previewDivision?.wikidataId ? handleSplitDeeper : undefined}
+        onVisionMatch={previewDivision?.divisionIds?.length && previewDivision.regionId && previewDivision.regionMapUrl ? handleVisionMatch : undefined}
+        actionPending={previewTransferMutation.isPending || previewAcceptMutation.isPending || previewRejectMutation.isPending || previewAcceptAndRejectRestMutation.isPending || previewAcceptSelectedMutation.isPending || previewAcceptSelectedRejectRestMutation.isPending || previewRejectSelectedMutation.isPending || previewLoading}
       />
 
       {/* Re-match confirmation dialog */}

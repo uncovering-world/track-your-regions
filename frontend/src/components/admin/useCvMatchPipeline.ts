@@ -1,8 +1,8 @@
 /**
  * useCvMatchPipeline — Custom hook for the CV color-match / mapshape-match state machine.
  *
- * Owns all dialog state, SSE event handling, and review response callbacks for
- * the CV match workflow.
+ * Extracted from WorldViewImportTree.tsx. Owns all dialog state, SSE event handling,
+ * and review response callbacks for the CV match workflow.
  */
 
 import { useState, useCallback, useRef } from 'react';
@@ -16,10 +16,9 @@ import {
   type MatchTreeNode,
   type ClusterReviewCluster,
   type ClusterGeoInfo,
-  type SpatialAnomaly,
-  type AdjacencyEdge,
-  type BorderPath,
 } from '../../api/admin/worldViewImport';
+import type { SpatialAnomaly } from '../../api/admin/wvImportTreeOps';
+import type { AdjacencyEdge, BorderPath } from '../../api/admin/wvImportCvMatch';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
