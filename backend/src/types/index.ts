@@ -359,7 +359,21 @@ export const adminUserSearchQuerySchema = z.object({
 
 export const wvExtractStartSchema = z.object({
   name: z.string().min(1).max(255).default('Wikivoyage Regions'),
-  useCache: z.boolean().default(true),
+  /** 'none' for clean fetch, or a wikivoyage-cache*.json basename. No path separators allowed. */
+  cacheFile: z
+    .string()
+    .max(128)
+    .regex(/^(none|wikivoyage-cache(-[A-Za-z0-9_-]+)?\.json)$/)
+    .nullable()
+    .optional(),
+});
+
+/** Path param schema for DELETE /wv-extract/caches/:name — guards against path traversal. */
+export const wvCacheNameParamSchema = z.object({
+  name: z
+    .string()
+    .max(128)
+    .regex(/^wikivoyage-cache(-[A-Za-z0-9_-]+)?\.json$/),
 });
 
 export const wvExtractAnswerSchema = z.object({
