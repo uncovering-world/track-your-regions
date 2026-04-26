@@ -539,6 +539,60 @@ Three new endpoints support the dialog's apply phase:
 
 All three are validated with Zod schemas (`wvImportAddChildSchema`, `wvImportRemoveRegionSchema`, `wvImportRenameRegionSchema`) and require admin auth.
 
+## Manual Cluster Paint Editor
+
+When CV auto-clustering produces incorrect division assignments, admins can switch to a
+canvas-based paint editor to manually reassign pixels to clusters (ADR-0013).
+
+### Entry Modes
+
+From the cluster review step in the CV pipeline (wired in Chain D):
+- **Fix mode** ("Edit manually") — loads the CV-detected cluster overlay as a starting point.
+- **Scratch mode** ("Draw from scratch") — blank canvas over the source map image.
+
+### Architecture
+
+Two-canvas stack:
+- **Border canvas** (Layer 2): holds the processed (mean-shift) image. Brush and polygon
+  tools draw border lines directly on this canvas. Eraser makes pixels transparent.
+- **Color canvas** (Layer 3): holds cluster color fills only. Flood fill reads boundaries
+  from the border canvas — stops at border-colored (CV-pipeline blue) or magenta (user-drawn)
+  pixels.
+- **Background image** (Layer 1): original unprocessed map (non-editable).
+
+The processed-image opacity slider controls Layer 2 visibility — 0% shows only the original,
+100% shows only the processed image.
+
+### Tools
+
+| Tool | Key | Behaviour |
+|------|-----|-----------|
+| Paint bucket | F | Flood fill from border canvas; stops at CV borders and magenta polygon borders |
+| Brush | B | Fixed 5px line (CV pipeline blue) for freehand border drawing via Atrament |
+| Eraser | E | Adjustable eraser size; removes border pixels (source shows through) |
+| Border polygon | L | Click vertices; Enter = open polyline, click near start = closed polygon |
+
+### Data Flow on Submit
+
+1. Frontend reads the color canvas as PNG data URL.
+2. Sends `{ type: 'manual_clusters', overlayPng, palette }` to `POST /api/admin/wv-import/cluster-review/:reviewId`.
+3. Backend (`wvImportMatchReview.ts`) passes to the pipeline via `resolveClusterReview()`.
+4. Pipeline decodes the PNG with sharp, maps pixel colors to cluster labels using
+   nearest-color matching, replaces `pixelLabels` and `colorCentroids`.
+5. Pipeline resumes at ICP alignment + division assignment — completely transparent to
+   downstream code.
+
+### Key Files
+
+| File | Role |
+|------|------|
+| `ClusterPaintEditor.tsx` | Two-canvas paint editor with flood fill, brush/eraser/polygon tools, undo/redo, zoom/pan |
+| `clusterPaintUtils.ts` | Flood fill (magenta-border-aware), overlay↔pixelLabels conversion, color helpers |
+| `wvImportMatchReview.ts` | `ManualClusterDecision` type, `ClusterReviewResponse` union, overlay image store |
+| `adminWorldViewImport.ts` (frontend API) | `ManualClusterResponse`, `ClusterReviewCluster`, `clusterOverlayUrl()` |
+
+Zod validation schemas: `wvImportClusterReviewBodySchema`, `wvImportClusterHighlightParamSchema` in `backend/src/types/index.ts`.
+
 ## Future Enhancements
 
 - Auto-trigger geometry computation after matching
