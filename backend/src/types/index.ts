@@ -401,6 +401,16 @@ export const wvImportRegionIdSchema = z.object({
   regionId: z.coerce.number().int().positive(),
 });
 
+const reviewIdFieldSchema = z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/);
+
+export const reviewIdParamSchema = z.object({
+  reviewId: reviewIdFieldSchema,
+});
+
+export const wvImportIcpAdjustmentBodySchema = z.object({
+  action: z.enum(['adjust', 'continue']),
+});
+
 export const wvImportMarkManualFixSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   needsManualFix: z.boolean(),
