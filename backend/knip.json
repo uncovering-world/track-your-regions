@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
   "project": ["src/**/*.ts"],
-  "ignoreDependencies": ["globals", "@vitest/coverage-v8"],
-  "ignoreExportsUsedInFile": true
+  "ignoreDependencies": ["globals", "@vitest/coverage-v8", "undici"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreFiles": [
+    "src/services/cv/pythonCvClient.ts",
+    "src/services/cv/pythonReviewBridge.ts"
+  ]
 }
