@@ -46,6 +46,22 @@ RETURNS geometry AS $$
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 -- =============================================================================
+-- Helper: Safe geography area computation
+-- =============================================================================
+-- ST_Area(geom::geography) can fail on extreme geometries (e.g. polar regions
+-- like Antarctica where the union polygon wraps the pole). This wrapper catches
+-- the error and returns NULL instead of aborting the query.
+
+CREATE OR REPLACE FUNCTION safe_geo_area(geom geometry)
+RETURNS double precision AS $$
+BEGIN
+  RETURN ST_Area(geom::geography);
+EXCEPTION WHEN OTHERS THEN
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
+
+-- =============================================================================
 -- Administrative Divisions (GADM boundaries)
 -- =============================================================================
 -- Stores official GADM boundaries with pre-simplified geometries for different
