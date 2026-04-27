@@ -3,6 +3,7 @@ import {
   getWorldViews,
   createWorldView,
   updateWorldView,
+  getDeleteImpact,
   deleteWorldView,
   getRegions,
   getRootRegions,
@@ -76,6 +77,7 @@ const router = Router();
 router.get('/', publicReadLimiter, optionalAuth, getWorldViews);
 router.post('/', requireAuth, requireAdmin, validate(createWorldViewBodySchema), createWorldView);
 router.put('/:worldViewId', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, validate(updateWorldViewBodySchema), updateWorldView);
+router.get('/:worldViewId/delete-impact', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, getDeleteImpact);
 router.delete('/:worldViewId', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, deleteWorldView);
 
 // =============================================================================

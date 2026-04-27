@@ -23,6 +23,17 @@ export async function updateWorldView(worldViewId: number, data: { name?: string
   });
 }
 
+export interface DeleteImpact {
+  regionCount: number;
+  experienceAssignmentCount: number;
+  userVisitCount: number;
+  isDefault: boolean;
+}
+
+export async function getDeleteImpact(worldViewId: number): Promise<DeleteImpact> {
+  return authFetchJson<DeleteImpact>(`${API_URL}/api/world-views/${worldViewId}/delete-impact`);
+}
+
 export async function deleteWorldView(worldViewId: number): Promise<void> {
   await authFetchJson<void>(`${API_URL}/api/world-views/${worldViewId}`, {
     method: 'DELETE',
