@@ -201,8 +201,13 @@ async function handleDeleteRuleAction(
 }
 
 /**
- * Apply the outcome of the interview AI result: either re-extract, mark resolved,
- * or formulate the next question.
+ * Apply the outcome of the interview AI result.
+ *
+ * The admin's answer is final for this page: re-extract once with the
+ * provided guidance so the regions reflect the decision, then mark the
+ * question resolved regardless of any new uncertainties the extraction
+ * model surfaces. Generic rules produced by processAnswer cover similar
+ * pages going forward.
  */
 async function applyAnswerResult(
   question: PendingQuestionLike,
