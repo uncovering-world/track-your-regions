@@ -1,8 +1,17 @@
 name: Claude PR Review
 
+# Aligned with anthropics/claude-code-action canonical examples:
+#   examples/claude.yml             — interactive @claude mentions
+#   examples/pr-review-comprehensive.yml — auto on PR open/sync
+# Authentication: Pro/Max subscription via CLAUDE_CODE_OAUTH_TOKEN.
+# See docs/usage.md inputs table — claude_code_oauth_token is the input
+# name for OAuth tokens (anthropic_api_key is for raw API keys).
+
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, ready_for_review, reopened]
+  pull_request_review:
+    types: [submitted]
   pull_request_review_comment:
     types: [created]
   issue_comment:
@@ -13,39 +22,35 @@ permissions:
   pull-requests: write
   issues: write
   id-token: write
+  # Required for Claude to read CI results on PRs (docs/security.md).
   actions: read
 
 jobs:
   review:
-    # Authorization guard — public repo, subscription tokens.
-    # Only OWNER / MEMBER / COLLABORATOR can spend our CLAUDE_CODE_OAUTH_TOKEN.
-    #
-    # - pull_request from a fork: GitHub strips secrets, so the action would
-    #   fail safely — but we block earlier via author_association to avoid the
-    #   wasted run + visible failure.
-    # - issue_comment / pull_request_review_comment: secrets ARE available
-    #   even on public PRs, so without this guard ANY GitHub user could post
-    #   "@claude" and burn the subscription token. Block by comment author.
+    # For pull_request events: the action enforces "users with write access
+    # only" internally (docs/security.md), and GitHub strips secrets for fork
+    # PRs — so we let it through unconditionally here.
+    # For comment / review events: filter by @claude mention to avoid
+    # spinning up a runner on every drive-by comment.
     if: |
-      (
-        github.event_name == 'pull_request' &&
-        contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
-      ) || (
-        github.event_name != 'pull_request' &&
-        contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
-      )
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v6
         with:
-          # Full history needed: the action restores trusted config files
-          # (CLAUDE.md, .claude/, etc.) from origin/main when reviewing PRs,
-          # because the PR head is treated as untrusted input.
-          fetch-depth: 0
-      - uses: anthropics/claude-code-action@v1
+          # Action runs `git fetch origin main --depth=1` internally to
+          # restore trusted base-branch config (CLAUDE.md, .claude/, etc.) —
+          # shallow checkout is sufficient.
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          trigger_phrase: "@claude"
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Review this PR following the project's conventions documented in CLAUDE.md.
 
