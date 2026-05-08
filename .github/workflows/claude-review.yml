@@ -1,11 +1,12 @@
 name: Claude PR Review
 
-# Aligned with anthropics/claude-code-action canonical examples:
-#   examples/claude.yml             — interactive @claude mentions
-#   examples/pr-review-comprehensive.yml — auto on PR open/sync
-# Authentication: Pro/Max subscription via CLAUDE_CODE_OAUTH_TOKEN.
-# See docs/usage.md inputs table — claude_code_oauth_token is the input
-# name for OAuth tokens (anthropic_api_key is for raw API keys).
+# Aligned with anthropics/claude-code-action canonical patterns:
+#   docs/solutions.md > "Automatic PR Code Review"  — basic structure
+#   docs/solutions.md > "Custom PR Review Checklist" — per-team criteria
+#   docs/solutions.md > "Tips for All Solutions"    — REPO/PR NUMBER context, tool perms
+#   docs/configuration.md > "Custom Tools"          — Bash whitelist required for gh CLI
+#   docs/usage.md inputs table                       — claude_code_oauth_token for OAuth
+# Auth: Pro/Max subscription via CLAUDE_CODE_OAUTH_TOKEN.
 
 on:
   pull_request:
@@ -18,7 +19,7 @@ on:
     types: [created]
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   issues: write
   id-token: write
@@ -27,11 +28,10 @@ permissions:
 
 jobs:
   review:
-    # For pull_request events: the action enforces "users with write access
-    # only" internally (docs/security.md), and GitHub strips secrets for fork
-    # PRs — so we let it through unconditionally here.
-    # For comment / review events: filter by @claude mention to avoid
-    # spinning up a runner on every drive-by comment.
+    # pull_request: action enforces "users with write access only" internally
+    # (docs/security.md), and GitHub strips secrets for fork PRs.
+    # Comment / review events: filter by @claude mention so we don't spin up
+    # a runner on every drive-by comment.
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
@@ -42,27 +42,40 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          # Action runs `git fetch origin main --depth=1` internally to
-          # restore trusted base-branch config (CLAUDE.md, .claude/, etc.) —
-          # shallow checkout is sufficient.
+          # Action runs `git fetch origin main --depth=1` internally to restore
+          # trusted base-branch config (CLAUDE.md, .claude/, etc.). Shallow OK.
           fetch-depth: 1
 
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Self-contained prompt — no external doc references that would
+          # cost turns to read. Project conventions (CLAUDE.md, etc.) are
+          # auto-loaded into Claude Code's system context by the action.
           prompt: |
-            Review this PR following the project's conventions documented in CLAUDE.md.
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Priorities (in order):
-            1. Security — OWASP ASVS 5.0 Level 2 (see docs/security/SECURITY.md). Verify input validation (Zod via validate() middleware), parameterized queries / Drizzle, auth middleware on new endpoints, IDOR (resource-ownership checks), no secrets in logs/code.
-            2. Correctness — logic errors, missing error handling at system boundaries (don't flag defensive code requests where internal guarantees exist).
-            3. Refactoring hygiene — unused imports, dead variables, redundant null checks after early returns. See CLAUDE.md "Refactoring Hygiene" section.
-            4. Code reuse — flag inline reimplementations of patterns already in frontend/src/components/shared/ or frontend/src/utils/. See docs/tech/shared-frontend-patterns.md.
-            5. File size — flag files exceeding ~1000 lines (CLAUDE.md threshold) unless dense JSX with internal sub-components.
-            6. Dev-guide compliance — docs/tech/development-guide.md (commit format, granular commits, branch discipline).
+            Review this PR. Project conventions live in CLAUDE.md (already in your context).
 
-            Output format: inline review comments for specific issues, then one concise summary at the end. Be terse — actionable findings only, no narration of what the PR does.
+            Focus areas (in order):
+            1. **Security** — OWASP ASVS 5.0 Level 2: input validation (Zod via validate() middleware), parameterized queries / Drizzle ORM, auth middleware on new endpoints, IDOR (resource-ownership checks), no secrets in code/logs, no concatenated SQL.
+            2. **Correctness** — logic errors, missing edge cases, incorrect error handling. Don't flag missing defensive code where internal guarantees exist.
+            3. **Refactoring hygiene** — unused imports, dead variables, redundant null checks after early returns, leftover commented code.
+            4. **Code reuse** — flag inline reimplementations of patterns already in `frontend/src/components/shared/` or `frontend/src/utils/`.
+            5. **File size** — flag files exceeding ~1000 lines unless they're dense JSX with internal sub-components.
+            6. **Commit hygiene** — granular commits with title + body, refactoring not mixed with feature work.
+
+            Workflow:
+            - Get the diff with `gh pr diff` and review it directly.
+            - Use `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`) for specific line-level issues.
+            - Use `gh pr comment` for the overall summary at the end.
+            - Only post GitHub comments — don't submit review text as chat messages.
+            - Be terse. Actionable findings only, no narration of what the PR does.
+
           claude_args: |
             --model claude-sonnet-4-6
-            --max-turns 15
+            --max-turns 30
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
