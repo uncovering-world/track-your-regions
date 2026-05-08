@@ -1,0 +1,57 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  pull_request_review_comment:
+    types: [created]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  review:
+    # Authorization guard — public repo, subscription tokens.
+    # Only OWNER / MEMBER / COLLABORATOR can spend our CLAUDE_CODE_OAUTH_TOKEN.
+    #
+    # - pull_request from a fork: GitHub strips secrets, so the action would
+    #   fail safely — but we block earlier via author_association to avoid the
+    #   wasted run + visible failure.
+    # - issue_comment / pull_request_review_comment: secrets ARE available
+    #   even on public PRs, so without this guard ANY GitHub user could post
+    #   "@claude" and burn the subscription token. Block by comment author.
+    if: |
+      (
+        github.event_name == 'pull_request' &&
+        contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+      ) || (
+        github.event_name != 'pull_request' &&
+        contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: "@claude"
+          prompt: |
+            Review this PR following the project's conventions documented in CLAUDE.md.
+
+            Priorities (in order):
+            1. Security — OWASP ASVS 5.0 Level 2 (see docs/security/SECURITY.md). Verify input validation (Zod via validate() middleware), parameterized queries / Drizzle, auth middleware on new endpoints, IDOR (resource-ownership checks), no secrets in logs/code.
+            2. Correctness — logic errors, missing error handling at system boundaries (don't flag defensive code requests where internal guarantees exist).
+            3. Refactoring hygiene — unused imports, dead variables, redundant null checks after early returns. See CLAUDE.md "Refactoring Hygiene" section.
+            4. Code reuse — flag inline reimplementations of patterns already in frontend/src/components/shared/ or frontend/src/utils/. See docs/tech/shared-frontend-patterns.md.
+            5. File size — flag files exceeding ~1000 lines (CLAUDE.md threshold) unless dense JSX with internal sub-components.
+            6. Dev-guide compliance — docs/tech/development-guide.md (commit format, granular commits, branch discipline).
+
+            Output format: inline review comments for specific issues, then one concise summary at the end. Be terse — actionable findings only, no narration of what the PR does.
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 15
