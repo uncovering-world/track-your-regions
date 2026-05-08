@@ -51,6 +51,13 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
+          # Visible progress — posts a "Claude is reviewing..." tracking
+          # comment that updates with checkboxes and finalizes to "Completed".
+          # Useful signal even on no-issue PRs where the summary alone is
+          # easy to miss. See docs/solutions.md "Enhanced Example (With
+          # Progress Tracking)".
+          track_progress: true
+
           # Self-contained prompt — no external doc references that would
           # cost turns to read. Project conventions (CLAUDE.md, etc.) are
           # auto-loaded into Claude Code's system context by the action.
