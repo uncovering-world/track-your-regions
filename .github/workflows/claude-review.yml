@@ -36,6 +36,12 @@ jobs:
       )
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history needed: the action restores trusted config files
+          # (CLAUDE.md, .claude/, etc.) from origin/main when reviewing PRs,
+          # because the PR head is treated as untrusted input.
+          fetch-depth: 0
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
