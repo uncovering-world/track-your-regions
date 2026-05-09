@@ -1,0 +1,108 @@
+name: Claude Dependabot Review
+
+# Auto-review every Dependabot PR — assess version bump risk, search
+# our codebase for affected APIs, recommend safe-to-merge / needs-care.
+# Mirrors the project's review-dependabot slash-command logic
+# (.claude/commands/review-dependabot.md), running it automatically
+# whenever Dependabot opens or updates a PR.
+#
+# Auth: Pro/Max subscription via CLAUDE_CODE_OAUTH_TOKEN.
+# Reference: anthropics/claude-code-action docs/solutions.md +
+# Significant-Gravitas/AutoGPT/.github/workflows/claude-dependabot.yml.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+  # Required for Claude to read CI results on PRs (docs/security.md).
+  actions: read
+
+jobs:
+  dependabot-review:
+    # Only fire on Dependabot-authored PRs.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Required: action blocks bot-authored PRs by default per
+          # docs/security.md. Allow only dependabot[bot] explicitly —
+          # NOT '*' (which would let any bot trigger this with controlled
+          # prompts on a public repo).
+          allowed_bots: "dependabot[bot]"
+
+          # Visible progress comment, same as claude-review.yml.
+          track_progress: true
+
+          # Inline comments post immediately (no Haiku filter). See
+          # claude-review.yml for the full rationale.
+          classify_inline_comments: false
+
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            This is a Dependabot dependency-update PR. Review it using
+            the project's `review-dependabot` skill logic
+            (`.claude/commands/review-dependabot.md`).
+
+            ## Workflow
+
+            1. **Read the diff**: `gh pr diff` — typically `package.json`
+               + `package-lock.json` only. Anything else is unusual and
+               warrants attention.
+            2. **Read the PR body**: `gh pr view --json body` — extract
+               version change (from → to), bump type (major/minor/patch),
+               and whether release notes mention breaking changes,
+               security fixes (CVEs), or peer-dep changes.
+            3. **Locate package usage in our code**: grep for the package
+               name across `backend/src/` and `frontend/src/`. Determine:
+               - Direct vs transitive dependency
+               - Runtime vs dev/build only
+               - How heavily used (1 file vs many)
+            4. **For major version bumps OR breaking-change mentions**:
+               do an impact analysis. Read the imports/usages, check
+               whether our specific call sites hit the breaking changes.
+               Be specific — name the file:line of any at-risk usage.
+
+            ## Output (mandatory)
+
+            Post ONE top-level summary via `gh pr comment` with a clear
+            verdict, in this exact format (use the headers verbatim):
+
+            **Verdict**: SAFE TO MERGE / LIKELY SAFE / SECURITY FIX (merge ASAP) /
+            NEEDS CARE — see inline / HOLD OFF — significant rework
+
+            **Why**: 1–2 sentences explaining the verdict.
+
+            **Bump**: `package@old → new` (major/minor/patch[, security fix CVE-...])
+
+            **Our usage**: direct/transitive, runtime/dev, used in N files.
+
+            For risky usage points, post inline comments via
+            `mcp__github_inline_comment__create_inline_comment` on the
+            specific lines in our code that may break. Use the CALLING
+            file/line, not the package.json/lock diff. If usage is
+            confined to a small surface and breakage is trivial, just
+            describe it in the top-level summary instead.
+
+            Be terse. No narration of what the PR does — Dependabot
+            already says it in the PR body.
+
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 30
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(grep:*),Bash(rg:*)"

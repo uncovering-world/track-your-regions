@@ -22,10 +22,13 @@ permissions:
 
 jobs:
   review:
-    # Auto-runs on every PR open/sync. Comment-based @claude
+    # Auto-runs on every PR open/sync EXCEPT Dependabot —
+    # claude-dependabot.yml owns those (different prompt focused on
+    # version-bump risk + codebase impact). Comment-based @claude
     # interactions are handled separately by claude-qa.yml (tag mode).
     # Action enforces "users with write access only" internally
     # (docs/security.md), and GitHub strips secrets for fork PRs.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
