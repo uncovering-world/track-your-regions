@@ -53,14 +53,27 @@ jobs:
 
           # Visible progress — posts a "Claude is reviewing..." tracking
           # comment that updates with checkboxes and finalizes to "Completed".
-          # Useful signal even on no-issue PRs where the summary alone is
-          # easy to miss. See docs/solutions.md "Enhanced Example (With
-          # Progress Tracking)".
+          # See docs/solutions.md "Enhanced Example (With Progress Tracking)".
           track_progress: true
+
+          # Default ('true') buffers any inline comment without
+          # `confirmed: true` and classifies it post-session via Haiku
+          # ("real review vs test/probe"). Setting 'false' makes ALL
+          # inline comments post immediately, regardless of `confirmed` —
+          # simpler, and removes a silent-drop failure mode for legit
+          # findings. Subagent-test-comment risk is low for this
+          # review-only flow.
+          # See docs/usage.md inputs table for `classify_inline_comments`.
+          classify_inline_comments: false
 
           # Self-contained prompt — no external doc references that would
           # cost turns to read. Project conventions (CLAUDE.md, etc.) are
           # auto-loaded into Claude Code's system context by the action.
+          #
+          # Output rules below are mandatory: per docs/capabilities-and-
+          # limitations.md, Claude can only update ONE top-level comment.
+          # The only way to surface multiple findings is via the inline-
+          # comment MCP tool — so direct, line-level findings MUST go inline.
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -75,10 +88,26 @@ jobs:
             5. **File size** — flag files exceeding ~1000 lines unless they're dense JSX with internal sub-components.
             6. **Commit hygiene** — granular commits with title + body, refactoring not mixed with feature work.
 
+            ## OUTPUT RULES (mandatory)
+
+            For EVERY specific line-level finding, you MUST post an inline comment
+            via `mcp__github_inline_comment__create_inline_comment` with:
+              - the exact `path` and `line` of the issue
+              - one or two sentences naming the issue and suggesting a fix
+
+            Reserve the top-level comment (`gh pr comment`) for the OVERALL summary only:
+              - 1–2 sentence verdict (e.g. "Clean. No issues." / "3 inline findings flagged.")
+              - Optional: 1-line per category mentioning how many issues / where
+              - DO NOT repeat the inline issues in the top-level — that defeats the inline mechanism
+
+            If you find NO line-level issues, post just the top-level summary.
+
             Workflow:
-            - Get the diff with `gh pr diff` and review it directly.
-            - Use `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`) for specific line-level issues.
-            - Use `gh pr comment` for the overall summary at the end.
+            1. Get the diff: `gh pr diff`
+            2. For each specific line-level concern → inline comment
+            3. Once all inline comments are posted → ONE top-level summary via `gh pr comment`
+
+            Other rules:
             - Only post GitHub comments — don't submit review text as chat messages.
             - Be terse. Actionable findings only, no narration of what the PR does.
 
