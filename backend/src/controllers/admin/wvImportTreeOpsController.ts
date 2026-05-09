@@ -39,6 +39,7 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
       [regionId, worldViewId],
     );
     if (region.rows.length === 0) {
+      await client.query('ROLLBACK');
       res.status(404).json({ error: 'Region not found in this world view' });
       return;
     }
@@ -54,6 +55,7 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
     `, [regionId]);
 
     if (descendants.rows.length === 0) {
+      await client.query('ROLLBACK');
       res.status(400).json({ error: 'Region has no children to dismiss' });
       return;
     }
