@@ -11,12 +11,6 @@ name: Claude PR Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-  pull_request_review:
-    types: [submitted]
-  pull_request_review_comment:
-    types: [created]
-  issue_comment:
-    types: [created]
 
 permissions:
   contents: read
@@ -28,15 +22,10 @@ permissions:
 
 jobs:
   review:
-    # pull_request: action enforces "users with write access only" internally
+    # Auto-runs on every PR open/sync. Comment-based @claude
+    # interactions are handled separately by claude-qa.yml (tag mode).
+    # Action enforces "users with write access only" internally
     # (docs/security.md), and GitHub strips secrets for fork PRs.
-    # Comment / review events: filter by @claude mention so we don't spin up
-    # a runner on every drive-by comment.
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
