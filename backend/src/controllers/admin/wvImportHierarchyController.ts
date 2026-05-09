@@ -76,13 +76,19 @@ export async function undoLastOperation(req: AuthenticatedRequest, res: Response
         );
       }
 
-      // Restore parent import state
+      // Restore parent import state — restore ALL snapshotted columns,
+      // not just the 3 status fields, so undo is a true rollback.
       if (entry.parentImportState) {
         await client.query(
-          `UPDATE region_import_state SET match_status = $1, needs_manual_fix = $2, fix_note = $3
-           WHERE region_id = $4`,
+          `UPDATE region_import_state SET match_status = $1, needs_manual_fix = $2, fix_note = $3,
+             source_url = $4, source_external_id = $5, region_map_url = $6,
+             map_image_reviewed = $7, import_run_id = $8
+           WHERE region_id = $9`,
           [entry.parentImportState.match_status, entry.parentImportState.needs_manual_fix,
-           entry.parentImportState.fix_note, entry.regionId],
+           entry.parentImportState.fix_note,
+           entry.parentImportState.source_url, entry.parentImportState.source_external_id,
+           entry.parentImportState.region_map_url, entry.parentImportState.map_image_reviewed,
+           entry.parentImportState.import_run_id, entry.regionId],
         );
       }
     } else if (entry.operation === 'handle-as-grouping') {
@@ -101,13 +107,22 @@ export async function undoLastOperation(req: AuthenticatedRequest, res: Response
         // Restore import state
         if (snap.importState) {
           await client.query(
+            // ON CONFLICT path is always hit for handle-as-grouping (children
+            // still exist in `regions` so their import_state rows still exist).
+            // DO UPDATE must restore ALL snapshotted columns for the undo to
+            // be a true rollback — not just the 3 status fields.
             `INSERT INTO region_import_state (region_id, match_status, needs_manual_fix, fix_note,
               source_url, source_external_id, region_map_url, map_image_reviewed, import_run_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT (region_id) DO UPDATE SET
                match_status = EXCLUDED.match_status,
                needs_manual_fix = EXCLUDED.needs_manual_fix,
-               fix_note = EXCLUDED.fix_note`,
+               fix_note = EXCLUDED.fix_note,
+               source_url = EXCLUDED.source_url,
+               source_external_id = EXCLUDED.source_external_id,
+               region_map_url = EXCLUDED.region_map_url,
+               map_image_reviewed = EXCLUDED.map_image_reviewed,
+               import_run_id = EXCLUDED.import_run_id`,
             [snap.importState.region_id, snap.importState.match_status,
              snap.importState.needs_manual_fix, snap.importState.fix_note,
              snap.importState.source_url, snap.importState.source_external_id,
@@ -135,13 +150,19 @@ export async function undoLastOperation(req: AuthenticatedRequest, res: Response
         }
       }
 
-      // Restore parent import state
+      // Restore parent import state — restore ALL snapshotted columns,
+      // not just the 3 status fields, so undo is a true rollback.
       if (entry.parentImportState) {
         await client.query(
-          `UPDATE region_import_state SET match_status = $1, needs_manual_fix = $2, fix_note = $3
-           WHERE region_id = $4`,
+          `UPDATE region_import_state SET match_status = $1, needs_manual_fix = $2, fix_note = $3,
+             source_url = $4, source_external_id = $5, region_map_url = $6,
+             map_image_reviewed = $7, import_run_id = $8
+           WHERE region_id = $9`,
           [entry.parentImportState.match_status, entry.parentImportState.needs_manual_fix,
-           entry.parentImportState.fix_note, entry.regionId],
+           entry.parentImportState.fix_note,
+           entry.parentImportState.source_url, entry.parentImportState.source_external_id,
+           entry.parentImportState.region_map_url, entry.parentImportState.map_image_reviewed,
+           entry.parentImportState.import_run_id, entry.regionId],
         );
       }
       // Clear parent's current members (matchChildrenAsCountries clears them)
