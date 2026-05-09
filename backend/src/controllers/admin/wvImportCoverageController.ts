@@ -275,11 +275,14 @@ export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): 
   const worldViewId = parseInt(String(req.params.worldViewId));
   console.log(`[WV Import] GET /matches/${worldViewId}/coverage-stream (SSE)`);
 
-  // Set up SSE headers
+  // Set up SSE headers. CORS is already handled by the app-level
+  // cors() middleware (origin: FRONTEND_ORIGIN, credentials: true);
+  // setting Access-Control-Allow-Origin: * here would BOTH widen the
+  // policy AND break credentialed SSE (browsers reject '*' with
+  // credentials).
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.flushHeaders();
 
   interface CoverageSSEEvent {
