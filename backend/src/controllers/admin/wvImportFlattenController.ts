@@ -43,6 +43,7 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
       [regionId, worldViewId],
     );
     if (source.rows.length === 0) {
+      await client.query('ROLLBACK');
       res.status(404).json({ error: 'Region not found in this world view' });
       return;
     }
@@ -53,6 +54,7 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
     );
     const sourceUrl = sourceImportState.rows[0]?.source_url as string | undefined;
     if (!sourceUrl) {
+      await client.query('ROLLBACK');
       res.status(400).json({ error: 'Region has no sourceUrl' });
       return;
     }
@@ -67,6 +69,7 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
     );
 
     if (siblings.rows.length === 0) {
+      await client.query('ROLLBACK');
       res.json({ synced: 0 });
       return;
     }
