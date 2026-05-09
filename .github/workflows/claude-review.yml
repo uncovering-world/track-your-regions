@@ -98,12 +98,14 @@ jobs:
             1. Get the diff: `gh pr diff`
             2. For each specific line-level concern → inline comment
             3. Once all inline comments are posted → ONE top-level summary via `gh pr comment`
+            4. **Re-run only**: if there are existing UNRESOLVED claude[bot] inline review threads on this PR (use `gh api graphql` with the `reviewThreads` query), check whether the diff at the thread's path/line still contains the issue you previously flagged. For each thread whose concern is now addressed, resolve it via the GraphQL `resolveReviewThread` mutation. Skip threads where the original concern still applies — leave those open. Skip threads from other authors (CodeQL, CodeRabbit, humans) — only resolve your own.
 
             Other rules:
             - Only post GitHub comments — don't submit review text as chat messages.
             - Be terse. Actionable findings only, no narration of what the PR does.
+            - On a clean re-review (everything resolved + no new findings), the top-level summary should explicitly mention how many threads you resolved (e.g. "Resolved 3 prior findings; no new issues.").
 
           claude_args: |
             --model claude-sonnet-4-6
             --max-turns 30
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*)"

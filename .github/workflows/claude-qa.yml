@@ -56,5 +56,12 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # No `prompt:` — drops into tag mode, treats the @claude
           # comment as the user's request. See docs/experimental.md.
+          #
+          # Whitelist gh CLI + GraphQL so Claude can act on the PR
+          # when asked: read the diff, post comments, AND resolve
+          # review threads (e.g. "@claude resolve the addressed
+          # threads on this PR" → uses GraphQL resolveReviewThread).
+          # GitHub REST has no "resolve" endpoint; only GraphQL does.
           claude_args: |
             --model claude-sonnet-4-6
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(gh api repos:*),Bash(grep:*),Bash(rg:*)"
