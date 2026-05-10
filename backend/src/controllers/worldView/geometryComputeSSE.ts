@@ -21,7 +21,6 @@ interface ProgressEvent {
  */
 export async function computeSingleRegionGeometrySSE(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
-  const _force = req.query.force === 'true'; // Reserved for future use
   const skipSnapping = req.query.skipSnapping === 'true';
 
   // Set up SSE headers
