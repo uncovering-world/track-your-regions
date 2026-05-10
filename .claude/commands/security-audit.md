@@ -54,15 +54,38 @@ Run a security audit of the codebase against OWASP ASVS 5.0 requirements.
 - Check error handling doesn't leak stack traces
 
 ### File Handling (V5)
-- Check image download validation (content-type, path sanitization)
+- Check image download validation (content-type, path sanitization) — Node side
 - Check file storage path construction
 - Check that downloaded files aren't in executable paths
+- **cv-python multipart uploads**: each `UploadFile` parameter (`/pipeline/phase1`, `/pipeline/phase2`, `/pipeline/match`) must enforce: (1) max body size via the ASGI `BodySizeLimitMiddleware` in `cv-python/app/middleware.py` (`CV_MAX_BODY_BYTES`, default 100 MB) — uvicorn has no equivalent CLI flag; deployment may add a reverse-proxy `client_max_body_size` cap in front, (2) image-format allowlist before `cv2.imdecode`, (3) null-check on `cv2.imdecode` return (handled by `decode_image()` raising `InvalidImageBytes`), (4) bounded width/height after decode
 
 ### API Security (V4)
 - Check CORS configuration
 - Check rate limiting (if present)
 - Check request size limits
 - Verify Content-Type header matches response body
+- **cv-python**: verify the service is reachable only from the Node backend (Docker network isolation alone is defence-in-depth, not zero-trust); check whether a shared-secret header or mTLS is needed; check uvicorn's `--limit-concurrency` and request timeout
+
+### cv-python service (FastAPI, internal)
+
+- **V8 (Authorization)** — service has no auth currently; verify the deployment relies on Docker network isolation and `--host` binding is justified. If the service is ever moved out of the internal network, add a bearer/shared-secret check via `Depends`
+- **V13 (Configuration)** — Dockerfile must run as non-root (currently `appuser`), pin the base image, no secrets baked in, no debug routes exposed
+- **V13.4 (Error handling)** — workers stream errors via NDJSON (`{"type":"error","message":...}`). Verify the message is sanitised; raw `str(exception)` leaks paths and stack info. Add an exception handler that strips internals
+- **V2.4 (Input validation)** — `params: str = Form(...)` + `json.loads()` is unvalidated. Wrap in a Pydantic model so schema violations return 422 instead of crashing the worker
+- **V5 (File uploads)** — see "File Handling" above
+- **V11/V12** — N/A (no crypto or external traffic from cv-python)
+- **V16 (Logging)** — service uses `print()` to stdout (collected by Docker). Consider replacing with `logging` and structured fields
+
+### Python tooling expectations
+
+The Python toolchain must be wired up in CI on par with the Node side:
+- **Lint + format** — Ruff (`E/F/W/B/I/UP/C4/SIM/RET/S` rules)
+- **Type check** — mypy (permissive defaults, tighten over time)
+- **Tests** — pytest with coverage
+- **SAST** — Bandit (idiom-aware) + Semgrep `p/python` + `p/owasp-top-ten` + `p/secrets`
+- **Dependency vulns** — pip-audit on `cv-python/requirements.txt`
+- **Container CVEs** — Trivy scanning the cv-python Docker image (HIGH/CRITICAL fail)
+- **CodeQL** — JS+Python via GitHub default-setup code scanning
 
 ## Report Format
 
