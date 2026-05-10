@@ -61,6 +61,47 @@ function cacheKey(title: string, parent: string): string {
   return `${title}|${parent}`;
 }
 
+function buildClassificationPrompt(title: string, parentName: string, childNames?: string[]): string {
+  let message = `Entity: "${title}"\nAppears under: "${parentName}"`;
+  if (childNames && childNames.length > 0) {
+    message += `\nSub-regions: ${childNames.join(', ')}`;
+  }
+  return message;
+}
+
+function isValidClassification(parsed: ClassificationResult): boolean {
+  if (!VALID_TYPES.includes(parsed.type)) return false;
+  if (parsed.area_km2 !== null && (typeof parsed.area_km2 !== 'number' || !Number.isFinite(parsed.area_km2) || parsed.area_km2 < 0)) {
+    return false;
+  }
+  return ['high', 'medium', 'low', 'cached'].includes(parsed.confidence);
+}
+
+/** Best-effort telemetry — failures here must not invalidate a successful classification. */
+async function logClassificationUsage(
+  usage: { prompt_tokens: number; completion_tokens: number } | undefined,
+  model: string,
+  title: string,
+  parentName: string,
+  resultType: string,
+): Promise<void> {
+  if (!usage) return;
+  try {
+    const cost = calculateCost(usage.prompt_tokens, usage.completion_tokens, model);
+    await logAIUsage({
+      feature: 'extraction_classify',
+      model,
+      apiCalls: 1,
+      promptTokens: usage.prompt_tokens,
+      completionTokens: usage.completion_tokens,
+      totalCost: cost.totalCost,
+      description: `Classify "${title}" under "${parentName}" → ${resultType}`,
+    });
+  } catch (err) {
+    console.warn('[WV Extract] Failed to log AI usage for classification', err instanceof Error ? err.message : err);
+  }
+}
+
 /**
  * Classify a geographic entity using AI.
  *
@@ -76,7 +117,6 @@ export async function classifyEntity(
 ): Promise<ClassificationResult | null> {
   const key = cacheKey(title, parentName);
 
-  // Check cache first
   const cached = cache.get(key);
   if (cached) {
     return {
@@ -89,10 +129,7 @@ export async function classifyEntity(
   if (!openai) return null;
 
   const model = await getModelForFeature('extraction');
-  let userMessage = `Entity: "${title}"\nAppears under: "${parentName}"`;
-  if (childNames && childNames.length > 0) {
-    userMessage += `\nSub-regions: ${childNames.join(', ')}`;
-  }
+  const userMessage = buildClassificationPrompt(title, parentName, childNames);
 
   try {
     const response = await chatCompletion(openai, {
@@ -109,39 +146,10 @@ export async function classifyEntity(
     if (!content) return null;
 
     const parsed = JSON.parse(content) as ClassificationResult;
+    if (!isValidClassification(parsed)) return null;
 
-    // Validate the full payload before trusting it. A malformed area_km2 or
-    // confidence shouldn't poison the cache or downstream depth limits.
-    if (!VALID_TYPES.includes(parsed.type)) return null;
-    if (parsed.area_km2 !== null && (typeof parsed.area_km2 !== 'number' || !Number.isFinite(parsed.area_km2) || parsed.area_km2 < 0)) {
-      return null;
-    }
-    if (!['high', 'medium', 'low', 'cached'].includes(parsed.confidence)) {
-      return null;
-    }
-
-    // Cache the validated result
     cache.set(key, { type: parsed.type, area_km2: parsed.area_km2 });
-
-    // Log AI usage best-effort — telemetry failures must not invalidate
-    // a successful classification.
-    const usage = response.usage;
-    if (usage) {
-      try {
-        const cost = calculateCost(usage.prompt_tokens, usage.completion_tokens, model);
-        await logAIUsage({
-          feature: 'extraction_classify',
-          model,
-          apiCalls: 1,
-          promptTokens: usage.prompt_tokens,
-          completionTokens: usage.completion_tokens,
-          totalCost: cost.totalCost,
-          description: `Classify "${title}" under "${parentName}" → ${parsed.type}`,
-        });
-      } catch (err) {
-        console.warn('[WV Extract] Failed to log AI usage for classification', err instanceof Error ? err.message : err);
-      }
-    }
+    await logClassificationUsage(response.usage, model, title, parentName, parsed.type);
 
     return parsed;
   } catch (err) {
