@@ -32,8 +32,9 @@ export function smartFitBounds(
   const latSpan = north - south;
 
   // Determine max zoom based on region size
-  const effectiveMaxZoom = lngSpan > 100 || latSpan > 50 ? 4 :
-                           lngSpan > 50 || latSpan > 30 ? 6 : 12;
+  let effectiveMaxZoom = 12;
+  if (lngSpan > 100 || latSpan > 50) effectiveMaxZoom = 4;
+  else if (lngSpan > 50 || latSpan > 30) effectiveMaxZoom = 6;
 
   const map = mapRef.getMap();
 

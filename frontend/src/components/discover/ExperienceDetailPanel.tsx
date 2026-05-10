@@ -108,6 +108,14 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
   const colors = CATEGORY_COLORS[experience.category || ''];
   const catStyle = colors ? { bg: colors.bg, text: colors.text } : { bg: '#E0E7FF', text: '#4F46E5' };
 
+  let visitedStatusLabel = 'Not Started';
+  if (visitedStatus === 'visited') visitedStatusLabel = 'Completed';
+  else if (visitedStatus === 'partial') visitedStatusLabel = 'In Progress';
+
+  let visitedStatusColor: 'success' | 'warning' | 'default' = 'default';
+  if (visitedStatus === 'visited') visitedStatusColor = 'success';
+  else if (visitedStatus === 'partial') visitedStatusColor = 'warning';
+
   const totalLocations = locationsData?.totalLocations || 0;
   const isMultiLocation = totalLocations > 1;
 
@@ -201,9 +209,9 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
                 {visitedLocationCount}/{visitedTotalLocations} locations visited
               </Typography>
               <Chip
-                label={visitedStatus === 'visited' ? 'Completed' : visitedStatus === 'partial' ? 'In Progress' : 'Not Started'}
+                label={visitedStatusLabel}
                 size="small"
-                color={visitedStatus === 'visited' ? 'success' : visitedStatus === 'partial' ? 'warning' : 'default'}
+                color={visitedStatusColor}
                 sx={{ height: 22, fontSize: '0.65rem' }}
               />
             </Box>

@@ -702,7 +702,10 @@ export function DiscoverExperienceView({
             found = true;
             const clusterCoords = (cluster.geometry as GeoJSON.Point).coordinates;
             // Compute visual radius from the cluster's rendered size
-            const clusterRadius: number = pointCount < 10 ? 14 : pointCount < 30 ? 18 : pointCount < 100 ? 22 : 26;
+            let clusterRadius = 26;
+            if (pointCount < 10) clusterRadius = 14;
+            else if (pointCount < 30) clusterRadius = 18;
+            else if (pointCount < 100) clusterRadius = 22;
             hoverSource.setData({
               type: 'FeatureCollection',
               features: [{
@@ -919,31 +922,29 @@ export function DiscoverExperienceView({
 
           {/* Scrollable experience list */}
           <Box ref={listContainerRef} sx={{ flex: 1, overflowY: 'auto' }}>
-            {isLoading ? (
-              <LoadingSpinner size={24} padding="16px 0" />
-            ) : filteredExperiences.length === 0 ? (
+            {isLoading && <LoadingSpinner size={24} padding="16px 0" />}
+            {!isLoading && filteredExperiences.length === 0 && (
               <EmptyState message={search ? 'No experiences match your filter.' : 'No experiences found.'} />
-            ) : (
-              filteredExperiences.map((exp) => (
-                <ExperienceCard
-                  key={exp.id}
-                  ref={(el) => {
-                    if (el) cardRefsMap.current.set(exp.id, el);
-                    else cardRefsMap.current.delete(exp.id);
-                  }}
-                  experience={exp}
-                  isVisited={visitedIds.has(exp.id)}
-                  isHovered={hoveredExperienceId === exp.id}
-                  isSelected={selectedExperienceId === exp.id}
-                  onClick={() => onSelectExperience(exp.id)}
-                  onMouseEnter={() => handleCardMouseEnter(exp.id)}
-                  onMouseLeave={handleCardMouseLeave}
-                  onVisitedToggle={(e) => handleVisitedToggle(exp.id, visitedIds.has(exp.id), e)}
-                  showCheckbox={isAuthenticated}
-                  onCurate={hasCuratorScope ? () => setCurationTarget(exp) : undefined}
-                />
-              ))
             )}
+            {!isLoading && filteredExperiences.length > 0 && filteredExperiences.map((exp) => (
+              <ExperienceCard
+                key={exp.id}
+                ref={(el) => {
+                  if (el) cardRefsMap.current.set(exp.id, el);
+                  else cardRefsMap.current.delete(exp.id);
+                }}
+                experience={exp}
+                isVisited={visitedIds.has(exp.id)}
+                isHovered={hoveredExperienceId === exp.id}
+                isSelected={selectedExperienceId === exp.id}
+                onClick={() => onSelectExperience(exp.id)}
+                onMouseEnter={() => handleCardMouseEnter(exp.id)}
+                onMouseLeave={handleCardMouseLeave}
+                onVisitedToggle={(e) => handleVisitedToggle(exp.id, visitedIds.has(exp.id), e)}
+                showCheckbox={isAuthenticated}
+                onCurate={hasCuratorScope ? () => setCurationTarget(exp) : undefined}
+              />
+            ))}
           </Box>
         </Box>
       )}

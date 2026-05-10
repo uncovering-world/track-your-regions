@@ -14,6 +14,45 @@ import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContex
 import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
 import type { Experience } from '../../api/experiences';
 
+interface CardSurfaceInputs {
+  isRejected: boolean | undefined;
+  isVisited: boolean;
+  isHovered: boolean;
+  isSelected: boolean;
+  catStyle: { border: string };
+}
+
+interface CardSurfaceStyle {
+  bgcolor: string;
+  borderLeftColor: string;
+  cardOpacity: number;
+  titleColor: string;
+}
+
+function computeCardSurfaceStyle(input: CardSurfaceInputs): CardSurfaceStyle {
+  const { isRejected, isVisited, isHovered, isSelected, catStyle } = input;
+
+  let bgcolor = 'transparent';
+  if (isRejected) bgcolor = 'rgba(239, 68, 68, 0.04)';
+  else if (isHovered) bgcolor = 'action.hover';
+  else if (isSelected) bgcolor = 'primary.50';
+
+  let borderLeftColor = 'transparent';
+  if (isRejected) borderLeftColor = 'error.main';
+  else if (isSelected) borderLeftColor = 'primary.main';
+  else if (isHovered) borderLeftColor = catStyle.border;
+
+  let cardOpacity = 1;
+  if (isRejected) cardOpacity = 0.55;
+  else if (isVisited) cardOpacity = 0.7;
+
+  let titleColor = 'text.primary';
+  if (isRejected) titleColor = 'error.main';
+  else if (isVisited) titleColor = 'text.secondary';
+
+  return { bgcolor, borderLeftColor, cardOpacity, titleColor };
+}
+
 interface ExperienceCardProps {
   experience: Experience;
   isVisited: boolean;
@@ -51,6 +90,9 @@ export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
       ? { bg: colors.bg, text: colors.text, border: colors.primary }
       : { bg: '#E0E7FF', text: '#4F46E5', border: '#6366F1' };
 
+    const cardStyle = computeCardSurfaceStyle({ isRejected, isVisited, isHovered, isSelected, catStyle });
+    const { bgcolor, borderLeftColor, cardOpacity, titleColor } = cardStyle;
+
     return (
       <Box
         ref={ref}
@@ -62,22 +104,14 @@ export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
           gap: 1.5,
           p: 1.25,
           cursor: 'pointer',
-          bgcolor: isRejected
-            ? 'rgba(239, 68, 68, 0.04)'
-            : isHovered
-              ? 'action.hover'
-              : isSelected
-                ? 'primary.50'
-                : 'transparent',
+          bgcolor,
           borderLeft: '3px solid',
-          borderLeftColor: isRejected
-            ? 'error.main'
-            : isSelected ? 'primary.main' : isHovered ? catStyle.border : 'transparent',
+          borderLeftColor,
           borderBottom: '1px solid',
           borderBottomColor: 'divider',
           transition: 'all 0.15s ease',
           '&:hover': { bgcolor: 'action.hover' },
-          opacity: isRejected ? 0.55 : isVisited ? 0.7 : 1,
+          opacity: cardOpacity,
         }}
       >
         {/* Thumbnail */}
@@ -149,8 +183,8 @@ export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
                 fontWeight: 600,
                 fontSize: '0.8rem',
                 lineHeight: 1.3,
-                textDecoration: isRejected ? 'line-through' : isVisited ? 'line-through' : 'none',
-                color: isRejected ? 'error.main' : isVisited ? 'text.secondary' : 'text.primary',
+                textDecoration: (isRejected || isVisited) ? 'line-through' : 'none',
+                color: titleColor,
               }}
             >
               {experience.name}
