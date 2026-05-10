@@ -6,7 +6,104 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
+import { ensureRegionMember, invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
+
+interface ChildRow { id: number; name: string }
+interface CreatedRow { id: number; name: string; divisionId: number }
+
+async function loadChildrenToAdd(
+  gadmDivisionId: number,
+  childIds: unknown,
+): Promise<ChildRow[]> {
+  // When childIds is provided, filter at the SQL layer so we don't materialise
+  // the full parent's child list only to drop most of it client-side.
+  const filterByIds = Array.isArray(childIds) && childIds.length > 0;
+  const result = await pool.query(
+    filterByIds
+      ? `SELECT id, name FROM administrative_divisions WHERE parent_id = $1 AND id = ANY($2::int[]) ORDER BY name`
+      : `SELECT id, name FROM administrative_divisions WHERE parent_id = $1 ORDER BY name`,
+    filterByIds ? [gadmDivisionId, childIds] : [gadmDivisionId],
+  );
+  const suffix = filterByIds ? ` (filtered from ${(childIds as unknown[]).length} requested ids)` : '';
+  console.log(`[AddChildren] Loaded ${result.rows.length} children${suffix}`);
+  return result.rows;
+}
+
+interface SubregionResolutionCtx {
+  worldViewId: number;
+  userRegionId: number;
+  colorToUse: string;
+  assignmentMap: Map<number, number>;
+  createdRegions: CreatedRow[];
+}
+
+/**
+ * Resolve which subregion a child belongs to: explicit user assignment first,
+ * then fall back to accent/case-insensitive name match, otherwise create.
+ * Returns null when explicit assignment fails verification.
+ */
+async function resolveChildSubregion(
+  child: ChildRow,
+  ctx: SubregionResolutionCtx,
+): Promise<number | null> {
+  const explicitRegionId = ctx.assignmentMap.get(child.id);
+  if (explicitRegionId) {
+    const verify = await pool.query(
+      'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2 AND parent_region_id = $3',
+      [explicitRegionId, ctx.worldViewId, ctx.userRegionId],
+    );
+    if (verify.rows.length > 0) return explicitRegionId;
+    console.warn(
+      `[AddChildren] Explicit assignment to region ${explicitRegionId} failed — not a child of region ${ctx.userRegionId} in world view ${ctx.worldViewId}`,
+    );
+    return null;
+  }
+
+  const existing = await pool.query(
+    `SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2
+     AND lower(immutable_unaccent(name)) = lower(immutable_unaccent($3))`,
+    [ctx.worldViewId, ctx.userRegionId, child.name],
+  );
+  if (existing.rows.length > 0) return existing.rows[0].id;
+
+  const newRegion = await pool.query(
+    `INSERT INTO regions (world_view_id, name, parent_region_id, color)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, name`,
+    [ctx.worldViewId, child.name, ctx.userRegionId, ctx.colorToUse],
+  );
+  ctx.createdRegions.push({
+    id: newRegion.rows[0].id,
+    name: newRegion.rows[0].name,
+    divisionId: child.id,
+  });
+  return newRegion.rows[0].id;
+}
+
+async function addChildrenAsSubregions(
+  children: ChildRow[],
+  ctx: SubregionResolutionCtx,
+  affectedRegionIds: Set<number>,
+): Promise<void> {
+  for (const child of children) {
+    const childSubregionId = await resolveChildSubregion(child, ctx);
+    if (childSubregionId === null) continue;
+    await ensureRegionMember(childSubregionId, child.id);
+    affectedRegionIds.add(childSubregionId);
+  }
+}
+
+async function addChildrenAsFlatMembers(
+  children: ChildRow[],
+  userRegionId: number,
+  affectedRegionIds: Set<number>,
+): Promise<void> {
+  for (const child of children) {
+    await ensureRegionMember(userRegionId, child.id);
+  }
+  affectedRegionIds.add(userRegionId);
+  console.log(`[AddChildren] Added ${children.length} children as direct GADM members (no subregions)`);
+}
 
 /**
  * Add all GADM children (subdivisions) of a division as subregions
@@ -25,9 +122,14 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
   const userRegionId = parseInt(String(req.params.regionId));
   const gadmDivisionId = parseInt(String(req.params.divisionId));
 
-  const { childIds, removeOriginal = true, inheritColor = true, createAsSubregions = true, assignments } = req.body || {};
+  const {
+    childIds,
+    removeOriginal = true,
+    inheritColor = true,
+    createAsSubregions = true,
+    assignments,
+  } = req.body || {};
 
-  // Build explicit assignment map: GADM child ID → existing region ID
   const assignmentMap = new Map<number, number>();
   if (Array.isArray(assignments)) {
     for (const a of assignments as Array<{ gadmChildId: number; existingRegionId: number }>) {
@@ -37,32 +139,23 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
 
   console.log(`[AddChildren] Request: userRegionId=${userRegionId}, gadmDivisionId=${gadmDivisionId}, childIds=${childIds ? childIds.length : 'all'}, removeOriginal=${removeOriginal}, inheritColor=${inheritColor}, createAsSubregions=${createAsSubregions}`);
 
-  // Get the region's world view ID and color
   const regionInfo = await pool.query(
     'SELECT world_view_id, color FROM regions WHERE id = $1',
-    [userRegionId]
+    [userRegionId],
   );
-
   if (regionInfo.rows.length === 0) {
     res.status(404).json({ error: 'Region not found' });
     return;
   }
 
-  const worldViewId = regionInfo.rows[0].world_view_id;
-  const parentColor = regionInfo.rows[0].color || '#3388ff';
-  const colorToUse = inheritColor ? parentColor : '#3388ff';
-
-  // Get the GADM division info
   const divisionInfo = await pool.query(
     'SELECT id, name, has_children FROM administrative_divisions WHERE id = $1',
-    [gadmDivisionId]
+    [gadmDivisionId],
   );
-
   if (divisionInfo.rows.length === 0) {
     res.status(404).json({ error: `Division ${gadmDivisionId} not found in GADM` });
     return;
   }
-
   if (!divisionInfo.rows[0].has_children) {
     res.status(400).json({ error: 'Division has no subdivisions to add' });
     return;
@@ -70,123 +163,41 @@ export async function addChildDivisionsAsSubregions(req: Request, res: Response)
 
   console.log(`[AddChildren] Division ${gadmDivisionId} (${divisionInfo.rows[0].name}) - fetching children`);
 
-  // Get all children (subdivisions of this GADM division)
-  const allChildrenResult = await pool.query(`
-    SELECT id, name FROM administrative_divisions
-    WHERE parent_id = $1
-    ORDER BY name
-  `, [gadmDivisionId]);
-
-  // Filter to specific children if childIds provided
-  let childrenToAdd = allChildrenResult.rows;
-  if (Array.isArray(childIds) && childIds.length > 0) {
-    const childIdSet = new Set(childIds);
-    childrenToAdd = childrenToAdd.filter((c: { id: number }) => childIdSet.has(c.id));
-    console.log(`[AddChildren] Filtered to ${childrenToAdd.length} of ${allChildrenResult.rows.length} children`);
-  } else {
-    console.log(`[AddChildren] Adding all ${childrenToAdd.length} children`);
-  }
-
+  const childrenToAdd = await loadChildrenToAdd(gadmDivisionId, childIds);
   if (childrenToAdd.length === 0) {
     res.status(400).json({ error: 'No children to add' });
     return;
   }
 
-  const createdRegions: { id: number; name: string; divisionId: number }[] = [];
+  const createdRegions: CreatedRow[] = [];
   const affectedRegionIds = new Set<number>();
 
   if (createAsSubregions) {
-    // Create subregions for each child (or assign to existing regions)
-    for (const child of childrenToAdd) {
-      let childSubregionId: number;
-
-      // Check explicit assignment first (from frontend UI)
-      const explicitRegionId = assignmentMap.get(child.id);
-      if (explicitRegionId) {
-        // Verify the assigned region exists, belongs to this world view, and is a child of the current region
-        const verify = await pool.query(
-          'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2 AND parent_region_id = $3',
-          [explicitRegionId, worldViewId, userRegionId]
-        );
-        if (verify.rows.length > 0) {
-          childSubregionId = explicitRegionId;
-        } else {
-          console.warn(`[AddChildren] Explicit assignment to region ${explicitRegionId} failed — not a child of region ${userRegionId} in world view ${worldViewId}`);
-          continue;
-        }
-      } else {
-        // Fall back to accent/case-insensitive name matching
-        const existingRegion = await pool.query(
-          `SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2
-           AND lower(immutable_unaccent(name)) = lower(immutable_unaccent($3))`,
-          [worldViewId, userRegionId, child.name]
-        );
-
-        if (existingRegion.rows.length === 0) {
-          // Create new region as child of current region
-          const newRegion = await pool.query(`
-            INSERT INTO regions (world_view_id, name, parent_region_id, color)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, name
-          `, [worldViewId, child.name, userRegionId, colorToUse]);
-
-          childSubregionId = newRegion.rows[0].id;
-
-          createdRegions.push({
-            id: newRegion.rows[0].id,
-            name: newRegion.rows[0].name,
-            divisionId: child.id,
-          });
-        } else {
-          childSubregionId = existingRegion.rows[0].id;
-        }
-      }
-
-      // Add this child division as a member of the subregion
-      const existingChildMember = await pool.query(
-        'SELECT id FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
-        [childSubregionId, child.id]
-      );
-      if (existingChildMember.rows.length === 0) {
-        await pool.query(
-          `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)`,
-          [childSubregionId, child.id]
-        );
-      }
-      affectedRegionIds.add(childSubregionId);
-    }
+    await addChildrenAsSubregions(
+      childrenToAdd,
+      {
+        worldViewId: regionInfo.rows[0].world_view_id,
+        userRegionId,
+        colorToUse: inheritColor ? (regionInfo.rows[0].color || '#3388ff') : '#3388ff',
+        assignmentMap,
+        createdRegions,
+      },
+      affectedRegionIds,
+    );
   } else {
-    // Just add children as GADM members directly to this region (flat structure)
-    for (const child of childrenToAdd) {
-      const existingMember = await pool.query(
-        'SELECT id FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
-        [userRegionId, child.id]
-      );
-      if (existingMember.rows.length === 0) {
-        await pool.query(
-          `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)`,
-          [userRegionId, child.id]
-        );
-      }
-    }
-    affectedRegionIds.add(userRegionId);
-    console.log(`[AddChildren] Added ${childrenToAdd.length} children as direct GADM members (no subregions)`);
+    await addChildrenAsFlatMembers(childrenToAdd, userRegionId, affectedRegionIds);
   }
 
-  // Optionally remove the original division from the region since its children now represent it
-  // This prevents double-counting the geometry (parent + all children)
+  // Removing the original prevents double-counting parent + child geometry.
   if (removeOriginal) {
     await pool.query(
       'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2',
-      [userRegionId, gadmDivisionId]
+      [userRegionId, gadmDivisionId],
     );
     console.log(`[AddChildren] Removed original division ${gadmDivisionId} from region ${userRegionId}`);
   }
 
-  // Invalidate geometry for this region and all ancestors
   await invalidateRegionGeometry(userRegionId);
-
-  // Sync import match status for all affected regions
   for (const rid of affectedRegionIds) {
     await syncImportMatchStatus(rid);
   }
