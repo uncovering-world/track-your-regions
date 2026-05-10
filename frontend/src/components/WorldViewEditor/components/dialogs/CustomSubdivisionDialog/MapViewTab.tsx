@@ -380,21 +380,26 @@ export function MapViewTab({
           )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Tooltip title={
-            imageOverlaySettings
-              ? "Edit reference image overlay"
-              : regionMapUrl
-                ? "Load region map overlay"
-                : "Add reference image overlay"
-          }>
-            <IconButton
-              size="small"
-              onClick={() => setImageOverlayDialogOpen(true)}
-              color={imageOverlaySettings ? "primary" : regionMapUrl ? "secondary" : "default"}
-            >
-              <ImageIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          {(() => {
+            let overlayTooltip = "Add reference image overlay";
+            if (imageOverlaySettings) overlayTooltip = "Edit reference image overlay";
+            else if (regionMapUrl) overlayTooltip = "Load region map overlay";
+
+            let overlayColor: 'primary' | 'secondary' | 'default' = 'default';
+            if (imageOverlaySettings) overlayColor = 'primary';
+            else if (regionMapUrl) overlayColor = 'secondary';
+            return (
+              <Tooltip title={overlayTooltip}>
+                <IconButton
+                  size="small"
+                  onClick={() => setImageOverlayDialogOpen(true)}
+                  color={overlayColor}
+                >
+                  <ImageIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            );
+          })()}
           {imageOverlaySettings && (
             <ToggleButtonGroup
               value={imageDisplayMode}
@@ -418,14 +423,17 @@ export function MapViewTab({
             </ToggleButtonGroup>
           )}
           {/* Eyedropper — pick color from side-by-side image for the selected group */}
-          {imageOverlaySettings && imageDisplayMode === 'sideBySide' && (
-            <Tooltip title={
-              typeof selectedGroupIdx !== 'number'
-                ? 'Select a group first, then pick color'
-                : eyedropperActive
-                  ? 'Click on the image to pick color (Esc to cancel)'
-                  : `Pick color for "${subdivisionGroups[selectedGroupIdx]?.name}" from image`
-            }>
+          {imageOverlaySettings && imageDisplayMode === 'sideBySide' && (() => {
+            let eyedropperTooltip: string;
+            if (typeof selectedGroupIdx !== 'number') {
+              eyedropperTooltip = 'Select a group first, then pick color';
+            } else if (eyedropperActive) {
+              eyedropperTooltip = 'Click on the image to pick color (Esc to cancel)';
+            } else {
+              eyedropperTooltip = `Pick color for "${subdivisionGroups[selectedGroupIdx]?.name}" from image`;
+            }
+            return (
+            <Tooltip title={eyedropperTooltip}>
               <span>
                 <IconButton
                   size="small"
@@ -437,22 +445,20 @@ export function MapViewTab({
                 </IconButton>
               </span>
             </Tooltip>
-          )}
+            );
+          })()}
         </Box>
 
         {/* Instructions */}
         <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-          {activeTool === 'moveToParent'
-            ? 'Click divisions to move them to the parent region'
-            : activeTool === 'split'
-              ? 'Click regions with children to split them'
-              : activeTool === 'cut'
-                ? 'Click a region to draw a polygon to cut pieces from it'
-                : selectedGroupIdx === 'unassigned'
-                  ? 'Click regions to move them to Unassigned'
-                  : selectedGroupIdx !== null
-                    ? `Click regions to assign to "${subdivisionGroups[selectedGroupIdx]?.name}"`
-                    : 'Select a group first, then click regions to assign'}
+          {(() => {
+            if (activeTool === 'moveToParent') return 'Click divisions to move them to the parent region';
+            if (activeTool === 'split') return 'Click regions with children to split them';
+            if (activeTool === 'cut') return 'Click a region to draw a polygon to cut pieces from it';
+            if (selectedGroupIdx === 'unassigned') return 'Click regions to move them to Unassigned';
+            if (selectedGroupIdx !== null) return `Click regions to assign to "${subdivisionGroups[selectedGroupIdx]?.name}"`;
+            return 'Select a group first, then click regions to assign';
+          })()}
         </Typography>
       </Box>
 

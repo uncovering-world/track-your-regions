@@ -702,9 +702,16 @@ export function ImageOverlayDialog({
             </Box>
 
             {/* Aspect ratio adjustment */}
-            <Typography variant="subtitle2" gutterBottom>
-              Stretch: {aspectRatioAdjust < 1 ? 'Wider' : aspectRatioAdjust > 1 ? 'Taller' : 'Original'}
-            </Typography>
+            {(() => {
+              let stretchLabel = 'Original';
+              if (aspectRatioAdjust < 1) stretchLabel = 'Wider';
+              else if (aspectRatioAdjust > 1) stretchLabel = 'Taller';
+              return (
+                <Typography variant="subtitle2" gutterBottom>
+                  Stretch: {stretchLabel}
+                </Typography>
+              );
+            })()}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <Tooltip title="Make wider (-0.01)">
                 <IconButton
@@ -797,6 +804,11 @@ export function ImageOverlayDialog({
 
           {/* Right: Map preview */}
           <Paper variant="outlined" sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            {(() => {
+            let mapCursor = 'default';
+            if (isDragging) mapCursor = 'grabbing';
+            else if (shiftPressed && imageUrl && imageSize) mapCursor = 'grab';
+            return (
             <Map
               ref={mapRef}
               initialViewState={{
@@ -810,7 +822,7 @@ export function ImageOverlayDialog({
               onMouseMove={handleMapMouseMove}
               onMouseUp={handleMapMouseUp}
               onMouseLeave={handleMapMouseLeave}
-              cursor={isDragging ? 'grabbing' : (shiftPressed && imageUrl && imageSize ? 'grab' : 'default')}
+              cursor={mapCursor}
             >
               <NavigationControl position="top-right" showCompass={true} />
 
@@ -823,6 +835,8 @@ export function ImageOverlayDialog({
                 />
               )}
             </Map>
+            );
+            })()}
 
             {!imageUrl && (
               <Box

@@ -341,13 +341,11 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
   const autoSuggestedFrom = autoFillEntity
     ? `Auto-suggested from ${autoFillEntity.label}`
     : 'Auto-suggested from Wikidata';
-  const imageHelperText = suggestMutation.isError
-    ? 'No image found on Wikidata'
-    : suggestMutation.isSuccess
-      ? `Found via ${suggestMutation.data.entityLabel}`
-      : imageAutoFilled.current && newImageUrl
-        ? autoSuggestedFrom
-        : 'Wikimedia Commons URLs work best';
+
+  let imageHelperText = 'Wikimedia Commons URLs work best';
+  if (suggestMutation.isError) imageHelperText = 'No image found on Wikidata';
+  else if (suggestMutation.isSuccess) imageHelperText = `Found via ${suggestMutation.data.entityLabel}`;
+  else if (imageAutoFilled.current && newImageUrl) imageHelperText = autoSuggestedFrom;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -368,13 +366,11 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
                 required
                 fullWidth
                 autoFocus
-                helperText={
-                  autoFillLoading
-                    ? ' ' // Reserve space so layout doesn't jump
-                    : newName.length >= 1 && newName.length < 3
-                      ? 'Type 3+ characters to auto-fill'
-                      : undefined
-                }
+                helperText={(() => {
+                  if (autoFillLoading) return ' '; // Reserve space so layout doesn't jump
+                  if (newName.length >= 1 && newName.length < 3) return 'Type 3+ characters to auto-fill';
+                  return undefined;
+                })()}
                 slotProps={{
                   input: {
                     endAdornment: autoFillLoading ? <CircularProgress size={16} /> : null,
