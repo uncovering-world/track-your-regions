@@ -366,6 +366,15 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
     let mapCurrentHoveredId: number | null = null;
 
+    const clearHoverState = () => {
+      map.getCanvas().style.cursor = '';
+      popup.remove();
+      mapCurrentHoveredId = null;
+      setHoverData(EMPTY_FC);
+      setHoveredRef.current(null, null);
+      setHoverPreview(null);
+    };
+
     const onClusterClick = async (e: maplibregl.MapMouseEvent) => {
       const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS] });
       if (!features.length) return;
@@ -443,14 +452,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       }
     };
 
-    const onMarkerMouseLeave = () => {
-      map.getCanvas().style.cursor = '';
-      popup.remove();
-      mapCurrentHoveredId = null;
-      setHoverData(EMPTY_FC);
-      setHoveredRef.current(null, null);
-      setHoverPreview(null);
-    };
+    const onMarkerMouseLeave = () => clearHoverState();
 
     const onClusterEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
     const onClusterLeave = () => { map.getCanvas().style.cursor = ''; };
@@ -506,14 +508,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       }
     };
 
-    const onHighlightMouseLeave = () => {
-      map.getCanvas().style.cursor = '';
-      popup.remove();
-      mapCurrentHoveredId = null;
-      setHoverData(EMPTY_FC);
-      setHoveredRef.current(null, null);
-      setHoverPreview(null);
-    };
+    const onHighlightMouseLeave = () => clearHoverState();
 
     // Wait for layers to exist before attaching handlers
     const attachHandlers = () => {
