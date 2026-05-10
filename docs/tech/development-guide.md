@@ -348,7 +348,14 @@ Suppressions hide real issues over time. Treat each one as a deliberate exceptio
 2. **Always inline (one line, one suppression).** Use `// eslint-disable-next-line <rule>` or trailing `// eslint-disable-line <rule>`. Each disabled site is reviewed on its own.
 3. **Always include a `-- reason`.** Every suppression must end with `-- <why>` explaining *what* makes the flagged code safe in this specific spot. The reason is what makes the suppression auditable.
 4. **Name every rule explicitly.** Never use a bare `// eslint-disable-next-line` — that disables every rule on the next line and is far too broad. Always name each rule you intend to suppress. A single comment may list multiple rules (e.g. `// eslint-disable-next-line rule-a, rule-b -- reason`), but each rule must be named, and the `-- reason` must justify *all* of them.
-5. **Same policy for every linter.** TypeScript (`@ts-expect-error`, `@ts-ignore`), Semgrep (`nosemgrep`), Ruff (`# noqa`), CodeQL (`lgtm[rule]`) — all follow the same inline-with-reason rule. Prefer `@ts-expect-error` over `@ts-ignore` (it errors when no longer needed).
+5. **Same policy for every linter.** Every suppression syntax we use follows the same inline-with-reason rule:
+   - **TypeScript** — `@ts-expect-error`, `@ts-ignore` (prefer `@ts-expect-error` — it errors when no longer needed)
+   - **ESLint** — `// eslint-disable-next-line <rule>` / `// eslint-disable-line <rule>`
+   - **Semgrep** — `// nosemgrep: <rule>` / `# nosemgrep: <rule>`
+   - **Ruff** — `# noqa: <CODE>`
+   - **mypy** — `# type: ignore[<CODE>]`
+   - **Bandit** — `# nosec <CODE>`
+   - **CodeQL** — `// lgtm[<rule>]` / `# lgtm[<rule>]`
 6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern).
 
 ### Examples
@@ -374,6 +381,27 @@ const x: any = doSomething();
 const cv: any = loadOpenCV();
 ```
 
+```python
+# ✅ GOOD — Ruff inline with reason
+result = run_solver(  # noqa: E501 -- inline ASCII-art table is unreadable when reflowed
+    matrix, tol=1e-9,
+)
+
+# ✅ GOOD — mypy inline with reason
+warped = cv2.warpAffine(src, M, dsize)  # type: ignore[arg-type] -- cv2 stubs miss the (int,int) tuple overload; verified at runtime via tests/test_match.py
+
+# ✅ GOOD — Bandit inline with reason
+column = ALLOWED_COLUMNS[idx]
+query = f"SELECT {column} FROM regions WHERE id = %s"  # nosec B608 -- column is from an allowlist; the value is parameterized below
+cur.execute(query, (region_id,))
+
+# ❌ BAD — file-level Ruff disable, hides everything that follows
+# ruff: noqa
+
+# ❌ BAD — bare suppression, no code or reason
+result = some_call()  # noqa
+```
+
 ### Writing a good reason
 
 The reason should answer "why is this safe right now?" Not just restate the rule.
@@ -386,6 +414,8 @@ The reason should answer "why is this safe right now?" Not just restate the rule
 | `-- OpenCV.js (cv / cv.Mat) has no TypeScript types` | ✅ Specific and actionable |
 | `-- filePath validated by safeCachePath: must match wikivoyage-cache*.json under CACHE_DIR` | ✅ Names the upstream guard that makes the call safe |
 | `-- bounded character classes between literal anchors; no nested quantifiers, so no catastrophic backtracking` | ✅ Explains the regex-safety reasoning the rule missed |
+| `# nosec B603 -- subprocess input is hard-coded path, not user input` | ✅ Names the upstream guarantee that defuses the rule |
+| `# type: ignore[no-untyped-call] -- pyproj.Transformer.from_crs has no stubs in pyproj 3.7` | ✅ Specific lib + version, points to a fixable future state |
 
 ### When the rule is wrong everywhere
 
