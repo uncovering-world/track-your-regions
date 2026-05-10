@@ -12,7 +12,8 @@ exclude = ["__pycache__", ".venv", "data", "dist", "build"]
 # C4: flake8-comprehensions
 # SIM: flake8-simplify
 # RET: flake8-return
-select = ["E", "F", "W", "B", "I", "UP", "C4", "SIM", "RET"]
+# S: flake8-bandit (security checks during lint; complements the standalone Bandit run)
+select = ["E", "F", "W", "B", "I", "UP", "C4", "SIM", "RET", "S"]
 ignore = [
   "E501",  # line too long — we set line-length=120, but some strings legitimately exceed
   "E741",  # ambiguous variable name (l, I, O) — we use `l` for label in CV code
@@ -20,5 +21,46 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = ["F401", "F841"]  # test files may have unused imports / vars during development
-"__init__.py" = ["F401"]         # re-exports
+"test_*.py" = ["F401", "F841", "S101"]  # tests may have unused imports/vars; assert is fine in tests (S101)
+"tests/*.py" = ["S101"]                  # assert is fine in tests
+"__init__.py" = ["F401"]                 # re-exports
+
+[tool.ruff.format]
+# Defaults are fine; opting in explicitly so `ruff format --check` is part of CI.
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_equality = true
+# `disallow_untyped_defs` deliberately not enabled yet — first land the floor,
+# then ratchet via follow-up PRs (see docs/tech/planning when it lands). The
+# `app.cv.*` override below silences the numpy/cv2-stub noise on day one.
+
+[[tool.mypy.overrides]]
+module = ["cv2.*", "easyocr.*", "skimage.*", "scipy.*", "pyproj.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Skip `app.cv.*` on day one. mypy follows imports from routes/utils into
+# `app.cv`, where numpy/cv2 stubs produce ~150 spurious findings that aren't
+# real bugs. Re-enable file-by-file as we add real type annotations.
+module = "app.cv.*"
+follow_imports = "skip"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--cov=app --cov-report=term-missing"
+
+[tool.coverage.run]
+omit = ["tests/*"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+# `assert` is fine in tests; tests are excluded above. For prod code we keep
+# the default severity floor and require `# nosec <CODE> -- reason` per the
+# suppression policy (docs/tech/development-guide.md § Linter Suppressions).

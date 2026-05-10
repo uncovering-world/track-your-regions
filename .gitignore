@@ -48,12 +48,24 @@ postgres_data/
 .active-db
 .golden-db
 
-# Python (for db/ scripts)
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 .venv
 venv/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Agent / Claude Code worktrees
+.worktrees/
+
+# Stray root-level lockfile (backend/ and frontend/ each have their own)
+/package-lock.json
 
 # Large data files
 *.gpkg
