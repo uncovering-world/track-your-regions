@@ -53,6 +53,94 @@ export function parseWktPoint(wkt: string): { lat: number; lon: number } | null 
 // =============================================================================
 
 /**
+ * Sentinel thrown to signal the retry loop should sleep and try again.
+ * Carries the backoff duration and a label for logging.
+ */
+class RetrySignal extends Error {
+  constructor(public backoffMs: number, public label: string) {
+    super(label);
+  }
+}
+
+function exponentialBackoff(attempt: number): number {
+  return Math.min(30000, 5000 * Math.pow(2, attempt));
+}
+
+function backoffFromRetryAfter(retryAfter: number, attempt: number): number {
+  return Number.isFinite(retryAfter) && retryAfter > 0
+    ? retryAfter * 1000
+    : exponentialBackoff(attempt);
+}
+
+async function fetchSparqlResponse(query: string, signal: AbortSignal): Promise<Response> {
+  return fetch(WIKIDATA_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/sparql-results+json',
+      'User-Agent': WIKIDATA_USER_AGENT,
+    },
+    body: `query=${encodeURIComponent(query)}&timeout=${SPARQL_SERVER_TIMEOUT_MS}`,
+    signal,
+  });
+}
+
+async function readSparqlBindings(response: Response): Promise<SparqlBinding[]> {
+  const data = await response.json() as {
+    results: { bindings: Record<string, { type: string; value: string }>[] };
+  };
+  return data.results.bindings;
+}
+
+async function handleSparqlHttpError(
+  response: Response,
+  attempt: number,
+  retries: number,
+): Promise<never> {
+  const text = await response.text();
+  const retriable = response.status >= 500 || response.status === 429;
+  if (attempt < retries && retriable) {
+    const retryAfter = Number(response.headers.get('retry-after'));
+    const backoff = backoffFromRetryAfter(retryAfter, attempt);
+    throw new RetrySignal(backoff, `SPARQL ${response.status}`);
+  }
+  throw new Error(`Wikidata SPARQL error ${response.status}: ${text.substring(0, 500)}`);
+}
+
+function classifySparqlException(
+  error: unknown,
+  attempt: number,
+  retries: number,
+): RetrySignal | Error {
+  if (error instanceof RetrySignal) return error;
+  const isAbort = error instanceof Error && error.name === 'AbortError';
+  if (attempt < retries && (isAbort || error instanceof TypeError)) {
+    return new RetrySignal(
+      exponentialBackoff(attempt),
+      isAbort ? 'SPARQL timeout' : 'SPARQL network error',
+    );
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return new Error(`Wikidata SPARQL request failed: ${message}`);
+}
+
+async function attemptSparqlOnce(
+  query: string,
+  attempt: number,
+  retries: number,
+): Promise<SparqlBinding[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SPARQL_TIMEOUT_MS);
+  try {
+    const response = await fetchSparqlResponse(query, controller.signal);
+    if (!response.ok) await handleSparqlHttpError(response, attempt, retries);
+    return await readSparqlBindings(response);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Execute a SPARQL query against Wikidata with retry for transient errors.
  *
  * @param query - The SPARQL query string
@@ -65,60 +153,20 @@ export async function sparqlQuery(
   retries: number = SPARQL_MAX_RETRIES,
 ): Promise<SparqlBinding[]> {
   const maxAttempts = retries + 1;
-
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), SPARQL_TIMEOUT_MS);
-
     try {
-      const response = await fetch(WIKIDATA_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/sparql-results+json',
-          'User-Agent': WIKIDATA_USER_AGENT,
-        },
-        body: `query=${encodeURIComponent(query)}&timeout=${SPARQL_SERVER_TIMEOUT_MS}`,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        const retriable = response.status >= 500 || response.status === 429;
-        if (attempt < retries && retriable) {
-          const retryAfter = Number(response.headers.get('retry-after'));
-          const backoff = Number.isFinite(retryAfter) && retryAfter > 0
-            ? retryAfter * 1000
-            : Math.min(30000, 5000 * Math.pow(2, attempt));
-          console.warn(
-            `${logPrefix} SPARQL ${response.status}, retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`
-          );
-          await delay(backoff);
-          continue;
-        }
-        throw new Error(`Wikidata SPARQL error ${response.status}: ${text.substring(0, 500)}`);
-      }
-
-      const data = await response.json() as {
-        results: { bindings: Record<string, { type: string; value: string }>[] };
-      };
-      return data.results.bindings;
+      return await attemptSparqlOnce(query, attempt, retries);
     } catch (error) {
-      const isAbort = error instanceof Error && error.name === 'AbortError';
-      if (attempt < retries && (isAbort || error instanceof TypeError)) {
-        const backoff = Math.min(30000, 5000 * Math.pow(2, attempt));
+      const classified = classifySparqlException(error, attempt, retries);
+      if (classified instanceof RetrySignal) {
         console.warn(
-          `${logPrefix} SPARQL ${isAbort ? 'timeout' : 'network error'}, retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`
+          `${logPrefix} ${classified.label}, retrying in ${Math.round(classified.backoffMs / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`,
         );
-        await delay(backoff);
+        await delay(classified.backoffMs);
         continue;
       }
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Wikidata SPARQL request failed: ${message}`);
-    } finally {
-      clearTimeout(timeout);
+      throw classified;
     }
   }
-
   throw new Error('SPARQL query failed after all retries');
 }
