@@ -13,6 +13,78 @@ import type { Region } from '../../types';
 
 const REGIONS_SOURCE_LAYER = 'regions';
 
+interface ClickMeta {
+  name?: string;
+  hasChildren?: boolean;
+  hasSubregions?: boolean;
+  color?: string;
+  parentRegionId?: number | null;
+  focusBbox?: [number, number, number, number] | null;
+  anchorPoint?: [number, number] | null;
+}
+
+function flyToClickedFeature(
+  map: MapRef | null,
+  id: number,
+  meta: ClickMeta | undefined,
+  fromContextLayer: boolean,
+  clickedFeature: { geometry?: GeoJSON.Geometry } & object,
+  lastMapClickIdRef: React.MutableRefObject<number | null>,
+): void {
+  if (!map) return;
+  if (meta?.focusBbox) {
+    lastMapClickIdRef.current = id;
+    smartFitBounds(map, meta.focusBbox, {
+      padding: 60,
+      duration: 400,
+      anchorPoint: meta.anchorPoint,
+    });
+    return;
+  }
+  // Context-layer clicks: tile functions don't include focusBbox. Don't fly
+  // immediately from imprecise tile geometry — let the ancestors API enrich
+  // selectedRegion with proper focusBbox, which triggers the fly-to effect
+  // with accurate bounds.
+  if (fromContextLayer || !clickedFeature.geometry) return;
+
+  lastMapClickIdRef.current = id;
+  try {
+    const featureGeojson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [clickedFeature as GeoJSON.Feature],
+    };
+    const bbox = turf.bbox(featureGeojson) as [number, number, number, number];
+    smartFitBounds(map, bbox, { padding: 60, duration: 400, geojson: featureGeojson });
+  } catch (e) {
+    console.error('Failed to fit bounds from clicked feature:', e);
+  }
+}
+
+function resolveClickedRegionParent(
+  fromContextLayer: boolean,
+  featureProps: Record<string, unknown> | null | undefined,
+  viewingRegionId: 'all-leaf' | number,
+  meta: ClickMeta | undefined,
+): number | null {
+  if (fromContextLayer) {
+    return (featureProps?.parent_region_id as number | null | undefined) ?? null;
+  }
+  if (viewingRegionId === 'all-leaf') {
+    return (featureProps?.parent_region_id as number | null | undefined)
+      ?? meta?.parentRegionId
+      ?? null;
+  }
+  return viewingRegionId;
+}
+
+function resolveClickedDivisionParent(
+  selectedDivision: { id: number; hasChildren?: boolean; parentId?: number | null } | null,
+): number | null {
+  if (!selectedDivision) return null;
+  if (selectedDivision.hasChildren) return selectedDivision.id;
+  return selectedDivision.parentId ?? null;
+}
+
 interface UseMapInteractionsOptions {
   mapRef: React.RefObject<MapRef | null>;
   mapLoaded: boolean;
@@ -176,103 +248,65 @@ export function useMapInteractions({
     if (isExploring) return;
 
     const features = event.features;
-    if (features && features.length > 0) {
-      // Prefer main tile features (region-fill, region-hull) over context layer
-      // features when both exist at the click point. Context layers cover entire
-      // ancestor areas, so without this preference a click on a child region
-      // would match the ancestor polygon from the context layer instead.
-      const clickedFeature = features.find(f => !f.layer?.id?.startsWith('context-')) ?? features[0];
-      const id = isCustomWorldView
-        ? clickedFeature.properties?.region_id as number | undefined
-        : clickedFeature.properties?.division_id as number | undefined;
+    if (!features || features.length === 0) return;
 
-      if (id) {
-        const meta = metadataById[id];
+    // Prefer main tile features (region-fill, region-hull) over context layer
+    // features when both exist at the click point. Context layers cover entire
+    // ancestor areas, so without this preference a click on a child region
+    // would match the ancestor polygon from the context layer instead.
+    const clickedFeature = features.find(f => !f.layer?.id?.startsWith('context-')) ?? features[0];
+    const id = isCustomWorldView
+      ? clickedFeature.properties?.region_id as number | undefined
+      : clickedFeature.properties?.division_id as number | undefined;
+    if (!id) return;
 
-        // Detect if click came from an ancestor context layer
-        const fromContextLayer = clickedFeature.layer?.id?.startsWith('context-');
+    const meta = metadataById[id];
+    const fromContextLayer = !!clickedFeature.layer?.id?.startsWith('context-');
 
-        console.log('[RegionMapVT] Click:', {
-          id,
-          meta,
-          featureProperties: clickedFeature.properties,
-          viewingRegionId,
-          fromContextLayer,
-        });
+    console.log('[RegionMapVT] Click:', {
+      id,
+      meta,
+      featureProperties: clickedFeature.properties,
+      viewingRegionId,
+      fromContextLayer,
+    });
 
-        if (mapRef.current) {
-          if (meta?.focusBbox) {
-            // Current-level region with known focus data — fly immediately
-            lastMapClickIdRef.current = id;
-            smartFitBounds(mapRef.current, meta.focusBbox, {
-              padding: 60,
-              duration: 400,
-              anchorPoint: meta.anchorPoint,
-            });
-          } else if (fromContextLayer) {
-            // Context layer click — tile functions don't include focusBbox.
-            // Don't fly immediately from imprecise tile geometry; let the
-            // ancestors API enrich selectedRegion with proper focusBbox, which
-            // triggers the fly-to effect with accurate bounds.
-          } else if (clickedFeature.geometry) {
-            lastMapClickIdRef.current = id;
-            try {
-              const featureGeojson: GeoJSON.FeatureCollection = {
-                type: 'FeatureCollection',
-                features: [clickedFeature as GeoJSON.Feature],
-              };
-              const bbox = turf.bbox(featureGeojson) as [number, number, number, number];
-              smartFitBounds(mapRef.current, bbox, { padding: 60, duration: 400, geojson: featureGeojson });
-            } catch (e) {
-              console.error('Failed to fit bounds from clicked feature:', e);
-            }
-          }
-        }
+    flyToClickedFeature(
+      mapRef.current,
+      id,
+      meta,
+      fromContextLayer,
+      clickedFeature,
+      lastMapClickIdRef,
+    );
 
-        if (isCustomWorldView && selectedWorldView) {
-          // For context layer clicks, parent comes from the feature's own parent_region_id
-          // (not viewingRegionId, which is the currently selected non-leaf region).
-          let parentRegionId: number | null;
-          if (fromContextLayer) {
-            parentRegionId = clickedFeature.properties?.parent_region_id ?? null;
-          } else if (viewingRegionId === 'all-leaf') {
-            parentRegionId = clickedFeature.properties?.parent_region_id ?? meta?.parentRegionId ?? null;
-          } else {
-            parentRegionId = viewingRegionId;
-          }
-
-          const newRegion: Region = {
-            id,
-            worldViewId: selectedWorldView.id,
-            name: meta?.name ?? clickedFeature.properties?.name ?? '',
-            description: null,
-            parentRegionId: parentRegionId,
-            color: meta?.color ?? clickedFeature.properties?.color ?? null,
-            hasSubregions: meta?.hasSubregions ?? clickedFeature.properties?.has_subregions ?? false,
-            focusBbox: meta?.focusBbox,
-            anchorPoint: meta?.anchorPoint,
-          };
-
-          console.log('[RegionMapVT] Setting selectedRegion:', newRegion);
-          setSelectedRegion(newRegion);
-        } else {
-          let parentId: number | null;
-          if (!selectedDivision) {
-            parentId = null;
-          } else if (selectedDivision.hasChildren) {
-            parentId = selectedDivision.id;
-          } else {
-            parentId = selectedDivision.parentId;
-          }
-
-          setSelectedDivision({
-            id,
-            name: meta?.name ?? clickedFeature.properties?.name ?? '',
-            parentId: parentId,
-            hasChildren: meta?.hasChildren ?? clickedFeature.properties?.has_children ?? false,
-          });
-        }
-      }
+    if (isCustomWorldView && selectedWorldView) {
+      const parentRegionId = resolveClickedRegionParent(
+        fromContextLayer,
+        clickedFeature.properties as Record<string, unknown> | null | undefined,
+        viewingRegionId,
+        meta,
+      );
+      const newRegion: Region = {
+        id,
+        worldViewId: selectedWorldView.id,
+        name: meta?.name ?? clickedFeature.properties?.name ?? '',
+        description: null,
+        parentRegionId,
+        color: meta?.color ?? clickedFeature.properties?.color ?? null,
+        hasSubregions: meta?.hasSubregions ?? clickedFeature.properties?.has_subregions ?? false,
+        focusBbox: meta?.focusBbox,
+        anchorPoint: meta?.anchorPoint,
+      };
+      console.log('[RegionMapVT] Setting selectedRegion:', newRegion);
+      setSelectedRegion(newRegion);
+    } else {
+      setSelectedDivision({
+        id,
+        name: meta?.name ?? clickedFeature.properties?.name ?? '',
+        parentId: resolveClickedDivisionParent(selectedDivision),
+        hasChildren: meta?.hasChildren ?? clickedFeature.properties?.has_children ?? false,
+      });
     }
   }, [selectedDivision, setSelectedDivision, isCustomWorldView, setSelectedRegion, selectedWorldView, metadataById, viewingRegionId, isExploring, mapRef]);
 
