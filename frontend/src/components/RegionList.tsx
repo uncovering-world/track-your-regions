@@ -106,15 +106,9 @@ export function RegionList() {
   }, [setSelectedDivision]);
 
   const handleRegionClick = useCallback((region: Region) => {
-    // Only navigate into regions that have subregions
-    // For leaf regions, just select them (they'll be highlighted on map)
-    if (region.hasSubregions) {
-      setSelectedRegion(region);
-    } else {
-      // For leaf regions, we still set them as selected for highlighting
-      // but we don't try to fetch subregions
-      setSelectedRegion(region);
-    }
+    // Leaf regions get highlighted via selection; non-leaves drill in via the
+    // selectedRegion-driven navigation effect.
+    setSelectedRegion(region);
   }, [setSelectedRegion]);
 
   if (isLoading) {
