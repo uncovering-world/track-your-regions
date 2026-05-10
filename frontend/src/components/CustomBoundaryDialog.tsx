@@ -21,6 +21,43 @@ import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../constants/mapStyles';
 import { smartFitBounds } from '../utils/mapUtils';
 
+type PolyFeature = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
+
+function collectIntersectionsWithSources(
+  drawnPolygon: PolyFeature,
+  sourceFeatures: GeoJSON.Feature[],
+): PolyFeature[] {
+  const out: PolyFeature[] = [];
+  for (const feature of sourceFeatures) {
+    if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') continue;
+    try {
+      const fc = turf.featureCollection([
+        drawnPolygon,
+        feature as PolyFeature,
+      ]) as GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
+      const intersection = turf.intersect(fc);
+      if (intersection) out.push(intersection as PolyFeature);
+    } catch (e) {
+      console.warn('Intersection failed for feature:', e);
+    }
+  }
+  return out;
+}
+
+function unionAllIntersections(intersections: PolyFeature[]): PolyFeature {
+  let result: PolyFeature = intersections[0];
+  for (let i = 1; i < intersections.length; i++) {
+    try {
+      const fc = turf.featureCollection([result, intersections[i]]) as GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
+      const unioned = turf.union(fc);
+      if (unioned) result = unioned as PolyFeature;
+    } catch (e) {
+      console.warn('Union failed:', e);
+    }
+  }
+  return result;
+}
+
 interface CustomBoundaryDialogProps {
   open: boolean;
   onClose: () => void;
@@ -112,44 +149,14 @@ export function CustomBoundaryDialog({
 
     try {
       const drawnPolygon = turf.polygon([[...drawingPoints, drawingPoints[0]]]);
-      const intersections: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>[] = [];
-
-      for (const feature of sourceGeometries.features) {
-        if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
-          try {
-            const featureCollection = turf.featureCollection([
-              drawnPolygon,
-              feature as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>
-            ]) as GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
-            const intersection = turf.intersect(featureCollection);
-            if (intersection) {
-              intersections.push(intersection as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>);
-            }
-          } catch (e) {
-            console.warn('Intersection failed for feature:', e);
-          }
-        }
-      }
+      const intersections = collectIntersectionsWithSources(drawnPolygon, sourceGeometries.features);
 
       if (intersections.length === 0) {
         setError('No intersection found. Make sure your polygon overlaps with the source regions.');
         return;
       }
 
-      let result: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> = intersections[0];
-      for (let i = 1; i < intersections.length; i++) {
-        try {
-          const fc = turf.featureCollection([result, intersections[i]]) as GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
-          const unioned = turf.union(fc);
-          if (unioned) {
-            result = unioned as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
-          }
-        } catch (e) {
-          console.warn('Union failed:', e);
-        }
-      }
-
-      setResultGeometry(result);
+      setResultGeometry(unionAllIntersections(intersections));
       setError(null);
       setStep('review');
     } catch (e) {
