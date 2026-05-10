@@ -4,10 +4,24 @@ import cv2
 import numpy as np
 
 
+class InvalidImageBytes(ValueError):
+    """Raised when uploaded bytes don't decode to a valid image (V5.1.2 — file-format validation)."""
+
+
 def decode_image(image_bytes: bytes) -> np.ndarray:
-    """Decode raw image bytes to BGR numpy array."""
+    """Decode raw image bytes to BGR numpy array.
+
+    Raises:
+        InvalidImageBytes: if the bytes are empty or `cv2.imdecode` returns None
+            (i.e. the bytes are not a recognised image format).
+    """
+    if not image_bytes:
+        raise InvalidImageBytes("empty image payload")
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise InvalidImageBytes("unrecognised image format")
+    return img
 
 
 def encode_png_base64(image: np.ndarray) -> str:
