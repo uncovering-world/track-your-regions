@@ -1,15 +1,50 @@
 # Restore the SonarJS guardrail (multi-session refactor)
 
-## Status — 2026-05-10
+## Status — 2026-05-10 (session 2)
 
 - **Branch**: `feature/restore-complexity-guardrails` (pushed to origin)
+- **Lint counts now**: backend 41 / frontend 111 (down from 60 / 146 baseline)
 - **Commits so far**:
   - `11342c8 chore: restore eslint-plugin-sonarjs (recommended config) for backend + frontend`
-  - tiny-fix batch (8 commits): unused-vars, single-boolean-return, redundant-jump/assignments, duplicated-branches/identical-functions, single-char-class, multiline-blocks, todo-tags, nested-template-literals
-  - `f9a283b chore(lint): restore max-lines=1000 ESLint rule (backend + frontend)`
+  - Tiny-fix batch (8 commits): unused-vars, single-boolean-return, redundant-jump/assignments, duplicated-branches/identical-functions, single-char-class, multiline-blocks, todo-tags, nested-template-literals
+  - `f9a283b chore(lint): restore max-lines=1000 ESLint rule`
+  - `846d784 chore(lint): restore lint:circular (madge) and break ai-services cycle`
+  - `f29823a chore(lint): restore lint:shell (shellcheck) and clear db-cli.sh findings`
+  - `f93111e chore(lint): restore lint:docker (hadolint) script`
+  - `69f7e74 chore(lint): restore lint:extra and check:all composite scripts`
+  - `55a984f fix(lint): audit slow-regex / regex-complexity findings`
+  - `1d61431 fix(lint): document SHA-1 use in HIBP k-Anonymity check`
+  - `618a0ad refactor(hull): extract helpers in hullCalculator (cognitive-complexity)`
+  - `a00584e refactor(sync): split assignExperiencesToRegions into per-step helpers`
+  - `99f96cf refactor(wv-extract): extract helpers in classifyEntity`
 - **PR**: not opened yet (will be a **draft** until everything passes)
 - **Predecessor**: PR #375 (cv-python parity + ASVS L2 audit) — merged 2026-05-10
 - **Local venv**: `cv-python/.venv/` exists from the previous session and works with the venv-relative npm scripts (`.venv/bin/<tool>`); no setup needed beyond `npm run setup:py:dev` if you nuke it
+
+## Remaining work (next session)
+
+### Backend (41 errors)
+
+- `sonarjs/cognitive-complexity` ~38 hits — biggest offenders by score:
+  - `controllers/worldView/regionMemberMutations.ts:21` — **101**
+  - `services/worldViewImport/matcher.ts:611` — **83**
+  - `services/worldViewImport/pointMatcher.ts:108` — **67**
+  - `services/worldViewImport/geoshapeCache.ts:637` — **62**
+  - `services/worldViewImport/geoshapeCache.ts:107` — **55**
+  - `controllers/admin/wvImportMatchBorderTrace.ts:65` — **51**
+  - `controllers/worldView/geometryComputeSSE.ts:22` — **45**
+  - `services/worldViewImport/matcher.ts:171` — **44**
+  - `controllers/worldView/regionMemberOperations.ts:22` — **40**
+  - many in 16–39 range, see lint output for the full list
+- `max-lines` 1 hit — `controllers/admin/wvImportMatchController.ts` at 1013 counted lines (will likely drop below 1000 once its complexity-19 function at line 1105 is extracted)
+
+### Frontend (111 errors)
+
+- `sonarjs/cognitive-complexity` 26 hits, max ~45 (`useMapInteractions.ts`, `useDivisionOperations.ts`, `MapViewTab.tsx`)
+- `sonarjs/no-nested-conditional` ~50 hits (some already cleared as side effects)
+- `sonarjs/no-nested-functions` 25 hits (heavy in `CustomSubdivisionDialog/ListViewTab.tsx`)
+
+Per the user-confirmed posture above, the approach is "full recommended, refactor everything" — no rule overrides beyond `pseudo-random` and `no-clear-text-protocols`. Stay one-commit-per-file or per-function-family; suppress only when the regex/hashing/etc. is genuinely safe and the suppression names the rule + reason.
 
 ## Why this exists
 
