@@ -104,6 +104,42 @@ function getPath(divisionId: number, pathCache: PathCache, divisionsById: Map<nu
   return path;
 }
 
+interface ScoredEntry { entry: DivisionEntry; score: number }
+
+function exactNameMatch(gadmEntry: DivisionEntry, variants: string[]): ScoredEntry | null {
+  for (const variant of variants) {
+    if (gadmEntry.nameNormalized === variant) {
+      return { entry: gadmEntry, score: 700 };
+    }
+  }
+  return null;
+}
+
+function variantNameMatch(gadmEntry: DivisionEntry, variants: string[]): ScoredEntry | null {
+  const gadmVariants = getNameVariants(gadmEntry.name);
+  for (const gv of gadmVariants) {
+    for (const wv of variants) {
+      if (gv === wv) return { entry: gadmEntry, score: 650 };
+    }
+  }
+  return null;
+}
+
+function prefixNameMatch(gadmEntry: DivisionEntry, variants: string[]): ScoredEntry | null {
+  for (const variant of variants) {
+    if (isPrefixMatch(variant, gadmEntry.nameNormalized)) {
+      return { entry: gadmEntry, score: 650 };
+    }
+  }
+  return null;
+}
+
+function pickBetter(current: ScoredEntry | null, candidate: ScoredEntry | null): ScoredEntry | null {
+  if (!candidate) return current;
+  if (!current || candidate.score > current.score) return candidate;
+  return current;
+}
+
 /**
  * Try matching a single WV name against a specific set of GADM divisions (in-memory).
  * Returns the best match or null.
@@ -111,49 +147,19 @@ function getPath(divisionId: number, pathCache: PathCache, divisionsById: Map<nu
 function findBestAmongChildren(
   wvName: string,
   gadmChildren: DivisionEntry[],
-): { entry: DivisionEntry; score: number } | null {
-  const cleaned = cleanWvName(wvName);
-  const variants = getNameVariants(cleaned);
-
-  let bestMatch: { entry: DivisionEntry; score: number } | null = null;
+): ScoredEntry | null {
+  const variants = getNameVariants(cleanWvName(wvName));
+  let best: ScoredEntry | null = null;
 
   for (const gadmEntry of gadmChildren) {
-    // Try exact match against GADM normalized name
-    for (const variant of variants) {
-      if (gadmEntry.nameNormalized === variant) {
-        const score = 700; // High confidence exact match
-        if (!bestMatch || score > bestMatch.score) {
-          bestMatch = { entry: gadmEntry, score };
-        }
-      }
-    }
-
-    // Also try GADM name variants (strip suffix from GADM name too)
-    if (!bestMatch) {
-      const gadmVariants = getNameVariants(gadmEntry.name);
-      for (const gv of gadmVariants) {
-        for (const wv of variants) {
-          if (gv === wv) {
-            const score = 650; // Slightly lower for variant-to-variant
-            if (!bestMatch || score > bestMatch.score) {
-              bestMatch = { entry: gadmEntry, score };
-            }
-          }
-        }
-      }
-    }
-
-    // Prefix match fallback: catches "Ingushetia"↔"Ingush", "Kabardino-Balkaria"↔"Kabardin-Balkar"
-    if (!bestMatch) {
-      for (const variant of variants) {
-        if (isPrefixMatch(variant, gadmEntry.nameNormalized)) {
-          bestMatch = { entry: gadmEntry, score: 650 };
-        }
-      }
-    }
+    best = pickBetter(best, exactNameMatch(gadmEntry, variants));
+    if (best) continue;
+    best = pickBetter(best, variantNameMatch(gadmEntry, variants));
+    if (best) continue;
+    best = pickBetter(best, prefixNameMatch(gadmEntry, variants));
   }
 
-  return bestMatch;
+  return best;
 }
 
 /** Loaded GADM data shared between matchers */
@@ -167,19 +173,24 @@ interface GADMData {
   pathCache: PathCache;
 }
 
-/** Pre-load all GADM division data into memory */
-async function loadGADMData(): Promise<GADMData> {
-  const allDivisionsResult = await pool.query(`
-    SELECT id, name, name_normalized, parent_id
-    FROM administrative_divisions
-  `);
+function appendToMapList<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+  const existing = map.get(key);
+  if (existing) existing.push(value);
+  else map.set(key, [value]);
+}
 
+interface ParsedDivisions {
+  divisionsById: Map<number, DivisionEntry>;
+  divisionsByNormalizedName: Map<string, DivisionEntry[]>;
+  continentIds: Set<number>;
+}
+
+function parseDivisionRows(rows: Array<Record<string, unknown>>): ParsedDivisions {
   const divisionsById = new Map<number, DivisionEntry>();
   const divisionsByNormalizedName = new Map<string, DivisionEntry[]>();
   const continentIds = new Set<number>();
-  const countryIds = new Set<number>();
 
-  for (const row of allDivisionsResult.rows) {
+  for (const row of rows) {
     const entry: DivisionEntry = {
       id: row.id as number,
       name: row.name as string,
@@ -187,72 +198,68 @@ async function loadGADMData(): Promise<GADMData> {
       parentId: row.parent_id as number | null,
     };
     divisionsById.set(entry.id, entry);
-
-    const existing = divisionsByNormalizedName.get(entry.nameNormalized);
-    if (existing) {
-      existing.push(entry);
-    } else {
-      divisionsByNormalizedName.set(entry.nameNormalized, [entry]);
-    }
-
-    if (entry.parentId === null) {
-      continentIds.add(entry.id);
-    }
+    appendToMapList(divisionsByNormalizedName, entry.nameNormalized, entry);
+    if (entry.parentId === null) continentIds.add(entry.id);
   }
+  return { divisionsById, divisionsByNormalizedName, continentIds };
+}
 
-  // Build children lookup (needed before country detection)
+function buildChildrenLookup(divisionsById: Map<number, DivisionEntry>): Map<number, number[]> {
   const childrenOf = new Map<number, number[]>();
   for (const entry of divisionsById.values()) {
-    if (entry.parentId !== null) {
-      const children = childrenOf.get(entry.parentId);
-      if (children) {
-        children.push(entry.id);
-      } else {
-        childrenOf.set(entry.parentId, [entry.id]);
-      }
-    }
+    if (entry.parentId !== null) appendToMapList(childrenOf, entry.parentId, entry.id);
   }
+  return childrenOf;
+}
 
-  // Identify countries (children of continents).
-  // Also treat root-level entries that have children as countries — GADM puts
-  // Australia at the root (no parent) alongside real continents.
+function identifyCountryIds(
+  divisionsById: Map<number, DivisionEntry>,
+  continentIds: Set<number>,
+  childrenOf: Map<number, number[]>,
+): Set<number> {
+  const countryIds = new Set<number>();
   for (const entry of divisionsById.values()) {
     if (entry.parentId !== null && continentIds.has(entry.parentId)) {
       countryIds.add(entry.id);
     }
   }
+  // Root entries with no country children are themselves countries — GADM puts
+  // Australia at the root (no parent) alongside continents.
   for (const cid of continentIds) {
     const children = childrenOf.get(cid);
-    // Root entries whose children are NOT countries are real countries themselves
-    // (e.g., Australia has states directly, while Asia has countries)
     if (!children || children.every(ch => !countryIds.has(ch))) {
       countryIds.add(cid);
     }
   }
+  return countryIds;
+}
 
-  // Build country name lookup (multiple GADM divisions can share a name,
-  // e.g. "Spain" under both Europe and Africa for overseas territories)
+function buildCountryNameIndex(
+  divisionsById: Map<number, DivisionEntry>,
+  countryIds: Set<number>,
+): Map<string, number[]> {
   const gadmCountries = new Map<string, number[]>();
   for (const countryId of countryIds) {
     const entry = divisionsById.get(countryId)!;
-    const existing = gadmCountries.get(entry.nameNormalized);
-    if (existing) {
-      existing.push(entry.id);
-    } else {
-      gadmCountries.set(entry.nameNormalized, [entry.id]);
-    }
+    appendToMapList(gadmCountries, entry.nameNormalized, entry.id);
+
     const stripped = entry.nameNormalized.replace(STRIP_SUFFIX_REGEX, '').trim();
-    if (stripped !== entry.nameNormalized) {
-      const existingStripped = gadmCountries.get(stripped);
-      if (existingStripped) {
-        if (!existingStripped.includes(entry.id)) existingStripped.push(entry.id);
-      } else {
-        gadmCountries.set(stripped, [entry.id]);
-      }
+    if (stripped === entry.nameNormalized) continue;
+
+    const existingStripped = gadmCountries.get(stripped);
+    if (existingStripped) {
+      if (!existingStripped.includes(entry.id)) existingStripped.push(entry.id);
+    } else {
+      gadmCountries.set(stripped, [entry.id]);
     }
   }
+  return gadmCountries;
+}
 
-  // For each country, collect all descendant IDs using BFS
+function buildCountryDescendants(
+  countryIds: Set<number>,
+  childrenOf: Map<number, number[]>,
+): Map<number, Set<number>> {
   const countryDescendants = new Map<number, Set<number>>();
   for (const countryId of countryIds) {
     const descendants = new Set<number>([countryId]);
@@ -260,15 +267,30 @@ async function loadGADMData(): Promise<GADMData> {
     while (queue.length > 0) {
       const current = queue.pop()!;
       const children = childrenOf.get(current);
-      if (children) {
-        for (const childId of children) {
-          descendants.add(childId);
-          queue.push(childId);
-        }
+      if (!children) continue;
+      for (const childId of children) {
+        descendants.add(childId);
+        queue.push(childId);
       }
     }
     countryDescendants.set(countryId, descendants);
   }
+  return countryDescendants;
+}
+
+/** Pre-load all GADM division data into memory */
+async function loadGADMData(): Promise<GADMData> {
+  const allDivisionsResult = await pool.query(`
+    SELECT id, name, name_normalized, parent_id
+    FROM administrative_divisions
+  `);
+
+  const { divisionsById, divisionsByNormalizedName, continentIds } =
+    parseDivisionRows(allDivisionsResult.rows as Array<Record<string, unknown>>);
+  const childrenOf = buildChildrenLookup(divisionsById);
+  const countryIds = identifyCountryIds(divisionsById, continentIds, childrenOf);
+  const gadmCountries = buildCountryNameIndex(divisionsById, countryIds);
+  const countryDescendants = buildCountryDescendants(countryIds, childrenOf);
 
   return {
     divisionsById,
