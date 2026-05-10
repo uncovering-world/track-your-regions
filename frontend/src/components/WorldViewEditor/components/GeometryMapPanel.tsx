@@ -42,6 +42,34 @@ import { CustomBoundaryDialog } from '../../CustomBoundaryDialog';
 import { HullEditorDialog } from '../../HullEditorDialog';
 import { useAppTheme } from '../../../theme';
 
+function fitMapToRegion(
+  map: MapRef,
+  region: Region,
+  geometryFeature: unknown,
+  isNewRegion: boolean,
+): void {
+  const duration = isNewRegion ? 500 : 300;
+  // Pre-computed focusBbox correctly handles antimeridian crossing.
+  if (region.focusBbox) {
+    smartFitBounds(map, region.focusBbox, {
+      padding: 50,
+      duration,
+      anchorPoint: region.anchorPoint,
+    });
+    return;
+  }
+  try {
+    const geojson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [geometryFeature as unknown as GeoJSON.Feature],
+    };
+    const bbox = turf.bbox(geojson) as [number, number, number, number];
+    smartFitBounds(map, bbox, { padding: 50, duration, geojson });
+  } catch (e) {
+    console.error('Failed to fit bounds:', e);
+  }
+}
+
 export interface GeometryMapPanelProps {
   selectedRegion: Region | null;
   worldView: WorldView;
@@ -104,28 +132,7 @@ export function GeometryMapPanel({
     if (!selectedRegion || !selectedRegionGeometry?.geometry) return;
     const isNewRegion = lastFittedRegionRef.current !== selectedRegion.id;
     lastFittedRegionRef.current = selectedRegion.id;
-
-    // Prefer pre-computed focusBbox (correctly handles antimeridian)
-    if (selectedRegion.focusBbox) {
-      smartFitBounds(mapRef.current, selectedRegion.focusBbox, {
-        padding: 50,
-        duration: isNewRegion ? 500 : 300,
-        anchorPoint: selectedRegion.anchorPoint,
-      });
-      return;
-    }
-
-    // Fallback: compute bbox from geometry
-    try {
-      const geojson: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: [selectedRegionGeometry as unknown as GeoJSON.Feature],
-      };
-      const bbox = turf.bbox(geojson) as [number, number, number, number];
-      smartFitBounds(mapRef.current, bbox, { padding: 50, duration: isNewRegion ? 500 : 300, geojson });
-    } catch (e) {
-      console.error('Failed to fit bounds:', e);
-    }
+    fitMapToRegion(mapRef.current, selectedRegion, selectedRegionGeometry, isNewRegion);
   }, [selectedRegionGeometry, selectedRegion, displayMode, mapLoaded]);
 
   useEffect(() => {
