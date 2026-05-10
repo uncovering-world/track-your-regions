@@ -27,10 +27,10 @@ def parse_svg_path_points(svg_path: str) -> np.ndarray:
         return np.empty((0, 2), dtype=np.float64)
 
     # Remove command characters (M, L, Z and lowercase variants)
-    cleaned = re.sub(r'[MmLlZz]', ' ', svg_path)
+    cleaned = re.sub(r"[MmLlZz]", " ", svg_path)
 
     # Split by whitespace and commas, filter empty strings
-    tokens = re.split(r'[\s,]+', cleaned.strip())
+    tokens = re.split(r"[\s,]+", cleaned.strip())
     tokens = [t for t in tokens if t]
 
     if not tokens:
@@ -71,7 +71,7 @@ def parse_svg_sub_paths(svg_path: str) -> list[np.ndarray]:
         return []
 
     # Split at each M/m command using lookahead so the M is kept in each segment
-    segments = re.split(r'(?=[Mm])', svg_path.strip())
+    segments = re.split(r"(?=[Mm])", svg_path.strip())
     segments = [s.strip() for s in segments if s.strip()]
 
     result = []
@@ -102,7 +102,7 @@ def resample_path(points: np.ndarray, target_count: int) -> np.ndarray:
 
     # Compute segment lengths
     diffs = np.diff(points, axis=0)
-    seg_lengths = np.sqrt((diffs ** 2).sum(axis=1))
+    seg_lengths = np.sqrt((diffs**2).sum(axis=1))
 
     # Cumulative arc length, starting at 0
     cumlen = np.concatenate(([0.0], np.cumsum(seg_lengths)))
@@ -116,7 +116,7 @@ def resample_path(points: np.ndarray, target_count: int) -> np.ndarray:
     target_arc = np.linspace(0.0, total_length, target_count)
 
     # For each target arc position, find the surrounding segment
-    indices = np.searchsorted(cumlen, target_arc, side='right')
+    indices = np.searchsorted(cumlen, target_arc, side="right")
     # Clamp to valid segment indices
     indices = np.clip(indices, 1, len(points) - 1)
 
@@ -126,7 +126,7 @@ def resample_path(points: np.ndarray, target_count: int) -> np.ndarray:
     seg_len = seg_end - seg_start
 
     # Avoid division by zero for zero-length segments
-    with np.errstate(invalid='ignore', divide='ignore'):
+    with np.errstate(invalid="ignore", divide="ignore"):
         t = np.where(seg_len > 0, (target_arc - seg_start) / seg_len, 0.0)
 
     # Interpolate

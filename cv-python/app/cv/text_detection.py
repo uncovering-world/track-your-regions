@@ -18,7 +18,8 @@ def _get_reader():
     global _reader
     if _reader is None:
         import easyocr
-        _reader = easyocr.Reader(['en'], gpu=False, verbose=False)
+
+        _reader = easyocr.Reader(["en"], gpu=False, verbose=False)
     return _reader
 
 
@@ -44,10 +45,7 @@ def detect_text_regions(image: np.ndarray, min_confidence: float = 0.3) -> np.nd
     rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
     results = reader.readtext(rgb)
     # Scale bounding boxes back to full resolution
-    results = [
-        ([[p[0] / ocr_scale, p[1] / ocr_scale] for p in bbox], text, conf)
-        for bbox, text, conf in results
-    ]
+    results = [([[p[0] / ocr_scale, p[1] / ocr_scale] for p in bbox], text, conf) for bbox, text, conf in results]
 
     mask = np.zeros((h, w), dtype=np.uint8)
     detected = 0
@@ -65,8 +63,7 @@ def detect_text_regions(image: np.ndarray, min_confidence: float = 0.3) -> np.nd
         pts_center_x = pts[:, 0].mean()
         pts_center_y = pts[:, 1].mean()
         near_edge = (
-            pts_center_x < w * 0.20 or pts_center_x > w * 0.80 or
-            pts_center_y < h * 0.20 or pts_center_y > h * 0.80
+            pts_center_x < w * 0.20 or pts_center_x > w * 0.80 or pts_center_y < h * 0.20 or pts_center_y > h * 0.80
         )
         if bbox_h >= 30:
             effective_conf = 0.15
@@ -117,10 +114,7 @@ def _expand_to_container(
     cy = int(pts[:, 1].mean())
 
     # Only expand for text very near edges (title boxes, not map labels)
-    near_edge = (
-        cx < w * border_pct or cx > w * (1 - border_pct) or
-        cy < h * border_pct or cy > h * (1 - border_pct)
-    )
+    near_edge = cx < w * border_pct or cx > w * (1 - border_pct) or cy < h * border_pct or cy > h * (1 - border_pct)
     if not near_edge:
         return mask
 

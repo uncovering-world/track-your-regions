@@ -25,6 +25,7 @@ CORNER_SAMPLE_PX = 8
 # Step 1: Colored line removal
 # =============================================================================
 
+
 def _rgb_to_hsl(img_rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Convert RGB image to H (0-360), S (0-100), L (0-100) float arrays.
     Vectorized — no per-pixel loops."""
@@ -204,7 +205,10 @@ def _fill_via_nearest_image_pixel(img_bgr: np.ndarray, mask: np.ndarray) -> np.n
         return img_bgr.copy()
     non_mask = ((mask == 0).astype(np.uint8)) * 255
     _, labels_idx = cv2.distanceTransformWithLabels(
-        non_mask, cv2.DIST_L2, 3, labelType=cv2.DIST_LABEL_PIXEL,
+        non_mask,
+        cv2.DIST_L2,
+        3,
+        labelType=cv2.DIST_LABEL_PIXEL,
     )
     seed_ys, seed_xs = np.nonzero(non_mask > 0)
     if len(seed_ys) == 0:
@@ -267,7 +271,7 @@ def _detect_saturated_text(img_bgr: np.ndarray, res_scale: float = 1.0) -> tuple
         area = int(cc_stats[ci, cv2.CC_STAT_AREA])
         if area < min_area or area > max_area:
             continue
-        cc_pixels = (cc_labels == ci)
+        cc_pixels = cc_labels == ci
         cc_max_dist = float(dist[cc_pixels].max())
         if cc_max_dist > max_thickness_px:
             continue
@@ -342,7 +346,7 @@ def _detect_dark_text_residue(img_bgr: np.ndarray, res_scale: float = 1.0) -> tu
         area = int(cc_stats[ci, cv2.CC_STAT_AREA])
         if area < min_area or area > max_area:
             continue
-        cc_pixels = (cc_labels == ci)
+        cc_pixels = cc_labels == ci
         cc_max_dist = float(dist[cc_pixels].max())
         if cc_max_dist <= max_thickness_px:
             text_mask[cc_pixels] = 1
@@ -366,7 +370,9 @@ def _detect_dark_text_residue(img_bgr: np.ndarray, res_scale: float = 1.0) -> tu
         result[cc_mask > 0] = median_bgr
         flat_filled += int(cc_mask.sum())
 
-    print(f"  [DarkTextResidue] Flat-filled {flat_filled} px in thin-dark CCs (area {min_area}..{max_area}, thickness ≤ {max_thickness_px})")
+    print(
+        f"  [DarkTextResidue] Flat-filled {flat_filled} px in thin-dark CCs (area {min_area}..{max_area}, thickness ≤ {max_thickness_px})"
+    )
     return result, text_mask
 
 
@@ -432,13 +438,16 @@ def remove_colored_lines(img_bgr: np.ndarray, res_scale: float = 1.0) -> tuple[n
 
     colored_count = int(np.sum(line_mask))
     dark_count = int(np.sum(dark_thin)) - int(np.sum(line_mask & dark_thin))
-    print(f"  [LineRemoval] Replaced {marked_count} pixels via {ksize}x{ksize} median (colored: {colored_count}, dark text: {dark_count})")
+    print(
+        f"  [LineRemoval] Replaced {marked_count} pixels via {ksize}x{ksize} median (colored: {colored_count}, dark text: {dark_count})"
+    )
     return result, combined_mask
 
 
 # =============================================================================
 # Step 2: Mean-shift filtering
 # =============================================================================
+
 
 def _tophat_text_removal(image: np.ndarray, kernel_size: int = 15) -> tuple[np.ndarray, np.ndarray]:
     """Remove thin text/symbols using morphological top-hat transforms.
@@ -579,7 +588,7 @@ def _exclude_decoration_ccs(
         pct = area / country_size * 100
         # Check if this CC looks artificial (solid rectangle near edge)
         cc_cx, cc_cy = cc_centroids[cc_id]
-        cc_near_edge = (cc_cx < bx or cc_cx > w - bx or cc_cy < by or cc_cy > h - by)
+        cc_near_edge = cc_cx < bx or cc_cx > w - bx or cc_cy < by or cc_cy > h - by
         if cc_near_edge and pct < 20:
             cc_w_val = int(cc_stats[cc_id, cv2.CC_STAT_WIDTH])
             cc_h_val = int(cc_stats[cc_id, cv2.CC_STAT_HEIGHT])
@@ -621,7 +630,7 @@ def _exclude_decoration_ccs(
         area = int(cc_stats[i, cv2.CC_STAT_AREA])
         pct = area / country_size * 100
         cx, cy = cc_centroids[i]
-        near_edge = (cx < bx or cx > w - bx or cy < by or cy > h - by)
+        near_edge = cx < bx or cx > w - bx or cy < by or cy > h - by
 
         # Compute shape properties once (needed for both edge and interior checks)
         cc_w = int(cc_stats[i, cv2.CC_STAT_WIDTH])
@@ -649,7 +658,9 @@ def _exclude_decoration_ccs(
                     if color_std <= 8:
                         result[cc_labels == i] = 0
                         excluded_total += area
-                        print(f"  [DecoCC] Excluded INTERIOR CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), fill={fill:.2f}, std={color_std:.1f}")
+                        print(
+                            f"  [DecoCC] Excluded INTERIOR CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), fill={fill:.2f}, std={color_std:.1f}"
+                        )
             continue  # Skip edge-based checks for non-edge CCs
 
         # --- Tier 2: Large CCs (8-20%) with VERY strict criteria ---
@@ -674,7 +685,9 @@ def _exclude_decoration_ccs(
                 if not touches:
                     result[cc_labels == i] = 0
                     excluded_total += area
-                    print(f"  [DecoCC] Excluded LARGE CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), fill={fill:.2f}, std={color_std:.1f}")
+                    print(
+                        f"  [DecoCC] Excluded LARGE CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), fill={fill:.2f}, std={color_std:.1f}"
+                    )
             continue  # Skip tier 1 checks for large CCs
 
         # --- Tier 1: Small/medium CCs (< 8%) ---
@@ -714,7 +727,9 @@ def _exclude_decoration_ccs(
             if color_std < 5:
                 result[cc_labels == i] = 0
                 excluded_total += area
-                print(f"  [DecoCC] Excluded SMALL UNIFORM CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), fill={fill:.2f}, std={color_std:.1f}")
+                print(
+                    f"  [DecoCC] Excluded SMALL UNIFORM CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), fill={fill:.2f}, std={color_std:.1f}"
+                )
                 continue
 
             cc_edge_pixels = int(np.sum((edge_map > 0) & (cc_labels == i)))
@@ -722,7 +737,9 @@ def _exclude_decoration_ccs(
             if internal_edge_ratio > 0.12:
                 result[cc_labels == i] = 0
                 excluded_total += area
-                print(f"  [DecoCC] Excluded DECORATION CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), edge_ratio={internal_edge_ratio:.2f}, std={color_std:.1f}")
+                print(
+                    f"  [DecoCC] Excluded DECORATION CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), edge_ratio={internal_edge_ratio:.2f}, std={color_std:.1f}"
+                )
                 continue
 
         # --- Path A: Elongated uniform elements (scale bars) ---
@@ -732,7 +749,9 @@ def _exclude_decoration_ccs(
         if aspect > 4 and color_std < 8 and pct < 3.0:
             result[cc_labels == i] = 0
             excluded_total += area
-            print(f"  [DecoCC] Excluded ELONGATED CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), aspect={aspect:.1f}, std={color_std:.1f}")
+            print(
+                f"  [DecoCC] Excluded ELONGATED CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), aspect={aspect:.1f}, std={color_std:.1f}"
+            )
             continue
 
         # --- Path B: Compact shape check (original logic) ---
@@ -789,10 +808,7 @@ def _detect_inset_mask(image: np.ndarray) -> np.ndarray | None:
     edges = cv2.Canny(gray, 50, 150)
 
     # Hough line detection — look for strong lines
-    lines = cv2.HoughLinesP(
-        edges, rho=1, theta=np.pi / 180, threshold=100,
-        minLineLength=int(w * 0.4), maxLineGap=20
-    )
+    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi / 180, threshold=100, minLineLength=int(w * 0.4), maxLineGap=20)
 
     if lines is None:
         return None
@@ -846,14 +862,14 @@ def _detect_inset_mask(image: np.ndarray) -> np.ndarray | None:
     # Coastlines have gaps. Check what fraction of columns (for H) or rows (for V)
     # have edge pixels within the band.
     def validate_h_boundary(y_pos):
-        band = edges[max(0, y_pos - 3):min(h, y_pos + 4), :]
+        band = edges[max(0, y_pos - 3) : min(h, y_pos + 4), :]
         # Column coverage: how many columns have at least one edge pixel?
         col_has_edge = np.any(band > 0, axis=0)
         coverage = np.sum(col_has_edge) / max(w, 1)
         return coverage > 0.75  # >75% of columns must have an edge pixel (straight line)
 
     def validate_v_boundary(x_pos):
-        band = edges[:, max(0, x_pos - 3):min(w, x_pos + 4)]
+        band = edges[:, max(0, x_pos - 3) : min(w, x_pos + 4)]
         row_has_edge = np.any(band > 0, axis=1)
         coverage = np.sum(row_has_edge) / max(h, 1)
         return coverage > 0.75
@@ -899,7 +915,9 @@ def _detect_inset_mask(image: np.ndarray) -> np.ndarray | None:
     inset_total = int(np.sum(inset_mask > 0))
     if inset_total > 0:
         print(f"  [Inset] Detected {len(sections) - 1} inset section(s), masking {inset_total} px")
-        print(f"  [Inset] Main section: y=[{main_section[0]},{main_section[1]}], x=[{main_section[2]},{main_section[3]}]")
+        print(
+            f"  [Inset] Main section: y=[{main_section[0]},{main_section[1]}], x=[{main_section[2]},{main_section[3]}]"
+        )
         for s in sections[1:]:
             if s[4] < main_section[4] * 0.8:
                 print(f"  [Inset] Inset: y=[{s[0]},{s[1]}], x=[{s[2]},{s[3]}] ({s[4] / total_area * 100:.1f}%)")
@@ -917,6 +935,7 @@ def mean_shift_filter(image: np.ndarray, sp: int = 10, sr: int = 20) -> np.ndarr
 # =============================================================================
 # Step 3: Two-stage background detection
 # =============================================================================
+
 
 def _flood_fill_mask(seed_mask: np.ndarray, similarity_mask: np.ndarray) -> np.ndarray:
     """Flood-fill from seed positions through similarity_mask.
@@ -985,9 +1004,9 @@ def detect_background(filtered: np.ndarray, original: np.ndarray) -> np.ndarray:
     cp = min(CORNER_SAMPLE_PX, h // 4, w // 4)
     corners = [
         img[0:cp, 0:cp],
-        img[0:cp, w - cp:w],
-        img[h - cp:h, 0:cp],
-        img[h - cp:h, w - cp:w],
+        img[0:cp, w - cp : w],
+        img[h - cp : h, 0:cp],
+        img[h - cp : h, w - cp : w],
     ]
     avg_bgr = np.mean([c.reshape(-1, 3).mean(axis=0) for c in corners], axis=0).astype(np.float32)
 
@@ -1043,7 +1062,9 @@ def detect_background(filtered: np.ndarray, original: np.ndarray) -> np.ndarray:
 
     filled_count = int(np.sum(bg_gray > 0))
     if filled_count != open_count:
-        print(f"  [BG] Gray flood fill: {open_count} -> {filled_count} px ({open_count - filled_count} interior gray pixels kept as country)")
+        print(
+            f"  [BG] Gray flood fill: {open_count} -> {filled_count} px ({open_count - filled_count} interior gray pixels kept as country)"
+        )
 
     # Combine both stages
     bg_mask = np.maximum(bg_rgb, bg_gray)
@@ -1077,7 +1098,9 @@ def detect_background(filtered: np.ndarray, original: np.ndarray) -> np.ndarray:
         bg_sat = _flood_fill_mask(sat_seeds, sat_similar)
         sat_filled = int(np.sum(bg_sat > 0))
         if sat_filled > 0:
-            print(f"  [BG] Saturated edge fill: {sat_filled} px (ref BGR({sat_ref[0]:.0f},{sat_ref[1]:.0f},{sat_ref[2]:.0f}))")
+            print(
+                f"  [BG] Saturated edge fill: {sat_filled} px (ref BGR({sat_ref[0]:.0f},{sat_ref[1]:.0f},{sat_ref[2]:.0f}))"
+            )
             bg_mask = np.maximum(bg_mask, bg_sat)
 
     # Stage 4: Morphological closing to fill wave pattern gaps in the sea
@@ -1102,6 +1125,7 @@ def detect_background(filtered: np.ndarray, original: np.ndarray) -> np.ndarray:
 # Step 4: Water detection on ORIGINAL image
 # =============================================================================
 
+
 def detect_water(
     original: np.ndarray,
     country_mask: np.ndarray,
@@ -1120,10 +1144,10 @@ def detect_water(
     # --- Collect edge pixels that look like water ---
     # Sample 5px bands on all four edges
     edge_mask = np.zeros((h, w), dtype=bool)
-    edge_mask[:5, :] = True      # top 5 rows
-    edge_mask[-5:, :] = True     # bottom 5 rows
-    edge_mask[:, :5] = True      # left 5 cols
-    edge_mask[:, -5:] = True     # right 5 cols
+    edge_mask[:5, :] = True  # top 5 rows
+    edge_mask[-5:, :] = True  # bottom 5 rows
+    edge_mask[:, :5] = True  # left 5 cols
+    edge_mask[:, -5:] = True  # right 5 cols
 
     h_channel = hsv[:, :, 0].astype(np.int32)  # OpenCV HSV: H is 0-179
     s_channel = hsv[:, :, 1].astype(np.int32)
@@ -1144,7 +1168,9 @@ def detect_water(
     # Average water reference color from edge seed pixels (in BGR)
     water_pixels = img[water_edge]
     ref_bgr = water_pixels.mean(axis=0).astype(np.float32)
-    print(f"  [Water] Edge seeds: {water_edge_count} px, ref color BGR({ref_bgr[0]:.0f},{ref_bgr[1]:.0f},{ref_bgr[2]:.0f})")
+    print(
+        f"  [Water] Edge seeds: {water_edge_count} px, ref color BGR({ref_bgr[0]:.0f},{ref_bgr[1]:.0f},{ref_bgr[2]:.0f})"
+    )
 
     # --- Flood-fill from water seeds using per-channel max diff ---
     # Use slightly wider tolerance (40) than background (30) because
@@ -1267,12 +1293,14 @@ def _review_water_components(
             scale = max_dim / max(crop_h, crop_w)
             crop = cv2.resize(crop, (int(crop_w * scale), int(crop_h * scale)))
         # encode_png_base64 already returns a full "data:image/png;base64,..." URL
-        payload_components.append({
-            "id": cid,
-            "pct": comp["pct"],
-            "cropDataUrl": encode_png_base64(crop),
-            "subClusters": [],
-        })
+        payload_components.append(
+            {
+                "id": cid,
+                "pct": comp["pct"],
+                "cropDataUrl": encode_png_base64(crop),
+                "subClusters": [],
+            }
+        )
 
     if not payload_components:
         return water_mask
@@ -1284,19 +1312,24 @@ def _review_water_components(
     if np.any(water_pixels_mask):
         tint = np.full_like(overlay, [255, 128, 80], dtype=np.uint8)  # BGR: orange-ish
         overlay[water_pixels_mask] = cv2.addWeighted(
-            overlay[water_pixels_mask], 0.45,
-            tint[water_pixels_mask], 0.55,
+            overlay[water_pixels_mask],
+            0.45,
+            tint[water_pixels_mask],
+            0.55,
             0,
         )
     # encode_png_base64 already returns a full "data:image/png;base64,..." URL
     overlay_data_url = encode_png_base64(overlay)
 
     progress(f"Water review — {len(payload_components)} component(s), {water_pct}% of country")
-    response = on_review("water", {
-        "components": payload_components,
-        "waterPxPercent": water_pct,
-        "waterMaskImage": overlay_data_url,
-    })
+    response = on_review(
+        "water",
+        {
+            "components": payload_components,
+            "waterPxPercent": water_pct,
+            "waterMaskImage": overlay_data_url,
+        },
+    )
 
     if not response:
         # Timed out or empty — keep auto-detection as-is.
@@ -1327,17 +1360,20 @@ def _review_water_components(
 
 _sam_predictor = None
 
+
 def _get_sam_predictor():
     """Lazy-load SAM predictor (heavy model, ~5s first call)."""
     global _sam_predictor
     if _sam_predictor is None:
         import os
-        model_path = '/app/data/sam_vit_b.pth'
+
+        model_path = "/app/data/sam_vit_b.pth"
         if not os.path.exists(model_path):
             return None
         try:
             from segment_anything import SamPredictor, sam_model_registry
-            sam = sam_model_registry['vit_b'](checkpoint=model_path)
+
+            sam = sam_model_registry["vit_b"](checkpoint=model_path)
             _sam_predictor = SamPredictor(sam)
         except ImportError:
             print("  [SAM] segment_anything not installed — skipping SAM decoration detection")
@@ -1418,9 +1454,7 @@ def _sam_exclude_decorations(
         point = np.array([[cx, cy]])
         label = np.array([1])
 
-        masks, scores, _ = predictor.predict(
-            point_coords=point, point_labels=label, multimask_output=True
-        )
+        masks, scores, _ = predictor.predict(point_coords=point, point_labels=label, multimask_output=True)
 
         # Take the smallest mask (most specific) with decent score
         valid = [(m, s) for m, s in zip(masks, scores, strict=False) if s > 0.8]
@@ -1562,9 +1596,14 @@ def _exclude_hough_circles(
     blurred = cv2.GaussianBlur(gray, (9, 9), 2)
 
     circles = cv2.HoughCircles(
-        blurred, cv2.HOUGH_GRADIENT, dp=1.2,
-        minDist=20, param1=100, param2=30,
-        minRadius=min_radius, maxRadius=max_radius,
+        blurred,
+        cv2.HOUGH_GRADIENT,
+        dp=1.2,
+        minDist=20,
+        param1=100,
+        param2=30,
+        minRadius=min_radius,
+        maxRadius=max_radius,
     )
 
     if circles is None:
@@ -1768,8 +1807,10 @@ def _insert_edge_barriers(
     result[barrier > 0] = 0
 
     barrier_pct = barrier_count / country_size * 100
-    print(f"  [EdgeBarrier] Inserted {barrier_count} barrier pixels ({barrier_pct:.1f}% of country) "
-          f"along {int(np.sum(significant_edges > 0))} significant edge pixels")
+    print(
+        f"  [EdgeBarrier] Inserted {barrier_count} barrier pixels ({barrier_pct:.1f}% of country) "
+        f"along {int(np.sum(significant_edges > 0))} significant edge pixels"
+    )
 
     return result
 
@@ -1844,8 +1885,10 @@ def _exclude_gray_edge_regions(
     if region_pct >= min_region_pct:
         result = country_mask.copy()
         result[filled > 0] = 0
-        print(f"  [GrayEdge] Excluded {filled_count} px ({region_pct * 100:.1f}% of country) — "
-              f"gray edge-connected region (sat<{sat_threshold})")
+        print(
+            f"  [GrayEdge] Excluded {filled_count} px ({region_pct * 100:.1f}% of country) — "
+            f"gray edge-connected region (sat<{sat_threshold})"
+        )
         return result
 
     return country_mask
@@ -1854,6 +1897,7 @@ def _exclude_gray_edge_regions(
 # =============================================================================
 # Phase 1 orchestrator
 # =============================================================================
+
 
 def run_phase1(
     image: np.ndarray,
@@ -1879,6 +1923,7 @@ def run_phase1(
         that emits a review-request and blocks until the operator responds.
         Passed through from the HTTP layer — see app/routes/pipeline.py.
     """
+
     def _progress(msg: str):
         print(f"  [Phase1] {msg}")
         if on_progress:
@@ -1911,6 +1956,7 @@ def run_phase1(
     # so unioning it into known_noise_mask is safe.
     _progress("OCR text detection and removal...")
     from .text_detection import remove_text_from_image
+
     pipeline_img, ocr_letter_mask = remove_text_from_image(pipeline_img)
     known_noise_mask |= ocr_letter_mask
 
@@ -1963,7 +2009,9 @@ def run_phase1(
     )
     if int(pre_ms_mask.sum()) > 0:
         cleaned = _fill_via_nearest_image_pixel(cleaned, pre_ms_mask)
-        print(f"  [PreMeanShift] Nearest-neighbour-filled {int(pre_ms_mask.sum())} px (roads+sat_text+dark_text; line_mask EXCLUDED to preserve thin region borders)")
+        print(
+            f"  [PreMeanShift] Nearest-neighbour-filled {int(pre_ms_mask.sum())} px (roads+sat_text+dark_text; line_mask EXCLUDED to preserve thin region borders)"
+        )
 
     # Step 2: Mean-shift filtering — two passes to thoroughly absorb text
     _progress("Mean-shift filtering pass 1/2 (sp=10, sr=20)...")
@@ -2031,7 +2079,12 @@ def run_phase1(
     # an on_review callback is wired up, i.e. interactive HTTP mode).
     if on_review is not None and water_components:
         water_mask = _review_water_components(
-            original_down, water_mask, water_components, country_mask, on_review, _progress,
+            original_down,
+            water_mask,
+            water_components,
+            country_mask,
+            on_review,
+            _progress,
         )
 
     # Remove water from country mask
@@ -2097,7 +2150,9 @@ def run_phase1(
             # This CC looks like water near an edge — likely title box background
             country_mask[cc_lbl == j] = 0
             water_cc_removed += a
-            print(f"  [WaterCC] Removed water-colored edge CC: {a}px ({p:.1f}%), pos=({jcx:.0f},{jcy:.0f}), diff={color_diff:.0f}")
+            print(
+                f"  [WaterCC] Removed water-colored edge CC: {a}px ({p:.1f}%), pos=({jcx:.0f},{jcy:.0f}), diff={color_diff:.0f}"
+            )
 
         if water_cc_removed > 0:
             print(f"  [WaterCC] Total removed: {water_cc_removed} px")
@@ -2115,9 +2170,7 @@ def run_phase1(
     # text, dark text, tophat, outlier) without over-absorbing their areas.
     noise_dilate_px = 1
     if noise_dilate_px > 0 and known_noise_mask.any():
-        dilate_kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (2 * noise_dilate_px + 1, 2 * noise_dilate_px + 1)
-        )
+        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * noise_dilate_px + 1, 2 * noise_dilate_px + 1))
         known_noise_mask = cv2.dilate(known_noise_mask, dilate_kernel)
     noise_px_total = int(known_noise_mask.sum())
     # Only pixels that are inside the country count for K-means exclusion;
@@ -2137,7 +2190,7 @@ def run_phase1(
     h, w = filtered.shape[:2]
     debug_overlay = filtered.copy()
     debug_overlay[country_mask == 0] = [200, 200, 200]  # background = gray
-    debug_overlay[water_mask > 0] = [255, 150, 100]      # water = blue-ish (BGR)
+    debug_overlay[water_mask > 0] = [255, 150, 100]  # water = blue-ish (BGR)
     # Known-noise tint: blend red at 60% opacity so underlying colors are visible
     noise_in_country = (known_noise_mask > 0) & (country_mask > 0)
     if noise_in_country.any():

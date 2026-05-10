@@ -13,13 +13,13 @@ import cv2
 import numpy as np
 
 # -- Constants (match JS pipeline) --
-MERGE_SIZE_PCT = 0.02       # clusters < 2% are candidates for merge (loose color: RGB ≤ 40)
-MERGE_MODERATE_PCT = 0.06   # clusters 2-6% are merge candidates with stricter color (RGB ≤ 15)
+MERGE_SIZE_PCT = 0.02  # clusters < 2% are candidates for merge (loose color: RGB ≤ 40)
+MERGE_MODERATE_PCT = 0.06  # clusters 2-6% are merge candidates with stricter color (RGB ≤ 15)
 MERGE_MODERATE_DIST_SQ = 15 * 15
 MERGE_MAX_DIST_SQ = 40 * 40  # max squared RGB distance for merge
-NOISE_MIN_SAT = 25          # minimum saturation for a valid cluster
-NOISE_MIN_VAL = 60          # minimum value for a valid cluster
-NOISE_TINY_PCT = 0.5        # clusters < 0.5% auto-excluded (unless colorful)
+NOISE_MIN_SAT = 25  # minimum saturation for a valid cluster
+NOISE_MIN_VAL = 60  # minimum value for a valid cluster
+NOISE_TINY_PCT = 0.5  # clusters < 0.5% auto-excluded (unless colorful)
 NOISE_COLORFUL_TINY_PCT = 0.15  # colorful tiny clusters get a lower threshold — they're likely real regions
 
 
@@ -53,7 +53,7 @@ def _are_spatially_adjacent(
     4-neighbor belonging to label_b.
     """
     h, w = pixel_labels.shape
-    mask_a = (pixel_labels == label_a)
+    mask_a = pixel_labels == label_a
 
     # Dilate mask_a by 1 pixel (4-connected) and check overlap with label_b
     kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.uint8)
@@ -104,7 +104,7 @@ def merge_tiny_clusters(
         requires_adjacency = k_pct >= ADJACENCY_REQUIRED_PCT
 
         # Find nearest large cluster by RGB distance, optionally filtered by adjacency
-        min_dist_sq = float('inf')
+        min_dist_sq = float("inf")
         best_target = -1
 
         for j in large_labels:
@@ -120,14 +120,16 @@ def merge_tiny_clusters(
             min_dist_sq = d_sq
             best_target = j
 
-        rgb_dist = min_dist_sq ** 0.5
+        rgb_dist = min_dist_sq**0.5
         tier = "moderate" if is_moderate else "small"
         if min_dist_sq <= max_dist_sq and best_target >= 0:
             print(f"  [Merge-{tier}] cluster {k} ({k_pct * 100:.1f}%) -> {best_target} (RGB dist={rgb_dist:.1f})")
             pixel_labels[pixel_labels == k] = best_target
         elif best_target >= 0:
             reason = "too far" if min_dist_sq > max_dist_sq else "not adjacent"
-            print(f"  [Merge-{tier}] cluster {k} ({k_pct * 100:.1f}%) KEPT -- nearest {best_target} {reason} (RGB dist={rgb_dist:.1f})")
+            print(
+                f"  [Merge-{tier}] cluster {k} ({k_pct * 100:.1f}%) KEPT -- nearest {best_target} {reason} (RGB dist={rgb_dist:.1f})"
+            )
 
     return pixel_labels
 
@@ -166,7 +168,7 @@ def remove_small_patches(
                 continue
 
             # Find most common neighbor
-            cc_mask = (cc_labels == cc_idx)
+            cc_mask = cc_labels == cc_idx
             # Dilate by 1 pixel to find neighbors
             dilated = cv2.dilate(cc_mask.astype(np.uint8), np.ones((3, 3), np.uint8))
             border = (dilated > 0) & ~cc_mask
@@ -248,7 +250,7 @@ def exclude_noise_clusters(
     # Create mask of noise pixels
     noise_mask = np.zeros((h, w), dtype=bool)
     for n in noise_ids:
-        noise_mask |= (pixel_labels == n)
+        noise_mask |= pixel_labels == n
 
     # For each noise pixel, find nearest valid cluster by RGB distance to centroid
     if np.any(noise_mask):
@@ -271,8 +273,10 @@ def exclude_noise_clusters(
         for nl in noise_ids:
             c = color_centroids[nl] if nl < len(color_centroids) else None
             cnt = counts.get(nl, 0)
-            print(f"    excluded {nl}: RGB({c[0] if c else '?'},{c[1] if c else '?'},{c[2] if c else '?'}) "
-                  f"{cnt}px ({cnt / country_size * 100:.1f}%)")
+            print(
+                f"    excluded {nl}: RGB({c[0] if c else '?'},{c[1] if c else '?'},{c[2] if c else '?'}) "
+                f"{cnt}px ({cnt / country_size * 100:.1f}%)"
+            )
 
     return pixel_labels
 
@@ -528,7 +532,7 @@ def _exclude_edge_decoration_ccs(
                     continue  # dominant in cluster and not rectangular
 
             cx, cy = cc_centroids[i]
-            near_edge = (cx < bx or cx > w - bx or cy < by or cy > h - by)
+            near_edge = cx < bx or cx > w - bx or cy < by or cy > h - by
             if not near_edge:
                 continue
 
@@ -611,7 +615,7 @@ def _exclude_straight_edged_clusters(
                 continue
 
             cx, cy = cc_centroids[ci]
-            near_edge = (cx < bx or cx > w - bx or cy < by or cy > h - by)
+            near_edge = cx < bx or cx > w - bx or cy < by or cy > h - by
             if not near_edge:
                 continue
 
@@ -713,7 +717,7 @@ def _exclude_rectangular_edge_clusters(
         cx = xs.mean()
         cy = ys.mean()
 
-        near_edge = (cx < bx or cx > w - bx or cy < by or cy > h - by)
+        near_edge = cx < bx or cx > w - bx or cy < by or cy > h - by
         if not near_edge:
             continue
 
@@ -795,7 +799,7 @@ def _remove_tiny_fragments(
                 continue
 
             # Reassign to most common neighbor
-            cc_mask = (cc_labels == ci)
+            cc_mask = cc_labels == ci
             dilated = cv2.dilate(cc_mask.astype(np.uint8), np.ones((3, 3), np.uint8))
             border = (dilated > 0) & ~cc_mask
             neighbor_labels = result[border]
@@ -867,14 +871,16 @@ def _merge_fragmented_clusters(
 
         # Find a color-close, larger, spatially-adjacent target
         best_target = -1
-        best_dist = float('inf')
+        best_dist = float("inf")
         for other_lbl, (other_area, _) in cluster_stats.items():
             if other_lbl == lbl or other_area <= area:
                 continue
             if other_lbl >= len(color_centroids) or color_centroids[other_lbl] is None:
                 continue
             c_other = color_centroids[other_lbl]
-            rgb_dist = ((c_lbl[0] - c_other[0]) ** 2 + (c_lbl[1] - c_other[1]) ** 2 + (c_lbl[2] - c_other[2]) ** 2) ** 0.5
+            rgb_dist = (
+                (c_lbl[0] - c_other[0]) ** 2 + (c_lbl[1] - c_other[1]) ** 2 + (c_lbl[2] - c_other[2]) ** 2
+            ) ** 0.5
             if rgb_dist > max_rgb_dist:
                 continue
             if not _are_spatially_adjacent(result, lbl, other_lbl):
@@ -884,7 +890,9 @@ def _merge_fragmented_clusters(
                 best_target = other_lbl
 
         if best_target >= 0:
-            print(f"  [FragMerge] cluster {lbl} ({area_pct:.1f}%, {num_parts} parts, frag={frag_ratio:.1f}) → {best_target} (RGB dist={best_dist:.1f})")
+            print(
+                f"  [FragMerge] cluster {lbl} ({area_pct:.1f}%, {num_parts} parts, frag={frag_ratio:.1f}) → {best_target} (RGB dist={best_dist:.1f})"
+            )
             result[pixel_labels == lbl] = best_target
             total_merged += area
 
@@ -940,7 +948,7 @@ def _merge_color_close_fragments(
             if area < 50 or area > max_area:
                 continue
 
-            cc_mask = (cc_labels == ci)
+            cc_mask = cc_labels == ci
             dilated = cv2.dilate(cc_mask.astype(np.uint8), ring_kernel)
             border = (dilated > 0) & ~cc_mask
             neighbor_labels = result[border]
@@ -964,7 +972,9 @@ def _merge_color_close_fragments(
                 # else: neighbor color too different — try next neighbor
 
     if total_merged > 0:
-        print(f"  [ColorCloseMerge] Merged {total_merged} px in color-close CCs (max_area={max_area}, rgb_dist≤{max_rgb_dist})")
+        print(
+            f"  [ColorCloseMerge] Merged {total_merged} px in color-close CCs (max_area={max_area}, rgb_dist≤{max_rgb_dist})"
+        )
 
     return result
 
@@ -1096,7 +1106,7 @@ def _remove_circular_edge_elements(
     for contour in contours:
         area = cv2.contourArea(contour)
         perimeter = cv2.arcLength(contour, True)
-        if perimeter == 0 or area < np.pi * min_radius ** 2:
+        if perimeter == 0 or area < np.pi * min_radius**2:
             continue
 
         # Circularity check
@@ -1115,7 +1125,7 @@ def _remove_circular_edge_elements(
             continue
         cx = int(M["m10"] / M["m00"])
         cy = int(M["m01"] / M["m00"])
-        near_edge = (cx < bx or cx > w - bx or cy < by or cy > h - by)
+        near_edge = cx < bx or cx > w - bx or cy < by or cy > h - by
         if not near_edge:
             continue
 
@@ -1187,8 +1197,13 @@ def run_cleanup(
     # into color-close larger neighbors. A real province has 1-3 parts; a road or
     # text-residue cluster typically has 6+ scattered parts.
     pixel_labels = _merge_fragmented_clusters(
-        pixel_labels, color_centroids, country_mask,
-        min_fragmentation_ratio=1.0, min_parts=4, max_area_pct=0.10, max_rgb_dist=40.0,
+        pixel_labels,
+        color_centroids,
+        country_mask,
+        min_fragmentation_ratio=1.0,
+        min_parts=4,
+        max_area_pct=0.10,
+        max_rgb_dist=40.0,
     )
 
     # Step 2: Remove small patches
@@ -1206,20 +1221,14 @@ def run_cleanup(
 
     # Step 4c: Rectangular edge cluster detection (catches title boxes
     # that form their own cluster — shape + uniformity based, not border distance)
-    pixel_labels = _exclude_rectangular_edge_clusters(
-        pixel_labels, color_centroids, filtered_image, country_mask
-    )
+    pixel_labels = _exclude_rectangular_edge_clusters(pixel_labels, color_centroids, filtered_image, country_mask)
 
     # Step 4d: Straight-edge detection (catches decorations by boundary shape —
     # title boxes/compass/scale have straight edges, real regions have coastlines)
-    pixel_labels = _exclude_straight_edged_clusters(
-        pixel_labels, color_centroids, filtered_image, country_mask
-    )
+    pixel_labels = _exclude_straight_edged_clusters(pixel_labels, color_centroids, filtered_image, country_mask)
 
     # Step 5: Exclude noise clusters
-    pixel_labels = exclude_noise_clusters(
-        pixel_labels, color_centroids, filtered_image, country_size
-    )
+    pixel_labels = exclude_noise_clusters(pixel_labels, color_centroids, filtered_image, country_size)
 
     # Step 5e: Circular edge element detection — find circular contours
     # near edges (compass roses, dots) using contour circularity metric
@@ -1251,6 +1260,7 @@ def run_cleanup(
     # (typically 30-40 px tall after the Lanczos resize); the 60% majority gate in
     # spatial_mode_filter protects legitimate pinch points from being reassigned.
     from .cluster import spatial_mode_filter
+
     pixel_labels = spatial_mode_filter(pixel_labels, country_mask, radius=5)
     pixel_labels = spatial_mode_filter(pixel_labels, country_mask, radius=10)
     pixel_labels = spatial_mode_filter(pixel_labels, country_mask, radius=18)
