@@ -5,10 +5,11 @@
 
 meta:
   target_level: 2
-  last_audit: "2026-02-10"
-  last_audit_pass: 2  # Two audit passes on same day (pre and post email verification)
+  last_audit: "2026-05-10"
+  last_audit_pass: 3  # Two passes 2026-02-10 (Node) + one pass 2026-05-10 (cv-python expansion)
   app: track-your-regions
-  result: "64/64 pass (0 fail, 0 partial)"
+  result: "70/70 pass (0 fail, 0 partial). cv-python service brought into scope; report at audit-2026-05-10.md"
+  scope_notes: "v3 audit (2026-05-10) widened scope to include the cv-python FastAPI microservice introduced in rebuild/41-43. New items: V4.1.5_cvpy, V5.1.1_cvpy, V5.1.2_cvpy, V8.1.1_cvpy, V13.4.3_cvpy, V16.1.1_cvpy."
 
 chapters:
 
@@ -37,7 +38,7 @@ chapters:
       desc: "OS command injection protection"
       level: 1
       status: pass
-      notes: "No exec/spawn calls with user input"
+      notes: "No spawn/subprocess calls with user input on the Node side. cv-python source verified free of subprocess.* calls (audit 2026-05-10)."
     V1.2.6:
       desc: "SPARQL/external query injection protection"
       level: 1
@@ -59,7 +60,7 @@ chapters:
       desc: "Input validation on all endpoints"
       level: 1
       status: pass
-      notes: "Zod schemas on all route files: auth, experience, user, admin, world-view, geocode, AI, view, division. Validates body, query, and path params. Fixed 2026-02-10"
+      notes: "Node side: Zod schemas on all route files. cv-python uses FastAPI's `UploadFile`/`Form` declarations + `decode_image()` validation (raises InvalidImageBytes on null/empty/non-image bytes, returned as 400 by exception handler). The `params: str = Form(...)` + json.loads pattern is documented as a follow-up to migrate to Pydantic models — current behaviour: malformed JSON triggers a generic 500, no info leak (audit 2026-05-10)."
 
   V3_web_frontend_security:
     V3.2.1:
@@ -129,13 +130,18 @@ chapters:
       level: 1
       status: pass
       notes: "express.json({ limit: '10mb' }) configured; urlencoded defaults to 100KB"
+    V4.1.5_cvpy:
+      desc: "Resource consumption limits on cv-python (concurrency + body size)"
+      level: 2
+      status: pass
+      notes: "Body cap enforced via BodySizeLimitMiddleware (default 100 MB, override CV_MAX_BODY_BYTES). uvicorn invoked with --limit-concurrency 8 in Dockerfile so excess in-flight requests get 503 instead of stacking unbounded threads. Worker daemons still spawned per-request but bounded by uvicorn's gate. Fixed 2026-05-10."
 
   V5_file_handling:
     V5.2.1:
       desc: "File size limits enforced on downloads"
       level: 1
       status: pass
-      notes: "Content-Length pre-check + 20MB Transform stream limit. Oversized downloads rejected or aborted mid-stream. Fixed 2026-02-10"
+      notes: "Content-Length pre-check + 20MB Transform stream limit on Node-side downloads. Oversized downloads rejected or aborted mid-stream. Fixed 2026-02-10"
     V5.2.2:
       desc: "File extension + content-type validation"
       level: 1
@@ -151,6 +157,23 @@ chapters:
       level: 1
       status: pass
       notes: "Both sourceName and externalId sanitized with replace(/[^a-zA-Z0-9_-]/g, '-'). Path traversal prevented. Fixed 2026-02-10"
+    V5.1.1_cvpy:
+      desc: "cv-python multipart upload size enforcement"
+      level: 1
+      status: pass
+      notes: "BodySizeLimitMiddleware rejects requests with Content-Length > CV_MAX_BODY_BYTES (default 100 MB) before they're buffered, returning 413. Streaming uploads without Content-Length flow through but are gated by uvicorn's --limit-concurrency. Fixed 2026-05-10."
+    V5.1.2_cvpy:
+      desc: "cv-python file-format validation"
+      level: 1
+      status: pass
+      notes: "decode_image() in cv-python/app/utils/image.py raises InvalidImageBytes on empty bytes or when cv2.imdecode returns None (i.e. not a recognised image). Routed via FastAPI exception handler to a 400 with a generic detail string. Fixed 2026-05-10."
+
+  V5_cvpy_out_of_scope:
+    V5.user_uploads_status:
+      desc: "User file uploads (operator/curator-supplied map images via cv-python)"
+      level: 1
+      status: pass
+      notes: "Was previously listed as out-of-scope; brought into scope 2026-05-10 with the cv-python service. See V5.1.1_cvpy and V5.1.2_cvpy above."
 
   V6_authentication:
     V6.1.1:
@@ -282,6 +305,11 @@ chapters:
       level: 1
       status: pass
       notes: "checkCuratorScope() validates global/source/region scopes with recursive CTE. getCurationLog scope check added. Fixed 2026-02-10"
+    V8.1.1_cvpy:
+      desc: "cv-python authorization model"
+      level: 2
+      status: pass
+      notes: "Service has no per-request authn/authz. Trust derives from Docker network isolation: no `ports:` mapping in docker-compose.yml (only `expose: 8000`), service reachable only at http://cv-python:8000 from other containers on the bridge. Documented as a trust boundary in SECURITY.md. If cv-python ever moves out of the bridge or onto a shared cluster, a shared-secret header or mTLS becomes mandatory — tracked as a follow-up. Verified 2026-05-10."
 
   V9_self_contained_tokens:
     V9.1.1:
@@ -336,6 +364,11 @@ chapters:
       level: 2
       status: pass
       notes: "JWT_SECRET missing in production throws fatal error, blocking startup. Dev mode shows warning. Fixed 2026-02-10"
+    V13.4.3_cvpy:
+      desc: "cv-python error responses don't leak internals"
+      level: 2
+      status: pass
+      notes: "FastAPI exception handler in app/middleware.py catches Exception, prints traceback to stderr (Docker stdout), and returns {'detail':'Internal error'} with 500. NDJSON streaming worker similarly returns {'type':'error','message':'Internal error during processing'} instead of str(exc). InvalidImageBytes is the one allowlisted exception that surfaces a generic message via 400. Fixed 2026-05-10."
 
   V14_data_protection:
     V14.2.1:
@@ -353,3 +386,10 @@ chapters:
       level: 1
       status: pass
       notes: "OAuth callback uses one-time authorization code in URL. Tokens exchanged via POST /api/auth/exchange-code (refresh set as httpOnly cookie). Fixed 2026-02-10"
+
+  V16_security_logging:
+    V16.1.1_cvpy:
+      desc: "cv-python service logging"
+      level: 2
+      status: pass
+      notes: "Service emits print()-based stdout (collected by Docker). No security-relevant events to audit at this layer (no authn, no authz, no data-mutating side effects). The Node backend layer remains the source of truth for V16 audit trails. Replacing print() with structured `logging` is a follow-up but not blocking for L2."
