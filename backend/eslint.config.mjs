@@ -40,6 +40,10 @@ export default [
       'security/detect-eval-with-expression': 'error',
       'security/detect-no-csrf-before-method-override': 'error',
       'security/detect-child-process': 'warn',
+      // File-size cap: keep files under 1000 lines so they stay scannable.
+      // Skip blank lines and single-line comments (docstrings / section banners)
+      // from the count so files aren't artificially close to the limit.
+      'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
