@@ -52,6 +52,54 @@ import { LocationPicker } from './LocationPicker';
 import { LoadingSpinner } from './LoadingSpinner';
 import { EmptyState } from './EmptyState';
 
+interface ApplySuggestionParams {
+  setNewImageUrl: (url: string) => void;
+  setNewDescription: (desc: string) => void;
+  setNewWikipediaUrl: (url: string) => void;
+  setAutoFillEntity: (entity: { label: string; wikidataId: string } | null) => void;
+  currentDescription: string;
+  currentWikipediaUrl: string;
+  imageAutoFilled: React.MutableRefObject<boolean>;
+  descAutoFilled: React.MutableRefObject<boolean>;
+  linkAutoFilled: React.MutableRefObject<boolean>;
+}
+
+function pickImageHelperText(args: {
+  isError: boolean;
+  isSuccess: boolean;
+  successEntityLabel: string | undefined;
+  imageAutoFilled: boolean;
+  hasNewImageUrl: boolean;
+  autoFillEntityLabel: string | undefined;
+}): string {
+  if (args.isError) return 'No image found on Wikidata';
+  if (args.isSuccess) return `Found via ${args.successEntityLabel}`;
+  if (args.imageAutoFilled && args.hasNewImageUrl) {
+    return args.autoFillEntityLabel
+      ? `Auto-suggested from ${args.autoFillEntityLabel}`
+      : 'Auto-suggested from Wikidata';
+  }
+  return 'Wikimedia Commons URLs work best';
+}
+
+function applySuggestionToState(data: ImageSuggestion, p: ApplySuggestionParams): void {
+  // Mirror applyImageSuggestion's rule: overwrite description and Wikipedia
+  // URL when the field is empty OR was previously filled by auto-suggest.
+  // Keeping these two paths in lockstep prevents the manual "Suggest" button
+  // from leaving a stale auto-filled description behind after a re-lookup.
+  p.setNewImageUrl(data.imageUrl);
+  p.imageAutoFilled.current = true;
+  p.setAutoFillEntity({ label: data.entityLabel, wikidataId: data.wikidataId });
+  if (data.description && (!p.currentDescription || p.descAutoFilled.current)) {
+    p.setNewDescription(data.description);
+    p.descAutoFilled.current = true;
+  }
+  if (data.wikipediaUrl && (!p.currentWikipediaUrl || p.linkAutoFilled.current)) {
+    p.setNewWikipediaUrl(data.wikipediaUrl);
+    p.linkAutoFilled.current = true;
+  }
+}
+
 interface AddExperienceDialogProps {
   open: boolean;
   onClose: () => void;
@@ -130,34 +178,44 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
   const suggestMutation = useMutation({
     mutationFn: (params: { name?: string; lat?: number; lng?: number; wikidataId?: string }) =>
       suggestImageUrl(params),
-    onSuccess: (data) => {
-      setNewImageUrl(data.imageUrl);
-      imageAutoFilled.current = true;
-      setAutoFillEntity({ label: data.entityLabel, wikidataId: data.wikidataId });
-      if (data.description && !stateRef.current.newDescription) {
-        setNewDescription(data.description);
-        descAutoFilled.current = true;
-      }
-      if (data.wikipediaUrl && (!stateRef.current.newWikipediaUrl || linkAutoFilled.current)) {
-        setNewWikipediaUrl(data.wikipediaUrl);
-        linkAutoFilled.current = true;
-      }
-    },
+    onSuccess: (data) => applySuggestionToState(data, {
+      setNewImageUrl,
+      setNewDescription,
+      setNewWikipediaUrl,
+      setAutoFillEntity,
+      currentDescription: stateRef.current.newDescription,
+      currentWikipediaUrl: stateRef.current.newWikipediaUrl,
+      imageAutoFilled,
+      descAutoFilled,
+      linkAutoFilled,
+    }),
   });
 
   // --- Core lookup logic (used by both auto-fill and Re-lookup) ---
   // Reads from stateRef to always have current values regardless of closures.
 
-  // Apply Nominatim geocode result to local state. Returns the effective
-  // coords/QID for downstream image-suggestion lookup.
+  // Apply Nominatim geocode result to local state. Returns the *effective*
+  // coords/QID that the form is now using — so the downstream image-
+  // suggestion lookup uses the same identity (manually-pinned coords
+  // override geocoded ones, and we explicitly null out the wikidataId
+  // when the new place has none, instead of letting the caller fall back
+  // to a stale previous QID).
   const applyNominatimPlace = (place: PlaceResult): { lat: number; lng: number; wikidataId?: string } => {
-    if (!stateRef.current.coords || coordsAutoFilled.current) {
-      setCoords({ lat: place.lat, lng: place.lng });
+    const manualCoordsPinned = stateRef.current.coords && !coordsAutoFilled.current;
+    const effectiveCoords = manualCoordsPinned
+      ? stateRef.current.coords!
+      : { lat: place.lat, lng: place.lng };
+    if (!manualCoordsPinned) {
+      setCoords(effectiveCoords);
       coordsAutoFilled.current = true;
     }
-    if (place.wikidataId) setWikidataId(place.wikidataId);
+    setWikidataId(place.wikidataId ?? null);
     setAutoFillInfo(place.display_name.split(',').slice(0, 3).join(',').trim());
-    return { lat: place.lat, lng: place.lng, wikidataId: place.wikidataId ?? undefined };
+    return {
+      lat: effectiveCoords.lat,
+      lng: effectiveCoords.lng,
+      wikidataId: place.wikidataId ?? undefined,
+    };
   };
 
   // Apply Wikidata image-suggestion result. Skips fields the user has manually
@@ -197,11 +255,15 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
       // Step 2: Suggest image + description (only if user hasn't set image manually).
       if (!stateRef.current.newImageUrl || imageAutoFilled.current) {
         try {
+          // When Nominatim returned a place, trust its identity (already
+          // reconciled with the form's manual pins inside applyNominatimPlace).
+          // Only fall back to stateRef when Nominatim returned nothing at all,
+          // so a previous lookup's QID can't bleed into the new suggestion.
           const suggestion = await suggestImageUrl({
             name,
             lat: effective?.lat ?? stateRef.current.coords?.lat,
             lng: effective?.lng ?? stateRef.current.coords?.lng,
-            wikidataId: effective?.wikidataId ?? stateRef.current.wikidataId ?? undefined,
+            wikidataId: effective ? effective.wikidataId : stateRef.current.wikidataId ?? undefined,
           });
           if (autoFillGen.current !== generation) return;
           applyImageSuggestion(suggestion);
@@ -330,14 +392,14 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
   const canCreate = !!newName && coords !== null && !!newCategoryId;
 
   // Helper text for image field
-  const autoSuggestedFrom = autoFillEntity
-    ? `Auto-suggested from ${autoFillEntity.label}`
-    : 'Auto-suggested from Wikidata';
-
-  let imageHelperText = 'Wikimedia Commons URLs work best';
-  if (suggestMutation.isError) imageHelperText = 'No image found on Wikidata';
-  else if (suggestMutation.isSuccess) imageHelperText = `Found via ${suggestMutation.data.entityLabel}`;
-  else if (imageAutoFilled.current && newImageUrl) imageHelperText = autoSuggestedFrom;
+  const imageHelperText = pickImageHelperText({
+    isError: suggestMutation.isError,
+    isSuccess: suggestMutation.isSuccess,
+    successEntityLabel: suggestMutation.data?.entityLabel,
+    imageAutoFilled: imageAutoFilled.current,
+    hasNewImageUrl: !!newImageUrl,
+    autoFillEntityLabel: autoFillEntity?.label,
+  });
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
