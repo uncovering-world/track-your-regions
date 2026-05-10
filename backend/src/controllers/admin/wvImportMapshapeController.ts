@@ -6,10 +6,6 @@
  * color-coded region assignments.
  */
 
-/* eslint-disable security/detect-object-injection -- CV pipeline match controller:
- * bracket accesses index mapshape-result / group / assignment arrays by loop
- * counter or internal integer index. No user-controlled keys in this file. */
-
 import { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { pool } from '../../db/index.js';

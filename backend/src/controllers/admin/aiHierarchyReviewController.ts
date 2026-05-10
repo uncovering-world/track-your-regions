@@ -121,7 +121,7 @@ async function queryTree(
 
   // Process from deepest first (rows are ordered depth ASC, so reverse)
   for (let i = rows.length - 1; i >= 0; i--) {
-    // eslint-disable-next-line security/detect-object-injection -- loop-counter index into typed TreeRow[] array
+
     const row = rows[i];
     if (row.child_count === 0) {
       // Leaf node

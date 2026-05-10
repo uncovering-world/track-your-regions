@@ -188,7 +188,7 @@ export function LocationPicker({ value, onChange, name, onPlaceSelect }: Locatio
       map.remove();
       mapRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- map init/cleanup is mount-only; later effects sync marker/value changes
   }, []);
 
   // Sync marker with value changes

@@ -63,7 +63,7 @@ export function formatDecisionSummary(decisions: DecisionEntry[], totalPagesProc
 
     const uniqueDecisions = [...new Set(entries.map(e => e.decision))].join('/');
     lines.push(`${maker} → ${uniqueDecisions} (${entries.length}):`);
-    // eslint-disable-next-line security/detect-object-injection -- maker is a typed DecisionMaker union ('coverage_gate'|'country_depth'|...); MAKER_LABELS is a module-level const
+
     lines.push(`  ${MAKER_LABELS[maker]}`);
 
     // Show detail per page for coverage_gate and country_depth (stats matter)

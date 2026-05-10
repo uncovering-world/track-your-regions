@@ -6,7 +6,7 @@
  * smooth borders that match the "Detected clusters" preview exactly.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (__cv global) has no TypeScript types
 const G = globalThis as unknown as { __cv?: any };
 
 // =============================================================================

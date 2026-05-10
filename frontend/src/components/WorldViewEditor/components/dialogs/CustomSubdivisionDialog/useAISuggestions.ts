@@ -256,7 +256,7 @@ export function useAISuggestions({
         );
         if (divIndex === -1) continue;
 
-        // eslint-disable-next-line security/detect-object-injection -- divIndex is from findIndex on same newUnassigned[]
+
         const division = newUnassigned[divIndex];
 
         const groupIndex = newGroups.findIndex(
@@ -265,7 +265,7 @@ export function useAISuggestions({
         if (groupIndex === -1) continue;
 
         newUnassigned.splice(divIndex, 1);
-        // eslint-disable-next-line security/detect-object-injection -- groupIndex is from findIndex on same newGroups[]
+
         newGroups[groupIndex].members.push(division);
         assignedCount++;
       }
@@ -294,7 +294,7 @@ export function useAISuggestions({
 
     const targetGroupIndex = newGroups.findIndex(g => g.name === groupName);
     if (targetGroupIndex !== -1) {
-      // eslint-disable-next-line security/detect-object-injection -- targetGroupIndex is from findIndex on same newGroups[]
+
       newGroups[targetGroupIndex].members.push(division);
     }
 

@@ -390,7 +390,7 @@ function LocationsSection({
       if (!expanded) setExpanded(true);
       virtualizer.scrollToIndex(idx, { align: 'center', behavior: 'smooth' });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only respond to hover changes; depending on filteredLocations/expanded/virtualizer would re-scroll on unrelated re-renders
   }, [hoveredLocationId]);
 
   return (

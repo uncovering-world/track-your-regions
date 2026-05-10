@@ -476,7 +476,7 @@ export function DiscoverExperienceView({
       map.remove();
       mapRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- map init is mount-only; recreating on dep change would destroy/recreate the MapLibre instance every render
   }, []);
 
   // ── ResizeObserver: call map.resize() when container changes ──

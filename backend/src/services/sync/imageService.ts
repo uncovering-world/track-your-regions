@@ -5,8 +5,6 @@
  * Images are stored in /data/images/experiences/{source}/{external_id}.jpg
  */
 
-/* eslint-disable security/detect-non-literal-fs-filename -- All paths are built from sanitized source names and external IDs, not user input */
-
 import { existsSync } from 'fs';
 import { join } from 'path';
 
@@ -37,5 +35,6 @@ export function getImageUrl(sourceName: string, externalId: string): string {
  */
 export function imageExists(sourceName: string, externalId: string): boolean {
   const filePath = getImagePath(sourceName, externalId);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath is built from sanitized sourceName/externalId joined under fixed IMAGES_BASE_DIR
   return existsSync(filePath);
 }

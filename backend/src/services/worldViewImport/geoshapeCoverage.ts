@@ -369,7 +369,7 @@ function findNextScopeAfter(
   startIndex: number,
 ): { ancestorId: number; ancestorName: string } | undefined {
   for (let i = startIndex; i < ancestors.length; i++) {
-    // eslint-disable-next-line security/detect-object-injection -- loop-counter index into typed AncestorRow[]
+
     const row = ancestors[i];
     if (rowHasDivisions(row)) {
       return { ancestorId: row.id, ancestorName: row.name };
@@ -386,7 +386,7 @@ function resolveScopeFromRequestedAncestor(
   const idx = ancestors.findIndex(a => a.id === scopeAncestorId);
   if (idx < 0) return { scopeDivisionIds: [] };
 
-  // eslint-disable-next-line security/detect-object-injection -- idx is from findIndex on the same typed AncestorRow[]
+
   const row = ancestors[idx];
   if (!rowHasDivisions(row)) {
     return { scopeDivisionIds: [] };
@@ -404,7 +404,7 @@ function resolveScopeFromNearestAncestor(ancestors: AncestorRow[]): ScopeInfo {
   const idx = ancestors.findIndex(rowHasDivisions);
   if (idx < 0) return { scopeDivisionIds: [] };
 
-  // eslint-disable-next-line security/detect-object-injection -- idx is from findIndex on the same typed AncestorRow[]
+
   const row = ancestors[idx];
   return {
     scopeDivisionIds: row.division_ids ?? [],

@@ -6,7 +6,6 @@
  * re.findall → matchAll().
  */
 
-/* eslint-disable security/detect-non-literal-regexp, security/detect-unsafe-regex -- patterns built from static keyword arrays, not user input */
 import type { WikiSection, RegionEntry, MapshapeEntry } from './types.js';
 
 const COMMONS_FILE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
@@ -32,12 +31,14 @@ const WIKILINK_DISPLAY_MAX = 500;
  * Matches [[Target]] or [[Target|Display]], capturing Target in group 1.
  * Bounded repetition prevents pathological backtracking on malformed input.
  */
+
 const WIKILINK_RE_GLOBAL = new RegExp(
   `\\[\\[([^|\\]]{1,${WIKILINK_TARGET_MAX}})(?:\\|[^\\]]{0,${WIKILINK_DISPLAY_MAX}})?\\]\\]`,
   'g',
 );
 
 /** Single-match version of {@link WIKILINK_RE_GLOBAL}. */
+
 const WIKILINK_RE_SINGLE = new RegExp(
   `\\[\\[([^|\\]]{1,${WIKILINK_TARGET_MAX}})(?:\\|[^\\]]{0,${WIKILINK_DISPLAY_MAX}})?\\]\\]`,
 );
@@ -88,6 +89,7 @@ export function stripHtmlComments(text: string): string {
 const HARD_SKIP = [
   'locator', 'flag', 'coat', 'seal', 'emblem', 'logo', 'icon', 'banner',
 ];
+// eslint-disable-next-line security/detect-non-literal-regexp -- alternation built from module-level HARD_SKIP keyword array, escaped via escapeRegex
 const hardSkipRe = new RegExp(`\\b(?:${HARD_SKIP.map(escapeRegex).join('|')})\\b`);
 
 /** Soft-skip patterns — blocks weak keyword matches */
@@ -102,6 +104,7 @@ const SKIP_WORDS = [
   'harbour', 'tower', 'palace', 'cathedral', 'basilica',
   'monastery', 'fortress', 'lighthouse',
 ];
+// eslint-disable-next-line security/detect-non-literal-regexp -- alternation built from module-level SKIP_WORDS keyword array, escaped via escapeRegex
 const skipRe = new RegExp(`\\b(?:${SKIP_WORDS.map(escapeRegex).join('|')})\\b`);
 
 /** Strong map keywords — substring match */
@@ -116,6 +119,7 @@ const WEAK_MAP_KEYWORDS = [
   'comarca', 'comarcas', 'departement', 'departements',
   'department', 'departments',
 ];
+// eslint-disable-next-line security/detect-non-literal-regexp -- alternation built from module-level WEAK_MAP_KEYWORDS array, escaped via escapeRegex
 const weakRe = new RegExp(`\\b(?:${WEAK_MAP_KEYWORDS.map(escapeRegex).join('|')})\\b`);
 
 function escapeRegex(s: string): string {
@@ -216,6 +220,7 @@ export function extractImageCandidates(wikitext: string, maxCandidates = 15): st
   const imgHardSkip = [
     'flag', 'coat', 'seal', 'emblem', 'logo', 'icon', 'banner', 'wikivoyage',
   ];
+  // eslint-disable-next-line security/detect-non-literal-regexp -- alternation built from local imgHardSkip literal array, escaped via escapeRegex
   const imgHardSkipRe = new RegExp(`\\b(?:${imgHardSkip.map(escapeRegex).join('|')})\\b`);
 
   const mapKeywords = [
@@ -226,6 +231,7 @@ export function extractImageCandidates(wikitext: string, maxCandidates = 15): st
     'oblast', 'oblasts', 'department', 'departments',
     'administrative', 'division', 'divisions',
   ];
+  // eslint-disable-next-line security/detect-non-literal-regexp -- alternation built from local mapKeywords literal array, escaped via escapeRegex
   const mapKwRe = new RegExp(`\\b(?:${mapKeywords.map(escapeRegex).join('|')})\\b`);
 
   const seen = new Set<string>();
@@ -267,11 +273,11 @@ const STD_COLORS: Record<string, string> = {
 function findBalancedMapshapeEnd(text: string, startIdx: number): number {
   let depth = 0;
   for (let i = startIdx; i < text.length - 1; i++) {
-    // eslint-disable-next-line security/detect-object-injection -- loop-counter string index scan
+
     if (text[i] === '{' && text[i + 1] === '{') {
       depth++;
       i++;
-    // eslint-disable-next-line security/detect-object-injection -- loop-counter string index scan
+
     } else if (text[i] === '}' && text[i + 1] === '}') {
       depth--;
       if (depth === 0) return i;
@@ -303,6 +309,7 @@ function extractMapshapeTitle(resolved: string): string {
   return raw
     .trim()
     .replace(
+      // eslint-disable-next-line security/detect-unsafe-regex -- bounded character classes ({1,500} and {0,500}) with non-overlapping anchors; no nested quantifiers
       /\[\[([^\]|]{1,500})(?:\|[^\]]{0,500})?\]\]/g,
       '$1',
     );
@@ -457,11 +464,12 @@ function buildRegionItemsLookup(cleanText: string): Map<string, string[]> {
  */
 function stripParentheticalAnnotations(nameText: string): string {
   // Matches `(` + one-or-more wikilinks (each followed by optional ", " or whitespace) + `)`.
-  const closed =
-    /\s{0,5}\((?:\[\[[^\]]{0,500}\]\](?:[,\s]{1,10})?){1,10}\)/g;
-  // Matches a trailing unclosed `(` + wikilink run (no closing `)`).
-  const unclosed =
-    /\s{0,5}\((?:\[\[[^\]]{0,500}\]\](?:[,\s]{1,10})?){1,10}$/;
+  // All repetitions bounded ({0,5}, {0,500}, {1,10}, outer {1,10}); ']]' literal grounds inner backtracking.
+  // eslint-disable-next-line security/detect-unsafe-regex -- bounded as documented above
+  const closed = /\s{0,5}\((?:\[\[[^\]]{0,500}\]\](?:[,\s]{1,10})?){1,10}\)/g;
+  // Matches a trailing unclosed `(` + wikilink run (no closing `)`). Same bounded structure as `closed`.
+  // eslint-disable-next-line security/detect-unsafe-regex -- bounded as documented above
+  const unclosed = /\s{0,5}\((?:\[\[[^\]]{0,500}\]\](?:[,\s]{1,10})?){1,10}$/;
   return nameText.replace(closed, '').replace(unclosed, '');
 }
 
@@ -550,8 +558,9 @@ export function parseRegionlist(wikitext: string): {
   //   - one or more [[wikilinks]] optionally interleaved with plain text, OR
   //   - a single non-delimited run of plain text up to the next pipe/brace/newline.
   // Both the wikilink body and the plain-text interleave are capped.
-  const namePattern =
-    /region(\d{1,4})name\s*=\s*(\[\[[^\]]{0,500}\]\](?:[^|\n}]{0,200}\[\[[^\]]{0,500}\]\]){0,10}|[^|\n}]{1,500})/g;
+  // All repetitions bounded ({1,4}, {0,500}, {0,200}, {0,10}, {1,500}); literal anchors (`region`, `name=`, `]]`) prevent overlapping matches.
+  // eslint-disable-next-line security/detect-unsafe-regex -- bounded as documented above
+  const namePattern = /region(\d{1,4})name\s*=\s*(\[\[[^\]]{0,500}\]\](?:[^|\n}]{0,200}\[\[[^\]]{0,500}\]\]){0,10}|[^|\n}]{1,500})/g;
 
   const regions: RegionEntry[] = [];
   for (const m of cleanText.matchAll(namePattern)) {

@@ -337,7 +337,7 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
       features: allGeometries.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g })),
     };
     return turf.bbox(fc) as [number, number, number, number];
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- allGeometries is derived from these three deps each render; recomputing only when geometries actually change
   }, [data?.parentGeometry, data?.childrenGeometry, data?.geoshapeGeometry]);
 
   const fitToAll = useCallback((mapRef: React.RefObject<MapRef | null>) => {
@@ -832,7 +832,7 @@ export function GapAnalysisDialog({ state, tree, worldViewId, highlightedGapId, 
     if (state.loading || !localModified.current) {
       setLocalState(state);
     }
-  }, [state?.regionId, state?.loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state?.regionId, state?.loading]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally exclude `state` itself; we only want to resync on region change or loading transitions, not on every state mutation
 
   const effectiveState = localState?.regionId === state?.regionId ? localState : state;
 

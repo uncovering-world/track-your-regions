@@ -21,7 +21,7 @@ import {
 
 export type NavCategory = 'unresolved' | 'warnings' | 'single-child' | 'incomplete-coverage';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic alias for any concrete useVirtualizer<TItem, TElement> return; consumers pass typed virtualizers
 type AnyVirtualizer = ReturnType<typeof useVirtualizer<any, any>>;
 
 export interface UseNavigationStateResult {
@@ -126,7 +126,7 @@ export function useNavigationState(
     estimateSize: () => 40,
     overscan: 15,
     getItemKey: (index) => {
-      // eslint-disable-next-line security/detect-object-injection -- index is a typed number from the virtualizer callback
+
       const item = flatItems[index];
       if (item.kind === 'node') {
         const n = item.node;
@@ -224,11 +224,11 @@ export function useNavigationState(
     : reviewHighlightId;
 
   const navigateTo = useCallback((category: NavCategory, idx: number) => {
-    // eslint-disable-next-line security/detect-object-injection -- category is a typed NavCategory union, navIdsMap is Record<NavCategory, number[]>
+
     const ids = navIdsMap[category];
     if (!tree || idx < 0 || idx >= ids.length) return;
     setActiveNav({ category, idx });
-    // eslint-disable-next-line security/detect-object-injection -- idx bounds checked above against ids.length
+
     const targetId = ids[idx];
     const ancestorIds = collectAncestorsOfIds(tree, new Set([targetId]));
     setExpanded(prev => new Set([...prev, ...ancestorIds, targetId]));
@@ -260,7 +260,7 @@ export function useNavigationState(
         setActiveNav({ category: activeNav.category, idx: clampedIdx });
       }
       // Scroll to the (possibly new) item at this index
-      // eslint-disable-next-line security/detect-object-injection -- clampedIdx is derived via Math.min and bounded by ids.length
+
       const targetId = ids[clampedIdx];
       if (tree) {
         const ancestorIds = collectAncestorsOfIds(tree, new Set([targetId]));

@@ -82,7 +82,7 @@ export function AIDivisionList({
 
   const getGroupColorByName = useCallback((groupName: string) => {
     const index = groupNames.indexOf(groupName);
-    // eslint-disable-next-line security/detect-object-injection -- index from groupNames.indexOf; groupNames and subdivisionGroups are parallel arrays built in the same hook
+
     return index >= 0 ? getGroupColor(subdivisionGroups[index], index) : '#666';
   }, [groupNames, subdivisionGroups]);
 
@@ -346,7 +346,7 @@ export function AIDivisionList({
                         Assign to:
                       </Typography>
                       {groupNames.map((groupName, idx) => {
-                        // eslint-disable-next-line security/detect-object-injection -- idx is .map() callback index into parallel array subdivisionGroups
+
                         const gc = getGroupColor(subdivisionGroups[idx], idx);
                         return (
                           <Button

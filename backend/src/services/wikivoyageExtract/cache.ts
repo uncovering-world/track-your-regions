@@ -6,7 +6,6 @@
  * Auto-saves every 200 writes.
  */
 
-/* eslint-disable security/detect-non-literal-fs-filename -- paths are internally constructed, not user-controlled */
 import fs from 'fs';
 import path from 'path';
 import type { CacheStore } from './types.js';
@@ -25,7 +24,9 @@ export class FileCache {
   /** Load cache from disk */
   private load(): void {
     try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- this.filePath is set by the caller (internal services), not by user input
       if (fs.existsSync(this.filePath)) {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- this.filePath is set by the caller (internal services), not by user input
         const data = fs.readFileSync(this.filePath, 'utf-8');
         this.store = JSON.parse(data) as CacheStore;
         console.log(`[WV Cache] Loaded ${Object.keys(this.store).length} cached responses from ${this.filePath}`);
@@ -66,11 +67,15 @@ export class FileCache {
     if (!this.dirty) return;
     try {
       const dir = path.dirname(this.filePath);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- dir derived from internal this.filePath, not user input
       if (!fs.existsSync(dir)) {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- dir derived from internal this.filePath, not user input
         fs.mkdirSync(dir, { recursive: true });
       }
       const tmpPath = path.join(dir, `.wv-cache-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmpPath built from internal dir + literal prefix + Date.now()/Math.random
       fs.writeFileSync(tmpPath, JSON.stringify(this.store, null, 0));
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- both paths are internal (tmpPath built locally, this.filePath set by caller)
       fs.renameSync(tmpPath, this.filePath);
       this.dirty = false;
     } catch (err) {
