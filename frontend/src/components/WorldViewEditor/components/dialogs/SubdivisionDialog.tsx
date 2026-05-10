@@ -302,7 +302,10 @@ export function SubdivisionDialog({
                   )}
                 </Box>
               }
-              secondary={node.hasSubregions ? (node.loaded ? `${node.children.length} children` : 'Has children') : undefined}
+              secondary={(() => {
+                if (!node.hasSubregions) return undefined;
+                return node.loaded ? `${node.children.length} children` : 'Has children';
+              })()}
             />
           </ListItemButton>
         </ListItem>
@@ -346,13 +349,15 @@ export function SubdivisionDialog({
           />
         )}
 
-        {loading ? (
+        {loading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <LoadingSpinner />
           </Box>
-        ) : tree.length === 0 ? (
+        )}
+        {!loading && tree.length === 0 && (
           <Typography color="text.secondary">No subdivisions found.</Typography>
-        ) : (
+        )}
+        {!loading && tree.length > 0 && (
           <>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
               <Typography variant="body2" color="text.secondary">
@@ -443,11 +448,11 @@ export function SubdivisionDialog({
           onClick={handleConfirm}
           disabled={isPending || getSelectedIds().length === 0}
         >
-          {isPending
-            ? 'Adding...'
-            : createAsSubregions && includeChildren
-              ? `Add ${getSelectedIds().length} as Subregions`
-              : `Add ${getSelectedIds().length} Divisions`}
+          {(() => {
+            if (isPending) return 'Adding...';
+            if (createAsSubregions && includeChildren) return `Add ${getSelectedIds().length} as Subregions`;
+            return `Add ${getSelectedIds().length} Divisions`;
+          })()}
         </Button>
       </DialogActions>
     </Dialog>
