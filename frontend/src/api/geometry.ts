@@ -156,7 +156,8 @@ export async function regenerateDisplayGeometries(
   if (!applyClipping) params.append('clip', 'false');
   if (regionId) params.append('regionId', String(regionId));
   const queryString = params.toString();
-  const url = `${API_URL}/api/world-views/${worldViewId}/regenerate-display-geometries${queryString ? `?${queryString}` : ''}`;
+  const querySuffix = queryString ? `?${queryString}` : '';
+  const url = `${API_URL}/api/world-views/${worldViewId}/regenerate-display-geometries${querySuffix}`;
   return authFetchJson<RegenerateDisplayGeometriesResult>(url, { method: 'POST' });
 }
 

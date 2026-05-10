@@ -51,7 +51,8 @@ export async function assignExperiencesToRegions(
   runningAssignments.set(worldViewId, progress);
 
   try {
-    console.log(`[Region Assignment] Starting for world view ${worldViewId}${categoryId ? ` (source ${categoryId})` : ''}`);
+    const sourceSuffix = categoryId ? ` (source ${categoryId})` : '';
+    console.log(`[Region Assignment] Starting for world view ${worldViewId}${sourceSuffix}`);
 
     // Step 1: Clear existing auto-assignments for this world view
     progress.statusMessage = 'Clearing previous auto-assignments...';

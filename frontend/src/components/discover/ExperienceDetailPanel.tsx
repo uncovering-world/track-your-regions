@@ -704,7 +704,11 @@ function ContentsSection({
                     }}
                   />
                 )}
-                <Tooltip title={`${content.name}${content.artist ? ` - ${content.artist}` : ''}${content.year ? ` (${content.year})` : ''}`}>
+                <Tooltip title={[
+                  content.name,
+                  content.artist ? ` - ${content.artist}` : '',
+                  content.year ? ` (${content.year})` : '',
+                ].join('')}>
                   <Box
                     sx={{
                       position: 'absolute',

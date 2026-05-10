@@ -173,7 +173,8 @@ export async function fetchExperiences(params?: {
   if (params?.offset) searchParams.set('offset', String(params.offset));
 
   const query = searchParams.toString();
-  return fetchJson<ExperiencesResponse>(`${API_URL}/api/experiences${query ? `?${query}` : ''}`);
+  const querySuffix = query ? `?${query}` : '';
+  return fetchJson<ExperiencesResponse>(`${API_URL}/api/experiences${querySuffix}`);
 }
 
 /**
@@ -202,8 +203,9 @@ export async function fetchExperiencesByRegion(
   if (options?.offset) params.set('offset', String(options.offset));
 
   const query = params.toString();
+  const querySuffix = query ? `?${query}` : '';
   return authFetchJson<ExperiencesByRegionResponse>(
-    `${API_URL}/api/experiences/by-region/${regionId}${query ? `?${query}` : ''}`
+    `${API_URL}/api/experiences/by-region/${regionId}${querySuffix}`
   );
 }
 
@@ -247,8 +249,9 @@ export async function fetchRegionExperienceLocations(
   const params = new URLSearchParams();
   if (options?.includeChildren === false) params.set('includeChildren', 'false');
   const query = params.toString();
+  const querySuffix = query ? `?${query}` : '';
   return fetchJson<RegionExperienceLocationsResponse>(
-    `${API_URL}/api/experiences/by-region/${regionId}/locations${query ? `?${query}` : ''}`
+    `${API_URL}/api/experiences/by-region/${regionId}/locations${querySuffix}`
   );
 }
 
