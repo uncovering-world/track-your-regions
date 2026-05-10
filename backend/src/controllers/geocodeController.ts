@@ -220,6 +220,69 @@ async function lookupByName(name: string): Promise<{ imageUrl: string; entityLab
   return null;
 }
 
+interface SuggestImagePayload {
+  imageUrl: string | undefined;
+  source: 'wikidata_direct' | 'wikidata_spatial' | 'wikidata_search';
+  entityLabel: string | undefined;
+  description: string | undefined;
+  wikipediaUrl: string | undefined;
+  wikidataId: string | undefined;
+}
+
+function isValidLatLng(lat: number | undefined, lng: number | undefined): lat is number {
+  return lat != null && lng != null
+    && !isNaN(lat) && !isNaN(lng)
+    && isFinite(lat) && isFinite(lng)
+    && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+async function suggestByQid(wikidataId: string | undefined): Promise<SuggestImagePayload | null> {
+  if (!wikidataId || !/^Q\d+$/.test(wikidataId)) return null;
+  const result = await lookupByQid(wikidataId);
+  if (!result) return null;
+  return {
+    imageUrl: result.imageUrl,
+    source: 'wikidata_direct',
+    entityLabel: result.entityLabel,
+    description: result.description,
+    wikipediaUrl: result.wikipediaUrl,
+    wikidataId,
+  };
+}
+
+async function suggestBySpatial(
+  lat: number | undefined,
+  lng: number | undefined,
+): Promise<SuggestImagePayload | null> {
+  if (!isValidLatLng(lat, lng)) return null;
+  const result = await lookupBySpatial(lat, lng as number);
+  if (!result) return null;
+  // Spatial search doesn't include sitelinks; fetch Wikipedia URL via QID follow-up
+  const entityData = result.wikidataId ? await lookupByQid(result.wikidataId) : undefined;
+  return {
+    imageUrl: result.imageUrl,
+    source: 'wikidata_spatial',
+    entityLabel: result.entityLabel,
+    description: result.description,
+    wikipediaUrl: entityData?.wikipediaUrl,
+    wikidataId: result.wikidataId,
+  };
+}
+
+async function suggestByName(name: string | undefined): Promise<SuggestImagePayload | null> {
+  if (!name) return null;
+  const result = await lookupByName(name);
+  if (!result) return null;
+  return {
+    imageUrl: result.imageUrl,
+    source: 'wikidata_search',
+    entityLabel: result.entityLabel,
+    description: result.description,
+    wikipediaUrl: result.wikipediaUrl,
+    wikidataId: result.wikidataId,
+  };
+}
+
 /**
  * GET /api/geocode/suggest-image
  * Layered Wikidata image lookup for experience creation.
@@ -235,58 +298,15 @@ export async function suggestImage(req: Request, res: Response) {
   }
 
   try {
-    // Layer 1: Direct QID lookup
-    if (wikidataId && /^Q\d+$/.test(wikidataId)) {
-      const result = await lookupByQid(wikidataId);
-      if (result) {
-        return res.json({
-          imageUrl: result.imageUrl,
-          source: 'wikidata_direct',
-          entityLabel: result.entityLabel,
-          description: result.description,
-          wikipediaUrl: result.wikipediaUrl,
-          wikidataId,
-        });
-      }
+    const layers = [
+      () => suggestByQid(wikidataId),
+      () => suggestBySpatial(lat, lng),
+      () => suggestByName(name),
+    ];
+    for (const layer of layers) {
+      const payload = await layer();
+      if (payload) return res.json(payload);
     }
-
-    // Layer 2: SPARQL spatial search — get Wikipedia URL via QID follow-up
-    if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng) &&
-        isFinite(lat) && isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-      const result = await lookupBySpatial(lat, lng);
-      if (result) {
-        // Fetch sitelinks for Wikipedia URL (spatial search doesn't include them)
-        let wikipediaUrl: string | undefined;
-        if (result.wikidataId) {
-          const entityData = await lookupByQid(result.wikidataId);
-          wikipediaUrl = entityData?.wikipediaUrl;
-        }
-        return res.json({
-          imageUrl: result.imageUrl,
-          source: 'wikidata_spatial',
-          entityLabel: result.entityLabel,
-          description: result.description,
-          wikipediaUrl,
-          wikidataId: result.wikidataId,
-        });
-      }
-    }
-
-    // Layer 3: Name search
-    if (name) {
-      const result = await lookupByName(name);
-      if (result) {
-        return res.json({
-          imageUrl: result.imageUrl,
-          source: 'wikidata_search',
-          entityLabel: result.entityLabel,
-          description: result.description,
-          wikipediaUrl: result.wikipediaUrl,
-          wikidataId: result.wikidataId,
-        });
-      }
-    }
-
     res.status(404).json({ error: 'No image found' });
   } catch (error) {
     console.error('Image suggestion error:', error);
