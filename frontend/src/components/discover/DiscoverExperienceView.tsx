@@ -863,7 +863,11 @@ export function DiscoverExperienceView({
                 {shortSourceName} in {activeView.regionName}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {isLoading ? 'Loading...' : `${filteredExperiences.length}${search ? ` of ${experiences.length}` : ''} experiences`}
+                {(() => {
+                  if (isLoading) return 'Loading...';
+                  const ofTotal = search ? ` of ${experiences.length}` : '';
+                  return `${filteredExperiences.length}${ofTotal} experiences`;
+                })()}
                 {hasCuratorScope && rejectedCount > 0 && (
                   <Typography component="span" variant="caption" color="error.main">
                     {' '}({rejectedCount} rejected)

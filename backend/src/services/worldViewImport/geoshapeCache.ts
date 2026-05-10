@@ -1066,7 +1066,9 @@ export async function geoshapeMatchRegion(
   // Sort suggestions by coverage descending for display
   suggestions.sort((a, b) => b.score - a.score);
 
-  console.log(`[Geoshape Match] Covering set for region ${regionId}: ${suggestions.map(s => `${s.name} (${(s.score / 10).toFixed(1)}%)`).join(', ')} — total coverage: ${roundedTotalCoverage != null ? (roundedTotalCoverage * 100).toFixed(1) : '?'}%`);
+  const summary = suggestions.map(s => `${s.name} (${(s.score / 10).toFixed(1)}%)`).join(', ');
+  const totalCoveragePct = roundedTotalCoverage != null ? (roundedTotalCoverage * 100).toFixed(1) : '?';
+  console.log(`[Geoshape Match] Covering set for region ${regionId}: ${summary} — total coverage: ${totalCoveragePct}%`);
 
   const suggestionsWithConflict = suggestions.map(s => ({
     ...s,

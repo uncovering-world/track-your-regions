@@ -338,12 +338,15 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
   const canCreate = !!newName && coords !== null && !!newCategoryId;
 
   // Helper text for image field
+  const autoSuggestedFrom = autoFillEntity
+    ? `Auto-suggested from ${autoFillEntity.label}`
+    : 'Auto-suggested from Wikidata';
   const imageHelperText = suggestMutation.isError
     ? 'No image found on Wikidata'
     : suggestMutation.isSuccess
       ? `Found via ${suggestMutation.data.entityLabel}`
       : imageAutoFilled.current && newImageUrl
-        ? `Auto-suggested${autoFillEntity ? ` from ${autoFillEntity.label}` : ' from Wikidata'}`
+        ? autoSuggestedFrom
         : 'Wikimedia Commons URLs work best';
 
   return (

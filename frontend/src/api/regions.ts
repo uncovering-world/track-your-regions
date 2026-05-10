@@ -296,7 +296,8 @@ export async function fetchSubregionGeometries(
       params.set('useDisplay', 'true');
     }
     const queryString = params.toString();
-    const url = `${API_URL}/api/world-views/regions/${regionId}/subregions/geometries${queryString ? `?${queryString}` : ''}`;
+    const querySuffix = queryString ? `?${queryString}` : '';
+    const url = `${API_URL}/api/world-views/regions/${regionId}/subregions/geometries${querySuffix}`;
     return await authFetchJson<GeoJSONFeatureCollection>(url);
   } catch {
     return null;
