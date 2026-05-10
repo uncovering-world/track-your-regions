@@ -167,73 +167,83 @@ async function fetchWikipediaUrls(): Promise<Map<string, string>> {
   }
 }
 
-/**
- * Transform UNESCO API record to our internal format
- */
-function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): ProcessedExperience | null {
-  // Skip records without coordinates
-  if (!record.coordinates || !record.coordinates.lat || !record.coordinates.lon) {
-    console.log(`[UNESCO Sync] Skipping ${record.id_no} - no coordinates`);
-    return null;
-  }
+const NAME_LOCALE_FIELDS: Array<[keyof UnescoApiRecord, string]> = [
+  ['name_en', 'en'],
+  ['name_fr', 'fr'],
+  ['name_es', 'es'],
+  ['name_ru', 'ru'],
+  ['name_ar', 'ar'],
+  ['name_zh', 'zh'],
+];
 
-  // Build multilingual name object
+function buildMultilingualNames(record: UnescoApiRecord): Record<string, string> {
   const nameLocal: Record<string, string> = {};
-  if (record.name_en) nameLocal.en = record.name_en;
-  if (record.name_fr) nameLocal.fr = record.name_fr;
-  if (record.name_es) nameLocal.es = record.name_es;
-  if (record.name_ru) nameLocal.ru = record.name_ru;
-  if (record.name_ar) nameLocal.ar = record.name_ar;
-  if (record.name_zh) nameLocal.zh = record.name_zh;
-
-  // Parse country codes (format: "FR,ES" for transboundary)
-  // Handle both string and array formats from API
-  let countryCodes: string[] = [];
-  if (record.iso_codes) {
-    if (typeof record.iso_codes === 'string') {
-      countryCodes = record.iso_codes.split(',').map((c) => c.trim()).filter(Boolean);
-    } else if (Array.isArray(record.iso_codes)) {
-      countryCodes = record.iso_codes.map(String);
-    }
+  for (const [field, locale] of NAME_LOCALE_FIELDS) {
+    const value = record[field];
+    if (typeof value === 'string' && value) nameLocal[locale] = value;
   }
+  return nameLocal;
+}
 
-  // Parse country names - handle both string and array formats
-  let countryNames: string[] = [];
-  if (record.states_names) {
-    if (typeof record.states_names === 'string') {
-      countryNames = record.states_names.split(',').map((c) => c.trim()).filter(Boolean);
-    } else if (Array.isArray(record.states_names)) {
-      countryNames = record.states_names.map(String);
-    }
+/** UNESCO API hands us "FR,ES" or ["FR","ES"] depending on the field; normalize either shape. */
+function parseDelimitedField(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return value.split(',').map(c => c.trim()).filter(Boolean);
   }
-
-  // Normalize category
-  let category: string | null = null;
-  if (record.category) {
-    const cat = record.category.toLowerCase();
-    if (cat.includes('cultural')) category = 'cultural';
-    else if (cat.includes('natural')) category = 'natural';
-    else if (cat.includes('mixed')) category = 'mixed';
-    else category = cat;
+  if (Array.isArray(value)) {
+    return value.map(String);
   }
+  return [];
+}
 
-  // Build tags from criteria
+function normalizeCategory(category: string | undefined | null): string | null {
+  if (!category) return null;
+  const cat = category.toLowerCase();
+  if (cat.includes('cultural')) return 'cultural';
+  if (cat.includes('natural')) return 'natural';
+  if (cat.includes('mixed')) return 'mixed';
+  return cat;
+}
+
+function buildUnescoTags(record: UnescoApiRecord): string[] {
   const tags: string[] = [];
   if (record.criteria) {
     // UNESCO criteria like "(i)(ii)(iv)" -> ["criterion_i", "criterion_ii", "criterion_iv"]
     const criteriaMatches = record.criteria.match(/\(([ivx]+)\)/gi);
     if (criteriaMatches) {
-      tags.push(...criteriaMatches.map((c) => `criterion_${c.replace(/[()]/g, '').toLowerCase()}`));
+      tags.push(...criteriaMatches.map(c => `criterion_${c.replace(/[()]/g, '').toLowerCase()}`));
     }
   }
-  if (record.danger === 1 || record.danger_list) {
-    tags.push('in_danger');
+  if (record.danger === 1 || record.danger_list) tags.push('in_danger');
+  if (record.transboundary === 1) tags.push('transboundary');
+  return tags;
+}
+
+/** UNESCO returns either a plain URL, a JSON-stringified object, or an object literal. */
+function extractRemoteImageUrl(value: unknown): string | null {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed.url || null;
+    } catch {
+      return value;
+    }
   }
-  if (record.transboundary === 1) {
-    tags.push('transboundary');
+  if (typeof value === 'object' && value !== null) {
+    return (value as { url?: string }).url || null;
+  }
+  return null;
+}
+
+/**
+ * Transform UNESCO API record to our internal format
+ */
+function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): ProcessedExperience | null {
+  if (!record.coordinates || !record.coordinates.lat || !record.coordinates.lon) {
+    console.log(`[UNESCO Sync] Skipping ${record.id_no} - no coordinates`);
+    return null;
   }
 
-  // Build metadata object with UNESCO-specific fields
   const metadata: Record<string, unknown> = {
     dateInscribed: record.date_inscribed,
     inDanger: record.danger === 1,
@@ -246,43 +256,22 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
     wikipediaUrl: wikipediaUrl || null,
   };
 
-  // Extract image URL - UNESCO returns either a string URL or a JSON object with url field
-  let remoteImageUrl: string | null = null;
-  if (record.main_image_url) {
-    if (typeof record.main_image_url === 'string') {
-      // Check if it's a JSON string
-      try {
-        const parsed = JSON.parse(record.main_image_url);
-        remoteImageUrl = parsed.url || null;
-      } catch {
-        // It's a plain URL string
-        remoteImageUrl = record.main_image_url;
-      }
-    } else if (typeof record.main_image_url === 'object' && record.main_image_url !== null) {
-      // It's already an object
-      remoteImageUrl = (record.main_image_url as { url?: string }).url || null;
-    }
-  }
-
-  // Parse multi-location components (serial nominations)
-  const locations = parseComponentsList(record.components_list);
-
   return {
     categoryId: UNESCO_CATEGORY_ID,
     externalId: String(record.id_no),
     name: record.name_en || `Site ${record.id_no}`,
-    nameLocal,
+    nameLocal: buildMultilingualNames(record),
     description: null, // UNESCO API doesn't provide full description
     shortDescription: record.short_description_en || null,
-    category,
-    tags,
+    category: normalizeCategory(record.category),
+    tags: buildUnescoTags(record),
     lat: record.coordinates.lat,
     lon: record.coordinates.lon,
-    countryCodes,
-    countryNames,
-    imageUrl: remoteImageUrl, // Store remote URL directly
+    countryCodes: parseDelimitedField(record.iso_codes),
+    countryNames: parseDelimitedField(record.states_names),
+    imageUrl: extractRemoteImageUrl(record.main_image_url),
     metadata,
-    locations,
+    locations: parseComponentsList(record.components_list),
   };
 }
 
