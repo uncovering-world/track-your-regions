@@ -28,11 +28,24 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import Map, { Source, Layer, NavigationControl, type MapRef, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import type { Region, RegionMember } from '../../../../../types';
 import { MAP_STYLE } from '../../../../../constants/mapStyles';
-import type { SubdivisionGroup } from './types';
+import type { SubdivisionGroup, MapTool } from './types';
 import { getGroupColor } from './types';
 import { ImageOverlayDialog, type ImageOverlaySettings } from './ImageOverlayDialog';
 import { CutDivisionDialog } from '../CutDivisionDialog';
 import { useGeometryLoading } from './useGeometryLoading';
+
+function pickHoverCursor(
+  activeTool: MapTool,
+  featureProps: Record<string, unknown> | null | undefined,
+  selectedGroupIdx: number | 'unassigned' | null,
+): string {
+  if (activeTool === 'split') {
+    return featureProps?.hasChildren ? 'crosshair' : 'not-allowed';
+  }
+  if (activeTool === 'cut') return 'crosshair';
+  if (activeTool === 'moveToParent') return 'pointer';
+  return selectedGroupIdx !== null ? 'pointer' : 'default';
+}
 import { useDivisionOperations } from './useDivisionOperations';
 import { useImageColorPicker } from './useImageColorPicker';
 
@@ -137,27 +150,21 @@ export function MapViewTab({
   // Handle mouse move for hover effects
   const handleMapMouseMove = useCallback((event: MapLayerMouseEvent) => {
     const features = event.features;
-    if (features && features.length > 0) {
-      const id = features[0].properties?.memberRowId || features[0].properties?.id;
-      setHoveredDivisionId(id);
-      if (mapRef.current) {
-        // Show different cursor based on tool
-        if (activeTool === 'split') {
-          const hasChildren = features[0].properties?.hasChildren;
-          mapRef.current.getCanvas().style.cursor = hasChildren ? 'crosshair' : 'not-allowed';
-        } else if (activeTool === 'cut') {
-          mapRef.current.getCanvas().style.cursor = 'crosshair';
-        } else if (activeTool === 'moveToParent') {
-          mapRef.current.getCanvas().style.cursor = 'pointer';
-        } else {
-          mapRef.current.getCanvas().style.cursor = selectedGroupIdx !== null ? 'pointer' : 'default';
-        }
-      }
-    } else {
+    if (!features || features.length === 0) {
       setHoveredDivisionId(null);
-      if (mapRef.current) {
-        mapRef.current.getCanvas().style.cursor = '';
-      }
+      if (mapRef.current) mapRef.current.getCanvas().style.cursor = '';
+      return;
+    }
+
+    const featureProps = features[0].properties as Record<string, unknown> | null | undefined;
+    const hoveredId = (featureProps?.memberRowId ?? featureProps?.id) as number | null | undefined;
+    setHoveredDivisionId(hoveredId ?? null);
+    if (mapRef.current) {
+      mapRef.current.getCanvas().style.cursor = pickHoverCursor(
+        activeTool,
+        featureProps,
+        selectedGroupIdx,
+      );
     }
   }, [activeTool, selectedGroupIdx]);
 
