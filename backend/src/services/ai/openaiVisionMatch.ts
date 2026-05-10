@@ -12,7 +12,7 @@
 import OpenAI from 'openai';
 import { calculateCost } from './pricingService.js';
 import { getModelForFeature } from './aiSettingsService.js';
-import type { TokenUsage } from './openaiService.js';
+import type { TokenUsage } from './openaiShared.js';
 
 export interface VisionMatchDivision {
   id: number;
