@@ -54,6 +54,140 @@ export function douglasPeucker(points: Array<[number, number]>, tolerance: numbe
 
 const DP_TOLERANCE = 1.5;
 
+function collectClusterLabels(pixelLabels: Uint8Array): Set<number> {
+  const labels = new Set<number>();
+  for (let i = 0; i < pixelLabels.length; i++) {
+    if (pixelLabels[i] !== 255) labels.add(pixelLabels[i]);
+  }
+  return labels;
+}
+
+function buildBinaryMask(pixelLabels: Uint8Array, label: number): Uint8Array {
+  const mask = new Uint8Array(pixelLabels.length);
+  for (let i = 0; i < pixelLabels.length; i++) {
+    mask[i] = pixelLabels[i] === label ? 255 : 0;
+  }
+  return mask;
+}
+
+function readContourPoints(contour: { intAt: (i: number) => number; rows: number }): Array<[number, number]> {
+  const raw: Array<[number, number]> = [];
+  for (let p = 0; p < contour.rows; p++) {
+    raw.push([contour.intAt(p * 2), contour.intAt(p * 2 + 1)]);
+  }
+  return raw;
+}
+
+const NEIGHBOR_OFFSETS: Array<[number, number]> = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+
+interface ClassifyResult {
+  hasExternal: boolean;
+  neighborLabel: number;
+}
+
+function classifyContourNeighbors(
+  raw: Array<[number, number]>,
+  pixelLabels: Uint8Array,
+  TW: number,
+  TH: number,
+  selfLabel: number,
+): ClassifyResult {
+  let hasExternal = false;
+  let neighborLabel = -1;
+  const sampleStep = Math.max(1, Math.floor(raw.length / 10));
+  const sampleCount = Math.min(10, raw.length);
+  for (let i = 0; i < sampleCount; i++) {
+    const si = Math.min(i * sampleStep, raw.length - 1);
+    const [cx, cy] = raw[si];
+    for (const [dx, dy] of NEIGHBOR_OFFSETS) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || nx >= TW || ny < 0 || ny >= TH) continue;
+      const nLabel = pixelLabels[ny * TW + nx];
+      if (nLabel === selfLabel) continue;
+      if (nLabel === 255) {
+        hasExternal = true;
+      } else if (neighborLabel === -1) {
+        neighborLabel = nLabel;
+      }
+    }
+  }
+  return { hasExternal, neighborLabel };
+}
+
+interface ContourBuildContext {
+  pixelLabels: Uint8Array;
+  TW: number;
+  TH: number;
+  minPathPoints: number;
+  label: number;
+}
+
+function buildBorderPathFromContour(
+  contour: { intAt: (i: number) => number; rows: number },
+  ctx: ContourBuildContext,
+  pathId: string,
+): BorderPath | null {
+  if (contour.rows < 4) return null;
+  const raw = readContourPoints(contour);
+  const simplified = douglasPeucker(raw, DP_TOLERANCE);
+  if (simplified.length < ctx.minPathPoints) return null;
+
+  const { hasExternal, neighborLabel } = classifyContourNeighbors(
+    raw,
+    ctx.pixelLabels,
+    ctx.TW,
+    ctx.TH,
+    ctx.label,
+  );
+  const type = hasExternal && neighborLabel === -1 ? 'external' : 'internal';
+  const clusterB = neighborLabel >= 0 ? neighborLabel : 255;
+  return {
+    id: pathId,
+    points: simplified,
+    type,
+    clusters: [Math.min(ctx.label, clusterB), Math.max(ctx.label, clusterB)],
+  };
+}
+
+function processClusterContours(
+  ctx: ContourBuildContext,
+  paths: BorderPath[],
+  nextIdRef: { value: number },
+): void {
+  const cv = G.__cv;
+  if (!cv) return;
+
+  const maskData = buildBinaryMask(ctx.pixelLabels, ctx.label);
+  // OpenCV.js wraps native WASM memory; every cv.Mat / MatVector / Mat-from-get
+  // must be explicitly .delete()'d. The try/finally pairs guarantee release
+  // even when findContours or the contour loop throws.
+  const mat = new cv.Mat(ctx.TH, ctx.TW, cv.CV_8UC1);
+  const contours = new cv.MatVector();
+  const hierarchy = new cv.Mat();
+  try {
+    mat.data.set(maskData);
+    cv.findContours(mat, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE);
+
+    for (let c = 0; c < contours.size(); c++) {
+      const contour = contours.get(c);
+      try {
+        const path = buildBorderPathFromContour(contour, ctx, `bp-${nextIdRef.value}`);
+        if (path) {
+          paths.push(path);
+          nextIdRef.value++;
+        }
+      } finally {
+        contour.delete();
+      }
+    }
+  } finally {
+    contours.delete();
+    hierarchy.delete();
+    mat.delete();
+  }
+}
+
 /**
  * Extract border paths using OpenCV findContours on each cluster's binary mask.
  *
@@ -68,92 +202,17 @@ export function traceBorderPaths(
   TH: number,
   minPathPoints = 5,
 ): BorderPath[] {
-  const cv = G.__cv;
-  if (!cv) {
+  if (!G.__cv) {
     console.warn('[Borders] OpenCV not loaded — falling back to empty paths');
     return [];
   }
 
-  // Collect unique labels (excluding background 255)
-  const labels = new Set<number>();
-  for (let i = 0; i < pixelLabels.length; i++) {
-    if (pixelLabels[i] !== 255) labels.add(pixelLabels[i]);
-  }
-
+  const labels = collectClusterLabels(pixelLabels);
   const paths: BorderPath[] = [];
-  let nextId = 0;
+  const nextIdRef = { value: 0 };
 
   for (const label of labels) {
-    // Create binary mask for this cluster: 255 where label matches, 0 elsewhere
-    const maskData = new Uint8Array(TW * TH);
-    for (let i = 0; i < pixelLabels.length; i++) {
-      maskData[i] = pixelLabels[i] === label ? 255 : 0;
-    }
-
-    // OpenCV.js wraps native WASM memory; every cv.Mat / MatVector / Mat-from-get
-    // must be explicitly .delete()'d. Use try/finally so an exception during
-    // findContours or the contour loop still releases the parent objects, and
-    // delete each per-contour Mat at the end of every iteration (including the
-    // early-continue paths) to avoid one leak per skipped contour.
-    const mat = new cv.Mat(TH, TW, cv.CV_8UC1);
-    const contours = new cv.MatVector();
-    const hierarchy = new cv.Mat();
-    try {
-      mat.data.set(maskData);
-      cv.findContours(mat, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE);
-
-      for (let c = 0; c < contours.size(); c++) {
-        const contour = contours.get(c);
-        try {
-          const numPoints = contour.rows;
-          if (numPoints < 4) continue;
-
-          // Extract contour points
-          const raw: Array<[number, number]> = [];
-          for (let p = 0; p < numPoints; p++) {
-            const x = contour.intAt(p * 2);
-            const y = contour.intAt(p * 2 + 1);
-            raw.push([x, y]);
-          }
-
-          // Simplify
-          const simplified = douglasPeucker(raw, DP_TOLERANCE);
-          if (simplified.length < minPathPoints) continue;
-
-          // Classify: sample a few contour points to see what's on the other side
-          let hasExternal = false;
-          let neighborLabel = -1;
-          for (let si = 0; si < Math.min(10, raw.length); si += Math.max(1, Math.floor(raw.length / 10))) {
-            const [cx, cy] = raw[si];
-            // Check a pixel just outside the contour in each direction
-            for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
-              const nx = cx + dx, ny = cy + dy;
-              if (nx < 0 || nx >= TW || ny < 0 || ny >= TH) continue;
-              const nLabel = pixelLabels[ny * TW + nx];
-              if (nLabel === label) continue;
-              if (nLabel === 255) { hasExternal = true; }
-              else if (neighborLabel === -1) { neighborLabel = nLabel; }
-            }
-          }
-
-          const type = hasExternal && neighborLabel === -1 ? 'external' : 'internal';
-          const clusterB = neighborLabel >= 0 ? neighborLabel : 255;
-
-          paths.push({
-            id: `bp-${nextId++}`,
-            points: simplified,
-            type,
-            clusters: [Math.min(label, clusterB), Math.max(label, clusterB)],
-          });
-        } finally {
-          contour.delete();
-        }
-      }
-    } finally {
-      contours.delete();
-      hierarchy.delete();
-      mat.delete();
-    }
+    processClusterContours({ pixelLabels, TW, TH, minPathPoints, label }, paths, nextIdRef);
   }
 
   console.log(`  [Borders] Extracted ${paths.length} contour paths from ${labels.size} clusters via OpenCV findContours`);
