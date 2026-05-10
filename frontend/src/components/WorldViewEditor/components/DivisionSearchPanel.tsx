@@ -346,7 +346,7 @@ export function DivisionSearchPanel({
 
         {/* ── Results list ─────────────────────────────────────── */}
         <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-          {!selectedRegion ? (
+          {!selectedRegion && (
             <Box sx={{ p: 3, textAlign: 'center' }}>
               <Typography sx={{
                 fontFamily: P.font.ui,
@@ -357,11 +357,13 @@ export function DivisionSearchPanel({
                 Select a region in the sidebar to search divisions
               </Typography>
             </Box>
-          ) : searchLoading ? (
+          )}
+          {selectedRegion && searchLoading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
               <CircularProgress size={22} sx={{ color: P.accent.primary }} />
             </Box>
-          ) : searchResults.length === 0 && debouncedSearch.length >= 2 ? (
+          )}
+          {selectedRegion && !searchLoading && searchResults.length === 0 && debouncedSearch.length >= 2 && (
             <Box sx={{ p: 3, textAlign: 'center' }}>
               <Typography sx={{
                 fontFamily: P.font.ui,
@@ -371,7 +373,8 @@ export function DivisionSearchPanel({
                 No divisions found for &quot;{debouncedSearch}&quot;
               </Typography>
             </Box>
-          ) : searchResults.length === 0 ? (
+          )}
+          {selectedRegion && !searchLoading && searchResults.length === 0 && debouncedSearch.length < 2 && (
             <Box sx={{ p: 3, textAlign: 'center' }}>
               <Typography sx={{
                 fontFamily: P.font.ui,
@@ -382,7 +385,8 @@ export function DivisionSearchPanel({
                 Type at least 2 characters to search
               </Typography>
             </Box>
-          ) : (
+          )}
+          {selectedRegion && !searchLoading && searchResults.length > 0 && (
             searchResults.map((division) => {
               const isAdded = regionMembers.some((m) => m.id === division.id);
               const isStaged = stagedDivisions.some((d) => d.id === division.id);
