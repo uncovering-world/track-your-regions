@@ -109,6 +109,75 @@ export interface AIExtractionResult {
   questions: string[];
 }
 
+function buildUserPrompt(
+  pageTitle: string,
+  wikitext: string,
+  options?: { adminFeedback?: string; pageExistence?: Map<string, boolean> },
+): string {
+  let content = `Page: "${pageTitle}"\n\n${wikitext}`;
+
+  if (options?.pageExistence && options.pageExistence.size > 0) {
+    const exists = [...options.pageExistence.entries()].filter(([, v]) => v).map(([k]) => k);
+    const missing = [...options.pageExistence.entries()].filter(([, v]) => !v).map(([k]) => k);
+    content += '\n\nPAGE EXISTENCE CHECK (verified against Wikivoyage):';
+    if (exists.length > 0) content += `\nHave pages: ${exists.join(', ')}`;
+    if (missing.length > 0) content += `\nNo pages: ${missing.join(', ')}`;
+  }
+
+  if (options?.adminFeedback) {
+    content += `\n\nADMIN FEEDBACK (re-extraction requested — follow this guidance):\n${options.adminFeedback}`;
+  }
+
+  return content;
+}
+
+const isQId = (s: string) => /^Q\d+$/.test(s);
+
+function normalizeChildPageTitle(child: unknown): string {
+  if (typeof child === 'string') return child;
+  const obj = child as { wikiLink?: string; name?: string } | null;
+  return obj?.wikiLink ?? obj?.name ?? String(child);
+}
+
+interface RawRegion {
+  name: string;
+  wikiLink: string | null;
+  children?: unknown[];
+}
+
+function parseAIResponseJson(text: string, pageTitle: string): AIExtractionResult {
+  // Strip markdown fences if present.
+  const jsonStr = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
+
+  try {
+    const parsed = JSON.parse(jsonStr) as
+      | { regions?: RawRegion[]; questions?: string[] }
+      | RawRegion[];
+
+    // Support both old array format and new object format.
+    const regionArray = Array.isArray(parsed) ? parsed : (parsed.regions ?? []);
+    const questions = Array.isArray(parsed) ? [] : (parsed.questions ?? []);
+
+    if (questions.length > 0) {
+      console.log(`[AI Extract] Questions for "${pageTitle}": ${questions.join(' | ')}`);
+    }
+
+    // Filter out Wikidata Q-IDs that the AI may extract from {{mapshape}} templates.
+    const regions = regionArray
+      .filter(r => !isQId(r.wikiLink ?? r.name))
+      .map(r => ({
+        name: r.wikiLink ?? r.name,
+        items: (r.children ?? []).map(normalizeChildPageTitle).filter(c => !isQId(c)),
+        hasLink: !!r.wikiLink,
+      }));
+
+    return { regions, questions };
+  } catch (err) {
+    console.warn('[AI Extract] Failed to parse AI response:', err instanceof Error ? err.message : err);
+    return { regions: [], questions: [] };
+  }
+}
+
 export async function extractRegionsWithAI(
   pageTitle: string,
   wikitext: string,
@@ -127,21 +196,8 @@ export async function extractRegionsWithAI(
     return { regions: [], questions: [] };
   }
 
-  // Build system prompt with any learned rules appended
   const systemPrompt = SYSTEM_PROMPT + (cachedLearnedRules ?? '');
-
-  let userContent = `Page: "${pageTitle}"\n\n${wikitext}`;
-  // Include page existence info so AI can make informed decisions
-  if (options?.pageExistence && options.pageExistence.size > 0) {
-    const exists = [...options.pageExistence.entries()].filter(([, v]) => v).map(([k]) => k);
-    const missing = [...options.pageExistence.entries()].filter(([, v]) => !v).map(([k]) => k);
-    userContent += '\n\nPAGE EXISTENCE CHECK (verified against Wikivoyage):';
-    if (exists.length > 0) userContent += `\nHave pages: ${exists.join(', ')}`;
-    if (missing.length > 0) userContent += `\nNo pages: ${missing.join(', ')}`;
-  }
-  if (options?.adminFeedback) {
-    userContent += `\n\nADMIN FEEDBACK (re-extraction requested — follow this guidance):\n${options.adminFeedback}`;
-  }
+  const userContent = buildUserPrompt(pageTitle, wikitext, options);
 
   let response;
   try {
@@ -167,7 +223,6 @@ export async function extractRegionsWithAI(
   accumulator.completionTokens += completionTokens;
   accumulator.totalCost += cost.totalCost;
 
-  // Log immediately so AI Settings page shows live data
   logAIUsage({
     feature: 'extraction',
     model,
@@ -179,41 +234,5 @@ export async function extractRegionsWithAI(
   }).catch(err => console.warn('[AI Extract] Failed to log usage:', err instanceof Error ? err.message : err));
 
   const text = response.choices[0]?.message?.content?.trim() ?? '{}';
-  // Strip markdown fences if present
-  const jsonStr = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
-
-  try {
-    // Try new format: {regions: [...], questions: [...]}
-    const parsed = JSON.parse(jsonStr) as {
-      regions?: Array<{ name: string; wikiLink: string | null; children: string[] }>;
-      questions?: string[];
-    } | Array<{ name: string; wikiLink: string | null; children: string[] }>;
-
-    // Support both old array format and new object format
-    const regionArray = Array.isArray(parsed) ? parsed : (parsed.regions ?? []);
-    const questions = Array.isArray(parsed) ? [] : (parsed.questions ?? []);
-
-    if (questions.length > 0) {
-      console.log(`[AI Extract] Questions for "${pageTitle}": ${questions.join(' | ')}`);
-    }
-
-    // Filter out Wikidata Q-IDs that the AI may extract from {{mapshape}} templates
-    const isQId = (s: string) => /^Q\d+$/.test(s);
-
-    const regions = regionArray
-      .filter(r => !isQId(r.wikiLink ?? r.name))
-      .map(r => ({
-        name: r.wikiLink ?? r.name,
-        // Children can be strings or objects — normalize to string page titles
-        items: (r.children ?? []).map((c: unknown) =>
-          typeof c === 'string' ? c : (c as { wikiLink?: string; name?: string })?.wikiLink ?? (c as { name?: string })?.name ?? String(c),
-        ).filter(c => !isQId(c)),
-        hasLink: !!r.wikiLink,
-      }));
-
-    return { regions, questions };
-  } catch (err) {
-    console.warn('[AI Extract] Failed to parse AI response:', err instanceof Error ? err.message : err);
-    return { regions: [], questions: [] };
-  }
+  return parseAIResponseJson(text, pageTitle);
 }
