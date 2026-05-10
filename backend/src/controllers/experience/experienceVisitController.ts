@@ -159,11 +159,18 @@ export async function updateVisit(req: AuthenticatedRequest, res: Response): Pro
   }
 
   const experienceId = parseInt(String(req.params.experienceId));
-  const notes = req.body.notes !== undefined ? (req.body.notes ? String(req.body.notes) : null) : undefined;
-  const rating = req.body.rating !== undefined ? (req.body.rating ? parseInt(String(req.body.rating)) : null) : undefined;
+  const rawNotes = req.body.notes;
+  const rawRating = req.body.rating;
+  let notes: string | null | undefined;
+  if (rawNotes !== undefined) notes = rawNotes ? String(rawNotes) : null;
+  let rating: number | null | undefined;
+  if (rawRating !== undefined) {
+    rating = rawRating === null || rawRating === '' ? null : parseInt(String(rawRating), 10);
+  }
 
-  // Validate rating if provided
-  if (rating !== undefined && rating !== null && (rating < 1 || rating > 5)) {
+  // Validate rating if provided. Treat NaN (e.g. parseInt('abc')) and out-of-range as bad input
+  // — falling through would silently store a non-numeric value or skip the bounds check.
+  if (rating !== undefined && rating !== null && (Number.isNaN(rating) || rating < 1 || rating > 5)) {
     res.status(400).json({ error: 'Rating must be between 1 and 5' });
     return;
   }
