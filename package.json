@@ -21,6 +21,7 @@
     "lint": "npm --prefix backend run lint && npm --prefix frontend run lint",
     "lint:fix": "npm --prefix backend run lint:fix && npm --prefix frontend run lint:fix",
     "lint:circular": "npx --yes madge --extensions ts,tsx --circular backend/src && npx --yes madge --extensions ts,tsx --circular frontend/src",
+    "lint:shell": "docker run --rm -v \"${PWD}:/mnt\" -w /mnt koalaman/shellcheck:stable scripts/*.sh",
     "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck",
     "setup:py:dev": "cd cv-python && python3.12 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt",
     "lint:py": "cd cv-python && .venv/bin/ruff check --no-cache .",
