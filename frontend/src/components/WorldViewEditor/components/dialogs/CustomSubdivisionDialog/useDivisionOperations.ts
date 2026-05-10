@@ -2,30 +2,10 @@ import { useState, useCallback } from 'react';
 import type { Region, RegionMember } from '../../../../../types';
 import { getMemberKey } from '../../../types';
 import type { SubdivisionGroup, MapTool } from './types';
+import { removeMemberAtIndex, addMemberAtIndex } from './groupMutations';
 import { fetchDivisionGeometry, fetchSubdivisions, removeDivisionsFromRegion, addDivisionsToRegion, moveMemberToRegion } from '../../../../../api';
 import type { CutPart } from '../CutDivisionDialog';
 import type { MapLayerMouseEvent } from 'react-map-gl/maplibre';
-
-// Hoisted to module scope so they don't add nesting levels inside the hook.
-function withoutMember(group: SubdivisionGroup, memberKey: string): SubdivisionGroup {
-  return { ...group, members: group.members.filter(m => getMemberKey(m) !== memberKey) };
-}
-
-function removeMemberAtIndex(
-  groups: SubdivisionGroup[],
-  groupIdx: number,
-  memberKey: string,
-): SubdivisionGroup[] {
-  return groups.map((g, i) => i === groupIdx ? withoutMember(g, memberKey) : g);
-}
-
-function addMemberAtIndex(
-  groups: SubdivisionGroup[],
-  groupIdx: number,
-  member: RegionMember,
-): SubdivisionGroup[] {
-  return groups.map((g, i) => i === groupIdx ? { ...g, members: [...g.members, member] } : g);
-}
 
 interface UseDivisionOperationsParams {
   selectedRegion: Region | null;
