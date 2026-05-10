@@ -3,7 +3,10 @@
 ## Status — 2026-05-10
 
 - **Branch**: `feature/restore-complexity-guardrails` (pushed to origin)
-- **Commit so far**: `11342c8 chore: restore eslint-plugin-sonarjs (recommended config) for backend + frontend`
+- **Commits so far**:
+  - `11342c8 chore: restore eslint-plugin-sonarjs (recommended config) for backend + frontend`
+  - tiny-fix batch (8 commits): unused-vars, single-boolean-return, redundant-jump/assignments, duplicated-branches/identical-functions, single-char-class, multiline-blocks, todo-tags, nested-template-literals
+  - `f9a283b chore(lint): restore max-lines=1000 ESLint rule (backend + frontend)`
 - **PR**: not opened yet (will be a **draft** until everything passes)
 - **Predecessor**: PR #375 (cv-python parity + ASVS L2 audit) — merged 2026-05-10
 - **Local venv**: `cv-python/.venv/` exists from the previous session and works with the venv-relative npm scripts (`.venv/bin/<tool>`); no setup needed beyond `npm run setup:py:dev` if you nuke it
@@ -19,6 +22,21 @@ GitHub commit `b0fafee` (Apr 26 2026, "chore(pr40): gate fixes — undici dep, l
 - `backend/package-lock.json`, `frontend/package-lock.json` regenerated.
 
 After this commit, `npm run lint` (and therefore `npm run check`) fails with **~200 SonarJS findings** that need to be cleared before the PR can ship.
+
+## Other guardrails dropped at the same time as SonarJS
+
+While auditing what landed and what was dropped during the PR-40 port, these companion rules from commit `853ea95` ("chore: checkpoint phase 1+2 compliance work") were also missing on main and belong with this guardrail-restoration PR:
+
+| Item | Status | Notes |
+|---|---|---|
+| `eslint-plugin-sonarjs` | restored 11342c8 | already in plan |
+| `max-lines: 1000` (eslint, both stacks) | restored f9a283b | only `backend/src/controllers/admin/wvImportMatchController.ts` (1013 counted lines) currently fails — folds into the cognitive-complexity refactor batch |
+| `lint:circular` (madge, ts/tsx circular dep check) | **not restored, recommend bundle** | compatible with this branch's "complexity guardrails" framing; cheap to add |
+| `lint:shell` (shellcheck on `scripts/*.sh`) | **not restored, optional** | covers `db-cli.sh`, `test-stack.sh`; out-of-scope from "complexity" but in scope from "guardrails dropped during PR-40" |
+| `lint:docker` (hadolint on Dockerfiles) | **not restored, optional** | covers backend, frontend, frontend.e2e, cv-python Dockerfiles; same scope-call as shellcheck |
+| `lint:extra` + `check:all` composite scripts | **not restored** | trivially follow once their constituents land |
+
+Decision deferred until the user weighs in: shell + docker linting may be a separate small follow-up PR if we want to keep this PR scoped to "complexity guardrails."
 
 ## User-confirmed decision
 
