@@ -253,8 +253,7 @@ export function useMapInteractions({
           console.log('[RegionMapVT] Setting selectedRegion:', newRegion);
           setSelectedRegion(newRegion);
         } else {
-          let parentId: number | null = null;
-
+          let parentId: number | null;
           if (!selectedDivision) {
             parentId = null;
           } else if (selectedDivision.hasChildren) {
