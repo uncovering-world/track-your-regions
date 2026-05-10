@@ -86,18 +86,14 @@ async function fetchSculptures(progress: SyncProgress): Promise<WikidataLandmark
   return landmarks;
 }
 
-/**
- * Fetch monuments from Wikidata (monuments, memorials, war memorials)
- */
-async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[]> {
-  progress.statusMessage = 'Fetching monuments from Wikidata...';
+const MONUMENT_TYPE_QIDS = ['Q4989906', 'Q575759', 'Q721747', 'Q5003624'];
 
-  const queryPrimary = `
+function buildMonumentQuery(typeFilter: string, limit: number): string {
+  return `
     SELECT ?item ?itemLabel ?itemDescription ?coord ?image ?creatorLabel
            (YEAR(?inception) AS ?year) ?sitelinks ?countryLabel ?article ?website
     WHERE {
-      VALUES ?type { wd:Q4989906 wd:Q575759 wd:Q721747 wd:Q5003624 }
-      ?item wdt:P31 ?type .
+      ${typeFilter}
       ?item wdt:P625 ?coord .
       ?item wikibase:sitelinks ?sitelinks .
       FILTER(?sitelinks > 20)
@@ -110,8 +106,45 @@ async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[
       SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }
     }
     ORDER BY DESC(?sitelinks)
-    LIMIT 300
+    LIMIT ${limit}
   `;
+}
+
+async function fetchMonumentsViaFallback(): Promise<{ landmarks: WikidataLandmark[]; succeeded: number }> {
+  const collected = new Map<string, SparqlBinding>();
+  let succeeded = 0;
+  for (const typeQid of MONUMENT_TYPE_QIDS) {
+    const query = buildMonumentQuery(`?item wdt:P31 wd:${typeQid} .`, 160);
+    try {
+      const bindings = await sparqlQuery(query, LOG_PREFIX, 2);
+      succeeded++;
+      for (const b of bindings) {
+        const key = b.item?.value;
+        if (key && !collected.has(key)) collected.set(key, b);
+      }
+    } catch (fallbackError) {
+      const message = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      console.warn(`[Landmark Sync] Monument fallback query failed for ${typeQid}: ${message}`);
+    }
+    await delay(SPARQL_DELAY_MS);
+  }
+  return {
+    landmarks: bindingsToLandmarks([...collected.values()], 'monument'),
+    succeeded,
+  };
+}
+
+/**
+ * Fetch monuments from Wikidata (monuments, memorials, war memorials)
+ */
+async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[]> {
+  progress.statusMessage = 'Fetching monuments from Wikidata...';
+
+  const queryPrimary = buildMonumentQuery(
+    `VALUES ?type { wd:Q4989906 wd:Q575759 wd:Q721747 wd:Q5003624 }
+       ?item wdt:P31 ?type .`,
+    300,
+  );
 
   try {
     const bindings = await sparqlQuery(queryPrimary, LOG_PREFIX, SPARQL_MAX_RETRIES);
@@ -120,55 +153,11 @@ async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[
     return landmarks;
   } catch (primaryError) {
     console.warn('[Landmark Sync] Monument primary query failed, falling back to per-type queries');
-
-    const fallbackTypes = ['Q4989906', 'Q575759', 'Q721747', 'Q5003624'];
-    const collected = new Map<string, SparqlBinding>();
-    let successfulFallbackQueries = 0;
-
-    for (const typeQid of fallbackTypes) {
-      const fallbackQuery = `
-        SELECT ?item ?itemLabel ?itemDescription ?coord ?image ?creatorLabel
-               (YEAR(?inception) AS ?year) ?sitelinks ?countryLabel ?article ?website
-        WHERE {
-          ?item wdt:P31 wd:${typeQid} .
-          ?item wdt:P625 ?coord .
-          ?item wikibase:sitelinks ?sitelinks .
-          FILTER(?sitelinks > 20)
-          OPTIONAL { ?item wdt:P18 ?image }
-          OPTIONAL { ?item wdt:P170 ?creator }
-          OPTIONAL { ?item wdt:P571 ?inception }
-          OPTIONAL { ?item wdt:P17 ?country }
-          OPTIONAL { ?item wdt:P856 ?website }
-          OPTIONAL { ?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> }
-          SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }
-        }
-        ORDER BY DESC(?sitelinks)
-        LIMIT 160
-      `;
-
-      try {
-        const bindings = await sparqlQuery(fallbackQuery, LOG_PREFIX, 2);
-        successfulFallbackQueries++;
-        for (const b of bindings) {
-          const key = b.item?.value;
-          if (key && !collected.has(key)) {
-            collected.set(key, b);
-          }
-        }
-      } catch (fallbackError) {
-        const message = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        console.warn(`[Landmark Sync] Monument fallback query failed for ${typeQid}: ${message}`);
-      }
-
-      await delay(SPARQL_DELAY_MS);
-    }
-
-    const landmarks = bindingsToLandmarks([...collected.values()], 'monument');
-    if (successfulFallbackQueries === 0 || landmarks.length === 0) {
+    const { landmarks, succeeded } = await fetchMonumentsViaFallback();
+    if (succeeded === 0 || landmarks.length === 0) {
       const primaryMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
       throw new Error(`Monument fetch failed (primary + fallback): ${primaryMessage}`);
     }
-
     console.log(`[Landmark Sync] Fetched ${landmarks.length} monuments via fallback queries`);
     return landmarks;
   }
@@ -214,6 +203,50 @@ async function upsertLandmarkExperience(
   return isCreated ? 'created' : 'updated';
 }
 
+async function tryFetchSource(
+  progress: SyncProgress,
+  errorDetails: ErrorDetail[],
+  sourceName: string,
+  fetcher: (p: SyncProgress) => Promise<WikidataLandmark[]>,
+): Promise<WikidataLandmark[]> {
+  if (progress.cancel) throw new Error('Sync cancelled');
+  try {
+    return await fetcher(progress);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    progress.errors++;
+    errorDetails.push({ externalId: `fetch-${sourceName}`, error: message });
+    console.warn(`[Landmark Sync] ${sourceName} fetch failed: ${message}`);
+    return [];
+  }
+}
+
+function dedupeBySitelinks(...lists: WikidataLandmark[][]): WikidataLandmark[] {
+  const seen = new Set<string>();
+  const merged: WikidataLandmark[] = [];
+  for (const item of lists.flat().sort((a, b) => b.sitelinks - a.sitelinks)) {
+    if (!seen.has(item.qid)) {
+      seen.add(item.qid);
+      merged.push(item);
+    }
+  }
+  return merged;
+}
+
+function disambiguateDuplicateNames(landmarks: WikidataLandmark[]): void {
+  const nameCounts = new Map<string, number>();
+  for (const lm of landmarks) {
+    nameCounts.set(lm.label, (nameCounts.get(lm.label) || 0) + 1);
+  }
+  for (const lm of landmarks) {
+    if ((nameCounts.get(lm.label) || 0) <= 1 || !lm.description) continue;
+    // Extract a short location hint from the description (e.g., "in Berlin-Tiergarten").
+    // Negated class avoids backtracking across stop chars.
+    const match = lm.description.match(/\bin\s+([^,.\n]+)/i);
+    if (match) lm.label = `${lm.label} (${match[1].trim()})`;
+  }
+}
+
 /**
  * Fetch, merge, deduplicate, and disambiguate landmarks from Wikidata.
  */
@@ -221,67 +254,21 @@ async function fetchLandmarkItems(
   progress: SyncProgress,
   errorDetails: ErrorDetail[],
 ): Promise<{ items: WikidataLandmark[]; fetchedCount: number }> {
-  // Phase 1-2: Fetch source datasets (continue if one source fails)
-  let sculptures: WikidataLandmark[] = [];
-  let monuments: WikidataLandmark[] = [];
-
-  if (progress.cancel) throw new Error('Sync cancelled');
-  try {
-    sculptures = await fetchSculptures(progress);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    progress.errors++;
-    errorDetails.push({ externalId: 'fetch-sculptures', error: message });
-    console.warn(`[Landmark Sync] Sculpture fetch failed: ${message}`);
-  }
-
+  const sculptures = await tryFetchSource(progress, errorDetails, 'sculptures', fetchSculptures);
   await delay(SPARQL_DELAY_MS);
-
-  if (progress.cancel) throw new Error('Sync cancelled');
-  try {
-    monuments = await fetchMonuments(progress);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    progress.errors++;
-    errorDetails.push({ externalId: 'fetch-monuments', error: message });
-    console.warn(`[Landmark Sync] Monument fetch failed: ${message}`);
-  }
+  const monuments = await tryFetchSource(progress, errorDetails, 'monuments', fetchMonuments);
 
   if (sculptures.length === 0 && monuments.length === 0) {
     throw new Error('Landmark sync failed: no data fetched from Wikidata');
   }
 
-  // Phase 3: Merge, deduplicate by QID, sort by sitelinks DESC
-  const seen = new Set<string>();
-  const allLandmarks: WikidataLandmark[] = [];
-  for (const item of [...sculptures, ...monuments].sort((a, b) => b.sitelinks - a.sitelinks)) {
-    if (!seen.has(item.qid)) {
-      seen.add(item.qid);
-      allLandmarks.push(item);
-    }
-  }
-
+  const allLandmarks = dedupeBySitelinks(sculptures, monuments);
   console.log(`[Landmark Sync] Total after dedup: ${allLandmarks.length} (${sculptures.length} sculptures, ${monuments.length} monuments)`);
 
-  // Take top TARGET_COUNT
   const landmarks = allLandmarks.slice(0, TARGET_COUNT);
   console.log(`[Landmark Sync] Processing top ${landmarks.length} landmarks`);
 
-  // Phase 3b: Disambiguate duplicate names by appending description snippet
-  const nameCounts = new Map<string, number>();
-  for (const lm of landmarks) {
-    nameCounts.set(lm.label, (nameCounts.get(lm.label) || 0) + 1);
-  }
-  for (const lm of landmarks) {
-    if ((nameCounts.get(lm.label) || 0) > 1 && lm.description) {
-      // Extract a short location hint from the description (e.g., "in Berlin-Tiergarten")
-      // Use a negated class instead of `.+?` so the engine doesn't have to backtrack across stop chars.
-      const match = lm.description.match(/\bin\s+([^,.\n]+)/i);
-      if (match) {
-        lm.label = `${lm.label} (${match[1].trim()})`;
-      }
-    }
-  }
+  disambiguateDuplicateNames(landmarks);
 
   return { items: landmarks, fetchedCount: allLandmarks.length };
 }
