@@ -35,6 +35,58 @@ export interface SplitPart {
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
 }
 
+async function loadDivisionGeometryForSplit(
+  member: RegionMember,
+  regionId: number,
+): Promise<GeoJSON.Geometry | null> {
+  if (member.hasCustomGeometry && member.memberRowId) {
+    const memberGeoms = await fetchRegionMemberGeometries(regionId);
+    const memberFeature = memberGeoms?.features.find(
+      f => f.properties?.memberRowId === member.memberRowId,
+    );
+    if (memberFeature?.geometry) return memberFeature.geometry;
+  }
+  const geom = await fetchDivisionGeometry(member.id, 1);
+  return (geom?.geometry as GeoJSON.Geometry | undefined) ?? null;
+}
+
+type PolyFeatureSDD = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
+
+function subtractPartsFromBase(
+  base: PolyFeatureSDD,
+  parts: SplitPart[],
+): PolyFeatureSDD {
+  let remaining = base;
+  for (const part of parts) {
+    const partFeature: PolyFeatureSDD = { type: 'Feature', properties: {}, geometry: part.geometry };
+    const diff = turf.difference(turf.featureCollection([remaining, partFeature]));
+    remaining = diff
+      ? (diff as PolyFeatureSDD)
+      : ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [] } } as PolyFeatureSDD);
+  }
+  return remaining;
+}
+
+function computeRemainingAfterSplits(
+  divisionGeometry: GeoJSON.FeatureCollection | null,
+  splitParts: SplitPart[],
+): { remainingArea: number; remainingGeometry: PolyFeatureSDD | null } {
+  if (!divisionGeometry?.features?.length) {
+    return { remainingArea: 0, remainingGeometry: null };
+  }
+  if (splitParts.length === 0) {
+    return { remainingArea: Infinity, remainingGeometry: null };
+  }
+  try {
+    const base = divisionGeometry.features[0] as PolyFeatureSDD;
+    const remaining = subtractPartsFromBase(base, splitParts);
+    const area = remaining?.geometry ? turf.area(remaining) : 0;
+    return { remainingArea: area, remainingGeometry: remaining };
+  } catch {
+    return { remainingArea: 0, remainingGeometry: null };
+  }
+}
+
 interface SplitDivisionDialogProps {
   member: RegionMember | null;
   selectedRegion: Region | null;
@@ -63,43 +115,18 @@ export function SplitDivisionDialog({
     setSplitParts([]);
     setDivisionGeometry(null);
 
-    (async () => {
+    void (async () => {
       try {
-        let geometry: GeoJSON.Geometry | null = null;
-
-        // If member has custom geometry, fetch it from member geometries
-        if (member.hasCustomGeometry && member.memberRowId) {
-          const memberGeoms = await fetchRegionMemberGeometries(selectedRegion.id);
-          if (memberGeoms) {
-            const memberFeature = memberGeoms.features.find(
-              f => f.properties?.memberRowId === member.memberRowId
-            );
-            if (memberFeature?.geometry) {
-              geometry = memberFeature.geometry;
-            }
-          }
-        }
-
-        // Fallback to original GADM geometry
-        if (!geometry) {
-          const geom = await fetchDivisionGeometry(member.id, 1);
-          if (geom?.geometry) {
-            geometry = geom.geometry as GeoJSON.Geometry;
-          }
-        }
-
-        if (cancelled) return;
-
-        if (geometry) {
-          setDivisionGeometry({
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              properties: { id: member.id, name: member.name, memberRowId: member.memberRowId },
-              geometry,
-            }],
-          });
-        }
+        const geometry = await loadDivisionGeometryForSplit(member, selectedRegion.id);
+        if (cancelled || !geometry) return;
+        setDivisionGeometry({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: { id: member.id, name: member.name, memberRowId: member.memberRowId },
+            geometry,
+          }],
+        });
       } catch (e) {
         console.error('Failed to fetch division geometry:', e);
       } finally {
@@ -142,35 +169,7 @@ export function SplitDivisionDialog({
   };
 
   // Calculate remaining geometry to check if there's area left
-  let remainingArea = 0;
-  let remainingGeometry: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> | null = null;
-
-  if (divisionGeometry?.features?.length && splitParts.length > 0) {
-    try {
-      let remaining = divisionGeometry.features[0] as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
-      for (const part of splitParts) {
-        const partFeature: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> = {
-          type: 'Feature',
-          properties: {},
-          geometry: part.geometry,
-        };
-        const fc = turf.featureCollection([remaining, partFeature]);
-        const diff = turf.difference(fc);
-        if (diff) {
-          remaining = diff as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
-        } else {
-          remaining = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [] } } as GeoJSON.Feature<GeoJSON.Polygon>;
-        }
-      }
-      remainingGeometry = remaining;
-      remainingArea = remaining?.geometry ? turf.area(remaining) : 0;
-    } catch {
-      remainingArea = 0;
-    }
-  } else if (divisionGeometry?.features?.length) {
-    // No parts yet, full area remaining
-    remainingArea = Infinity;
-  }
+  const { remainingArea, remainingGeometry } = computeRemainingAfterSplits(divisionGeometry, splitParts);
 
   const hasRemainingArea = remainingArea > 1000; // More than 1000 sq meters
 
