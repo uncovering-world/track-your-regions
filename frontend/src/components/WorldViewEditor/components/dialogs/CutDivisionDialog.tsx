@@ -45,6 +45,117 @@ export type { CutPart } from './polygonCutUtils';
 
 type DrawMode = 'pan' | 'slice' | 'polygon';
 
+function initialDrawMode(canUseSliceMode: boolean): DrawMode {
+  return canUseSliceMode ? 'slice' : 'polygon';
+}
+
+function computeRemainingState(
+  sourceFeature: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> | undefined,
+  cutParts: CutPart[],
+): {
+  remaining: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> | null;
+  remainingArea: number;
+  hasRemainingArea: boolean;
+} {
+  const remaining = sourceFeature ? calculateRemainingGeometry(sourceFeature, cutParts) : null;
+  const remainingArea = remaining?.geometry ? turf.area(remaining) : 0;
+  return { remaining, remainingArea, hasRemainingArea: remainingArea > 1000 };
+}
+
+type PolygonOutcome =
+  | { kind: 'success'; result: GeoJSON.Feature }
+  | { kind: 'error'; message: string };
+
+function tryCompletePolygon(
+  drawingPoints: [number, number][],
+  remaining: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> | null,
+): PolygonOutcome {
+  if (drawingPoints.length < 3) {
+    return { kind: 'error', message: 'Draw at least 3 points to create a polygon' };
+  }
+  if (!remaining) {
+    return { kind: 'error', message: 'No geometry to intersect with' };
+  }
+  const result = intersectPolygonWithSource(drawingPoints, remaining);
+  if (!result) {
+    return { kind: 'error', message: 'No intersection found. Make sure your polygon overlaps with the division.' };
+  }
+  return { kind: 'success', result };
+}
+
+function fitToDivisionGeometry(
+  map: MapRef,
+  divisionGeometry: GeoJSON.FeatureCollection,
+): void {
+  try {
+    const bbox = turf.bbox(divisionGeometry) as [number, number, number, number];
+    smartFitBounds(map, bbox, { padding: 50, duration: 500, geojson: divisionGeometry });
+  } catch (e) {
+    console.error('Failed to fit bounds:', e);
+  }
+}
+
+function buildSlicedPartsGeoJSON(
+  slicedParts: SlicedParts | null,
+  selectedSlicePart: 1 | 2 | null,
+): GeoJSON.FeatureCollection {
+  if (!slicedParts) return { type: 'FeatureCollection', features: [] };
+  return {
+    type: 'FeatureCollection',
+    features: [
+      { ...slicedParts.part1, properties: { partNum: 1, selected: selectedSlicePart === 1 } },
+      { ...slicedParts.part2, properties: { partNum: 2, selected: selectedSlicePart === 2 } },
+    ],
+  };
+}
+
+function buildCutPartsGeoJSON(cutParts: CutPart[]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: cutParts.map((part, idx) => ({
+      type: 'Feature' as const,
+      properties: { name: part.name, index: idx },
+      geometry: part.geometry,
+    })),
+  };
+}
+
+function buildDrawingGeoJSON(
+  drawingPoints: [number, number][],
+  mode: DrawMode,
+): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+
+  if (drawingPoints.length >= 2) {
+    features.push({
+      type: 'Feature',
+      properties: { isSliceLine: mode === 'slice' },
+      geometry: { type: 'LineString', coordinates: drawingPoints },
+    });
+  }
+
+  if (mode === 'polygon' && drawingPoints.length >= 3) {
+    features.push({
+      type: 'Feature',
+      properties: { closing: true },
+      geometry: {
+        type: 'LineString',
+        coordinates: [drawingPoints[drawingPoints.length - 1], drawingPoints[0]],
+      },
+    });
+  }
+
+  for (let idx = 0; idx < drawingPoints.length; idx++) {
+    features.push({
+      type: 'Feature',
+      properties: { index: idx },
+      geometry: { type: 'Point', coordinates: drawingPoints[idx] },
+    });
+  }
+
+  return { type: 'FeatureCollection', features };
+}
+
 interface SlicedParts {
   part1: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
   part2: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
@@ -98,44 +209,30 @@ export function CutDivisionDialog({
   // Check if source is a single polygon (determines default mode)
   const sourceFeature = divisionGeometry?.features?.[0] as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> | undefined;
   const canUseSliceMode = sourceFeature ? isSinglePolygon(sourceFeature) : false;
+  const [mode, setMode] = useState<DrawMode>(initialDrawMode(canUseSliceMode));
 
-  // Mode: slice (simple line cut) or polygon (draw closed shape)
-  const [mode, setMode] = useState<DrawMode>(canUseSliceMode ? 'slice' : 'polygon');
-
-  // Calculate remaining geometry (original minus all cut parts)
-  const remaining = sourceFeature ? calculateRemainingGeometry(sourceFeature, cutParts) : null;
-  const remainingArea = remaining?.geometry ? turf.area(remaining) : 0;
-  const hasRemainingArea = remainingArea > 1000;
+  const { remaining, hasRemainingArea } = computeRemainingState(sourceFeature, cutParts);
 
   // Reset state when dialog opens
   useEffect(() => {
-    if (open) {
-      setDrawingPoints([]);
-      setResultGeometry(null);
-      setSlicedParts(null);
-      setSelectedSlicePart(null);
-      setError(null);
-      setMapLoaded(false);
-      setCutParts([]);
-      setCurrentPartName(`${divisionName} - Part 1`);
-      // Default to slice mode for single polygons
-      setMode(canUseSliceMode ? 'slice' : 'polygon');
-    }
+    if (!open) return;
+    setDrawingPoints([]);
+    setResultGeometry(null);
+    setSlicedParts(null);
+    setSelectedSlicePart(null);
+    setError(null);
+    setMapLoaded(false);
+    setCutParts([]);
+    setCurrentPartName(`${divisionName} - Part 1`);
+    setMode(canUseSliceMode ? 'slice' : 'polygon');
   }, [open, divisionName, canUseSliceMode]);
 
   // Fit map to division geometry when map is loaded
   useEffect(() => {
-    if (open && mapLoaded && divisionGeometry?.features && divisionGeometry.features.length > 0 && mapRef.current) {
-      const timer = setTimeout(() => {
-        try {
-          const bbox = turf.bbox(divisionGeometry) as [number, number, number, number];
-          smartFitBounds(mapRef.current!, bbox, { padding: 50, duration: 500, geojson: divisionGeometry });
-        } catch (e) {
-          console.error('Failed to fit bounds:', e);
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
+    if (!open || !mapLoaded) return;
+    if (!divisionGeometry?.features?.length || !mapRef.current) return;
+    const timer = setTimeout(() => fitToDivisionGeometry(mapRef.current!, divisionGeometry), 100);
+    return () => clearTimeout(timer);
   }, [open, mapLoaded, divisionGeometry]);
 
   // Handle map click
@@ -170,36 +267,21 @@ export function CutDivisionDialog({
   // Try to slice the polygon when we have 2+ points in slice mode
   useEffect(() => {
     if (mode !== 'slice' || drawingPoints.length < 2 || !remaining) return;
-
-    // Check if the line crosses the polygon
-    if (doesLineCrossPolygon(remaining, drawingPoints)) {
-      const result = splitPolygonWithLine(remaining, drawingPoints);
-      if (result) {
-        setSlicedParts(result);
-        setError(null);
-      }
-    }
+    if (!doesLineCrossPolygon(remaining, drawingPoints)) return;
+    const result = splitPolygonWithLine(remaining, drawingPoints);
+    if (!result) return;
+    setSlicedParts(result);
+    setError(null);
   }, [mode, drawingPoints, remaining]);
 
   // Complete polygon (for polygon mode)
   const handleCompletePolygon = useCallback(() => {
-    if (drawingPoints.length < 3) {
-      setError('Draw at least 3 points to create a polygon');
+    const outcome = tryCompletePolygon(drawingPoints, remaining);
+    if (outcome.kind === 'error') {
+      setError(outcome.message);
       return;
     }
-
-    if (!remaining) {
-      setError('No geometry to intersect with');
-      return;
-    }
-
-    const result = intersectPolygonWithSource(drawingPoints, remaining);
-    if (!result) {
-      setError('No intersection found. Make sure your polygon overlaps with the division.');
-      return;
-    }
-
-    setResultGeometry(result);
+    setResultGeometry(outcome.result);
     setError(null);
   }, [drawingPoints, remaining]);
 
@@ -259,65 +341,14 @@ export function CutDivisionDialog({
   }, []);
 
   // GeoJSON for drawing preview
-  const drawingGeoJSON: GeoJSON.FeatureCollection = {
-    type: 'FeatureCollection',
-    features: [
-      // Line for slice mode
-      ...(drawingPoints.length >= 2 ? [{
-        type: 'Feature' as const,
-        properties: { isSliceLine: mode === 'slice' },
-        geometry: {
-          type: 'LineString' as const,
-          coordinates: drawingPoints,
-        },
-      }] : []),
-      // Closing line for polygon mode
-      ...(mode === 'polygon' && drawingPoints.length >= 3 ? [{
-        type: 'Feature' as const,
-        properties: { closing: true },
-        geometry: {
-          type: 'LineString' as const,
-          coordinates: [drawingPoints[drawingPoints.length - 1], drawingPoints[0]],
-        },
-      }] : []),
-      // Points
-      ...drawingPoints.map((coord, idx) => ({
-        type: 'Feature' as const,
-        properties: { index: idx },
-        geometry: {
-          type: 'Point' as const,
-          coordinates: coord,
-        },
-      })),
-    ],
-  };
+  const drawingGeoJSON = buildDrawingGeoJSON(drawingPoints, mode);
 
-  // GeoJSON for sliced parts preview
-  const slicedPartsGeoJSON: GeoJSON.FeatureCollection = {
-    type: 'FeatureCollection',
-    features: slicedParts ? [
-      { ...slicedParts.part1, properties: { partNum: 1, selected: selectedSlicePart === 1 } },
-      { ...slicedParts.part2, properties: { partNum: 2, selected: selectedSlicePart === 2 } },
-    ] : [],
-  };
-
-  // GeoJSON for polygon mode result
+  const slicedPartsGeoJSON = buildSlicedPartsGeoJSON(slicedParts, selectedSlicePart);
   const resultGeoJSON: GeoJSON.FeatureCollection = {
     type: 'FeatureCollection',
     features: resultGeometry ? [resultGeometry] : [],
   };
-
-  // GeoJSON for already cut parts
-  const cutPartsGeoJSON: GeoJSON.FeatureCollection = {
-    type: 'FeatureCollection',
-    features: cutParts.map((part, idx) => ({
-      type: 'Feature' as const,
-      properties: { name: part.name, index: idx },
-      geometry: part.geometry,
-    })),
-  };
-
-  // GeoJSON for remaining geometry
+  const cutPartsGeoJSON = buildCutPartsGeoJSON(cutParts);
   const remainingGeoJSON: GeoJSON.FeatureCollection = {
     type: 'FeatureCollection',
     features: remaining && !slicedParts ? [remaining] : [],
