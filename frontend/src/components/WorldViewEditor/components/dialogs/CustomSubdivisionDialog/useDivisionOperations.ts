@@ -201,11 +201,7 @@ export function useDivisionOperations({
           }
 
           // Otherwise, remove by division id (but only non-custom geometry ones)
-          if (featureId === cuttingDivision.id && !f.properties?.hasCustomGeometry) {
-            return false; // Remove this one
-          }
-
-          return true; // Keep everything else
+          return !(featureId === cuttingDivision.id && !f.properties?.hasCustomGeometry);
         });
 
         // Add cut parts with their custom geometries
