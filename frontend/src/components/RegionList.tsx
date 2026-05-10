@@ -18,7 +18,52 @@ import { useNavigation } from '../hooks/useNavigation';
 import { useVisitedRegions } from '../hooks/useVisitedRegions';
 import { fetchRootDivisions, fetchSubdivisions, fetchSubregions, fetchRootRegions } from '../api';
 import { LoadingSpinner } from './shared/LoadingSpinner';
-import type { AdministrativeDivision, Region } from '../types';
+import type { AdministrativeDivision, Region, WorldView } from '../types';
+
+async function fetchDivisionsForView(
+  worldView: WorldView | null,
+  selectedDivision: AdministrativeDivision | null,
+): Promise<AdministrativeDivision[]> {
+  if (!worldView) return [];
+  if (selectedDivision) return fetchSubdivisions(selectedDivision.id, worldView.id);
+  return fetchRootDivisions(worldView.id);
+}
+
+function pickLoadingFlag(args: {
+  isCustomWorldView: boolean;
+  selectedRegion: Region | null;
+  divisionsLoading: boolean;
+  rootRegionsLoading: boolean;
+  subregionsLoading: boolean;
+  siblingsLoading: boolean;
+}): boolean {
+  if (!args.isCustomWorldView) return args.divisionsLoading;
+  if (!args.selectedRegion) return args.rootRegionsLoading;
+  return args.selectedRegion.hasSubregions === true ? args.subregionsLoading : args.siblingsLoading;
+}
+
+function pickRegions(args: {
+  isCustomWorldView: boolean;
+  selectedRegion: Region | null;
+  rootRegions: Region[];
+  subregions: Region[];
+  siblings: Region[];
+}): Region[] {
+  if (!args.isCustomWorldView) return [];
+  if (!args.selectedRegion) return args.rootRegions;
+  return args.selectedRegion.hasSubregions === true ? args.subregions : args.siblings;
+}
+
+function emptyListMessage(
+  isCustomWorldView: boolean,
+  selectedRegion: Region | null,
+  selectedDivision: AdministrativeDivision | null,
+): string {
+  if (isCustomWorldView) {
+    return selectedRegion ? 'No subregions' : 'No regions defined. Click Edit to add regions.';
+  }
+  return selectedDivision ? 'No subdivisions' : 'No divisions found';
+}
 
 export function RegionList() {
   const {
@@ -46,20 +91,108 @@ export function RegionList() {
 
   const parentRef = useRef<HTMLDivElement>(null);
 
+  const renderDivisionRow = (
+    division: AdministrativeDivision,
+    virtualRow: { size: number; start: number },
+  ) => {
+    const isHovered = hoveredRegionId === division.id;
+    return (
+      <ListItemButton
+        key={division.id}
+        onClick={() => handleDivisionClick(division)}
+        onMouseEnter={() => setHoveredRegionId(division.id)}
+        onMouseLeave={() => setHoveredRegionId(null)}
+        selected={isHovered}
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: `${virtualRow.size}px`,
+          transform: `translateY(${virtualRow.start}px)`,
+          backgroundColor: isHovered ? 'action.hover' : 'transparent',
+        }}
+      >
+        <ListItemIcon sx={{ minWidth: 28 }}>
+          <Box
+            sx={{
+              width: division.hasChildren ? 10 : 8,
+              height: division.hasChildren ? 10 : 8,
+              borderRadius: '50%',
+              bgcolor: division.hasChildren ? 'primary.main' : 'grey.400',
+            }}
+          />
+        </ListItemIcon>
+        <ListItemText
+          primary={division.name}
+          primaryTypographyProps={{
+            noWrap: true,
+            sx: { fontSize: '0.9rem' },
+          }}
+        />
+      </ListItemButton>
+    );
+  };
+
+  const renderRegionRow = (
+    region: Region,
+    virtualRow: { size: number; start: number },
+  ) => {
+    const isHovered = hoveredRegionId === region.id;
+    const visited = isVisited(region.id);
+    return (
+      <ListItemButton
+        key={region.id}
+        onClick={() => handleRegionClick(region)}
+        onMouseEnter={() => setHoveredRegionId(region.id)}
+        onMouseLeave={() => setHoveredRegionId(null)}
+        selected={isHovered}
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: `${virtualRow.size}px`,
+          transform: `translateY(${virtualRow.start}px)`,
+          backgroundColor: regionRowBackground(visited, isHovered),
+          borderLeft: `4px solid ${region.color || '#3388ff'}`,
+        }}
+      >
+        <ListItemIcon sx={{ minWidth: 28 }}>
+          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: region.color || '#3388ff' }} />
+        </ListItemIcon>
+        <ListItemText
+          primary={region.name}
+          primaryTypographyProps={{
+            noWrap: true,
+            sx: { fontSize: '0.9rem' },
+          }}
+        />
+        <Tooltip title={visited ? 'Mark as not visited' : 'Mark as visited'}>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleVisited(region.id);
+            }}
+            sx={{
+              ml: 1,
+              color: visited ? 'success.main' : 'action.disabled',
+            }}
+          >
+            {visited
+              ? <CheckCircleIcon fontSize="small" />
+              : <CheckCircleOutlineIcon fontSize="small" />}
+          </IconButton>
+        </Tooltip>
+      </ListItemButton>
+    );
+  };
+
   // Fetch divisions for GADM hierarchy
   const { data: divisions = [], isLoading: divisionsLoading } = useQuery({
     queryKey: ['divisions', selectedWorldView?.id, selectedDivision?.id],
-    queryFn: async () => {
-      if (!selectedWorldView) return [];
-
-      // If a division is selected, show its subdivisions
-      if (selectedDivision) {
-        return fetchSubdivisions(selectedDivision.id, selectedWorldView.id);
-      }
-
-      // Otherwise show root divisions
-      return fetchRootDivisions(selectedWorldView.id);
-    },
+    queryFn: () => fetchDivisionsForView(selectedWorldView, selectedDivision),
     enabled: !!selectedWorldView && !isCustomWorldView,
   });
 
@@ -80,28 +213,25 @@ export function RegionList() {
     enabled: isCustomWorldView && !!selectedRegion && selectedRegion.hasSubregions !== true,
   });
 
-  // Use appropriate data based on world view type
-  let isLoading: boolean;
-  if (!isCustomWorldView) {
-    isLoading = divisionsLoading;
-  } else if (!selectedRegion) {
-    isLoading = rootRegionsLoading;
-  } else {
-    isLoading = selectedRegion.hasSubregions === true ? subregionsLoading : siblingsLoading;
-  }
-
   // For custom world views:
   // - If no region selected: show root regions (for navigation)
   // - If region with subregions selected: show subregions
   // - If leaf region selected: show siblings
-  let regions: Region[];
-  if (!isCustomWorldView) {
-    regions = [];
-  } else if (!selectedRegion) {
-    regions = rootRegions;
-  } else {
-    regions = selectedRegion.hasSubregions === true ? subregions : siblings;
-  }
+  const isLoading = pickLoadingFlag({
+    isCustomWorldView,
+    selectedRegion,
+    divisionsLoading,
+    rootRegionsLoading,
+    subregionsLoading,
+    siblingsLoading,
+  });
+  const regions = pickRegions({
+    isCustomWorldView,
+    selectedRegion,
+    rootRegions,
+    subregions,
+    siblings,
+  });
 
   // Virtual list for performance
   const itemCount = isCustomWorldView ? regions.length : divisions.length;
@@ -128,16 +258,10 @@ export function RegionList() {
 
   // Show message if no items
   if (itemCount === 0) {
-    let emptyMessage: string;
-    if (isCustomWorldView) {
-      emptyMessage = selectedRegion ? 'No subregions' : 'No regions defined. Click Edit to add regions.';
-    } else {
-      emptyMessage = selectedDivision ? 'No subdivisions' : 'No divisions found';
-    }
     return (
       <Paper sx={{ p: 2 }}>
         <Typography color="text.secondary" align="center">
-          {emptyMessage}
+          {emptyListMessage(isCustomWorldView, selectedRegion, selectedDivision)}
         </Typography>
       </Paper>
     );
@@ -160,103 +284,9 @@ export function RegionList() {
           position: 'relative',
         }}
       >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          if (isCustomWorldView) {
-            // Render region item (custom world view)
-            const region = regions[virtualRow.index];
-            const isHovered = hoveredRegionId === region.id;
-            const visited = isVisited(region.id);
-            return (
-              <ListItemButton
-                key={region.id}
-                onClick={() => handleRegionClick(region)}
-                onMouseEnter={() => setHoveredRegionId(region.id)}
-                onMouseLeave={() => setHoveredRegionId(null)}
-                selected={isHovered}
-                sx={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${virtualRow.size}px`,
-                  transform: `translateY(${virtualRow.start}px)`,
-                  backgroundColor: regionRowBackground(visited, isHovered),
-                  borderLeft: `4px solid ${region.color || '#3388ff'}`,
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: 28 }}>
-                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: region.color || '#3388ff' }} />
-                </ListItemIcon>
-                <ListItemText
-                  primary={region.name}
-                  primaryTypographyProps={{
-                    noWrap: true,
-                    sx: { fontSize: '0.9rem' },
-                  }}
-                />
-                <Tooltip title={visited ? 'Mark as not visited' : 'Mark as visited'}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleVisited(region.id);
-                    }}
-                    sx={{
-                      ml: 1,
-                      color: visited ? 'success.main' : 'action.disabled',
-                    }}
-                  >
-                    {visited ? (
-                      <CheckCircleIcon fontSize="small" />
-                    ) : (
-                      <CheckCircleOutlineIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                </Tooltip>
-              </ListItemButton>
-            );
-          } else {
-            // Render division item (GADM)
-            const division = divisions[virtualRow.index];
-            const isHovered = hoveredRegionId === division.id;
-            return (
-              <ListItemButton
-                key={division.id}
-                onClick={() => handleDivisionClick(division)}
-                onMouseEnter={() => setHoveredRegionId(division.id)}
-                onMouseLeave={() => setHoveredRegionId(null)}
-                selected={isHovered}
-                sx={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${virtualRow.size}px`,
-                  transform: `translateY(${virtualRow.start}px)`,
-                  backgroundColor: isHovered ? 'action.hover' : 'transparent',
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: 28 }}>
-                  <Box
-                    sx={{
-                      width: division.hasChildren ? 10 : 8,
-                      height: division.hasChildren ? 10 : 8,
-                      borderRadius: '50%',
-                      bgcolor: division.hasChildren ? 'primary.main' : 'grey.400',
-                    }}
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={division.name}
-                  primaryTypographyProps={{
-                    noWrap: true,
-                    sx: { fontSize: '0.9rem' },
-                  }}
-                />
-              </ListItemButton>
-            );
-          }
-        })}
+        {virtualizer.getVirtualItems().map((virtualRow) => isCustomWorldView
+          ? renderRegionRow(regions[virtualRow.index], virtualRow)
+          : renderDivisionRow(divisions[virtualRow.index], virtualRow))}
       </List>
     </Paper>
   );
