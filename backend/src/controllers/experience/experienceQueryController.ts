@@ -8,6 +8,51 @@ import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
+interface ListExperiencesFilters {
+  conditions: string[];
+  params: (string | number)[];
+}
+
+function buildExperiencesFilters(query: Request['query']): ListExperiencesFilters {
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+  let paramIndex = 1;
+
+  if (query.categoryId) {
+    conditions.push(`e.category_id = $${paramIndex++}`);
+    params.push(parseInt(String(query.categoryId)));
+  }
+  if (query.category) {
+    conditions.push(`e.category = $${paramIndex++}`);
+    params.push(String(query.category));
+  }
+  if (query.regionId) {
+    conditions.push(`e.id IN (
+      SELECT er.experience_id FROM experience_regions er
+      WHERE er.region_id = $${paramIndex++}
+    )`);
+    params.push(parseInt(String(query.regionId)));
+  }
+  if (query.country) {
+    conditions.push(`$${paramIndex++} = ANY(e.country_codes)`);
+    params.push(String(query.country).toUpperCase());
+  }
+  if (query.search) {
+    conditions.push(`e.name ILIKE $${paramIndex++}`);
+    params.push(`%${String(query.search)}%`);
+  }
+  if (query.bbox) {
+    const [west, south, east, north] = String(query.bbox).split(',').map(Number);
+    if ([west, south, east, north].every(n => !isNaN(n))) {
+      conditions.push(
+        `ST_Intersects(e.location, ST_MakeEnvelope($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 4326))`,
+      );
+      params.push(west, south, east, north);
+    }
+  }
+  return { conditions, params };
+}
+
 /**
  * List experiences with filtering and pagination
  * GET /api/experiences
@@ -22,16 +67,15 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
  * - bbox: Bounding box filter "west,south,east,north"
  */
 export async function listExperiences(req: Request, res: Response): Promise<void> {
-  const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : null;
-  const category = req.query.category ? String(req.query.category) : null;
-  const country = req.query.country ? String(req.query.country) : null;
-  const regionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
-  const search = req.query.search ? String(req.query.search) : null;
-  const bbox = req.query.bbox ? String(req.query.bbox) : null;
   const limit = Math.min(parseInt(String(req.query.limit)) || 50, 5000);
   const offset = parseInt(String(req.query.offset)) || 0;
+  const { conditions, params } = buildExperiencesFilters(req.query);
+  const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
 
-  let query = `
+  const limitIdx = params.length + 1;
+  const offsetIdx = params.length + 2;
+
+  const query = `
     SELECT
       e.id,
       e.external_id,
@@ -49,67 +93,14 @@ export async function listExperiences(req: Request, res: Response): Promise<void
       s.display_priority as category_priority
     FROM experiences e
     JOIN experience_categories s ON e.category_id = s.id
+    ${whereClause}
+    ORDER BY e.name LIMIT $${limitIdx} OFFSET $${offsetIdx}
   `;
 
-  const conditions: string[] = [];
-  const params: (string | number)[] = [];
-  let paramIndex = 1;
+  const result = await pool.query(query, [...params, limit, offset]);
 
-  if (categoryId) {
-    conditions.push(`e.category_id = $${paramIndex++}`);
-    params.push(categoryId);
-  }
-
-  if (category) {
-    conditions.push(`e.category = $${paramIndex++}`);
-    params.push(category);
-  }
-
-  if (regionId) {
-    // Include experiences in this region or any descendant region
-    conditions.push(`e.id IN (
-      SELECT er.experience_id FROM experience_regions er
-      WHERE er.region_id = $${paramIndex++}
-    )`);
-    params.push(regionId);
-  }
-
-  if (country) {
-    conditions.push(`$${paramIndex++} = ANY(e.country_codes)`);
-    params.push(country.toUpperCase());
-  }
-
-  if (search) {
-    conditions.push(`e.name ILIKE $${paramIndex++}`);
-    params.push(`%${search}%`);
-  }
-
-  if (bbox) {
-    const [west, south, east, north] = bbox.split(',').map(Number);
-    if (!isNaN(west) && !isNaN(south) && !isNaN(east) && !isNaN(north)) {
-      conditions.push(`ST_Intersects(e.location, ST_MakeEnvelope($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 4326))`);
-      params.push(west, south, east, north);
-    }
-  }
-
-  if (conditions.length > 0) {
-    query += ' WHERE ' + conditions.join(' AND ');
-  }
-
-  // Snapshot filter params before adding limit/offset
-  const filterParams = [...params];
-
-  query += ` ORDER BY e.name LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
-  params.push(limit, offset);
-
-  const result = await pool.query(query, params);
-
-  // Get total count for pagination (same WHERE, no LIMIT/OFFSET)
-  let countQuery = 'SELECT COUNT(*) FROM experiences e JOIN experience_categories s ON e.category_id = s.id';
-  if (conditions.length > 0) {
-    countQuery += ' WHERE ' + conditions.join(' AND ');
-  }
-  const countResult = await pool.query(countQuery, filterParams);
+  const countQuery = `SELECT COUNT(*) FROM experiences e JOIN experience_categories s ON e.category_id = s.id${whereClause}`;
+  const countResult = await pool.query(countQuery, params);
 
   res.json({
     experiences: result.rows.map(row => ({
