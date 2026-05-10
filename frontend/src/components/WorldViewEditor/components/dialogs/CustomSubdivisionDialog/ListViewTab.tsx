@@ -5,24 +5,22 @@ import {
   TextField,
   Paper,
   List,
-  ListItem,
-  ListItemText,
   IconButton,
   Tooltip,
-  Chip,
   Button,
   Switch,
   FormControlLabel,
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import MapIcon from '@mui/icons-material/Map';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import FolderCopyIcon from '@mui/icons-material/FolderCopy';
 import type { Region, RegionMember } from '../../../../../types';
 import { getMemberKey } from '../../../types';
 import type { SubdivisionGroup } from './types';
-import { removeMemberAtIndex, addMemberAtIndex } from './groupMutations';
+import { removeMemberAtIndex } from './groupMutations';
+import { DivisionRow } from './DivisionRow';
+import { GroupCard } from './GroupCard';
+
+interface DivWithGroup { div: RegionMember; groupIdx: number | null }
 
 interface ListViewTabProps {
   selectedRegion: Region | null;
@@ -59,6 +57,13 @@ export function ListViewTab({
 }: ListViewTabProps) {
   const [multilineMode, setMultilineMode] = useState(false);
   const totalDivisions = unassignedDivisions.length + subdivisionGroups.reduce((sum, g) => sum + g.members.length, 0);
+
+  const sortedDivisions: DivWithGroup[] = [
+    ...unassignedDivisions.map(d => ({ div: d, groupIdx: null })),
+    ...subdivisionGroups.flatMap((group, groupIdx) =>
+      group.members.map(member => ({ div: member, groupIdx })),
+    ),
+  ].sort((a, b) => a.div.name.localeCompare(b.div.name));
 
   // Add single group from input
   const addSingleGroup = () => {
@@ -230,114 +235,20 @@ export function ListViewTab({
 
           {/* Division list - draggable */}
           <List dense>
-            {(() => {
-              const allDivs: { div: RegionMember; groupIdx: number | null }[] = [
-                ...unassignedDivisions.map(div => ({ div, groupIdx: null })),
-                ...subdivisionGroups.flatMap((group, groupIdx) =>
-                  group.members.map(member => ({ div: member, groupIdx }))
-                ),
-              ];
-
-              allDivs.sort((a, b) => a.div.name.localeCompare(b.div.name));
-
-              return allDivs.map(({ div, groupIdx }) => {
-                const memberKey = getMemberKey(div);
-                return (
-                  <ListItem
-                    key={memberKey}
-                    draggable
-                    onDragStart={(e) => {
-                      setDraggingDivisionId(div.memberRowId || div.id);
-                      e.dataTransfer.effectAllowed = 'move';
-                      e.dataTransfer.setData('text/plain', memberKey);
-                    }}
-                    onDragEnd={() => {
-                      setDraggingDivisionId(null);
-                      setDragOverGroupIdx(null);
-                    }}
-                    sx={{
-                      py: 0.5,
-                      px: 1,
-                      mb: 0.5,
-                      borderRadius: 1,
-                      cursor: 'grab',
-                      border: '1px solid',
-                      borderColor: draggingDivisionId === (div.memberRowId || div.id) ? 'primary.main' : 'divider',
-                      bgcolor: groupIdx !== null ? 'action.selected' : 'background.paper',
-                      opacity: draggingDivisionId === div.id ? 0.5 : 1,
-                      '&:hover': {
-                        bgcolor: 'action.hover',
-                      },
-                      '&:active': {
-                        cursor: 'grabbing',
-                      },
-                    }}
-                    secondaryAction={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Tooltip title="Preview on map">
-                          <IconButton
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onPreviewDivision(div);
-                            }}
-                          >
-                            <MapIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <select
-                          value={groupIdx ?? ''}
-                          onChange={(e) => {
-                            const newGroupIdx = e.target.value === '' ? null : parseInt(e.target.value);
-                            const currentMemberKey = getMemberKey(div);
-
-                            if (groupIdx !== null) {
-                              setSubdivisionGroups(prev => removeMemberAtIndex(prev, groupIdx, currentMemberKey));
-                            } else {
-                              setUnassignedDivisions(prev => prev.filter(d => getMemberKey(d) !== currentMemberKey));
-                            }
-
-                            if (newGroupIdx !== null) {
-                              setSubdivisionGroups(prev => addMemberAtIndex(prev, newGroupIdx, div));
-                            } else {
-                              setUnassignedDivisions(prev => [...prev, div]);
-                            }
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            fontSize: '11px',
-                            padding: '2px 4px',
-                            borderRadius: '4px',
-                            border: '1px solid #ccc',
-                            backgroundColor: groupIdx !== null ? '#e3f2fd' : '#fff',
-                            minWidth: '120px',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <option value="">Unassigned</option>
-                          {subdivisionGroups.map((group, idx) => (
-                            <option key={idx} value={idx}>
-                              → {group.name}
-                            </option>
-                          ))}
-                        </select>
-                      </Box>
-                    }
-                  >
-                    <ListItemText
-                      primary={
-                        (() => {
-                          const pathParts = div.path?.split(' > ') || [];
-                          const parentName = pathParts.length >= 2 ? pathParts[pathParts.length - 2] : null;
-                          return parentName ? `${div.name} (${parentName})` : div.name;
-                        })()
-                      }
-                      primaryTypographyProps={{ variant: 'body2' }}
-                    />
-                  </ListItem>
-                );
-              });
-            })()}
+            {sortedDivisions.map(({ div, groupIdx }) => (
+              <DivisionRow
+                key={getMemberKey(div)}
+                div={div}
+                groupIdx={groupIdx}
+                draggingDivisionId={draggingDivisionId}
+                subdivisionGroups={subdivisionGroups}
+                setDraggingDivisionId={setDraggingDivisionId}
+                setDragOverGroupIdx={setDragOverGroupIdx}
+                setSubdivisionGroups={setSubdivisionGroups}
+                setUnassignedDivisions={setUnassignedDivisions}
+                onPreviewDivision={onPreviewDivision}
+              />
+            ))}
           </List>
 
           {totalDivisions === 0 && (
@@ -362,142 +273,22 @@ export function ListViewTab({
           ) : (
             <>
               {subdivisionGroups.map((group, groupIdx) => (
-                <Paper
+                <GroupCard
                   key={groupIdx}
-                  variant="outlined"
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    setDragOverGroupIdx(groupIdx);
-                  }}
-                  onDragLeave={() => setDragOverGroupIdx(null)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const memberKey = e.dataTransfer.getData('text/plain');
-                    if (!memberKey) return;
-
-                    let div = unassignedDivisions.find(m => getMemberKey(m) === memberKey);
-                    if (!div) {
-                      for (const g of subdivisionGroups) {
-                        div = g.members.find(m => getMemberKey(m) === memberKey);
-                        if (div) break;
-                      }
-                    }
-                    if (!div) return;
-
-                    const currentGroupIdx = subdivisionGroups.findIndex(g =>
-                      g.members.some(m => getMemberKey(m) === memberKey)
-                    );
-
-                    if (currentGroupIdx >= 0) {
-                      setSubdivisionGroups(prev => removeMemberAtIndex(prev, currentGroupIdx, memberKey));
-                    } else {
-                      setUnassignedDivisions(prev => prev.filter(d => getMemberKey(d) !== memberKey));
-                    }
-
-                    setSubdivisionGroups(prev => addMemberAtIndex(prev, groupIdx, div!));
-
-                    setDragOverGroupIdx(null);
-                    setDraggingDivisionId(null);
-                  }}
-                  sx={{
-                    p: 1.5,
-                    minHeight: 80,
-                    borderWidth: 2,
-                    borderStyle: dragOverGroupIdx === groupIdx ? 'dashed' : 'solid',
-                    borderColor: dragOverGroupIdx === groupIdx ? 'primary.main' : 'divider',
-                    bgcolor: dragOverGroupIdx === groupIdx ? 'primary.light' : 'background.paper',
-                    transition: 'all 0.2s ease',
-                  }}
-                >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                    {editingGroupIdx === groupIdx ? (
-                      <TextField
-                        size="small"
-                        value={editingGroupName}
-                        onChange={(e) => setEditingGroupName(e.target.value)}
-                        onBlur={() => {
-                          if (editingGroupName.trim()) {
-                            setSubdivisionGroups(prev => prev.map((g, i) =>
-                              i === groupIdx ? { ...g, name: editingGroupName.trim() } : g
-                            ));
-                          }
-                          setEditingGroupIdx(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            if (editingGroupName.trim()) {
-                              setSubdivisionGroups(prev => prev.map((g, i) =>
-                                i === groupIdx ? { ...g, name: editingGroupName.trim() } : g
-                              ));
-                            }
-                            setEditingGroupIdx(null);
-                          } else if (e.key === 'Escape') {
-                            setEditingGroupIdx(null);
-                          }
-                        }}
-                        autoFocus
-                        sx={{ flex: 1, mr: 1 }}
-                        inputProps={{ style: { fontSize: '0.875rem', fontWeight: 'bold' } }}
-                      />
-                    ) : (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Typography
-                          variant="subtitle2"
-                          fontWeight="bold"
-                          onClick={() => {
-                            setEditingGroupIdx(groupIdx);
-                            setEditingGroupName(group.name);
-                          }}
-                          sx={{
-                            cursor: 'pointer',
-                            '&:hover': { textDecoration: 'underline' },
-                          }}
-                        >
-                          {group.name}
-                        </Typography>
-                        {group.existingRegionId && (
-                          <Chip size="small" label="existing" variant="outlined" color="info" sx={{ height: 18, fontSize: '0.65rem' }} />
-                        )}
-                      </Box>
-                    )}
-                    <Box>
-                      <Chip size="small" label={`${group.members.length}`} sx={{ mr: 0.5 }} />
-                      {editingGroupIdx !== groupIdx && (
-                        <Tooltip title="Rename group">
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              setEditingGroupIdx(groupIdx);
-                              setEditingGroupName(group.name);
-                            }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      <IconButton
-                        size="small"
-                        onClick={() => {
-                          setUnassignedDivisions(prev => [...prev, ...group.members]);
-                          setSubdivisionGroups(prev => prev.filter((_, i) => i !== groupIdx));
-                        }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                  {group.members.length === 0 ? (
-                    <Typography variant="caption" color="text.secondary">
-                      Drop divisions here
-                    </Typography>
-                  ) : (
-                    <Typography variant="caption" color="text.secondary">
-                      {group.members.map(m => m.name).slice(0, 3).join(', ')}
-                      {group.members.length > 3 && ` +${group.members.length - 3} more`}
-                    </Typography>
-                  )}
-                </Paper>
+                  group={group}
+                  groupIdx={groupIdx}
+                  unassignedDivisions={unassignedDivisions}
+                  subdivisionGroups={subdivisionGroups}
+                  dragOverGroupIdx={dragOverGroupIdx}
+                  editingGroupIdx={editingGroupIdx}
+                  editingGroupName={editingGroupName}
+                  setDragOverGroupIdx={setDragOverGroupIdx}
+                  setDraggingDivisionId={setDraggingDivisionId}
+                  setEditingGroupIdx={setEditingGroupIdx}
+                  setEditingGroupName={setEditingGroupName}
+                  setSubdivisionGroups={setSubdivisionGroups}
+                  setUnassignedDivisions={setUnassignedDivisions}
+                />
               ))}
             </>
           )}
