@@ -43,6 +43,101 @@ export interface SyncServiceConfig<T> {
 // Orchestrator
 // =============================================================================
 
+function isSyncStillRunning(progress: SyncProgress | undefined): boolean {
+  return !!progress
+    && progress.status !== 'complete'
+    && progress.status !== 'failed'
+    && progress.status !== 'cancelled';
+}
+
+function initSyncProgress(): SyncProgress {
+  return {
+    cancel: false,
+    status: 'fetching',
+    statusMessage: 'Initializing...',
+    progress: 0,
+    total: 0,
+    created: 0,
+    updated: 0,
+    errors: 0,
+    currentItem: '',
+    logId: null,
+  };
+}
+
+async function runForceCleanup<T>(
+  config: SyncServiceConfig<T>,
+  progress: SyncProgress,
+): Promise<void> {
+  if (config.cleanup) {
+    await config.cleanup(progress);
+    return;
+  }
+  progress.statusMessage = 'Cleaning up existing data...';
+  await cleanupCategoryData(config.categoryId, config.logPrefix, progress);
+}
+
+async function processItemsLoop<T>(
+  config: SyncServiceConfig<T>,
+  items: T[],
+  progress: SyncProgress,
+  errorDetails: ErrorDetail[],
+): Promise<void> {
+  progress.status = 'processing';
+  progress.total = items.length;
+  progress.progress = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    if (progress.cancel) throw new Error('Sync cancelled');
+    const item = items[i];
+    progress.currentItem = config.getItemName(item);
+    progress.statusMessage = `Processing ${i + 1}/${items.length}: ${progress.currentItem}`;
+    try {
+      const result = await config.processItem(item, progress);
+      if (result === 'created') progress.created++;
+      else progress.updated++;
+    } catch (err) {
+      progress.errors++;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      errorDetails.push({ externalId: config.getItemId(item), error: errorMsg });
+      console.error(`${config.logPrefix} Error processing ${config.getItemId(item)}:`, errorMsg);
+    }
+    progress.progress = i + 1;
+  }
+}
+
+function computeFinalStatus(progress: SyncProgress): 'success' | 'partial' | 'failed' {
+  if (progress.errors === 0) return 'success';
+  return progress.created + progress.updated === 0 ? 'failed' : 'partial';
+}
+
+async function recordSyncFailure<T>(
+  config: SyncServiceConfig<T>,
+  progress: SyncProgress,
+  err: unknown,
+  errorDetails: ErrorDetail[],
+): Promise<void> {
+  const errorMsg = err instanceof Error ? err.message : String(err);
+  progress.status = progress.cancel ? 'cancelled' : 'failed';
+  progress.statusMessage = errorMsg;
+
+  if (progress.logId) {
+    errorDetails.push({ externalId: 'system', error: errorMsg });
+    await updateSyncLog(config.categoryId, progress.logId, progress.status, {
+      fetched: progress.total,
+      created: progress.created,
+      updated: progress.updated,
+      errors: progress.errors,
+    }, errorDetails);
+  }
+
+  if (progress.status === 'cancelled') {
+    console.log(`${config.logPrefix} Cancelled:`, errorMsg);
+  } else {
+    console.error(`${config.logPrefix} Failed:`, errorMsg);
+  }
+}
+
 /**
  * Run a sync operation with full lifecycle management.
  *
@@ -57,86 +152,27 @@ export async function orchestrateSync<T>(
 ): Promise<void> {
   const { categoryId, logPrefix } = config;
 
-  // Check if already running
-  const existing = runningSyncs.get(categoryId);
-  if (existing && existing.status !== 'complete' && existing.status !== 'failed' && existing.status !== 'cancelled') {
+  if (isSyncStillRunning(runningSyncs.get(categoryId))) {
     throw new Error(`${logPrefix} sync already in progress`);
   }
 
-  // Initialize progress
-  const progress: SyncProgress = {
-    cancel: false,
-    status: 'fetching',
-    statusMessage: 'Initializing...',
-    progress: 0,
-    total: 0,
-    created: 0,
-    updated: 0,
-    errors: 0,
-    currentItem: '',
-    logId: null,
-  };
+  const progress = initSyncProgress();
   runningSyncs.set(categoryId, progress);
-
   const errorDetails: ErrorDetail[] = [];
 
   try {
     progress.logId = await createSyncLog(categoryId, triggeredBy);
     console.log(`${logPrefix} Started sync (log ID: ${progress.logId})${force ? ' [FORCE MODE]' : ''}`);
 
-    // Force cleanup
-    if (force) {
-      if (config.cleanup) {
-        await config.cleanup(progress);
-      } else {
-        progress.statusMessage = 'Cleaning up existing data...';
-        await cleanupCategoryData(categoryId, logPrefix, progress);
-      }
-    }
+    if (force) await runForceCleanup(config, progress);
 
-    // Fetch items
     const { items, fetchedCount } = await config.fetchItems(progress, errorDetails);
-
-    // Sync pre-processing errors (fetchItems may append to errorDetails)
+    // fetchItems may append pre-processing errors before the loop counts errors itself
     progress.errors = errorDetails.length;
 
-    // Processing loop
-    progress.status = 'processing';
-    progress.total = items.length;
-    progress.progress = 0;
+    await processItemsLoop(config, items, progress, errorDetails);
 
-    for (let i = 0; i < items.length; i++) {
-      if (progress.cancel) throw new Error('Sync cancelled');
-
-      const item = items[i];
-      progress.currentItem = config.getItemName(item);
-      progress.statusMessage = `Processing ${i + 1}/${items.length}: ${progress.currentItem}`;
-
-      try {
-        const result = await config.processItem(item, progress);
-        if (result === 'created') {
-          progress.created++;
-        } else {
-          progress.updated++;
-        }
-      } catch (err) {
-        progress.errors++;
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        errorDetails.push({ externalId: config.getItemId(item), error: errorMsg });
-        console.error(`${logPrefix} Error processing ${config.getItemId(item)}:`, errorMsg);
-      }
-
-      progress.progress = i + 1;
-    }
-
-    // Final status
-    const totalProcessed = progress.created + progress.updated;
-    const finalStatus = progress.errors > 0 && totalProcessed === 0
-      ? 'failed'
-      : progress.errors > 0
-      ? 'partial'
-      : 'success';
-
+    const finalStatus = computeFinalStatus(progress);
     progress.status = 'complete';
     progress.statusMessage = `Complete: ${progress.created} created, ${progress.updated} updated, ${progress.errors} errors`;
 
@@ -149,28 +185,10 @@ export async function orchestrateSync<T>(
 
     console.log(`${logPrefix} Complete: created=${progress.created}, updated=${progress.updated}, errors=${progress.errors}`);
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    progress.status = progress.cancel ? 'cancelled' : 'failed';
-    progress.statusMessage = errorMsg;
-
-    if (progress.logId) {
-      errorDetails.push({ externalId: 'system', error: errorMsg });
-      await updateSyncLog(categoryId, progress.logId, progress.status, {
-        fetched: progress.total,
-        created: progress.created,
-        updated: progress.updated,
-        errors: progress.errors,
-      }, errorDetails);
-    }
-
-    if (progress.status === 'cancelled') {
-      console.log(`${logPrefix} Cancelled:`, errorMsg);
-    } else {
-      console.error(`${logPrefix} Failed:`, errorMsg);
-    }
+    await recordSyncFailure(config, progress, err, errorDetails);
     throw err;
   } finally {
-    // Clean up after delay, but only if this sync's progress is still current
+    // Clean up after delay, but only if this sync's progress is still current.
     const thisProgress = progress;
     setTimeout(() => {
       if (runningSyncs.get(categoryId) === thisProgress) {
