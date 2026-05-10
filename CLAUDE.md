@@ -25,6 +25,11 @@ npm run security:py:deps   # pip-audit on cv-python/requirements.txt
 npm run security:py:all    # All Python security scans
 npm run security:image     # Build cv-python image and Trivy CVE scan
 npm run security:deps      # npm audit for backend + frontend
+npm run lint:circular      # madge: find circular ts/tsx imports
+npm run lint:shell         # shellcheck on scripts/*.sh (Docker)
+npm run lint:docker        # hadolint on every Dockerfile (Docker)
+npm run lint:extra         # composite: lint:circular + lint:shell + lint:docker
+npm run check:all          # composite: check + knip + lint:extra (broadest local gate)
 npm run help               # Full command reference
 ```
 
