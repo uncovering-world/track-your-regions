@@ -6,6 +6,27 @@ import { fetchDivisionGeometry, fetchSubdivisions, removeDivisionsFromRegion, ad
 import type { CutPart } from '../CutDivisionDialog';
 import type { MapLayerMouseEvent } from 'react-map-gl/maplibre';
 
+// Hoisted to module scope so they don't add nesting levels inside the hook.
+function withoutMember(group: SubdivisionGroup, memberKey: string): SubdivisionGroup {
+  return { ...group, members: group.members.filter(m => getMemberKey(m) !== memberKey) };
+}
+
+function removeMemberAtIndex(
+  groups: SubdivisionGroup[],
+  groupIdx: number,
+  memberKey: string,
+): SubdivisionGroup[] {
+  return groups.map((g, i) => i === groupIdx ? withoutMember(g, memberKey) : g);
+}
+
+function addMemberAtIndex(
+  groups: SubdivisionGroup[],
+  groupIdx: number,
+  member: RegionMember,
+): SubdivisionGroup[] {
+  return groups.map((g, i) => i === groupIdx ? { ...g, members: [...g.members, member] } : g);
+}
+
 interface UseDivisionOperationsParams {
   selectedRegion: Region | null;
   mapGeometries: GeoJSON.FeatureCollection | null;
@@ -95,11 +116,7 @@ export function useDivisionOperations({
 
       // Remove the parent division from local state
       if (currentGroupIdx !== null) {
-        setSubdivisionGroups(prev => prev.map((g, i) =>
-          i === currentGroupIdx
-            ? { ...g, members: g.members.filter(m => getMemberKey(m) !== memberKey) }
-            : g
-        ));
+        setSubdivisionGroups(prev => removeMemberAtIndex(prev, currentGroupIdx, memberKey));
       } else {
         setUnassignedDivisions(prev => prev.filter(d => getMemberKey(d) !== memberKey));
       }
@@ -157,11 +174,7 @@ export function useDivisionOperations({
       const currentGroupIdx = getDivisionGroupIdx(cuttingDivision.id, cuttingDivision.memberRowId);
 
       if (currentGroupIdx !== null) {
-        setSubdivisionGroups(prev => prev.map((g, i) =>
-          i === currentGroupIdx
-            ? { ...g, members: g.members.filter(m => getMemberKey(m) !== memberKey) }
-            : g
-        ));
+        setSubdivisionGroups(prev => removeMemberAtIndex(prev, currentGroupIdx, memberKey));
       } else {
         setUnassignedDivisions(prev => prev.filter(d => getMemberKey(d) !== memberKey));
       }
@@ -255,11 +268,7 @@ export function useDivisionOperations({
       const currentGroupIdx = getDivisionGroupIdx(div.id, div.memberRowId);
 
       if (currentGroupIdx !== null) {
-        setSubdivisionGroups(prev => prev.map((g, i) =>
-          i === currentGroupIdx
-            ? { ...g, members: g.members.filter(m => getMemberKey(m) !== memberKey) }
-            : g
-        ));
+        setSubdivisionGroups(prev => removeMemberAtIndex(prev, currentGroupIdx, memberKey));
       } else {
         setUnassignedDivisions(prev => prev.filter(d => getMemberKey(d) !== memberKey));
       }
@@ -321,6 +330,83 @@ export function useDivisionOperations({
     }
   };
 
+  // Try the in-memory mapGeometries first (it has any custom geometry), then fall
+  // back to the GADM division geometry from the API.
+  const loadCuttingGeometry = useCallback(async (
+    div: ReturnType<typeof getAllDivisions>[number],
+  ): Promise<GeoJSON.Geometry | null> => {
+    if (div.hasCustomGeometry && div.memberRowId && mapGeometries) {
+      const feature = mapGeometries.features.find(
+        f => f.properties?.memberRowId === div.memberRowId,
+      );
+      if (feature?.geometry) return feature.geometry;
+    }
+    const geom = await fetchDivisionGeometry(div.id, selectedRegion?.worldViewId ?? 1);
+    return (geom?.geometry as GeoJSON.Geometry | undefined) ?? null;
+  }, [mapGeometries, selectedRegion]);
+
+  const openCutDialogForDivision = useCallback(async (
+    div: ReturnType<typeof getAllDivisions>[number],
+  ) => {
+    setCuttingDivision(div);
+    try {
+      const geometry = await loadCuttingGeometry(div);
+      if (!geometry) return;
+      setCuttingDivisionGeometry({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: { id: div.id, name: div.name, memberRowId: div.memberRowId },
+          geometry,
+        }],
+      });
+      setCutDialogOpen(true);
+    } catch (e) {
+      console.error('Failed to load division geometry for cutting:', e);
+    }
+  }, [loadCuttingGeometry, setCuttingDivision, setCuttingDivisionGeometry, setCutDialogOpen]);
+
+  const moveDivisionToUnassigned = useCallback((
+    div: ReturnType<typeof getAllDivisions>[number],
+    currentGroupIdx: number | null,
+  ) => {
+    if (currentGroupIdx === null) return; // Already unassigned
+    const memberKey = getMemberKey(div);
+    setSubdivisionGroups(prev => removeMemberAtIndex(prev, currentGroupIdx, memberKey));
+    setUnassignedDivisions(prev => [...prev, div]);
+  }, [setSubdivisionGroups, setUnassignedDivisions]);
+
+  const moveDivisionToGroup = useCallback((
+    div: ReturnType<typeof getAllDivisions>[number],
+    currentGroupIdx: number | null,
+    targetGroupIdx: number,
+  ) => {
+    if (currentGroupIdx === targetGroupIdx) return; // Already in this group
+    const memberKey = getMemberKey(div);
+
+    if (currentGroupIdx !== null) {
+      setSubdivisionGroups(prev => removeMemberAtIndex(prev, currentGroupIdx, memberKey));
+    } else {
+      setUnassignedDivisions(prev => prev.filter(d => getMemberKey(d) !== memberKey));
+    }
+
+    setSubdivisionGroups(prev => addMemberAtIndex(prev, targetGroupIdx, div));
+  }, [setSubdivisionGroups, setUnassignedDivisions]);
+
+  const handleAssignToolClick = useCallback((
+    div: ReturnType<typeof getAllDivisions>[number],
+    divId: number,
+    memberRowId: number | undefined,
+  ) => {
+    if (selectedGroupIdx === null) return;
+    const currentGroupIdx = getDivisionGroupIdx(divId, memberRowId);
+    if (selectedGroupIdx === 'unassigned') {
+      moveDivisionToUnassigned(div, currentGroupIdx);
+    } else {
+      moveDivisionToGroup(div, currentGroupIdx, selectedGroupIdx);
+    }
+  }, [selectedGroupIdx, getDivisionGroupIdx, moveDivisionToUnassigned, moveDivisionToGroup]);
+
   // Handle clicking on a division in the map
   const handleMapClick = useCallback(async (event: MapLayerMouseEvent) => {
     const features = event.features;
@@ -331,108 +417,23 @@ export function useDivisionOperations({
     const memberRowId = clickedFeature.properties?.memberRowId;
     if (!divId) return;
 
-    // Find the division in our data
     const allDivisions = getAllDivisions();
     const div = allDivisions.find(d =>
-      memberRowId ? d.memberRowId === memberRowId : d.id === divId
+      memberRowId ? d.memberRowId === memberRowId : d.id === divId,
     );
     if (!div) return;
 
-    // Handle based on active tool
     if (activeTool === 'moveToParent') {
-      // Move to parent tool: move this division to parent region
-      if (selectedRegion?.parentRegionId) {
-        await handleMoveDivisionToParent(div);
-      }
+      if (selectedRegion?.parentRegionId) await handleMoveDivisionToParent(div);
     } else if (activeTool === 'split') {
-      // Split tool: split the division into its children
-      if (div.hasChildren) {
-        await handleSplitDivision(div);
-      }
+      if (div.hasChildren) await handleSplitDivision(div);
     } else if (activeTool === 'cut') {
-      // Cut tool: open the cut dialog to draw polygon to cut a piece
-      setCuttingDivision(div);
-      try {
-        let geometry: GeoJSON.Geometry | null = null;
-
-        // If division has custom geometry, use it from mapGeometries (already loaded with custom geom)
-        if (div.hasCustomGeometry && div.memberRowId && mapGeometries) {
-          const feature = mapGeometries.features.find(
-            f => f.properties?.memberRowId === div.memberRowId
-          );
-          if (feature?.geometry) {
-            geometry = feature.geometry;
-          }
-        }
-
-        // Fallback to original GADM geometry
-        if (!geometry) {
-          const geom = await fetchDivisionGeometry(div.id, selectedRegion?.worldViewId ?? 1);
-          if (geom?.geometry) {
-            geometry = geom.geometry as GeoJSON.Geometry;
-          }
-        }
-
-        if (geometry) {
-          setCuttingDivisionGeometry({
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              properties: { id: div.id, name: div.name, memberRowId: div.memberRowId },
-              geometry,
-            }],
-          });
-          setCutDialogOpen(true);
-        }
-      } catch (e) {
-        console.error('Failed to load division geometry for cutting:', e);
-      }
+      await openCutDialogForDivision(div);
     } else {
-      // Assign tool: assign to selected group or unassigned
-      if (selectedGroupIdx !== null) {
-        const memberKey = getMemberKey(div);
-        const currentGroupIdx = getDivisionGroupIdx(divId, memberRowId);
-
-        // Check if already in the target location
-        if (selectedGroupIdx === 'unassigned') {
-          // Moving to unassigned
-          if (currentGroupIdx === null) return; // Already unassigned
-
-          // Remove from current group
-          setSubdivisionGroups(prev => prev.map((g, i) =>
-            i === currentGroupIdx
-              ? { ...g, members: g.members.filter(m => getMemberKey(m) !== memberKey) }
-              : g
-          ));
-
-          // Add to unassigned
-          setUnassignedDivisions(prev => [...prev, div]);
-        } else {
-          // Moving to a group
-          if (currentGroupIdx === selectedGroupIdx) return; // Already in this group
-
-          // Remove from current location
-          if (currentGroupIdx !== null) {
-            setSubdivisionGroups(prev => prev.map((g, i) =>
-              i === currentGroupIdx
-                ? { ...g, members: g.members.filter(m => getMemberKey(m) !== memberKey) }
-                : g
-            ));
-          } else {
-            setUnassignedDivisions(prev => prev.filter(d => getMemberKey(d) !== memberKey));
-          }
-
-          // Add to selected group
-          setSubdivisionGroups(prev => prev.map((g, i) =>
-            i === selectedGroupIdx
-              ? { ...g, members: [...g.members, div] }
-              : g
-          ));
-        }
-      }
+      handleAssignToolClick(div, divId, memberRowId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSplitDivision excluded to avoid re-creating on every render
-  }, [activeTool, selectedGroupIdx, getAllDivisions, getDivisionGroupIdx, setSubdivisionGroups, setUnassignedDivisions, mapGeometries, selectedRegion]);
+  }, [activeTool, selectedRegion, getAllDivisions, openCutDialogForDivision, handleAssignToolClick]);
 
   return {
     activeTool,
