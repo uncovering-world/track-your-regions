@@ -6,7 +6,7 @@ import { findUserByEmail, findUserByProvider, createUser } from '../../services/
 /**
  * Apple Sign-In Strategy
  *
- * TODO: This strategy is UNTESTED as it requires an Apple Developer account
+ * NOTE: This strategy is UNTESTED as it requires an Apple Developer account
  * to configure. The implementation follows the same pattern as Google OAuth
  * and should work once the following environment variables are set:
  *

@@ -82,7 +82,7 @@ export function RegisterDialog({ open, onClose, onSwitchToLogin }: RegisterDialo
   };
 
   const handleAppleLogin = () => {
-    // TODO: Untested - requires Apple Developer account
+    // NOTE: Untested - requires Apple Developer account
     window.location.href = getAppleAuthUrl();
   };
 
