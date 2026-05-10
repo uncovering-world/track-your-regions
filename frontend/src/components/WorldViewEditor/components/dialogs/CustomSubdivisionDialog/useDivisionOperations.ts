@@ -344,7 +344,6 @@ export function useDivisionOperations({
       if (selectedRegion?.parentRegionId) {
         await handleMoveDivisionToParent(div);
       }
-      return;
     } else if (activeTool === 'split') {
       // Split tool: split the division into its children
       if (div.hasChildren) {
