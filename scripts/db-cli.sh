@@ -41,11 +41,13 @@ ENV_EXAMPLE="$PROJECT_ROOT/.env.example"
 load_env() {
     if [[ -f "$ENV_FILE" ]]; then
         set -a
+        # shellcheck source=/dev/null
         source "$ENV_FILE"
         set +a
     elif [[ -f "$ENV_EXAMPLE" ]]; then
         echo -e "${YELLOW}Warning: .env not found, using .env.example defaults${NC}"
         set -a
+        # shellcheck source=/dev/null
         source "$ENV_EXAMPLE"
         set +a
     fi
@@ -78,7 +80,8 @@ get_golden_db() {
 # Check if a database is the golden one
 is_golden() {
     local db_name="$1"
-    local golden=$(get_golden_db)
+    local golden
+    golden=$(get_golden_db)
     [[ -n "$golden" && "$golden" == "$db_name" ]]
 }
 
@@ -206,11 +209,12 @@ cmd_list() {
     echo -e "${BLUE}Databases:${NC}"
     echo ""
 
-    local active=$(get_active_db)
-    local golden=$(get_golden_db)
+    local active golden
+    active=$(get_active_db)
+    golden=$(get_golden_db)
 
     # List all non-system databases (exclude postgres, template0, template1)
-    psql_admin -tAc "SELECT datname FROM pg_database WHERE datname NOT IN ('postgres', 'template0', 'template1') ORDER BY datname" | while read db; do
+    psql_admin -tAc "SELECT datname FROM pg_database WHERE datname NOT IN ('postgres', 'template0', 'template1') ORDER BY datname" | while read -r db; do
         local marker=""
         if [[ "$db" == "$active" ]]; then
             marker="${GREEN}* (active)${NC}"
@@ -299,7 +303,8 @@ cmd_drop() {
     }
 
     # Clear active if it was the dropped one
-    local active=$(get_active_db)
+    local active
+    active=$(get_active_db)
     if [[ "$active" == "$db_name" ]]; then
         rm -f "$ACTIVE_DB_FILE"
         # Reset DB_NAME in .env to default
@@ -312,7 +317,8 @@ cmd_drop() {
 }
 
 cmd_mark_golden() {
-    local active=$(get_active_db)
+    local active
+    active=$(get_active_db)
 
     if [[ -z "$active" ]]; then
         echo -e "${RED}Error: No active database. Use 'npm run db:use <name>' first.${NC}"
@@ -324,7 +330,8 @@ cmd_mark_golden() {
 }
 
 cmd_unmark_golden() {
-    local golden=$(get_golden_db)
+    local golden
+    golden=$(get_golden_db)
 
     if [[ -z "$golden" ]]; then
         echo -e "${YELLOW}No golden database is currently set.${NC}"
@@ -336,7 +343,8 @@ cmd_unmark_golden() {
 }
 
 cmd_load_gadm() {
-    local active=$(get_active_db)
+    local active
+    active=$(get_active_db)
 
     if [[ -z "$active" ]]; then
         echo -e "${RED}Error: No active database. Use 'npm run db:use <name>' or 'npm run db:create' first.${NC}"
@@ -386,7 +394,8 @@ cmd_load_gadm() {
 }
 
 cmd_shell() {
-    local active=$(get_active_db)
+    local active
+    active=$(get_active_db)
 
     if [[ -z "$active" ]]; then
         echo -e "${RED}Error: No active database. Use 'npm run db:use <name>' first.${NC}"
@@ -398,8 +407,9 @@ cmd_shell() {
 }
 
 cmd_make_admin() {
-    local active=$(get_active_db)
-    local email="$1"
+    local active email
+    active=$(get_active_db)
+    email="$1"
 
     if [[ -z "$active" ]]; then
         echo -e "${RED}Error: No active database. Use 'npm run db:use <name>' first.${NC}"
@@ -423,8 +433,9 @@ cmd_make_admin() {
 }
 
 cmd_dump() {
-    local active=$(get_active_db)
-    local dump_file="$1"
+    local active dump_file
+    active=$(get_active_db)
+    dump_file="$1"
 
     if [[ -z "$active" ]]; then
         echo -e "${RED}Error: No active database. Use 'npm run db:use <name>' first.${NC}"
@@ -460,13 +471,15 @@ cmd_dump() {
         exit 1
     }
 
-    local size=$(du -h "$dump_file" | cut -f1)
+    local size
+    size=$(du -h "$dump_file" | cut -f1)
     echo -e "${GREEN}Dump complete: $dump_file ($size)${NC}"
 }
 
 cmd_restore() {
-    local dump_file="$1"
-    local active=$(get_active_db)
+    local dump_file active
+    dump_file="$1"
+    active=$(get_active_db)
 
     if [[ -z "$dump_file" ]]; then
         echo -e "${RED}Error: Dump file required.${NC}"
@@ -523,20 +536,21 @@ cmd_restore() {
         "CREATE DATABASE \"$active\";" > /dev/null 2>&1
 
     # Restore into the clean database
-    cat "$dump_file" | docker exec -i "$container" pg_restore \
+    docker exec -i "$container" pg_restore \
         -U "$DB_USER" \
         -d "$active" \
         --no-owner \
         --no-acl \
-        2>&1 | grep -v "does not exist, skipping" || true
+        < "$dump_file" 2>&1 | grep -v "does not exist, skipping" || true
 
     echo -e "${GREEN}Restore complete!${NC}"
 }
 
 cmd_status() {
-    local active=$(get_active_db)
-    local golden=$(get_golden_db)
-    local env_db=""
+    local active golden env_db
+    active=$(get_active_db)
+    golden=$(get_golden_db)
+    env_db=""
 
     # Read DB_NAME from .env
     if [[ -f "$ENV_FILE" ]]; then
@@ -572,13 +586,14 @@ cmd_status() {
     if [[ -n "$active" ]] && db_exists "$active"; then
         echo -e "${BLUE}Core entities:${NC}"
 
-        local div_count=$(table_count "$active" "administrative_divisions")
-        local div_geom=$(table_count_where "$active" "administrative_divisions" "geom IS NOT NULL")
-        local wv_count=$(table_count "$active" "world_views")
-        local reg_count=$(table_count "$active" "regions")
-        local reg_leaf=$(table_count_where "$active" "regions" "is_leaf = true")
-        local reg_geom=$(table_count_where "$active" "regions" "geom IS NOT NULL")
-        local view_count=$(table_count "$active" "views")
+        local div_count div_geom wv_count reg_count reg_leaf reg_geom view_count
+        div_count=$(table_count "$active" "administrative_divisions")
+        div_geom=$(table_count_where "$active" "administrative_divisions" "geom IS NOT NULL")
+        wv_count=$(table_count "$active" "world_views")
+        reg_count=$(table_count "$active" "regions")
+        reg_leaf=$(table_count_where "$active" "regions" "is_leaf = true")
+        reg_geom=$(table_count_where "$active" "regions" "geom IS NOT NULL")
+        view_count=$(table_count "$active" "views")
 
         echo "  administrative_divisions: $div_count (with geometry: $div_geom)"
         echo "  world_views:              $wv_count"
@@ -606,13 +621,14 @@ cmd_status() {
 
         echo ""
         echo -e "${BLUE}Experience data:${NC}"
-        local exp_count=$(table_count "$active" "experiences")
-        local exp_loc_count=$(table_count "$active" "experience_locations")
-        local exp_reg_count=$(table_count "$active" "experience_regions")
-        local exp_content_count=$(table_count "$active" "treasures")
-        local exp_treasure_link_count=$(table_count "$active" "experience_treasures")
-        local exp_reject_count=$(table_count "$active" "experience_rejections")
-        local exp_curation_count=$(table_count "$active" "experience_curation_log")
+        local exp_count exp_loc_count exp_reg_count exp_content_count exp_treasure_link_count exp_reject_count exp_curation_count
+        exp_count=$(table_count "$active" "experiences")
+        exp_loc_count=$(table_count "$active" "experience_locations")
+        exp_reg_count=$(table_count "$active" "experience_regions")
+        exp_content_count=$(table_count "$active" "treasures")
+        exp_treasure_link_count=$(table_count "$active" "experience_treasures")
+        exp_reject_count=$(table_count "$active" "experience_rejections")
+        exp_curation_count=$(table_count "$active" "experience_curation_log")
 
         echo "  experiences:              $exp_count"
         echo "  experience_locations:     $exp_loc_count"
@@ -643,12 +659,13 @@ cmd_status() {
 
         echo ""
         echo -e "${BLUE}Users & activity:${NC}"
-        local user_count=$(table_count "$active" "users")
-        local visited_regions_count=$(table_count "$active" "user_visited_regions")
-        local visited_exp_count=$(table_count "$active" "user_visited_experiences")
-        local visited_loc_count=$(table_count "$active" "user_visited_locations")
-        local viewed_content_count=$(table_count "$active" "user_viewed_treasures")
-        local curator_assignment_count=$(table_count "$active" "curator_assignments")
+        local user_count visited_regions_count visited_exp_count visited_loc_count viewed_content_count curator_assignment_count
+        user_count=$(table_count "$active" "users")
+        visited_regions_count=$(table_count "$active" "user_visited_regions")
+        visited_exp_count=$(table_count "$active" "user_visited_experiences")
+        visited_loc_count=$(table_count "$active" "user_visited_locations")
+        viewed_content_count=$(table_count "$active" "user_viewed_treasures")
+        curator_assignment_count=$(table_count "$active" "curator_assignments")
 
         echo "  users:                    $user_count"
         echo "  curator_assignments:      $curator_assignment_count"
@@ -714,7 +731,7 @@ case "$command" in
         cmd_load_gadm
         ;;
     shell)
-        cmd_shell
+        cmd_shell "$@"
         ;;
     make-admin)
         cmd_make_admin "$@"
