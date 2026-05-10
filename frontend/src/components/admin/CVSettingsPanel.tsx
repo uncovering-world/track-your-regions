@@ -58,18 +58,20 @@ export function CVSettingsPanel() {
             Switch the entire CV color-match pipeline between JavaScript (OpenCV.js WASM) and Python (OpenCV + scikit-image).
             Python is the preferred path; the JavaScript fallback is used if the Python service is unreachable.
           </Typography>
-          {isLoading ? (
+          {isLoading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
               <CircularProgress size={24} />
             </Box>
-          ) : isError || !settingsData ? (
+          )}
+          {!isLoading && (isError || !settingsData) && (
             // Don't render the selector when the load failed: a default-rendered
             // selector would misrepresent the persisted state and risk an
             // accidental overwrite if the admin changes it.
             <Alert severity="error">
               Failed to load CV settings{error instanceof Error ? `: ${error.message}` : ''}.
             </Alert>
-          ) : (
+          )}
+          {!isLoading && !isError && settingsData && (
             <Select
               size="small"
               value={settingsData.settings?.['cv_pipeline_implementation'] ?? 'javascript'}

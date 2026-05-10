@@ -187,9 +187,8 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
     <Dialog open={!!logId} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Sync Log Details</DialogTitle>
       <DialogContent>
-        {isLoading ? (
-          <LoadingSpinner padding={4} />
-        ) : log ? (
+        {isLoading && <LoadingSpinner padding={4} />}
+        {!isLoading && log && (
           <Box>
             <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: '1fr 1fr', mb: 3 }}>
               <Box>
@@ -254,7 +253,7 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
               </Box>
             )}
           </Box>
-        ) : null}
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>

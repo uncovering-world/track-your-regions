@@ -187,15 +187,17 @@ export function ExtractionRulesPanel() {
             Built-in and learned rules that guide AI extraction. Learned rules come from admin feedback during interviews.
           </Typography>
 
-          {isLoading ? (
+          {isLoading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
               <CircularProgress size={24} />
             </Box>
-          ) : isError || !rulesData ? (
+          )}
+          {!isLoading && (isError || !rulesData) && (
             <Alert severity="error">
               Failed to load extraction rules{rulesError instanceof Error ? `: ${rulesError.message}` : ''}.
             </Alert>
-          ) : (
+          )}
+          {!isLoading && !isError && rulesData && (
             <>
               {/* Unified rules table: predefined + learned */}
               <Table size="small" sx={{ mb: 2 }}>
