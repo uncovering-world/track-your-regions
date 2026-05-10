@@ -1,6 +1,5 @@
 import { pool } from '../../db/index.js';
 import type { PoolClient } from 'pg';
-import { sparqlQuery, extractQid } from '../sync/wikidataUtils.js';
 
 const GEOSHAPE_URL = 'https://maps.wikimedia.org/geoshape';
 const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)';
@@ -93,145 +92,6 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
        ON CONFLICT (wikidata_id) DO NOTHING`,
       [wikidataId],
     );
-    return false;
-  }
-}
-
-/**
- * Fallback: build a composite geoshape by unioning geoshapes of child entities.
- * Sources (merged, deduplicated):
- *  1. Wikidata P527 (has part) / P361 (part of)
- *  2. Wikivoyage regionlist subregion links (resolved to Wikidata QIDs)
- * Returns true if a composite geoshape was built and cached.
- */
-async function tryBuildCompositeGeoshape(wikidataId: string, sourceUrl?: string): Promise<boolean> {
-  const childQidSet = new Set<string>();
-
-  // Source 1: Wikidata SPARQL — P527 / P361
-  // Defense in depth: validate QID format before interpolation even though
-  // the value comes from server-controlled `region_import_state.source_external_id`.
-  if (!/^Q\d+$/.test(wikidataId)) {
-    console.warn(`[GeoshapeComposite] Skipping SPARQL — invalid QID format: ${wikidataId}`);
-  } else {
-    try {
-      const query = `
-        SELECT DISTINCT ?part WHERE {
-          { wd:${wikidataId} wdt:P527 ?part }
-          UNION
-          { ?part wdt:P361 wd:${wikidataId} }
-        }
-      `;
-      const results = await sparqlQuery(query, '[GeoshapeComposite]', 1);
-      for (const r of results) {
-        const qid = extractQid(r.part?.value ?? '');
-        if (qid.startsWith('Q')) childQidSet.add(qid);
-      }
-    } catch (err) {
-      console.warn(`[GeoshapeComposite] SPARQL failed for ${wikidataId}:`, err instanceof Error ? err.message : err);
-    }
-  }
-
-  // Source 2: Wikivoyage page regionlist subregion links
-  if (sourceUrl) {
-    try {
-      const pageTitle = decodeURIComponent(sourceUrl.replace('https://en.wikivoyage.org/wiki/', ''));
-      const url = new URL('https://en.wikivoyage.org/w/api.php');
-      url.searchParams.set('action', 'parse');
-      url.searchParams.set('page', pageTitle);
-      url.searchParams.set('prop', 'wikitext');
-      url.searchParams.set('format', 'json');
-
-      const resp = await fetch(url.toString(), {
-        headers: { 'User-Agent': USER_AGENT },
-        signal: AbortSignal.timeout(15000),
-      });
-      if (resp.ok) {
-        const data = await resp.json() as { parse?: { wikitext?: { '*': string } } };
-        const wikitext = data.parse?.wikitext?.['*'] ?? '';
-        // Extract regionlist links: region1name=[[Title]], region2name=[[Title]], etc.
-        const regionLinks = new Set<string>();
-        for (const m of wikitext.matchAll(/region\d+name\s*=\s*\[\[([^\]|]+)/g)) {
-          regionLinks.add(m[1].trim());
-        }
-        if (regionLinks.size > 0) {
-          // Resolve Wikivoyage titles → Wikidata QIDs via MediaWiki API
-          const titles = [...regionLinks];
-          for (let i = 0; i < titles.length; i += 50) {
-            const batch = titles.slice(i, i + 50);
-            const qUrl = new URL('https://en.wikivoyage.org/w/api.php');
-            qUrl.searchParams.set('action', 'query');
-            qUrl.searchParams.set('titles', batch.join('|'));
-            qUrl.searchParams.set('redirects', '1');
-            qUrl.searchParams.set('prop', 'pageprops');
-            qUrl.searchParams.set('ppprop', 'wikibase_item');
-            qUrl.searchParams.set('format', 'json');
-            const qResp = await fetch(qUrl.toString(), {
-              headers: { 'User-Agent': USER_AGENT },
-              signal: AbortSignal.timeout(15000),
-            });
-            if (qResp.ok) {
-              const qData = await qResp.json() as { query?: { pages?: Record<string, { pageprops?: { wikibase_item?: string } }> } };
-              for (const page of Object.values(qData.query?.pages ?? {})) {
-                const qid = page.pageprops?.wikibase_item;
-                if (qid) childQidSet.add(qid);
-              }
-            }
-          }
-          console.log(`[GeoshapeComposite] Wikivoyage regionlist added ${regionLinks.size} titles for ${wikidataId}`);
-        }
-      }
-    } catch (err) {
-      console.warn(`[GeoshapeComposite] Wikivoyage parse failed for ${wikidataId}:`, err instanceof Error ? err.message : err);
-    }
-  }
-
-  if (childQidSet.size === 0) {
-    console.log(`[GeoshapeComposite] No child entities found for ${wikidataId}`);
-    return false;
-  }
-
-  console.log(`[GeoshapeComposite] Found ${childQidSet.size} child entities for ${wikidataId}, fetching geoshapes...`);
-
-  // Fetch geoshapes for each child (caches individually)
-  const availableQids: string[] = [];
-  for (const qid of childQidSet) {
-    const available = await getOrFetchGeoshape(qid);
-    if (available) availableQids.push(qid);
-  }
-
-  if (availableQids.length === 0) {
-    console.log(`[GeoshapeComposite] No child geoshapes available for ${wikidataId}`);
-    return false;
-  }
-
-  console.log(`[GeoshapeComposite] ${availableQids.length}/${childQidSet.size} children have geoshapes, building union...`);
-
-  // Union all child geoshapes in PostGIS and store under the parent's wikidataId
-  try {
-    await pool.query(`
-      INSERT INTO wikidata_geoshapes (wikidata_id, geom, not_available)
-      SELECT $1,
-        ST_Multi(ST_CollectionExtract(ST_Buffer(ST_Union(wg.geom), 0), 3)),
-        FALSE
-      FROM wikidata_geoshapes wg
-      WHERE wg.wikidata_id = ANY($2) AND wg.not_available = FALSE AND wg.geom IS NOT NULL
-      ON CONFLICT (wikidata_id) DO UPDATE SET
-        geom = EXCLUDED.geom,
-        not_available = FALSE
-    `, [wikidataId, availableQids]);
-
-    // Verify the union produced a valid geometry
-    const check = await pool.query(
-      'SELECT geom IS NOT NULL AS valid FROM wikidata_geoshapes WHERE wikidata_id = $1',
-      [wikidataId],
-    );
-    if (check.rows[0]?.valid) {
-      console.log(`[GeoshapeComposite] Built composite geoshape for ${wikidataId} from ${availableQids.length} children`);
-      return true;
-    }
-    return false;
-  } catch (err) {
-    console.error(`[GeoshapeComposite] Union failed for ${wikidataId}:`, err);
     return false;
   }
 }
@@ -426,657 +286,6 @@ export async function computeIoU(
   return best > 0 ? Math.round(best * 1000) / 1000 : 0;
 }
 
-/**
- * Compute what fraction of a single GADM division's area is covered
- * by the union of other GADM divisions (the children's matches).
- * Returns a number 0–1, or null if geometries are missing.
- */
-export async function computeDivisionCoverage(
-  divisionId: number,
-  childDivisionIds: number[],
-): Promise<number | null> {
-  if (childDivisionIds.length === 0) return 0;
-
-  const result = await pool.query(`
-    WITH child_union AS (
-      SELECT ST_ForcePolygonCCW(ST_CollectionExtract(
-        ST_MakeValid(ST_Union(ad.geom_simplified_medium)), 3
-      )) AS geom
-      FROM administrative_divisions ad
-      WHERE ad.id = ANY($2) AND ad.geom_simplified_medium IS NOT NULL
-    ),
-    target AS (
-      SELECT ST_ForcePolygonCCW(ad.geom_simplified_medium) AS geom
-      FROM administrative_divisions ad
-      WHERE ad.id = $1 AND ad.geom_simplified_medium IS NOT NULL
-    )
-    SELECT
-      safe_geo_area(ST_ForcePolygonCCW(ST_CollectionExtract(
-        ST_MakeValid(ST_Intersection(t.geom, cu.geom)), 3
-      ))) /
-      NULLIF(safe_geo_area(t.geom), 0) AS coverage
-    FROM target t, child_union cu
-  `, [divisionId, childDivisionIds]);
-
-  if (result.rows.length === 0) return null;
-  const coverage = result.rows[0].coverage as number | null;
-  return coverage != null ? Math.round(coverage * 1000) / 1000 : null;
-}
-
-/**
- * Compute what fraction of multiple parent divisions is covered by
- * multiple child divisions. Unions both sets, then computes
- * intersection_area / parent_total_area.
- */
-export async function computeMultiDivisionCoverage(
-  parentDivisionIds: number[],
-  childDivisionIds: number[],
-): Promise<number | null> {
-  if (parentDivisionIds.length === 0 || childDivisionIds.length === 0) return null;
-
-  const result = await pool.query(`
-    WITH parent_union AS (
-      SELECT ST_ForcePolygonCCW(ST_CollectionExtract(
-        ST_MakeValid(ST_Union(ad.geom_simplified_medium)), 3
-      )) AS geom
-      FROM administrative_divisions ad
-      WHERE ad.id = ANY($1) AND ad.geom_simplified_medium IS NOT NULL
-    ),
-    child_union AS (
-      SELECT ST_ForcePolygonCCW(ST_CollectionExtract(
-        ST_MakeValid(ST_Union(ad.geom_simplified_medium)), 3
-      )) AS geom
-      FROM administrative_divisions ad
-      WHERE ad.id = ANY($2) AND ad.geom_simplified_medium IS NOT NULL
-    )
-    SELECT
-      safe_geo_area(ST_ForcePolygonCCW(ST_CollectionExtract(
-        ST_MakeValid(ST_Intersection(p.geom, c.geom)), 3
-      ))) /
-      NULLIF(safe_geo_area(p.geom), 0) AS coverage
-    FROM parent_union p, child_union c
-  `, [parentDivisionIds, childDivisionIds]);
-
-  if (result.rows.length === 0) return null;
-  const coverage = result.rows[0].coverage as number | null;
-  return coverage != null ? Math.round(coverage * 100000) / 100000 : null;
-}
-
-interface CoverageEntry {
-  coverage: number;
-  intersectionArea: number;
-  gadmArea: number;
-}
-
-type CandidateInfo = {
-  id: number;
-  name: string;
-  path: string;
-  parentId: number | null;
-  gadmDepth: number;
-  coverage: number;
-  intersectionArea: number;
-  gadmArea: number;
-};
-
-/**
- * Refine a covering set by drilling down imprecise divisions.
- *
- * For each division in the covering set, computes precision = intersectionArea / gadmArea.
- * If precision < 0.5 (the geoshape covers less than half the GADM division), replaces
- * that division with its children that intersect the geoshape — recursively up to maxDepth.
- * This handles cases like a Wikivoyage island region matching a whole GADM province.
- */
-async function refineCoveringSet(
-  coveringSet: CandidateInfo[],
-  wikidataId: string,
-  wikiArea: number,
-  depth: number = 0,
-  maxDepth: number = 3,
-): Promise<CandidateInfo[]> {
-  const result: CandidateInfo[] = [];
-
-  for (const entry of coveringSet) {
-    const precision = entry.gadmArea > 0 ? entry.intersectionArea / entry.gadmArea : 1;
-
-    if (precision >= 0.5 || depth >= maxDepth) {
-      result.push(entry);
-      continue;
-    }
-
-    console.log(
-      `[Geoshape Refine] ${entry.name} (id=${entry.id}): precision=${(precision * 100).toFixed(1)}% — drilling down to children`,
-    );
-
-    // Query children of this division that intersect the geoshape
-    const childResult = await pool.query(`
-      WITH wiki AS (
-        SELECT ST_ForcePolygonCCW(geom) AS geom
-        FROM wikidata_geoshapes
-        WHERE wikidata_id = $1 AND not_available = FALSE
-      )
-      SELECT ad.id, ad.name, ad.parent_id,
-        safe_geo_area(
-          ST_ForcePolygonCCW(ST_CollectionExtract(
-            ST_MakeValid(ST_Intersection(w.geom, ad.geom_simplified_medium)), 3
-          ))
-        ) AS intersection_area,
-        safe_geo_area(ad.geom_simplified_medium) AS gadm_area,
-        (WITH RECURSIVE div_ancestors AS (
-          SELECT ad.id AS aid, ad.name AS aname, ad.parent_id AS apid
-          UNION ALL
-          SELECT d.id, d.name, d.parent_id
-          FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.apid
-        )
-        SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
-      FROM administrative_divisions ad, wiki w
-      WHERE ad.parent_id = $2
-        AND ad.geom_simplified_medium IS NOT NULL
-        AND ST_Intersects(ad.geom_simplified_medium, w.geom)
-    `, [wikidataId, entry.id]);
-
-    // Build child candidates, filtering tiny overlaps (< 1% of wiki area)
-    const children: CandidateInfo[] = [];
-    for (const row of childResult.rows) {
-      const childIntersectionArea = (row.intersection_area as number | null) ?? 0;
-      const childGadmArea = (row.gadm_area as number | null) ?? 0;
-      const childCoverage = wikiArea > 0 ? childIntersectionArea / wikiArea : 0;
-      if (childCoverage < 0.01) continue;
-      children.push({
-        id: row.id as number,
-        name: row.name as string,
-        path: row.path as string,
-        parentId: row.parent_id as number | null,
-        gadmDepth: entry.gadmDepth + 1,
-        coverage: childCoverage,
-        intersectionArea: childIntersectionArea,
-        gadmArea: childGadmArea,
-      });
-    }
-
-    // Check if children adequately cover the parent's intersection
-    const childIntersectionSum = children.reduce((sum, c) => sum + c.intersectionArea, 0);
-    const childCoverageRatio = entry.intersectionArea > 0
-      ? childIntersectionSum / entry.intersectionArea
-      : 0;
-
-    if (childCoverageRatio >= 0.8 && children.length > 0) {
-      console.log(
-        `[Geoshape Refine] Replacing ${entry.name} with ${children.length} children (childCoverageRatio=${(childCoverageRatio * 100).toFixed(1)}%)`,
-      );
-      // Recurse on children to refine further
-      const refinedChildren = await refineCoveringSet(children, wikidataId, wikiArea, depth + 1, maxDepth);
-      result.push(...refinedChildren);
-    } else {
-      console.log(
-        `[Geoshape Refine] Keeping ${entry.name} — children insufficient (${children.length} children, childCoverageRatio=${(childCoverageRatio * 100).toFixed(1)}%)`,
-      );
-      result.push(entry);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Match a region by comparing its Wikidata geoshape against GADM divisions.
- *
- * Finds a minimal covering set of the highest-level GADM divisions that together
- * cover ~100% of the source geoshape. Prefers shallowest divisions in the GADM
- * hierarchy — if a province covers part of the shape, its districts are not listed.
- *
- * Strategy:
- * 1. Fetch/cache the region's Wikidata geoshape
- * 2. Scope search: walk up the region tree to find nearest ancestor with assigned
- *    GADM divisions, then get all GADM descendants
- * 3. Find candidate GADM divisions via ST_Intersects, with GADM depth
- * 4. Compute coverage (intersection_area / wiki_area) for each candidate in batch
- * 5. Build covering set: shallowest first, skip children of already-selected divisions
- * 6. Return covering set as suggestions with total coverage
- */
-export async function geoshapeMatchRegion(
-  worldViewId: number,
-  regionId: number,
-  scopeAncestorId?: number,
-): Promise<{
-  found: number;
-  suggestions: Array<{
-    divisionId: number;
-    name: string;
-    path: string;
-    score: number;
-    conflict?: {
-      type: 'direct' | 'split';
-      donorRegionId: number;
-      donorRegionName: string;
-      donorDivisionId: number;
-      donorDivisionName: string;
-    };
-  }>;
-  totalCoverage?: number;
-  scopeAncestorName?: string;
-  nextScope?: { ancestorId: number; ancestorName: string };
-}> {
-  // 1. Get region's Wikidata ID and source URL
-  const wdResult = await pool.query(
-    `SELECT ris.source_external_id, ris.source_url, r.is_leaf
-     FROM region_import_state ris
-     JOIN regions r ON r.id = ris.region_id
-     WHERE ris.region_id = $1 AND r.world_view_id = $2`,
-    [regionId, worldViewId],
-  );
-  const wikidataId = wdResult.rows[0]?.source_external_id as string | undefined;
-  const sourceUrl = wdResult.rows[0]?.source_url as string | undefined;
-  const isLeaf = wdResult.rows[0]?.is_leaf as boolean | undefined;
-  if (!wikidataId) {
-    return { found: 0, suggestions: [] };
-  }
-
-  // 2. Fetch/cache geoshape (with composite fallback) and update geo_available flag
-  let available = await getOrFetchGeoshape(wikidataId);
-  if (!available) {
-    available = await tryBuildCompositeGeoshape(wikidataId, sourceUrl);
-  }
-  await pool.query(
-    'UPDATE region_import_state SET geo_available = $1 WHERE region_id = $2',
-    [available, regionId],
-  );
-  if (!available) {
-    return { found: 0, suggestions: [] };
-  }
-
-  // 3. Scope: walk up the region tree to find nearest ancestor with assigned GADM divisions
-  const ancestorResult = await pool.query(`
-    WITH RECURSIVE ancestors AS (
-      SELECT id, name, parent_region_id, 0 AS depth FROM regions WHERE id = $1
-      UNION ALL
-      SELECT r.id, r.name, r.parent_region_id, a.depth + 1
-      FROM regions r JOIN ancestors a ON r.id = a.parent_region_id
-    )
-    SELECT a.id, a.name,
-      (SELECT array_agg(rm.division_id) FROM region_members rm WHERE rm.region_id = a.id) AS division_ids
-    FROM ancestors a
-    ORDER BY a.depth
-  `, [regionId]);
-
-  // Find the scope ancestor and the next one above it
-  let scopeDivisionIds: number[] = [];
-  let scopeAncestorName: string | undefined;
-  let nextScope: { ancestorId: number; ancestorName: string } | undefined;
-  let foundScope = false;
-  const skipUntilPassed = scopeAncestorId != null;
-  let passedRequestedAncestor = false;
-
-  for (const row of ancestorResult.rows) {
-    const rowId = row.id as number;
-    const rowName = row.name as string;
-    const ids = row.division_ids as number[] | null;
-    const hasDivisions = ids != null && ids.length > 0;
-
-    if (rowId === regionId) continue; // skip self
-
-    if (skipUntilPassed && !passedRequestedAncestor) {
-      if (rowId === scopeAncestorId) {
-        passedRequestedAncestor = true;
-        if (hasDivisions) {
-          scopeDivisionIds = ids;
-          scopeAncestorName = rowName;
-          foundScope = true;
-          continue; // keep looking for nextScope
-        }
-      }
-      continue; // skip ancestors below the requested one
-    }
-
-    if (!foundScope) {
-      if (hasDivisions) {
-        scopeDivisionIds = ids;
-        scopeAncestorName = rowName;
-        foundScope = true;
-        continue; // keep looking for nextScope
-      }
-    } else {
-      // Already found scope — look for the next ancestor with divisions
-      if (hasDivisions) {
-        nextScope = { ancestorId: rowId, ancestorName: rowName };
-        break;
-      }
-    }
-  }
-
-  // 4. Find candidate GADM divisions within scope via spatial intersection
-  // Include GADM depth (distance from scope root) and parent_id for hierarchy navigation
-  const scopeRootIds = new Set(scopeDivisionIds);
-
-  let candidateQuery: string;
-  let candidateParams: unknown[];
-
-  if (scopeDivisionIds.length > 0) {
-    candidateQuery = `
-      WITH RECURSIVE scope_descendants AS (
-        SELECT id, parent_id, 0 AS gadm_depth FROM administrative_divisions WHERE id = ANY($2)
-        UNION ALL
-        SELECT ad.id, ad.parent_id, sd.gadm_depth + 1
-        FROM administrative_divisions ad
-        JOIN scope_descendants sd ON ad.parent_id = sd.id
-      ),
-      candidates AS (
-        SELECT ad.id, ad.name, ad.parent_id, sd.gadm_depth
-        FROM administrative_divisions ad
-        JOIN scope_descendants sd ON ad.id = sd.id
-        WHERE ad.geom_simplified_medium IS NOT NULL
-          AND ST_Intersects(
-            ad.geom_simplified_medium,
-            (SELECT geom FROM wikidata_geoshapes WHERE wikidata_id = $1 AND not_available = FALSE)
-          )
-      )
-      SELECT c.id, c.name, c.parent_id, c.gadm_depth,
-        (WITH RECURSIVE div_ancestors AS (
-          SELECT c.id AS aid, c.name AS aname, c.parent_id AS apid
-          UNION ALL
-          SELECT d.id, d.name, d.parent_id
-          FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.apid
-        )
-        SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
-      FROM candidates c
-    `;
-    candidateParams = [wikidataId, scopeDivisionIds];
-  } else {
-    candidateQuery = `
-      WITH candidates AS (
-        SELECT ad.id, ad.name, ad.parent_id, 0 AS gadm_depth
-        FROM administrative_divisions ad
-        WHERE ad.geom_simplified_medium IS NOT NULL
-          AND ST_Intersects(
-            ad.geom_simplified_medium,
-            (SELECT geom FROM wikidata_geoshapes WHERE wikidata_id = $1 AND not_available = FALSE)
-          )
-        LIMIT 200
-      )
-      SELECT c.id, c.name, c.parent_id, c.gadm_depth,
-        (WITH RECURSIVE div_ancestors AS (
-          SELECT c.id AS aid, c.name AS aname, c.parent_id AS apid
-          UNION ALL
-          SELECT d.id, d.name, d.parent_id
-          FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.apid
-        )
-        SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
-      FROM candidates c
-    `;
-    candidateParams = [wikidataId];
-  }
-
-  const candidateResult = await pool.query(candidateQuery, candidateParams);
-
-  // 4b. Conflict detection: when using wider scope, check if candidates are assigned elsewhere
-  const conflictMap = new Map<number, { type: 'direct' | 'split'; donorRegionId: number; donorRegionName: string; donorDivisionId: number; donorDivisionName: string }>();
-  if (scopeAncestorId != null && candidateResult.rows.length > 0) {
-    const candidateIds = candidateResult.rows.map(r => r.id as number);
-    const conflictResult = await pool.query(`
-      WITH RECURSIVE candidate_ancestors AS (
-        SELECT ad.id AS candidate_id, ad.id AS ancestor_id, ad.name AS ancestor_name, ad.parent_id, 0 AS depth
-        FROM administrative_divisions ad
-        WHERE ad.id = ANY($1)
-        UNION ALL
-        SELECT ca.candidate_id, ad.id, ad.name, ad.parent_id, ca.depth + 1
-        FROM administrative_divisions ad
-        JOIN candidate_ancestors ca ON ad.id = ca.parent_id
-      )
-      SELECT DISTINCT ON (ca.candidate_id)
-        ca.candidate_id,
-        ca.ancestor_id AS donor_division_id,
-        ca.ancestor_name AS donor_division_name,
-        ca.depth,
-        rm.region_id AS donor_region_id,
-        r.name AS donor_region_name
-      FROM candidate_ancestors ca
-      JOIN region_members rm ON rm.division_id = ca.ancestor_id
-      JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $2
-      WHERE rm.region_id != $3
-      ORDER BY ca.candidate_id, ca.depth ASC
-    `, [candidateIds, worldViewId, regionId]);
-
-    for (const row of conflictResult.rows) {
-      const candidateId = row.candidate_id as number;
-      const donorDivisionId = row.donor_division_id as number;
-      conflictMap.set(candidateId, {
-        type: candidateId === donorDivisionId ? 'direct' : 'split',
-        donorRegionId: row.donor_region_id as number,
-        donorRegionName: row.donor_region_name as string,
-        donorDivisionId,
-        donorDivisionName: row.donor_division_name as string,
-      });
-    }
-  }
-
-  if (candidateResult.rows.length === 0) {
-    console.log(`[Geoshape Match] No spatial candidates for region ${regionId} (${wikidataId}) in scope ${scopeAncestorName ?? 'global'}`);
-    return { found: 0, suggestions: [], scopeAncestorName, nextScope };
-  }
-
-  console.log(`[Geoshape Match] Found ${candidateResult.rows.length} spatial candidates for region ${regionId} (${wikidataId})`);
-
-  // 5. Load already-rejected, already-suggested, and already-assigned division IDs
-  // For assigned: also include all GADM descendants (children of assigned divisions are already covered)
-  const [rejectedResult, existingResult, assignedResult] = await Promise.all([
-    pool.query(
-      `SELECT division_id FROM region_match_suggestions WHERE region_id = $1 AND rejected = true`,
-      [regionId],
-    ),
-    pool.query(
-      `SELECT division_id FROM region_match_suggestions WHERE region_id = $1 AND rejected = false`,
-      [regionId],
-    ),
-    pool.query(
-      `WITH RECURSIVE assigned_tree AS (
-        SELECT division_id AS id FROM region_members WHERE region_id = $1
-        UNION ALL
-        SELECT ad.id FROM administrative_divisions ad JOIN assigned_tree at ON ad.parent_id = at.id
-      )
-      SELECT id AS division_id FROM assigned_tree`,
-      [regionId],
-    ),
-  ]);
-  const rejectedIds = new Set<number>(rejectedResult.rows.map(r => r.division_id as number));
-  const existingIds = new Set<number>(existingResult.rows.map(r => r.division_id as number));
-  const assignedIds = new Set<number>(assignedResult.rows.map(r => r.division_id as number));
-
-  // 6. Compute coverage (intersection_area / wiki_area) for each candidate in batch
-  const candidateIds = candidateResult.rows
-    .map(r => r.id as number)
-    .filter(id => !rejectedIds.has(id) && !existingIds.has(id) && !assignedIds.has(id));
-
-  if (candidateIds.length === 0) {
-    console.log(`[Geoshape Match] All candidates already handled for region ${regionId}`);
-    return { found: 0, suggestions: [] };
-  }
-
-  // Batch coverage query: for each candidate, compute what fraction of the wiki shape it covers
-  const coverageResult = await pool.query(`
-    WITH wiki AS (
-      SELECT ST_ForcePolygonCCW(geom) AS geom
-      FROM wikidata_geoshapes
-      WHERE wikidata_id = $1 AND not_available = FALSE
-    ),
-    wiki_area AS (
-      SELECT safe_geo_area(geom) AS area FROM wiki
-    )
-    SELECT ad.id AS division_id,
-      safe_geo_area(
-        ST_ForcePolygonCCW(ST_CollectionExtract(
-          ST_MakeValid(ST_Intersection(w.geom, ad.geom_simplified_medium)), 3
-        ))
-      ) / NULLIF(wa.area, 0) AS coverage,
-      safe_geo_area(
-        ST_ForcePolygonCCW(ST_CollectionExtract(
-          ST_MakeValid(ST_Intersection(w.geom, ad.geom_simplified_medium)), 3
-        ))
-      ) AS intersection_area,
-      safe_geo_area(ad.geom_simplified_medium) AS gadm_area
-    FROM administrative_divisions ad, wiki w, wiki_area wa
-    WHERE ad.id = ANY($2)
-      AND ad.geom_simplified_medium IS NOT NULL
-  `, [wikidataId, candidateIds]);
-
-  // Build coverage map
-  const coverageMap = new Map<number, CoverageEntry>();
-  for (const row of coverageResult.rows) {
-    const coverage = row.coverage as number | null;
-    if (coverage != null && coverage > 0.01) { // Filter tiny overlaps (< 1%)
-      coverageMap.set(row.division_id as number, {
-        coverage,
-        intersectionArea: (row.intersection_area as number | null) ?? 0,
-        gadmArea: (row.gadm_area as number | null) ?? 0,
-      });
-    }
-  }
-
-  if (coverageMap.size === 0) {
-    console.log(`[Geoshape Match] No candidates with significant coverage for region ${regionId}`);
-    return { found: 0, suggestions: [] };
-  }
-
-  // Compute wiki geoshape area for refinement precision checks
-  const wikiAreaResult = await pool.query(`
-    SELECT safe_geo_area(ST_ForcePolygonCCW(geom)) AS area
-    FROM wikidata_geoshapes
-    WHERE wikidata_id = $1 AND not_available = FALSE
-  `, [wikidataId]);
-  const wikiArea = (wikiAreaResult.rows[0]?.area as number) ?? 0;
-
-  // 7. Build hierarchy-aware covering set
-  const candidateInfoMap = new Map<number, CandidateInfo>();
-  for (const row of candidateResult.rows) {
-    const id = row.id as number;
-    const entry = coverageMap.get(id);
-    if (!entry) continue;
-    candidateInfoMap.set(id, {
-      id,
-      name: row.name as string,
-      path: row.path as string,
-      parentId: row.parent_id as number | null,
-      gadmDepth: row.gadm_depth as number,
-      coverage: entry.coverage,
-      intersectionArea: entry.intersectionArea,
-      gadmArea: entry.gadmArea,
-    });
-  }
-
-  // Sort by GADM depth ASC (shallowest first), then by coverage DESC
-  const sortedCandidates = [...candidateInfoMap.values()]
-    .filter(c => !scopeRootIds.has(c.id)) // Exclude scope roots (already assigned to ancestor)
-    .sort((a, b) => a.gadmDepth - b.gadmDepth || b.coverage - a.coverage);
-
-  // Greedy covering set: pick shallowest divisions, skip if any ancestor already selected
-  const selectedIds = new Set<number>();
-  const coveringSet: CandidateInfo[] = [];
-
-  for (const candidate of sortedCandidates) {
-    // Check if any ancestor of this candidate is already in the covering set
-    let ancestorSelected = false;
-    let walkId: number | null = candidate.parentId;
-    while (walkId != null) {
-      if (selectedIds.has(walkId)) {
-        ancestorSelected = true;
-        break;
-      }
-      const parent = candidateInfoMap.get(walkId);
-      walkId = parent?.parentId ?? null;
-      if (!parent) break;
-    }
-
-    if (!ancestorSelected) {
-      selectedIds.add(candidate.id);
-      coveringSet.push(candidate);
-    }
-  }
-
-  if (coveringSet.length === 0) {
-    console.log(`[Geoshape Match] No covering set candidates for region ${regionId}`);
-    return { found: 0, suggestions: [] };
-  }
-
-  // 7b. Refine covering set: drill down imprecise divisions into their children
-  const refinedCoveringSet = await refineCoveringSet(coveringSet, wikidataId, wikiArea);
-
-  if (refinedCoveringSet.length === 0) {
-    console.log(`[Geoshape Match] No refined covering set candidates for region ${regionId}`);
-    return { found: 0, suggestions: [] };
-  }
-
-  // 8. Compute total coverage of the covering set (union of selected / wiki area)
-  const selectedDivisionIds = refinedCoveringSet.map(c => c.id);
-  const totalCoverageResult = await pool.query(`
-    WITH wiki AS (
-      SELECT ST_ForcePolygonCCW(geom) AS geom
-      FROM wikidata_geoshapes
-      WHERE wikidata_id = $1 AND not_available = FALSE
-    ),
-    selected_union AS (
-      SELECT ST_ForcePolygonCCW(ST_CollectionExtract(
-        ST_MakeValid(ST_Union(ad.geom_simplified_medium)), 3
-      )) AS geom
-      FROM administrative_divisions ad
-      WHERE ad.id = ANY($2) AND ad.geom_simplified_medium IS NOT NULL
-    )
-    SELECT
-      safe_geo_area(
-        ST_ForcePolygonCCW(ST_CollectionExtract(
-          ST_MakeValid(ST_Intersection(w.geom, su.geom)), 3
-        ))
-      ) / NULLIF(safe_geo_area(w.geom), 0) AS total_coverage
-    FROM wiki w, selected_union su
-  `, [wikidataId, selectedDivisionIds]);
-
-  const totalCoverage = totalCoverageResult.rows[0]?.total_coverage as number | null;
-  const roundedTotalCoverage = totalCoverage != null ? Math.round(totalCoverage * 1000) / 1000 : undefined;
-
-  // 9. Write suggestions with per-division coverage as geo_similarity
-  const newStatus = !isLeaf ? 'suggested' : 'needs_review';
-  const suggestions: Array<{ divisionId: number; name: string; path: string; score: number }> = [];
-
-  await pool.query(
-    `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
-    [newStatus, regionId],
-  );
-
-  for (const c of refinedCoveringSet) {
-    const score = Math.round(c.coverage * 1000); // Score based on coverage of wiki shape
-    // For covering sets, geo_similarity = per-division coverage of the wiki shape.
-    // Using IoU here would be misleading: each division's IoU inflates via the
-    // sqrt(rev_coverage) penalty, so 4 divisions at ~25% coverage each would
-    // show ~50% IoU each (summing to ~200%), instead of ~25% each (summing to ~100%).
-    const geoSimilarity = Math.round(c.coverage * 1000) / 1000;
-
-    suggestions.push({
-      divisionId: c.id,
-      name: c.name,
-      path: c.path,
-      score,
-    });
-
-    const conflict = conflictMap.get(c.id);
-    await pool.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, geo_similarity, conflict_type, donor_region_id, donor_division_id, donor_region_name, donor_division_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [regionId, c.id, c.name, c.path, score, geoSimilarity, conflict?.type ?? null, conflict?.donorRegionId ?? null, conflict?.donorDivisionId ?? null, conflict?.donorRegionName ?? null, conflict?.donorDivisionName ?? null],
-    );
-  }
-
-  // Sort suggestions by coverage descending for display
-  suggestions.sort((a, b) => b.score - a.score);
-
-  const summary = suggestions.map(s => `${s.name} (${(s.score / 10).toFixed(1)}%)`).join(', ');
-  const totalCoveragePct = roundedTotalCoverage != null ? (roundedTotalCoverage * 100).toFixed(1) : '?';
-  console.log(`[Geoshape Match] Covering set for region ${regionId}: ${summary} — total coverage: ${totalCoveragePct}%`);
-
-  const suggestionsWithConflict = suggestions.map(s => ({
-    ...s,
-    conflict: conflictMap.get(s.divisionId),
-  }));
-
-  return { found: suggestionsWithConflict.length, suggestions: suggestionsWithConflict, totalCoverage: roundedTotalCoverage, scopeAncestorName, nextScope };
-}
 
 /**
  * Compute geo similarity for a region's suggestions.
@@ -1086,6 +295,136 @@ export async function geoshapeMatchRegion(
  * Auto-accept: if exactly one suggestion has IoU = 1.0, auto-match it.
  * Auto-reject: suggestions with IoU = 0.0 are marked as rejected.
  */
+interface IouScore { divisionId: number; iou: number }
+
+async function computeAndPersistIous(
+  client: PoolClient,
+  regionId: number,
+  wikidataId: string,
+  suggestions: Array<{ divisionId: number }>,
+): Promise<IouScore[]> {
+  const scores: IouScore[] = [];
+  for (const suggestion of suggestions) {
+    try {
+      const iou = await computeIoU(wikidataId, suggestion.divisionId);
+      if (iou == null) continue;
+      scores.push({ divisionId: suggestion.divisionId, iou });
+      await client.query(
+        `UPDATE region_match_suggestions SET geo_similarity = $1
+         WHERE region_id = $2 AND division_id = $3`,
+        [iou, regionId, suggestion.divisionId],
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[GeoSim] IoU failed for region ${regionId}, division ${suggestion.divisionId}: ${msg}`);
+    }
+  }
+  return scores;
+}
+
+/**
+ * Reject zero-overlap suggestions, except when they share a GADM name with a
+ * non-zero candidate (multi-territory countries like Chile keep both rows).
+ */
+async function rejectZeroOverlapSuggestions(
+  client: PoolClient,
+  regionId: number,
+  scores: IouScore[],
+): Promise<void> {
+  const zeroScores = scores.filter(s => s.iou === 0);
+  if (zeroScores.length === 0) return;
+
+  const nonZeroDivIds = scores.filter(s => s.iou > 0).map(s => s.divisionId);
+  const allDivIds = [...nonZeroDivIds, ...zeroScores.map(s => s.divisionId)];
+  const namesResult = await client.query(
+    `SELECT id, LOWER(name) AS name FROM administrative_divisions WHERE id = ANY($1)`,
+    [allDivIds],
+  );
+  const nameById = new Map<number, string>();
+  for (const row of namesResult.rows) nameById.set(row.id as number, row.name as string);
+  const nonZeroNames = new Set(nonZeroDivIds.map(id => nameById.get(id)).filter(Boolean));
+
+  for (const s of zeroScores) {
+    const name = nameById.get(s.divisionId);
+    if (name && nonZeroNames.has(name)) continue;
+    await client.query(
+      `UPDATE region_match_suggestions SET rejected = TRUE
+       WHERE region_id = $1 AND division_id = $2`,
+      [regionId, s.divisionId],
+    );
+  }
+}
+
+/**
+ * If an auto_matched region has zero geo overlap with all suggestions, revoke
+ * the auto-match. Catches bad text matches (e.g., UK→Guernsey→Herm matched
+ * to a French commune). Returns true when revocation happened so the caller
+ * can short-circuit further auto-accept logic.
+ */
+async function revokeAutoMatchOnZeroOverlap(
+  client: PoolClient,
+  regionId: number,
+  scores: IouScore[],
+): Promise<boolean> {
+  if (scores.length === 0 || scores.some(s => s.iou !== 0)) return false;
+  const statusResult = await client.query(
+    'SELECT match_status FROM region_import_state WHERE region_id = $1',
+    [regionId],
+  );
+  if (statusResult.rows[0]?.match_status !== 'auto_matched') return false;
+
+  await client.query(
+    `UPDATE region_match_suggestions SET rejected = FALSE WHERE region_id = $1`,
+    [regionId],
+  );
+  await client.query('DELETE FROM region_members WHERE region_id = $1', [regionId]);
+  await client.query(
+    `UPDATE region_import_state SET match_status = 'needs_review' WHERE region_id = $1`,
+    [regionId],
+  );
+  console.log(`[GeoSim] Revoked auto-match for region ${regionId} (zero geo overlap)`);
+  return true;
+}
+
+async function autoAcceptPerfectMatch(
+  client: PoolClient,
+  regionId: number,
+  perfectScores: IouScore[],
+): Promise<void> {
+  if (perfectScores.length !== 1) return;
+  const bestDiv = perfectScores[0].divisionId;
+  await client.query(
+    `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [regionId, bestDiv],
+  );
+  await client.query(
+    `UPDATE region_import_state SET match_status = 'auto_matched' WHERE region_id = $1`,
+    [regionId],
+  );
+  await client.query(
+    `UPDATE region_match_suggestions SET rejected = TRUE
+     WHERE region_id = $1 AND division_id != $2 AND rejected = FALSE`,
+    [regionId, bestDiv],
+  );
+  console.log(`[GeoSim] Auto-matched region ${regionId} → division ${bestDiv} (100% IoU)`);
+}
+
+async function markNoCandidatesIfAllRejected(
+  client: PoolClient,
+  regionId: number,
+): Promise<void> {
+  const remaining = await client.query(
+    `SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = FALSE`,
+    [regionId],
+  );
+  if (parseInt(remaining.rows[0].count as string) !== 0) return;
+  await client.query(
+    `UPDATE region_import_state SET match_status = 'no_candidates' WHERE region_id = $1`,
+    [regionId],
+  );
+  console.log(`[GeoSim] All suggestions rejected for region ${regionId}, set to no_candidates`);
+}
+
 export async function computeGeoSimilarityForRegion(
   client: PoolClient,
   regionId: number,
@@ -1103,118 +442,17 @@ export async function computeGeoSimilarityForRegion(
     'UPDATE region_import_state SET geo_available = $1 WHERE region_id = $2',
     [available, regionId],
   );
-
   if (!available) return;
 
-  // Compute IoU for each suggestion
-  const scores: Array<{ divisionId: number; iou: number }> = [];
-  for (const suggestion of suggestions) {
-    try {
-      const iou = await computeIoU(wikidataId, suggestion.divisionId);
-      if (iou != null) {
-        scores.push({ divisionId: suggestion.divisionId, iou });
-        await client.query(
-          `UPDATE region_match_suggestions SET geo_similarity = $1
-           WHERE region_id = $2 AND division_id = $3`,
-          [iou, regionId, suggestion.divisionId],
-        );
-      }
-    } catch (err) {
-      console.warn(`[GeoSim] IoU failed for region ${regionId}, division ${suggestion.divisionId}:`, err instanceof Error ? err.message : err);
-    }
-  }
+  const scores = await computeAndPersistIous(client, regionId, wikidataId, suggestions);
+  await rejectZeroOverlapSuggestions(client, regionId, scores);
 
-  // Auto-reject suggestions with strictly zero overlap (no geographic intersection at all).
-  // Exception: keep zero-overlap suggestions that share the same GADM division name
-  // as a suggestion with non-zero overlap. This handles multi-territory countries
-  // (e.g., Chile has GADM divisions in South America + other continents).
-  const zeroScores = scores.filter(s => s.iou === 0);
-  if (zeroScores.length > 0) {
-    const nonZeroDivIds = scores.filter(s => s.iou > 0).map(s => s.divisionId);
-    const allDivIds = [...nonZeroDivIds, ...zeroScores.map(s => s.divisionId)];
-    const namesResult = await client.query(
-      `SELECT id, LOWER(name) AS name FROM administrative_divisions WHERE id = ANY($1)`,
-      [allDivIds],
-    );
-    const nameById = new Map<number, string>();
-    for (const row of namesResult.rows) {
-      nameById.set(row.id as number, row.name as string);
-    }
-    const nonZeroNames = new Set(nonZeroDivIds.map(id => nameById.get(id)).filter(Boolean));
+  if (await revokeAutoMatchOnZeroOverlap(client, regionId, scores)) return;
 
-    for (const s of zeroScores) {
-      const name = nameById.get(s.divisionId);
-      // Keep if same name as a non-zero suggestion (multi-territory country)
-      if (name && nonZeroNames.has(name)) {
-        continue;
-      }
-      await client.query(
-        `UPDATE region_match_suggestions SET rejected = TRUE
-         WHERE region_id = $1 AND division_id = $2`,
-        [regionId, s.divisionId],
-      );
-    }
-  }
-
-  // Auto-matched regions with zero geo overlap: revoke the auto-match.
-  // This catches bad text matches (e.g., UK→Guernsey→Herm matching a French commune).
-  // Keeps the suggestion visible (un-rejected) for admin review.
-  if (scores.length > 0 && scores.every(s => s.iou === 0)) {
-    const statusResult = await client.query(
-      'SELECT match_status FROM region_import_state WHERE region_id = $1',
-      [regionId],
-    );
-    if (statusResult.rows[0]?.match_status === 'auto_matched') {
-      // Un-reject suggestions so admin can review them
-      await client.query(
-        `UPDATE region_match_suggestions SET rejected = FALSE WHERE region_id = $1`,
-        [regionId],
-      );
-      // Remove the auto-assigned division
-      await client.query('DELETE FROM region_members WHERE region_id = $1', [regionId]);
-      // Set to needs_review for admin attention
-      await client.query(
-        `UPDATE region_import_state SET match_status = 'needs_review' WHERE region_id = $1`,
-        [regionId],
-      );
-      console.log(`[GeoSim] Revoked auto-match for region ${regionId} (zero geo overlap)`);
-      return;
-    }
-  }
-
-  // Auto-accept: if exactly one suggestion displays as 100%, auto-match it
   const perfectScores = scores.filter(s => Math.round(s.iou * 100) >= 100);
-  if (perfectScores.length === 1) {
-    const bestDiv = perfectScores[0].divisionId;
-    await client.query(
-      `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [regionId, bestDiv],
-    );
-    await client.query(
-      `UPDATE region_import_state SET match_status = 'auto_matched' WHERE region_id = $1`,
-      [regionId],
-    );
-    // Reject remaining non-perfect suggestions
-    await client.query(
-      `UPDATE region_match_suggestions SET rejected = TRUE
-       WHERE region_id = $1 AND division_id != $2 AND rejected = FALSE`,
-      [regionId, bestDiv],
-    );
-    console.log(`[GeoSim] Auto-matched region ${regionId} → division ${bestDiv} (100% IoU)`);
-  }
+  await autoAcceptPerfectMatch(client, regionId, perfectScores);
 
-  // If all suggestions ended up rejected (and no auto-accept), update status to no_candidates
   if (perfectScores.length !== 1) {
-    const remaining = await client.query(
-      `SELECT COUNT(*) FROM region_match_suggestions WHERE region_id = $1 AND rejected = FALSE`,
-      [regionId],
-    );
-    if (parseInt(remaining.rows[0].count as string) === 0) {
-      await client.query(
-        `UPDATE region_import_state SET match_status = 'no_candidates' WHERE region_id = $1`,
-        [regionId],
-      );
-      console.log(`[GeoSim] All suggestions rejected for region ${regionId}, set to no_candidates`);
-    }
+    await markNoCandidatesIfAllRejected(client, regionId);
   }
 }
