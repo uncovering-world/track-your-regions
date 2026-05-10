@@ -55,6 +55,10 @@ interface AddChildrenDialogProps {
 
 const NEW_REGION_VALUE = '__new__';
 
+function toggleChildSelection(prev: ChildToAdd[], childId: number): ChildToAdd[] {
+  return prev.map(c => c.id === childId ? { ...c, selected: !c.selected } : c);
+}
+
 async function loadUsageCounts(
   worldViewId: number,
   childIds: number[],
@@ -305,9 +309,7 @@ export function AddChildrenDialog({
                   return (
                     <ListItem key={child.id} disablePadding>
                       <ListItemButton
-                        onClick={() => setChildrenToAdd(prev =>
-                          prev.map(c => c.id === child.id ? { ...c, selected: !c.selected } : c)
-                        )}
+                        onClick={() => setChildrenToAdd(prev => toggleChildSelection(prev, child.id))}
                         sx={{ gap: 0.5 }}
                       >
                         <Checkbox

@@ -35,6 +35,14 @@ export interface SplitPart {
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
 }
 
+function removeSplitPartAtIndex(parts: SplitPart[], idx: number): SplitPart[] {
+  return parts.filter((_, i) => i !== idx);
+}
+
+function renameSplitPartAtIndex(parts: SplitPart[], idx: number, newName: string): SplitPart[] {
+  return parts.map((p, i) => i === idx ? { ...p, name: newName } : p);
+}
+
 async function loadDivisionGeometryForSplit(
   member: RegionMember,
   regionId: number,
@@ -260,7 +268,7 @@ export function SplitDivisionDialog({
                         secondaryAction={
                           <IconButton
                             size="small"
-                            onClick={() => setSplitParts(prev => prev.filter((_, i) => i !== idx))}
+                            onClick={() => setSplitParts(prev => removeSplitPartAtIndex(prev, idx))}
                           >
                             <DeleteIcon fontSize="small" />
                           </IconButton>
@@ -284,9 +292,7 @@ export function SplitDivisionDialog({
                               onBlur={(e) => {
                                 const newName = e.target.value.trim();
                                 if (newName && newName !== part.name) {
-                                  setSplitParts(prev => prev.map((p, i) =>
-                                    i === idx ? { ...p, name: newName } : p
-                                  ));
+                                  setSplitParts(prev => renameSplitPartAtIndex(prev, idx, newName));
                                 }
                               }}
                               onKeyDown={(e) => {
