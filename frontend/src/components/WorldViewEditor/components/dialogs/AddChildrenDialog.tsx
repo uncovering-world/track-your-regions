@@ -189,21 +189,23 @@ export function AddChildrenDialog({
       <DialogTitle>
         {asSubregions ? 'Add Children as Subregions' : 'Split into Divisions'}
         <Typography variant="body2" color="text.secondary">
-          {asSubregions
-            ? showAssignments
-              ? `Assign children of "${member?.name}" to existing regions or create new ones`
-              : `Select which children of "${member?.name}" to add as subregions`
-            : `Replace "${member?.name}" with selected divisions`}
+          {(() => {
+            if (!asSubregions) return `Replace "${member?.name}" with selected divisions`;
+            if (showAssignments) return `Assign children of "${member?.name}" to existing regions or create new ones`;
+            return `Select which children of "${member?.name}" to add as subregions`;
+          })()}
         </Typography>
       </DialogTitle>
       <DialogContent>
-        {loading ? (
+        {loading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <LoadingSpinner />
           </Box>
-        ) : childrenToAdd.length === 0 ? (
+        )}
+        {!loading && childrenToAdd.length === 0 && (
           <Alert severity="info">No children found for this division.</Alert>
-        ) : (
+        )}
+        {!loading && childrenToAdd.length > 0 && (
           <>
             {/* Mode selection */}
             <Box sx={{ mb: 2 }}>
@@ -406,11 +408,10 @@ export function AddChildrenDialog({
           onClick={handleConfirm}
           disabled={isPending || selectedCount === 0}
         >
-          {isPending
-            ? 'Processing...'
-            : asSubregions
-              ? `Add ${selectedCount} Subregions`
-              : `Split into ${selectedCount} Divisions`}
+          {(() => {
+            if (isPending) return 'Processing...';
+            return asSubregions ? `Add ${selectedCount} Subregions` : `Split into ${selectedCount} Divisions`;
+          })()}
         </Button>
       </DialogActions>
     </Dialog>

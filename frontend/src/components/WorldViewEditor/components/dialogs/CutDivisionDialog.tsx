@@ -336,7 +336,7 @@ export function CutDivisionDialog({
       <DialogContent>
         <Box sx={{ mb: 2 }}>
           {/* Mode-specific instructions */}
-          {mode === 'slice' ? (
+          {mode === 'slice' && (
             <Alert severity="info" sx={{ mb: 1.5 }}>
               <Typography variant="body2">
                 <strong>Slice mode:</strong> Click to draw a line across the region.
@@ -344,13 +344,14 @@ export function CutDivisionDialog({
                 Then choose which piece to keep.
               </Typography>
             </Alert>
-          ) : mode === 'polygon' ? (
+          )}
+          {mode === 'polygon' && (
             <Alert severity="info" sx={{ mb: 1.5 }}>
               <Typography variant="body2">
                 <strong>Polygon mode:</strong> Click to draw points, then click "Complete Polygon" to cut out that area.
               </Typography>
             </Alert>
-          ) : null}
+          )}
 
           {/* Toolbar */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1, flexWrap: 'wrap' }}>
