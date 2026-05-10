@@ -25,10 +25,11 @@ function isValidCoords(lat: number, lng: number): boolean {
 }
 
 /** Try to parse a DMS component like "48°51'24\"N" or "48°51'24.5\"N" */
-// eslint-disable-next-line security/detect-unsafe-regex -- bounded character classes between literal anchors (°, ′/', ″/", NSEW); no nested/overlapping quantifiers, so no catastrophic backtracking
+// eslint-disable-next-line security/detect-unsafe-regex, sonarjs/slow-regex -- bounded character classes between literal anchors (°, ′/', ″/", NSEW); no nested/overlapping quantifiers, so no catastrophic backtracking
 const DMS_PATTERN = /(-?\d+)°\s*(\d+)[′']\s*(\d+(?:\.\d+)?)[″"]\s*([NSEW])/i;
 
 /** Try to parse a decimal+direction component like "48.8566N" */
+// eslint-disable-next-line sonarjs/slow-regex -- numeric character classes only; ends at a literal NSEW. Input is a user-typed coordinate string (≤ a few hundred chars), so any worst-case backtracking is bounded.
 const DECIMAL_DIR_PATTERN = /(-?\d+\.?\d*)\s*°?\s*([NSEW])/i;
 
 /**
@@ -42,6 +43,7 @@ export function parseCoordinates(input: string): Coords | null {
   if (!trimmed) return null;
 
   // --- Google Maps URL: @lat,lng, ---
+  // eslint-disable-next-line sonarjs/slow-regex -- numeric character classes only between literal `@` and `,`; user-typed Google Maps URL is a few hundred chars at most.
   const gmapsMatch = trimmed.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
   if (gmapsMatch) {
     const lat = parseFloat(gmapsMatch[1]);
@@ -51,6 +53,7 @@ export function parseCoordinates(input: string): Coords | null {
 
   // --- Labeled format: "lat: 48.8566, lng: 2.3522" or "lng: 2.3522, lat: 48.8566" ---
   const labeledMatch = trimmed.match(
+    // eslint-disable-next-line sonarjs/slow-regex, sonarjs/regex-complexity -- alternations are over fixed words ("lng"/"lon(gitude)?", "lat(itude)?"); numeric classes are only `\d` between literal anchors; user-typed input is bounded
     /(?:lat(?:itude)?)\s*[:=]\s*(-?\d+\.?\d*)\s*[,;]\s*(?:lng|lon(?:gitude)?)\s*[:=]\s*(-?\d+\.?\d*)/i
   );
   if (labeledMatch) {
@@ -59,6 +62,7 @@ export function parseCoordinates(input: string): Coords | null {
     if (isValidCoords(lat, lng)) return { lat, lng };
   }
   const labeledMatchReversed = trimmed.match(
+    // eslint-disable-next-line sonarjs/slow-regex, sonarjs/regex-complexity -- mirror of the labeled-match regex above; same bounded user-input rationale
     /(?:lng|lon(?:gitude)?)\s*[:=]\s*(-?\d+\.?\d*)\s*[,;]\s*(?:lat(?:itude)?)\s*[:=]\s*(-?\d+\.?\d*)/i
   );
   if (labeledMatchReversed) {
@@ -68,6 +72,7 @@ export function parseCoordinates(input: string): Coords | null {
   }
 
   // --- DMS: "48°51'24"N, 2°21'8"E" ---
+  // eslint-disable-next-line sonarjs/slow-regex -- reconstructed from DMS_PATTERN; same bounded-anchors reasoning applies
   const dmsMatches = [...trimmed.matchAll(new RegExp(DMS_PATTERN, 'gi'))];
   if (dmsMatches.length === 2) {
     const vals = dmsMatches.map((m) => ({
@@ -83,6 +88,7 @@ export function parseCoordinates(input: string): Coords | null {
   }
 
   // --- Decimal with direction: "48.8566N, 2.3522E" ---
+  // eslint-disable-next-line sonarjs/slow-regex -- reconstructed from DECIMAL_DIR_PATTERN; same bounded-anchors reasoning applies
   const decDirMatches = [...trimmed.matchAll(new RegExp(DECIMAL_DIR_PATTERN, 'gi'))];
   if (decDirMatches.length === 2) {
     const vals = decDirMatches.map((m) => {

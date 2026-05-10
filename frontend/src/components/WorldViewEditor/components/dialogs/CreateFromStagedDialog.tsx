@@ -260,5 +260,6 @@ function findCommonPrefix(strings: string[]): string {
     }
   }
 
+  // eslint-disable-next-line sonarjs/slow-regex -- bounded character class anchored to end-of-string; input is a common prefix derived from staged region names (≤ a few hundred chars)
   return prefix.replace(/[\s\-_,.:;]+$/, '').trim();
 }

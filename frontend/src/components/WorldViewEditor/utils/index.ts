@@ -16,6 +16,7 @@ export function findCommonPrefix(strings: string[]): string {
     }
   }
 
-  // Trim trailing spaces and special characters
+  // Trim trailing spaces and special characters.
+  // eslint-disable-next-line sonarjs/slow-regex -- bounded character class anchored to end-of-string; input is a common prefix derived from a small list of region names
   return prefix.replace(/[\s\-_,.:;]+$/, '').trim();
 }

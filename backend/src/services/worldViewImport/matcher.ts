@@ -19,6 +19,7 @@ import type { ImportProgress, MatchSuggestion, MatchStatus } from './types.js';
 // ─── Shared utilities ──────────────────────────────────────────────────────────
 
 /** Common geographic suffixes to strip for fuzzy matching */
+// eslint-disable-next-line sonarjs/slow-regex, sonarjs/regex-complexity -- pure word-level alternation anchored to $; no nested quantifiers, so the engine commits to one alternate per match attempt
 const STRIP_SUFFIX_REGEX = /\s+(Province|State|Prefecture|Oblast|County|District|Department|Region|Territory|Governorate|Municipality|Division|Parish|Canton|Voivodeship|Krai|Republic|Autonomous|Community|Emirate|Principality)$/i;
 
 /** Normalize a name for matching: lowercase, strip accents */
@@ -66,6 +67,7 @@ function isPrefixMatch(a: string, b: string): boolean {
 
 /** Clean an import region name: strip parenthetical annotations like "(USA)" */
 function cleanWvName(name: string): string {
+  // eslint-disable-next-line sonarjs/slow-regex -- `\s*` matches whitespace only and is followed by a literal `(`; `.*$` is a single greedy run anchored to end-of-string. No nested quantifiers, no catastrophic backtracking.
   return name.replace(/\s*\(.*$/, '').trim();
 }
 

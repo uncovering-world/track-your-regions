@@ -25,7 +25,7 @@ export function parseMarkers(text: string): ParsedMarker[] {
     if (!rawName) continue;
 
     // Strip wikilinks: [[São Tomé]] → São Tomé, [[São Tomé|display]] → display
-    // eslint-disable-next-line security/detect-unsafe-regex -- bounded character classes, no catastrophic backtracking
+    // eslint-disable-next-line security/detect-unsafe-regex, sonarjs/slow-regex -- bounded character classes between literal anchors `[[` and `]]`; no nested quantifiers, so no catastrophic backtracking
     const name = rawName.replace(/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/g, '$1').trim();
     if (!name) continue;
 
