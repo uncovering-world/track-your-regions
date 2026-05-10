@@ -67,6 +67,8 @@ export default [
       // Security: keep most as warnings, disable noisy ones
       'security/detect-object-injection': 'off', // Too many false positives with TypeScript
       'security/detect-eval-with-expression': 'error',
+      // File-size cap: keep files under 1000 lines so they stay scannable.
+      'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
