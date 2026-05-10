@@ -111,7 +111,7 @@ function buildRegionSummary(regions: RegionPreview[]): string {
       if (r.children.length > 0) {
         // Annotate children with page existence
         const childParts = r.children.map(c => {
-          // eslint-disable-next-line security/detect-object-injection -- c is a child name iterated from r.children (same object's own structure); read-only lookup into sibling childPageExists map
+
           const exists = r.childPageExists?.[c];
           if (exists === false) return `${c} [no page]`;
           return c;

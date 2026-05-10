@@ -287,10 +287,10 @@ interface MatchingDumpParams {
 
 /** Write post-review matching state to `data/matching-dumps/<regionSlug>/` for offline replay.
  * Paths are built from a sanitized region slug under a fixed base — not user-controlled input. */
-/* eslint-disable security/detect-non-literal-fs-filename -- paths are internally constructed from sanitized region slug under fixed base dir, not user-controlled */
 function dumpMatchingState(p: MatchingDumpParams): void {
   const safeName = p.regionName.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
   const dumpDir = `data/matching-dumps/${safeName}`;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- dumpDir is fixed prefix + sanitized regionName (alphanumerics/_/- only)
   if (!existsSync(dumpDir)) mkdirSync(dumpDir, { recursive: true });
   const dump = {
     regionId: p.regionId,
@@ -314,14 +314,18 @@ function dumpMatchingState(p: MatchingDumpParams): void {
     externalBorder: p.externalBorder,
     internalBorder: p.internalBorder,
   };
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is sanitized dumpDir + literal filename
   writeFileSync(`${dumpDir}/gadm-data.json`, JSON.stringify(dump, null, 2));
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is sanitized dumpDir + literal filename
   writeFileSync(`${dumpDir}/pixel-labels.b64`, Buffer.from(p.pixelLabels).toString('base64'));
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is sanitized dumpDir + literal filename
   writeFileSync(`${dumpDir}/country-mask.b64`, Buffer.from(p.countryMask).toString('base64'));
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is sanitized dumpDir + literal filename
   writeFileSync(`${dumpDir}/icp-mask.b64`, Buffer.from(p.icpMask).toString('base64'));
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is sanitized dumpDir + literal filename
   writeFileSync(`${dumpDir}/source.png`, p.mapBuffer);
   console.log(`[DUMP] Post-review matching state saved to ${dumpDir}/`);
 }
-/* eslint-enable security/detect-non-literal-fs-filename */
 
 // =============================================================================
 // Python matching path

@@ -76,7 +76,7 @@ function extractFencedJson(content: string): string {
   if (first < 0) return content;
   let start = first + FENCE.length;
   if (content.startsWith('json', start)) start += 'json'.length;
-  // eslint-disable-next-line security/detect-object-injection -- numeric string-index scan to skip whitespace
+
   while (start < content.length && /\s/.test(content[start])) start++;
   const end = content.indexOf(FENCE, start);
   if (end < 0) return content;

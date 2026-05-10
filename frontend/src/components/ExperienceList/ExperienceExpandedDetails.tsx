@@ -131,7 +131,7 @@ export function ExperienceExpandedDetails({
     const firstSegs = segmented[0];
     let commonLen = 0;
     for (let i = 0; i < firstSegs.length; i++) {
-      // eslint-disable-next-line security/detect-object-injection -- loop-counter index into string[] (path segments); same i used on both arrays
+
       if (segmented.every(s => s[i] === firstSegs[i])) {
         commonLen = i + 1;
       } else {
@@ -139,7 +139,7 @@ export function ExperienceExpandedDetails({
       }
     }
     return new Map(outOfRegionLocs.map((l, idx) => {
-      // eslint-disable-next-line security/detect-object-injection -- idx is .map() callback index into same-length typed array
+
       const segs = segmented[idx];
       const trimmed = segs.slice(commonLen).join(' > ');
       return [l.id, trimmed || l.regionPath];

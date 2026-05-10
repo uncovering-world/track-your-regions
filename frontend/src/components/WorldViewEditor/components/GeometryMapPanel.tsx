@@ -133,7 +133,7 @@ export function GeometryMapPanel({
         .then((status) => setDisplayGeomStatus(status))
         .catch(() => setDisplayGeomStatus(null));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only refetch when dialog opens or world view changes; setDisplayGeomStatus is stable
   }, [open, worldView.id]);
 
   // --- Callbacks ---
@@ -147,7 +147,7 @@ export function GeometryMapPanel({
     } catch (e) {
       console.error('Failed to start computation:', e);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- regions.length is the relevant trigger (we display "Starting... 0/N"); the regions array reference itself changes too often
   }, [worldView.id, regions.length, skipSnapping]);
 
   const handleCancelComputation = useCallback(async () => {
@@ -184,7 +184,7 @@ export function GeometryMapPanel({
     } finally {
       setIsComputingSingleRegion(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setComputeProgressLogs/setIsComputingSingleRegion setters are stable; deps listed are the actual trigger inputs
   }, [selectedRegion, forceRecompute, skipSnapping, onSelectedRegionChange, onInvalidateQueries]);
 
   const handleRedefineBoundaries = useCallback(async () => {
@@ -214,7 +214,7 @@ export function GeometryMapPanel({
       console.error('Failed to reset:', e);
       alert('Failed to reset boundaries');
     } finally { setIsResettingToGADM(false); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setIsResettingToGADM setter is stable; deps listed are the actual trigger inputs
   }, [selectedRegion, onSelectedRegionChange, onInvalidateQueries]);
 
   const handleBoundaryConfirm = useCallback(async (geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon) => {

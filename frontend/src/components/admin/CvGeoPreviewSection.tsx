@@ -87,7 +87,7 @@ function buildWvLabelData(wvPreview: GeoJSON.FeatureCollection): GeoJSON.Feature
   const labelFeatures: GeoJSON.Feature[] = [];
   for (const f of wvPreview.features) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- turf.centroid's overload signature rejects generic GeoJSON.Feature; runtime accepts it
       const centroid = turf.centroid(f as any);
       labelFeatures.push({
         type: 'Feature',

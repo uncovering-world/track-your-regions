@@ -157,9 +157,9 @@ export function SmartSimplifyDialog({
   }, [open, worldViewId, parentRegionId]);
 
   // Derived: the active selection (either a GADM move or a spatial anomaly)
-  // eslint-disable-next-line security/detect-object-injection -- selectedMoveIndex is a typed number|null state; moves[] is the source of valid indices
+
   const selectedMove = moves && selectedMoveIndex != null ? moves[selectedMoveIndex] : null;
-  // eslint-disable-next-line security/detect-object-injection -- selectedAnomalyIndex is a typed number|null state; spatialAnomalies[] is the source of valid indices
+
   const selectedAnomaly = spatialAnomalies && selectedAnomalyIndex != null ? spatialAnomalies[selectedAnomalyIndex] : null;
 
   // Active division IDs to show on the map (from whichever selection is active)
@@ -263,7 +263,7 @@ export function SmartSimplifyDialog({
   // Handle Apply
   const handleApply = useCallback(async () => {
     if (moves == null || selectedMoveIndex == null) return;
-    // eslint-disable-next-line security/detect-object-injection -- selectedMoveIndex is a typed number state, moves[] is the source of valid indices
+
     const move = moves[selectedMoveIndex];
     if (!move) return;
 
@@ -305,7 +305,7 @@ export function SmartSimplifyDialog({
   // Handle Apply Anomaly
   const handleApplyAnomaly = useCallback(async (index: number) => {
     if (!spatialAnomalies) return;
-    // eslint-disable-next-line security/detect-object-injection -- index is a typed number param from a click handler on spatialAnomalies[]
+
     const anomaly = spatialAnomalies[index];
     const memberRowIds = anomaly.divisions
       .map(d => d.memberRowId)

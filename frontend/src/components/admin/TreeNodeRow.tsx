@@ -356,7 +356,7 @@ function scalarPropsEqual(prev: TreeNodeRowProps, next: TreeNodeRowProps): boole
 
 function loadingStatesEqual(prev: TreeNodeRowProps, next: TreeNodeRowProps, id: number): boolean {
   for (const key of LOADING_KEYS) {
-    // eslint-disable-next-line security/detect-object-injection -- key iterated from LOADING_KEYS (module-level const string[]); prev/next are typed TreeNodeRowProps
+
     if ((prev[key] === id) !== (next[key] === id)) return false;
   }
   return true;

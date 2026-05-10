@@ -95,7 +95,7 @@ function RegionChildrenList({ childNames, childPageExists }: { childNames: strin
   return (
     <>
       {childNames.map((c, ci) => {
-        // eslint-disable-next-line security/detect-object-injection -- c is iterated from childNames (same component tree); read-only lookup in typed Record<string, boolean>
+
         const hasPage = childPageExists?.[c];
         return (
           <span key={ci}>

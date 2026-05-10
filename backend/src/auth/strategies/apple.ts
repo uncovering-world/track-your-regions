@@ -42,7 +42,7 @@ export function configureAppleStrategy(): void {
         scope: ['name', 'email'],
         passReqToCallback: true,
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- passport-apple callback signature is untyped (matches @ts-expect-error import at line 2)
       async (req: any, accessToken: string, refreshToken: string, idToken: any, profile: any, done: any) => {
         try {
           // Apple provides user info in the request body on first auth only

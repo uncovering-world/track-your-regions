@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-non-literal-fs-filename -- cache dir paths are validated (no user input) */
 /**
  * Wikivoyage Extraction Service
  *
@@ -40,10 +39,13 @@ export interface CacheEntry {
 /** List all cache files with metadata */
 export function listCaches(): CacheEntry[] {
   try {
+
     if (!existsSync(CACHE_DIR)) return [];
+
     return readdirSync(CACHE_DIR)
       .filter(f => f.startsWith('wikivoyage-cache') && f.endsWith('.json'))
       .map(f => {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- f comes from readdirSync of CACHE_DIR; joined with the same constant dir
         const stats = statSync(path.join(CACHE_DIR, f));
         return { name: f, sizeBytes: stats.size, modifiedAt: stats.mtime.toISOString() };
       })
@@ -72,7 +74,9 @@ export function deleteCache(name: string): boolean {
   const filePath = safeCachePath(name);
   if (filePath === null) return false;
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath validated by safeCachePath: must match wikivoyage-cache*.json under CACHE_DIR
     if (existsSync(filePath)) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath validated by safeCachePath
       unlinkSync(filePath);
       return true;
     }
@@ -83,12 +87,15 @@ export function deleteCache(name: string): boolean {
 /** Snapshot the current cache with a timestamped name */
 function snapshotCache(): void {
   try {
+
     if (!existsSync(DEFAULT_CACHE_PATH)) return;
     const now = new Date();
     const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 16); // 2026-02-26T15-30
     const snapshotName = `wikivoyage-cache-${ts}.json`;
     const snapshotPath = path.join(CACHE_DIR, snapshotName);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- snapshotPath built from CACHE_DIR + literal prefix + ISO timestamp
     if (!existsSync(snapshotPath)) {
+
       copyFileSync(DEFAULT_CACHE_PATH, snapshotPath);
       console.log(`[WV Cache] Snapshot saved: ${snapshotName}`);
     }
@@ -116,7 +123,9 @@ export function startExtraction(config: Partial<ExtractionConfig> & { cacheFile?
   if (config.cacheFile === 'none') {
     // Clean fetch: delete default cache
     try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- cachePath defaults to DEFAULT_CACHE_PATH constant; if overridden, comes from internal config, not user input
       if (existsSync(cachePath)) {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- same as above
         unlinkSync(cachePath);
         console.log(`[WV Extract] Deleted cache at ${cachePath} (clean fetch)`);
       }
@@ -128,9 +137,11 @@ export function startExtraction(config: Partial<ExtractionConfig> & { cacheFile?
     // silent fallback would run extraction against the wrong cache while
     // reporting a successful start to the admin.
     const sourcePath = safeCachePath(config.cacheFile);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- sourcePath validated by safeCachePath (matches wikivoyage-cache*.json under CACHE_DIR)
     if (sourcePath === null || !existsSync(sourcePath)) {
       throw new Error(`Cache snapshot not found or invalid: ${config.cacheFile}`);
     }
+
     copyFileSync(sourcePath, cachePath);
     console.log(`[WV Extract] Loaded cache from snapshot: ${config.cacheFile}`);
   }

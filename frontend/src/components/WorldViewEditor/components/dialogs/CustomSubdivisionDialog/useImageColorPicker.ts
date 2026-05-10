@@ -174,7 +174,7 @@ export function useImageColorPicker({
       eyedropperAbortRef.current?.abort();
       const controller = new AbortController();
       eyedropperAbortRef.current = controller;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- EyeDropper API is not in TypeScript DOM lib yet (Chrome 95+); presence guarded by `'EyeDropper' in window` above
       const dropper = new (window as any).EyeDropper();
       dropper.open({ signal: controller.signal })
         .then((result: { sRGBHex: string }) => {

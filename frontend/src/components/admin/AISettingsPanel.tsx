@@ -101,7 +101,7 @@ function formatDate(iso: string): string {
 }
 
 function sessionCostInfo(model: AIModelOption, featureKey: string): { cost: string; session: string; tooltip: string } | null {
-  // eslint-disable-next-line security/detect-object-injection -- featureKey iterated from FEATURE_KEYS (module-level const); SESSION_ESTIMATES is a module-level const map
+
   const est = SESSION_ESTIMATES[featureKey];
   if (!est) return null;
   const cost = (est.inputTokens / 1_000_000) * model.inputPer1M + (est.outputTokens / 1_000_000) * model.outputPer1M;
@@ -193,7 +193,7 @@ export function AISettingsPanel() {
               </TableHead>
               <TableBody>
                 {FEATURE_KEYS.map(key => {
-                  // eslint-disable-next-line security/detect-object-injection -- key iterated from FEATURE_KEYS (module-level const); settingsData.settings is a typed Record<FeatureKey, string>
+
                   const currentValue = settingsData?.settings[key] ?? 'gpt-4.1-mini';
                   const models = settingsData?.models ?? [];
                   const currentModel = models.find(m => m.id === currentValue);
@@ -201,9 +201,7 @@ export function AISettingsPanel() {
                   return (
                     <TableRow key={key}>
                       <TableCell>
-                        {/* eslint-disable-next-line security/detect-object-injection -- key iterated from FEATURE_KEYS (module-level const) */}
                         <Tooltip title={FEATURE_LABELS[key]?.description ?? ''} placement="right">
-                          {/* eslint-disable-next-line security/detect-object-injection -- key iterated from FEATURE_KEYS (module-level const) */}
                           <span>{FEATURE_LABELS[key]?.label ?? key}</span>
                         </Tooltip>
                       </TableCell>

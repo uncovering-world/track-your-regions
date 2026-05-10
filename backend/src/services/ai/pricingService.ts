@@ -37,7 +37,7 @@ export function loadPricing(): void {
 
     // Skip header
     for (let i = 1; i < lines.length; i++) {
-      // eslint-disable-next-line security/detect-object-injection -- loop-counter index into string[] (CSV lines)
+
       const line = lines[i].trim();
       if (!line) continue;
 

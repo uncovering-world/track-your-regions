@@ -94,7 +94,7 @@ function meanShiftPixel(
 }
 
 function meanShiftFilter(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (cv / cv.Mat / cv.MatVector / ccStats) has no TypeScript types
   cv: any,
   srcBuf: Buffer,
   width: number,
@@ -277,7 +277,7 @@ function collectWaterEdgeSeeds(
  * from those seeds using RGB distance.
  */
 function floodFillWater(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (cv / cv.Mat / cv.MatVector / ccStats) has no TypeScript types
   cv: any,
   buf: Buffer,
   width: number,
@@ -341,7 +341,7 @@ function floodFillWater(
  * this is a second layer for gray "islands" unreachable from corners.
  */
 function detectGrayBackground(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (cv / cv.Mat / cv.MatVector / ccStats) has no TypeScript types
   cv: any,
   buf: Buffer,
   width: number,
@@ -488,7 +488,7 @@ function replaceRoadPixels(colorBuf: Buffer, tp: number, TW: number): void {
  * border lines. Returns a 0/1 Uint8Array of the same shape.
  */
 function openGrayMask(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (cv / cv.Mat / cv.MatVector / ccStats) has no TypeScript types
   cv: any,
   bgMaskGrayRaw: Uint8Array,
   TW: number,
@@ -696,9 +696,9 @@ function findBorderTouchingCCs(
  * Find the biggest CC label (by area) among labels 1..numCC-1.
  */
 function findMainCC(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (cv / cv.Mat / cv.MatVector / ccStats) has no TypeScript types
   cv: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (cv / cv.Mat / cv.MatVector / ccStats) has no TypeScript types
   ccStats: any,
   numCC: number,
 ): { mainCC: number; mainSize: number } {
@@ -745,9 +745,9 @@ function shouldKeepCC(
  * Remove pixels belonging to foreign-land CCs from `countryMask` and return count removed.
  */
 function stripForeignCCs(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (cv / cv.Mat / cv.MatVector / ccStats) has no TypeScript types
   cv: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (cv / cv.Mat / cv.MatVector / ccStats) has no TypeScript types
   ccStats: any,
   ccData: Int32Array,
   countryMask: Uint8Array,
@@ -787,7 +787,7 @@ function stripForeignCCs(
  * (foreign land) while keeping interior CCs and large border CCs. Mutates `countryMask`.
  */
 function removeForeignLand(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenCV.js (cv / cv.Mat / cv.MatVector / ccStats) has no TypeScript types
   cv: any,
   countryMask: Uint8Array,
   TW: number,

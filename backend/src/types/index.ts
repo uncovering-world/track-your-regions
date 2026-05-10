@@ -363,6 +363,7 @@ export const wvExtractStartSchema = z.object({
   cacheFile: z
     .string()
     .max(128)
+    // eslint-disable-next-line security/detect-unsafe-regex -- anchored at both ends; inner [A-Za-z0-9_-]+ is non-overlapping with the literal `.json` suffix, so no catastrophic backtracking
     .regex(/^(none|wikivoyage-cache(-[A-Za-z0-9_-]+)?\.json)$/)
     .nullable()
     .optional(),
@@ -373,6 +374,7 @@ export const wvCacheNameParamSchema = z.object({
   name: z
     .string()
     .max(128)
+    // eslint-disable-next-line security/detect-unsafe-regex -- anchored; inner [A-Za-z0-9_-]+ is non-overlapping with the literal `.json` suffix, so no catastrophic backtracking
     .regex(/^wikivoyage-cache(-[A-Za-z0-9_-]+)?\.json$/),
 });
 
@@ -396,7 +398,7 @@ export const wvExtractAnswerSchema = z.object({
 // =============================================================================
 
 /** Recursive schema for ImportTreeNode */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Zod recursive schemas require z.ZodType<any> annotation; runtime shape is concrete (see z.object below)
 const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
     name: z.string().min(1).max(500),

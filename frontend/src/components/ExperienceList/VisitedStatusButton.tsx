@@ -26,7 +26,7 @@ export function VisitedStatusButton({
     visited: { label: 'All Visited', color: 'success' as const },
   };
 
-  // eslint-disable-next-line security/detect-object-injection -- visitedStatus is a typed union ('none'|'partial'|'visited'); statusConfig is a const map
+
   const config = statusConfig[visitedStatus];
   let statusIcon: React.ReactElement | undefined;
   if (visitedStatus === 'visited') {

@@ -275,7 +275,7 @@ async function callResponsesAPIWithWebSearch(
 ): Promise<RawModelResult> {
   try {
     console.log(`   🌐 Using web search model: ${webSearchModel}`);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenAI SDK at this version doesn't expose typed `responses.create` (web_search_preview tool path)
     const response = await (openai as any).responses.create({
       model: webSearchModel,
       tools: [{ type: 'web_search_preview' }],

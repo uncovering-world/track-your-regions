@@ -217,7 +217,7 @@ export function OverlapResolutionDialog({
   }, [open, worldViewId, parentRegionId, overlaps.length]);
 
   // Selected overlap
-  // eslint-disable-next-line security/detect-object-injection -- selectedIndex is a typed number|null state; overlaps[] is the source of all valid indices
+
   const selected = selectedIndex != null ? overlaps[selectedIndex] : null;
 
   // Color map: regionId → color

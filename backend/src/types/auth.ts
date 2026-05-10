@@ -143,8 +143,8 @@ export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
 // Express Augmentation
 // =============================================================================
 
-/* eslint-disable @typescript-eslint/no-namespace */
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace -- Express augmentation requires `namespace` syntax; module augmentation cannot extend Express.User
   namespace Express {
     interface User {
       id: number;
@@ -157,4 +157,3 @@ declare global {
     }
   }
 }
-/* eslint-enable @typescript-eslint/no-namespace */

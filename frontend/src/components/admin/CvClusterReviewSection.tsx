@@ -253,7 +253,7 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
         sx={{ mt: 1.5 }}
         onClick={async () => {
           const merges: Record<number, number> = {};
-          // eslint-disable-next-line security/detect-object-injection -- from/to are integer cluster IDs from the internal Map<number,number>
+
           for (const [from, to] of cr.merges) merges[from] = to;
           const excludes = [...cr.excludes];
           setCVMatchDialog(prev => prev ? {

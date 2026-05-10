@@ -61,7 +61,7 @@ export function errorHandler(
 }
 
 // Validation middleware factory
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic ZodSchema<any> wrapper; per-route schemas are concrete and type-safe
 export function validate(schema: ZodSchema<any>, source: 'body' | 'query' | 'params' = 'body') {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const data = req[source];

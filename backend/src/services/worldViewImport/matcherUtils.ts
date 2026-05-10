@@ -72,7 +72,7 @@ export function isPrefixMatch(a: string, b: string): boolean {
     const sParts = shorter.split('-');
     const lParts = longer.split('-');
     if (sParts.length === lParts.length) {
-      // eslint-disable-next-line security/detect-object-injection -- .every callback index into same-length string[] (split on same delimiter)
+
       return sParts.every((sp, i) => lParts[i].startsWith(sp) || sp.startsWith(lParts[i]));
     }
   }

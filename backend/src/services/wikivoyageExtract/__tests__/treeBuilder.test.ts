@@ -10,7 +10,7 @@ function createMockFetcher(responses: Record<string, Record<string, unknown>>) {
   return {
     apiGet: vi.fn(async (params: Record<string, string | number>) => {
       const key = JSON.stringify(params, Object.keys(params).sort());
-      // eslint-disable-next-line security/detect-object-injection -- test fixture: key is a JSON-stringified params object, lookup is read-only
+
       return responses[key] ?? { error: { code: 'not_found' } };
     }),
     save: vi.fn(),

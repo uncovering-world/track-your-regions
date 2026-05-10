@@ -18,7 +18,7 @@ export function mergeGeometries(geoms: GeoJSON.Geometry[]): GeoJSON.Geometry | n
   try {
     let result = turf.feature(geoms[0] as GeoJSON.Polygon | GeoJSON.MultiPolygon);
     for (let i = 1; i < geoms.length; i++) {
-      // eslint-disable-next-line security/detect-object-injection -- loop-counter index into typed GeoJSON.Geometry[]
+
       const merged = turf.union(turf.featureCollection([result, turf.feature(geoms[i] as GeoJSON.Polygon | GeoJSON.MultiPolygon)]));
       if (merged) result = merged;
     }
@@ -66,7 +66,7 @@ export interface CvMatchMapProps {
 }
 
 /** Describe the hovered feature's status for the hover tooltip line. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- f is a hovered MapLibre feature with dynamic properties (clusterId/regionName/confidence/etc) that vary by source layer
 function describeHoveredFeature(f: any): string {
   if (f.preAssigned) return `Already assigned to ${f.regionName ?? 'parent region'}`;
   if (f.dismissed) return 'Dismissed';
@@ -96,7 +96,7 @@ function assignLabel(isDismissed: boolean, needsManualAssign: boolean): string {
 function SelectedFeaturePanel({
   selectedFeature, geoPreview, onAccept, onReject, onClusterReassign, setSelectedId,
 }: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- selectedFeature is a MapLibre feature object with dynamic properties (varies by source layer); typed access happens inside the panel
   selectedFeature: any;
   geoPreview: CvMatchMapProps['geoPreview'];
   onAccept?: CvMatchMapProps['onAccept'];
@@ -239,7 +239,7 @@ export function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, 
   // Paint mode: pick a cluster, then click divisions to assign them
   const [paintClusterId, setPaintClusterId] = useState<number | null>(null);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- MapLibre StyleExpression types don't accept tuple literals cleanly; runtime shape matches the layer paint contract
   const fillColorExpr: any = ['get', 'color'];
 
   // Region label points: one per cluster at the centroid of that cluster's divisions

@@ -39,7 +39,7 @@ function stripKnownUnsupportedParams(
   if (!known || known.size === 0) return params;
   const cleaned = { ...params };
   for (const p of known) {
-    // eslint-disable-next-line security/detect-object-injection -- p is an OpenAI param name from the internal unsupportedParams registry, not user input
+
     delete (cleaned as unknown as Record<string, unknown>)[p];
   }
   return cleaned;
@@ -88,7 +88,7 @@ async function retryWithoutParam(
   console.log(`[AI] Model "${model}" does not support "${badParam}" — retrying without it`);
 
   const retryParams = { ...cleanParams };
-  // eslint-disable-next-line security/detect-object-injection -- badParam is the specific OpenAI param name that caused the 400, extracted from the API error response
+
   delete (retryParams as unknown as Record<string, unknown>)[badParam];
   const t1 = performance.now();
   const result = await client.chat.completions.create(retryParams);

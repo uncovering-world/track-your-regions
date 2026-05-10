@@ -25,7 +25,7 @@ function isValidCoords(lat: number, lng: number): boolean {
 }
 
 /** Try to parse a DMS component like "48°51'24\"N" or "48°51'24.5\"N" */
-// eslint-disable-next-line security/detect-unsafe-regex
+// eslint-disable-next-line security/detect-unsafe-regex -- bounded character classes between literal anchors (°, ′/', ″/", NSEW); no nested/overlapping quantifiers, so no catastrophic backtracking
 const DMS_PATTERN = /(-?\d+)[°]\s*(\d+)[′']\s*(\d+(?:\.\d+)?)[″"]\s*([NSEW])/i;
 
 /** Try to parse a decimal+direction component like "48.8566N" */

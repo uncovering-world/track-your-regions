@@ -142,9 +142,9 @@ export function GapAssignSelect({ subtreeRegions, defaultRegionId, mapSelectedRe
       // Find if this is the last item before next same-or-shallower depth
       let isLast = true;
       for (let j = i + 1; j < subtreeRegions.length; j++) {
-        // eslint-disable-next-line security/detect-object-injection -- loop-counter index into typed subtreeRegions[] array
+
         if (subtreeRegions[j].depth <= r.depth) {
-          // eslint-disable-next-line security/detect-object-injection -- same loop-counter index
+
           isLast = subtreeRegions[j].depth < r.depth;
           break;
         }
@@ -166,7 +166,7 @@ export function GapAssignSelect({ subtreeRegions, defaultRegionId, mapSelectedRe
       >
         <option value="">Assign to...</option>
         {subtreeRegions.map((r, i) => (
-          // eslint-disable-next-line security/detect-object-injection -- i is .map() callback index into parallel arrays regionPaths and treeLabels
+
           <option key={r.id} value={r.id} title={regionPaths[i]}>{treeLabels[i]}</option>
         ))}
       </TextField>
