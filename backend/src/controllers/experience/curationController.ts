@@ -7,6 +7,7 @@
  */
 
 import { Response } from 'express';
+import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { checkCuratorScope } from '../../middleware/auth.js';
@@ -150,10 +151,15 @@ export async function assignExperienceToRegion(req: AuthenticatedRequest, res: R
     return;
   }
 
-  await pool.query('BEGIN');
+  // Pin all three writes (assignment upsert, rejection clear, audit log) to a
+  // single client so they form a real transaction — pg.Pool's pool.query()
+  // can pick a different client per call, so BEGIN/COMMIT against the pool
+  // does not actually wrap the intermediate queries.
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     // Insert manual assignment (or update to manual if auto already exists)
-    await pool.query(`
+    await client.query(`
       INSERT INTO experience_regions (experience_id, region_id, assignment_type, assigned_by)
       VALUES ($1, $2, 'manual', $3)
       ON CONFLICT (experience_id, region_id)
@@ -161,21 +167,23 @@ export async function assignExperienceToRegion(req: AuthenticatedRequest, res: R
     `, [experienceId, regionId, userId]);
 
     // Clear any rejection for this experience-region pair
-    await pool.query(
+    await client.query(
       'DELETE FROM experience_rejections WHERE experience_id = $1 AND region_id = $2',
       [experienceId, regionId],
     );
 
     // Log the action
-    await pool.query(`
+    await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id)
       VALUES ($1, $2, 'added_to_region', $3)
     `, [experienceId, userId, regionId]);
 
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
   } catch (error) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 
   res.json({ success: true, experienceId, regionId });
@@ -278,6 +286,132 @@ export async function removeExperienceFromRegion(req: AuthenticatedRequest, res:
   res.json({ success: true, experienceId, regionId });
 }
 
+interface FieldUpdate {
+  column: string;
+  bodyKey: string;
+  value: unknown;
+}
+
+interface EditPayload {
+  updates: FieldUpdate[];
+  websiteUrl: string | undefined;
+  wikipediaUrl: string | undefined;
+  hasWebsiteUpdate: boolean;
+  hasWikipediaUpdate: boolean;
+}
+
+const EDIT_FIELD_MAP: Record<string, string> = {
+  name: 'name',
+  shortDescription: 'short_description',
+  description: 'description',
+  category: 'category',
+  imageUrl: 'image_url',
+  tags: 'tags',
+};
+
+function parseEditPayload(body: Record<string, unknown>): EditPayload {
+  const updates: FieldUpdate[] = [];
+  for (const [bodyKey, column] of Object.entries(EDIT_FIELD_MAP)) {
+    if (body[bodyKey] !== undefined) {
+      updates.push({ column, bodyKey, value: body[bodyKey] });
+    }
+  }
+  const websiteUrl = body.websiteUrl as string | undefined;
+  const wikipediaUrl = body.wikipediaUrl as string | undefined;
+  return {
+    updates,
+    websiteUrl,
+    wikipediaUrl,
+    hasWebsiteUpdate: websiteUrl !== undefined,
+    hasWikipediaUpdate: wikipediaUrl !== undefined,
+  };
+}
+
+function validateEditPayload(payload: EditPayload): string | null {
+  const { websiteUrl, wikipediaUrl, updates, hasWebsiteUpdate, hasWikipediaUpdate } = payload;
+  if (typeof websiteUrl === 'string' && websiteUrl && isUnsafeUrl(websiteUrl)) {
+    return 'Invalid URL scheme';
+  }
+  if (typeof wikipediaUrl === 'string' && wikipediaUrl && isUnsafeUrl(wikipediaUrl)) {
+    return 'Invalid URL scheme';
+  }
+  const hasMetadataUpdate = hasWebsiteUpdate || hasWikipediaUpdate;
+  if (updates.length === 0 && !hasMetadataUpdate) {
+    return 'No fields to update';
+  }
+  return null;
+}
+
+function buildUpdateQuery(
+  payload: EditPayload,
+  existingCurated: string[],
+  experienceId: number,
+): { sql: string; values: unknown[]; newCurated: string[] } {
+  const { updates, hasWebsiteUpdate, hasWikipediaUpdate, websiteUrl, wikipediaUrl } = payload;
+  const setClauses: string[] = [];
+  const values: unknown[] = [];
+  let paramIdx = 1;
+
+  for (const upd of updates) {
+    setClauses.push(`${upd.column} = $${paramIdx}`);
+    if (upd.column === 'tags') {
+      values.push(upd.value ? JSON.stringify(upd.value) : null);
+    } else {
+      values.push(upd.value ?? null);
+    }
+    paramIdx++;
+  }
+
+  if (hasWebsiteUpdate || hasWikipediaUpdate) {
+    const metadataPatch: Record<string, string | null> = {};
+    if (hasWebsiteUpdate) metadataPatch.website = websiteUrl || null;
+    if (hasWikipediaUpdate) metadataPatch.wikipediaUrl = wikipediaUrl || null;
+    setClauses.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${paramIdx}::jsonb`);
+    values.push(JSON.stringify(metadataPatch));
+    paramIdx++;
+  }
+
+  const curatedFieldNames = updates.map(u => u.column);
+  if (hasWebsiteUpdate) curatedFieldNames.push('metadata.website');
+  if (hasWikipediaUpdate) curatedFieldNames.push('metadata.wikipediaUrl');
+  const newCurated = [...new Set([...existingCurated, ...curatedFieldNames])];
+  setClauses.push(`curated_fields = $${paramIdx}`);
+  values.push(JSON.stringify(newCurated));
+  paramIdx++;
+
+  setClauses.push(`updated_at = NOW()`);
+  values.push(experienceId);
+  return {
+    sql: `UPDATE experiences SET ${setClauses.join(', ')} WHERE id = $${paramIdx}`,
+    values,
+    newCurated,
+  };
+}
+
+function buildEditAuditDetails(
+  payload: EditPayload,
+  existing: Record<string, unknown>,
+): Record<string, { old: unknown; new: unknown }> {
+  const details: Record<string, { old: unknown; new: unknown }> = {};
+  for (const upd of payload.updates) {
+    details[upd.column] = { old: existing[upd.column], new: upd.value ?? null };
+  }
+  const existingMetadata = existing.metadata as Record<string, unknown> | null | undefined;
+  if (payload.hasWebsiteUpdate) {
+    details['metadata.website'] = {
+      old: existingMetadata?.website ?? null,
+      new: payload.websiteUrl || null,
+    };
+  }
+  if (payload.hasWikipediaUpdate) {
+    details['metadata.wikipediaUrl'] = {
+      old: existingMetadata?.wikipediaUrl ?? null,
+      new: payload.wikipediaUrl || null,
+    };
+  }
+  return details;
+}
+
 /**
  * Edit an experience's fields
  * PATCH /api/experiences/:id/edit
@@ -291,46 +425,13 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
   const userId = req.user!.id;
   const userRole = req.user!.role;
 
-  // Map of body field -> DB column name
-  const fieldMap: Record<string, string> = {
-    name: 'name',
-    shortDescription: 'short_description',
-    description: 'description',
-    category: 'category',
-    imageUrl: 'image_url',
-    tags: 'tags',
-  };
-
-  // Collect fields that were provided in the request body
-  const updates: { column: string; bodyKey: string; value: unknown }[] = [];
-  for (const [bodyKey, column] of Object.entries(fieldMap)) {
-    if (req.body[bodyKey] !== undefined) {
-      updates.push({ column, bodyKey, value: req.body[bodyKey] });
-    }
-  }
-
-  // Special handling: websiteUrl and wikipediaUrl are stored in metadata JSONB, not direct columns
-  const websiteUrl = req.body.websiteUrl;
-  const wikipediaUrl = req.body.wikipediaUrl;
-  const hasWebsiteUpdate = websiteUrl !== undefined;
-  const hasWikipediaUpdate = wikipediaUrl !== undefined;
-  const hasMetadataUpdate = hasWebsiteUpdate || hasWikipediaUpdate;
-
-  if (typeof websiteUrl === 'string' && websiteUrl && isUnsafeUrl(websiteUrl)) {
-    res.status(400).json({ error: 'Invalid URL scheme' });
-    return;
-  }
-  if (typeof wikipediaUrl === 'string' && wikipediaUrl && isUnsafeUrl(wikipediaUrl)) {
-    res.status(400).json({ error: 'Invalid URL scheme' });
+  const payload = parseEditPayload(req.body as Record<string, unknown>);
+  const validationError = validateEditPayload(payload);
+  if (validationError) {
+    res.status(400).json({ error: validationError });
     return;
   }
 
-  if (updates.length === 0 && !hasMetadataUpdate) {
-    res.status(400).json({ error: 'No fields to update' });
-    return;
-  }
-
-  // Fetch existing experience for scope check and old values
   const expResult = await pool.query(
     `SELECT id, category_id, name, short_description, description, category, image_url, tags, metadata, curated_fields
      FROM experiences WHERE id = $1`,
@@ -342,9 +443,9 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
   }
   const existing = expResult.rows[0];
 
-  // Scope check — we need at least one region the experience belongs to
-  // For global/source curators, checkCuratorScope with regionId=null works;
-  // for region curators we check against the first assigned region
+  // Scope check — we need at least one region the experience belongs to.
+  // For global/category curators, checkCuratorScope with regionId=null works;
+  // for region curators we check against the first assigned region.
   const regionResult = await pool.query(
     'SELECT region_id FROM experience_regions WHERE experience_id = $1 LIMIT 1',
     [experienceId],
@@ -356,84 +457,31 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     return;
   }
 
-  // Build dynamic UPDATE query
-  const setClauses: string[] = [];
-  const values: unknown[] = [];
-  let paramIdx = 1;
+  const { sql, values, newCurated } = buildUpdateQuery(
+    payload,
+    (existing.curated_fields as string[]) || [],
+    experienceId,
+  );
 
-  for (const upd of updates) {
-    if (upd.column === 'tags') {
-      setClauses.push(`${upd.column} = $${paramIdx}`);
-      values.push(upd.value ? JSON.stringify(upd.value) : null);
-    } else {
-      setClauses.push(`${upd.column} = $${paramIdx}`);
-      values.push(upd.value ?? null);
-    }
-    paramIdx++;
-  }
-
-  // Handle websiteUrl/wikipediaUrl → metadata JSONB merge
-  if (hasMetadataUpdate) {
-    const metadataPatch: Record<string, string | null> = {};
-    if (hasWebsiteUpdate) metadataPatch.website = websiteUrl || null;
-    if (hasWikipediaUpdate) metadataPatch.wikipediaUrl = wikipediaUrl || null;
-    setClauses.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${paramIdx}::jsonb`);
-    values.push(JSON.stringify(metadataPatch));
-    paramIdx++;
-  }
-
-  // Merge new field names into curated_fields
-  const curatedFieldNames = updates.map((u) => u.column);
-  if (hasWebsiteUpdate) curatedFieldNames.push('metadata.website');
-  if (hasWikipediaUpdate) curatedFieldNames.push('metadata.wikipediaUrl');
-  const existingCurated: string[] = existing.curated_fields || [];
-  const newCurated = [...new Set([...existingCurated, ...curatedFieldNames])];
-  setClauses.push(`curated_fields = $${paramIdx}`);
-  values.push(JSON.stringify(newCurated));
-  paramIdx++;
-
-  setClauses.push(`updated_at = NOW()`);
-
-  // Add experience ID as last parameter
-  values.push(experienceId);
-
-  await pool.query('BEGIN');
+  // `pool.query('BEGIN')` does NOT pin a connection — each call checks out
+  // an arbitrary idle client from pg.Pool, so BEGIN, the UPDATE, the audit
+  // INSERT, and COMMIT/ROLLBACK can run on different clients (no real
+  // transaction). Use pool.connect() to bind everything to one client.
+  const client = await pool.connect();
   try {
-    await pool.query(
-      `UPDATE experiences SET ${setClauses.join(', ')} WHERE id = $${paramIdx}`,
-      values,
-    );
-
-    // Build old/new details for audit log
-    const details: Record<string, { old: unknown; new: unknown }> = {};
-    for (const upd of updates) {
-      details[upd.column] = {
-        old: existing[upd.column],
-        new: upd.value ?? null,
-      };
-    }
-    if (hasWebsiteUpdate) {
-      details['metadata.website'] = {
-        old: existing.metadata?.website ?? null,
-        new: websiteUrl || null,
-      };
-    }
-    if (hasWikipediaUpdate) {
-      details['metadata.wikipediaUrl'] = {
-        old: existing.metadata?.wikipediaUrl ?? null,
-        new: wikipediaUrl || null,
-      };
-    }
-
-    await pool.query(`
+    await client.query('BEGIN');
+    await client.query(sql, values);
+    const details = buildEditAuditDetails(payload, existing);
+    await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
       VALUES ($1, $2, 'edited', $3, $4)
     `, [experienceId, userId, regionId, JSON.stringify(details)]);
-
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
   } catch (error) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 
   res.json({ success: true, experienceId, curatedFields: newCurated });
@@ -494,6 +542,110 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
   res.json(result.rows);
 }
 
+interface CreateManualBody {
+  name?: unknown;
+  shortDescription?: unknown;
+  category?: unknown;
+  longitude?: unknown;
+  latitude?: unknown;
+  imageUrl?: unknown;
+  tags?: unknown;
+  countryCode?: unknown;
+  countryName?: unknown;
+  regionId?: unknown;
+  categoryId?: unknown;
+  websiteUrl?: unknown;
+  wikipediaUrl?: unknown;
+}
+
+function validateCreateManualInput(body: CreateManualBody): string | null {
+  if (!body.name || body.longitude == null || body.latitude == null) {
+    return 'name, longitude, and latitude are required';
+  }
+  if (typeof body.websiteUrl === 'string' && body.websiteUrl && isUnsafeUrl(body.websiteUrl)) {
+    return 'Invalid URL scheme';
+  }
+  if (typeof body.wikipediaUrl === 'string' && body.wikipediaUrl && isUnsafeUrl(body.wikipediaUrl)) {
+    return 'Invalid URL scheme';
+  }
+  if (!body.regionId) {
+    return 'regionId is required for initial region assignment';
+  }
+  if (!body.categoryId) {
+    return 'categoryId is required';
+  }
+  return null;
+}
+
+async function insertManualExperience(
+  client: PoolClient,
+  body: CreateManualBody,
+  userId: number,
+  categoryId: number,
+): Promise<{ experienceId: number; externalId: string }> {
+  const externalId = `curator-${userId}-${Date.now()}`;
+
+  const metadataObj: Record<string, string> = {};
+  if (body.websiteUrl) metadataObj.website = body.websiteUrl as string;
+  if (body.wikipediaUrl) metadataObj.wikipediaUrl = body.wikipediaUrl as string;
+  const metadata = Object.keys(metadataObj).length > 0 ? JSON.stringify(metadataObj) : null;
+
+  const expResult = await client.query(`
+    INSERT INTO experiences (
+      category_id, external_id, name, short_description, category,
+      location, image_url, tags, country_codes, country_names,
+      metadata, is_manual, created_by, status
+    ) VALUES (
+      $1, $2, $3, $4, $5,
+      ST_SetSRID(ST_MakePoint($6, $7), 4326), $8, $9, $10, $11,
+      $12, true, $13, 'active'
+    ) RETURNING id
+  `, [
+    categoryId,
+    externalId,
+    body.name,
+    body.shortDescription || null,
+    body.category || null,
+    body.longitude,
+    body.latitude,
+    body.imageUrl || null,
+    body.tags ? JSON.stringify(body.tags) : null,
+    body.countryCode ? [body.countryCode] : null,
+    body.countryName ? [body.countryName] : null,
+    metadata,
+    userId,
+  ]);
+  const experienceId = expResult.rows[0].id as number;
+
+  const locResult = await client.query(`
+    INSERT INTO experience_locations (experience_id, name, ordinal, location)
+    VALUES ($1, $2, 0, ST_SetSRID(ST_MakePoint($3, $4), 4326))
+    RETURNING id
+  `, [experienceId, body.name, body.longitude, body.latitude]);
+  const locationId = locResult.rows[0].id as number;
+
+  await client.query(`
+    INSERT INTO experience_regions (experience_id, region_id, assignment_type, assigned_by)
+    VALUES ($1, $2, 'manual', $3)
+  `, [experienceId, body.regionId, userId]);
+
+  await client.query(`
+    INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
+    VALUES ($1, $2, 'manual')
+  `, [locationId, body.regionId]);
+
+  await client.query(`
+    INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
+    VALUES ($1, $2, 'created', $3, $4)
+  `, [experienceId, userId, body.regionId, JSON.stringify({
+    name: body.name,
+    category: body.category,
+    categoryId,
+  })]);
+
+  return { experienceId, externalId };
+}
+
 /**
  * Create a new manual experience
  * POST /api/experiences
@@ -502,132 +654,42 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
 export async function createManualExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
   const userRole = req.user!.role;
-  const {
-    name,
-    shortDescription,
-    category,
-    longitude,
-    latitude,
-    imageUrl,
-    tags,
-    countryCode,
-    countryName,
-    regionId,
-    categoryId: requestedCategoryId,
-    websiteUrl,
-    wikipediaUrl: createWikipediaUrl,
-  } = req.body;
+  const body = req.body as CreateManualBody;
 
-  if (!name || longitude == null || latitude == null) {
-    res.status(400).json({ error: 'name, longitude, and latitude are required' });
+  const validationError = validateCreateManualInput(body);
+  if (validationError) {
+    res.status(400).json({ error: validationError });
     return;
   }
 
-  if (typeof websiteUrl === 'string' && websiteUrl && isUnsafeUrl(websiteUrl)) {
-    res.status(400).json({ error: 'Invalid URL scheme' });
-    return;
-  }
-  if (typeof createWikipediaUrl === 'string' && createWikipediaUrl && isUnsafeUrl(createWikipediaUrl)) {
-    res.status(400).json({ error: 'Invalid URL scheme' });
-    return;
-  }
-
-  if (!regionId) {
-    res.status(400).json({ error: 'regionId is required for initial region assignment' });
-    return;
-  }
-
-  // Check curator scope for the target region
-  const hasScope = await checkCuratorScope(userId, userRole, regionId);
+  const hasScope = await checkCuratorScope(userId, userRole, body.regionId as number);
   if (!hasScope) {
     res.status(403).json({ error: 'You do not have curator permissions for this region' });
     return;
   }
 
-  // Category is required — curators must assign to an existing category
-  if (!requestedCategoryId) {
-    res.status(400).json({ error: 'categoryId is required' });
-    return;
-  }
   const categoryResult = await pool.query(
     `SELECT id FROM experience_categories WHERE id = $1`,
-    [requestedCategoryId],
+    [body.categoryId],
   );
   if (categoryResult.rows.length === 0) {
     res.status(400).json({ error: 'Invalid categoryId' });
     return;
   }
-  const categoryId = categoryResult.rows[0].id;
+  const categoryId = categoryResult.rows[0].id as number;
 
-  await pool.query('BEGIN');
+  // Pin all five inserts (experience, location, region link, location-region
+  // link, curation log) to a single client so they form a real transaction.
+  const client = await pool.connect();
   try {
-    const externalId = `curator-${userId}-${Date.now()}`;
-
-    // Build metadata JSONB (website + wikipedia URLs if provided)
-    const metadataObj: Record<string, string> = {};
-    if (websiteUrl) metadataObj.website = websiteUrl;
-    if (createWikipediaUrl) metadataObj.wikipediaUrl = createWikipediaUrl;
-    const metadata = Object.keys(metadataObj).length > 0 ? JSON.stringify(metadataObj) : null;
-
-    // Create the experience
-    const expResult = await pool.query(`
-      INSERT INTO experiences (
-        category_id, external_id, name, short_description, category,
-        location, image_url, tags, country_codes, country_names,
-        metadata, is_manual, created_by, status
-      ) VALUES (
-        $1, $2, $3, $4, $5,
-        ST_SetSRID(ST_MakePoint($6, $7), 4326), $8, $9, $10, $11,
-        $12, true, $13, 'active'
-      ) RETURNING id
-    `, [
-      categoryId,
-      externalId,
-      name,
-      shortDescription || null,
-      category || null,
-      longitude,
-      latitude,
-      imageUrl || null,
-      tags ? JSON.stringify(tags) : null,
-      countryCode ? [countryCode] : null,
-      countryName ? [countryName] : null,
-      metadata,
-      userId,
-    ]);
-    const experienceId = expResult.rows[0].id;
-
-    // Create the default location entry
-    const locResult = await pool.query(`
-      INSERT INTO experience_locations (experience_id, name, ordinal, location)
-      VALUES ($1, $2, 0, ST_SetSRID(ST_MakePoint($3, $4), 4326))
-      RETURNING id
-    `, [experienceId, name, longitude, latitude]);
-    const locationId = locResult.rows[0].id;
-
-    // Assign to the curator's region (manual assignment)
-    await pool.query(`
-      INSERT INTO experience_regions (experience_id, region_id, assignment_type, assigned_by)
-      VALUES ($1, $2, 'manual', $3)
-    `, [experienceId, regionId, userId]);
-
-    // Link the location to the region (required for in_region markers on the map)
-    await pool.query(`
-      INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
-      VALUES ($1, $2, 'manual')
-    `, [locationId, regionId]);
-
-    // Log the creation
-    await pool.query(`
-      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-      VALUES ($1, $2, 'created', $3, $4)
-    `, [experienceId, userId, regionId, JSON.stringify({ name, category, categoryId })]);
-
-    await pool.query('COMMIT');
-
-    res.status(201).json({ id: experienceId, name, externalId });
+    await client.query('BEGIN');
+    const { experienceId, externalId } = await insertManualExperience(client, body, userId, categoryId);
+    await client.query('COMMIT');
+    res.status(201).json({ id: experienceId, name: body.name, externalId });
   } catch (error) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 }
