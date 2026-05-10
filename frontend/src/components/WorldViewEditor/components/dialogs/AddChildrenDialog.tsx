@@ -55,6 +55,42 @@ interface AddChildrenDialogProps {
 
 const NEW_REGION_VALUE = '__new__';
 
+async function loadUsageCounts(
+  worldViewId: number,
+  childIds: number[],
+  isCancelled: () => boolean,
+  setUsageCounts: (counts: Record<number, number>) => void,
+): Promise<void> {
+  if (childIds.length === 0) return;
+  const counts = await fetchDivisionUsageCounts(worldViewId, childIds);
+  if (!isCancelled()) setUsageCounts(counts);
+}
+
+async function loadPreAssignments(
+  existingChildren: Region[],
+  childIdSet: Set<number>,
+  isCancelled: () => boolean,
+  setAssignments: (assignments: Record<number, string>) => void,
+): Promise<void> {
+  const memberResults = await Promise.all(
+    existingChildren.map(async (region) => {
+      const members = await fetchRegionMembers(region.id);
+      return { regionId: region.id, members };
+    }),
+  );
+  if (isCancelled()) return;
+
+  const preAssignments: Record<number, string> = {};
+  for (const { regionId, members } of memberResults) {
+    for (const m of members) {
+      if (!m.isSubregion && childIdSet.has(m.id)) {
+        preAssignments[m.id] = String(regionId);
+      }
+    }
+  }
+  setAssignments(preAssignments);
+}
+
 export function AddChildrenDialog({
   member,
   selectedRegion,
@@ -83,39 +119,16 @@ export function AddChildrenDialog({
     setLoading(true);
     setAssignments({});
 
-    (async () => {
+    void (async () => {
       try {
         const children = await fetchSubdivisions(member.id);
         if (cancelled) return;
         setChildrenToAdd(children.map(c => ({ id: c.id, name: c.name, selected: true })));
 
-        const childIds = children.map(c => c.id);
-        if (childIds.length > 0) {
-          const counts = await fetchDivisionUsageCounts(worldViewId, childIds);
-          if (!cancelled) setUsageCounts(counts);
-        }
+        await loadUsageCounts(worldViewId, children.map(c => c.id), () => cancelled, setUsageCounts);
 
-        // If there are existing child regions, fetch their members to find pre-existing assignments
         if (existingChildren.length > 0) {
-          const childIdSet = new Set(childIds);
-          const memberResults = await Promise.all(
-            existingChildren.map(async (region) => {
-              const members = await fetchRegionMembers(region.id);
-              return { regionId: region.id, members };
-            })
-          );
-          if (cancelled) return;
-
-          // Build pre-assignment map: divisionId → regionId
-          const preAssignments: Record<number, string> = {};
-          for (const { regionId, members } of memberResults) {
-            for (const m of members) {
-              if (!m.isSubregion && childIdSet.has(m.id)) {
-                preAssignments[m.id] = String(regionId);
-              }
-            }
-          }
-          setAssignments(preAssignments);
+          await loadPreAssignments(existingChildren, new Set(children.map(c => c.id)), () => cancelled, setAssignments);
         }
       } catch (e) {
         console.error('Failed to fetch children:', e);
