@@ -5,31 +5,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run check              # Lint + typecheck (run before committing)
+npm run check              # Lint + typecheck (Node + Python) + fast security (~75s, run before committing)
 npm run knip               # Find unused files + dependencies (run before committing)
 TEST_REPORT_LOCAL=1 npm test  # Unit tests without Docker (run before committing)
-npm run security:all       # Semgrep SAST + npm audit (run before committing)
+npm run test:py            # cv-python pytest with coverage
+npm run security:all       # check + slow Semgrep (Node+Python) + Trivy image scan (run before pushing)
 npm run dev                # Start all services via Docker Compose
 npm run dev:backend        # Start backend only (local, no Docker)
 npm run dev:frontend       # Start frontend only (local, no Docker)
 npm run db:shell           # Open psql shell to active database
 npm run db:status          # Show current DB info and row counts
-npm run security:scan      # Semgrep SAST scan via Docker (OWASP, Node.js, React, secrets)
-npm run security:deps      # npm audit for backend + frontend dependencies
-npm run security:all       # Run security:scan + security:deps
+npm run check:py           # Ruff lint + format check + mypy on cv-python
+npm run lint:py:fix        # Ruff auto-fix on cv-python
+npm run format:py:fix      # Ruff format apply on cv-python
+npm run security:scan      # Semgrep SAST scan, Node configs (via Docker)
+npm run security:py:semgrep  # Semgrep SAST scan, Python configs (via Docker)
+npm run security:py:bandit # Bandit SAST on cv-python/app
+npm run security:py:deps   # pip-audit on cv-python/requirements.txt
+npm run security:py:all    # All Python security scans
+npm run security:image     # Build cv-python image and Trivy CVE scan
+npm run security:deps      # npm audit for backend + frontend
 npm run help               # Full command reference
 ```
 
-Backend runs on port 3001, frontend on port 5173, Martin tile server on port 3000.
+Backend runs on port 3001, frontend on port 5173, Martin tile server on port 3000, cv-python on port 8000.
 
 ### Mandatory Pre-Commit Checks
 
-After every code change, run all four before committing:
+**Before every commit**, run all four:
 
-1. `npm run check` — lint + typecheck
+1. `npm run check` — lint + typecheck (Node + Python) + fast security (Bandit, pip-audit, npm audit). ~75s. GitHub native secret scanning + push protection cover the secret-detection layer; Semgrep `p/secrets` runs in CI.
 2. `npm run knip` — unused files + dependencies
-3. `npm run security:all` — Semgrep SAST + npm audit
+3. `TEST_REPORT_LOCAL=1 npm test` + `npm run test:py` — unit tests for both stacks
 4. `/security-check` — Claude Code security review of changed files
+
+**Before pushing**, also run `npm run security:all` — it adds the slow scans (full Semgrep on both stacks, Trivy image CVE scan) on top of `check`. CI runs the same. CodeQL (JS+Python) runs via GitHub's default-setup code scanning, configured in repo settings rather than as a workflow file.
+
+Python dev tooling lives in `cv-python/requirements-dev.txt` (ruff, mypy, pytest, pytest-cov, bandit, pip-audit). One-time setup: `npm run setup:py:dev` creates `cv-python/.venv` and installs both requirements files. The `*:py` npm scripts call `.venv/bin/<tool>` directly so they work without venv activation. CI installs the same set via `actions/setup-python` + `pip install` (no venv needed there).
 
 ## Architecture
 
@@ -201,7 +213,7 @@ When executing **any** skill workflow (brainstorming, writing-plans, debugging, 
 3. **Docs alongside code** — update `docs/tech/` for implementation details and `docs/vision/vision.md` for any user-facing change, in the same step as the code change (never as a follow-up)
 4. **ADRs for architecture** — check `docs/decisions/` before proposing architectural choices; create a new ADR if one is needed
 5. **Security standards** — follow OWASP ASVS 5.0 Level 2 rules (see Security Standards section above)
-6. **Pre-commit checks** — run `npm run check`, `npm run knip`, `npm run security:all`, `TEST_REPORT_LOCAL=1 npm test`, and `/security-check` before committing
+6. **Pre-commit checks** — before every commit, run `npm run check`, `npm run knip`, `TEST_REPORT_LOCAL=1 npm test` + `npm run test:py`, and `/security-check`. Run `npm run security:all` before pushing (it adds the slow Semgrep + Trivy scans on top of `check`).
 7. **Design docs path** — save design documents and plans to `docs/tech/planning/` (not `docs/plans/`)
 8. **Development guide** — follow all conventions in `docs/tech/development-guide.md` (file size limits, commit format, refactoring hygiene)
 9. **Refactoring cleanup** — after any code change, remove unused imports, dead variables, and now-redundant checks

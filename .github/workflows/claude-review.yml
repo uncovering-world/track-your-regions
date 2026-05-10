@@ -99,10 +99,15 @@ jobs:
                on blast radius, exploitability, recoverability — NOT on
                visual prominence.
             6. **Suppression hygiene.** Treat every NEW linter suppression
-               this PR adds (`eslint-disable*`, `@ts-ignore`,
-               `@ts-expect-error`, `nosemgrep`, `# noqa`, `lgtm[rule]`,
-               etc.) as a red flag and verify it against
-               `docs/tech/development-guide.md` § Linter Suppressions:
+               this PR adds as a red flag and verify it against
+               `docs/tech/development-guide.md` § Linter Suppressions.
+               This applies to ALL linter syntaxes:
+                 - JS/TS: `eslint-disable*`, `@ts-ignore`, `@ts-expect-error`,
+                   `nosemgrep`
+                 - Python: `# noqa: <CODE>` (Ruff), `# type: ignore[<CODE>]`
+                   (mypy), `# nosec <CODE>` (Bandit)
+                 - Cross-language: `lgtm[<rule>]` (CodeQL)
+               Same mechanical rules apply to every syntax above:
                  a. **Mechanical** — must be inline (no file-level or
                     block-level `/* eslint-disable rule */ ... /* eslint-enable */`),
                     must name the rule explicitly, and must end with
