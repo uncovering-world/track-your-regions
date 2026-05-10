@@ -45,7 +45,7 @@ import {
   createManualExperience,
   fetchExperienceCategories,
 } from '../../api/experiences';
-import { searchPlaces, suggestImageUrl } from '../../api/geocode';
+import { searchPlaces, suggestImageUrl, type PlaceResult, type ImageSuggestion } from '../../api/geocode';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LocationPicker } from './LocationPicker';
@@ -147,6 +147,36 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
 
   // --- Core lookup logic (used by both auto-fill and Re-lookup) ---
   // Reads from stateRef to always have current values regardless of closures.
+
+  // Apply Nominatim geocode result to local state. Returns the effective
+  // coords/QID for downstream image-suggestion lookup.
+  const applyNominatimPlace = (place: PlaceResult): { lat: number; lng: number; wikidataId?: string } => {
+    if (!stateRef.current.coords || coordsAutoFilled.current) {
+      setCoords({ lat: place.lat, lng: place.lng });
+      coordsAutoFilled.current = true;
+    }
+    if (place.wikidataId) setWikidataId(place.wikidataId);
+    setAutoFillInfo(place.display_name.split(',').slice(0, 3).join(',').trim());
+    return { lat: place.lat, lng: place.lng, wikidataId: place.wikidataId ?? undefined };
+  };
+
+  // Apply Wikidata image-suggestion result. Skips fields the user has manually
+  // changed (autoFilled refs track which ones we own).
+  const applyImageSuggestion = (suggestion: ImageSuggestion): void => {
+    setNewImageUrl(suggestion.imageUrl);
+    imageAutoFilled.current = true;
+    setAutoFillEntity({ label: suggestion.entityLabel, wikidataId: suggestion.wikidataId });
+    suggestMutation.reset();
+    if (suggestion.description && (!stateRef.current.newDescription || descAutoFilled.current)) {
+      setNewDescription(suggestion.description);
+      descAutoFilled.current = true;
+    }
+    if (suggestion.wikipediaUrl && (!stateRef.current.newWikipediaUrl || linkAutoFilled.current)) {
+      setNewWikipediaUrl(suggestion.wikipediaUrl);
+      linkAutoFilled.current = true;
+    }
+  };
+
   const performLookup = async () => {
     const name = stateRef.current.newName;
     if (name.length < 3) return;
@@ -157,70 +187,32 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
     setAutoFillEntity(null);
 
     try {
-      // Step 1: Search Nominatim for coordinates
-      // Append region name for geo-disambiguation (e.g. "Holocaust Memorial Berlin")
+      // Step 1: Search Nominatim for coordinates. Append region name for
+      // geo-disambiguation (e.g. "Holocaust Memorial Berlin").
       const nominatimQuery = stateRef.current.regionName ? `${name} ${stateRef.current.regionName}` : name;
       const places = await searchPlaces(nominatimQuery, 1);
       if (autoFillGen.current !== generation) return;
+      const effective = places.length > 0 ? applyNominatimPlace(places[0]) : null;
 
-      let effectiveLat: number | undefined;
-      let effectiveLng: number | undefined;
-      let effectiveWikidataId: string | undefined;
-
-      if (places.length > 0) {
-        const place = places[0];
-        effectiveLat = place.lat;
-        effectiveLng = place.lng;
-        effectiveWikidataId = place.wikidataId ?? undefined;
-
-        // Auto-fill coords if empty or previously auto-filled
-        if (!stateRef.current.coords || coordsAutoFilled.current) {
-          setCoords({ lat: place.lat, lng: place.lng });
-          coordsAutoFilled.current = true;
-        }
-
-        if (place.wikidataId) {
-          setWikidataId(place.wikidataId);
-        }
-
-        setAutoFillInfo(place.display_name.split(',').slice(0, 3).join(',').trim());
-      }
-
-      // Step 2: Suggest image + description
+      // Step 2: Suggest image + description (only if user hasn't set image manually).
       if (!stateRef.current.newImageUrl || imageAutoFilled.current) {
         try {
           const suggestion = await suggestImageUrl({
             name,
-            lat: effectiveLat ?? stateRef.current.coords?.lat,
-            lng: effectiveLng ?? stateRef.current.coords?.lng,
-            wikidataId: effectiveWikidataId ?? stateRef.current.wikidataId ?? undefined,
+            lat: effective?.lat ?? stateRef.current.coords?.lat,
+            lng: effective?.lng ?? stateRef.current.coords?.lng,
+            wikidataId: effective?.wikidataId ?? stateRef.current.wikidataId ?? undefined,
           });
           if (autoFillGen.current !== generation) return;
-
-          setNewImageUrl(suggestion.imageUrl);
-          imageAutoFilled.current = true;
-          setAutoFillEntity({ label: suggestion.entityLabel, wikidataId: suggestion.wikidataId });
-          suggestMutation.reset();
-
-          // Auto-fill description if empty or previously auto-filled
-          if (suggestion.description && (!stateRef.current.newDescription || descAutoFilled.current)) {
-            setNewDescription(suggestion.description);
-            descAutoFilled.current = true;
-          }
-
-          // Auto-fill Wikipedia URL if empty or previously auto-filled
-          if (suggestion.wikipediaUrl && (!stateRef.current.newWikipediaUrl || linkAutoFilled.current)) {
-            setNewWikipediaUrl(suggestion.wikipediaUrl);
-            linkAutoFilled.current = true;
-          }
+          applyImageSuggestion(suggestion);
         } catch {
-          // 404 or error — no image found, that's OK
+          // 404 or error — no image found, that's OK.
         }
       }
 
       autoFillDone.current = true;
     } catch {
-      // Nominatim search failed, ignore
+      // Nominatim search failed, ignore.
     } finally {
       if (autoFillGen.current === generation) {
         setAutoFillLoading(false);
