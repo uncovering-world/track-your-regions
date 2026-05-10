@@ -491,84 +491,65 @@ export async function matchCountryLevel(
     return suggestions.slice(0, 5);
   }
 
+  function recordSingleCountry(node: WvTreeNode, countryId: number): void {
+    if (node.children.length === 0) {
+      updates.push({
+        id: node.id,
+        matchStatus: 'auto_matched',
+        suggestions: [buildSuggestionFor(countryId, gadm)],
+        divisionId: countryId,
+      });
+      progress.countriesMatched++;
+      return;
+    }
+    trySubdivisionDrillDown(node, countryId);
+  }
+
+  function recordAmbiguousCountry(node: WvTreeNode, countryIds: number[]): void {
+    updates.push({
+      id: node.id,
+      matchStatus: 'needs_review',
+      suggestions: countryIds.map(id => buildSuggestionFor(id, gadm)),
+    });
+  }
+
+  function recordFallbackOrNoMatch(node: WvTreeNode): void {
+    const fallbackSuggestions = tryFallbackMatch(node.name);
+    if (fallbackSuggestions.length === 0) {
+      progress.noCandidates++;
+      updates.push({ id: node.id, matchStatus: 'no_candidates', suggestions: [] });
+      return;
+    }
+    progress.totalCountries++;
+    if (fallbackSuggestions.length === 1 && fallbackSuggestions[0].score >= 700) {
+      updates.push({
+        id: node.id,
+        matchStatus: 'auto_matched',
+        suggestions: fallbackSuggestions,
+        divisionId: fallbackSuggestions[0].divisionId,
+      });
+      progress.countriesMatched++;
+    } else {
+      updates.push({ id: node.id, matchStatus: 'needs_review', suggestions: fallbackSuggestions });
+    }
+  }
+
   /** Recursively walk the WV tree to find country-level nodes */
   function walkAndMatch(nodes: WvTreeNode[]): void {
     for (const node of nodes) {
       if (progress.cancel) return;
 
       const countryIds = tryMatchCountry(node.name);
-
-      if (countryIds.length > 0) {
+      if (countryIds.length === 1) {
         progress.totalCountries++;
-
-        if (countryIds.length === 1) {
-          // Single GADM match — auto-assign or drill down
-          const countryId = countryIds[0];
-          if (node.children.length === 0) {
-            // Leaf country — assign directly
-            const path = getPath(countryId, gadm.pathCache, gadm.divisionsById);
-            const entry = gadm.divisionsById.get(countryId)!;
-            updates.push({
-              id: node.id,
-              matchStatus: 'auto_matched',
-              suggestions: [{ divisionId: countryId, name: entry.name, path, score: 700 }],
-              divisionId: countryId,
-            });
-            progress.countriesMatched++;
-          } else {
-            // Country with children — try drill-down
-            trySubdivisionDrillDown(node, countryId);
-          }
-        } else {
-          // Multiple GADM divisions for this country name (e.g. Spain in Europe + Africa)
-          // Suggest all and let the user approve/reject each
-          const suggestions: MatchSuggestion[] = countryIds.map(id => {
-            const entry = gadm.divisionsById.get(id)!;
-            const path = getPath(id, gadm.pathCache, gadm.divisionsById);
-            return { divisionId: id, name: entry.name, path, score: 700 };
-          });
-          updates.push({
-            id: node.id,
-            matchStatus: 'needs_review',
-            suggestions,
-          });
-        }
+        recordSingleCountry(node, countryIds[0]);
+      } else if (countryIds.length > 1) {
+        progress.totalCountries++;
+        recordAmbiguousCountry(node, countryIds);
+      } else if (node.children.length > 0) {
+        walkAndMatch(node.children);
       } else {
-        // Not a country — check if it's a container or a leaf territory
-        if (node.children.length > 0) {
-          // Container (continent, sub-region grouping) — recurse into children
-          walkAndMatch(node.children);
-        } else {
-          // Leaf node that didn't match a country — try matching against ALL divisions.
-          // This catches territories/dependencies that are standalone in the import source
-          // but subdivisions in GADM (e.g. Réunion, Guadeloupe, Puerto Rico).
-          const fallbackSuggestions = tryFallbackMatch(node.name);
-          if (fallbackSuggestions.length > 0) {
-            progress.totalCountries++;
-            if (fallbackSuggestions.length === 1 && fallbackSuggestions[0].score >= 700) {
-              updates.push({
-                id: node.id,
-                matchStatus: 'auto_matched',
-                suggestions: fallbackSuggestions,
-                divisionId: fallbackSuggestions[0].divisionId,
-              });
-              progress.countriesMatched++;
-            } else {
-              updates.push({
-                id: node.id,
-                matchStatus: 'needs_review',
-                suggestions: fallbackSuggestions,
-              });
-            }
-          } else {
-            progress.noCandidates++;
-            updates.push({
-              id: node.id,
-              matchStatus: 'no_candidates',
-              suggestions: [],
-            });
-          }
-        }
+        recordFallbackOrNoMatch(node);
       }
     }
   }
@@ -630,200 +611,189 @@ export async function matchCountryLevel(
  * Used when the admin identifies Melanesia/Micronesia/Polynesia etc. as groupings
  * whose children (Fiji, PNG, ...) should be matched independently as countries.
  */
-export async function matchChildrenAsCountries(
-  worldViewId: number,
+interface MatchUpdate {
+  id: number;
+  matchStatus: MatchStatus;
+  suggestions: MatchSuggestion[];
+  divisionId?: number;
+}
+
+function buildSuggestionFor(id: number, gadm: GADMData, score = 700): MatchSuggestion {
+  const entry = gadm.divisionsById.get(id)!;
+  const path = getPath(id, gadm.pathCache, gadm.divisionsById);
+  return { divisionId: id, name: entry.name, path, score };
+}
+
+function lookupCountryByName(name: string, gadm: GADMData): number[] {
+  const variants = getNameVariants(cleanWvName(name));
+  for (const variant of variants) {
+    const ids = gadm.gadmCountries.get(variant);
+    if (ids && ids.length > 0) return ids;
+  }
+  return [];
+}
+
+function buildFallbackSuggestions(name: string, gadm: GADMData): MatchSuggestion[] {
+  const variants = getNameVariants(cleanWvName(name));
+  const seen = new Set<number>();
+  const suggestions: MatchSuggestion[] = [];
+  for (const variant of variants) {
+    const matches = gadm.divisionsByNormalizedName.get(variant);
+    if (!matches) continue;
+    for (const entry of matches) {
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      suggestions.push(buildSuggestionFor(entry.id, gadm));
+    }
+  }
+  if (suggestions.length > 1) {
+    for (const s of suggestions) s.score = 500;
+  }
+  return suggestions.slice(0, 5);
+}
+
+function pushAutoMatchedCountry(
+  childId: number,
+  countryId: number,
+  gadm: GADMData,
+  updates: MatchUpdate[],
+): void {
+  updates.push({
+    id: childId,
+    matchStatus: 'auto_matched',
+    suggestions: [buildSuggestionFor(countryId, gadm)],
+    divisionId: countryId,
+  });
+}
+
+async function tryGrandchildrenDrillDown(
+  childId: number,
+  countryId: number,
+  gadm: GADMData,
+  updates: MatchUpdate[],
+): Promise<boolean> {
+  const gadmChildIds = gadm.childrenOf.get(countryId);
+  if (!gadmChildIds || gadmChildIds.length === 0) return false;
+
+  const gcResult = await pool.query(
+    `SELECT id, name FROM regions WHERE parent_region_id = $1 ORDER BY name`,
+    [childId],
+  );
+  const gadmChildren = gadmChildIds.map(id => gadm.divisionsById.get(id)!).filter(Boolean);
+  const matches = new Map<number, ScoredEntry>();
+  for (const gc of gcResult.rows) {
+    const best = findBestAmongChildren(gc.name as string, gadmChildren);
+    if (best && best.score >= 700) {
+      matches.set(gc.id as number, best);
+    }
+  }
+  if (matches.size !== gcResult.rows.length) return false;
+
+  updates.push({ id: childId, matchStatus: 'children_matched', suggestions: [] });
+  for (const gc of gcResult.rows) {
+    const m = matches.get(gc.id as number)!;
+    updates.push({
+      id: gc.id as number,
+      matchStatus: 'auto_matched',
+      suggestions: [buildSuggestionFor(m.entry.id, gadm, m.score)],
+      divisionId: m.entry.id,
+    });
+  }
+  return true;
+}
+
+function pushFallbackOrNoCandidates(
+  childId: number,
+  fallbackSuggestions: MatchSuggestion[],
+  updates: MatchUpdate[],
+): boolean {
+  if (fallbackSuggestions.length === 0) {
+    updates.push({ id: childId, matchStatus: 'no_candidates', suggestions: [] });
+    return false;
+  }
+  if (fallbackSuggestions.length === 1 && fallbackSuggestions[0].score >= 700) {
+    updates.push({
+      id: childId,
+      matchStatus: 'auto_matched',
+      suggestions: fallbackSuggestions,
+      divisionId: fallbackSuggestions[0].divisionId,
+    });
+    return true;
+  }
+  updates.push({ id: childId, matchStatus: 'needs_review', suggestions: fallbackSuggestions });
+  return false;
+}
+
+interface ChildRowForRematch {
+  id: number;
+  name: string;
+  has_children: boolean;
+}
+
+async function rematchChildAsCountry(
+  child: ChildRowForRematch,
+  gadm: GADMData,
+  updates: MatchUpdate[],
+): Promise<boolean> {
+  const countryMatchIds = lookupCountryByName(child.name, gadm);
+
+  if (countryMatchIds.length === 1) {
+    const countryId = countryMatchIds[0];
+    if (!child.has_children) {
+      pushAutoMatchedCountry(child.id, countryId, gadm, updates);
+      return true;
+    }
+    const drilled = await tryGrandchildrenDrillDown(child.id, countryId, gadm, updates);
+    if (!drilled) {
+      pushAutoMatchedCountry(child.id, countryId, gadm, updates);
+    }
+    return true;
+  }
+
+  if (countryMatchIds.length > 1) {
+    updates.push({
+      id: child.id,
+      matchStatus: 'needs_review',
+      suggestions: countryMatchIds.map(id => buildSuggestionFor(id, gadm)),
+    });
+    return false;
+  }
+
+  return pushFallbackOrNoCandidates(child.id, buildFallbackSuggestions(child.name, gadm), updates);
+}
+
+async function writeRematchUpdates(
   regionId: number,
-): Promise<{ matched: number; total: number }> {
-  // Load GADM data
-  const gadm = await loadGADMData();
-
-  // Load children of this region
-  const childResult = await pool.query(`
-    SELECT id, name,
-      (SELECT COUNT(*) FROM regions sub WHERE sub.parent_region_id = r.id) > 0 AS has_children
-    FROM regions r
-    WHERE r.parent_region_id = $1 AND r.world_view_id = $2
-    ORDER BY r.name
-  `, [regionId, worldViewId]);
-
-  if (childResult.rows.length === 0) {
-    throw new Error('Region has no children to match');
-  }
-
-  const updates: Array<{
-    id: number;
-    matchStatus: MatchStatus;
-    suggestions: MatchSuggestion[];
-    divisionId?: number;
-  }> = [];
-  let matched = 0;
-
-  for (const row of childResult.rows) {
-    const childId = row.id as number;
-    const childName = row.name as string;
-    const childHasChildren = row.has_children as boolean;
-
-    // Try matching as a country
-    const cleaned = cleanWvName(childName);
-    const variants = getNameVariants(cleaned);
-    let countryMatchIds: number[] = [];
-    for (const variant of variants) {
-      const ids = gadm.gadmCountries.get(variant);
-      if (ids && ids.length > 0) { countryMatchIds = ids; break; }
-    }
-
-    if (countryMatchIds.length === 1) {
-      const countryId = countryMatchIds[0];
-      if (!childHasChildren) {
-        // Leaf — assign directly
-        const path = getPath(countryId, gadm.pathCache, gadm.divisionsById);
-        const entry = gadm.divisionsById.get(countryId)!;
-        updates.push({
-          id: childId,
-          matchStatus: 'auto_matched',
-          suggestions: [{ divisionId: countryId, name: entry.name, path, score: 700 }],
-          divisionId: countryId,
-        });
-        matched++;
-      } else {
-        // Has WV children — try subdivision drill-down
-        const gadmChildIds = gadm.childrenOf.get(countryId);
-        if (gadmChildIds && gadmChildIds.length > 0) {
-          // Load WV grandchildren for drill-down
-          const gcResult = await pool.query(
-            `SELECT id, name FROM regions WHERE parent_region_id = $1 ORDER BY name`,
-            [childId],
-          );
-          const gadmChildren = gadmChildIds.map(id => gadm.divisionsById.get(id)!).filter(Boolean);
-          const matches = new Map<number, { gadmEntry: DivisionEntry; score: number }>();
-          for (const gc of gcResult.rows) {
-            const best = findBestAmongChildren(gc.name as string, gadmChildren);
-            if (best && best.score >= 700) {
-              matches.set(gc.id as number, { gadmEntry: best.entry, score: best.score });
-            }
-          }
-          if (matches.size === gcResult.rows.length) {
-            // All grandchildren matched — assign at subdivision level
-            updates.push({ id: childId, matchStatus: 'children_matched', suggestions: [] });
-            for (const gc of gcResult.rows) {
-              const m = matches.get(gc.id as number)!;
-              const path = getPath(m.gadmEntry.id, gadm.pathCache, gadm.divisionsById);
-              updates.push({
-                id: gc.id as number,
-                matchStatus: 'auto_matched',
-                suggestions: [{ divisionId: m.gadmEntry.id, name: m.gadmEntry.name, path, score: m.score }],
-                divisionId: m.gadmEntry.id,
-              });
-            }
-            matched++;
-          } else {
-            // Not all grandchildren match — assign at country level
-            const path = getPath(countryId, gadm.pathCache, gadm.divisionsById);
-            const entry = gadm.divisionsById.get(countryId)!;
-            updates.push({
-              id: childId,
-              matchStatus: 'auto_matched',
-              suggestions: [{ divisionId: countryId, name: entry.name, path, score: 700 }],
-              divisionId: countryId,
-            });
-            matched++;
-          }
-        } else {
-          // No GADM subdivisions — assign at country level
-          const path = getPath(countryId, gadm.pathCache, gadm.divisionsById);
-          const entry = gadm.divisionsById.get(countryId)!;
-          updates.push({
-            id: childId,
-            matchStatus: 'auto_matched',
-            suggestions: [{ divisionId: countryId, name: entry.name, path, score: 700 }],
-            divisionId: countryId,
-          });
-          matched++;
-        }
-      }
-    } else if (countryMatchIds.length > 1) {
-      // Multiple GADM matches — needs review
-      const suggestions: MatchSuggestion[] = countryMatchIds.map(id => {
-        const entry = gadm.divisionsById.get(id)!;
-        const path = getPath(id, gadm.pathCache, gadm.divisionsById);
-        return { divisionId: id, name: entry.name, path, score: 700 };
-      });
-      updates.push({ id: childId, matchStatus: 'needs_review', suggestions });
-    } else {
-      // No country match — try fallback against all divisions
-      const seen = new Set<number>();
-      const fallbackSuggestions: MatchSuggestion[] = [];
-      for (const variant of variants) {
-        const matches = gadm.divisionsByNormalizedName.get(variant);
-        if (matches) {
-          for (const entry of matches) {
-            if (seen.has(entry.id)) continue;
-            seen.add(entry.id);
-            const path = getPath(entry.id, gadm.pathCache, gadm.divisionsById);
-            fallbackSuggestions.push({ divisionId: entry.id, name: entry.name, path, score: 700 });
-          }
-        }
-      }
-      if (fallbackSuggestions.length > 1) {
-        for (const s of fallbackSuggestions) s.score = 500;
-      }
-
-      if (fallbackSuggestions.length === 1 && fallbackSuggestions[0].score >= 700) {
-        updates.push({
-          id: childId,
-          matchStatus: 'auto_matched',
-          suggestions: fallbackSuggestions,
-          divisionId: fallbackSuggestions[0].divisionId,
-        });
-        matched++;
-      } else if (fallbackSuggestions.length > 0) {
-        updates.push({ id: childId, matchStatus: 'needs_review', suggestions: fallbackSuggestions.slice(0, 5) });
-      } else {
-        updates.push({ id: childId, matchStatus: 'no_candidates', suggestions: [] });
-      }
-    }
-  }
-
-  // Write results to relational tables in a transaction
+  updates: MatchUpdate[],
+): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Clear parent's own match and mark as children_matched
-    await client.query(
-      `DELETE FROM region_members WHERE region_id = $1`,
-      [regionId],
-    );
+    // Clear parent's own match and mark as children_matched.
+    await client.query(`DELETE FROM region_members WHERE region_id = $1`, [regionId]);
     await client.query(
       `UPDATE region_import_state SET match_status = 'children_matched' WHERE region_id = $1`,
       [regionId],
     );
-    // Clear parent's suggestions
-    await client.query(
-      `DELETE FROM region_match_suggestions WHERE region_id = $1`,
-      [regionId],
-    );
+    await client.query(`DELETE FROM region_match_suggestions WHERE region_id = $1`, [regionId]);
 
-    // Write child updates
     for (const update of updates) {
       await client.query(
         `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
         [update.matchStatus, update.id],
       );
-
-      // Clear old suggestions and insert new ones
       await client.query(
         `DELETE FROM region_match_suggestions WHERE region_id = $1 AND rejected = false`,
         [update.id],
       );
-      for (const suggestion of update.suggestions) {
+      for (const s of update.suggestions) {
         await client.query(
           `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score)
            VALUES ($1, $2, $3, $4, $5)`,
-          [update.id, suggestion.divisionId, suggestion.name, suggestion.path, suggestion.score],
+          [update.id, s.divisionId, s.name, s.path, s.score],
         );
       }
-
       if (update.divisionId) {
         await client.query(
           `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
@@ -839,6 +809,34 @@ export async function matchChildrenAsCountries(
   } finally {
     client.release();
   }
+}
+
+export async function matchChildrenAsCountries(
+  worldViewId: number,
+  regionId: number,
+): Promise<{ matched: number; total: number }> {
+  const gadm = await loadGADMData();
+
+  const childResult = await pool.query(`
+    SELECT id, name,
+      (SELECT COUNT(*) FROM regions sub WHERE sub.parent_region_id = r.id) > 0 AS has_children
+    FROM regions r
+    WHERE r.parent_region_id = $1 AND r.world_view_id = $2
+    ORDER BY r.name
+  `, [regionId, worldViewId]);
+
+  if (childResult.rows.length === 0) {
+    throw new Error('Region has no children to match');
+  }
+
+  const updates: MatchUpdate[] = [];
+  let matched = 0;
+
+  for (const row of childResult.rows as ChildRowForRematch[]) {
+    if (await rematchChildAsCountry(row, gadm, updates)) matched++;
+  }
+
+  await writeRematchUpdates(regionId, updates);
 
   console.log(`[WV Matcher] matchChildrenAsCountries: region ${regionId} — ${matched}/${childResult.rows.length} children matched`);
   return { matched, total: childResult.rows.length };
@@ -846,32 +844,17 @@ export async function matchChildrenAsCountries(
 
 // ─── Legacy leaf-level matcher ───────────────────────────────────────────────
 
-/**
- * Match all leaf regions in a WorldView to GADM divisions (LEGACY).
- * Kept for backward compatibility. New imports use matchCountryLevel().
- */
-export async function matchLeafRegions(
-  worldViewId: number,
-  progress: ImportProgress,
-): Promise<void> {
-  progress.status = 'matching';
-  const startTime = Date.now();
+interface RegionRow { id: number; name: string; is_leaf: boolean }
 
-  // Phase 1: Pre-load GADM data
-  progress.statusMessage = 'Loading GADM divisions into memory...';
-  console.log('[WV Matcher] Loading all divisions into memory...');
-  const gadm = await loadGADMData();
-  console.log(`[WV Matcher] Loaded ${gadm.divisionsById.size} divisions, ${gadm.countryIds.size} countries`);
-
-  // Phase 2: Load all regions + ancestor paths
-  progress.statusMessage = 'Loading regions and ancestor paths...';
-
+async function loadRegionsAndAncestors(worldViewId: number): Promise<{
+  allRegions: RegionRow[];
+  ancestorsByRegionId: Map<number, string[]>;
+}> {
   const regionResult = await pool.query(`
     SELECT id, name, is_leaf FROM regions
     WHERE world_view_id = $1
     ORDER BY id
   `, [worldViewId]);
-  const allRegions = regionResult.rows as Array<{ id: number; name: string; is_leaf: boolean }>;
 
   const ancestorResult = await pool.query(`
     WITH RECURSIVE region_ancestors AS (
@@ -892,14 +875,101 @@ export async function matchLeafRegions(
   for (const row of ancestorResult.rows) {
     ancestorsByRegionId.set(row.region_id as number, row.ancestor_names as string[]);
   }
+  return {
+    allRegions: regionResult.rows as RegionRow[],
+    ancestorsByRegionId,
+  };
+}
+
+function findCountryFromAncestors(ancestorNames: string[], gadm: GADMData): number | null {
+  for (const name of ancestorNames) {
+    const variants = getNameVariants(name);
+    for (const variant of variants) {
+      const ids = gadm.gadmCountries.get(variant);
+      if (ids && ids.length > 0) return ids[0];
+    }
+  }
+  return null;
+}
+
+function classifyLeafCandidates(
+  region: RegionRow,
+  candidates: MatchSuggestion[],
+  progress: ImportProgress,
+): MatchUpdate {
+  if (candidates.length === 1 && candidates[0].score >= 700) {
+    progress.countriesMatched++;
+    return {
+      id: region.id,
+      matchStatus: 'auto_matched',
+      suggestions: candidates,
+      divisionId: candidates[0].divisionId,
+    };
+  }
+  if (candidates.length > 0) {
+    return { id: region.id, matchStatus: 'needs_review', suggestions: candidates };
+  }
+  progress.noCandidates++;
+  return { id: region.id, matchStatus: 'no_candidates', suggestions: [] };
+}
+
+async function writePlainMatchUpdates(updates: MatchUpdate[]): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const update of updates) {
+      await client.query(
+        `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
+        [update.matchStatus, update.id],
+      );
+      for (const s of update.suggestions) {
+        await client.query(
+          `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [update.id, s.divisionId, s.name, s.path, s.score],
+        );
+      }
+      if (update.divisionId) {
+        await client.query(
+          `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [update.id, update.divisionId],
+        );
+      }
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Match all leaf regions in a WorldView to GADM divisions (LEGACY).
+ * Kept for backward compatibility. New imports use matchCountryLevel().
+ */
+export async function matchLeafRegions(
+  worldViewId: number,
+  progress: ImportProgress,
+): Promise<void> {
+  progress.status = 'matching';
+  const startTime = Date.now();
+
+  progress.statusMessage = 'Loading GADM divisions into memory...';
+  console.log('[WV Matcher] Loading all divisions into memory...');
+  const gadm = await loadGADMData();
+  console.log(`[WV Matcher] Loaded ${gadm.divisionsById.size} divisions, ${gadm.countryIds.size} countries`);
+
+  progress.statusMessage = 'Loading regions and ancestor paths...';
+  const { allRegions, ancestorsByRegionId } = await loadRegionsAndAncestors(worldViewId);
 
   const leafCount = allRegions.filter(r => r.is_leaf).length;
   progress.totalCountries = leafCount; // legacy: use totalCountries for leaf count
   progress.statusMessage = `Matching ${allRegions.length} regions (${leafCount} leaves)...`;
   console.log(`[WV Matcher] Pre-loading complete. Found ${allRegions.length} regions (${leafCount} leaves) to match`);
 
-  // Phase 3: Match each region
-  const updates: Array<{ id: number; matchStatus: MatchStatus; suggestions: MatchSuggestion[]; divisionId?: number }> = [];
+  const updates: MatchUpdate[] = [];
 
   for (let i = 0; i < allRegions.length; i++) {
     if (progress.cancel) {
@@ -914,87 +984,73 @@ export async function matchLeafRegions(
       progress.statusMessage = `Matching regions... ${i + 1}/${allRegions.length}`;
     }
 
-    // Find country context from ancestors (in-memory)
     const ancestorNames = ancestorsByRegionId.get(region.id) ?? [region.name];
-    let countryId: number | null = null;
-    for (const name of ancestorNames) {
-      const variants = getNameVariants(name);
-      for (const variant of variants) {
-        const ids = gadm.gadmCountries.get(variant);
-        if (ids && ids.length > 0) {
-          countryId = ids[0]; // Use first match for country context
-          break;
-        }
-      }
-      if (countryId) break;
-    }
-
+    const countryId = findCountryFromAncestors(ancestorNames, gadm);
     const descendantSet = countryId ? gadm.countryDescendants.get(countryId) ?? null : null;
+    const candidates = await findCandidatesOptimized(region.name, countryId, descendantSet, gadm);
 
-    // Find candidates
-    const candidates = await findCandidatesOptimized(
-      region.name, countryId, descendantSet, gadm,
-    );
-
-    // Determine match status
     if (region.is_leaf) {
-      if (candidates.length === 1 && candidates[0].score >= 700) {
-        progress.countriesMatched++;
-        updates.push({ id: region.id, matchStatus: 'auto_matched', suggestions: candidates, divisionId: candidates[0].divisionId });
-      } else if (candidates.length > 0) {
-        updates.push({ id: region.id, matchStatus: 'needs_review', suggestions: candidates });
-      } else {
-        progress.noCandidates++;
-        updates.push({ id: region.id, matchStatus: 'no_candidates', suggestions: [] });
-      }
-    } else {
-      if (candidates.length > 0) {
-        updates.push({ id: region.id, matchStatus: 'suggested', suggestions: candidates });
-      }
+      updates.push(classifyLeafCandidates(region, candidates, progress));
+    } else if (candidates.length > 0) {
+      updates.push({ id: region.id, matchStatus: 'suggested', suggestions: candidates });
     }
   }
 
-  // Phase 4: Batch-write results to relational tables
   progress.statusMessage = 'Writing match results...';
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    for (const update of updates) {
-      // Update match status in region_import_state
-      await client.query(
-        `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
-        [update.matchStatus, update.id],
-      );
-
-      // Insert suggestions into region_match_suggestions
-      for (const suggestion of update.suggestions) {
-        await client.query(
-          `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [update.id, suggestion.divisionId, suggestion.name, suggestion.path, suggestion.score],
-        );
-      }
-
-      if (update.divisionId) {
-        await client.query(
-          `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [update.id, update.divisionId],
-        );
-      }
-    }
-
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  await writePlainMatchUpdates(updates);
 
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`[WV Matcher] All done in ${totalTime}s: auto=${progress.countriesMatched}, none=${progress.noCandidates}`);
+}
+
+function addExactMatchCandidates(
+  variant: string,
+  descendantSet: Set<number> | null,
+  gadm: GADMData,
+  candidates: Map<number, MatchSuggestion>,
+): void {
+  const exactMatches = gadm.divisionsByNormalizedName.get(variant);
+  if (!exactMatches) return;
+  for (const entry of exactMatches) {
+    if (candidates.has(entry.id)) continue;
+    let score = 400;
+    if (descendantSet?.has(entry.id)) score += 300;
+    candidates.set(entry.id, { divisionId: entry.id, name: entry.name, path: '', score });
+  }
+}
+
+async function addTrigramMatchCandidates(
+  variant: string,
+  descendantSet: Set<number> | null,
+  candidates: Map<number, MatchSuggestion>,
+): Promise<void> {
+  const trigramResult = await pool.query(`
+    SELECT id, name, similarity(name_normalized, $1) AS sim
+    FROM administrative_divisions
+    WHERE name_normalized % $1
+      AND similarity(name_normalized, $1) > 0.4
+    ORDER BY sim DESC
+    LIMIT 10
+  `, [variant]);
+
+  for (const row of trigramResult.rows) {
+    const id = row.id as number;
+    if (candidates.has(id)) continue;
+    let score = Math.round((row.sim as number) * 100);
+    if (descendantSet?.has(id)) score += 300;
+    candidates.set(id, { divisionId: id, name: row.name as string, path: '', score });
+  }
+}
+
+function preferInCountryCandidates(
+  candidateList: MatchSuggestion[],
+  descendantSet: Set<number> | null,
+): MatchSuggestion[] {
+  if (!descendantSet) return candidateList;
+  const inCountry = candidateList.filter(c => descendantSet.has(c.divisionId));
+  if (inCountry.length === 0) return candidateList;
+  if (inCountry.length === 1) inCountry[0].score += 50;
+  return inCountry;
 }
 
 /**
@@ -1006,59 +1062,21 @@ async function findCandidatesOptimized(
   descendantSet: Set<number> | null,
   gadm: GADMData,
 ): Promise<MatchSuggestion[]> {
-  const nameVariants = getNameVariants(regionName);
   const candidates = new Map<number, MatchSuggestion>();
 
-  for (const variant of nameVariants) {
-    // Exact match (in-memory)
-    const exactMatches = gadm.divisionsByNormalizedName.get(variant);
-    if (exactMatches) {
-      for (const entry of exactMatches) {
-        if (candidates.has(entry.id)) continue;
-        let score = 400;
-        if (descendantSet?.has(entry.id)) score += 300;
-        candidates.set(entry.id, {
-          divisionId: entry.id, name: entry.name, path: '', score,
-        });
-      }
-    }
-
-    // Trigram similarity (DB with GIN index)
+  for (const variant of getNameVariants(regionName)) {
+    addExactMatchCandidates(variant, descendantSet, gadm, candidates);
     if (candidates.size < 5) {
-      const trigramResult = await pool.query(`
-        SELECT id, name, similarity(name_normalized, $1) AS sim
-        FROM administrative_divisions
-        WHERE name_normalized % $1
-          AND similarity(name_normalized, $1) > 0.4
-        ORDER BY sim DESC
-        LIMIT 10
-      `, [variant]);
-
-      for (const row of trigramResult.rows) {
-        const id = row.id as number;
-        if (candidates.has(id)) continue;
-        let score = Math.round((row.sim as number) * 100);
-        if (descendantSet?.has(id)) score += 300;
-        candidates.set(id, {
-          divisionId: id, name: row.name as string, path: '', score,
-        });
-      }
+      await addTrigramMatchCandidates(variant, descendantSet, candidates);
     }
   }
 
-  // Prefer candidates within the country
   let candidateList = Array.from(candidates.values());
-  if (countryDivisionId && descendantSet) {
-    const inCountry = candidateList.filter(c => descendantSet.has(c.divisionId));
-    if (inCountry.length > 0) {
-      if (inCountry.length === 1) inCountry[0].score += 50;
-      candidateList = inCountry;
-    }
+  if (countryDivisionId) {
+    candidateList = preferInCountryCandidates(candidateList, descendantSet);
   }
-
   if (candidateList.length === 1) candidateList[0].score += 50;
 
-  // Fill in paths
   for (const c of candidateList) {
     c.path = getPath(c.divisionId, gadm.pathCache, gadm.divisionsById);
   }
