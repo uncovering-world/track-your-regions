@@ -98,6 +98,31 @@ jobs:
             5. **Calibrate severity.** Critical / Major / Minor / Note based
                on blast radius, exploitability, recoverability — NOT on
                visual prominence.
+            6. **Suppression hygiene.** Treat every NEW linter suppression
+               this PR adds (`eslint-disable*`, `@ts-ignore`,
+               `@ts-expect-error`, `nosemgrep`, `# noqa`, `lgtm[rule]`,
+               etc.) as a red flag and verify it against
+               `docs/tech/development-guide.md` § Linter Suppressions:
+                 a. **Mechanical** — must be inline (no file-level or
+                    block-level `/* eslint-disable rule */ ... /* eslint-enable */`),
+                    must name the rule explicitly, and must end with
+                    `-- <reason>` explaining what makes the spot safe.
+                    Any violation of these → flag as Major.
+                 b. **Substantive (the harder question)** — ask whether
+                    the suppression is silencing a real issue the PR
+                    introduced. If the warning could have been fixed by
+                    changing the code (renaming a variable, restructuring
+                    logic, narrowing types, validating input), the fix
+                    belongs in the code — not in a disable comment. Flag
+                    any suppression that looks like "added to make CI
+                    green" rather than "this is genuinely safe and the
+                    linter is wrong here" as Major. Trust the linter's
+                    intent unless the `-- reason` clearly explains why
+                    the rule is wrong in this specific spot.
+                 c. **Pre-existing suppressions** that the PR moves or
+                    edits (without changing intent) are NOT flagged — only
+                    *newly added* suppressions and substantive *changes*
+                    to existing reasons get this treatment.
 
             ## ANALYSIS METHODOLOGY (phases)
 
@@ -130,6 +155,13 @@ jobs:
               concurrent state handling
             - **Refactoring hygiene** — dead code left behind, unused imports,
               redundant guards, leftover commented code
+            - **Suppression hygiene** — new linter suppressions added by this
+              PR (see CRITICAL INSTRUCTION #6). Two failure modes: mechanical
+              (file-level disable, missing `-- reason`, missing rule name) and
+              substantive (suppression masks a real fixable issue rather than
+              a genuine linter false positive). The latter is the more common
+              and more dangerous failure mode — verify each new suppression's
+              reason actually justifies the suppression.
             - **Convention adherence** — code reuse (shared components/utils),
               file-size limits, dev-guide patterns, commit hygiene
 
