@@ -94,6 +94,42 @@ function parseArtworkBindings(bindings: SparqlBinding[], typeName: 'painting' | 
     }));
 }
 
+interface ArtworkRange { min: number; limit: number }
+
+const ARTWORK_FALLBACK_RANGES: Record<'painting' | 'sculpture', ArtworkRange[]> = {
+  painting: [{ min: 30, limit: 1200 }, { min: 10, limit: 1500 }],
+  sculpture: [{ min: 15, limit: 300 }, { min: 10, limit: 300 }],
+};
+
+async function fetchArtworksViaFallback(
+  typeQid: string,
+  typeName: 'painting' | 'sculpture',
+  progress: SyncProgress,
+): Promise<{ artworks: WikidataArtwork[]; succeeded: number }> {
+  const collected = new Map<string, SparqlBinding>();
+  let succeeded = 0;
+  for (const range of ARTWORK_FALLBACK_RANGES[typeName]) {
+    try {
+      await delay(SPARQL_DELAY_MS * 2);
+      progress.statusMessage = `Fetching ${typeName}s (fallback, sitelinks>${range.min})...`;
+      const bindings = await sparqlQuery(buildArtworkQuery(typeQid, range.min, range.limit), LOG_PREFIX, 2);
+      succeeded++;
+      for (const b of bindings) {
+        const key = b.artwork?.value;
+        if (key && !collected.has(key)) collected.set(key, b);
+      }
+      console.log(`[Museum Sync] Fallback query (sitelinks>${range.min}): ${bindings.length} ${typeName}s`);
+    } catch (fallbackError) {
+      const msg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      console.warn(`[Museum Sync] Fallback query failed for ${typeName}s (sitelinks>${range.min}): ${msg}`);
+    }
+  }
+  return {
+    artworks: parseArtworkBindings([...collected.values()], typeName),
+    succeeded,
+  };
+}
+
 /**
  * Fetch artworks of a given type from Wikidata.
  * Falls back to split queries (high/low sitelinks) if the full query times out.
@@ -101,13 +137,11 @@ function parseArtworkBindings(bindings: SparqlBinding[], typeName: 'painting' | 
 async function fetchArtworks(
   typeQid: string,
   typeName: 'painting' | 'sculpture',
-  progress: SyncProgress
+  progress: SyncProgress,
 ): Promise<WikidataArtwork[]> {
   progress.statusMessage = `Fetching ${typeName}s from Wikidata...`;
-
   const limit = typeName === 'painting' ? 2000 : 500;
 
-  // Try the full query first
   try {
     const bindings = await sparqlQuery(buildArtworkQuery(typeQid, 10, limit), LOG_PREFIX);
     const artworks = parseArtworkBindings(bindings, typeName);
@@ -119,37 +153,10 @@ async function fetchArtworks(
     console.warn(`[Museum Sync] Falling back to split queries for ${typeName}s`);
   }
 
-  // Fallback: split into two ranges to reduce query complexity
-  const collected = new Map<string, SparqlBinding>();
-  const ranges = typeName === 'painting'
-    ? [{ min: 30, limit: 1200 }, { min: 10, limit: 1500 }]  // high fame first, then wider net
-    : [{ min: 15, limit: 300 }, { min: 10, limit: 300 }];
-  let successCount = 0;
-
-  for (const range of ranges) {
-    try {
-      await delay(SPARQL_DELAY_MS * 2); // Extra delay between fallback queries
-      progress.statusMessage = `Fetching ${typeName}s (fallback, sitelinks>${range.min})...`;
-      const bindings = await sparqlQuery(buildArtworkQuery(typeQid, range.min, range.limit), LOG_PREFIX, 2);
-      successCount++;
-      for (const b of bindings) {
-        const key = b.artwork?.value;
-        if (key && !collected.has(key)) {
-          collected.set(key, b);
-        }
-      }
-      console.log(`[Museum Sync] Fallback query (sitelinks>${range.min}): ${bindings.length} ${typeName}s`);
-    } catch (fallbackError) {
-      const msg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      console.warn(`[Museum Sync] Fallback query failed for ${typeName}s (sitelinks>${range.min}): ${msg}`);
-    }
-  }
-
-  if (successCount === 0) {
+  const { artworks, succeeded } = await fetchArtworksViaFallback(typeQid, typeName, progress);
+  if (succeeded === 0) {
     throw new Error(`Failed to fetch ${typeName}s from Wikidata (primary + fallback)`);
   }
-
-  const artworks = parseArtworkBindings([...collected.values()], typeName);
   console.log(`[Museum Sync] Fetched ${artworks.length} ${typeName}s via fallback queries`);
   return artworks;
 }
@@ -209,6 +216,35 @@ async function fetchMuseumDetails(qids: string[]): Promise<Map<string, WikidataM
   return results;
 }
 
+interface ResolvedMuseum {
+  museumQid: string;
+  museumLabel: string;
+  lat: number;
+  lon: number;
+}
+
+async function resolveBatch<T extends SparqlBinding>(
+  qids: string[],
+  buildQuery: (values: string) => string,
+  toEntry: (b: T) => { qid: string; entry: ResolvedMuseum } | null,
+  results: Map<string, ResolvedMuseum>,
+): Promise<void> {
+  for (let i = 0; i < qids.length; i += 50) {
+    const batch = qids.slice(i, i + 50);
+    const values = batch.map(q => `wd:${q}`).join(' ');
+    const bindings = await sparqlQuery(buildQuery(values), LOG_PREFIX) as T[];
+
+    for (const b of bindings) {
+      const mapped = toEntry(b);
+      if (mapped && !results.has(mapped.qid)) {
+        results.set(mapped.qid, mapped.entry);
+      }
+    }
+
+    if (i + 50 < qids.length) await delay(SPARQL_DELAY_MS);
+  }
+}
+
 /**
  * Resolve collections without coordinates to physical locations.
  * Tries multiple strategies:
@@ -216,16 +252,14 @@ async function fetchMuseumDetails(qids: string[]): Promise<Map<string, WikidataM
  *   2. P159 (headquarters) / P276 (location) — for umbrella orgs like "Tate"
  */
 async function resolveDepartments(
-  collectionQids: string[]
-): Promise<Map<string, { museumQid: string; museumLabel: string; lat: number; lon: number }>> {
-  const results = new Map<string, { museumQid: string; museumLabel: string; lat: number; lon: number }>();
+  collectionQids: string[],
+): Promise<Map<string, ResolvedMuseum>> {
+  const results = new Map<string, ResolvedMuseum>();
 
   // Strategy 1: P361 (part of) chain
-  for (let i = 0; i < collectionQids.length; i += 50) {
-    const batch = collectionQids.slice(i, i + 50);
-    const values = batch.map((q) => `wd:${q}`).join(' ');
-
-    const query = `
+  await resolveBatch(
+    collectionQids,
+    values => `
       SELECT ?collection ?museum ?museumLabel ?coord
       WHERE {
         VALUES ?collection { ${values} }
@@ -233,73 +267,61 @@ async function resolveDepartments(
         ?museum wdt:P625 ?coord .
         SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }
       }
-    `;
-
-    const bindings = await sparqlQuery(query, LOG_PREFIX);
-
-    for (const b of bindings) {
-      if (!b.collection || !b.coord) continue;
-      const collectionQid = extractQid(b.collection.value);
+    `,
+    b => {
+      if (!b.collection || !b.coord) return null;
       const coord = parseWktPoint(b.coord.value);
-      if (coord && !results.has(collectionQid)) {
-        results.set(collectionQid, {
+      if (!coord) return null;
+      return {
+        qid: extractQid(b.collection.value),
+        entry: {
           museumQid: extractQid(b.museum!.value),
           museumLabel: b.museumLabel?.value || 'Unknown Museum',
           lat: coord.lat,
           lon: coord.lon,
-        });
-      }
-    }
-
-    if (i + 50 < collectionQids.length) {
-      await delay(SPARQL_DELAY_MS);
-    }
-  }
+        },
+      };
+    },
+    results,
+  );
 
   // Strategy 2: P159 (headquarters) or P276 (location) for unresolved QIDs
-  const unresolved = collectionQids.filter((q) => !results.has(q));
+  const unresolved = collectionQids.filter(q => !results.has(q));
   if (unresolved.length > 0) {
     await delay(SPARQL_DELAY_MS);
-
-    for (let i = 0; i < unresolved.length; i += 50) {
-      const batch = unresolved.slice(i, i + 50);
-      const values = batch.map((q) => `wd:${q}`).join(' ');
-
-      const query = `
-        SELECT ?collection ?collectionLabel ?coord
-        WHERE {
-          VALUES ?collection { ${values} }
-          {
-            ?collection wdt:P159 ?hq .
-            ?hq wdt:P625 ?coord .
-          } UNION {
-            ?collection wdt:P276 ?loc .
-            ?loc wdt:P625 ?coord .
-          }
-          SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }
+    await resolveBatch(
+      unresolved,
+      values => `
+      SELECT ?collection ?collectionLabel ?coord
+      WHERE {
+        VALUES ?collection { ${values} }
+        {
+          ?collection wdt:P159 ?hq .
+          ?hq wdt:P625 ?coord .
+        } UNION {
+          ?collection wdt:P276 ?loc .
+          ?loc wdt:P625 ?coord .
         }
-      `;
-
-      const bindings = await sparqlQuery(query, LOG_PREFIX);
-
-      for (const b of bindings) {
-        if (!b.collection || !b.coord) continue;
-        const qid = extractQid(b.collection.value);
-        const coord = parseWktPoint(b.coord.value);
-        if (coord && !results.has(qid)) {
-          results.set(qid, {
-            museumQid: qid,
-            museumLabel: b.collectionLabel?.value || 'Unknown',
-            lat: coord.lat,
-            lon: coord.lon,
-          });
-        }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }
       }
-
-      if (i + 50 < unresolved.length) {
-        await delay(SPARQL_DELAY_MS);
-      }
-    }
+    `,
+    b => {
+      if (!b.collection || !b.coord) return null;
+      const coord = parseWktPoint(b.coord.value);
+      if (!coord) return null;
+      const qid = extractQid(b.collection.value);
+      return {
+        qid,
+        entry: {
+          museumQid: qid,
+          museumLabel: b.collectionLabel?.value || 'Unknown',
+          lat: coord.lat,
+          lon: coord.lon,
+        },
+      };
+    },
+    results,
+    );
   }
 
   return results;
@@ -420,6 +442,75 @@ async function cleanupMuseumData(progress: SyncProgress): Promise<void> {
   await cleanupCategoryData(MUSEUM_CATEGORY_ID, LOG_PREFIX, progress);
 }
 
+function groupArtworksByMuseum(artworks: WikidataArtwork[]): Map<string, CollectedMuseum> {
+  const museumMap = new Map<string, CollectedMuseum>();
+  for (const artwork of artworks) {
+    let museum = museumMap.get(artwork.collectionQid);
+    if (!museum) {
+      if (museumMap.size >= TARGET_MUSEUM_COUNT) continue;
+      museum = {
+        qid: artwork.collectionQid,
+        label: artwork.collectionLabel,
+        artworks: [],
+      };
+      museumMap.set(artwork.collectionQid, museum);
+    }
+    museum.artworks.push({
+      externalId: artwork.artworkQid,
+      name: artwork.artworkLabel,
+      treasureType: artwork.artworkType,
+      artist: artwork.creatorLabel,
+      year: artwork.year,
+      imageUrl: artwork.imageUrl,
+      sitelinksCount: artwork.sitelinks,
+    });
+  }
+  return museumMap;
+}
+
+async function resolveMissingCoordinates(
+  museumMap: Map<string, CollectedMuseum>,
+  museumDetails: Map<string, WikidataMuseum>,
+  progress: SyncProgress,
+): Promise<void> {
+  const noCoordQids = Array.from(museumMap.keys()).filter(qid => {
+    const details = museumDetails.get(qid);
+    return !details?.lat || !details?.lon;
+  });
+  if (noCoordQids.length === 0) return;
+
+  if (progress.cancel) throw new Error('Sync cancelled');
+  progress.statusMessage = `Resolving ${noCoordQids.length} department collections...`;
+  console.log(`[Museum Sync] Resolving ${noCoordQids.length} collections without coordinates`);
+
+  const resolved = await resolveDepartments(noCoordQids);
+  await delay(SPARQL_DELAY_MS);
+
+  for (const [collectionQid, parent] of resolved) {
+    const museum = museumMap.get(collectionQid);
+    if (!museum?.details) continue;
+    museum.details.lat = parent.lat;
+    museum.details.lon = parent.lon;
+    if (!museum.details.museumLabel || museum.details.museumLabel === 'Unknown Museum') {
+      museum.details.museumLabel = parent.museumLabel;
+    }
+  }
+}
+
+function pickValidMuseums(
+  museumMap: Map<string, CollectedMuseum>,
+  errorDetails: ErrorDetail[],
+): CollectedMuseum[] {
+  return Array.from(museumMap.values())
+    .filter(m => {
+      if (m.details?.lat && m.details?.lon) return true;
+      console.log(`[Museum Sync] Skipping ${m.qid} (${m.label}) - no coordinates`);
+      errorDetails.push({ externalId: m.qid, error: 'No valid coordinates after resolution' });
+      return false;
+    })
+    .slice(0, 100);
+}
+
 /**
  * Fetch, group, enrich, and filter museums from Wikidata.
  * Encapsulates the multi-phase SPARQL pipeline (artworks → group → details → resolve → filter).
@@ -441,35 +532,9 @@ async function fetchMuseumItems(
   const allArtworks = [...paintings, ...sculptures].sort((a, b) => b.sitelinks - a.sitelinks);
   console.log(`[Museum Sync] Total artworks: ${allArtworks.length} (${paintings.length} paintings, ${sculptures.length} sculptures)`);
 
-  // Phase 3: Collect top museums by iterating artworks top-down
+  // Phase 3: Group top artworks into TARGET_MUSEUM_COUNT museums
   progress.statusMessage = 'Identifying top museums...';
-  const museumMap = new Map<string, CollectedMuseum>();
-
-  for (const artwork of allArtworks) {
-    let museum = museumMap.get(artwork.collectionQid);
-    if (!museum) {
-      if (museumMap.size >= TARGET_MUSEUM_COUNT) {
-        continue;
-      }
-      museum = {
-        qid: artwork.collectionQid,
-        label: artwork.collectionLabel,
-        artworks: [],
-      };
-      museumMap.set(artwork.collectionQid, museum);
-    }
-
-    museum.artworks.push({
-      externalId: artwork.artworkQid,
-      name: artwork.artworkLabel,
-      treasureType: artwork.artworkType,
-      artist: artwork.creatorLabel,
-      year: artwork.year,
-      imageUrl: artwork.imageUrl,
-      sitelinksCount: artwork.sitelinks,
-    });
-  }
-
+  const museumMap = groupArtworksByMuseum(allArtworks);
   console.log(`[Museum Sync] Identified ${museumMap.size} unique museums`);
 
   // Phase 4: Fetch museum details
@@ -478,50 +543,18 @@ async function fetchMuseumItems(
   const museumQids = Array.from(museumMap.keys());
   const museumDetails = await fetchMuseumDetails(museumQids);
   await delay(SPARQL_DELAY_MS);
-
   for (const [qid, museum] of museumMap) {
     museum.details = museumDetails.get(qid);
   }
 
   // Phase 5: Resolve departments without coordinates
-  const noCoordQids = museumQids.filter((qid) => {
-    const details = museumDetails.get(qid);
-    return !details?.lat || !details?.lon;
-  });
+  await resolveMissingCoordinates(museumMap, museumDetails, progress);
 
-  if (noCoordQids.length > 0) {
-    if (progress.cancel) throw new Error('Sync cancelled');
-    progress.statusMessage = `Resolving ${noCoordQids.length} department collections...`;
-    console.log(`[Museum Sync] Resolving ${noCoordQids.length} collections without coordinates`);
-
-    const resolved = await resolveDepartments(noCoordQids);
-    await delay(SPARQL_DELAY_MS);
-
-    for (const [collectionQid, parent] of resolved) {
-      const museum = museumMap.get(collectionQid);
-      if (museum && museum.details) {
-        museum.details.lat = parent.lat;
-        museum.details.lon = parent.lon;
-        if (!museum.details.museumLabel || museum.details.museumLabel === 'Unknown Museum') {
-          museum.details.museumLabel = parent.museumLabel;
-        }
-      }
-    }
-  }
-
-  // Filter to museums with valid coordinates and cap at 100
-  const validMuseums = Array.from(museumMap.values())
-    .filter((m) => {
-      if (!m.details?.lat || !m.details?.lon) {
-        console.log(`[Museum Sync] Skipping ${m.qid} (${m.label}) - no coordinates`);
-        errorDetails.push({ externalId: m.qid, error: 'No valid coordinates after resolution' });
-        return false;
-      }
-      return true;
-    })
-    .slice(0, 100);
-
-  return { items: validMuseums, fetchedCount: allArtworks.length };
+  // Phase 6: Filter to museums with valid coordinates, cap at 100
+  return {
+    items: pickValidMuseums(museumMap, errorDetails),
+    fetchedCount: allArtworks.length,
+  };
 }
 
 /**
