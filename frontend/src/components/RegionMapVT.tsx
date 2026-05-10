@@ -75,18 +75,16 @@ export function RegionMapVT() {
   const { previewImageUrl, isExploring } = useExperienceContext();
 
   // Determine what parent we're viewing subdivisions of (GADM)
-  const viewingParentId = !selectedDivision
-    ? 'root' as const
-    : selectedDivision.hasChildren
-      ? selectedDivision.id
-      : selectedDivision.parentId ?? 'root' as const;
+  let viewingParentId: number | 'root';
+  if (!selectedDivision) viewingParentId = 'root';
+  else if (selectedDivision.hasChildren) viewingParentId = selectedDivision.id;
+  else viewingParentId = selectedDivision.parentId ?? 'root';
 
   // For custom world views, determine what region we're viewing
-  const viewingRegionId = !selectedRegion
-    ? 'all-leaf' as const
-    : selectedRegion.hasSubregions === true
-      ? selectedRegion.id
-      : (selectedRegion.parentRegionId ?? 'all-leaf' as const);
+  let viewingRegionId: number | 'all-leaf';
+  if (!selectedRegion) viewingRegionId = 'all-leaf';
+  else if (selectedRegion.hasSubregions === true) viewingRegionId = selectedRegion.id;
+  else viewingRegionId = selectedRegion.parentRegionId ?? 'all-leaf';
 
   // Exploration params for outline paint styling
   const exploringParams: ExploringParams | undefined = isExploring
@@ -145,13 +143,16 @@ export function RegionMapVT() {
     <Paper sx={{ height: 500, position: 'relative', overflow: 'hidden' }}>
 
       {/* Go to parent button */}
-      {(selectedRegion || selectedDivision) && (
+      {(selectedRegion || selectedDivision) && (() => {
+        let goToParentTitle: string;
+        if (isCustomWorldView) {
+          goToParentTitle = selectedRegion?.parentRegionId ? "Go to parent region" : "Go to world view root";
+        } else {
+          goToParentTitle = selectedDivision?.parentId ? "Go to parent division" : "Go to world view";
+        }
+        return (
         <Box sx={{ position: 'absolute', top: 80, right: 10, zIndex: 1 }}>
-          <Tooltip title={
-            isCustomWorldView
-              ? (selectedRegion?.parentRegionId ? "Go to parent region" : "Go to world view root")
-              : (selectedDivision?.parentId ? "Go to parent division" : "Go to world view")
-          }>
+          <Tooltip title={goToParentTitle}>
             <IconButton
               onClick={handleGoToParent}
               sx={{
@@ -169,7 +170,8 @@ export function RegionMapVT() {
             </IconButton>
           </Tooltip>
         </Box>
-      )}
+        );
+      })()}
 
       {/* Tile loading overlay - covers map until tiles are ready */}
       <Box
