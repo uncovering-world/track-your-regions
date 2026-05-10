@@ -5,6 +5,20 @@
 import { pool } from '../../db/index.js';
 
 /**
+ * Insert into region_members for the (region_id, division_id) pair without a
+ * custom geometry, ignoring conflicts with an existing row. Race-safe: relies
+ * on the partial unique index `idx_region_members_unique_no_custom`
+ * (see db/init/01-schema.sql) so concurrent callers can't double-insert.
+ */
+export async function ensureRegionMember(regionId: number, divisionId: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)
+     ON CONFLICT DO NOTHING`,
+    [regionId, divisionId],
+  );
+}
+
+/**
  * Clear cached geometry for a region and all its ancestors
  * This ensures that when a child region changes, parent regions are also recalculated
  * Also clears is_custom_boundary since the old geometry is being discarded
