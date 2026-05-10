@@ -1,0 +1,21 @@
+# Dev-only tooling for cv-python. Not installed into the production image.
+# Run `pip install -r requirements.txt -r requirements-dev.txt` for local dev.
+
+# Lint + format
+ruff==0.8.4
+
+# Type checking
+mypy==1.13.0
+
+# Tests + coverage
+pytest==8.3.4
+pytest-cov==6.0.0
+
+# Python-specific SAST
+bandit==1.8.0
+
+# Dependency vulnerability audit (PyPA equivalent of npm audit)
+pip-audit==2.7.3
+
+# Stub packages for libs we use that don't ship types
+types-requests==2.32.0.20241016
