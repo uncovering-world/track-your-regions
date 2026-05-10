@@ -4,9 +4,56 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
-import type { MapSourceDataEvent } from 'maplibre-gl';
+import type { Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl';
 
 const REGIONS_SOURCE_LAYER = 'regions';
+
+/**
+ * The setFeatureState calls swallow exceptions because the feature may not yet
+ * be loaded (initial render) or may have been unloaded (after a tile evict);
+ * either case is a no-op for hover painting.
+ */
+function applyFeatureHover(
+  map: MapLibreMap,
+  source: string,
+  sourceLayer: string,
+  id: number,
+  hovered: boolean,
+): void {
+  try {
+    map.setFeatureState({ source, sourceLayer, id }, { hovered });
+  } catch {
+    // Feature might not be loaded yet, or might have been unloaded — ignore.
+  }
+}
+
+function clearHoverState(
+  map: MapLibreMap,
+  primaryLayer: string,
+  overlaySources: string[],
+  id: number,
+): void {
+  applyFeatureHover(map, 'regions-vt', primaryLayer, id, false);
+  for (const overlaySource of overlaySources) {
+    if (map.getSource(overlaySource)) {
+      applyFeatureHover(map, overlaySource, REGIONS_SOURCE_LAYER, id, false);
+    }
+  }
+}
+
+function setHoverState(
+  map: MapLibreMap,
+  primaryLayer: string,
+  overlaySources: string[],
+  id: number,
+): void {
+  applyFeatureHover(map, 'regions-vt', primaryLayer, id, true);
+  for (const overlaySource of overlaySources) {
+    if (map.getSource(overlaySource)) {
+      applyFeatureHover(map, overlaySource, REGIONS_SOURCE_LAYER, id, true);
+    }
+  }
+}
 
 interface UseMapFeatureStateOptions {
   mapRef: React.RefObject<MapRef | null>;
@@ -161,58 +208,17 @@ export function useMapFeatureState({
     const map = mapRef.current.getMap();
     if (!map.getSource('regions-vt')) return;
 
-    // Build list of overlay source IDs (root + ancestor context layers)
     const overlaySources = [
       'root-regions-vt',
       ...Array.from({ length: contextLayerCount }, (_, i) => `context-${i}-vt`),
     ];
 
-    // Clear previous hover state on main source + overlays
     if (prevHoveredIdRef.current !== null) {
-      try {
-        map.setFeatureState(
-          { source: 'regions-vt', sourceLayer: sourceLayerName, id: prevHoveredIdRef.current },
-          { hovered: false }
-        );
-      } catch {
-        // Feature might not exist anymore
-      }
-      for (const overlaySource of overlaySources) {
-        if (map.getSource(overlaySource)) {
-          try {
-            map.setFeatureState(
-              { source: overlaySource, sourceLayer: REGIONS_SOURCE_LAYER, id: prevHoveredIdRef.current },
-              { hovered: false }
-            );
-          } catch {
-            // Feature might not exist
-          }
-        }
-      }
+      clearHoverState(map, sourceLayerName, overlaySources, prevHoveredIdRef.current);
     }
 
-    // Set new hover state on main source + overlays (but NOT when exploring)
     if (hoveredRegionId !== null && !isExploring) {
-      try {
-        map.setFeatureState(
-          { source: 'regions-vt', sourceLayer: sourceLayerName, id: hoveredRegionId },
-          { hovered: true }
-        );
-      } catch {
-        // Feature might not be loaded yet
-      }
-      for (const overlaySource of overlaySources) {
-        if (map.getSource(overlaySource)) {
-          try {
-            map.setFeatureState(
-              { source: overlaySource, sourceLayer: REGIONS_SOURCE_LAYER, id: hoveredRegionId },
-              { hovered: true }
-            );
-          } catch {
-            // Feature might not be loaded yet
-          }
-        }
-      }
+      setHoverState(map, sourceLayerName, overlaySources, hoveredRegionId);
       prevHoveredIdRef.current = hoveredRegionId;
     } else {
       prevHoveredIdRef.current = null;
