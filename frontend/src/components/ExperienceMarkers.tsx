@@ -184,6 +184,133 @@ const highlightPointLayer: LayerProps = {
 // ── Empty feature collection constant ──
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
+function buildPointHoverData(coords: [number, number]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: coords },
+      properties: {},
+    }],
+  };
+}
+
+interface ExperienceLocation {
+  id: number;
+  name?: string | null;
+  ordinal: number;
+  longitude: number;
+  latitude: number;
+}
+
+interface HoverPreview {
+  experienceId: number;
+  experienceName: string;
+  locationId: number | null;
+  locationName: string | null;
+  categoryName: string | null;
+  category: string | null;
+  imageUrl: string | null;
+  longitude: number;
+  latitude: number;
+}
+
+function tryHoverSpecificLocation(
+  expId: number,
+  locId: number,
+  locationsByExp: Record<number, ExperienceLocation[] | undefined>,
+  getExperienceById: (id: number) => Experience | undefined,
+  setHoverPreview: (preview: HoverPreview | null) => void,
+  setHoverData: (data: GeoJSON.FeatureCollection) => void,
+): boolean {
+  const loc = locationsByExp[expId]?.find(l => l.id === locId);
+  if (!loc) return false;
+  const exp = getExperienceById(expId);
+  if (exp) {
+    setHoverPreview({
+      experienceId: exp.id,
+      experienceName: exp.name,
+      locationId: loc.id,
+      locationName: loc.name || `Location ${loc.ordinal + 1}`,
+      categoryName: exp.category_name ?? null,
+      category: exp.category ?? null,
+      imageUrl: exp.image_url,
+      longitude: loc.longitude,
+      latitude: loc.latitude,
+    });
+  }
+  setHoverData(buildPointHoverData([loc.longitude, loc.latitude]));
+  return true;
+}
+
+function isMarkerUnclustered(
+  map: maplibregl.Map,
+  coords: [number, number],
+  expId: number,
+): boolean {
+  const screenPoint = map.project(new maplibregl.LngLat(coords[0], coords[1]));
+  const nearby = map.queryRenderedFeatures(
+    [
+      [screenPoint.x - 5, screenPoint.y - 5],
+      [screenPoint.x + 5, screenPoint.y + 5],
+    ],
+    { layers: map.getLayer(LAYER_UNCLUSTERED) ? [LAYER_UNCLUSTERED] : [] },
+  );
+  return nearby.some(f => f.properties?.experienceId === expId);
+}
+
+function pickClusterRingRadius(pointCount: number): number {
+  if (pointCount < 10) return 14;
+  if (pointCount < 30) return 18;
+  if (pointCount < 100) return 22;
+  return 26;
+}
+
+function paintClusterRingForExperience(
+  map: maplibregl.Map,
+  expId: number,
+  fallbackCoords: [number, number],
+  setHoverData: (data: GeoJSON.FeatureCollection) => void,
+): void {
+  const mainSource = map.getSource(SOURCE_MARKERS) as maplibregl.GeoJSONSource | undefined;
+  if (!mainSource) return;
+
+  const clusterFeatures = map.getLayer(LAYER_CLUSTERS)
+    ? map.queryRenderedFeatures(undefined, { layers: [LAYER_CLUSTERS] })
+    : [];
+
+  if (clusterFeatures.length === 0) {
+    setHoverData(buildPointHoverData(fallbackCoords));
+    return;
+  }
+
+  let found = false;
+  let remaining = clusterFeatures.length;
+  for (const cluster of clusterFeatures) {
+    const clusterId = cluster.properties.cluster_id;
+    const pointCount = cluster.properties.point_count;
+    mainSource.getClusterLeaves(clusterId, pointCount, 0).then(leaves => {
+      if (!found && leaves.some(leaf => leaf.properties?.experienceId === expId)) {
+        found = true;
+        const clusterCoords = (cluster.geometry as GeoJSON.Point).coordinates;
+        const clusterRadius = pickClusterRingRadius(pointCount);
+        setHoverData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: clusterCoords },
+            properties: { hoverRadius: clusterRadius + 10, ringRadius: clusterRadius + 4 },
+          }],
+        });
+      }
+      remaining--;
+      if (remaining === 0 && !found) {
+        setHoverData(buildPointHoverData(fallbackCoords));
+      }
+    });
+  }
+}
+
 interface ExperienceMarkersProps {
   regionId: number | null;
   visitedIds?: Set<number>;
@@ -585,36 +712,12 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       return;
     }
 
-    // If a specific location is hovered (from expanded experience), place ring directly
-    // — the point is on the highlight layer, not in the clustered markers source
-    if (locId != null) {
-      const locations = locationsByExpRef.current[expId];
-      const loc = locations?.find(l => l.id === locId);
-      if (loc) {
-        const exp = getExperienceById(expId);
-        if (exp) {
-          setHoverPreview({
-            experienceId: exp.id,
-            experienceName: exp.name,
-            locationId: loc.id,
-            locationName: loc.name || `Location ${loc.ordinal + 1}`,
-            categoryName: exp.category_name ?? null,
-            category: exp.category ?? null,
-            imageUrl: exp.image_url,
-            longitude: loc.longitude,
-            latitude: loc.latitude,
-          });
-        }
-        setHoverData({
-          type: 'FeatureCollection',
-          features: [{
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [loc.longitude, loc.latitude] },
-            properties: {},
-          }],
-        });
-        return;
-      }
+    // Specific location (from an expanded experience): the point lives on the
+    // highlight layer rather than in the clustered markers source, so place
+    // the ring directly without going through the cluster-aware path.
+    if (locId != null
+      && tryHoverSpecificLocation(expId, locId, locationsByExpRef.current, getExperienceById, setHoverPreview, setHoverData)) {
+      return;
     }
 
     // Experience-level hover — find the primary marker
@@ -633,75 +736,12 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     });
     const coords: [number, number] = [marker.longitude, marker.latitude];
 
-    // Check if the point is visible as an unclustered marker
-    const screenPoint = map.project(new maplibregl.LngLat(coords[0], coords[1]));
-    const nearby = map.queryRenderedFeatures(
-      [
-        [screenPoint.x - 5, screenPoint.y - 5],
-        [screenPoint.x + 5, screenPoint.y + 5],
-      ],
-      { layers: map.getLayer(LAYER_UNCLUSTERED) ? [LAYER_UNCLUSTERED] : [] },
-    );
-    const isUnclustered = nearby.some(f => f.properties?.experienceId === expId);
-
-    if (isUnclustered) {
-      setHoverData({
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: coords },
-          properties: {},
-        }],
-      });
-    } else {
-      // Point is inside a cluster — find the containing cluster
-      const mainSource = map.getSource(SOURCE_MARKERS) as maplibregl.GeoJSONSource | undefined;
-      if (!mainSource) return;
-
-      const clusterFeatures = map.getLayer(LAYER_CLUSTERS)
-        ? map.queryRenderedFeatures(undefined, { layers: [LAYER_CLUSTERS] })
-        : [];
-
-      let found = false;
-      let remaining = clusterFeatures.length;
-      if (remaining === 0) {
-        setHoverData({
-          type: 'FeatureCollection',
-          features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: {} }],
-        });
-        return;
-      }
-
-      for (const cluster of clusterFeatures) {
-        const clusterId = cluster.properties.cluster_id;
-        const pointCount = cluster.properties.point_count;
-        mainSource.getClusterLeaves(clusterId, pointCount, 0).then(leaves => {
-          if (!found && leaves.some(leaf => leaf.properties?.experienceId === expId)) {
-            found = true;
-            const clusterCoords = (cluster.geometry as GeoJSON.Point).coordinates;
-            let clusterRadius = 26;
-            if (pointCount < 10) clusterRadius = 14;
-            else if (pointCount < 30) clusterRadius = 18;
-            else if (pointCount < 100) clusterRadius = 22;
-            setHoverData({
-              type: 'FeatureCollection',
-              features: [{
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: clusterCoords },
-                properties: { hoverRadius: clusterRadius + 10, ringRadius: clusterRadius + 4 },
-              }],
-            });
-          }
-          remaining--;
-          if (remaining === 0 && !found) {
-            setHoverData({
-              type: 'FeatureCollection',
-              features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: {} }],
-            });
-          }
-        });
-      }
+    if (isMarkerUnclustered(map, coords, expId)) {
+      setHoverData(buildPointHoverData(coords));
+      return;
     }
+
+    paintClusterRingForExperience(map, expId, coords, setHoverData);
   }, [mapRef, getExperienceById, setHoverPreview]);
 
   // Watch hoveredExperienceId + hoverSource to drive list → map hover
