@@ -9,6 +9,30 @@ export interface PaletteEntry {
   color: [number, number, number];
 }
 
+/** Magenta polygon border (#ff00ff) drawn on the overlay canvas. */
+function isOverlayBorder(dst: Uint8ClampedArray, si: number): boolean {
+  return dst[si + 3] > 20 && dst[si] > 200 && dst[si + 1] < 50 && dst[si + 2] > 200;
+}
+
+/** BORDER_DRAW_COLOR (rgb(21,101,192)) on the source canvas. Without this guard,
+ *  max-tolerance floods escape through borders since the source-color check is skipped. */
+function isSourceBorder(src: Uint8ClampedArray, si: number): boolean {
+  return src[si] < 40 && src[si + 1] > 80 && src[si + 1] < 130 && src[si + 2] > 150;
+}
+
+function isWithinSourceTolerance(
+  src: Uint8ClampedArray,
+  si: number,
+  targetR: number,
+  targetG: number,
+  targetB: number,
+  threshold: number,
+): boolean {
+  return Math.abs(src[si] - targetR) <= threshold
+    && Math.abs(src[si + 1] - targetG) <= threshold
+    && Math.abs(src[si + 2] - targetB) <= threshold;
+}
+
 export function floodFillFromSource(
   source: PixelData, overlay: PixelData,
   startX: number, startY: number,
@@ -23,9 +47,12 @@ export function floodFillFromSource(
   if (sx < 0 || sx >= w || sy < 0 || sy >= h) return 0;
 
   const si0 = (sy * w + sx) * 4;
-  const targetR = src[si0], targetG = src[si0 + 1], targetB = src[si0 + 2];
+  const targetR = src[si0];
+  const targetG = src[si0 + 1];
+  const targetB = src[si0 + 2];
   const threshold = Math.round((tolerance / 100) * 255);
-  // At tolerance=100 (threshold=255), skip source image check — fill bounded ONLY by overlay borders
+  // At tolerance=100 (threshold=255), skip source image check — fill bounded
+  // ONLY by overlay borders.
   const skipSourceCheck = threshold >= 255;
 
   const visited = new Uint8Array(w * h);
@@ -40,29 +67,44 @@ export function floodFillFromSource(
     visited[pi] = 1;
     const si = pi * 4;
 
-    // 1. Stop at border-colored pixels (magenta #ff00ff) — drawn polygon borders
-    if (dst[si + 3] > 20 && dst[si] > 200 && dst[si + 1] < 50 && dst[si + 2] > 200) continue;
-
-    // 1b. Stop at brush/polygon borders drawn on the BORDER canvas
-    // (BORDER_DRAW_COLOR = rgb(21, 101, 192)). Without this, max-tolerance
-    // floods escape through borders since the source-color check is skipped.
-    if (src[si] < 40 && src[si + 1] > 80 && src[si + 1] < 130 && src[si + 2] > 150) continue;
-
-    // 2. Stop at source image color boundaries (skipped when tolerance=100)
-    if (!skipSourceCheck) {
-      if (Math.abs(src[si] - targetR) > threshold || Math.abs(src[si + 1] - targetG) > threshold || Math.abs(src[si + 2] - targetB) > threshold) continue;
+    if (isOverlayBorder(dst, si)) continue;
+    if (isSourceBorder(src, si)) continue;
+    if (!skipSourceCheck && !isWithinSourceTolerance(src, si, targetR, targetG, targetB, threshold)) {
+      continue;
     }
 
-    dst[si] = fillColor[0]; dst[si + 1] = fillColor[1]; dst[si + 2] = fillColor[2]; dst[si + 3] = fillColor[3];
+    paintFillPixel(dst, si, fillColor);
     filled++;
-
-    if (x > 0 && !visited[pi - 1]) stack.push(x - 1, y);
-    if (x < w - 1 && !visited[pi + 1]) stack.push(x + 1, y);
-    if (y > 0 && !visited[pi - w]) stack.push(x, y - 1);
-    if (y < h - 1 && !visited[pi + w]) stack.push(x, y + 1);
+    pushUnvisitedNeighbors(stack, visited, x, y, pi, w, h);
   }
 
   return filled;
+}
+
+function paintFillPixel(
+  dst: Uint8ClampedArray,
+  si: number,
+  fillColor: [number, number, number, number],
+): void {
+  dst[si] = fillColor[0];
+  dst[si + 1] = fillColor[1];
+  dst[si + 2] = fillColor[2];
+  dst[si + 3] = fillColor[3];
+}
+
+function pushUnvisitedNeighbors(
+  stack: number[],
+  visited: Uint8Array,
+  x: number,
+  y: number,
+  pi: number,
+  w: number,
+  h: number,
+): void {
+  if (x > 0 && !visited[pi - 1]) stack.push(x - 1, y);
+  if (x < w - 1 && !visited[pi + 1]) stack.push(x + 1, y);
+  if (y > 0 && !visited[pi - w]) stack.push(x, y - 1);
+  if (y < h - 1 && !visited[pi + w]) stack.push(x, y + 1);
 }
 
 export function overlayToPixelLabels(
