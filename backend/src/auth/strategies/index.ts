@@ -39,7 +39,7 @@
  *
  * - local.ts: Email/password authentication
  * - google.ts: Google OAuth 2.0
- * - apple.ts: Apple Sign-In (TODO: untested, needs Apple Developer account)
+ * - apple.ts: Apple Sign-In (NOTE: untested, needs Apple Developer account)
  *
  */
 

@@ -221,7 +221,7 @@ export function getGoogleAuthUrl(loginHint?: string): string {
 
 /**
  * Get Apple OAuth URL
- * TODO: Untested - requires Apple Developer account
+ * NOTE: Untested - requires Apple Developer account
  */
 export function getAppleAuthUrl(): string {
   return `${API_URL}/api/auth/apple`;

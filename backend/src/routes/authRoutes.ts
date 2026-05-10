@@ -543,7 +543,7 @@ router.get('/google/callback', (req: Request, res: Response, next: NextFunction)
  * GET /api/auth/apple
  * Redirect to Apple for authentication
  *
- * TODO: This is UNTESTED as it requires an Apple Developer account.
+ * NOTE: This is UNTESTED as it requires an Apple Developer account.
  * The route is included for completeness and follows the same pattern as Google.
  */
 router.get('/apple', passport.authenticate('apple', { session: false }));
@@ -553,7 +553,7 @@ router.get('/apple', passport.authenticate('apple', { session: false }));
  * Handle Apple Sign-In callback (Apple uses POST, not GET)
  * Redirects with one-time auth code
  *
- * TODO: This is UNTESTED as it requires an Apple Developer account.
+ * NOTE: This is UNTESTED as it requires an Apple Developer account.
  */
 router.post('/apple/callback', (req: Request, res: Response, next: NextFunction): void => {
   passport.authenticate('apple', { session: false }, async (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
