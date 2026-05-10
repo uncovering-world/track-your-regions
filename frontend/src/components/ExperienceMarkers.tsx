@@ -679,7 +679,10 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
           if (!found && leaves.some(leaf => leaf.properties?.experienceId === expId)) {
             found = true;
             const clusterCoords = (cluster.geometry as GeoJSON.Point).coordinates;
-            const clusterRadius: number = pointCount < 10 ? 14 : pointCount < 30 ? 18 : pointCount < 100 ? 22 : 26;
+            let clusterRadius = 26;
+            if (pointCount < 10) clusterRadius = 14;
+            else if (pointCount < 30) clusterRadius = 18;
+            else if (pointCount < 100) clusterRadius = 22;
             setHoverData({
               type: 'FeatureCollection',
               features: [{

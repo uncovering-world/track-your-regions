@@ -39,6 +39,11 @@ export function RegionList() {
     isCustomWorldView ? selectedWorldView?.id : undefined
   );
 
+  const regionRowBackground = (visited: boolean, isHovered: boolean): string => {
+    if (visited) return 'rgba(76, 175, 80, 0.1)';
+    return isHovered ? 'action.hover' : 'transparent';
+  };
+
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Fetch divisions for GADM hierarchy
@@ -76,21 +81,27 @@ export function RegionList() {
   });
 
   // Use appropriate data based on world view type
-  const isLoading = isCustomWorldView
-    ? (selectedRegion
-        ? (selectedRegion.hasSubregions === true ? subregionsLoading : siblingsLoading)
-        : rootRegionsLoading)
-    : divisionsLoading;
+  let isLoading: boolean;
+  if (!isCustomWorldView) {
+    isLoading = divisionsLoading;
+  } else if (!selectedRegion) {
+    isLoading = rootRegionsLoading;
+  } else {
+    isLoading = selectedRegion.hasSubregions === true ? subregionsLoading : siblingsLoading;
+  }
 
   // For custom world views:
   // - If no region selected: show root regions (for navigation)
   // - If region with subregions selected: show subregions
   // - If leaf region selected: show siblings
-  const regions = isCustomWorldView
-    ? (selectedRegion
-        ? (selectedRegion.hasSubregions === true ? subregions : siblings)
-        : rootRegions)
-    : [];
+  let regions: Region[];
+  if (!isCustomWorldView) {
+    regions = [];
+  } else if (!selectedRegion) {
+    regions = rootRegions;
+  } else {
+    regions = selectedRegion.hasSubregions === true ? subregions : siblings;
+  }
 
   // Virtual list for performance
   const itemCount = isCustomWorldView ? regions.length : divisions.length;
@@ -117,13 +128,16 @@ export function RegionList() {
 
   // Show message if no items
   if (itemCount === 0) {
+    let emptyMessage: string;
+    if (isCustomWorldView) {
+      emptyMessage = selectedRegion ? 'No subregions' : 'No regions defined. Click Edit to add regions.';
+    } else {
+      emptyMessage = selectedDivision ? 'No subdivisions' : 'No divisions found';
+    }
     return (
       <Paper sx={{ p: 2 }}>
         <Typography color="text.secondary" align="center">
-          {isCustomWorldView
-            ? (selectedRegion ? 'No subregions' : 'No regions defined. Click Edit to add regions.')
-            : (selectedDivision ? 'No subdivisions' : 'No divisions found')
-          }
+          {emptyMessage}
         </Typography>
       </Paper>
     );
@@ -166,9 +180,7 @@ export function RegionList() {
                   width: '100%',
                   height: `${virtualRow.size}px`,
                   transform: `translateY(${virtualRow.start}px)`,
-                  backgroundColor: visited
-                    ? 'rgba(76, 175, 80, 0.1)'
-                    : (isHovered ? 'action.hover' : 'transparent'),
+                  backgroundColor: regionRowBackground(visited, isHovered),
                   borderLeft: `4px solid ${region.color || '#3388ff'}`,
                 }}
               >
