@@ -21,6 +21,143 @@ export interface AssignmentProgress {
 // Track running assignment operations
 export const runningAssignments = new Map<number, AssignmentProgress>();
 
+/** Mark progress as cancelled if its `cancel` flag is set; returns true when cancelled. */
+function checkCancelled(progress: AssignmentProgress): boolean {
+  if (!progress.cancel) return false;
+  progress.status = 'cancelled';
+  progress.statusMessage = 'Cancelled';
+  return true;
+}
+
+/** Step 1: drop the previous run's auto-assignments for this world view (and optionally one category). */
+async function clearPreviousAssignments(
+  worldViewId: number,
+  categoryId: number | undefined,
+  progress: AssignmentProgress
+): Promise<void> {
+  progress.statusMessage = 'Clearing previous auto-assignments...';
+  const params = categoryId ? [worldViewId, categoryId] : [worldViewId];
+
+  const clearLocResult = await pool.query(`
+    DELETE FROM experience_location_regions elr
+    USING experience_locations el, experiences e, regions r
+    WHERE elr.location_id = el.id
+      AND el.experience_id = e.id
+      AND elr.region_id = r.id
+      AND r.world_view_id = $1
+      AND elr.assignment_type = 'auto'
+      ${categoryId ? 'AND e.category_id = $2' : ''}
+  `, params);
+  console.log(`[Region Assignment] Cleared ${clearLocResult.rowCount} location-region auto-assignments`);
+
+  const clearExpResult = await pool.query(`
+    DELETE FROM experience_regions er
+    USING regions r
+    WHERE er.region_id = r.id
+      AND r.world_view_id = $1
+      AND er.assignment_type = 'auto'
+      ${categoryId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE category_id = $2)' : ''}
+  `, params);
+  console.log(`[Region Assignment] Cleared ${clearExpResult.rowCount} experience-region auto-assignments`);
+}
+
+/** Step 2: insert direct location→region rows where the location point is contained in the region geometry. */
+async function assignDirect(
+  worldViewId: number,
+  categoryId: number | undefined,
+  progress: AssignmentProgress
+): Promise<void> {
+  progress.statusMessage = 'Computing direct spatial containment for locations...';
+  const params = categoryId ? [worldViewId, categoryId] : [worldViewId];
+
+  const directResult = await pool.query(`
+    INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
+    SELECT DISTINCT el.id, r.id, 'auto'
+    FROM experience_locations el
+    JOIN experiences e ON el.experience_id = e.id
+    CROSS JOIN regions r
+    WHERE r.world_view_id = $1
+      AND r.geom IS NOT NULL
+      AND r.geom && el.location
+      AND ST_Contains(r.geom, el.location)
+      ${categoryId ? 'AND e.category_id = $2' : ''}
+    ON CONFLICT (location_id, region_id) DO NOTHING
+  `, params);
+
+  progress.directAssignments = directResult.rowCount || 0;
+  console.log(`[Region Assignment] Created ${progress.directAssignments} direct location-region assignments`);
+}
+
+/** Step 3: propagate location→region assignments to all ancestor regions. */
+async function assignAncestors(
+  worldViewId: number,
+  categoryId: number | undefined,
+  progress: AssignmentProgress
+): Promise<void> {
+  progress.status = 'propagating';
+  progress.statusMessage = 'Propagating to ancestor regions...';
+  const params = categoryId ? [worldViewId, categoryId] : [worldViewId];
+
+  const ancestorResult = await pool.query(`
+    WITH RECURSIVE ancestors AS (
+      -- Start with direct assignments for this world view
+      SELECT elr.location_id, r.parent_region_id as region_id
+      FROM experience_location_regions elr
+      JOIN regions r ON elr.region_id = r.id
+      WHERE r.world_view_id = $1
+        AND r.parent_region_id IS NOT NULL
+        AND elr.assignment_type = 'auto'
+        ${categoryId ? `AND elr.location_id IN (
+          SELECT el.id FROM experience_locations el
+          JOIN experiences e ON el.experience_id = e.id
+          WHERE e.category_id = $2
+        )` : ''}
+
+      UNION
+
+      -- Recursively get ancestors
+      SELECT a.location_id, r.parent_region_id
+      FROM ancestors a
+      JOIN regions r ON a.region_id = r.id
+      WHERE r.parent_region_id IS NOT NULL
+    )
+    INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
+    SELECT DISTINCT location_id, region_id, 'auto'
+    FROM ancestors
+    WHERE region_id IS NOT NULL
+    ON CONFLICT (location_id, region_id) DO NOTHING
+  `, params);
+
+  progress.ancestorAssignments = ancestorResult.rowCount || 0;
+  console.log(`[Region Assignment] Created ${progress.ancestorAssignments} ancestor location-region assignments`);
+}
+
+/** Step 4: denormalize location→region rows into experience→region for backward compatibility. */
+async function denormalizeExperienceRegions(
+  worldViewId: number,
+  categoryId: number | undefined,
+  progress: AssignmentProgress
+): Promise<void> {
+  progress.status = 'denormalizing';
+  progress.statusMessage = 'Denormalizing to experience-region assignments...';
+  const params = categoryId ? [worldViewId, categoryId] : [worldViewId];
+
+  const expResult = await pool.query(`
+    INSERT INTO experience_regions (experience_id, region_id, assignment_type)
+    SELECT DISTINCT el.experience_id, elr.region_id, 'auto'
+    FROM experience_location_regions elr
+    JOIN experience_locations el ON elr.location_id = el.id
+    JOIN experiences e ON el.experience_id = e.id
+    JOIN regions r ON elr.region_id = r.id
+    WHERE r.world_view_id = $1
+      ${categoryId ? 'AND e.category_id = $2' : ''}
+    ON CONFLICT (experience_id, region_id) DO NOTHING
+  `, params);
+
+  progress.experienceAssignments = expResult.rowCount || 0;
+  console.log(`[Region Assignment] Created ${progress.experienceAssignments} denormalized experience-region assignments`);
+}
+
 /**
  * Assign experiences to regions based on spatial containment.
  * Uses experience_locations for per-location assignment, supporting multi-location experiences.
@@ -54,132 +191,17 @@ export async function assignExperiencesToRegions(
     const sourceSuffix = categoryId ? ` (source ${categoryId})` : '';
     console.log(`[Region Assignment] Starting for world view ${worldViewId}${sourceSuffix}`);
 
-    // Step 1: Clear existing auto-assignments for this world view
-    progress.statusMessage = 'Clearing previous auto-assignments...';
+    await clearPreviousAssignments(worldViewId, categoryId, progress);
+    if (checkCancelled(progress)) return progress;
 
-    // Clear location-region assignments
-    const clearLocResult = await pool.query(`
-      DELETE FROM experience_location_regions elr
-      USING experience_locations el, experiences e, regions r
-      WHERE elr.location_id = el.id
-        AND el.experience_id = e.id
-        AND elr.region_id = r.id
-        AND r.world_view_id = $1
-        AND elr.assignment_type = 'auto'
-        ${categoryId ? 'AND e.category_id = $2' : ''}
-    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
+    await assignDirect(worldViewId, categoryId, progress);
+    if (checkCancelled(progress)) return progress;
 
-    console.log(`[Region Assignment] Cleared ${clearLocResult.rowCount} location-region auto-assignments`);
+    await assignAncestors(worldViewId, categoryId, progress);
+    if (checkCancelled(progress)) return progress;
 
-    // Clear experience-region assignments (will be rebuilt from locations)
-    const clearExpResult = await pool.query(`
-      DELETE FROM experience_regions er
-      USING regions r
-      WHERE er.region_id = r.id
-        AND r.world_view_id = $1
-        AND er.assignment_type = 'auto'
-        ${categoryId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE category_id = $2)' : ''}
-    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
+    await denormalizeExperienceRegions(worldViewId, categoryId, progress);
 
-    console.log(`[Region Assignment] Cleared ${clearExpResult.rowCount} experience-region auto-assignments`);
-
-    if (progress.cancel) {
-      progress.status = 'cancelled';
-      progress.statusMessage = 'Cancelled';
-      return progress;
-    }
-
-    // Step 2: Direct assignments - find locations contained in regions
-    // Each experience_location point is tested against region geometries
-    progress.statusMessage = 'Computing direct spatial containment for locations...';
-
-    const directResult = await pool.query(`
-      INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
-      SELECT DISTINCT el.id, r.id, 'auto'
-      FROM experience_locations el
-      JOIN experiences e ON el.experience_id = e.id
-      CROSS JOIN regions r
-      WHERE r.world_view_id = $1
-        AND r.geom IS NOT NULL
-        AND r.geom && el.location
-        AND ST_Contains(r.geom, el.location)
-        ${categoryId ? 'AND e.category_id = $2' : ''}
-      ON CONFLICT (location_id, region_id) DO NOTHING
-    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
-
-    progress.directAssignments = directResult.rowCount || 0;
-    console.log(`[Region Assignment] Created ${progress.directAssignments} direct location-region assignments`);
-
-    if (progress.cancel) {
-      progress.status = 'cancelled';
-      progress.statusMessage = 'Cancelled';
-      return progress;
-    }
-
-    // Step 3: Propagate to ancestor regions
-    progress.status = 'propagating';
-    progress.statusMessage = 'Propagating to ancestor regions...';
-
-    const ancestorResult = await pool.query(`
-      WITH RECURSIVE ancestors AS (
-        -- Start with direct assignments for this world view
-        SELECT elr.location_id, r.parent_region_id as region_id
-        FROM experience_location_regions elr
-        JOIN regions r ON elr.region_id = r.id
-        WHERE r.world_view_id = $1
-          AND r.parent_region_id IS NOT NULL
-          AND elr.assignment_type = 'auto'
-          ${categoryId ? `AND elr.location_id IN (
-            SELECT el.id FROM experience_locations el
-            JOIN experiences e ON el.experience_id = e.id
-            WHERE e.category_id = $2
-          )` : ''}
-
-        UNION
-
-        -- Recursively get ancestors
-        SELECT a.location_id, r.parent_region_id
-        FROM ancestors a
-        JOIN regions r ON a.region_id = r.id
-        WHERE r.parent_region_id IS NOT NULL
-      )
-      INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
-      SELECT DISTINCT location_id, region_id, 'auto'
-      FROM ancestors
-      WHERE region_id IS NOT NULL
-      ON CONFLICT (location_id, region_id) DO NOTHING
-    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
-
-    progress.ancestorAssignments = ancestorResult.rowCount || 0;
-    console.log(`[Region Assignment] Created ${progress.ancestorAssignments} ancestor location-region assignments`);
-
-    if (progress.cancel) {
-      progress.status = 'cancelled';
-      progress.statusMessage = 'Cancelled';
-      return progress;
-    }
-
-    // Step 4: Denormalize to experience_regions for backward compatibility
-    // An experience is assigned to a region if ANY of its locations are in that region
-    progress.status = 'denormalizing';
-    progress.statusMessage = 'Denormalizing to experience-region assignments...';
-
-    const expResult = await pool.query(`
-      INSERT INTO experience_regions (experience_id, region_id, assignment_type)
-      SELECT DISTINCT el.experience_id, elr.region_id, 'auto'
-      FROM experience_location_regions elr
-      JOIN experience_locations el ON elr.location_id = el.id
-      JOIN experiences e ON el.experience_id = e.id
-      JOIN regions r ON elr.region_id = r.id
-      WHERE r.world_view_id = $1
-        ${categoryId ? 'AND e.category_id = $2' : ''}
-      ON CONFLICT (experience_id, region_id) DO NOTHING
-    `, categoryId ? [worldViewId, categoryId] : [worldViewId]);
-
-    progress.experienceAssignments = expResult.rowCount || 0;
-    console.log(`[Region Assignment] Created ${progress.experienceAssignments} denormalized experience-region assignments`);
-
-    // Update world view's last_assignment_at timestamp
     await pool.query(
       'UPDATE world_views SET last_assignment_at = NOW() WHERE id = $1',
       [worldViewId]
