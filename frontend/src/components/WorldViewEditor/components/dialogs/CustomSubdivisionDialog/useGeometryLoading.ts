@@ -87,76 +87,78 @@ export function useGeometryLoading({
     return features;
   };
 
+  /** Build memberRowId → geom and (non-custom) divisionId → geom lookups from the API result. */
+  const buildGeometryLookups = (memberGeoms: GeoJSON.FeatureCollection): {
+    byMemberRowId: Record<number, GeoJSON.Geometry>;
+    byDivisionId: Record<number, GeoJSON.Geometry>;
+  } => {
+    const byMemberRowId: Record<number, GeoJSON.Geometry> = {};
+    const byDivisionId: Record<number, GeoJSON.Geometry> = {};
+    for (const f of memberGeoms.features) {
+      const memberRowId = f.properties?.memberRowId;
+      const divisionId = f.properties?.divisionId;
+      if (memberRowId && f.geometry) {
+        byMemberRowId[memberRowId] = f.geometry;
+      }
+      // Only use divisionId for non-custom geoms — they're unique per division.
+      if (divisionId && f.geometry && !f.properties?.hasCustomGeom && !byDivisionId[divisionId]) {
+        byDivisionId[divisionId] = f.geometry;
+      }
+    }
+    return { byMemberRowId, byDivisionId };
+  };
+
+  /** For a given division, prefer memberRowId match, then fall back to divisionId. */
+  const lookupDivisionGeometry = (
+    div: RegionMember,
+    byMemberRowId: Record<number, GeoJSON.Geometry>,
+    byDivisionId: Record<number, GeoJSON.Geometry>,
+  ): GeoJSON.Geometry | undefined => {
+    if (div.memberRowId && byMemberRowId[div.memberRowId]) return byMemberRowId[div.memberRowId];
+    return byDivisionId[div.id];
+  };
+
+  const buildFeaturesFromMemberGeoms = async (
+    allDivisions: RegionMember[],
+    memberGeoms: GeoJSON.FeatureCollection,
+  ): Promise<GeoJSON.Feature[]> => {
+    const { byMemberRowId, byDivisionId } = buildGeometryLookups(memberGeoms);
+    const features: GeoJSON.Feature[] = [];
+    const missingDivisions: RegionMember[] = [];
+
+    for (const div of allDivisions) {
+      const geometry = lookupDivisionGeometry(div, byMemberRowId, byDivisionId);
+      if (geometry) {
+        features.push(buildDivisionFeature(div, geometry));
+      } else {
+        missingDivisions.push(div);
+      }
+    }
+
+    if (missingDivisions.length > 0) {
+      features.push(...await fetchDivisionGeometryFeatures(missingDivisions));
+    }
+    return features;
+  };
+
   const loadGeometries = async () => {
     if (!selectedRegion) return;
 
     setLoadingGeometries(true);
     try {
-      // Get all divisions from local state (includes group assignments)
       const allDivisions = getAllDivisions();
-
-      // Fetch direct member geometries AND descendant geometries in parallel
       const [memberGeoms, descendantGeoms] = await Promise.all([
         allDivisions.length > 0
           ? fetchRegionMemberGeometries(selectedRegion.id)
           : Promise.resolve(null),
         fetchDescendantMemberGeometries(selectedRegion.id),
       ]);
-
-      // Store descendant geometries for context layer
       setDescendantGeometries(descendantGeoms);
 
-      if (memberGeoms && memberGeoms.features.length > 0) {
-        // Create a lookup of memberRowId -> geometry from API
-        const geomByMemberRowId: Record<number, GeoJSON.Geometry> = {};
-        const geomByDivisionId: Record<number, GeoJSON.Geometry> = {};
-
-        for (const f of memberGeoms.features) {
-          const memberRowId = f.properties?.memberRowId;
-          const divisionId = f.properties?.divisionId;
-          if (memberRowId && f.geometry) {
-            geomByMemberRowId[memberRowId] = f.geometry;
-          }
-          // Also store by divisionId as fallback (for members without memberRowId match)
-          if (divisionId && f.geometry && !f.properties?.hasCustomGeom) {
-            // Only use divisionId for non-custom geometries (they're unique per division)
-            if (!geomByDivisionId[divisionId]) {
-              geomByDivisionId[divisionId] = f.geometry;
-            }
-          }
-        }
-
-        // Build features from our local divisions, using API geometries
-        const features: GeoJSON.Feature[] = [];
-        const missingDivisions: RegionMember[] = [];
-
-        for (const div of allDivisions) {
-          // Try to find geometry by memberRowId first, then by divisionId
-          let geometry: GeoJSON.Geometry | undefined;
-
-          if (div.memberRowId && geomByMemberRowId[div.memberRowId]) {
-            geometry = geomByMemberRowId[div.memberRowId];
-          } else if (geomByDivisionId[div.id]) {
-            geometry = geomByDivisionId[div.id];
-          }
-
-          if (geometry) {
-            features.push(buildDivisionFeature(div, geometry));
-          } else {
-            missingDivisions.push(div);
-          }
-        }
-
-        if (missingDivisions.length > 0) {
-          const missingFeatures = await fetchDivisionGeometryFeatures(missingDivisions);
-          features.push(...missingFeatures);
-        }
-
-        setMapGeometries({ type: 'FeatureCollection', features });
-      } else {
-        const features = await fetchDivisionGeometryFeatures(allDivisions);
-        setMapGeometries({ type: 'FeatureCollection', features });
-      }
+      const features = memberGeoms && memberGeoms.features.length > 0
+        ? await buildFeaturesFromMemberGeoms(allDivisions, memberGeoms)
+        : await fetchDivisionGeometryFeatures(allDivisions);
+      setMapGeometries({ type: 'FeatureCollection', features });
     } catch (e) {
       console.error('Failed to load geometries:', e);
     } finally {
