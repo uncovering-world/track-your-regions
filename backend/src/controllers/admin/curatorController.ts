@@ -43,89 +43,127 @@ export async function listCurators(_req: AuthenticatedRequest, res: Response): P
   res.json(result.rows);
 }
 
+interface AssignmentInput {
+  userId: number;
+  scopeType: 'region' | 'category' | 'global';
+  regionId?: number;
+  categoryId?: number;
+  notes?: string;
+}
+
+type ValidationError = { status: number; error: string };
+
+function validateAssignmentInput(body: AssignmentInput): ValidationError | null {
+  const { userId, scopeType, regionId, categoryId } = body;
+  if (!userId || !scopeType) {
+    return { status: 400, error: 'userId and scopeType are required' };
+  }
+  if (!['region', 'category', 'global'].includes(scopeType)) {
+    return { status: 400, error: 'scopeType must be region, category, or global' };
+  }
+  if (scopeType === 'region' && !regionId) {
+    return { status: 400, error: 'regionId is required for region scope' };
+  }
+  if (scopeType === 'category' && !categoryId) {
+    return { status: 400, error: 'categoryId is required for category scope' };
+  }
+  return null;
+}
+
+async function verifyAssignmentReferences(
+  body: AssignmentInput,
+): Promise<{ error: ValidationError } | { userRole: string }> {
+  const userResult = await pool.query('SELECT id, role FROM users WHERE id = $1', [body.userId]);
+  if (userResult.rows.length === 0) {
+    return { error: { status: 404, error: 'User not found' } };
+  }
+
+  if (body.scopeType === 'region') {
+    const regionResult = await pool.query('SELECT id FROM regions WHERE id = $1', [body.regionId]);
+    if (regionResult.rows.length === 0) {
+      return { error: { status: 404, error: 'Region not found' } };
+    }
+  }
+
+  if (body.scopeType === 'category') {
+    const catResult = await pool.query(
+      'SELECT id FROM experience_categories WHERE id = $1',
+      [body.categoryId],
+    );
+    if (catResult.rows.length === 0) {
+      return { error: { status: 404, error: 'Category not found' } };
+    }
+  }
+
+  return { userRole: userResult.rows[0].role };
+}
+
+async function insertAssignmentAndPromote(
+  body: AssignmentInput,
+  assignedBy: number,
+  currentRole: string,
+): Promise<{ id: number; assignedAt: Date; rolePromoted: boolean }> {
+  await pool.query('BEGIN');
+  try {
+    const insertResult = await pool.query(
+      `
+      INSERT INTO curator_assignments (user_id, scope_type, region_id, category_id, assigned_by, notes)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, assigned_at
+    `,
+      [body.userId, body.scopeType, body.regionId || null, body.categoryId || null, assignedBy, body.notes || null],
+    );
+
+    const rolePromoted = currentRole === 'user';
+    if (rolePromoted) {
+      await pool.query("UPDATE users SET role = 'curator' WHERE id = $1", [body.userId]);
+    }
+
+    await pool.query('COMMIT');
+    return {
+      id: insertResult.rows[0].id,
+      assignedAt: insertResult.rows[0].assigned_at,
+      rolePromoted,
+    };
+  } catch (error) {
+    await pool.query('ROLLBACK');
+    throw error;
+  }
+}
+
 /**
  * Create a curator assignment
  * POST /api/admin/curators
  * Body: { userId, scopeType, regionId?, sourceId?, notes? }
  */
 export async function createCuratorAssignment(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const { userId, scopeType, regionId, categoryId, notes } = req.body;
+  const body = req.body as AssignmentInput;
   const assignedBy = req.user!.id;
 
-  if (!userId || !scopeType) {
-    res.status(400).json({ error: 'userId and scopeType are required' });
+  const inputError = validateAssignmentInput(body);
+  if (inputError) {
+    res.status(inputError.status).json({ error: inputError.error });
     return;
   }
 
-  if (!['region', 'category', 'global'].includes(scopeType)) {
-    res.status(400).json({ error: 'scopeType must be region, category, or global' });
+  const refResult = await verifyAssignmentReferences(body);
+  if ('error' in refResult) {
+    res.status(refResult.error.status).json({ error: refResult.error.error });
     return;
   }
 
-  if (scopeType === 'region' && !regionId) {
-    res.status(400).json({ error: 'regionId is required for region scope' });
-    return;
-  }
-
-  if (scopeType === 'category' && !categoryId) {
-    res.status(400).json({ error: 'categoryId is required for category scope' });
-    return;
-  }
-
-  // Verify user exists
-  const userResult = await pool.query('SELECT id, role FROM users WHERE id = $1', [userId]);
-  if (userResult.rows.length === 0) {
-    res.status(404).json({ error: 'User not found' });
-    return;
-  }
-
-  // Verify region exists if scope is region
-  if (scopeType === 'region') {
-    const regionResult = await pool.query('SELECT id FROM regions WHERE id = $1', [regionId]);
-    if (regionResult.rows.length === 0) {
-      res.status(404).json({ error: 'Region not found' });
-      return;
-    }
-  }
-
-  // Verify category exists if scope is category
-  if (scopeType === 'category') {
-    const catResult = await pool.query('SELECT id FROM experience_categories WHERE id = $1', [categoryId]);
-    if (catResult.rows.length === 0) {
-      res.status(404).json({ error: 'Category not found' });
-      return;
-    }
-  }
-
-  // Insert assignment and promote role in a transaction
-  await pool.query('BEGIN');
   try {
-    const insertResult = await pool.query(`
-      INSERT INTO curator_assignments (user_id, scope_type, region_id, category_id, assigned_by, notes)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, assigned_at
-    `, [userId, scopeType, regionId || null, categoryId || null, assignedBy, notes || null]);
-
-    // Promote user to curator if currently 'user'
-    const currentRole = userResult.rows[0].role;
-    if (currentRole === 'user') {
-      await pool.query("UPDATE users SET role = 'curator' WHERE id = $1", [userId]);
-    }
-
-    await pool.query('COMMIT');
-
+    const inserted = await insertAssignmentAndPromote(body, assignedBy, refResult.userRole);
     res.status(201).json({
-      id: insertResult.rows[0].id,
-      userId,
-      scopeType,
-      regionId: regionId || null,
-      categoryId: categoryId || null,
-      assignedAt: insertResult.rows[0].assigned_at,
-      rolePromoted: currentRole === 'user',
+      id: inserted.id,
+      userId: body.userId,
+      scopeType: body.scopeType,
+      regionId: body.regionId || null,
+      categoryId: body.categoryId || null,
+      assignedAt: inserted.assignedAt,
+      rolePromoted: inserted.rolePromoted,
     });
   } catch (error: unknown) {
-    await pool.query('ROLLBACK');
-    // Handle duplicate assignment
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === '23505') {
       res.status(409).json({ error: 'This curator assignment already exists' });
       return;
