@@ -60,10 +60,11 @@ export function GeometryMapPanel({
   const [displayMode, setDisplayMode] = useState<DisplayMode>('real');
   const [showOptions, setShowOptions] = useState(false);
 
+  const geometryFlavor = displayMode === 'real' ? undefined : 'hull';
   const { data: selectedRegionGeometry, isLoading: geometryLoading } = useQuery({
     queryKey: ['regionGeometry', selectedRegion?.id, displayMode],
     queryFn: () => selectedRegion
-      ? fetchRegionGeometry(selectedRegion.id, displayMode === 'real' ? undefined : 'hull')
+      ? fetchRegionGeometry(selectedRegion.id, geometryFlavor)
       : null,
     enabled: !!selectedRegion,
     staleTime: 30000,

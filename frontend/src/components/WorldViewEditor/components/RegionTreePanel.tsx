@@ -144,7 +144,7 @@ function DraggableRegionItem({
           borderRadius: '0 4px 4px 0',
           py: 0.5,
           minHeight: 36,
-          bgcolor: isDropTarget ? P.dark.bgSelected : isSelected ? P.dark.bgSelected : 'transparent',
+          bgcolor: (isDropTarget || isSelected) ? P.dark.bgSelected : 'transparent',
           outline: isDropTarget ? `1px dashed ${P.accent.primary}` : 'none',
           '&:hover': { bgcolor: P.dark.bgHover },
           '&.Mui-selected': { bgcolor: P.dark.bgSelected, '&:hover': { bgcolor: P.dark.bgSelected } },
@@ -541,15 +541,17 @@ export function RegionTreePanel({
 
       {/* ── Region tree (scrollable, unified with division leaves) ── */}
       <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0, px: 0.5, py: 0.5 }}>
-        {regionsLoading ? (
+        {regionsLoading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
             <CircularProgress size={20} sx={{ color: P.accent.primary }} />
           </Box>
-        ) : regions.length === 0 ? (
+        )}
+        {!regionsLoading && regions.length === 0 && (
           <Typography sx={{ px: 1.5, py: 2, fontFamily: P.font.ui, fontSize: '0.8rem', color: P.dark.textMuted }}>
             No regions yet. Click + to create one.
           </Typography>
-        ) : (
+        )}
+        {!regionsLoading && regions.length > 0 && (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
