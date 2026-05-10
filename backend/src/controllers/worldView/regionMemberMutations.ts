@@ -6,7 +6,177 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
+import { ensureRegionMember, invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
+
+interface CreatedRegionEntry {
+  id: number;
+  name: string;
+  divisionId: number;
+}
+
+interface AddDivisionsCtx {
+  worldViewId: number;
+  rootRegionId: number;
+  colorToUse: string;
+  hasSelectedChildren: boolean;
+  childIds?: number[];
+  includeChildren?: boolean;
+  customName?: string;
+  customGeometry?: unknown;
+  createdRegions: CreatedRegionEntry[];
+  affectedRegionIds: Set<number>;
+}
+
+
+/**
+ * Find-or-create a region by (worldViewId, parentRegionId, name). Race-safe:
+ * serialises concurrent callers on a transaction-scoped advisory lock keyed
+ * by the (worldView, parent, name) triple before the SELECT-then-INSERT.
+ *
+ * The advisory lock is an application-level fix. The proper schema-level
+ * resolution (partial unique index + `INSERT … ON CONFLICT DO UPDATE`) is
+ * tracked in issue #378 — it needs a one-shot data cleanup of legacy dev-DB
+ * duplicates (created by this same race before it was fixed), which is out
+ * of scope for the lint-guardrail PR.
+ */
+async function ensureSubregion(
+  worldViewId: number,
+  parentRegionId: number,
+  name: string,
+  color: string,
+): Promise<{ id: number; createdEntry: { id: number; name: string } | null }> {
+  const lockKey = `subregion:${worldViewId}:${parentRegionId}:${name}`;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Transaction-scoped advisory lock — released automatically on COMMIT/ROLLBACK.
+    // hashtextextended(text, int8) returns an int8 that pg_advisory_xact_lock accepts.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey]);
+
+    const existing = await client.query(
+      'SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2 AND name = $3',
+      [worldViewId, parentRegionId, name],
+    );
+    if (existing.rows.length > 0) {
+      await client.query('COMMIT');
+      return { id: existing.rows[0].id, createdEntry: null };
+    }
+    const newRegion = await client.query(
+      `INSERT INTO regions (world_view_id, name, parent_region_id, color)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name`,
+      [worldViewId, name, parentRegionId, color],
+    );
+    await client.query('COMMIT');
+    return {
+      id: newRegion.rows[0].id,
+      createdEntry: { id: newRegion.rows[0].id, name: newRegion.rows[0].name },
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function processGadmChildren(
+  ctx: AddDivisionsCtx,
+  parentDivisionId: number,
+  parentSubregionId: number,
+): Promise<void> {
+  const childrenResult = await pool.query(
+    'SELECT id, name FROM administrative_divisions WHERE parent_id = $1 ORDER BY name',
+    [parentDivisionId],
+  );
+
+  const childIdSet = ctx.hasSelectedChildren ? new Set(ctx.childIds) : null;
+  const childrenToProcess = childIdSet
+    ? childrenResult.rows.filter((c: { id: number }) => childIdSet.has(c.id))
+    : childrenResult.rows;
+
+  for (const child of childrenToProcess) {
+    const { id: childSubregionId, createdEntry } = await ensureSubregion(
+      ctx.worldViewId,
+      parentSubregionId,
+      child.name,
+      ctx.colorToUse,
+    );
+    if (createdEntry) {
+      ctx.createdRegions.push({ ...createdEntry, divisionId: child.id });
+    }
+    await ensureRegionMember(childSubregionId, child.id);
+    ctx.affectedRegionIds.add(childSubregionId);
+  }
+}
+
+async function addDivisionAsSubregion(
+  ctx: AddDivisionsCtx,
+  divisionId: number,
+): Promise<void> {
+  const divisionInfo = await pool.query(
+    'SELECT name, has_children FROM administrative_divisions WHERE id = $1',
+    [divisionId],
+  );
+  if (divisionInfo.rows.length === 0) return;
+
+  const divisionName = divisionInfo.rows[0].name;
+  const hasChildren = divisionInfo.rows[0].has_children;
+
+  const subregionName = ctx.customName && ctx.customName.trim()
+    ? ctx.customName.trim()
+    : divisionName;
+
+  const { id: subregionId, createdEntry } = await ensureSubregion(
+    ctx.worldViewId,
+    ctx.rootRegionId,
+    subregionName,
+    ctx.colorToUse,
+  );
+  if (createdEntry) {
+    ctx.createdRegions.push({ ...createdEntry, divisionId });
+  }
+
+  // When childIds is provided (user selected specific children via dialog),
+  // we should NOT add the parent division — only the selected children.
+  if (!ctx.hasSelectedChildren) {
+    await ensureRegionMember(subregionId, divisionId);
+    ctx.affectedRegionIds.add(subregionId);
+  }
+
+  if (ctx.includeChildren && hasChildren) {
+    await processGadmChildren(ctx, divisionId, subregionId);
+  } else if (ctx.hasSelectedChildren && ctx.childIds) {
+    for (const childId of ctx.childIds) {
+      await ensureRegionMember(subregionId, childId);
+    }
+    ctx.affectedRegionIds.add(subregionId);
+  }
+}
+
+async function addDivisionDirectly(
+  ctx: AddDivisionsCtx,
+  divisionId: number,
+): Promise<void> {
+  ctx.affectedRegionIds.add(ctx.rootRegionId);
+  if (ctx.hasSelectedChildren && ctx.childIds) {
+    for (const childId of ctx.childIds) {
+      await ensureRegionMember(ctx.rootRegionId, childId);
+    }
+    return;
+  }
+
+  if (ctx.customGeometry) {
+    await pool.query(
+      `INSERT INTO region_members (region_id, division_id, custom_geom, custom_name)
+       VALUES ($1, $2, validate_multipolygon(ST_GeomFromGeoJSON($3)), $4)`,
+      [ctx.rootRegionId, divisionId, JSON.stringify(ctx.customGeometry), ctx.customName || null],
+    );
+    return;
+  }
+
+  await ensureRegionMember(ctx.rootRegionId, divisionId);
+}
 
 /**
  * Add administrative divisions to a region
@@ -20,220 +190,59 @@ import { invalidateRegionGeometry, syncImportMatchStatus } from './helpers.js';
  */
 export async function addDivisionsToRegion(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
-  const { divisionIds, createAsSubregions, includeChildren, inheritColor = true, childIds, customName, customGeometry } = req.body;
+  const {
+    divisionIds,
+    createAsSubregions,
+    includeChildren,
+    inheritColor = true,
+    childIds,
+    customName,
+    customGeometry,
+  } = req.body;
 
   if (!Array.isArray(divisionIds) || divisionIds.length === 0) {
     res.status(400).json({ error: 'divisionIds must be a non-empty array' });
     return;
   }
 
-  // Get the region's world view ID and color for creating subregions
   const regionInfo = await pool.query(
     'SELECT world_view_id, color FROM regions WHERE id = $1',
-    [regionId]
+    [regionId],
   );
-
   if (regionInfo.rows.length === 0) {
     res.status(404).json({ error: 'Region not found' });
     return;
   }
 
-  const worldViewId = regionInfo.rows[0].world_view_id;
-  const parentColor = regionInfo.rows[0].color || '#3388ff';
-  const colorToUse = inheritColor ? parentColor : '#3388ff';
-  const createdRegions: { id: number; name: string; divisionId: number }[] = [];
-  const affectedRegionIds = new Set<number>();
+  const ctx: AddDivisionsCtx = {
+    worldViewId: regionInfo.rows[0].world_view_id,
+    rootRegionId: regionId,
+    colorToUse: inheritColor ? (regionInfo.rows[0].color || '#3388ff') : '#3388ff',
+    hasSelectedChildren: Array.isArray(childIds) && childIds.length > 0,
+    childIds: Array.isArray(childIds) ? childIds : undefined,
+    includeChildren,
+    customName,
+    customGeometry,
+    createdRegions: [],
+    affectedRegionIds: new Set<number>(),
+  };
 
-  // Insert all division mappings
   for (const divisionId of divisionIds) {
-    // If createAsSubregions is true, create a subregion and add division there instead
     if (createAsSubregions) {
-      // Get GADM division info
-      const divisionInfo = await pool.query(
-        'SELECT name, has_children FROM administrative_divisions WHERE id = $1',
-        [divisionId]
-      );
-
-      if (divisionInfo.rows.length > 0) {
-        const divisionName = divisionInfo.rows[0].name;
-        const hasChildren = divisionInfo.rows[0].has_children;
-
-        // Use custom name if provided, otherwise use GADM division name
-        const subregionName = customName && customName.trim() ? customName.trim() : divisionName;
-
-        // Check if a region with this name already exists under this parent
-        const existingRegion = await pool.query(
-          'SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2 AND name = $3',
-          [worldViewId, regionId, subregionName]
-        );
-
-        let subregionId: number;
-
-        if (existingRegion.rows.length === 0) {
-          // Create new region as child of current region
-          const newRegion = await pool.query(`
-            INSERT INTO regions (world_view_id, name, parent_region_id, color)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, name
-          `, [worldViewId, subregionName, regionId, colorToUse]);
-
-          subregionId = newRegion.rows[0].id;
-
-          createdRegions.push({
-            id: newRegion.rows[0].id,
-            name: newRegion.rows[0].name,
-            divisionId: divisionId,
-          });
-        } else {
-          subregionId = existingRegion.rows[0].id;
-        }
-
-        // When childIds is provided (user selected specific children via dialog),
-        // we should NOT add the parent division - only the selected children
-        const hasSelectedChildren = Array.isArray(childIds) && childIds.length > 0;
-
-        if (!hasSelectedChildren) {
-          // Add this division as a member of the subregion (NOT the parent region)
-          // First check if it already exists (since we removed the unique constraint)
-          const existing = await pool.query(
-            'SELECT id FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
-            [subregionId, divisionId]
-          );
-          if (existing.rows.length === 0) {
-            await pool.query(
-              `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)`,
-              [subregionId, divisionId]
-            );
-          }
-          affectedRegionIds.add(subregionId);
-        }
-
-        // If includeChildren is true and division has children, add them as subregions too
-        if (includeChildren && hasChildren) {
-          const childrenResult = await pool.query(
-            'SELECT id, name FROM administrative_divisions WHERE parent_id = $1 ORDER BY name',
-            [divisionId]
-          );
-
-          // Filter by childIds if provided
-          const childIdSet = hasSelectedChildren ? new Set(childIds) : null;
-          const childrenToProcess = childIdSet
-            ? childrenResult.rows.filter((c: { id: number }) => childIdSet.has(c.id))
-            : childrenResult.rows;
-
-          for (const child of childrenToProcess) {
-            // Check if a region with this child's name already exists under the new subregion
-            const existingChildRegion = await pool.query(
-              'SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2 AND name = $3',
-              [worldViewId, subregionId, child.name]
-            );
-
-            let childSubregionId: number;
-
-            if (existingChildRegion.rows.length === 0) {
-              const newChildRegion = await pool.query(`
-                INSERT INTO regions (world_view_id, name, parent_region_id, color)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id, name
-              `, [worldViewId, child.name, subregionId, colorToUse]);
-
-              childSubregionId = newChildRegion.rows[0].id;
-
-              createdRegions.push({
-                id: newChildRegion.rows[0].id,
-                name: newChildRegion.rows[0].name,
-                divisionId: child.id,
-              });
-            } else {
-              childSubregionId = existingChildRegion.rows[0].id;
-            }
-
-            // Add child division as member of the child subregion
-            const existingChildMember = await pool.query(
-              'SELECT id FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
-              [childSubregionId, child.id]
-            );
-            if (existingChildMember.rows.length === 0) {
-              await pool.query(
-                `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)`,
-                [childSubregionId, child.id]
-              );
-            }
-            affectedRegionIds.add(childSubregionId);
-          }
-        } else if (hasSelectedChildren) {
-          // Add selected children as simple members of the subregion (not creating new subregions for them)
-          for (const childId of childIds) {
-            const existingChild = await pool.query(
-              'SELECT id FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
-              [subregionId, childId]
-            );
-            if (existingChild.rows.length === 0) {
-              await pool.query(
-                `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)`,
-                [subregionId, childId]
-              );
-            }
-          }
-          affectedRegionIds.add(subregionId);
-        }
-      }
+      await addDivisionAsSubregion(ctx, divisionId);
     } else {
-      // Normal case: add divisions directly to this region (no subregion creation)
-      affectedRegionIds.add(regionId);
-      const hasSelectedChildren = Array.isArray(childIds) && childIds.length > 0;
-
-      if (hasSelectedChildren) {
-        // User selected specific children - add only those, not the parent
-        for (const childId of childIds) {
-          const existingMember = await pool.query(
-            'SELECT id FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
-            [regionId, childId]
-          );
-          if (existingMember.rows.length === 0) {
-            await pool.query(
-              `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)`,
-              [regionId, childId]
-            );
-          }
-        }
-      } else {
-        // No specific children selected - add the division itself
-        // Support custom geometry if provided
-        if (customGeometry) {
-          await pool.query(
-            `INSERT INTO region_members (region_id, division_id, custom_geom, custom_name)
-             VALUES ($1, $2, validate_multipolygon(ST_GeomFromGeoJSON($3)), $4)`,
-            [regionId, divisionId, JSON.stringify(customGeometry), customName || null]
-          );
-        } else {
-          // No custom geometry - check if already exists before inserting
-          const existingMember = await pool.query(
-            'SELECT id FROM region_members WHERE region_id = $1 AND division_id = $2 AND custom_geom IS NULL',
-            [regionId, divisionId]
-          );
-          if (existingMember.rows.length === 0) {
-            await pool.query(
-              `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)`,
-              [regionId, divisionId]
-            );
-          }
-        }
-      }
+      await addDivisionDirectly(ctx, divisionId);
     }
   }
 
-  // Invalidate geometry for this region and all ancestors
   await invalidateRegionGeometry(regionId);
-
-  // Sync match status for all imported regions that received members
-  for (const rid of affectedRegionIds) {
+  for (const rid of ctx.affectedRegionIds) {
     await syncImportMatchStatus(rid);
   }
 
   res.status(201).json({
     added: divisionIds.length,
-    createdRegions: createAsSubregions ? createdRegions : undefined,
+    createdRegions: createAsSubregions ? ctx.createdRegions : undefined,
   });
 }
 
