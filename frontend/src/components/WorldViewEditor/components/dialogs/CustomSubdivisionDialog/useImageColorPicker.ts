@@ -3,6 +3,19 @@ import { API_URL, getAccessToken } from '../../../../../api/fetchUtils';
 import type { SubdivisionGroup } from './types';
 import type { ImageOverlaySettings } from './ImageOverlayDialog';
 
+function recolorGroupAtIndex(
+  groups: SubdivisionGroup[],
+  idx: number | 'unassigned' | null,
+  color: string,
+): SubdivisionGroup[] {
+  // The eyedropper only recolors numbered groups; `'unassigned'` and `null`
+  // have no row in `groups`, so silently no-op rather than rely on the
+  // numeric-vs-string comparison always being false (which would still
+  // return a fresh array on every call).
+  if (typeof idx !== 'number') return groups;
+  return groups.map((g, i) => i === idx ? { ...g, color } : g);
+}
+
 interface UseImageColorPickerParams {
   imageOverlaySettings: ImageOverlaySettings | null;
   selectedGroupIdx: number | 'unassigned' | null;
@@ -155,10 +168,7 @@ export function useImageColorPicker({
     try {
       const pixel = ctx.getImageData(pixelX, pixelY, 1, 1).data;
       const hex = `#${pixel[0].toString(16).padStart(2, '0')}${pixel[1].toString(16).padStart(2, '0')}${pixel[2].toString(16).padStart(2, '0')}`;
-      const targetIdx = selectedGroupIdx;
-      setSubdivisionGroups(prev => prev.map((g, i) =>
-        i === targetIdx ? { ...g, color: saturateColor(hex) } : g
-      ));
+      setSubdivisionGroups(prev => recolorGroupAtIndex(prev, selectedGroupIdx, saturateColor(hex)));
     } catch (err) {
       console.warn('Failed to sample pixel color:', err);
     }
@@ -182,9 +192,7 @@ export function useImageColorPicker({
       const dropper = new (window as any).EyeDropper();
       dropper.open({ signal: controller.signal })
         .then((result: { sRGBHex: string }) => {
-          setSubdivisionGroups(prev => prev.map((g, i) =>
-            i === targetIdx ? { ...g, color: saturateColor(result.sRGBHex) } : g
-          ));
+          setSubdivisionGroups(prev => recolorGroupAtIndex(prev, targetIdx, saturateColor(result.sRGBHex)));
         })
         .catch((err: Error) => {
           if (err.name !== 'AbortError') {

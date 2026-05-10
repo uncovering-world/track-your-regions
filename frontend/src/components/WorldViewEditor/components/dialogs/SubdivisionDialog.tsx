@@ -27,6 +27,28 @@ import { LoadingSpinner } from '../../../shared/LoadingSpinner';
 import type { SubregionNode } from '../../types';
 import { fetchSubdivisions, fetchDivisionUsageCounts } from '../../../../api';
 
+function withDescendantsSelected(node: SubregionNode, selected: boolean): SubregionNode {
+  return {
+    ...node,
+    selected,
+    children: node.children.map(c => withDescendantsSelected(c, selected)),
+  };
+}
+
+function updateSelectionInTree(
+  nodes: SubregionNode[],
+  nodeId: number,
+  selected: boolean,
+): SubregionNode[] {
+  return nodes.map(node => {
+    if (node.id === nodeId) return withDescendantsSelected(node, selected);
+    if (node.children.length > 0) {
+      return { ...node, children: updateSelectionInTree(node.children, nodeId, selected) };
+    }
+    return node;
+  });
+}
+
 export interface SubdivisionResult {
   divisionId: number;
   selectedChildIds: number[];
@@ -172,23 +194,7 @@ export function SubdivisionDialog({
 
   // Toggle selection — unchecking parent unchecks all descendants
   const handleToggleSelection = useCallback((nodeId: number, selected: boolean) => {
-    const updateSelection = (nodes: SubregionNode[]): SubregionNode[] => {
-      return nodes.map(node => {
-        if (node.id === nodeId) {
-          const updateDescendants = (n: SubregionNode): SubregionNode => ({
-            ...n,
-            selected,
-            children: n.children.map(updateDescendants),
-          });
-          return updateDescendants(node);
-        }
-        if (node.children.length > 0) {
-          return { ...node, children: updateSelection(node.children) };
-        }
-        return node;
-      });
-    };
-    setTree(updateSelection(tree));
+    setTree(updateSelectionInTree(tree, nodeId, selected));
   }, [tree]);
 
   // Collect selected IDs from tree

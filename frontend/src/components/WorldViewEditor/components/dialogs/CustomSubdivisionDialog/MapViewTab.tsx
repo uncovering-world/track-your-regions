@@ -34,6 +34,14 @@ import { ImageOverlayDialog, type ImageOverlaySettings } from './ImageOverlayDia
 import { CutDivisionDialog } from '../CutDivisionDialog';
 import { useGeometryLoading } from './useGeometryLoading';
 
+function renameGroupAtIndex(groups: SubdivisionGroup[], idx: number, name: string): SubdivisionGroup[] {
+  return groups.map((g, i) => i === idx ? { ...g, name } : g);
+}
+
+function removeGroupAtIndex(groups: SubdivisionGroup[], idx: number): SubdivisionGroup[] {
+  return groups.filter((_, i) => i !== idx);
+}
+
 function pickHoverCursor(
   activeTool: MapTool,
   featureProps: Record<string, unknown> | null | undefined,
@@ -484,18 +492,14 @@ export function MapViewTab({
                     onChange={(e) => setEditingGroupName(e.target.value)}
                     onBlur={() => {
                       if (editingGroupName.trim()) {
-                        setSubdivisionGroups(prev => prev.map((g, i) =>
-                          i === idx ? { ...g, name: editingGroupName.trim() } : g
-                        ));
+                        setSubdivisionGroups(prev => renameGroupAtIndex(prev, idx, editingGroupName.trim()));
                       }
                       setEditingGroupNameInMap(null);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         if (editingGroupName.trim()) {
-                          setSubdivisionGroups(prev => prev.map((g, i) =>
-                            i === idx ? { ...g, name: editingGroupName.trim() } : g
-                          ));
+                          setSubdivisionGroups(prev => renameGroupAtIndex(prev, idx, editingGroupName.trim()));
                         }
                         setEditingGroupNameInMap(null);
                       } else if (e.key === 'Escape') {
@@ -524,7 +528,7 @@ export function MapViewTab({
               onDelete={() => {
                 // Return members to unassigned
                 setUnassignedDivisions(prev => [...prev, ...group.members]);
-                setSubdivisionGroups(prev => prev.filter((_, i) => i !== idx));
+                setSubdivisionGroups(prev => removeGroupAtIndex(prev, idx));
                 if (selectedGroupIdx === idx) setSelectedGroupIdx(null);
               }}
               sx={{
