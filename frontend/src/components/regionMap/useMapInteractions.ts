@@ -231,12 +231,15 @@ export function useMapInteractions({
 
         if (isCustomWorldView && selectedWorldView) {
           // For context layer clicks, parent comes from the feature's own parent_region_id
-          // (not viewingRegionId, which is the currently selected non-leaf region)
-          const parentRegionId = fromContextLayer
-            ? (clickedFeature.properties?.parent_region_id ?? null)
-            : (viewingRegionId === 'all-leaf'
-              ? (clickedFeature.properties?.parent_region_id ?? meta?.parentRegionId ?? null)
-              : viewingRegionId);
+          // (not viewingRegionId, which is the currently selected non-leaf region).
+          let parentRegionId: number | null;
+          if (fromContextLayer) {
+            parentRegionId = clickedFeature.properties?.parent_region_id ?? null;
+          } else if (viewingRegionId === 'all-leaf') {
+            parentRegionId = clickedFeature.properties?.parent_region_id ?? meta?.parentRegionId ?? null;
+          } else {
+            parentRegionId = viewingRegionId;
+          }
 
           const newRegion: Region = {
             id,
