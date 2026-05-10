@@ -22,6 +22,7 @@ import FolderCopyIcon from '@mui/icons-material/FolderCopy';
 import type { Region, RegionMember } from '../../../../../types';
 import { getMemberKey } from '../../../types';
 import type { SubdivisionGroup } from './types';
+import { removeMemberAtIndex, addMemberAtIndex } from './groupMutations';
 
 interface ListViewTabProps {
   selectedRegion: Region | null;
@@ -291,21 +292,13 @@ export function ListViewTab({
                             const currentMemberKey = getMemberKey(div);
 
                             if (groupIdx !== null) {
-                              setSubdivisionGroups(prev => prev.map((g, i) =>
-                                i === groupIdx
-                                  ? { ...g, members: g.members.filter(m => getMemberKey(m) !== currentMemberKey) }
-                                  : g
-                              ));
+                              setSubdivisionGroups(prev => removeMemberAtIndex(prev, groupIdx, currentMemberKey));
                             } else {
                               setUnassignedDivisions(prev => prev.filter(d => getMemberKey(d) !== currentMemberKey));
                             }
 
                             if (newGroupIdx !== null) {
-                              setSubdivisionGroups(prev => prev.map((g, i) =>
-                                i === newGroupIdx
-                                  ? { ...g, members: [...g.members, div] }
-                                  : g
-                              ));
+                              setSubdivisionGroups(prev => addMemberAtIndex(prev, newGroupIdx, div));
                             } else {
                               setUnassignedDivisions(prev => [...prev, div]);
                             }
@@ -397,20 +390,12 @@ export function ListViewTab({
                     );
 
                     if (currentGroupIdx >= 0) {
-                      setSubdivisionGroups(prev => prev.map((g, i) =>
-                        i === currentGroupIdx
-                          ? { ...g, members: g.members.filter(m => getMemberKey(m) !== memberKey) }
-                          : g
-                      ));
+                      setSubdivisionGroups(prev => removeMemberAtIndex(prev, currentGroupIdx, memberKey));
                     } else {
                       setUnassignedDivisions(prev => prev.filter(d => getMemberKey(d) !== memberKey));
                     }
 
-                    setSubdivisionGroups(prev => prev.map((g, i) =>
-                      i === groupIdx
-                        ? { ...g, members: [...g.members, div!] }
-                        : g
-                    ));
+                    setSubdivisionGroups(prev => addMemberAtIndex(prev, groupIdx, div!));
 
                     setDragOverGroupIdx(null);
                     setDraggingDivisionId(null);
@@ -543,11 +528,7 @@ export function ListViewTab({
               if (!div) return;
 
               if (currentGroupIdx >= 0) {
-                setSubdivisionGroups(prev => prev.map((g, i) =>
-                  i === currentGroupIdx
-                    ? { ...g, members: g.members.filter(m => getMemberKey(m) !== memberKey) }
-                    : g
-                ));
+                setSubdivisionGroups(prev => removeMemberAtIndex(prev, currentGroupIdx, memberKey));
                 setUnassignedDivisions(prev => [...prev, div!]);
               }
 
