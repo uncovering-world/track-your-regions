@@ -33,20 +33,33 @@ function parseComponentsList(componentsList: string | undefined): ParsedLocation
 
   const locations: ParsedLocation[] = [];
 
-  // Match individual component objects
-  // Format: {name: ..., ref: ..., latitude: ..., longitude: ...}
-  const componentRegex = /\{[^}]*name:\s*([^,}]+)[^}]*ref:\s*([^,}]+)[^}]*latitude:\s*([\d.-]+)[^}]*longitude:\s*([\d.-]+)[^}]*\}/gi;
+  // Format: {name: ..., ref: ..., latitude: ..., longitude: ...}. Split into
+  // two passes — find each `{…}` first, then extract fields from inside —
+  // so each individual regex is bounded and not catastrophic.
+  // eslint-disable-next-line sonarjs/slow-regex -- negated class `[^}]+` cannot match past `}`, so the `+` quantifier is committed and there's no backtracking across object boundaries
+  const objectRegex = /\{[^}]+\}/g;
+  const fieldName = /name:\s*([^,}]+)/i;
+  const fieldRef = /ref:\s*([^,}]+)/i;
+  const fieldLat = /latitude:\s*([\d.-]+)/i;
+  const fieldLon = /longitude:\s*([\d.-]+)/i;
 
-  let match;
-  while ((match = componentRegex.exec(componentsList)) !== null) {
-    const name = match[1].trim();
-    const externalRef = match[2].trim();
-    const lat = parseFloat(match[3]);
-    const lon = parseFloat(match[4]);
+  for (const objMatch of componentsList.matchAll(objectRegex)) {
+    const obj = objMatch[0];
+    const nameMatch = obj.match(fieldName);
+    const refMatch = obj.match(fieldRef);
+    const latMatch = obj.match(fieldLat);
+    const lonMatch = obj.match(fieldLon);
+    if (!nameMatch || !refMatch || !latMatch || !lonMatch) continue;
 
-    // Validate coordinates
+    const lat = parseFloat(latMatch[1]);
+    const lon = parseFloat(lonMatch[1]);
     if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
-      locations.push({ name, externalRef, lat, lon });
+      locations.push({
+        name: nameMatch[1].trim(),
+        externalRef: refMatch[1].trim(),
+        lat,
+        lon,
+      });
     }
   }
 

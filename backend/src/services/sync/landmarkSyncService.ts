@@ -275,7 +275,8 @@ async function fetchLandmarkItems(
   for (const lm of landmarks) {
     if ((nameCounts.get(lm.label) || 0) > 1 && lm.description) {
       // Extract a short location hint from the description (e.g., "in Berlin-Tiergarten")
-      const match = lm.description.match(/\bin\s+(.+?)(?:,|\.|$)/i);
+      // Use a negated class instead of `.+?` so the engine doesn't have to backtrack across stop chars.
+      const match = lm.description.match(/\bin\s+([^,.\n]+)/i);
       if (match) {
         lm.label = `${lm.label} (${match[1].trim()})`;
       }
