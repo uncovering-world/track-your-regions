@@ -339,6 +339,7 @@ export async function updatePasswordHash(userId: number, passwordHash: string): 
  * Returns the breach count (0 means not found / safe).
  */
 export async function checkBreachedPassword(password: string): Promise<number> {
+  // eslint-disable-next-line sonarjs/hashing -- SHA-1 is mandated by the Have I Been Pwned k-Anonymity API protocol; only the first 5 hex chars of the digest are sent to the service. The hash is never stored and never used as a password verifier.
   const sha1 = crypto.createHash('sha1').update(password).digest('hex').toUpperCase();
   const prefix = sha1.substring(0, 5);
   const suffix = sha1.substring(5);
