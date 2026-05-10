@@ -11,7 +11,67 @@ import {
   fetchRootDivisions,
   fetchSubdivisions,
 } from '../../api';
-import type { Region } from '../../types';
+import type { AdministrativeDivision, Region } from '../../types';
+
+interface MetadataEntry {
+  name: string;
+  hasChildren?: boolean;
+  hasSubregions?: boolean;
+  color?: string;
+  parentRegionId?: number | null;
+  focusBbox?: [number, number, number, number] | null;
+  anchorPoint?: [number, number] | null;
+}
+
+type MetadataLookup = Record<number, MetadataEntry>;
+
+function isRegion(item: { id: number; name: string }): item is Region {
+  return 'hasSubregions' in item || 'parentRegionId' in item;
+}
+
+function addRootRegionsToLookup(lookup: MetadataLookup, rootRegions: Region[]): void {
+  for (const region of rootRegions) {
+    lookup[region.id] = {
+      name: region.name,
+      hasSubregions: region.hasSubregions,
+      color: region.color ?? undefined,
+      parentRegionId: region.parentRegionId,
+      focusBbox: region.focusBbox,
+      anchorPoint: region.anchorPoint,
+    };
+  }
+}
+
+function addRegionToLookup(lookup: MetadataLookup, region: Region): void {
+  lookup[region.id] = {
+    name: region.name,
+    hasSubregions: region.hasSubregions,
+    color: region.color ?? undefined,
+    parentRegionId: region.parentRegionId,
+    focusBbox: region.focusBbox,
+    anchorPoint: region.anchorPoint,
+  };
+}
+
+function addDivisionToLookup(lookup: MetadataLookup, division: AdministrativeDivision): void {
+  lookup[division.id] = {
+    name: division.name,
+    hasChildren: division.hasChildren,
+  };
+}
+
+function addMetadataItemsToLookup(
+  lookup: MetadataLookup,
+  metadata: Array<Region | AdministrativeDivision>,
+): void {
+  for (const item of metadata) {
+    if (isRegion(item)) {
+      addRegionToLookup(lookup, item);
+    } else {
+      addDivisionToLookup(lookup, item);
+    }
+  }
+}
 
 export function useRegionMetadata(
   viewingRegionId: 'all-leaf' | number,
@@ -56,45 +116,9 @@ export function useRegionMetadata(
   // Create a lookup map for metadata by ID
   // Include both current view metadata AND root regions for tooltip lookups
   const metadataById = useMemo(() => {
-    const lookup: Record<number, {
-      name: string;
-      hasChildren?: boolean;
-      hasSubregions?: boolean;
-      color?: string;
-      parentRegionId?: number | null;
-      focusBbox?: [number, number, number, number] | null;
-      anchorPoint?: [number, number] | null;
-    }> = {};
-
-    // Add root regions first (for hover tooltips when at root level)
-    if (isCustomWorldView && rootRegions) {
-      for (const region of rootRegions) {
-        lookup[region.id] = {
-          name: region.name,
-          hasSubregions: region.hasSubregions,
-          color: region.color ?? undefined,
-          parentRegionId: region.parentRegionId,
-          focusBbox: region.focusBbox,
-          anchorPoint: region.anchorPoint,
-        };
-      }
-    }
-
-    // Add current view metadata (may override root regions, which is fine)
-    if (metadata) {
-      for (const item of metadata) {
-        const region = item as Region;
-        lookup[item.id] = {
-          name: item.name,
-          hasChildren: 'hasChildren' in item ? item.hasChildren : undefined,
-          hasSubregions: 'hasSubregions' in item ? item.hasSubregions : undefined,
-          color: 'color' in item ? region.color ?? undefined : undefined,
-          parentRegionId: 'parentRegionId' in item ? region.parentRegionId : undefined,
-          focusBbox: 'focusBbox' in item ? region.focusBbox : undefined,
-          anchorPoint: 'anchorPoint' in item ? region.anchorPoint : undefined,
-        };
-      }
-    }
+    const lookup: MetadataLookup = {};
+    if (isCustomWorldView && rootRegions) addRootRegionsToLookup(lookup, rootRegions);
+    if (metadata) addMetadataItemsToLookup(lookup, metadata);
     return lookup;
   }, [metadata, rootRegions, isCustomWorldView]);
 
