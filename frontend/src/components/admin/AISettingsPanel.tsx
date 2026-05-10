@@ -173,15 +173,17 @@ export function AISettingsPanel() {
               Update Pricing
             </Button>
           </Box>
-          {settingsLoading ? (
+          {settingsLoading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
               <CircularProgress size={24} />
             </Box>
-          ) : settingsError || !settingsData ? (
+          )}
+          {!settingsLoading && (settingsError || !settingsData) && (
             <Alert severity="error">
               Failed to load AI settings{settingsErrorObj instanceof Error ? `: ${settingsErrorObj.message}` : ''}.
             </Alert>
-          ) : (
+          )}
+          {!settingsLoading && !settingsError && settingsData && (
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -278,15 +280,17 @@ export function AISettingsPanel() {
             Usage Dashboard
           </Typography>
 
-          {usageLoading ? (
+          {usageLoading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
               <CircularProgress size={24} />
             </Box>
-          ) : usageError || !usageData ? (
+          )}
+          {!usageLoading && (usageError || !usageData) && (
             <Alert severity="error">
               Failed to load AI usage data{usageErrorObj instanceof Error ? `: ${usageErrorObj.message}` : ''}.
             </Alert>
-          ) : (
+          )}
+          {!usageLoading && !usageError && usageData && (
             <>
               {/* Summary chips */}
               <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>

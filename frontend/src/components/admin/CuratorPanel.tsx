@@ -214,15 +214,14 @@ function ScopeChip({
   onDelete: () => void;
   disabled: boolean;
 }) {
-  const icon =
-    scope.scopeType === 'global' ? <PublicIcon /> :
-    scope.scopeType === 'region' ? <MapIcon /> :
-    <CategoryIcon />;
+  let icon: JSX.Element = <CategoryIcon />;
+  if (scope.scopeType === 'global') icon = <PublicIcon />;
+  else if (scope.scopeType === 'region') icon = <MapIcon />;
 
-  const label =
-    scope.scopeType === 'global' ? 'Global' :
-    scope.scopeType === 'region' ? scope.regionName || `Region #${scope.regionId}` :
-    scope.categoryName || `Category #${scope.categoryId}`;
+  let label: string;
+  if (scope.scopeType === 'global') label = 'Global';
+  else if (scope.scopeType === 'region') label = scope.regionName || `Region #${scope.regionId}`;
+  else label = scope.categoryName || `Category #${scope.categoryId}`;
 
   return (
     <Chip
@@ -524,13 +523,13 @@ function ActivityDialog({
     <Dialog open={!!userId} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Curator Activity Log</DialogTitle>
       <DialogContent>
-        {isLoading ? (
-          <LoadingSpinner size={24} padding="12px 0" />
-        ) : !data?.activity.length ? (
+        {isLoading && <LoadingSpinner size={24} padding="12px 0" />}
+        {!isLoading && !data?.activity.length && (
           <Typography color="text.secondary" sx={{ py: 2 }}>
             No curation activity recorded yet.
           </Typography>
-        ) : (
+        )}
+        {!isLoading && data?.activity.length ? (
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -552,7 +551,7 @@ function ActivityDialog({
               ))}
             </TableBody>
           </Table>
-        )}
+        ) : null}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
