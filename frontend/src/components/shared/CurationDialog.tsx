@@ -68,34 +68,28 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   removed_from_region: { label: 'Removed from region', color: '#F59E0B' },
 };
 
+function truncate40(value: unknown): string {
+  const str = String(value || '(empty)');
+  return str.length > 40 ? str.slice(0, 40) + '...' : str;
+}
+
+function formatEditedChanges(d: Record<string, unknown>): string | null {
+  const changes: string[] = [];
+  for (const [field, val] of Object.entries(d)) {
+    const change = val as { old?: unknown; new?: unknown } | undefined;
+    if (change?.old === undefined || change?.new === undefined) continue;
+    changes.push(`${field}: "${truncate40(change.old)}" → "${truncate40(change.new)}"`);
+  }
+  return changes.length > 0 ? changes.join('\n') : null;
+}
+
 function formatLogDetails(entry: CurationLogEntry): string | null {
   if (!entry.details) return null;
   const d = entry.details as Record<string, unknown>;
 
-  if (entry.action === 'rejected' && d.reason) {
-    return `Reason: ${d.reason}`;
-  }
-
-  if (entry.action === 'edited') {
-    const changes: string[] = [];
-    for (const [field, val] of Object.entries(d)) {
-      const change = val as { old?: unknown; new?: unknown } | undefined;
-      if (change?.old !== undefined && change?.new !== undefined) {
-        const oldStr = String(change.old || '(empty)');
-        const newStr = String(change.new || '(empty)');
-        // Truncate long values
-        const truncOld = oldStr.length > 40 ? oldStr.slice(0, 40) + '...' : oldStr;
-        const truncNew = newStr.length > 40 ? newStr.slice(0, 40) + '...' : newStr;
-        changes.push(`${field}: "${truncOld}" → "${truncNew}"`);
-      }
-    }
-    return changes.length > 0 ? changes.join('\n') : null;
-  }
-
-  if (entry.action === 'created' && d.name) {
-    return `Name: ${d.name}`;
-  }
-
+  if (entry.action === 'rejected' && d.reason) return `Reason: ${d.reason}`;
+  if (entry.action === 'edited') return formatEditedChanges(d);
+  if (entry.action === 'created' && d.name) return `Name: ${d.name}`;
   return null;
 }
 

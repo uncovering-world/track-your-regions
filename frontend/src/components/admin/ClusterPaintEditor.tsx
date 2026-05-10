@@ -350,14 +350,19 @@ export default function ClusterPaintEditor({
   }, [tool, clientToPipeline, openEndpoints]);
 
   // --- Keyboard shortcuts ---
+  const handleToolShortcut = useCallback((e: KeyboardEvent): boolean => {
+    if (e.key === 'f' || e.key === 'F') { setTool('fill'); e.preventDefault(); return true; }
+    if (e.key === 'e' || e.key === 'E') { setTool('eraser'); e.preventDefault(); return true; }
+    if (e.key === 'l' || e.key === 'L') { setTool('line'); setPolyPoints([]); e.preventDefault(); return true; }
+    if (e.key === 'Escape') { setPolyPoints([]); return true; }
+    if (e.key === 'Enter' && tool === 'line') { finishPolyline(false); e.preventDefault(); return true; }
+    return false;
+  }, [tool, finishPolyline]);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    if (handleToolShortcut(e)) return;
     const mod = e.ctrlKey || e.metaKey;
-    if (e.key === 'f' || e.key === 'F') { setTool('fill'); e.preventDefault(); return; }
-    if (e.key === 'e' || e.key === 'E') { setTool('eraser'); e.preventDefault(); return; }
-    if (e.key === 'l' || e.key === 'L') { setTool('line'); setPolyPoints([]); e.preventDefault(); return; }
-    if (e.key === 'Escape') { setPolyPoints([]); return; }
-    if (e.key === 'Enter' && tool === 'line') { finishPolyline(false); e.preventDefault(); return; }
     if (e.key === 'z' && mod && !e.shiftKey) { undo(); e.preventDefault(); return; }
     if ((e.key === 'z' && mod && e.shiftKey) || (e.key === 'Z' && mod)) { redo(); e.preventDefault(); return; }
     if (e.key === '[') { setEraserSize(s => Math.max(1, s - 2)); return; }
@@ -365,7 +370,7 @@ export default function ClusterPaintEditor({
     if (e.key === ' ') { setIsPanning(true); e.preventDefault(); return; }
     const digit = parseInt(e.key);
     if (digit >= 1 && digit <= paletteRef.current.length) setActiveLabel(paletteRef.current[digit - 1].label);
-  }, [undo, redo, finishPolyline, tool]);
+  }, [undo, redo, handleToolShortcut]);
 
   useEffect(() => {
     const upHandler = (e: KeyboardEvent) => { if (e.key === ' ') setIsPanning(false); };
