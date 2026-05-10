@@ -338,6 +338,61 @@ For the full reference with examples, see [maplibre-patterns.md](maplibre-patter
 - Don't create deep directory nesting. Two levels max (`components/feature/file.ts`).
 - Don't scatter extracted files across unrelated directories.
 
+## Linter Suppressions
+
+Suppressions hide real issues over time. Treat each one as a deliberate exception that needs a written justification — like a `// HACK` in a code review.
+
+### The rules
+
+1. **No file-level or block-level disables.** Never write `/* eslint-disable rule */` at the top of a file or `/* eslint-disable rule */` … `/* eslint-enable rule */` around a block. They suppress the rule for everything that follows, including new code added later that the original author never reviewed.
+2. **Always inline (one line, one suppression).** Use `// eslint-disable-next-line <rule>` or trailing `// eslint-disable-line <rule>`. Each disabled site is reviewed on its own.
+3. **Always include a `-- reason`.** Every suppression must end with `-- <why>` explaining *what* makes the flagged code safe in this specific spot. The reason is what makes the suppression auditable.
+4. **Name every rule explicitly.** Never use a bare `// eslint-disable-next-line` — that disables every rule on the next line and is far too broad. Always name each rule you intend to suppress. A single comment may list multiple rules (e.g. `// eslint-disable-next-line rule-a, rule-b -- reason`), but each rule must be named, and the `-- reason` must justify *all* of them.
+5. **Same policy for every linter.** TypeScript (`@ts-expect-error`, `@ts-ignore`), Semgrep (`nosemgrep`), Ruff (`# noqa`), CodeQL (`lgtm[rule]`) — all follow the same inline-with-reason rule. Prefer `@ts-expect-error` over `@ts-ignore` (it errors when no longer needed).
+6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern).
+
+### Examples
+
+```typescript
+// ✅ GOOD — inline, single rule, with reason
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath validated by safeCachePath: must match wikivoyage-cache*.json under CACHE_DIR
+unlinkSync(filePath);
+
+// ✅ GOOD — TypeScript suppression with reason, prefer @ts-expect-error
+// @ts-expect-error -- passport-apple types are incomplete; module ships without callback typings
+import AppleStrategy from 'passport-apple';
+
+// ❌ BAD — file-level, hides everything that follows
+/* eslint-disable security/detect-non-literal-fs-filename */
+
+// ❌ BAD — no rule named, suppresses every rule on the next line
+// eslint-disable-next-line
+const x: any = doSomething();
+
+// ❌ BAD — no reason, future readers can't tell if the suppression is still valid
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const cv: any = loadOpenCV();
+```
+
+### Writing a good reason
+
+The reason should answer "why is this safe right now?" Not just restate the rule.
+
+| Reason | Verdict |
+|---|---|
+| `-- false positive` | ❌ Useless — every suppression's author thinks it's a false positive |
+| `-- ignore` | ❌ Useless |
+| `-- needed for OpenCV.js` | ⚠️ Vague — *why* is OpenCV.js different? |
+| `-- OpenCV.js (cv / cv.Mat) has no TypeScript types` | ✅ Specific and actionable |
+| `-- filePath validated by safeCachePath: must match wikivoyage-cache*.json under CACHE_DIR` | ✅ Names the upstream guard that makes the call safe |
+| `-- bounded character classes between literal anchors; no nested quantifiers, so no catastrophic backtracking` | ✅ Explains the regex-safety reasoning the rule missed |
+
+### When the rule is wrong everywhere
+
+If a rule produces enough false positives that you'd suppress it in dozens of places, disable it in the config (`eslint.config.mjs`) with an inline comment naming why — don't sprinkle disables. The current `security/detect-object-injection: 'off'` is an example: it's globally noisy with TypeScript, so it's off at config level rather than suppressed inline 100+ times.
+
+But: don't reach for config-level disable just because a rule is *occasionally* annoying. Inline-with-reason is the default; config-level is the escape hatch when a rule has no signal at all in this codebase.
+
 ## Refactoring Hygiene
 
 When modifying existing code, always clean up leftovers from the change. These are the most common sources of CodeQL quality findings:
