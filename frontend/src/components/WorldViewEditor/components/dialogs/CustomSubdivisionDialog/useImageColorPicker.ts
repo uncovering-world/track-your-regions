@@ -57,7 +57,10 @@ export function useImageColorPicker({
       fetch(proxyUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
-        .then(r => { if (!r.ok) throw new Error(`Proxy ${r.status}`); return r.blob(); })
+        .then(r => {
+          if (!r.ok) throw new Error(`Proxy ${r.status}`);
+          return r.blob();
+        })
         .then(blob => {
           if (cancelled) return;
           const blobUrl = URL.createObjectURL(blob);
@@ -116,7 +119,8 @@ export function useImageColorPicker({
     const newL = Math.max(0.25, Math.min(0.55, l));
     // HSL to RGB
     const hue2rgb = (p: number, q: number, t: number) => {
-      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
       if (t < 1/6) return p + (q - p) * 6 * t;
       if (t < 1/2) return q;
       if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
