@@ -1,25 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  Button,
-  Typography,
   Box,
-  Chip,
-  CircularProgress,
   Alert,
   Tooltip,
   FormControlLabel,
   Checkbox,
   LinearProgress,
-  ToggleButton,
-  ToggleButtonGroup,
-  IconButton,
+  Typography,
 } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import StopIcon from '@mui/icons-material/Stop';
-import DrawIcon from '@mui/icons-material/Draw';
-import LayersIcon from '@mui/icons-material/Layers';
-import HubIcon from '@mui/icons-material/Hub';
-import SettingsIcon from '@mui/icons-material/Settings';
 import MapGL, { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { useQuery } from '@tanstack/react-query';
 import * as turf from '@turf/turf';
@@ -34,6 +22,7 @@ import {
   fetchDisplayGeometryStatus,
   updateRegionGeometry,
   fetchRegionGeometry,
+  type ComputeProgressEvent,
 } from '../../../api';
 import type { Region, WorldView } from '../../../types';
 import type { DisplayMode } from '../types';
@@ -41,6 +30,125 @@ import { useComputationStatus } from '../hooks';
 import { CustomBoundaryDialog } from '../../CustomBoundaryDialog';
 import { HullEditorDialog } from '../../HullEditorDialog';
 import { useAppTheme } from '../../../theme';
+import {
+  ActionToolbar,
+  BatchProgressSection,
+  MapStateOverlay,
+  type ToolbarStyles,
+} from './GeometryMapPanelParts';
+
+/**
+ * Resolve which geometry to stage when entering the "redefine boundaries"
+ * flow. Returns null when no geometry is available (caller alerts).
+ */
+interface ComputedRegionPatch {
+  usesHull?: boolean;
+  focusBbox?: [number, number, number, number] | null;
+  anchorPoint?: [number, number] | null;
+}
+
+async function runSingleRegionCompute(
+  regionId: number,
+  forceRecompute: boolean,
+  skipSnapping: boolean,
+  onEvent: (event: ComputeProgressEvent) => void,
+): Promise<ComputedRegionPatch | undefined> {
+  const result = await computeRegionGeometryWithProgress(
+    regionId, forceRecompute, onEvent, skipSnapping,
+  );
+  return result.data as ComputedRegionPatch | undefined;
+}
+
+function mergeComputedRegion(region: Region, data: ComputedRegionPatch): Region {
+  return {
+    ...region,
+    isCustomBoundary: false,
+    ...(data.usesHull !== undefined && { usesHull: data.usesHull }),
+    ...(data.focusBbox !== undefined && { focusBbox: data.focusBbox }),
+    ...(data.anchorPoint !== undefined && { anchorPoint: data.anchorPoint }),
+  };
+}
+
+async function pickStagedGeometriesForRedefine(
+  selectedRegion: Region,
+  selectedRegionGeometry: unknown,
+): Promise<GeoJSON.FeatureCollection | null> {
+  if (selectedRegion.isCustomBoundary && selectedRegionGeometry) {
+    return { type: 'FeatureCollection', features: [selectedRegionGeometry as GeoJSON.Feature] };
+  }
+  const memberGeomsFC = await fetchRegionMemberGeometries(selectedRegion.id);
+  if (memberGeomsFC && memberGeomsFC.features.length > 0) return memberGeomsFC;
+  if (selectedRegionGeometry) {
+    return { type: 'FeatureCollection', features: [selectedRegionGeometry as GeoJSON.Feature] };
+  }
+  return null;
+}
+
+interface ComputeProgressBarProps {
+  logs: ComputeProgressEvent[];
+  borderColor: string;
+  uiFont: string;
+  monoFont: string;
+  mutedColor: string;
+}
+
+function pickProgressMeta(logs: ComputeProgressEvent[]) {
+  const lastLog = logs[logs.length - 1];
+  const elapsed = lastLog?.elapsed || 0;
+  const stepMatch = lastLog?.step?.match(/Step (\d+)\/(\d+)/);
+  const current = stepMatch ? parseInt(stepMatch[1]) : 0;
+  const total = stepMatch ? parseInt(stepMatch[2]) : 6;
+  const remaining = current > 0 ? Math.max(0, ((elapsed / current) * total) - elapsed) : 0;
+  const step = lastLog?.step?.replace(/\(\d+\.\d+s\)/, '').trim() || 'Processing...';
+  return { step, elapsed, current, total, remaining };
+}
+
+function ComputeProgressBar({ logs, borderColor, uiFont, monoFont, mutedColor }: ComputeProgressBarProps) {
+  const { step, elapsed, current, total, remaining } = pickProgressMeta(logs);
+  const progress = total > 0 ? (current / total) * 100 : 0;
+  return (
+    <Box sx={{ px: 2, py: 0.75, bgcolor: '#f0f7f6', borderBottom: `1px solid ${borderColor}`, flexShrink: 0 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+        <Typography sx={{ fontFamily: uiFont, fontSize: '0.7rem', color: mutedColor }}>
+          {step}
+        </Typography>
+        <Typography sx={{ fontFamily: monoFont, fontSize: '0.65rem', color: mutedColor }}>
+          {elapsed.toFixed(0)}s {remaining > 0 && `(~${remaining.toFixed(0)}s left)`}
+        </Typography>
+      </Box>
+      <LinearProgress variant="determinate" value={Math.min(progress, 100)} sx={{ height: 4, borderRadius: 1 }} />
+    </Box>
+  );
+}
+
+interface ComputeProgressOutcomeProps {
+  logs: ComputeProgressEvent[];
+  onDismiss: () => void;
+}
+
+interface ComputeCompleteData { points?: number; numPolygons?: number; numHoles?: number }
+
+function ComputeProgressOutcome({ logs, onDismiss }: ComputeProgressOutcomeProps) {
+  const lastLog = logs[logs.length - 1];
+  if (lastLog?.type === 'error') {
+    return (
+      <Alert severity="error" sx={{ mx: 2, my: 0.5, py: 0 }} onClose={onDismiss}>
+        {lastLog.message || 'Computation failed'}
+      </Alert>
+    );
+  }
+  if (lastLog?.type === 'complete') {
+    const data = lastLog.data as ComputeCompleteData | undefined;
+    return (
+      <Alert severity="success" sx={{ mx: 2, my: 0.5, py: 0 }} onClose={onDismiss}>
+        Done in {lastLog.elapsed?.toFixed(1)}s
+        {data?.points && ` | ${data.points.toLocaleString()} pts`}
+        {data?.numPolygons && ` | ${data.numPolygons} polys`}
+      </Alert>
+    );
+  }
+  return null;
+}
 
 function fitMapToRegion(
   map: MapRef,
@@ -167,25 +275,13 @@ export function GeometryMapPanel({
     setIsComputingSingleRegion(true);
     setComputeProgressLogs([]);
     try {
-      const result = await computeRegionGeometryWithProgress(
-        selectedRegion.id, forceRecompute,
-        (event) => setComputeProgressLogs(prev => [...prev, event]),
+      const data = await runSingleRegionCompute(
+        selectedRegion.id,
+        forceRecompute,
         skipSnapping,
+        event => setComputeProgressLogs(prev => [...prev, event]),
       );
-      const data = result.data as {
-        usesHull?: boolean;
-        focusBbox?: [number, number, number, number] | null;
-        anchorPoint?: [number, number] | null;
-      } | undefined;
-      if (data) {
-        onSelectedRegionChange({
-          ...selectedRegion,
-          isCustomBoundary: false,
-          ...(data.usesHull !== undefined && { usesHull: data.usesHull }),
-          ...(data.focusBbox !== undefined && { focusBbox: data.focusBbox }),
-          ...(data.anchorPoint !== undefined && { anchorPoint: data.anchorPoint }),
-        });
-      }
+      if (data) onSelectedRegionChange(mergeComputedRegion(selectedRegion, data));
       onInvalidateQueries({ regionGeometryId: selectedRegion.id, regions: true });
     } catch (e) {
       console.error('Failed to compute:', e);
@@ -197,16 +293,12 @@ export function GeometryMapPanel({
 
   const handleRedefineBoundaries = useCallback(async () => {
     if (!selectedRegion) return;
-    if (selectedRegion.isCustomBoundary && selectedRegionGeometry) {
-      setStagedGeometries({ type: 'FeatureCollection', features: [selectedRegionGeometry as unknown as GeoJSON.Feature] });
-    } else {
-      const memberGeomsFC = await fetchRegionMemberGeometries(selectedRegion.id);
-      if (!memberGeomsFC || memberGeomsFC.features.length === 0) {
-        if (selectedRegionGeometry) {
-          setStagedGeometries({ type: 'FeatureCollection', features: [selectedRegionGeometry as unknown as GeoJSON.Feature] });
-        } else { alert('No geometries available.'); return; }
-      } else { setStagedGeometries(memberGeomsFC); }
+    const staged = await pickStagedGeometriesForRedefine(selectedRegion, selectedRegionGeometry);
+    if (staged === null) {
+      alert('No geometries available.');
+      return;
     }
+    setStagedGeometries(staged);
     setCustomBoundaryDialogOpen(true);
   }, [selectedRegion, selectedRegionGeometry]);
 
@@ -245,150 +337,45 @@ export function GeometryMapPanel({
     px: 1.5,
   };
 
+  const toolbarStyles: ToolbarStyles = {
+    surface: P.light.surface,
+    border: P.light.border,
+    text: P.light.text,
+    textMuted: P.light.textMuted,
+    primary: P.accent.primary,
+    uiFont: P.font.ui,
+    monoFont: P.font.mono,
+  };
+
+  const fillColor = selectedRegion?.color || '#3388ff';
+  const lineWidth = crossesDateline ? 0 : 2;
+
   return (
     <>
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-        {/* ── ACTION TOOLBAR (overlays top of map area) ── */}
-        <Box sx={{
-          px: 2, py: 1,
-          bgcolor: P.light.surface,
-          borderBottom: `1px solid ${P.light.border}`,
-          display: 'flex',
-          gap: 1,
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          flexShrink: 0,
-        }}>
-          {selectedRegion ? (
-            <>
-              {/* Region info */}
-              <Box sx={{
-                display: 'flex', alignItems: 'center', gap: 1, mr: 1,
-                borderRight: `1px solid ${P.light.border}`, pr: 2,
-              }}>
-                <Box sx={{ width: 10, height: 10, bgcolor: selectedRegion.color || '#3388ff', borderRadius: '2px', border: '1px solid rgba(0,0,0,0.1)' }} />
-                <Typography sx={{ fontFamily: P.font.ui, fontWeight: 600, fontSize: '0.85rem', color: P.light.text }}>
-                  {selectedRegion.name}
-                </Typography>
-                <Chip
-                  size="small"
-                  label="Hull"
-                  variant={selectedRegion.usesHull ? 'filled' : 'outlined'}
-                  color={selectedRegion.usesHull ? 'warning' : 'default'}
-                  onClick={() => onToggleHull(selectedRegion)}
-                  sx={{ height: 20, fontSize: '0.65rem', cursor: 'pointer' }}
-                />
-                {selectedRegion.isCustomBoundary && <Chip size="small" label="Custom" sx={{ height: 20, fontSize: '0.65rem' }} color="info" />}
-              </Box>
+        <ActionToolbar
+          selectedRegion={selectedRegion}
+          displayMode={displayMode}
+          showOptions={showOptions}
+          isComputing={isComputing}
+          isComputingSingleRegion={isComputingSingleRegion}
+          isResettingToGADM={isResettingToGADM}
+          regionsCount={regions.length}
+          geojsonHasFeatures={geojsonData.features.length > 0}
+          toolBtnSx={toolBtnSx}
+          styles={toolbarStyles}
+          onToggleHull={onToggleHull}
+          onComputeSingleRegion={handleComputeSingleRegion}
+          onRedefineBoundaries={handleRedefineBoundaries}
+          onResetToGADM={handleResetToGADM}
+          onSetDisplayMode={setDisplayMode}
+          onSetShowOptions={setShowOptions}
+          onOpenHullEditor={() => setHullEditorOpen(true)}
+          onStartComputation={handleStartComputation}
+          onCancelComputation={handleCancelComputation}
+        />
 
-              {/* Geometry actions */}
-              <Tooltip title={geojsonData.features.length > 0 ? 'Recompute geometry from divisions' : 'Compute geometry'}>
-                <span>
-                  <Button
-                    size="small" variant="outlined" color="primary"
-                    onClick={handleComputeSingleRegion}
-                    disabled={isComputingSingleRegion || isComputing}
-                    startIcon={isComputingSingleRegion ? <CircularProgress size={12} /> : <RefreshIcon sx={{ fontSize: '16px !important' }} />}
-                    sx={toolBtnSx}
-                  >
-                    {isComputingSingleRegion ? 'Computing...' : 'Compute'}
-                  </Button>
-                </span>
-              </Tooltip>
-
-              <Button
-                size="small" variant="outlined"
-                color={selectedRegion.isCustomBoundary ? 'info' : 'primary'}
-                onClick={handleRedefineBoundaries}
-                startIcon={<DrawIcon sx={{ fontSize: '16px !important' }} />}
-                sx={toolBtnSx}
-              >
-                Redefine
-              </Button>
-
-              {selectedRegion.isCustomBoundary && (
-                <Tooltip title="Reset to original GADM divisions">
-                  <span>
-                    <Button
-                      size="small" variant="outlined" color="warning"
-                      onClick={handleResetToGADM}
-                      disabled={isResettingToGADM || isComputingSingleRegion}
-                      startIcon={isResettingToGADM ? <CircularProgress size={12} /> : <RefreshIcon sx={{ fontSize: '16px !important' }} />}
-                      sx={toolBtnSx}
-                    >
-                      Reset
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
-
-              {/* Display mode + hull editor for hull regions */}
-              {selectedRegion.usesHull && (
-                <>
-                  <ToggleButtonGroup
-                    size="small"
-                    value={displayMode}
-                    exclusive
-                    onChange={(_, v) => { if (v !== null) setDisplayMode(v); }}
-                    sx={{ ml: 0.5 }}
-                  >
-                    <ToggleButton value="real" sx={{ py: 0.25, px: 0.75, gap: 0.5 }}>
-                      <Tooltip title="Show actual island polygons"><LayersIcon sx={{ fontSize: 16 }} /></Tooltip>
-                      <Typography sx={{ fontSize: '0.65rem', fontFamily: P.font.ui, textTransform: 'none' }}>Islands</Typography>
-                    </ToggleButton>
-                    <ToggleButton value="hull" sx={{ py: 0.25, px: 0.75, gap: 0.5 }}>
-                      <Tooltip title="Show convex hull envelope"><HubIcon sx={{ fontSize: 16 }} /></Tooltip>
-                      <Typography sx={{ fontSize: '0.65rem', fontFamily: P.font.ui, textTransform: 'none' }}>Hull</Typography>
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-
-                  <Tooltip title="Edit hull envelope parameters">
-                    <Button
-                      size="small" variant="outlined" color="warning"
-                      onClick={() => setHullEditorOpen(true)}
-                      startIcon={<HubIcon sx={{ fontSize: '16px !important' }} />}
-                      sx={toolBtnSx}
-                    >
-                      Edit Hull
-                    </Button>
-                  </Tooltip>
-                </>
-              )}
-
-              {/* Options toggle */}
-              <Tooltip title="Computation options">
-                <IconButton size="small" onClick={() => setShowOptions(!showOptions)} sx={{ ml: 'auto' }}>
-                  <SettingsIcon sx={{ fontSize: 16, color: showOptions ? P.accent.primary : P.light.textMuted }} />
-                </IconButton>
-              </Tooltip>
-            </>
-          ) : (
-            <>
-              <Typography sx={{ fontFamily: P.font.ui, fontSize: '0.82rem', color: P.light.textMuted, fontStyle: 'italic', flex: 1 }}>
-                Select a region to view geometry
-              </Typography>
-              {/* Batch compute all */}
-              {isComputing ? (
-                <Button size="small" variant="outlined" color="error" onClick={handleCancelComputation} startIcon={<StopIcon />} sx={toolBtnSx}>
-                  Cancel
-                </Button>
-              ) : (
-                <Button
-                  size="small" variant="outlined"
-                  onClick={handleStartComputation}
-                  disabled={regions.length === 0}
-                  startIcon={<RefreshIcon sx={{ fontSize: '16px !important' }} />}
-                  sx={toolBtnSx}
-                >
-                  Compute All
-                </Button>
-              )}
-            </>
-          )}
-        </Box>
-
-        {/* ── Options row (collapsible) ── */}
         {showOptions && selectedRegion && (
           <Box sx={{
             px: 2, py: 0.5,
@@ -420,80 +407,33 @@ export function GeometryMapPanel({
           </Box>
         )}
 
-        {/* ── Computation progress ── */}
-        {isComputingSingleRegion && computeProgressLogs.length > 0 && (() => {
-          const lastLog = computeProgressLogs[computeProgressLogs.length - 1];
-          const elapsed = lastLog?.elapsed || 0;
-          const stepMatch = lastLog?.step?.match(/Step (\d+)\/(\d+)/);
-          const currentStep = stepMatch ? parseInt(stepMatch[1]) : 0;
-          const totalSteps = stepMatch ? parseInt(stepMatch[2]) : 6;
-          const progress = totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0;
-          const remaining = currentStep > 0 ? Math.max(0, ((elapsed / currentStep) * totalSteps) - elapsed) : 0;
-          return (
-            <Box sx={{ px: 2, py: 0.75, bgcolor: '#f0f7f6', borderBottom: `1px solid ${P.light.border}`, flexShrink: 0 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                <Typography sx={{ fontFamily: P.font.ui, fontSize: '0.7rem', color: P.light.textMuted }}>
-                  {lastLog?.step?.replace(/\(\d+\.\d+s\)/, '').trim() || 'Processing...'}
-                </Typography>
-                <Typography sx={{ fontFamily: P.font.mono, fontSize: '0.65rem', color: P.light.textMuted }}>
-                  {elapsed.toFixed(0)}s {remaining > 0 && `(~${remaining.toFixed(0)}s left)`}
-                </Typography>
-              </Box>
-              <LinearProgress variant="determinate" value={Math.min(progress, 100)} sx={{ height: 4, borderRadius: 1 }} />
-            </Box>
-          );
-        })()}
-
-        {!isComputingSingleRegion && computeProgressLogs.length > 0 && (() => {
-          const lastLog = computeProgressLogs[computeProgressLogs.length - 1];
-          if (lastLog?.type === 'error') {
-            return <Alert severity="error" sx={{ mx: 2, my: 0.5, py: 0 }} onClose={() => setComputeProgressLogs([])}>
-              {lastLog.message || 'Computation failed'}
-            </Alert>;
-          }
-          if (lastLog?.type === 'complete') {
-            const data = lastLog.data as { points?: number; numPolygons?: number; numHoles?: number } | undefined;
-            return <Alert severity="success" sx={{ mx: 2, my: 0.5, py: 0 }} onClose={() => setComputeProgressLogs([])}>
-              Done in {lastLog.elapsed?.toFixed(1)}s
-              {data?.points && ` | ${data.points.toLocaleString()} pts`}
-              {data?.numPolygons && ` | ${data.numPolygons} polys`}
-            </Alert>;
-          }
-          return null;
-        })()}
-
-        {/* Batch computation progress */}
-        {isComputing && computationStatus && (
-          <Box sx={{ px: 2, py: 0.75, bgcolor: '#f0f7f6', borderBottom: `1px solid ${P.light.border}`, flexShrink: 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
-              <Box sx={{ flex: 1 }}>
-                <LinearProgress variant="determinate" value={computationStatus.percent ?? 0} sx={{ height: 4, borderRadius: 1 }} />
-              </Box>
-              <Typography sx={{ fontFamily: P.font.mono, fontSize: '0.65rem', color: P.light.textMuted, minWidth: 36 }}>
-                {computationStatus.percent ?? 0}%
-              </Typography>
-            </Box>
-            {computationStatus.currentRegion && (
-              <Typography sx={{ fontFamily: P.font.ui, fontSize: '0.7rem', color: P.light.textMuted }}>
-                {computationStatus.currentRegion}
-                {(computationStatus.currentMembers ?? 0) > 0 && ` (${computationStatus.currentMembers} divisions)`}
-              </Typography>
-            )}
-          </Box>
+        {isComputingSingleRegion && computeProgressLogs.length > 0 && (
+          <ComputeProgressBar
+            logs={computeProgressLogs}
+            borderColor={P.light.border}
+            uiFont={P.font.ui}
+            monoFont={P.font.mono}
+            mutedColor={P.light.textMuted}
+          />
         )}
 
-        {!isComputing && computationStatus?.status === 'Complete' && (
-          <Alert severity="success" sx={{ mx: 2, my: 0.5, py: 0 }} onClose={() => setComputationStatus(null)}>
-            Complete! Computed: {computationStatus.computed ?? 0}, Skipped: {computationStatus.skipped ?? 0}
-          </Alert>
-        )}
-        {!isComputing && computationStatus?.status === 'Cancelled' && (
-          <Alert severity="warning" sx={{ mx: 2, my: 0.5, py: 0 }} onClose={() => setComputationStatus(null)}>
-            Cancelled. Computed: {computationStatus.computed ?? 0}
-          </Alert>
+        {!isComputingSingleRegion && computeProgressLogs.length > 0 && (
+          <ComputeProgressOutcome
+            logs={computeProgressLogs}
+            onDismiss={() => setComputeProgressLogs([])}
+          />
         )}
 
-        {/* ── MAP (always mounted — overlays show loading/empty states) ── */}
+        <BatchProgressSection
+          isComputing={isComputing}
+          computationStatus={computationStatus}
+          borderColor={P.light.border}
+          uiFont={P.font.ui}
+          monoFont={P.font.mono}
+          mutedColor={P.light.textMuted}
+          onClearStatus={() => setComputationStatus(null)}
+        />
+
         <Box sx={{ flex: 1, position: 'relative', minHeight: 0 }}>
           <MapGL
             ref={mapRef}
@@ -507,64 +447,30 @@ export function GeometryMapPanel({
               <Layer
                 id="region-fill"
                 type="fill"
-                paint={{
-                  'fill-color': selectedRegion?.color || '#3388ff',
-                  'fill-opacity': 0.35,
-                }}
+                paint={{ 'fill-color': fillColor, 'fill-opacity': 0.35 }}
               />
               <Layer
                 id="region-line"
                 type="line"
-                paint={{
-                  'line-color': selectedRegion?.color || '#3388ff',
-                  'line-width': crossesDateline ? 0 : 2,
-                }}
+                paint={{ 'line-color': fillColor, 'line-width': lineWidth }}
               />
             </Source>
           </MapGL>
-
-          {/* Overlay states on top of the always-mounted map */}
-          {geometryLoading && (
-            <Box sx={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', bgcolor: 'rgba(255,255,255,0.7)', zIndex: 5 }}>
-              <CircularProgress size={32} sx={{ color: P.accent.primary }} />
-            </Box>
-          )}
-          {!selectedRegion && !geometryLoading && (
-            <Box sx={{
-              position: 'absolute', inset: 0,
-              display: 'flex', justifyContent: 'center', alignItems: 'center',
-              bgcolor: P.light.bg,
-              backgroundImage: 'radial-gradient(circle, rgba(78,205,196,0.06) 1px, transparent 1px)',
-              backgroundSize: '24px 24px',
-              zIndex: 5,
-            }}>
-              <Typography sx={{ fontFamily: P.font.ui, fontSize: '0.9rem', color: P.light.textMuted }}>
-                Select a region from the sidebar
-              </Typography>
-            </Box>
-          )}
-          {selectedRegion && !geometryLoading && geojsonData.features.length === 0 && (
-            <Box sx={{
-              position: 'absolute', inset: 0,
-              display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
-              bgcolor: P.light.bg,
-              backgroundImage: 'radial-gradient(circle, rgba(78,205,196,0.06) 1px, transparent 1px)',
-              backgroundSize: '24px 24px',
-              zIndex: 5,
-            }}>
-              <Typography sx={{ fontFamily: P.font.ui, fontSize: '0.85rem', color: P.light.textMuted, mb: 1 }}>
-                No geometry computed yet
-              </Typography>
-              <Button size="small" variant="contained" onClick={handleComputeSingleRegion} disabled={isComputingSingleRegion}
-                sx={{ textTransform: 'none', fontFamily: P.font.ui, bgcolor: P.accent.primary, '&:hover': { bgcolor: P.accent.primaryHover } }}>
-                Compute Now
-              </Button>
-            </Box>
-          )}
+          <MapStateOverlay
+            selectedRegion={selectedRegion}
+            geometryLoading={geometryLoading}
+            geojsonHasFeatures={geojsonData.features.length > 0}
+            isComputingSingleRegion={isComputingSingleRegion}
+            uiFont={P.font.ui}
+            bgColor={P.light.bg}
+            mutedColor={P.light.textMuted}
+            primaryColor={P.accent.primary}
+            primaryHover={P.accent.primaryHover}
+            onComputeSingleRegion={handleComputeSingleRegion}
+          />
         </Box>
       </Box>
 
-      {/* Custom Boundary Drawing Dialog */}
       <CustomBoundaryDialog
         open={customBoundaryDialogOpen}
         onClose={() => setCustomBoundaryDialogOpen(false)}
@@ -574,7 +480,6 @@ export function GeometryMapPanel({
         title={`Redefine Boundaries for "${selectedRegion?.name || 'Region'}"`}
       />
 
-      {/* Hull Editor Dialog (hull regions only) */}
       {selectedRegion && (
         <HullEditorDialog
           open={hullEditorOpen}
