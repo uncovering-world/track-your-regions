@@ -1,6 +1,8 @@
 import json
 import queue
+import sys
 import threading
+import traceback
 import uuid
 from typing import Annotated, Any
 
@@ -42,6 +44,7 @@ def _make_review_callback(q: queue.Queue):
     on a threading.Event. Returns the decision payload when /pipeline/respond
     is called with the same reviewId (or None on timeout).
     """
+
     def await_review(kind: str, data: dict[str, Any], timeout: float = REVIEW_TIMEOUT_SECONDS) -> dict[str, Any] | None:
         review_id = f"py-{kind}-{uuid.uuid4().hex[:12]}"
         event = threading.Event()
@@ -49,12 +52,17 @@ def _make_review_callback(q: queue.Queue):
         with _pending_reviews_lock:
             _pending_reviews[review_id] = (event, slot)
         try:
-            q.put(json.dumps({
-                "type": "review",
-                "kind": kind,
-                "reviewId": review_id,
-                "data": data,
-            }) + "\n")
+            q.put(
+                json.dumps(
+                    {
+                        "type": "review",
+                        "kind": kind,
+                        "reviewId": review_id,
+                        "data": data,
+                    }
+                )
+                + "\n"
+            )
             if not event.wait(timeout=timeout):
                 print(f"  [Review] {review_id} timed out after {timeout:.0f}s")
                 return None
@@ -62,6 +70,7 @@ def _make_review_callback(q: queue.Queue):
         finally:
             with _pending_reviews_lock:
                 _pending_reviews.pop(review_id, None)
+
     return await_review
 
 
@@ -100,8 +109,11 @@ def _ndjson_stream(worker_fn):
         try:
             result = worker_fn(progress, await_review)
             q.put(json.dumps({"type": "result", "data": result}) + "\n")
-        except Exception as e:
-            q.put(json.dumps({"type": "error", "message": str(e)}) + "\n")
+        except Exception:
+            # ASVS V13.4: log the full exception internally, return a generic
+            # message to the caller. Stack frames / file paths must not leak.
+            traceback.print_exc(file=sys.stderr)
+            q.put(json.dumps({"type": "error", "message": "Internal error during processing"}) + "\n")
         finally:
             q.put(None)  # sentinel
 
@@ -172,7 +184,11 @@ async def phase2(
     def worker(progress, _await_review):
         progress("K-means clustering in CIELAB...")
         pixel_labels, color_centroids = kmeans_cielab(
-            filtered, mask, n_clusters, random_seed, known_noise_mask=noise_mask,
+            filtered,
+            mask,
+            n_clusters,
+            random_seed,
+            known_noise_mask=noise_mask,
         )
         progress("Cluster cleanup (merge tiny, remove patches)...")
         pixel_labels = run_cleanup(pixel_labels, color_centroids, filtered, mask)
@@ -191,13 +207,15 @@ async def phase2(
             if count == 0:
                 continue
             pct = round(count / max(total_country, 1) * 100, 1)
-            cluster_info.append({
-                "label": i,
-                "color": f"rgb({centroid[0]},{centroid[1]},{centroid[2]})",
-                "pct": pct,
-                "isSmall": pct < 3,
-                "componentCount": 1,
-            })
+            cluster_info.append(
+                {
+                    "label": i,
+                    "color": f"rgb({centroid[0]},{centroid[1]},{centroid[2]})",
+                    "pct": pct,
+                    "isSmall": pct < 3,
+                    "componentCount": 1,
+                }
+            )
 
         border_paths = extract_contour_paths(pixel_labels)
 
