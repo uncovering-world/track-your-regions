@@ -11,7 +11,10 @@ permissions:
   contents: read
 
 jobs:
-  lint-typecheck:
+  check:
+    # Job display name kept as "Lint & Type Check" so existing branch-protection
+    # required-check rules continue to match. The job's actual scope is the
+    # full `npm run check` gate (lint + typecheck + knip + audits, both stacks).
     name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
@@ -22,21 +25,26 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            cv-python/requirements.txt
+            cv-python/requirements-dev.txt
+
       - name: Install backend dependencies
         run: npm ci --prefix backend
 
       - name: Install frontend dependencies
         run: npm ci --prefix frontend
 
-      - name: Lint
-        run: |
-          npm --prefix backend run lint
-          npm --prefix frontend run lint
+      - name: Set up cv-python venv
+        run: npm run setup:py:dev
 
-      - name: Type Check
-        run: |
-          npm --prefix backend run typecheck
-          npm --prefix frontend run typecheck
+      - name: Run check (Node + Python lint, typecheck, knip, audits)
+        run: npm run check
 
   test:
     name: Unit Tests
@@ -63,8 +71,8 @@ jobs:
         run: npx vitest run
         working-directory: frontend
 
-  python-checks:
-    name: Python Lint, Type, Test (cv-python)
+  python-tests:
+    name: Python Tests (cv-python)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,22 +91,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r cv-python/requirements.txt -r cv-python/requirements-dev.txt
 
-      - name: Ruff lint
-        run: ruff check .
-        working-directory: cv-python
-
-      - name: Ruff format check
-        run: ruff format --check .
-        working-directory: cv-python
-
-      - name: mypy
-        run: mypy app
-        working-directory: cv-python
-
-      - name: Bandit (Python SAST)
-        run: bandit -r app -c pyproject.toml
-        working-directory: cv-python
-
       - name: pytest
         run: pytest
         working-directory: cv-python
@@ -106,7 +98,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint-typecheck]
+    needs: [check]
     steps:
       - uses: actions/checkout@v4
 
@@ -128,22 +120,13 @@ jobs:
         run: npm --prefix frontend run build
 
   security:
+    # Kept as "Security Scan" so existing branch-protection required-check
+    # rules match. Slow Semgrep SAST only — fast audits (npm audit, pip-audit,
+    # Bandit) moved into `npm run check`.
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: cv-python/requirements.txt
 
       - name: Semgrep SAST (Node)
         uses: semgrep/semgrep-action@v1
@@ -161,19 +144,6 @@ jobs:
             p/python
             p/owasp-top-ten
             p/secrets
-
-      - name: npm audit (backend)
-        run: npm audit --prefix backend --audit-level=moderate --omit=dev
-
-      - name: npm audit (frontend)
-        run: npm audit --prefix frontend --audit-level=moderate --omit=dev
-        continue-on-error: true
-
-      - name: pip-audit (cv-python)
-        run: |
-          python -m pip install --upgrade pip
-          pip install pip-audit
-          pip-audit -r cv-python/requirements.txt
 
   trivy-image:
     name: Trivy Image Scan (cv-python)

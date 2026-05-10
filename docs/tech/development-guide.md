@@ -524,8 +524,7 @@ See `docs/security/SECURITY.md` for the full security profile and `CLAUDE.md` fo
 Run before every commit:
 
 ```bash
-npm run check          # lint + typecheck for both packages
-npm run knip           # detect unused files + dependencies
+npm run check          # comprehensive gate: lint + typecheck (Node + Python) + fast security + knip + lint:extra. Same script CI runs.
 ```
 
 For periodic cleanup (includes exports/types, ~30-40% false positive rate on exports):
@@ -534,10 +533,10 @@ For periodic cleanup (includes exports/types, ~30-40% false positive rate on exp
 npm run knip:full      # full knip scan including exports/types
 ```
 
-For security-sensitive changes, also run:
+Before pushing (slow scans):
 
 ```bash
-npm run security:all   # Semgrep SAST + npm audit
+npm run security:all   # check + slow Semgrep (Node + Python) + Trivy image scan
 ```
 
 ## Slash Commands
