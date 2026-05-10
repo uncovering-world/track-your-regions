@@ -114,6 +114,22 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
   return response.json();
 }
 
+function buildJsonHeaders(options?: RequestInit): Headers {
+  const headers = new Headers(options?.headers);
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+  return headers;
+}
+
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) return [] as unknown as T;
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
 /**
  * Authenticated fetch - automatically adds Bearer token.
  * On 401, attempts a silent refresh via httpOnly cookie then retries.
@@ -122,59 +138,20 @@ export async function authFetchJson<T>(url: string, options?: RequestInit): Prom
   // Proactively refresh token before it expires (prevents 401 round-trip)
   await ensureFreshToken();
 
-  const headers = new Headers(options?.headers);
+  const response = await fetch(url, { ...options, headers: buildJsonHeaders(options) });
+  if (response.status !== 401) return parseJsonResponse<T>(response);
 
-  if (!headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-
-  // Add auth header if we have a token
-  if (accessToken) {
-    headers.set('Authorization', `Bearer ${accessToken}`);
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-
-  if (response.status === 204) {
-    return [] as unknown as T;
-  }
-
-  // Handle 401 - token may have expired, try centralized refresh.
-  // Uses shared refreshSession() to prevent token rotation race conditions.
-  if (response.status === 401) {
-    const result = await refreshSession();
-    if (result) {
-      // Retry the original request with the new token
-      const retryHeaders = new Headers(options?.headers);
-      if (!retryHeaders.has('Content-Type')) retryHeaders.set('Content-Type', 'application/json');
-      retryHeaders.set('Authorization', `Bearer ${accessToken}`);
-      const retryResponse = await fetch(url, { ...options, headers: retryHeaders });
-
-      if (retryResponse.status === 204) {
-        return [] as unknown as T;
-      }
-
-      if (!retryResponse.ok) {
-        const error = await retryResponse.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(error.error || `HTTP ${retryResponse.status}`);
-      }
-
-      return retryResponse.json();
-    }
-
-    // Session is completely dead — notify the app so useAuth can clear state
+  // Token may have expired, try centralized refresh. Uses shared
+  // refreshSession() to prevent token rotation race conditions.
+  const result = await refreshSession();
+  if (!result) {
+    // Session is completely dead — notify the app so useAuth can clear state.
     window.dispatchEvent(new CustomEvent('auth:session-expired'));
+    return parseJsonResponse<T>(response);
   }
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
-
-  return response.json();
+  const retryResponse = await fetch(url, { ...options, headers: buildJsonHeaders(options) });
+  return parseJsonResponse<T>(retryResponse);
 }
 
 /**
