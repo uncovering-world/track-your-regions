@@ -32,11 +32,13 @@ def kmeans_cielab(
 
     # Effective K-means mask: country AND NOT known-noise. Noise pixels are
     # filled in after clustering via nearest-neighbor label assignment.
-    voting_mask_2d = (country_mask > 0)
+    voting_mask_2d = country_mask > 0
     if known_noise_mask is not None:
         voting_mask_2d = voting_mask_2d & (known_noise_mask == 0)
         noise_pct = int((known_noise_mask > 0).sum()) / max(int((country_mask > 0).sum()), 1) * 100
-        print(f"  [K-means] Excluding {int((known_noise_mask > 0).sum())} known-noise pixels ({noise_pct:.1f}% of country) from voting")
+        print(
+            f"  [K-means] Excluding {int((known_noise_mask > 0).sum())} known-noise pixels ({noise_pct:.1f}% of country) from voting"
+        )
     mask_flat = voting_mask_2d.flatten()
     pixels = lab.reshape(-1, 3)[mask_flat]
 
@@ -51,8 +53,8 @@ def kmeans_cielab(
     std_a = max(pixels[:, 1].std(), 1.0)
     std_b = max(pixels[:, 2].std(), 1.0)
 
-    w_l = 0.5 / std_l           # lightness downweighted
-    w_a = chroma_boost / std_a   # chroma channels boosted
+    w_l = 0.5 / std_l  # lightness downweighted
+    w_a = chroma_boost / std_a  # chroma channels boosted
     w_b = chroma_boost / std_b
 
     normalized = np.empty_like(pixels)
@@ -66,13 +68,9 @@ def kmeans_cielab(
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.2)
     if random_seed > 0:
         cv2.setRNGSeed(random_seed)
-        _, km_labels, centers_norm = cv2.kmeans(
-            normalized, n_clusters, None, criteria, 1, cv2.KMEANS_RANDOM_CENTERS
-        )
+        _, km_labels, centers_norm = cv2.kmeans(normalized, n_clusters, None, criteria, 1, cv2.KMEANS_RANDOM_CENTERS)
     else:
-        _, km_labels, centers_norm = cv2.kmeans(
-            normalized, n_clusters, None, criteria, 10, cv2.KMEANS_PP_CENTERS
-        )
+        _, km_labels, centers_norm = cv2.kmeans(normalized, n_clusters, None, criteria, 10, cv2.KMEANS_PP_CENTERS)
 
     # Compute centroids from actual Lab values (not normalized)
     pixel_labels = np.full(h * w, 255, dtype=np.uint8)
@@ -116,7 +114,10 @@ def _fill_holes_via_nearest_label(pixel_labels_2d: np.ndarray, holes: np.ndarray
     # distanceTransformWithLabels returns label index per pixel pointing at
     # the nearest seed (a non-hole pixel). Use that to copy labels.
     _, labels_idx = cv2.distanceTransformWithLabels(
-        non_hole, cv2.DIST_L2, 3, labelType=cv2.DIST_LABEL_PIXEL,
+        non_hole,
+        cv2.DIST_L2,
+        3,
+        labelType=cv2.DIST_LABEL_PIXEL,
     )
     # labels_idx is a 2D int32 array where each pixel points at the 1-based
     # index of its nearest seed. Seeds are the non-hole pixels, enumerated
@@ -171,12 +172,7 @@ def spatial_mode_filter(
     total_count = cv2.filter2D(total_mask, -1, kernel, borderType=cv2.BORDER_CONSTANT)
     total_count = np.maximum(total_count, 1)  # avoid division by zero
 
-    should_change = (
-        (country_mask > 0) &
-        (labels != 255) &
-        (best_label != labels) &
-        (best_count / total_count > 0.6)
-    )
+    should_change = (country_mask > 0) & (labels != 255) & (best_label != labels) & (best_count / total_count > 0.6)
     result[should_change] = best_label[should_change]
 
     changed = int(np.sum(should_change))

@@ -45,12 +45,14 @@ def extract_contour_paths(
                     break
 
             cluster_b = neighbor_label if neighbor_label != 255 else 255
-            paths.append({
-                "id": f"bp-{next_id}",
-                "points": [[int(p[0]), int(p[1])] for p in points],
-                "type": border_type,
-                "clusters": [min(int(label), cluster_b), max(int(label), cluster_b)],
-            })
+            paths.append(
+                {
+                    "id": f"bp-{next_id}",
+                    "points": [[int(p[0]), int(p[1])] for p in points],
+                    "type": border_type,
+                    "clusters": [min(int(label), cluster_b), max(int(label), cluster_b)],
+                }
+            )
             next_id += 1
 
     return paths

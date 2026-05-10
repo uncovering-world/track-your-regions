@@ -74,8 +74,7 @@ def _extract_cv_external_border(mask: np.ndarray) -> np.ndarray:
     # adjacent to a "background" pixel.
     padded = np.pad(mask, 1, constant_values=0)
     has_zero_neighbor = (
-        (padded[1:-1, :-2] == 0) | (padded[1:-1, 2:] == 0) |
-        (padded[:-2, 1:-1] == 0) | (padded[2:, 1:-1] == 0)
+        (padded[1:-1, :-2] == 0) | (padded[1:-1, 2:] == 0) | (padded[:-2, 1:-1] == 0) | (padded[2:, 1:-1] == 0)
     )
     ys, xs = np.where((mask != 0) & has_zero_neighbor)
     if len(xs) == 0:
@@ -83,9 +82,7 @@ def _extract_cv_external_border(mask: np.ndarray) -> np.ndarray:
     return np.column_stack([xs, ys]).astype(np.float64)
 
 
-def _extract_cv_internal_border(
-    pixel_labels: np.ndarray, mask: np.ndarray
-) -> np.ndarray:
+def _extract_cv_internal_border(pixel_labels: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """Extract internal border pixels where adjacent cluster labels differ.
 
     Only considers pixels within the mask. Uses 4-connected neighborhood.
@@ -100,10 +97,10 @@ def _extract_cv_internal_border(
     padded_lab = np.pad(lab, 1, constant_values=-1)
     padded_mask = np.pad(mask, 1, constant_values=0)
     differs = (
-        ((padded_mask[:-2, 1:-1] != 0) & (padded_lab[:-2, 1:-1] != lab)) |
-        ((padded_mask[2:, 1:-1] != 0) & (padded_lab[2:, 1:-1] != lab)) |
-        ((padded_mask[1:-1, :-2] != 0) & (padded_lab[1:-1, :-2] != lab)) |
-        ((padded_mask[1:-1, 2:] != 0) & (padded_lab[1:-1, 2:] != lab))
+        ((padded_mask[:-2, 1:-1] != 0) & (padded_lab[:-2, 1:-1] != lab))
+        | ((padded_mask[2:, 1:-1] != 0) & (padded_lab[2:, 1:-1] != lab))
+        | ((padded_mask[1:-1, :-2] != 0) & (padded_lab[1:-1, :-2] != lab))
+        | ((padded_mask[1:-1, 2:] != 0) & (padded_lab[1:-1, 2:] != lab))
     )
     ys, xs = np.where(active & differs)
     if len(xs) == 0:
@@ -305,10 +302,7 @@ def _ransac_affine(
     # Pre-filter: exclude GADM points that project outside the CV mask.
     # These are from offshore islands (Isla Mona, Desecheo) not in the CV silhouette.
     # Including them biases RANSAC toward a transform that accommodates the islands.
-    in_image = (
-        (projected[:, 0] >= 0) & (projected[:, 0] < tw) &
-        (projected[:, 1] >= 0) & (projected[:, 1] < th)
-    )
+    in_image = (projected[:, 0] >= 0) & (projected[:, 0] < tw) & (projected[:, 1] >= 0) & (projected[:, 1] < th)
     in_mask = np.zeros(len(gadm_points), dtype=bool)
     for i in range(len(gadm_points)):
         if in_image[i]:
@@ -335,7 +329,9 @@ def _ransac_affine(
     # Filter correspondences within threshold (8% of image — generous for initial matching)
     max_dist = max(tw, th) * 0.08
     valid = distances < max_dist
-    print(f"  [RANSAC] Correspondences: {valid.sum()}/{len(mainland_gadm)} within {max_dist:.0f}px (median dist={np.median(distances):.1f})")
+    print(
+        f"  [RANSAC] Correspondences: {valid.sum()}/{len(mainland_gadm)} within {max_dist:.0f}px (median dist={np.median(distances):.1f})"
+    )
 
     if valid.sum() < 4:
         return None, 0.0, "ransac_affine"
@@ -347,7 +343,8 @@ def _ransac_affine(
     # Using full affine instead of partial because GADM X and Y have different
     # scales (longitude degrees vs latitude degrees, even after cosine correction)
     matrix, inlier_mask = cv2.estimateAffine2D(
-        src, dst,
+        src,
+        dst,
         method=cv2.RANSAC,
         ransacReprojThreshold=RANSAC_REPROJ_THRESHOLD,
     )
@@ -362,7 +359,9 @@ def _ransac_affine(
     c = matrix[1, 0]
     scale = math.sqrt(a * a + c * c)
     rotation = math.degrees(math.atan2(c, a))
-    print(f"  [RANSAC] Result: {int(inlier_mask.sum())}/{len(inlier_mask)} inliers ({inlier_ratio:.1%}), scale={scale:.1f}, rotation={rotation:.1f}°, tx={matrix[0,2]:.1f}, ty={matrix[1,2]:.1f}")
+    print(
+        f"  [RANSAC] Result: {int(inlier_mask.sum())}/{len(inlier_mask)} inliers ({inlier_ratio:.1%}), scale={scale:.1f}, rotation={rotation:.1f}°, tx={matrix[0,2]:.1f}, ty={matrix[1,2]:.1f}"
+    )
 
     if inlier_ratio < FALLBACK_INLIER_RATIO:
         print(f"  [RANSAC] Inlier ratio {inlier_ratio:.1%} < {FALLBACK_INLIER_RATIO:.0%} threshold — will try fallback")
@@ -520,7 +519,8 @@ def _iou_alignment(
     smooth_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (smooth_k, smooth_k))
     mask_smooth = cv2.morphologyEx(
         cv2.morphologyEx((country_mask * 255).astype(np.uint8), cv2.MORPH_CLOSE, smooth_kernel),
-        cv2.MORPH_OPEN, smooth_kernel
+        cv2.MORPH_OPEN,
+        smooth_kernel,
     )
 
     def iou_at(sx: float, sy: float, tx: float, ty: float, k_conic: float = 0.0) -> float:
@@ -542,8 +542,7 @@ def _iou_alignment(
             cv2.fillPoly(img, [pts.astype(np.int32)], 255)
         # Smooth both shapes to remove coastline noise
         gadm_smooth = cv2.morphologyEx(
-            cv2.morphologyEx(img, cv2.MORPH_CLOSE, smooth_kernel),
-            cv2.MORPH_OPEN, smooth_kernel
+            cv2.morphologyEx(img, cv2.MORPH_CLOSE, smooth_kernel), cv2.MORPH_OPEN, smooth_kernel
         )
         # Clip GADM to the dilated mask region — this removes overflow from
         # detailed coastline that the CV preprocessing smoothed away.
@@ -654,7 +653,9 @@ def _iou_alignment(
                     best_iou_val = score
                     best_params = (sx_try, sy_try, tx_adj + dx, ty_adj + dy)
 
-    print(f"  [IoU] Scale/translation refine done in {time.perf_counter() - _refine_start:.2f}s (F2={best_iou_val:.3f})")
+    print(
+        f"  [IoU] Scale/translation refine done in {time.perf_counter() - _refine_start:.2f}s (F2={best_iou_val:.3f})"
+    )
 
     # Ultra-fine around winner
     bsx, bsy, btx, bty = best_params
@@ -689,7 +690,9 @@ def _iou_alignment(
     if len(filtered_search) >= 3:
         removed = len(search_paths) - len(filtered_search)
         if removed > 0:
-            print(f"  [IoU] Post-affine filter: {len(filtered_search)}/{len(search_paths)} sub-paths overlap mask (removed {removed} islands)")
+            print(
+                f"  [IoU] Post-affine filter: {len(filtered_search)}/{len(search_paths)} sub-paths overlap mask (removed {removed} islands)"
+            )
             search_paths = filtered_search
             # Recompute F2 with filtered paths
             best_iou_val = iou_at(fsx, fsy, ftx, fty)
@@ -703,11 +706,16 @@ def _iou_alignment(
     # (~5s matching) than to burn ~7 minutes on polishing searches that only
     # nudge F2 by ~0.05 at best.
     if best_iou_val < MIN_F2_FOR_REFINE:
-        print(f"  [IoU] Skipping conic/shear/perspective: affine F2={best_iou_val:.3f} < {MIN_F2_FOR_REFINE} — basic fit is wrong, refinements cannot recover it")
-        affine_matrix = np.array([
-            [fsx, 0.0, ftx],
-            [0.0, fsy, fty],
-        ], dtype=np.float64)
+        print(
+            f"  [IoU] Skipping conic/shear/perspective: affine F2={best_iou_val:.3f} < {MIN_F2_FOR_REFINE} — basic fit is wrong, refinements cannot recover it"
+        )
+        affine_matrix = np.array(
+            [
+                [fsx, 0.0, ftx],
+                [0.0, fsy, fty],
+            ],
+            dtype=np.float64,
+        )
         return affine_matrix, best_iou_val, "iou_align", None, 0.0
 
     # ── Conic search: vary X-scale linearly with Y (latitude) ──
@@ -783,8 +791,8 @@ def _iou_alignment(
         ma = int(np.sum(country_mask > 0))
         if ga == 0 or ma == 0:
             return 0.0
-        p, r = inter/ga, inter/ma
-        return 5*p*r / max(4*p+r, 1e-10)
+        p, r = inter / ga, inter / ma
+        return 5 * p * r / max(4 * p + r, 1e-10)
 
     _shear_start = time.perf_counter()
     best_shear_f2 = best_iou_val
@@ -792,10 +800,13 @@ def _iou_alignment(
         for shear_y in np.arange(-0.10, 0.11, 0.05):
             if shear_x == 0 and shear_y == 0:
                 continue
-            m = np.array([
-                [fsx, shear_x * fsx, ftx],
-                [shear_y * fsy, fsy, fty],
-            ], dtype=np.float64)
+            m = np.array(
+                [
+                    [fsx, shear_x * fsx, ftx],
+                    [shear_y * fsy, fsy, fty],
+                ],
+                dtype=np.float64,
+            )
             f2 = f2_with_matrix(m)
             if f2 > best_shear_f2:
                 best_shear_f2 = f2
@@ -804,17 +815,25 @@ def _iou_alignment(
     print(f"  [IoU] Shear search done in {time.perf_counter() - _shear_start:.2f}s")
     if best_shear_f2 > best_iou_val * 1.005:
         fsx, fsy, ftx, fty, shx, shy = best_params
-        print(f"  [IoU] Shear improved: shear_x={shx:.3f} shear_y={shy:.3f} F2={best_iou_val:.3f} → {best_shear_f2:.3f}")
+        print(
+            f"  [IoU] Shear improved: shear_x={shx:.3f} shear_y={shy:.3f} F2={best_iou_val:.3f} → {best_shear_f2:.3f}"
+        )
         best_iou_val = best_shear_f2
-        affine_matrix = np.array([
-            [fsx, shx * fsx, ftx],
-            [shy * fsy, fsy, fty],
-        ], dtype=np.float64)
+        affine_matrix = np.array(
+            [
+                [fsx, shx * fsx, ftx],
+                [shy * fsy, fsy, fty],
+            ],
+            dtype=np.float64,
+        )
     else:
-        affine_matrix = np.array([
-            [fsx, 0.0, ftx],
-            [0.0, fsy, fty],
-        ], dtype=np.float64)
+        affine_matrix = np.array(
+            [
+                [fsx, 0.0, ftx],
+                [0.0, fsy, fty],
+            ],
+            dtype=np.float64,
+        )
 
     # ── Perspective via super-blur + F2 grid search ──
     # 1. Super-blur both masks, find projective from blurred contours
@@ -855,15 +874,16 @@ def _iou_alignment(
         g_cnt = max(gc_p, key=cv2.contourArea).reshape(-1, 2).astype(np.float64)
         m_cnt = max(mc_p, key=cv2.contourArea).reshape(-1, 2).astype(np.float64)
         if len(g_cnt) > 60:
-            g_cnt = g_cnt[np.linspace(0, len(g_cnt)-1, 60, dtype=int)]
+            g_cnt = g_cnt[np.linspace(0, len(g_cnt) - 1, 60, dtype=int)]
         if len(m_cnt) > 60:
-            m_cnt = m_cnt[np.linspace(0, len(m_cnt)-1, 60, dtype=int)]
+            m_cnt = m_cnt[np.linspace(0, len(m_cnt) - 1, 60, dtype=int)]
         if len(g_cnt) >= 6 and len(m_cnt) >= 6:
             # KDTree is already imported at module level (line 16); avoid the
             # redundant `as KDT` alias here.
             _, idxs_p = KDTree(m_cnt).query(g_cnt)
             from skimage.transform import estimate_transform
-            tform = estimate_transform('projective', m_cnt[idxs_p].astype(np.float32), g_cnt.astype(np.float32))
+
+            tform = estimate_transform("projective", m_cnt[idxs_p].astype(np.float32), g_cnt.astype(np.float32))
             px_hint = float(np.clip(tform.params[2, 0], -0.002, 0.002))
             py_hint = float(np.clip(tform.params[2, 1], -0.002, 0.002))
             print(f"  [IoU] Blur perspective hint: px={px_hint:.6f} py={py_hint:.6f}")
@@ -902,8 +922,8 @@ def _iou_alignment(
 
     for px_center in [0.0, px_hint]:
         for py_center in [0.0, py_hint]:
-            for px in np.arange(px_center - search_range, px_center + search_range + coarse_step/2, coarse_step):
-                for py in np.arange(py_center - search_range, py_center + search_range + coarse_step/2, coarse_step):
+            for px in np.arange(px_center - search_range, px_center + search_range + coarse_step / 2, coarse_step):
+                for py in np.arange(py_center - search_range, py_center + search_range + coarse_step / 2, coarse_step):
                     if px == 0 and py == 0:
                         continue
                     f2_val = f2_persp(px, py)
@@ -912,8 +932,8 @@ def _iou_alignment(
                         best_px, best_py = px, py
 
     if best_px != 0 or best_py != 0:
-        for px in np.arange(best_px - fine_range, best_px + fine_range + fine_step/2, fine_step):
-            for py in np.arange(best_py - fine_range, best_py + fine_range + fine_step/2, fine_step):
+        for px in np.arange(best_px - fine_range, best_px + fine_range + fine_step / 2, fine_step):
+            for py in np.arange(best_py - fine_range, best_py + fine_range + fine_step / 2, fine_step):
                 f2_val = f2_persp(px, py)
                 if f2_val > best_persp_f2:
                     best_persp_f2 = f2_val
@@ -1012,12 +1032,12 @@ def _inverse_homography(
                 a_norm += 2 * np.pi
             while a_norm > ext_angles[-1]:
                 a_norm -= 2 * np.pi
-            idx = np.searchsorted(ext_angles, a_norm, side='right') - 1
+            idx = np.searchsorted(ext_angles, a_norm, side="right") - 1
             idx = max(0, min(idx, len(hull_pts) - 1))
             next_idx = (idx + 1) % len(hull_pts)
             # Interpolate
             a0 = ext_angles[idx]
-            a1 = ext_angles[idx + 1] if idx + 1 < len(ext_angles) else ext_angles[0] + 2*np.pi
+            a1 = ext_angles[idx + 1] if idx + 1 < len(ext_angles) else ext_angles[0] + 2 * np.pi
             if abs(a1 - a0) < 1e-10:
                 result[i] = hull_pts[idx]
             else:
@@ -1199,9 +1219,17 @@ def _centroid_fallback(
                     txc = tx0 + tx_off
                     tyc = ty0 + ty_off
                     score = _score_centroid_alignment(
-                        centroids, pixel_labels, cos_lat,
-                        sx, sy, txc, tyc,
-                        tw, th, cluster_sizes, large_threshold,
+                        centroids,
+                        pixel_labels,
+                        cos_lat,
+                        sx,
+                        sy,
+                        txc,
+                        tyc,
+                        tw,
+                        th,
+                        cluster_sizes,
+                        large_threshold,
                     )
                     if score > best_score:
                         best_score = score
@@ -1216,9 +1244,17 @@ def _centroid_fallback(
             for dtx in range(-3, 4):
                 for dty in range(-3, 4):
                     score = _score_centroid_alignment(
-                        centroids, pixel_labels, cos_lat,
-                        sx, sy, btx + dtx, bty + dty,
-                        tw, th, cluster_sizes, large_threshold,
+                        centroids,
+                        pixel_labels,
+                        cos_lat,
+                        sx,
+                        sy,
+                        btx + dtx,
+                        bty + dty,
+                        tw,
+                        th,
+                        cluster_sizes,
+                        large_threshold,
                     )
                     if score > best_score:
                         best_score = score
@@ -1229,10 +1265,13 @@ def _centroid_fallback(
     print(f"  [Centroid] Init: sx={sx0:.1f} sy={sy0:.1f} tx={tx0:.1f} ty={ty0:.1f}")
     print(f"  [Centroid] Scale factors: sx_f={fsx/sx0:.3f} sy_f={fsy/sy0:.3f}")
     # Build 2x3 affine matrix (no rotation)
-    matrix = np.array([
-        [fsx, 0.0, ftx],
-        [0.0, fsy, fty],
-    ], dtype=np.float64)
+    matrix = np.array(
+        [
+            [fsx, 0.0, ftx],
+            [0.0, fsy, fty],
+        ],
+        dtype=np.float64,
+    )
 
     return matrix, best_score, "centroid_grid"
 
@@ -1441,8 +1480,10 @@ def _compute_alignment_error(
     if tw > 0 and th > 0:
         margin = max(tw, th) * 0.05  # 5% margin
         in_image = (
-            (projected[:, 0] >= -margin) & (projected[:, 0] < tw + margin) &
-            (projected[:, 1] >= -margin) & (projected[:, 1] < th + margin)
+            (projected[:, 0] >= -margin)
+            & (projected[:, 0] < tw + margin)
+            & (projected[:, 1] >= -margin)
+            & (projected[:, 1] < th + margin)
         )
         filtered = projected[in_image]
         if len(filtered) < 4:
@@ -1501,8 +1542,7 @@ def _build_debug_image(
                 continue
             transformed = _transform_points(pts, cos_lat, matrix)
             polyline = transformed.astype(np.int32).reshape(-1, 1, 2)
-            cv2.polylines(debug_img, [polyline], isClosed=True,
-                          color=(255, 255, 255), thickness=1)
+            cv2.polylines(debug_img, [polyline], isClosed=True, color=(255, 255, 255), thickness=1)
 
     # Draw centroids as orange circles
     for c in centroids:
@@ -1622,10 +1662,6 @@ def _detect_projection(
     mask_ys, mask_xs = np.where(country_mask > 0)
     if len(mask_xs) < 100:
         return None
-    cv_x0, cv_x1 = float(mask_xs.min()), float(mask_xs.max())
-    cv_y0, cv_y1 = float(mask_ys.min()), float(mask_ys.max())
-    cv_w = cv_x1 - cv_x0
-    cv_h = cv_y1 - cv_y0
 
     # Use only largest sub-paths for speed
     if len(all_sub_paths) > 200:
@@ -1684,7 +1720,7 @@ def _detect_projection(
         # Rasterize projected GADM, compute convex hull
         canvas_size = 400
         pad = 20
-        s_canvas = min((canvas_size - 2*pad) / gw, (canvas_size - 2*pad) / gh)
+        s_canvas = min((canvas_size - 2 * pad) / gw, (canvas_size - 2 * pad) / gh)
         gadm_img = np.zeros((canvas_size, canvas_size), dtype=np.uint8)
         for pts in pts_list:
             shifted = pts.copy()
@@ -1744,6 +1780,7 @@ def _detect_projection(
     # to cover common map projection conventions.
     try:
         from pyproj import CRS, Transformer
+
         pyproj_available = True
     except ImportError:
         pyproj_available = False
@@ -1760,6 +1797,7 @@ def _detect_projection(
                 lat = -svg_y
                 e, n = transformer.transform(lon, lat)
                 return e, -n
+
             return fn
 
         # Parallel pairs: named by inset fraction from latitude bbox edges.
@@ -1775,33 +1813,51 @@ def _detect_projection(
             # Only use if parallels are within reason of the region
             if sp1 > lat_max + 10 or sp2 < lat_min - 10:
                 continue
-            candidates_proj4.append((f"lcc_std_{sp1:.0f}_{sp2:.0f}",
-                f"+proj=lcc +lat_1={sp1} +lat_2={sp2} +lat_0={lat_0} +lon_0={lon_0} +x_0=0 +y_0=0 +datum=WGS84 +no_defs"))
-            candidates_proj4.append((f"aea_std_{sp1:.0f}_{sp2:.0f}",
-                f"+proj=aea +lat_1={sp1} +lat_2={sp2} +lat_0={lat_0} +lon_0={lon_0} +x_0=0 +y_0=0 +datum=WGS84 +no_defs"))
+            candidates_proj4.append(
+                (
+                    f"lcc_std_{sp1:.0f}_{sp2:.0f}",
+                    f"+proj=lcc +lat_1={sp1} +lat_2={sp2} +lat_0={lat_0} +lon_0={lon_0} +x_0=0 +y_0=0 +datum=WGS84 +no_defs",
+                )
+            )
+            candidates_proj4.append(
+                (
+                    f"aea_std_{sp1:.0f}_{sp2:.0f}",
+                    f"+proj=aea +lat_1={sp1} +lat_2={sp2} +lat_0={lat_0} +lon_0={lon_0} +x_0=0 +y_0=0 +datum=WGS84 +no_defs",
+                )
+            )
 
         # Region-derived parallels
         for pf in parallel_fractions:
             sp1 = lat_min + lat_span * pf
             sp2 = lat_max - lat_span * pf
-            candidates_proj4.append((f"lcc_p{pf:.2f}",
-                f"+proj=lcc +lat_1={sp1} +lat_2={sp2} +lat_0={lat_0} +lon_0={lon_0} +x_0=0 +y_0=0 +datum=WGS84 +no_defs"))
-            candidates_proj4.append((f"aea_p{pf:.2f}",
-                f"+proj=aea +lat_1={sp1} +lat_2={sp2} +lat_0={lat_0} +lon_0={lon_0} +x_0=0 +y_0=0 +datum=WGS84 +no_defs"))
+            candidates_proj4.append(
+                (
+                    f"lcc_p{pf:.2f}",
+                    f"+proj=lcc +lat_1={sp1} +lat_2={sp2} +lat_0={lat_0} +lon_0={lon_0} +x_0=0 +y_0=0 +datum=WGS84 +no_defs",
+                )
+            )
+            candidates_proj4.append(
+                (
+                    f"aea_p{pf:.2f}",
+                    f"+proj=aea +lat_1={sp1} +lat_2={sp2} +lat_0={lat_0} +lon_0={lon_0} +x_0=0 +y_0=0 +datum=WGS84 +no_defs",
+                )
+            )
 
         # Single-parameter projections
-        candidates_proj4.extend([
-            ("stere", f"+proj=stere +lat_0={lat_0} +lon_0={lon_0} +k=1 +x_0=0 +y_0=0 +datum=WGS84 +no_defs"),
-            ("merc", f"+proj=merc +lon_0={lon_0} +k=1 +x_0=0 +y_0=0 +datum=WGS84 +no_defs"),
-            ("tmerc", f"+proj=tmerc +lat_0={lat_0} +lon_0={lon_0} +k=1 +x_0=0 +y_0=0 +datum=WGS84 +no_defs"),
-        ])
+        candidates_proj4.extend(
+            [
+                ("stere", f"+proj=stere +lat_0={lat_0} +lon_0={lon_0} +k=1 +x_0=0 +y_0=0 +datum=WGS84 +no_defs"),
+                ("merc", f"+proj=merc +lon_0={lon_0} +k=1 +x_0=0 +y_0=0 +datum=WGS84 +no_defs"),
+                ("tmerc", f"+proj=tmerc +lat_0={lat_0} +lon_0={lon_0} +k=1 +x_0=0 +y_0=0 +datum=WGS84 +no_defs"),
+            ]
+        )
 
         # Named EPSG projections that apply if the region overlaps their coverage
         EPSG_CANDIDATES = [
-            (3338, "epsg3338_alaska_albers", 51, 72, -180, -130),   # NAD83 / Alaska Albers
-            (5070, "epsg5070_conus_albers", 24, 49, -125, -66),      # NAD83 / Conus Albers
-            (3310, "epsg3310_ca_albers", 32, 42, -125, -114),        # NAD83 / California Albers
-            (3413, "epsg3413_polar_stere", 60, 90, -180, 180),       # Arctic Polar Stereographic
+            (3338, "epsg3338_alaska_albers", 51, 72, -180, -130),  # NAD83 / Alaska Albers
+            (5070, "epsg5070_conus_albers", 24, 49, -125, -66),  # NAD83 / Conus Albers
+            (3310, "epsg3310_ca_albers", 32, 42, -125, -114),  # NAD83 / California Albers
+            (3413, "epsg3413_polar_stere", 60, 90, -180, 180),  # Arctic Polar Stereographic
         ]
         for epsg, name, lat_lo, lat_hi, _lon_lo, _lon_hi in EPSG_CANDIDATES:
             if lat_max < lat_lo or lat_min > lat_hi:
@@ -1847,7 +1903,7 @@ def _detect_projection(
                     best_score = score
                     best_name = f"lcc_lat1_{lat_1_deg:.0f}"
                     best_fn = fn
-            except Exception:
+            except Exception:  # noqa: S110  # nosec B110 -- projection search: skip invalid pyproj parameter combos and continue scanning candidates
                 pass
 
         # Fine search around the best single-parallel lat_1
@@ -1865,9 +1921,9 @@ def _detect_projection(
                             best_score = score
                             best_name = f"lcc_lat1_{lat_1_deg:.0f}"
                             best_fn = fn
-                    except Exception:
+                    except Exception:  # noqa: S110  # nosec B110 -- projection search: skip invalid pyproj parameter combos in the fine sweep
                         pass
-            except Exception:
+            except Exception:  # noqa: S110  # nosec B110 -- projection search: outer guard around fine-sweep float() parsing of best_name
                 pass
 
         if best_name and best_name.startswith("lcc_lat1_"):
@@ -1955,7 +2011,7 @@ def _build_unproject_remap(
     y_grid, x_grid = np.meshgrid(
         np.arange(th, dtype=np.float64),
         np.arange(tw, dtype=np.float64),
-        indexing='ij',
+        indexing="ij",
     )
 
     # Step 1: invert matrix_eq → equirect coords
@@ -2043,7 +2099,9 @@ def run_matching(
     # just fall into out_of_bounds naturally.
     mainland_centroids, excluded_ids = _filter_to_mainland(centroids, cos_lat)
     if len(mainland_centroids) < len(centroids):
-        print(f"  [Match] Phantom-island filter: kept {len(mainland_centroids)}/{len(centroids)} mainland centroids (excluded divisions: {excluded_ids})")
+        print(
+            f"  [Match] Phantom-island filter: kept {len(mainland_centroids)}/{len(centroids)} mainland centroids (excluded divisions: {excluded_ids})"
+        )
         centroids = mainland_centroids
 
     # Step 1b: Projection detection — test conic projections against CV mask.
@@ -2052,12 +2110,19 @@ def run_matching(
     cy_vals = np.array([c["cy"] for c in centroids])
     lat_span_deg = float(cy_vals.max() - cy_vals.min())
     if lat_span_deg < PROJ_DETECT_MIN_LAT_SPAN_DEG:
-        print(f"  [Match] Skipping projection detection: lat_span={lat_span_deg:.1f}° < {PROJ_DETECT_MIN_LAT_SPAN_DEG}°")
+        print(
+            f"  [Match] Skipping projection detection: lat_span={lat_span_deg:.1f}° < {PROJ_DETECT_MIN_LAT_SPAN_DEG}°"
+        )
         proj_result = None
     else:
         progress("Detecting map projection")
         proj_result = _detect_projection(
-            country_path, country_mask, centroids, cos_lat, tw, th,
+            country_path,
+            country_mask,
+            centroids,
+            cos_lat,
+            tw,
+            th,
         )
     original_centroids = centroids
     if proj_result is not None:
@@ -2076,7 +2141,12 @@ def run_matching(
         # Run a quick IoU alignment in projected space
         progress(f"IoU alignment in {proj_name} space")
         proj_iou = _iou_alignment(
-            proj_country_path, country_mask, proj_centroids, 1.0, tw, th,
+            proj_country_path,
+            country_mask,
+            proj_centroids,
+            1.0,
+            tw,
+            th,
         )
         matrix_proj = proj_iou[0]
         proj_f2 = proj_iou[1]
@@ -2084,14 +2154,21 @@ def run_matching(
 
         # Compute the equirect affine that maps the same GADM bbox to the same pixel region
         matrix_eq_target = _compute_equirect_matrix(
-            original_centroids, proj_centroids, matrix_proj, cos_lat,
+            original_centroids,
+            proj_centroids,
+            matrix_proj,
+            cos_lat,
         )
 
         # Build the un-projection remap
         progress("Building inverse projection warp")
         map_x, map_y = _build_unproject_remap(
-            matrix_eq_target, matrix_proj,
-            proj_fn, cos_lat, tw, th,
+            matrix_eq_target,
+            matrix_proj,
+            proj_fn,
+            cos_lat,
+            tw,
+            th,
         )
 
         # Apply the warp to all CV images — the output is in equirectangular
@@ -2099,19 +2176,28 @@ def run_matching(
         # cluster boundaries.
         progress("Applying inverse projection warp to cluster image")
         pixel_labels = cv2.remap(
-            pixel_labels, map_x, map_y,
+            pixel_labels,
+            map_x,
+            map_y,
             cv2.INTER_NEAREST,
-            borderMode=cv2.BORDER_CONSTANT, borderValue=255,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=255,
         )
         country_mask = cv2.remap(
-            country_mask, map_x, map_y,
+            country_mask,
+            map_x,
+            map_y,
             cv2.INTER_NEAREST,
-            borderMode=cv2.BORDER_CONSTANT, borderValue=0,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0,
         )
         icp_mask = cv2.remap(
-            icp_mask, map_x, map_y,
+            icp_mask,
+            map_x,
+            map_y,
             cv2.INTER_NEAREST,
-            borderMode=cv2.BORDER_CONSTANT, borderValue=0,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0,
         )
         print(f"  [Match] Warped pixel_labels to equirectangular space via {proj_name}")
 
@@ -2130,9 +2216,7 @@ def run_matching(
     cv_border = np.vstack(cv_border_parts) if cv_border_parts else np.empty((0, 2), dtype=np.float64)
 
     progress("Preparing GADM boundary points")
-    gadm_points = _prepare_gadm_boundary_points(
-        country_path, division_paths, cos_lat
-    )
+    gadm_points = _prepare_gadm_boundary_points(country_path, division_paths, cos_lat)
 
     # Step 3: IoU-based alignment (primary)
     # Maximizes overlap between rasterized GADM country outline and CV mask.
@@ -2140,7 +2224,12 @@ def run_matching(
     # offshore islands, and noisy borders naturally.
     progress("IoU shape alignment")
     iou_result = _iou_alignment(
-        country_path, country_mask, centroids, cos_lat, tw, th,
+        country_path,
+        country_mask,
+        centroids,
+        cos_lat,
+        tw,
+        th,
     )
     matrix, iou_score_val, method = iou_result[0], iou_result[1], iou_result[2]
     inverse_H = iou_result[3] if len(iou_result) > 3 else None
@@ -2154,9 +2243,7 @@ def run_matching(
     # _iou_alignment. Kept as a fallback if pyproj detection finds no projection.
     if inverse_H is not None:
         progress("Applying inverse perspective warp to cluster image")
-        pixel_labels = cv2.warpPerspective(
-            pixel_labels, inverse_H, (tw, th), flags=cv2.INTER_NEAREST
-        )
+        pixel_labels = cv2.warpPerspective(pixel_labels, inverse_H, (tw, th), flags=cv2.INTER_NEAREST)
         country_mask = cv2.warpPerspective(country_mask, inverse_H, (tw, th))
         # Re-warp icp_mask too — `cv_border` is extracted from it, and we
         # re-extract cv_border below so the alignment metrics describe the
@@ -2173,21 +2260,25 @@ def run_matching(
             cv_border_parts_post.append(external_border_post)
         if len(internal_border_post) > 0:
             cv_border_parts_post.append(internal_border_post)
-        cv_border = (
-            np.vstack(cv_border_parts_post) if cv_border_parts_post
-            else np.empty((0, 2), dtype=np.float64)
-        )
+        cv_border = np.vstack(cv_border_parts_post) if cv_border_parts_post else np.empty((0, 2), dtype=np.float64)
 
     # Step 3b: Verify centroid placement is reasonable with the IoU transform
     centroid_score = _score_centroid_placement(centroids, pixel_labels, cos_lat, matrix, tw, th)
-    print(f"  [Match] IoU alignment: F2={iou_score_val:.3f}, centroid_hits={centroid_score:.0f}/{len(centroids)}, method={method}")
+    print(
+        f"  [Match] IoU alignment: F2={iou_score_val:.3f}, centroid_hits={centroid_score:.0f}/{len(centroids)}, method={method}"
+    )
 
     # Step 3c: If IoU alignment gives poor centroid coverage, try centroid fallback
     if centroid_score < len(centroids) * 0.6:
         progress("Centroid fallback (IoU alignment had poor centroid coverage)")
         centroid_matrix, centroid_fb_score, centroid_method = _centroid_fallback(
-            centroids, pixel_labels, country_mask, cos_lat,
-            gadm_points, tw, th,
+            centroids,
+            pixel_labels,
+            country_mask,
+            cos_lat,
+            gadm_points,
+            tw,
+            th,
         )
         centroid_fb_hits = _score_centroid_placement(centroids, pixel_labels, cos_lat, centroid_matrix, tw, th)
         if centroid_fb_hits > centroid_score:
@@ -2201,11 +2292,17 @@ def run_matching(
 
     # Compute alignment metrics — median (robust), mean, and % aligned
     median_err, mean_err, align_pct = _compute_alignment_error(
-        gadm_points, cv_border, matrix, tw, th,
+        gadm_points,
+        cv_border,
+        matrix,
+        tw,
+        th,
     )
     alignment_error = median_err  # Use median for the reported metric
-    print(f"  [Match] Alignment: median_err={median_err:.1f}px, mean_err={mean_err:.1f}px, "
-          f"alignment_pct={align_pct*100:.1f}% (within 2% of image diagonal)")
+    print(
+        f"  [Match] Alignment: median_err={median_err:.1f}px, mean_err={mean_err:.1f}px, "
+        f"alignment_pct={align_pct*100:.1f}% (within 2% of image diagonal)"
+    )
 
     # Extract sx, sy from matrix for the returned transform
     # matrix = [[a, b, tx], [c, d, ty]]
@@ -2267,10 +2364,12 @@ def run_matching(
             for cluster_id, count in sorted_votes:
                 share = count / total_valid
                 if share >= MINORITY_INCLUSION:
-                    split_clusters.append({
-                        "clusterId": cluster_id,
-                        "share": round(share, 4),
-                    })
+                    split_clusters.append(
+                        {
+                            "clusterId": cluster_id,
+                            "share": round(share, 4),
+                        }
+                    )
 
         assignment: dict[str, Any] = {
             "divisionId": div_id,
@@ -2286,8 +2385,16 @@ def run_matching(
     # Step 6: Debug images
     progress("Generating debug images")
     debug_image = _build_debug_image(
-        pixel_labels, color_centroids, division_paths, centroids,
-        cos_lat, matrix, tw, th, orig_w, orig_h,
+        pixel_labels,
+        color_centroids,
+        division_paths,
+        centroids,
+        cos_lat,
+        matrix,
+        tw,
+        th,
+        orig_w,
+        orig_h,
     )
 
     # Build return matrix as nested list (2x3 or 3x3)
