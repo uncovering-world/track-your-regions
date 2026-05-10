@@ -10,9 +10,15 @@ Perform an in-depth OWASP ASVS security review of the specified file or module.
 
 ### Injection (V1)
 - SQL/NoSQL queries: are they parameterized?
+  - Node/TS: `pool.query('... $1 ...', [val])` or Drizzle — never template strings
+  - Python/psycopg: `cur.execute('... %s ...', (val,))` — never f-string interpolation
 - HTML output: is it escaped/encoded?
 - URL construction: is user input encoded?
-- OS commands: any exec/spawn with user data?
+- OS commands: any spawn / subprocess call with user data?
+  - Node: prefer `execFile` over the shell-mode call; never pass user input through a shell
+  - Python: never `subprocess.*(..., shell=True)` with user data; prefer the list form
+- Insecure deserialization (Python): the `pickle` / `marshal` / `shelve` modules and `yaml.load(...)` without `SafeLoader` on untrusted data — all RCE
+- Dynamic code construction (Python): `eval` / `exec` on user data — RCE
 
 ### Business Logic (V2)
 - Can any validation be bypassed by manipulating request order or values?
@@ -39,5 +45,27 @@ Perform an in-depth OWASP ASVS security review of the specified file or module.
 - Is sensitive data (visit history, travel data) properly scoped?
 - Are API responses minimal (no data over-exposure)?
 - Is PII logged?
+
+### Cryptography & Randomness (V11)
+- **Hashing (Python)**: `hashlib.md5`/`hashlib.sha1` for security purposes — use `sha256` or stronger
+- **Tokens (Python)**: `random.random()` / `random.choice()` for tokens — use `secrets.token_hex()` / `secrets.token_urlsafe()`
+- **Hashing (Node)**: `crypto.createHash('md5'/'sha1')` for security — use sha256+
+- **Tokens (Node)**: `Math.random()` for tokens — use `crypto.randomBytes()`
+
+### Network / TLS (V12)
+- **Python**: any HTTP client with `verify=False` (`requests`, `httpx`, `urllib3`) — TLS verification disabled
+- **Python**: hard-coded self-signed cert acceptance (`ssl._create_unverified_context`)
+- **Node**: `rejectUnauthorized: false` on TLS clients
+
+### File Handling (V5)
+- **Python `UploadFile`**: max size enforced? content-type allowlist? `cv2.imdecode` return checked for `None`? width/height bounded after decode?
+- **Node multer / direct streaming**: same checks
+- Path traversal: any user-controlled segment used in `open(...)` / `fs.readFile`?
+
+### FastAPI / cv-python specific
+- Each `@router.post(...)` route: where's the auth check? If relying on Docker network isolation, is that documented and enforced (no `--host` to public, no port forwarding)?
+- `params: str = Form(...)` then `json.loads(params)` — replace with a Pydantic model
+- Raw exception messages in streaming responses (`{"type":"error","message": str(e)}`) — sanitise
+- Worker threads / `threading.Thread(daemon=True)` without bounds — DoS via thread exhaustion
 
 4. Output: findings with line numbers, severity, and specific fix recommendations
