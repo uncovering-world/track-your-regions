@@ -376,57 +376,103 @@ export async function createRegion(req: Request, res: Response): Promise<void> {
   res.status(201).json(result.rows[0]);
 }
 
+interface UpdateRegionBody {
+  name?: string;
+  description?: string;
+  parentRegionId?: number | null;
+  color?: string;
+  usesHull?: boolean;
+}
+
+type ScalarValue = string | number | boolean | null;
+
+interface UpdateClauses {
+  setClauses: string[];
+  values: ScalarValue[];
+}
+
+function buildRegionUpdateClauses(body: UpdateRegionBody): UpdateClauses {
+  const setClauses: string[] = [];
+  const values: ScalarValue[] = [];
+  const fieldMap: Array<[keyof UpdateRegionBody, string]> = [
+    ['name', 'name'],
+    ['description', 'description'],
+    ['parentRegionId', 'parent_region_id'],
+    ['color', 'color'],
+    ['usesHull', 'uses_hull'],
+  ];
+  let paramIndex = 1;
+  for (const [bodyKey, column] of fieldMap) {
+    const value = body[bodyKey];
+    if (value !== undefined) {
+      setClauses.push(`${column} = $${paramIndex++}`);
+      values.push(value as ScalarValue);
+    }
+  }
+  return { setClauses, values };
+}
+
+async function moveDivisionMembershipsForParentChange(
+  oldParentId: number | null,
+  newParentId: number | null,
+  regionName: string,
+): Promise<void> {
+  if (oldParentId === null) return;
+
+  // Move all matching memberships in two set-based queries inside one
+  // transaction. Pre-refactor this was an N+1 DELETE/INSERT loop on the
+  // shared pool, where a mid-loop failure (or a connection-level error
+  // between two pool.query() calls) could leave region_members partially
+  // migrated.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const moved = await client.query(
+      `DELETE FROM region_members rm
+       USING administrative_divisions ad
+       WHERE rm.division_id = ad.id
+         AND rm.region_id = $1
+         AND ad.name = $2
+       RETURNING rm.division_id`,
+      [oldParentId, regionName],
+    );
+    if (newParentId !== null && moved.rows.length > 0) {
+      await client.query(
+        `INSERT INTO region_members (region_id, division_id)
+         SELECT $1, did FROM unnest($2::int[]) AS t(did)
+         ON CONFLICT DO NOTHING`,
+        [newParentId, moved.rows.map(r => r.division_id)],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /**
  * Update a region
  */
 export async function updateRegion(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
-  const { name, description, parentRegionId, color, usesHull } = req.body;
-  const newParentId = parentRegionId;
+  const body = req.body as UpdateRegionBody;
+  const newParentId = body.parentRegionId;
 
-  // Get current region info before update (needed for parent change logic)
   const currentRegion = await pool.query(`
     SELECT id, world_view_id, name, parent_region_id
     FROM regions WHERE id = $1
   `, [regionId]);
-
   if (currentRegion.rows.length === 0) {
     throw notFound(`Region ${regionId} not found`);
   }
-
   const oldParentId = currentRegion.rows[0].parent_region_id;
   const regionName = currentRegion.rows[0].name;
 
-  // Build dynamic update - parentRegionId can explicitly be set to null
-  const updates: string[] = [];
-  const values: (string | number | boolean | null)[] = [];
-  let paramIndex = 1;
-
-  if (name !== undefined) {
-    updates.push(`name = $${paramIndex++}`);
-    values.push(name);
-  }
-  if (description !== undefined) {
-    updates.push(`description = $${paramIndex++}`);
-    values.push(description);
-  }
-  if (newParentId !== undefined) {
-    // newParentId can be null (move to root) or a number
-    updates.push(`parent_region_id = $${paramIndex++}`);
-    values.push(newParentId);
-    // Geometry will be invalidated after update (for old and new parent hierarchies)
-  }
-  if (color !== undefined) {
-    updates.push(`color = $${paramIndex++}`);
-    values.push(color);
-  }
-  if (usesHull !== undefined) {
-    updates.push(`uses_hull = $${paramIndex++}`);
-    values.push(usesHull);
-  }
-
-  if (updates.length === 0) {
-    // Nothing to update, just return current state
+  const { setClauses, values } = buildRegionUpdateClauses(body);
+  if (setClauses.length === 0) {
     res.json({
       id: currentRegion.rows[0].id,
       worldViewId: currentRegion.rows[0].world_view_id,
@@ -436,56 +482,26 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const idIdx = values.length + 1;
   values.push(regionId);
   const result = await pool.query(`
     UPDATE regions
-    SET ${updates.join(', ')}
-    WHERE id = $${paramIndex}
+    SET ${setClauses.join(', ')}
+    WHERE id = $${idIdx}
     RETURNING id, world_view_id as "worldViewId", name, description,
               parent_region_id as "parentRegionId", color,
               uses_hull as "usesHull"
   `, values);
-
   if (result.rows.length === 0) {
     throw notFound(`Region ${regionId} not found`);
   }
 
-  // If parent changed, also move the corresponding GADM division membership
-  // This handles the case where a region was created with "Also create as subregion" checkbox
+  // Parent change: move the corresponding GADM division membership too.
+  // This handles regions created via "Also create as subregion" checkbox.
   if (newParentId !== undefined && oldParentId !== newParentId) {
-    // Find GADM division(s) with the same name that are members of the old parent
-    if (oldParentId !== null) {
-      const divisionMembers = await pool.query(`
-        SELECT rm.division_id
-        FROM region_members rm
-        JOIN administrative_divisions ad ON rm.division_id = ad.id
-        WHERE rm.region_id = $1 AND ad.name = $2
-      `, [oldParentId, regionName]);
-
-      // Move these division memberships to the new parent (if there is one)
-      for (const row of divisionMembers.rows) {
-        // Remove from old parent
-        await pool.query(
-          'DELETE FROM region_members WHERE region_id = $1 AND division_id = $2',
-          [oldParentId, row.division_id]
-        );
-
-        // Add to new parent (if not moving to root)
-        if (newParentId !== null) {
-          await pool.query(`
-            INSERT INTO region_members (region_id, division_id)
-            VALUES ($1, $2)
-            ON CONFLICT (region_id, division_id) DO NOTHING
-          `, [newParentId, row.division_id]);
-        }
-      }
-    }
-
-    // Invalidate geometries for affected regions
+    await moveDivisionMembershipsForParentChange(oldParentId, newParentId, regionName);
     await invalidateRegionGeometry(regionId);
-    if (oldParentId) {
-      await invalidateRegionGeometry(oldParentId);
-    }
+    if (oldParentId) await invalidateRegionGeometry(oldParentId);
   }
 
   res.json(result.rows[0]);
