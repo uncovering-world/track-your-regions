@@ -7,6 +7,7 @@
 
 import { Response } from 'express';
 import OpenAI from 'openai';
+import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import {
@@ -203,7 +204,7 @@ export async function resetMatch(req: AuthenticatedRequest, res: Response): Prom
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/reset-match — regionId=${regionId}`);
 
-  // Verify region belongs to this world view
+  // Verify region belongs to this world view (read-only, no transaction needed)
   const region = await pool.query(
     'SELECT id FROM regions WHERE id = $1 AND world_view_id = $2',
     [regionId, worldViewId],
@@ -213,22 +214,37 @@ export async function resetMatch(req: AuthenticatedRequest, res: Response): Prom
     return;
   }
 
-  // Also remove any region_members assignments for this region
-  await pool.query(`DELETE FROM region_members WHERE region_id = $1`, [regionId]);
-
-  // Delete all suggestions (both accepted and rejected)
-  await pool.query(
-    `DELETE FROM region_match_suggestions WHERE region_id = $1`,
-    [regionId],
-  );
-
-  // Reset match status
-  await pool.query(
-    `UPDATE region_import_state SET match_status = 'no_candidates' WHERE region_id = $1`,
-    [regionId],
-  );
-
-  res.json({ reset: true });
+  // The three writes must succeed or fail together. Without a transaction,
+  // a transient DB error between writes leaves region_members deleted but
+  // suggestions/import_state untouched (#335).
+  //
+  // pool.connect() is INSIDE the try so a connect failure also produces a
+  // 500 response (not an unhandled rejection). ROLLBACK is wrapped because
+  // a dead connection makes ROLLBACK throw — its exception would otherwise
+  // skip the 500 response and reproduce the original hang. PostgreSQL
+  // auto-rolls back when the connection drops, so data integrity is intact
+  // either way.
+  let client: PoolClient | null = null;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    await client.query('DELETE FROM region_members WHERE region_id = $1', [regionId]);
+    await client.query('DELETE FROM region_match_suggestions WHERE region_id = $1', [regionId]);
+    await client.query(
+      `UPDATE region_import_state SET match_status = 'no_candidates' WHERE region_id = $1`,
+      [regionId],
+    );
+    await client.query('COMMIT');
+    res.json({ reset: true });
+  } catch (err) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection dead; PG auto-rolls back */ }
+    }
+    console.error(`[WV Import] Reset match failed:`, err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Reset match failed' });
+  } finally {
+    client?.release();
+  }
 }
 
 /**
