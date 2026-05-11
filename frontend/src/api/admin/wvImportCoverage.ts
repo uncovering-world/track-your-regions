@@ -210,6 +210,13 @@ export interface ChildrenCoverageResult {
  * - getChildrenCoverage(worldViewId)                   → all regions
  * - getChildrenCoverage(worldViewId, regionId)         → ancestors of regionId
  * - getChildrenCoverage(worldViewId, undefined, ancestorId) → single ancestor only
+ *
+ * Wire-format note: the third shape sends `?onlyId=<id>`, which matches the
+ * backend's Zod schema (childrenCoverageQuerySchema accepts `regionId` and
+ * `onlyId` only). The JS argument is named `ancestorId` because that's the
+ * caller's intent — a specific ancestor's row to refresh after a mutation —
+ * but it maps to the backend's `onlyId` filter that short-circuits to
+ * `targetAncestorIds = new Set([onlyId])` (fast single-ancestor path).
  */
 export async function getChildrenCoverage(
   worldViewId: number,
@@ -218,7 +225,7 @@ export async function getChildrenCoverage(
 ): Promise<ChildrenCoverageResult> {
   const params = new URLSearchParams();
   if (regionId != null) params.set('regionId', String(regionId));
-  if (ancestorId != null) params.set('ancestorId', String(ancestorId));
+  if (ancestorId != null) params.set('onlyId', String(ancestorId));
   const query = params.toString();
   const url = `${API_URL}/api/admin/wv-import/matches/${worldViewId}/children-coverage${query ? '?' + query : ''}`;
   return authFetchJson(url);
