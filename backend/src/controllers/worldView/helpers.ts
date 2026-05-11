@@ -19,10 +19,15 @@ export async function ensureRegionMember(regionId: number, divisionId: number): 
 }
 
 /**
- * Clear cached geometry for a region and all its ancestors
- * This ensures that when a child region changes, parent regions are also recalculated
- * Also clears is_custom_boundary since the old geometry is being discarded
- * NOTE: This also clears simplified geometry columns to prevent stale simplified data
+ * Clear cached geometry for a region and all its ancestors so the next render
+ * recomputes them from members.
+ *
+ * Skips rows with is_custom_boundary = true: those geometries are user-drawn,
+ * not derived from members, so member or structural changes must not silently
+ * wipe them. The explicit way to drop a custom boundary is resetRegionToGADM
+ * in geometryCompute.ts. (See #283: without this guard, calling addMembers
+ * right after createRegion(customGeometry) clobbered the just-created custom
+ * shape because the recursive CTE includes the starting region itself.)
  */
 export async function invalidateRegionGeometry(regionId: number): Promise<void> {
   // Gracefully handle lock/deadlock errors if concurrent operations touch the same regions
@@ -42,9 +47,9 @@ export async function invalidateRegionGeometry(regionId: number): Promise<void> 
       SET geom = NULL,
           geom_3857 = NULL,
           geom_simplified_low = NULL,
-          geom_simplified_medium = NULL,
-          is_custom_boundary = false
+          geom_simplified_medium = NULL
       WHERE id IN (SELECT id FROM ancestors)
+        AND is_custom_boundary IS NOT TRUE
     `, [regionId]);
   } catch (err: unknown) {
     // If we get a lock error, just log and continue - another operation is handling it
