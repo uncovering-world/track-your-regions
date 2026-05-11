@@ -165,6 +165,13 @@ CREATE INDEX IF NOT EXISTS idx_regions_anchor_point ON regions USING GIST(anchor
 CREATE INDEX IF NOT EXISTS idx_regions_hull_geom ON regions USING GIST(hull_geom);
 CREATE INDEX IF NOT EXISTS idx_regions_is_leaf ON regions(is_leaf) WHERE is_leaf = true;
 CREATE INDEX IF NOT EXISTS idx_regions_focus_bbox ON regions USING gin(focus_bbox) WHERE focus_bbox IS NOT NULL;
+-- Partial unique index: prevents two sibling subregions with the same name under the
+-- same parent in the same world view. Lets ensureSubregion use ON CONFLICT for race
+-- resolution (see #378 / migration 004). Root regions (parent_region_id IS NULL) are
+-- intentionally excluded — duplicate root names per world view are allowed.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_regions_unique_subregion_name
+  ON regions(world_view_id, parent_region_id, name)
+  WHERE parent_region_id IS NOT NULL;
 
 -- Trigger to maintain is_leaf column
 CREATE OR REPLACE FUNCTION update_is_leaf() RETURNS trigger AS $$
