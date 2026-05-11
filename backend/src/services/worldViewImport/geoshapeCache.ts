@@ -5,7 +5,34 @@ const GEOSHAPE_URL = 'https://maps.wikimedia.org/geoshape';
 const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)';
 const FETCH_DELAY_MS = 1500;
 
+// Serialising rate limiter shared by both fetch entry points (#346).
+//
+// The previous bare-variable form (`let lastFetchTime = 0`) was racy: two
+// concurrent calls both observed the variable at the same value, both
+// computed elapsed >= FETCH_DELAY_MS, both skipped the delay and fired
+// simultaneously — defeating the limiter.
+//
+// fetchChain serialises slot acquisition: every caller awaits the previous
+// caller's slot before checking elapsed time, so the (read elapsed → maybe
+// wait → write lastFetchTime) sequence runs strictly one at a time.
+//
+// Preserves the original optimisation: a cold first call (or one made well
+// after the previous fetch) still fires without artificial delay.
 let lastFetchTime = 0;
+let fetchChain: Promise<void> = Promise.resolve();
+
+export async function acquireFetchSlot(): Promise<void> {
+  const prev = fetchChain;
+  fetchChain = (async () => {
+    await prev;
+    const elapsed = Date.now() - lastFetchTime;
+    if (elapsed < FETCH_DELAY_MS) {
+      await new Promise(resolve => setTimeout(resolve, FETCH_DELAY_MS - elapsed));
+    }
+    lastFetchTime = Date.now();
+  })();
+  return fetchChain;
+}
 
 /**
  * Get or fetch a Wikidata geoshape geometry.
@@ -22,13 +49,7 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
     return !cached.rows[0].not_available;
   }
 
-  // Rate limit
-  const now = Date.now();
-  const elapsed = now - lastFetchTime;
-  if (elapsed < FETCH_DELAY_MS) {
-    await new Promise(resolve => setTimeout(resolve, FETCH_DELAY_MS - elapsed));
-  }
-  lastFetchTime = Date.now();
+  await acquireFetchSlot();
 
   // Fetch from Wikimedia
   try {
@@ -124,13 +145,7 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
     return { available: !cached.rows[0].not_available };
   }
 
-  // Rate limit
-  const now = Date.now();
-  const elapsed = now - lastFetchTime;
-  if (elapsed < FETCH_DELAY_MS) {
-    await new Promise(resolve => setTimeout(resolve, FETCH_DELAY_MS - elapsed));
-  }
-  lastFetchTime = Date.now();
+  await acquireFetchSlot();
 
   try {
     const url = `https://commons.wikimedia.org/wiki/Data:${encodeURIComponent(commonsFile)}?action=raw`;
