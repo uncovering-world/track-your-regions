@@ -30,14 +30,20 @@ interface AddDivisionsCtx {
 
 /**
  * Find-or-create a region by (worldViewId, parentRegionId, name). Race-safe:
- * serialises concurrent callers on a transaction-scoped advisory lock keyed
- * by the (worldView, parent, name) triple before the SELECT-then-INSERT.
+ * leans on the partial unique index `idx_regions_unique_subregion_name` (added
+ * by migration 004) so concurrent callers either insert a new row or surface
+ * the existing one — Postgres resolves the conflict deterministically, no
+ * application-level lock needed.
  *
- * The advisory lock is an application-level fix. The proper schema-level
- * resolution (partial unique index + `INSERT … ON CONFLICT DO UPDATE`) is
- * tracked in issue #378 — it needs a one-shot data cleanup of legacy dev-DB
- * duplicates (created by this same race before it was fixed), which is out
- * of scope for the lint-guardrail PR.
+ * `(xmax = 0)` distinguishes a freshly inserted row from one returned by the
+ * conflict path (xmax is the deleting transaction id; on a brand-new row it's
+ * always 0, on a row returned because of ON CONFLICT it's set). This lets us
+ * keep the existing `createdEntry` semantics — non-null only on real creates.
+ *
+ * The `DO UPDATE SET name = regions.name` is a no-op write whose only purpose
+ * is to make Postgres return the conflicting row via `RETURNING`. `DO NOTHING`
+ * would leave RETURNING empty in the conflict case, forcing an extra round
+ * trip to fetch the existing id.
  */
 async function ensureSubregion(
   worldViewId: number,
@@ -45,39 +51,19 @@ async function ensureSubregion(
   name: string,
   color: string,
 ): Promise<{ id: number; createdEntry: { id: number; name: string } | null }> {
-  const lockKey = `subregion:${worldViewId}:${parentRegionId}:${name}`;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    // Transaction-scoped advisory lock — released automatically on COMMIT/ROLLBACK.
-    // hashtextextended(text, int8) returns an int8 that pg_advisory_xact_lock accepts.
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey]);
-
-    const existing = await client.query(
-      'SELECT id FROM regions WHERE world_view_id = $1 AND parent_region_id = $2 AND name = $3',
-      [worldViewId, parentRegionId, name],
-    );
-    if (existing.rows.length > 0) {
-      await client.query('COMMIT');
-      return { id: existing.rows[0].id, createdEntry: null };
-    }
-    const newRegion = await client.query(
-      `INSERT INTO regions (world_view_id, name, parent_region_id, color)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name`,
-      [worldViewId, name, parentRegionId, color],
-    );
-    await client.query('COMMIT');
-    return {
-      id: newRegion.rows[0].id,
-      createdEntry: { id: newRegion.rows[0].id, name: newRegion.rows[0].name },
-    };
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  const result = await pool.query(
+    `INSERT INTO regions (world_view_id, name, parent_region_id, color)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (world_view_id, parent_region_id, name) WHERE parent_region_id IS NOT NULL
+     DO UPDATE SET name = regions.name
+     RETURNING id, name, (xmax = 0) AS inserted`,
+    [worldViewId, name, parentRegionId, color],
+  );
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    createdEntry: row.inserted ? { id: row.id, name: row.name } : null,
+  };
 }
 
 async function processGadmChildren(

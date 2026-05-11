@@ -11,9 +11,14 @@ import { pool } from '../../db/index.js';
  * (see db/init/01-schema.sql) so concurrent callers can't double-insert.
  */
 export async function ensureRegionMember(regionId: number, divisionId: number): Promise<void> {
+  // Explicit arbiter pins the dedupe to the partial unique index. A bare
+  // `ON CONFLICT DO NOTHING` works today, but only because the partial index
+  // happens to be the only unique constraint on this table; pinning the
+  // arbiter prevents a future unique constraint from silently changing what
+  // counts as a duplicate.
   await pool.query(
     `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT (region_id, division_id) WHERE custom_geom IS NULL DO NOTHING`,
     [regionId, divisionId],
   );
 }

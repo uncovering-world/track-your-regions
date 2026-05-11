@@ -440,7 +440,7 @@ async function moveDivisionMembershipsForParentChange(
       await client.query(
         `INSERT INTO region_members (region_id, division_id)
          SELECT $1, did FROM unnest($2::int[]) AS t(did)
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT (region_id, division_id) WHERE custom_geom IS NULL DO NOTHING`,
         [newParentId, moved.rows.map(r => r.division_id)],
       );
     }
@@ -549,7 +549,7 @@ export async function deleteRegion(req: Request, res: Response): Promise<void> {
         await pool.query(`
           INSERT INTO region_members (region_id, division_id)
           VALUES ($1, $2)
-          ON CONFLICT (region_id, division_id) DO NOTHING
+          ON CONFLICT (region_id, division_id) WHERE custom_geom IS NULL DO NOTHING
         `, [parentRegionId, row.division_id]);
       }
     }
