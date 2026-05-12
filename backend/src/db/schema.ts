@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, integer, boolean, timestamp, jsonb, index, unique } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, integer, boolean, timestamp, jsonb, index, unique, text } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 /**
@@ -465,6 +465,23 @@ export const aiSettings = pgTable('ai_settings', {
   value: varchar('value', { length: 1000 }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+
+/**
+ * AI Learned Rules
+ *
+ * User-provided rules injected into AI prompts to improve future extractions.
+ * When the AI makes a mistake and the admin corrects it with a note, the note
+ * becomes a learned rule. Read by buildLearnedRulesPrompt() at AI-call time.
+ */
+export const aiLearnedRules = pgTable('ai_learned_rules', {
+  id: serial('id').primaryKey(),
+  feature: varchar('feature', { length: 100 }).notNull(),
+  ruleText: text('rule_text').notNull(),
+  context: text('context'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  featureIdx: index('idx_ai_learned_rules_feature').on(table.feature),
+}));
 
 /**
  * Experience rejections (per region)
