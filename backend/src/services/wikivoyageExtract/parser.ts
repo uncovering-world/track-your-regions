@@ -266,27 +266,6 @@ const STD_COLORS: Record<string, string> = {
   t9: '#a4b8d1', t10: '#c4c78c',
 };
 
-/**
- * Find the closing `}}` that balances the `{{mapshape|` starting at `startIdx`.
- * Returns the index of the first `}` of the balanced `}}`, or -1 if not found.
- */
-function findBalancedMapshapeEnd(text: string, startIdx: number): number {
-  let depth = 0;
-  for (let i = startIdx; i < text.length - 1; i++) {
-
-    if (text[i] === '{' && text[i + 1] === '{') {
-      depth++;
-      i++;
-
-    } else if (text[i] === '}' && text[i + 1] === '}') {
-      depth--;
-      if (depth === 0) return i;
-      i++;
-    }
-  }
-  return -1;
-}
-
 /** Resolve `{{StdColor|code}}` templates inside mapshape body to hex placeholders. */
 function resolveStdColors(inner: string): string {
   return inner.replace(
@@ -363,7 +342,7 @@ export function parseMapshapes(wikitext: string): MapshapeEntry[] {
   while (true) {
     const startIdx = lower.indexOf(MAPSHAPE_OPEN, searchFrom);
     if (startIdx === -1) break;
-    const endIdx = findBalancedMapshapeEnd(cleanText, startIdx);
+    const endIdx = findBalancedTemplateEnd(cleanText, startIdx);
     if (endIdx === -1) break;
 
     const inner = cleanText.substring(startIdx + MAPSHAPE_OPEN.length, endIdx);
@@ -522,17 +501,58 @@ function buildRegionEntry(
 }
 
 /**
+ * Find the index of the matching `}}` for the template opened at `openIdx`
+ * (which must point at the `{{` of the template). Tracks `{{`/`}}` depth so
+ * nested templates inside parameter values don't terminate the scan early.
+ *
+ * Returns the index of the closing `}}`, or -1 if not at a template open or
+ * the template is unbalanced.
+ *
+ * Exported for unit tests; also a small reusable helper for any other call
+ * site that needs to find a balanced template close in MediaWiki wikitext.
+ */
+const OPEN_BRACE_CC = 0x7B;
+const CLOSE_BRACE_CC = 0x7D;
+
+export function findBalancedTemplateEnd(text: string, openIdx: number): number {
+  if (text.charCodeAt(openIdx) !== OPEN_BRACE_CC || text.charCodeAt(openIdx + 1) !== OPEN_BRACE_CC) {
+    return -1;
+  }
+  let depth = 1;
+  let i = openIdx + 2;
+  while (i < text.length - 1) {
+    const c = text.charCodeAt(i);
+    const next = text.charCodeAt(i + 1);
+    if (c === OPEN_BRACE_CC && next === OPEN_BRACE_CC) {
+      depth++;
+      i += 2;
+    } else if (c === CLOSE_BRACE_CC && next === CLOSE_BRACE_CC) {
+      depth--;
+      if (depth === 0) return i;
+      i += 2;
+    } else {
+      i++;
+    }
+  }
+  return -1;
+}
+
+/**
  * Capture bullet links appearing after the Regionlist template's closing `}}`.
- * Locates the last `regionN<param>=` in the text, then scans for the next `}}`.
+ *
+ * Earlier this scanned for the first `}}` after the last `regionN<param>=`
+ * value, but `regionNdescription=` values can contain nested templates
+ * (e.g. `{{convert|10|km}}`); the first `}}` then closes the inner template,
+ * not the outer Regionlist, and bullet parsing started from inside the body
+ * — promoting description links into `extraLinks`. (#369)
+ *
+ * Now: locate `{{Regionlist` (case-insensitive), use findBalancedTemplateEnd
+ * to find the matching outer `}}`, parse bullets from after that.
  */
 function extractTrailingBulletLinks(cleanText: string): string[] {
-  let lastRegionParam: number | undefined;
-  // `\w{1,50}` caps the trailing parameter-name segment length.
-  for (const m of cleanText.matchAll(/region\d{1,4}\w{1,50}\s*=/g)) {
-    lastRegionParam = m.index! + m[0].length;
-  }
-  if (lastRegionParam === undefined) return [];
-  const rlEnd = cleanText.indexOf('}}', lastRegionParam);
+  const openMatch = cleanText.match(/\{\{regionlist/i);
+  if (!openMatch || openMatch.index === undefined) return [];
+  const rlEnd = findBalancedTemplateEnd(cleanText, openMatch.index);
   if (rlEnd < 0) return [];
   return parseBulletLinks(cleanText.slice(rlEnd + 2));
 }

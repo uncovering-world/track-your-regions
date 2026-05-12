@@ -10,6 +10,7 @@ import {
   classifyMultiLink,
   parseRegionlist,
   parseBulletLinks,
+  findBalancedTemplateEnd,
 } from '../parser.js';
 
 const FIXTURES = path.join(__dirname, 'fixtures');
@@ -370,6 +371,111 @@ describe('parseBulletLinks', () => {
   it('ignores links after dash separator', () => {
     const wt = `* [[Target]] — see also [[Other]]`;
     expect(parseBulletLinks(wt)).toEqual(['Target']);
+  });
+});
+
+// ─── findBalancedTemplateEnd ────────────────────────────────────────────────
+
+describe('findBalancedTemplateEnd', () => {
+  it('finds the close of a simple template', () => {
+    const t = 'before {{Foo}} after';
+    const open = t.indexOf('{{');
+    const end = findBalancedTemplateEnd(t, open);
+    expect(end).toBe(t.indexOf('}}'));
+    expect(t.slice(open, end + 2)).toBe('{{Foo}}');
+  });
+
+  it('returns the OUTER close when a parameter contains a nested template', () => {
+    const t = 'X {{Outer|p={{Inner}}}} Y';
+    const open = t.indexOf('{{Outer');
+    const end = findBalancedTemplateEnd(t, open);
+    expect(t.slice(open, end + 2)).toBe('{{Outer|p={{Inner}}}}');
+    // Specifically NOT the first }} (which closes Inner):
+    expect(end).not.toBe(t.indexOf('}}'));
+  });
+
+  it('handles deep nesting', () => {
+    const t = '{{A|{{B|{{C}}}}}}';
+    const end = findBalancedTemplateEnd(t, 0);
+    expect(t.slice(0, end + 2)).toBe(t); // whole string is the template
+  });
+
+  it('handles multiple sibling nested templates', () => {
+    const t = 'pre {{Foo|a={{X}}|b={{Y}}|c={{Z}}}} post';
+    const open = t.indexOf('{{Foo');
+    const end = findBalancedTemplateEnd(t, open);
+    expect(t.slice(open, end + 2)).toBe('{{Foo|a={{X}}|b={{Y}}|c={{Z}}}}');
+  });
+
+  it('returns -1 when openIdx does not point at a {{ open', () => {
+    expect(findBalancedTemplateEnd('hello {{Foo}}', 0)).toBe(-1);
+    expect(findBalancedTemplateEnd('hello {{Foo}}', 5)).toBe(-1);
+  });
+
+  it('returns -1 for an unbalanced template', () => {
+    expect(findBalancedTemplateEnd('{{Foo|{{Bar}}', 0)).toBe(-1);
+    expect(findBalancedTemplateEnd('{{Foo', 0)).toBe(-1);
+  });
+
+  it('does not treat a single } as a close', () => {
+    // Curly inside a string literal-ish parameter — must not decrement depth.
+    const t = '{{Tpl|p=val}with{single}braces}}';
+    const end = findBalancedTemplateEnd(t, 0);
+    expect(end).toBe(t.length - 2);
+  });
+});
+
+// ─── parseRegionlist trailing-bullets regression (#369) ─────────────────────
+
+describe('parseRegionlist — trailing bullets with nested template in description', () => {
+  it('finds the balanced Regionlist close even when a description value contains a nested template', () => {
+    // The buggy implementation scanned for the FIRST }} after the last
+    // regionN<param>=, which here closes the {{convert}} inside
+    // region1description= — making bullet-link parsing start INSIDE the
+    // Regionlist body and promote description content to extraLinks.
+    const wt = `
+{{Regionlist
+| region1name=[[Region One]]
+| region1description=Coast stretches over {{convert|10|km}} along the bay.
+| region2name=[[Region Two]]
+| region2description=Inland plateau, around {{convert|800|m}} above sea level.
+}}
+
+* [[Trailing One]] — extra link below the template
+* [[Trailing Two]]
+`;
+    const { regions, extraLinks } = parseRegionlist(wt);
+    expect(regions.map(r => r.name)).toEqual(['Region One', 'Region Two']);
+    expect(extraLinks).toEqual(['Trailing One', 'Trailing Two']);
+    // Description-internal wikilinks must NOT leak into extraLinks
+    // (none in this fixture — but the bug used to pull whatever wikitext
+    // happened to live between the inner }} and the outer }}.)
+    expect(extraLinks).not.toContain('Region One');
+    expect(extraLinks).not.toContain('Region Two');
+  });
+
+  it('still works for a plain Regionlist without nested templates', () => {
+    const wt = `
+{{Regionlist
+| region1name=[[A]]
+| region2name=[[B]]
+}}
+
+* [[Tail]]
+`;
+    const { regions, extraLinks } = parseRegionlist(wt);
+    expect(regions.map(r => r.name)).toEqual(['A', 'B']);
+    expect(extraLinks).toEqual(['Tail']);
+  });
+
+  it('returns no extraLinks when there is no trailing content', () => {
+    const wt = `
+{{Regionlist
+| region1name=[[Only One]]
+}}
+`;
+    const { extraLinks } = parseRegionlist(wt);
+    expect(extraLinks).toEqual([]);
   });
 });
 
