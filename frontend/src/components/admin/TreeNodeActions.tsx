@@ -2,6 +2,7 @@ import {
   Box,
   Chip,
   IconButton,
+  Link,
   Typography,
   CircularProgress,
 } from '@mui/material';
@@ -186,9 +187,14 @@ function SearchActionButtons({ nodeId, wikidataId, nodeGeocodeMsg, nodeGeocodeNe
             {nodeGeocodeMsg}
           </Typography>
           {nodeGeocodeNextScope && (
-            <Typography
+            // component="button" → real <button> in the tab order, native
+            // focus ring + Enter/Space activation. sx resets the button
+            // defaults (background/border/padding/font) so the inline-link
+            // look (underlined caption, primary colour, hover) is preserved.
+            <Link
+              component="button"
+              type="button"
               variant="caption"
-              component="span"
               onClick={() => {
                 const retry = nodeGeocodeRetryType === 'point' ? onPointMatch : onGeoshapeMatch;
                 retry(nodeId, nodeGeocodeNextScope.ancestorId);
@@ -198,11 +204,16 @@ function SearchActionButtons({ nodeId, wikidataId, nodeGeocodeMsg, nodeGeocodeNe
                 color: 'primary.main',
                 cursor: 'pointer',
                 textDecoration: 'underline',
+                background: 'none',
+                border: 0,
+                padding: 0,
+                font: 'inherit',
+                lineHeight: 'inherit',
                 '&:hover': { color: 'primary.dark' },
               }}
             >
               Try wider: {nodeGeocodeNextScope.ancestorName}
-            </Typography>
+            </Link>
           )}
         </Box>
       )}
