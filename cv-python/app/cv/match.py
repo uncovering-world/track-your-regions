@@ -377,21 +377,27 @@ def _iou_alignment(
     cos_lat: float,
     tw: int,
     th: int,
-) -> tuple[np.ndarray, float, str, np.ndarray | None, float]:
+) -> tuple[np.ndarray, float, str, np.ndarray | None, float, float]:
     """Find the affine transform that maximizes IoU between GADM outline and CV mask.
 
     Uses cv2.matchTemplate for fast translation search at each candidate scale,
     then refines with IoU scoring. Much faster than brute-force grid search.
+
+    Returns (matrix, f2, method, inverse_H, k_conic, gadm_cx_corr). The trailing
+    gadm_cx_corr is the global X pivot used when learning k_conic; callers that
+    re-apply the conic warp downstream (e.g. _rasterize_division) MUST reuse
+    this value, otherwise the warp is applied around a different center and
+    the rendered masks no longer match the transform that was scored.
     """
     # Parse GADM sub-paths (multipolygon) and filter to mainland
     all_sub_paths = parse_svg_sub_paths(country_path)
     if not all_sub_paths:
-        return np.eye(2, 3, dtype=np.float64), 0.0, "iou_align"
+        return np.eye(2, 3, dtype=np.float64), 0.0, "iou_align", None, 0.0, 0.0
 
     # CV mask bbox
     mask_ys, mask_xs = np.where(country_mask > 0)
     if len(mask_xs) < 10:
-        return np.eye(2, 3, dtype=np.float64), 0.0, "iou_align"
+        return np.eye(2, 3, dtype=np.float64), 0.0, "iou_align", None, 0.0, 0.0
     cv_x0, cv_x1 = float(mask_xs.min()), float(mask_xs.max())
     cv_y0, cv_y1 = float(mask_ys.min()), float(mask_ys.max())
     cv_w = cv_x1 - cv_x0
@@ -716,7 +722,8 @@ def _iou_alignment(
             ],
             dtype=np.float64,
         )
-        return affine_matrix, best_iou_val, "iou_align", None, 0.0
+        # k_conic=0 here, so gadm_cx_corr is irrelevant — pass it for tuple-shape consistency.
+        return affine_matrix, best_iou_val, "iou_align", None, 0.0, gadm_cx_corr
 
     # ── Conic search: vary X-scale linearly with Y (latitude) ──
     # Conic projections make the top narrower than the bottom.
@@ -845,7 +852,7 @@ def _iou_alignment(
     # improve an already-excellent fit.
     if best_iou_val >= SKIP_PERSPECTIVE_F2:
         print(f"  [IoU] Skipping perspective search: F2={best_iou_val:.3f} >= {SKIP_PERSPECTIVE_F2}")
-        return affine_matrix, best_iou_val, "iou_align", None, best_k
+        return affine_matrix, best_iou_val, "iou_align", None, best_k, gadm_cx_corr
 
     _persp_start = time.perf_counter()
     gadm_img = np.zeros((th, tw), dtype=np.uint8)
@@ -946,10 +953,10 @@ def _iou_alignment(
         P = np.array([[1, 0, 0], [0, 1, 0], [best_px, best_py, 1]], dtype=np.float64)
         T2 = np.array([[1, 0, cx_p], [0, 1, cy_p], [0, 0, 1]], dtype=np.float64)
         inverse_H = T2 @ P @ T1
-        return affine_matrix, best_persp_f2, "iou_perspective", inverse_H, best_k
+        return affine_matrix, best_persp_f2, "iou_perspective", inverse_H, best_k, gadm_cx_corr
     print("  [IoU] No perspective improvement found")
 
-    return affine_matrix, best_iou_val, "iou_align", None, best_k
+    return affine_matrix, best_iou_val, "iou_align", None, best_k, gadm_cx_corr
 
 
 def _inverse_homography(
@@ -1377,6 +1384,7 @@ def _rasterize_division(
     th: int,
     k_conic: float = 0.0,
     gadm_mid_y: float = 0.0,
+    gadm_mid_x_corr: float = 0.0,
 ) -> np.ndarray:
     """Rasterize a GADM division polygon into a binary mask.
 
@@ -1398,8 +1406,12 @@ def _rasterize_division(
         if k_conic != 0:
             pts_corrected = pts.copy()
             pts_corrected[:, 0] *= cos_lat
-            # Linear conic: scale X around center, varying with Y
-            cx_center = pts_corrected[:, 0].mean()  # approximate center
+            # Linear conic: scale X around the GLOBAL country-wide pivot that
+            # _iou_alignment used when learning k_conic — using the local
+            # per-division mean here would apply the warp around a different
+            # center and silently shift each division's absolute placement,
+            # making the rendered masks disagree with the scored transform.
+            cx_center = gadm_mid_x_corr
             scale_factor = 1.0 + k_conic * (pts[:, 1] - gadm_mid_y)
             pts_corrected[:, 0] = cx_center + (pts_corrected[:, 0] - cx_center) * scale_factor
             # Now transform without cos_lat again (already applied)
@@ -2234,6 +2246,10 @@ def run_matching(
     matrix, iou_score_val, method = iou_result[0], iou_result[1], iou_result[2]
     inverse_H = iou_result[3] if len(iou_result) > 3 else None
     k_conic = iou_result[4] if len(iou_result) > 4 else 0.0
+    # Global X pivot used when learning k_conic — must be threaded into
+    # _rasterize_division so the per-division conic warp matches the
+    # transform that was scored.
+    gadm_cx_corr = iou_result[5]
     inlier_ratio = iou_score_val
     print(f"  [Match] Raw alignment result: F2={iou_score_val:.4f} method={method} k_conic={k_conic:.4f}")
 
@@ -2326,7 +2342,9 @@ def run_matching(
             continue
 
         # Rasterize division polygon (with conic correction if found)
-        div_mask = _rasterize_division(svg, cos_lat, matrix, tw, th, k_conic=k_conic, gadm_mid_y=gadm_mid_y_ecc)
+        div_mask = _rasterize_division(
+            svg, cos_lat, matrix, tw, th, k_conic=k_conic, gadm_mid_y=gadm_mid_y_ecc, gadm_mid_x_corr=gadm_cx_corr
+        )
 
         # Count cluster votes
         votes, total_valid = _compute_cluster_votes(pixel_labels, div_mask)
