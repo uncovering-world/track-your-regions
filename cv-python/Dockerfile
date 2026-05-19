@@ -1,4 +1,8 @@
 FROM python:3.12-slim
+# Pull Debian security patches at build time so the image isn't pinned to
+# whatever package set Docker Hub last baked into python:3.12-slim. See #393.
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
