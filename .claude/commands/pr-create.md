@@ -71,6 +71,18 @@ If rebase has conflicts, stop and report them to the user — do not force throu
 
 After all rebases, restore the stash if one was created and return to the original branch.
 
+### 2.5 Verify clean branch history (mandatory gate)
+
+The branch history must be clean before a PR: **no commit may exist solely to fix, amend, or "address review" on an earlier commit of the same branch.** Each commit must be self-contained and independently reviewable (see `docs/tech/development-guide.md` § "Granular Commits").
+
+Inspect the subjects and the diffs:
+
+```bash
+git log --oneline {base}..HEAD
+```
+
+If any commit just patches a previous one on this branch (e.g. "fix typo from <earlier>", "address review", "harden X added two commits ago"), **STOP and fold it into the original** before proceeding — run `/pr-changes-amend`. Only continue to the PR once every commit stands on its own.
+
 ### 3. For each branch, analyze the changes
 
 Switch context to the branch (without checking it out) and gather info:

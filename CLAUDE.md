@@ -44,6 +44,8 @@ Backend runs on port 3001, frontend on port 5173, Martin tile server on port 300
 
 **Before pushing**, also run `npm run security:all` — it adds the slow scans (full Semgrep on both stacks, Trivy image CVE scan) on top of `check`. CI runs the slow Semgrep + Trivy in their own jobs. CodeQL (JS+Python) runs via GitHub's default-setup code scanning, configured in repo settings rather than as a workflow file.
 
+**Before opening a PR**, the branch history must be clean: **no commit may exist solely to fix, amend, or "address review" on an earlier commit of the same branch.** Fold such fixes into the commits they belong to (run `/pr-changes-amend`) so every commit is self-contained and independently reviewable. The `/pr-create` command enforces this as a gate. See `docs/tech/development-guide.md` § "Granular Commits".
+
 Python dev tooling lives in `cv-python/requirements-dev.txt` (ruff, mypy, pytest, pytest-cov, bandit, pip-audit). One-time setup: `npm run setup:py:dev` creates `cv-python/.venv` and installs both requirements files. The `*:py` npm scripts call `.venv/bin/<tool>` directly so they work without venv activation. CI installs the same set via `actions/setup-python` + `pip install` (no venv needed there).
 
 ## Architecture

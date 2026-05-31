@@ -454,29 +454,29 @@ Use `/refactor-check` to automate this verification.
 Every commit must have a **title and body**:
 
 ```
-Add batch location fetching for experience markers
+back: Add batch location fetching for experience markers.
 
 Replace N+1 individual location fetches with a single batch
 endpoint that returns all locations for a region's experiences.
 Reduces network requests from ~50 to 1 when opening a region
 with many experiences.
 
-Closes #234
+[Issue: #234]
 
 Signed-off-by: ...
-Co-Authored-By: ...
 ```
 
 **Title rules:**
+- Format `<Type>: <Topic>.` — `<Type>` is `front` (frontend), `back` (backend), `deploy` (deployment), or left blank if not specific to one. Do NOT use Conventional-Commit prefixes (`feat(scope):`, `fix(scope):`, …)
 - Imperative mood: "Add X", "Fix Y", "Update Z" (not "Added" or "Fixes")
-- Max 72 characters
+- Max 72 characters (including the type)
 - Specific: "Fix hover state not clearing on region change" not "Fix bug"
 
 **Body rules:**
 - Explain **what** changed and **why** — not just how
 - Wrap at 72 characters
-- Reference related issues: `Closes #N` or `Relates to #N`
-- Always sign off (`-s`) and include `Co-Authored-By` trailer
+- Reference related issues: `[Issue: #N]`
+- Always sign off (`-s`). Add a `Co-Authored-By:` trailer **only** for AI-assisted commits, never by default
 
 ### Granular Commits
 
@@ -484,10 +484,10 @@ Co-Authored-By: ...
 
 Good commit sequence for a feature:
 ```
-1. Add batch locations API endpoint          ← backend: schema + controller
-2. Add useRegionLocations hook               ← frontend: data layer
-3. Replace N+1 fetches with batch hook       ← frontend: wire it up
-4. Document batch location fetching          ← docs
+1. back: Add batch locations API endpoint     ← backend: schema + controller
+2. front: Add useRegionLocations hook         ← frontend: data layer
+3. front: Replace N+1 fetches with batch hook ← frontend: wire it up
+4. Document batch location fetching           ← docs (blank type)
 ```
 
 Bad: one giant commit "Add batch location fetching" with all of the above mixed together.

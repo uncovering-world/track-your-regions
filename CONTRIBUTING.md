@@ -1,55 +1,65 @@
-# Contributing to Region Tracker
+# Contributing to Track Your Regions
 
-Thank you for your interest in contributing to the Region Tracker project! This document provides guidelines for
-contributing to different parts of the project. Please adhere to the specific guidelines provided in each directory's
-CONTRIBUTING file.
-
-## Directory-Specific Guidelines
-
-For detailed instructions specific to each part of the project, refer to the CONTRIBUTING files in the respective directories:
-
-- [Backend CONTRIBUTING.md](./backend/CONTRIBUTING.md)
-- [Frontend CONTRIBUTING.md](./frontend/CONTRIBUTING.md)
-- [Deployment CONTRIBUTING.md](./deployment/CONTRIBUTING.md)
+Thank you for your interest in contributing! This document covers how
+to get the project running locally and the conventions we follow.
 
 ## Directory Structure
 
-The project is divided into three main directories as mentioned in the [README](./README.md) file:
-- Frontend: `./frontend`
-- Backend: `./backend`
-- Deployment: `./deployment`
+- `frontend/` — React/TypeScript UI
+- `backend/` — Express/TypeScript API
+- `cv-python/` — FastAPI computer-vision microservice
+- `db/` — schema SQL and GADM importer
+- `docs/` — architecture docs, ADRs, vision, security
 
-Make changes only in the directory you are working on. Adhere to the structure outlined in the respective README files.
+## Local Setup
+
+**Prerequisites:** Docker + Docker Compose, Node.js 22+
+
+```shell
+npm run setup   # interactive: writes .env, generates JWT secret,
+                # creates your admin account (run once)
+npm run dev     # start all services via Docker Compose
+```
+
+Open http://localhost:5173 and log in with the admin you just created.
+World-boundary data is empty until you run:
+
+```shell
+npm run db:load-gadm   # ~30 min; offers to download the file
+```
+
+For Python tooling (cv-python tests, type checking), set up the venv
+once:
+
+```shell
+npm run setup:py:dev
+```
 
 ### Coding Style
-- For JavaScript (used in frontend and backend), follow the [Airbnb JavaScript Style Guide](https://github.com/airbnb/javascript).
-- For Python (used in deployment scripts), use [Black](https://black.readthedocs.io/en/stable/) for code formatting.
+
+- TypeScript (frontend + backend): ESLint with the project config.
+  Run `npm run lint` to check, `npm run lint:fix` to auto-fix.
+- Python (cv-python): Ruff for lint + format. Run `npm run check:py`.
 
 ### Testing
-Unfortunately, we don't have any automated tests yet. Hence, we can't enforce any testing requirements.
 
-Nevertheless, it's highly recommended to run a full DB + backend + frontend setup for running some manual tests.
+Run all automated tests before opening a PR:
 
-To run the full setup, follow the instructions in the deployment [README](./deployment/README.md).
-
-To be short, you need to:
-1. Install Docker and Docker Compose.
-2. Setup .env file
-3. Run the following command to start all services and initialize the database:
 ```shell
-make start-all
+npm run check                  # lint + typecheck + fast security +
+                               # knip + circular/shell/docker checks
+TEST_REPORT_LOCAL=1 npm test   # Node unit + integration tests
+npm run test:py                # cv-python pytest (needs setup:py:dev)
 ```
-For the details look in the deployment [README](./deployment/README.md).
 
-At least, please run the code you have introduced or changed :)
+`npm run check` is the same gate CI runs — a clean local check means
+a clean CI check.
 
 ### Pre-commit Checks
-Use `check-dir` pre-commit hooks to maintain consistency across different directories.
 
-Set up the pre-commit hook with:
-```shell
-git config core.hooksPath .git-hooks
-```
+Before every commit run the three gates above. See `CLAUDE.md` for
+the full mandatory pre-commit checklist (includes a security scan on
+changed files).
 
 ### Commit Message Template
 Follow this format for all commit messages:
@@ -66,11 +76,15 @@ Signed-off-by: <Your Name> <Your Email>
 - Type can be one of the following:
   - `front`: Frontend
   - `back`: Backend
-  - `deploy`: Deployment 
+  - `deploy`: Deployment
   Or leave it blank if the commit is not specific to any of the above.
-- Ensure the commit message is concise yet descriptive.
+- Keep the `<Topic>` line concise and imperative.
+- In the `<Description>` body, explain *what* changed and *why* (not how), and
+  wrap every body line at 72 characters.
 - If the commit fixes an issue, add the issue number in the commit message.
 - Sign your commits to verify your identity (use `git commit -s`).
+- Only if the commit was written with AI assistance, add a
+  `Co-Authored-By: <Model Name> <noreply@anthropic.com>` trailer — never by default.
 
 ### Pull Requests (PRs)
 
