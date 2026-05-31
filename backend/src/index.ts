@@ -15,6 +15,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // Now import everything else
+import type { RawEnv } from './config/validateEnv.js';
 import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
@@ -73,6 +74,9 @@ app.use(passport.initialize());
 
 // Lazy load routes to ensure env vars are loaded first
 const startServer = async () => {
+  const { validateEnv, isProductionMode } = await import('./config/validateEnv.js');
+  validateEnv(process.env as RawEnv);
+
   // Initialize passport strategies
   const { initializePassport } = await import('./auth/passport.js');
   initializePassport();
@@ -96,6 +100,37 @@ const startServer = async () => {
   );
   if (staleImportResult.rowCount && staleImportResult.rowCount > 0) {
     console.log(`🧹 Marked ${staleImportResult.rowCount} stale import run(s) as failed`);
+  }
+
+  // If no administrative divisions are loaded, the map will be empty — point the
+  // operator at the loader (which can also download the GADM data if missing).
+  const divisionCheck = await pool.query(
+    'SELECT 1 FROM administrative_divisions LIMIT 1',
+  );
+  if (divisionCheck.rows.length === 0) {
+    console.warn(
+      '\n🗺️  No administrative divisions loaded — the map will be empty.\n' +
+        '   Run: npm run db:load-gadm (~30 min, one-time).' +
+        ' It offers to download the GADM data if missing.\n',
+    );
+  }
+
+  // Promote the ADMIN_EMAIL account to admin on startup if it already exists.
+  // This is also the backstop for accounts that predate ADMIN_EMAIL or that only
+  // log in via the existing-user OAuth path (intentionally not re-checked on every
+  // login to keep the hot path cheap). Best-effort: never block boot on it.
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  if (adminEmail) {
+    try {
+      const { findUserByEmail } = await import('./services/authService.js');
+      const { maybePromoteToAdmin } = await import('./services/adminBootstrap.js');
+      const existing = await findUserByEmail(adminEmail);
+      if (existing) {
+        await maybePromoteToAdmin(existing.id, existing.email!, existing.emailVerified);
+      }
+    } catch (err) {
+      console.error('Startup admin promotion failed (continuing):', err);
+    }
   }
 
   // Schedule periodic cleanup of expired/revoked tokens (every 6 hours)
@@ -127,12 +162,22 @@ const startServer = async () => {
   // Error handling (must be last)
   app.use(errorHandler);
 
-  // Start server
-  app.listen(PORT, '0.0.0.0', () => {
+  // Start server. Bind to loopback locally; bind all interfaces in production
+  // (or whatever BIND_ADDR overrides to) so a non-compose deploy is reachable.
+  // ADR-0017: server bind address. Use the same isProductionMode predicate as
+  // validateEnv so bind behavior and startup validation cannot drift.
+  const BIND_ADDR =
+    process.env.BIND_ADDR || (isProductionMode(process.env.NODE_ENV) ? '0.0.0.0' : '127.0.0.1');
+  app.listen(PORT, BIND_ADDR, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/health`);
     console.log(`🗺️  API: http://localhost:${PORT}/api`);
   });
 };
 
-startServer().catch(console.error);
+// Exit non-zero on startup failure (e.g. validateEnv refusing an insecure prod
+// config) so orchestrators/CI see the failure instead of a clean exit.
+startServer().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

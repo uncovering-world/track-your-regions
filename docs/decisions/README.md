@@ -24,6 +24,7 @@ and mark the old one as `Superseded by ADR-XXXX`.
 | [0013](0013-manual-paint-editor.md) | Manual cluster-paint editor for CV match recovery | Accepted | 2026-04-26 |
 | [0014](0014-vector-border-editing.md) | Vector border editing for cluster paint editor | Accepted | 2026-04-26 |
 | [0015](0015-python-cv-microservice.md) | Python CV microservice for image-processing pipeline | Accepted | 2026-04-26 |
+| [0017](0017-server-bind-address.md) | Server bind address — loopback by default, all interfaces in production | Accepted | 2026-06-03 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

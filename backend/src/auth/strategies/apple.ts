@@ -2,6 +2,7 @@ import passport from 'passport';
 // @ts-expect-error - passport-apple types may not be complete
 import AppleStrategy from 'passport-apple';
 import { findUserByEmail, findUserByProvider, createUser } from '../../services/authService.js';
+import { maybePromoteToAdmin } from '../../services/adminBootstrap.js';
 
 /**
  * Apple Sign-In Strategy
@@ -101,13 +102,19 @@ export function configureAppleStrategy(): void {
             providerId,
             emailVerified: true, // Apple emails are verified
           });
+          let promoted = false;
+          try {
+            promoted = await maybePromoteToAdmin(user.id, user.email!, true);
+          } catch (err) {
+            console.error('Admin promotion failed during Apple signup (continuing):', err);
+          }
 
           return done(null, {
             id: user.id,
             uuid: user.uuid,
             email: user.email,
             displayName: user.displayName,
-            role: user.role,
+            role: promoted ? 'admin' : user.role,
             avatarUrl: user.avatarUrl,
             emailVerified: user.emailVerified,
           });
