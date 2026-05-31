@@ -1,6 +1,7 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { findUserByEmail, findUserByProvider, createUser } from '../../services/authService.js';
+import { maybePromoteToAdmin } from '../../services/adminBootstrap.js';
 
 /**
  * Google OAuth 2.0 Strategy
@@ -80,13 +81,19 @@ export function configureGoogleStrategy(): void {
             avatarUrl: avatarUrl || undefined,
             emailVerified: true, // Google emails are verified
           });
+          let promoted = false;
+          try {
+            promoted = await maybePromoteToAdmin(user.id, user.email!, true);
+          } catch (err) {
+            console.error('Admin promotion failed during Google signup (continuing):', err);
+          }
 
           return done(null, {
             id: user.id,
             uuid: user.uuid,
             email: user.email,
             displayName: user.displayName,
-            role: user.role,
+            role: promoted ? 'admin' : user.role,
             avatarUrl: user.avatarUrl,
             emailVerified: user.emailVerified,
           });

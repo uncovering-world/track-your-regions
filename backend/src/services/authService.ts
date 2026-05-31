@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { pool } from '../db/index.js';
 import type { User, JWTPayload, AuthTokens, PublicUser, UserRole, AuthProvider } from '../types/auth.js';
+import { maybePromoteToAdmin } from './adminBootstrap.js';
 
 // =============================================================================
 // Configuration
@@ -13,13 +14,6 @@ const JWT_ISSUER = 'track-your-regions';
 const JWT_AUDIENCE = 'track-your-regions-app';
 const ACCESS_TOKEN_EXPIRY = '15m';
 export const REFRESH_TOKEN_EXPIRY_DAYS = 7;
-
-if (!process.env.JWT_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('FATAL: JWT_SECRET must be set in production. Generate one with: openssl rand -base64 32');
-  }
-  console.warn('WARNING: Using default JWT_SECRET — set JWT_SECRET env var for production.');
-}
 
 // =============================================================================
 // Password Hashing
@@ -412,7 +406,19 @@ export async function verifyEmailToken(token: string): Promise<User | null> {
     [userId]
   );
 
-  return findUserById(userId);
+  let user = await findUserById(userId);
+  if (user) {
+    try {
+      const promoted = await maybePromoteToAdmin(user.id, user.email!, true);
+      // Reload so the caller (which mints tokens right away) sees the new role.
+      if (promoted) {
+        user = await findUserById(userId);
+      }
+    } catch (err) {
+      console.error('Admin promotion failed after email verification (continuing):', err);
+    }
+  }
+  return user;
 }
 
 export async function deleteVerificationTokensForUser(userId: number): Promise<void> {
