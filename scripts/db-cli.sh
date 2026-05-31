@@ -37,6 +37,10 @@ GOLDEN_DB_FILE="$PROJECT_ROOT/.golden-db"
 ENV_FILE="$PROJECT_ROOT/.env"
 ENV_EXAMPLE="$PROJECT_ROOT/.env.example"
 
+# GADM 4.1 world GeoPackage (zipped). Landing page:
+# https://gadm.org/download_world.html . Update here if GADM moves the file.
+GADM_DOWNLOAD_URL="https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-gpkg.zip"
+
 # Load environment variables
 load_env() {
     if [[ -f "$ENV_FILE" ]]; then
@@ -59,12 +63,14 @@ load_env() {
     DB_PASSWORD="${DB_PASSWORD:-postgres}"
 }
 
-# Get current active database name
+# Get current active database name.
+# Falls back to DB_NAME from .env (the single source of truth when there is no
+# .active-db pointer, e.g. a Docker-Compose-provisioned DB on a fresh clone).
 get_active_db() {
     if [[ -f "$ACTIVE_DB_FILE" ]]; then
         cat "$ACTIVE_DB_FILE"
     else
-        echo ""
+        echo "${DB_NAME:-track_regions}"
     fi
 }
 
@@ -342,6 +348,33 @@ cmd_unmark_golden() {
     echo -e "${GREEN}Removed golden protection from '$golden'.${NC}"
 }
 
+# Download + unzip a GADM gpkg into deployment/. Echoes the resulting path on
+# stdout; all progress goes to stderr so the captured path stays clean.
+download_gadm() {
+    local url="$1"
+    local dest_dir="$PROJECT_ROOT/deployment"
+    local zip="$dest_dir/gadm_410-gpkg.zip"
+    mkdir -p "$dest_dir"
+    echo -e "${BLUE}Downloading GADM from: $url${NC}" >&2
+    if ! curl -fSL --retry 2 -o "$zip" "$url"; then
+        echo -e "${RED}Download failed from: $url${NC}" >&2
+        return 1
+    fi
+    echo -e "${BLUE}Unzipping...${NC}" >&2
+    if ! unzip -o "$zip" -d "$dest_dir" >&2; then
+        echo -e "${RED}Unzip failed (not a valid zip?).${NC}" >&2
+        return 1
+    fi
+    rm -f "$zip"
+    local gpkg
+    gpkg="$(find "$dest_dir" -maxdepth 1 -name 'gadm_410*.gpkg' | head -1)"
+    if [[ -z "$gpkg" || ! -s "$gpkg" ]]; then
+        echo -e "${RED}No non-empty gadm_410*.gpkg found after unzip.${NC}" >&2
+        return 1
+    fi
+    echo "$gpkg"
+}
+
 cmd_load_gadm() {
     local active
     active=$(get_active_db)
@@ -363,30 +396,54 @@ cmd_load_gadm() {
     done
 
     if [[ -z "$gadm_file" ]]; then
-        echo -e "${RED}Error: GADM file not found.${NC}"
-        echo "Please download gadm_410.gpkg and place it in one of these locations:"
-        echo "  - ./deployment/gadm_410.gpkg"
-        echo "  - ~/gadm_410.gpkg"
-        exit 1
+        # Interactive: offer the known URL, then prompt for a custom one.
+        if [[ -t 0 ]]; then
+            echo -e "${YELLOW}GADM file not found in ./deployment/ or ~/.${NC}"
+            read -r -p "Download it now from the known location? [Y/n]: " ans
+            if [[ ! "$ans" =~ ^[Nn] ]]; then
+                gadm_file="$(download_gadm "$GADM_DOWNLOAD_URL" || true)"
+            fi
+            if [[ -z "$gadm_file" ]]; then
+                read -r -p "Enter a GADM .zip URL (blank to abort): " custom_url
+                if [[ -n "$custom_url" ]]; then
+                    gadm_file="$(download_gadm "$custom_url" || true)"
+                fi
+            fi
+        fi
+        if [[ -z "$gadm_file" ]]; then
+            echo -e "${RED}Error: GADM file not found.${NC}"
+            echo "Download gadm_410.gpkg (see https://gadm.org/download_world.html)"
+            echo "into ./deployment/ or ~/, or set GADM_DOWNLOAD_URL, then re-run:"
+            echo "  npm run db:load-gadm"
+            exit 1
+        fi
     fi
 
     echo -e "${BLUE}Using GADM file: $gadm_file${NC}"
     echo -e "${YELLOW}This will take approximately 30 minutes...${NC}"
     echo ""
 
-    # Export DB_NAME for Python script
-    export DB_NAME="$active"
+    # The loaders run inside the db-loader container (GDAL + psycopg2 + dotenv +
+    # shapely), so the host needs no Python or GDAL. The gpkg is mounted in, and
+    # DB_HOST=db reaches the Postgres service over the compose network.
+    cd "$PROJECT_ROOT"
+    echo -e "${BLUE}Building the loader image (first run only)...${NC}"
+    docker compose build db-loader
 
     # Step 1: Load leaf division geometries from GADM
     echo -e "${BLUE}Step 1/2: Loading leaf division geometries from GADM...${NC}"
-    cd "$PROJECT_ROOT/db"
-    python3 init-db.py -s "$gadm_file" -g --skip-schema
+    docker compose run --rm -T \
+        -e DB_NAME="$active" -e DB_HOST=db -e DB_PORT=5432 \
+        -v "$gadm_file:/data/gadm_410.gpkg:ro,z" \
+        db-loader python3 /app/db/init-db.py -s /data/gadm_410.gpkg -g --skip-schema
 
     # Step 2: Compute parent geometries (countries, continents, etc.)
     echo ""
     echo -e "${BLUE}Step 2/2: Computing geometries for all GADM levels...${NC}"
     echo -e "${YELLOW}Merging child geometries into parents (continents, countries, states...)${NC}"
-    python3 "$PROJECT_ROOT/db/precalculate-geometries.py"
+    docker compose run --rm -T \
+        -e DB_NAME="$active" -e DB_HOST=db -e DB_PORT=5432 \
+        db-loader python3 /app/db/precalculate-geometries.py
 
     echo ""
     echo -e "${GREEN}GADM data loaded successfully!${NC}"
@@ -421,8 +478,13 @@ cmd_make_admin() {
         exit 1
     fi
 
-    local result
-    result=$(psql_cmd -d "$active" -t -A --set "email=$email" -c "UPDATE users SET role = 'admin' WHERE email = :'email' RETURNING email, display_name;")
+    # Run inside the db container so no host psql is required. SQL-escape the
+    # operator-supplied email by doubling single quotes, then embed it directly
+    # (psql variable interpolation via -c proved unreliable across versions).
+    local esc_email result
+    esc_email="${email//\'/\'\'}"
+    result=$(docker compose exec -T db psql -U "$DB_USER" -d "$active" -t -A -v ON_ERROR_STOP=1 \
+        -c "UPDATE users SET role = 'admin' WHERE email = '${esc_email}' RETURNING email, display_name;")
 
     if [[ -z "$result" ]]; then
         echo -e "${RED}No user found with email: $email${NC}"
