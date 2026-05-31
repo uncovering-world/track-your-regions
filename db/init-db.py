@@ -547,19 +547,6 @@ class GADMProcessor:
         print(f"  Merged {merged_count} redundant divisions")
 
 
-def create_sample_views(cursor):
-    """Create some sample views for testing."""
-    print("\nCreating sample views...")
-
-    cursor.execute("""
-        INSERT INTO views (name, description) VALUES
-            ('My Visited Places', 'Administrative divisions I have visited'),
-            ('Bucket List', 'Places I want to visit')
-        ON CONFLICT DO NOTHING;
-    """)
-    print("  Created 2 sample views.")
-
-
 def print_stats(cursor):
     """Print database statistics."""
     print("\n" + "="*50)
@@ -600,6 +587,13 @@ def main():
         action="store_true",
         help="Fast mode - skip postprocessing optimizations"
     )
+    parser.add_argument(
+        "--skip-schema",
+        action="store_true",
+        help="Accepted for compatibility; the schema is always applied "
+             "externally (Docker init / db/init/01-schema.sql). This script "
+             "only loads data, so this flag is a documented no-op."
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.source):
@@ -626,8 +620,6 @@ def main():
 
         # Merge redundant single children (Berlin -> Berlin -> Berlin)
         processor.merge_single_children()
-
-        create_sample_views(pg_cur)
 
         print_stats(pg_cur)
 

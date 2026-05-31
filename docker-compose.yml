@@ -7,10 +7,10 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - ./db/init:/docker-entrypoint-initdb.d:ro,z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-track_regions}"]
       interval: 5s
@@ -28,7 +28,7 @@ services:
       DB_NAME: ${DB_NAME:-track_regions}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      NODE_ENV: development
+      NODE_ENV: ${NODE_ENV:-development}
       CV_PYTHON_URL: http://cv-python:8000
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       # Authentication
@@ -48,11 +48,13 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@localhost}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      BIND_ADDR: 0.0.0.0
     ports:
-      - "${BACKEND_PORT:-3001}:3001"
+      - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
     volumes:
-      - ./backend/src:/app/src:ro
-      - ./data:/app/data
+      - ./backend/src:/app/src:ro,z
+      - ./data:/app/data:z
     depends_on:
       db:
         condition: service_healthy
@@ -67,10 +69,10 @@ services:
       VITE_API_URL: http://localhost:${BACKEND_PORT:-3001}
       VITE_MARTIN_URL: http://localhost:${MARTIN_PORT:-3000}
     ports:
-      - "${FRONTEND_PORT:-5173}:5173"
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
     volumes:
-      - ./frontend/src:/app/src:ro
-      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/src:/app/src:ro,z
+      - ./frontend/index.html:/app/index.html:ro,z
     depends_on:
       - backend
     command: npm run dev -- --host
@@ -85,7 +87,7 @@ services:
     ports:
       - "${MARTIN_PORT:-3000}:3000"
     volumes:
-      - ./martin/config.yaml:/config.yaml:ro
+      - ./martin/config.yaml:/config.yaml:ro,z
     depends_on:
       db:
         condition: service_healthy
@@ -105,11 +107,33 @@ services:
     expose:
       - "8000"
     volumes:
-      - ./cv-python/app:/app/app:ro
-      - ./data:/app/data
+      - ./cv-python/app:/app/app:ro,z
+      - ./data:/app/data:z
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
+
+  # One-off GADM loader (GDAL + psycopg2 + dotenv + shapely). Not started by
+  # `docker compose up` (tools profile); invoked by `npm run db:load-gadm` via
+  # `docker compose run --rm db-loader ...`, so the host needs no Python/GDAL.
+  db-loader:
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    image: ${STACK_NAME:-tyr-ng}-db-loader
+    profiles: ["tools"]
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-track_regions}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - ./db:/app/db:ro,z
+    working_dir: /app
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   postgres_data:
