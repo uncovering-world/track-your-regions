@@ -240,7 +240,13 @@ chapters:
       desc: "Email verification flow"
       level: 1
       status: pass
-      notes: "Full email verification: register sends token, verify-email endpoint verifies and auto-logs in. Login blocked until verified. 24h token expiry, resend endpoint. Fixed 2026-02-10"
+      notes: "Full email verification: register sends token, verify-email
+        endpoint verifies and auto-logs in. Login blocked until verified.
+        24h token expiry, resend endpoint. Admin bootstrap (npm run setup)
+        creates a pre-verified account directly — no email step needed.
+        Automatic admin promotion (maybePromoteToAdmin) is verified-only:
+        unverified accounts are never promoted. Race-safe via advisory xact
+        lock. Fixed 2026-02-10; verified-only promotion hardened 2026-05-30."
     V6.5.1:
       desc: "Credential enumeration resistance"
       level: 1
@@ -363,7 +369,12 @@ chapters:
       desc: "Production secret validation"
       level: 2
       status: pass
-      notes: "JWT_SECRET missing in production throws fatal error, blocking startup. Dev mode shows warning. Fixed 2026-02-10"
+      notes: "Fail-fast startup validator (validateEnv) blocks boot in
+        production when: JWT_SECRET is the default/weak value or < 32 chars,
+        DB_PASSWORD is the default value, ADMIN_EMAIL is unset, or
+        FRONTEND_URL is non-https. Dev mode logs warnings but continues.
+        Dev stack binds to loopback (127.0.0.1) — not LAN-exposed.
+        Fixed 2026-02-10; startup validator hardened 2026-05-30."
     V13.4.3_cvpy:
       desc: "cv-python error responses don't leak internals"
       level: 2

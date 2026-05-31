@@ -157,40 +157,49 @@ The schema includes:
 - `refresh_tokens` table for JWT token rotation
 - `email_verification_tokens` table for email verification flow
 
-## Creating an Admin User
+## First Admin and Role Bootstrap
 
-After running the migration, you can create an admin user:
+### Setup script (recommended)
 
-### Option 1: Register via API, then promote
+`npm run setup` (run once before `npm run dev`) creates a
+pre-verified admin account directly in the database via an
+interactive CLI. The admin can log in immediately — no
+email-verification step is required. Credentials and display name
+are collected interactively; a strong JWT secret is generated
+automatically and written to `.env`.
+
+### Automatic promotion via `ADMIN_EMAIL`
+
+`maybePromoteToAdmin()` runs at startup and after every email
+verification. It promotes the matching account to admin when:
+
+- `ADMIN_EMAIL` is set in `.env` and a **verified** account with
+  that address exists, **or**
+- `ADMIN_EMAIL` is unset and `NODE_ENV=development` — the first
+  verified sign-up becomes admin.
+
+Promotion is race-safe (PostgreSQL advisory transaction lock) and
+non-fatal: a failure is logged but does not block startup or login.
+Privilege is only ever granted to a verified account — unverified
+accounts are ignored.
+
+### Manual promotion (break-glass)
+
+If you need to grant admin outside the setup flow:
 
 ```bash
-# Register a new user
-curl -X POST http://localhost:3001/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email": "admin@example.com", "password": "SecurePassword123", "displayName": "Admin"}'
+npm run db:make-admin you@example.com
+```
 
-# Promote to admin via SQL
+Or directly via SQL (requires the account to already exist and be
+verified):
+
+```bash
 docker exec -i tyr-ng-db psql -U postgres -d track_regions \
-  -c "UPDATE users SET role = 'admin' WHERE email = 'admin@example.com';"
+  -c "UPDATE users SET role = 'admin'
+      WHERE email = 'you@example.com'
+        AND email_verified = true;"
 ```
-
-### Option 2: Insert directly via SQL
-
-```bash
-docker exec -i tyr-ng-db psql -U postgres -d track_regions -c "
-INSERT INTO users (uuid, email, password_hash, display_name, role, auth_provider, email_verified)
-VALUES (
-  gen_random_uuid(),
-  'admin@example.com',
-  '\$2a\$12\$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.PQKXv.z7G1KRXC', -- 'admin123' hashed
-  'Admin',
-  'admin',
-  'local',
-  true
-);"
-```
-
-> **Security Note:** Change the password immediately after first login!
 
 ## API Endpoints
 
