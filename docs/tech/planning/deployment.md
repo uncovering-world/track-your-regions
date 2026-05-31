@@ -323,3 +323,29 @@ npm run deploy:db -- ./new-backup.dump
 - Database port not exposed externally
 - Caddy handles SSL automatically
 - UFW firewall allows only 22, 80, 443
+
+---
+
+## Production Configuration
+
+The backend startup validator (`validateEnv`) refuses to boot
+in production (`NODE_ENV=production`) unless all of the following are
+satisfied. Set these in the platform secret store — **never in a
+generated `.env`**:
+
+| Variable | Requirement |
+|----------|-------------|
+| `JWT_SECRET` | Non-default value, ≥ 32 characters |
+| `DB_PASSWORD` | Non-default value (not `postgres`) |
+| `ADMIN_EMAIL` | Must be set |
+| `FRONTEND_URL` | Must start with `https://` |
+
+**Single-node caveat:** the current setup is not HA. The in-memory
+JWT blacklist and running-sync state live in the Node process and
+are not shared across instances. Running multiple replicas requires
+externalising those (Redis or equivalent) first.
+
+Production secrets must come from the platform secret store (e.g.
+Railway environment variables, Fly.io secrets, Render secret files).
+Never commit a production `.env` or derive it from the development
+`npm run setup` output.

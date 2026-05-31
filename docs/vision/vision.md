@@ -19,7 +19,18 @@ A visitor can:
 - **See what exists** — understand the breadth of experiences available in any region, with counts, categories, images, and descriptions
 - **Switch world views** — see the world organized in different ways (standard GADM administrative boundaries, or custom regional groupings)
 
-On a fresh installation (no custom world views yet), the main content area shows a **Getting Started** card with setup steps: register an account, promote to admin via `npm run db:make-admin`, create a world view, and run experience syncs. This replaces the empty map and disappears automatically once the first custom world view is created.
+On a fresh installation (no custom world views yet), the main content
+area shows a **Getting Started** card with setup steps: create a world
+view and run experience syncs. This replaces the empty map and
+disappears automatically once the first custom world view is created.
+
+**First-run onboarding for contributors / self-hosters:** running
+`npm run setup` (once) creates a pre-verified admin account directly
+in the database — no manual SQL or email-verification step needed.
+The admin can log in immediately after `npm run dev`. Ordinary
+(non-admin) local sign-ups use the standard email-verification flow;
+in development the verification link is printed to the backend Docker
+logs, so no SMTP configuration is required.
 
 The visitor experience is designed to inspire curiosity and make the case for signing up — "look at all the things you could track."
 

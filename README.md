@@ -35,27 +35,46 @@ See the full [Vision document](docs/vision/vision.md) for details on user roles,
 
 ## Getting Started
 
-**Prerequisites:** Docker, Node.js 20+, pnpm, and the [GADM 4.1 GeoPackage](https://gadm.org/download_world.html) (`gadm_410.gpkg`) placed in `./deployment/` or `~/`
+**Prerequisites:** Docker + Docker Compose, Node.js 22+
 
 ```bash
-cp .env.example .env
-pnpm install
-npm run db:up
-npm run db:create my_regions
-npm run db:load-gadm            # Load world boundaries (~30 min, one-time)
-npm run dev                     # Start everything
+npm run setup   # interactive: writes .env, generates JWT secret,
+                # creates your admin account (run once)
+npm run dev     # start all services via Docker Compose
 ```
 
-Open **http://localhost:5173** — you should see the world map.
+Open **http://localhost:5173** and log in with the admin account you
+created in `setup`.
 
-To get admin access (run syncs, manage content), register through the UI, then:
+The map is empty on first run. Load world boundaries once with:
 
 ```bash
-npm run db:shell
-UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
+npm run db:load-gadm   # offers to download the data if missing, then
+                       # loads it in Docker (no local Python/GDAL needed)
 ```
+
+This is a one-time step and is slow — expect tens of minutes to a
+couple of hours depending on your machine.
+
+**Dev sign-ups (non-admin):** email verification links are printed to
+the backend Docker logs — no SMTP configuration needed.
 
 Run `npm run help` for the full command reference.
+
+### Optional integrations
+
+Everything below is **off by default** and the app runs fine without it. To
+enable one, set its variables in `.env` (see `.env.example` for the full list
+and comments) and restart (`docker compose down && npm run dev`). The backend
+logs each integration's status at startup.
+
+| Integration | Variables | How to get them | Behavior when unset |
+|-------------|-----------|-----------------|---------------------|
+| **Map data (GADM)** | — | `npm run db:load-gadm` (offers to download) | Map is empty |
+| **Google login** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) — redirect URI `http://localhost:3001/api/auth/google/callback` | Google button disabled |
+| **AI features** | `OPENAI_API_KEY` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | AI-assisted grouping/descriptions disabled |
+| **Email (SMTP)** | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | any SMTP provider | Verification links print to the backend logs |
+| **Apple Sign-In** | `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Apple Developer Console (see `docs/tech/authentication.md`) | Apple button disabled (untested) |
 
 ## Documentation
 
