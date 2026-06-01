@@ -118,7 +118,19 @@ export async function importTree(
   }
 }
 
-async function insertRegion(
+/**
+ * Insert a region node and recurse into its subtree under `parentRegionId`.
+ *
+ * Find-or-create: a duplicate sibling name reuses the existing region and merges
+ * this node's subtree under it, rather than violating the
+ * `idx_regions_unique_subregion_name` unique index and rolling back the whole
+ * import (the extractor can emit the same sibling twice — see #378, which moved
+ * the find-or-create path to ON CONFLICT but missed this one). Only freshly
+ * created regions get a `region_import_state` row and advance the progress
+ * counter; root rows (NULL parent) are exempt from the partial index, so
+ * duplicate root names still insert.
+ */
+export async function insertRegion(
   client: PoolClient,
   node: ImportTreeNode,
   worldViewId: number,
@@ -128,42 +140,52 @@ async function insertRegion(
 ): Promise<void> {
   if (progress.cancel) return;
 
-  // Insert region (no metadata JSONB needed)
+  // `inserted` (xmax = 0) is true only for a freshly created row.
   const result = await client.query(
     `INSERT INTO regions (world_view_id, name, parent_region_id)
-     VALUES ($1, $2, $3) RETURNING id`,
+     VALUES ($1, $2, $3)
+     ON CONFLICT (world_view_id, parent_region_id, name) WHERE parent_region_id IS NOT NULL
+     DO UPDATE SET name = regions.name
+     RETURNING id, (xmax = 0) AS inserted`,
     [worldViewId, node.name, parentRegionId],
   );
   const regionId = result.rows[0].id as number;
+  const inserted = result.rows[0].inserted as boolean;
 
-  const sourceUrl = node.sourceUrl ?? null;
+  if (inserted) {
+    const sourceUrl = node.sourceUrl ?? null;
 
-  // Insert region_import_state
-  await client.query(
-    `INSERT INTO region_import_state (region_id, import_run_id, source_url, source_external_id, region_map_url)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [regionId, importRunId, sourceUrl, node.wikidataId || null, node.regionMapUrl || null],
-  );
+    // Insert region_import_state
+    await client.query(
+      `INSERT INTO region_import_state (region_id, import_run_id, source_url, source_external_id, region_map_url)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [regionId, importRunId, sourceUrl, node.wikidataId || null, node.regionMapUrl || null],
+    );
 
-  // Insert map image candidates
-  if (node.mapImageCandidates?.length) {
-    for (const imageUrl of node.mapImageCandidates) {
-      await client.query(
-        `INSERT INTO region_map_images (region_id, image_url) VALUES ($1, $2)`,
-        [regionId, imageUrl],
-      );
+    // Insert map image candidates
+    if (node.mapImageCandidates?.length) {
+      for (const imageUrl of node.mapImageCandidates) {
+        await client.query(
+          `INSERT INTO region_map_images (region_id, image_url) VALUES ($1, $2)`,
+          [regionId, imageUrl],
+        );
+      }
     }
+
+    progress.createdRegions++;
+    if (progress.createdRegions % 500 === 0) {
+      console.log(`[WV Importer] Progress: ${progress.createdRegions}/${progress.totalRegions} regions created`);
+    }
+    if (progress.createdRegions % 100 === 0) {
+      progress.statusMessage = `Creating regions... ${progress.createdRegions}/${progress.totalRegions}`;
+    }
+  } else {
+    console.warn(
+      `[WV Importer] Duplicate sibling "${node.name}" under parent ${parentRegionId} — reusing region ${regionId} and merging its subtree.`,
+    );
   }
 
-  progress.createdRegions++;
-  if (progress.createdRegions % 500 === 0) {
-    console.log(`[WV Importer] Progress: ${progress.createdRegions}/${progress.totalRegions} regions created`);
-  }
-  if (progress.createdRegions % 100 === 0) {
-    progress.statusMessage = `Creating regions... ${progress.createdRegions}/${progress.totalRegions}`;
-  }
-
-  // Recurse into children
+  // Recurse into children (merging a duplicate's subtree under the reused region)
   for (const child of node.children) {
     if (progress.cancel) return;
     await insertRegion(client, child, worldViewId, regionId, importRunId, progress);
