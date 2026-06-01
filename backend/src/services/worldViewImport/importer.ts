@@ -28,6 +28,43 @@ function countLeaves(node: ImportTreeNode): number {
   return count;
 }
 
+/**
+ * Hierarchy-review warnings for a node: any extractor-supplied warnings, plus a
+ * flag for grouping nodes (no source page but with children — parsed from an item
+ * list) that an admin should review. Feeds region_import_state.hierarchy_warnings.
+ * Source-neutral wording: importTree is source-agnostic (wikivoyage, osm, ...).
+ */
+function hierarchyWarningsFor(node: ImportTreeNode): string[] {
+  const warnings = [...(node.warnings ?? [])];
+  if (!node.sourceUrl && node.children.length > 0) {
+    warnings.push('Grouping: no source page (parsed from item list)');
+  }
+  return warnings;
+}
+
+/**
+ * Merge a reused (duplicate-sibling) node's warnings into its existing
+ * region_import_state row, de-duplicated. The #378 dedup path skips inserting a
+ * new row for a duplicate, so without this a warning carried only by the later
+ * duplicate (e.g. it is the occurrence that brings children) would be lost.
+ */
+async function mergeHierarchyWarnings(
+  client: PoolClient,
+  regionId: number,
+  node: ImportTreeNode,
+): Promise<void> {
+  const warnings = hierarchyWarningsFor(node);
+  if (warnings.length === 0) return;
+  await client.query(
+    `UPDATE region_import_state
+     SET hierarchy_warnings = ARRAY(
+       SELECT DISTINCT e FROM unnest(COALESCE(hierarchy_warnings, '{}'::text[]) || $2::text[]) AS e
+     )
+     WHERE region_id = $1`,
+    [regionId, warnings],
+  );
+}
+
 /** Options for importTree controlling source metadata */
 export interface ImportTreeOptions {
   sourceType?: string;   // default: 'imported'
@@ -155,11 +192,11 @@ export async function insertRegion(
   if (inserted) {
     const sourceUrl = node.sourceUrl ?? null;
 
-    // Insert region_import_state
+    // Insert region_import_state (hierarchy_warnings flags grouping nodes for review)
     await client.query(
-      `INSERT INTO region_import_state (region_id, import_run_id, source_url, source_external_id, region_map_url)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [regionId, importRunId, sourceUrl, node.wikidataId || null, node.regionMapUrl || null],
+      `INSERT INTO region_import_state (region_id, import_run_id, source_url, source_external_id, region_map_url, hierarchy_warnings)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [regionId, importRunId, sourceUrl, node.wikidataId || null, node.regionMapUrl || null, hierarchyWarningsFor(node)],
     );
 
     // Insert map image candidates
@@ -183,6 +220,8 @@ export async function insertRegion(
     console.warn(
       `[WV Importer] Duplicate sibling "${node.name}" under parent ${parentRegionId} — reusing region ${regionId} and merging its subtree.`,
     );
+    // Don't lose warnings carried only by this duplicate occurrence.
+    await mergeHierarchyWarnings(client, regionId, node);
   }
 
   // Recurse into children (merging a duplicate's subtree under the reused region)
