@@ -1863,7 +1863,10 @@ CREATE TABLE IF NOT EXISTS region_import_state (
     fix_note TEXT,
     region_map_url TEXT,
     map_image_reviewed BOOLEAN DEFAULT FALSE,
-    marker_points JSONB
+    marker_points JSONB,
+    geo_available BOOLEAN,  -- NULL = unknown, set after geoshape lookup (geoshapeCoverage.ts)
+    hierarchy_reviewed BOOLEAN NOT NULL DEFAULT FALSE,  -- admin confirmed child set via AI Review Children
+    hierarchy_warnings TEXT[]  -- AI-flagged issues with the region's child set
 );
 
 CREATE INDEX IF NOT EXISTS idx_ris_status ON region_import_state(match_status);
@@ -1872,6 +1875,9 @@ CREATE INDEX IF NOT EXISTS idx_ris_run ON region_import_state(import_run_id);
 COMMENT ON TABLE region_import_state IS 'Import metadata for regions created via WorldView Import (1:1 with region)';
 COMMENT ON COLUMN region_import_state.match_status IS 'Match lifecycle: no_candidates, needs_review, auto_matched, manual_matched, children_matched, suggested';
 COMMENT ON COLUMN region_import_state.source_external_id IS 'External identifier from import source (e.g. Wikidata QID)';
+COMMENT ON COLUMN region_import_state.geo_available IS 'Whether a Wikidata geoshape is available for this region (NULL until checked)';
+COMMENT ON COLUMN region_import_state.hierarchy_reviewed IS 'True once an admin has run AI Review Children on this region';
+COMMENT ON COLUMN region_import_state.hierarchy_warnings IS 'AI-flagged issues with the current child set (empty/NULL = none)';
 
 -- Match suggestions (1:N per region, replaces metadata.suggestions + rejectedDivisionIds)
 CREATE TABLE IF NOT EXISTS region_match_suggestions (
@@ -1905,6 +1911,26 @@ CREATE TABLE IF NOT EXISTS region_map_images (
 CREATE INDEX IF NOT EXISTS idx_rmi_region ON region_map_images(region_id);
 
 COMMENT ON TABLE region_map_images IS 'Candidate map images for imported regions (from Wikimedia Commons etc.)';
+
+-- Wikidata geoshape cache (geometry for geoshape-based GADM matching)
+-- Cache-first proxy: filled from maps.wikimedia.org and from composite unions of
+-- child entity geoshapes. Keyed by Wikidata QID or "commons:{filename}".
+-- See backend/src/services/worldViewImport/geoshapeCache.ts / geoshapeComposite.ts.
+CREATE TABLE IF NOT EXISTS wikidata_geoshapes (
+    wikidata_id TEXT PRIMARY KEY,            -- Wikidata QID or "commons:{filename}"
+    geom geometry(MultiPolygon, 4326),       -- NULL when not_available; SRID 4326
+    not_available BOOLEAN NOT NULL DEFAULT FALSE,  -- TRUE = no geoshape exists (negative cache)
+    -- Negative-cache invariant: a row is either a real geoshape or a not_available
+    -- marker. Stops a NULL geom with not_available=FALSE from reaching PostGIS calls
+    -- (e.g. geoshapeCoverage.ts) and blocks a degenerate composite union from
+    -- overwriting a valid cached geom with NULL via ON CONFLICT DO UPDATE.
+    CONSTRAINT wikidata_geoshapes_geom_presence CHECK (not_available OR geom IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wikidata_geoshapes_geom ON wikidata_geoshapes USING GIST (geom);
+
+COMMENT ON TABLE wikidata_geoshapes IS 'Cache of Wikidata/Commons geoshapes (and composite unions) for WorldView Import geoshape matching';
+COMMENT ON COLUMN wikidata_geoshapes.not_available IS 'Negative cache: TRUE means a geoshape lookup confirmed none exists';
 
 -- =============================================================================
 -- AI Settings
