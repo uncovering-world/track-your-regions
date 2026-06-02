@@ -63,8 +63,11 @@ Run `npm run help` for the full command reference.
 
 ### Optional integrations
 
-Everything below is **off by default** and the app runs fine without it. To
-enable one, set its variables in `.env` (see `.env.example` for the full list
+Everything below is **off by default** and the app runs fine without it.
+`npm run setup` interactively offers to configure **Google login**, **AI
+features**, and **map data (GADM)** — it prompts only for ones still unset, so
+re-running it fills in any you skipped. **Email (SMTP)** and **Apple Sign-In**
+are manual: set their variables in `.env` (see `.env.example` for the full list
 and comments) and restart (`docker compose down && npm run dev`). The backend
 logs each integration's status at startup.
 
