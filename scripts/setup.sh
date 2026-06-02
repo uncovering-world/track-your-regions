@@ -39,6 +39,10 @@ set_kv() { # $1=key $2=value : replace-or-append KEY='value' in .env
   printf "%s='%s'\n" "$key" "$escaped" >>"$ENV_FILE"
 }
 
+# Optional-integrations wizard (defines run_integrations_wizard).
+# shellcheck source=scripts/setup-integrations.sh
+. "$SCRIPT_DIR/setup-integrations.sh"
+
 if [ -f "$ENV_FILE" ]; then
   echo -e "${YELLOW}.env already exists — leaving it untouched.${NC}"
 else
@@ -107,15 +111,11 @@ printf '%s' "$ADMIN_PW" | docker compose run --rm -T \
   -e ADMIN_DISPLAY_NAME="$ADMIN_NAME_VAL" \
   backend npx tsx src/scripts/createAdmin.ts
 
+# Walk through optional integrations (Google, OpenAI, GADM) — prompts only for
+# ones still unset. SMTP / Apple stay manual (see .env.example / README).
+run_integrations_wizard
+
 echo -e "${GREEN}Setup complete.${NC} Next: ${YELLOW}npm run dev${NC}, then log in."
 if [ -n "$GENERATED_PW" ]; then
   echo -e "${YELLOW}Generated admin password (shown once):${NC} $GENERATED_PW"
 fi
-
-echo ""
-echo "Optional integrations (all OFF by default — edit .env, then restart):"
-echo "  - Map data:    npm run db:load-gadm   (downloads + loads GADM; ~30 min)"
-echo "  - Google login: set GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET"
-echo "  - AI features:  set OPENAI_API_KEY"
-echo "  - Email:        set SMTP_* (else verification links print to the logs)"
-echo "See the README 'Optional integrations' section and .env for details."
