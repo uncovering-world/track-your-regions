@@ -21,6 +21,7 @@ docs/
 | Document | Topic |
 |----------|-------|
 | [authentication.md](tech/authentication.md) | JWT, OAuth 2.0, access levels, token lifecycle, email verification |
+| [first-run-setup.md](tech/first-run-setup.md) | First-run setup wizard, `.env` generation, admin bootstrap, optional integrations, clean-slate reset |
 | [email-setup.md](tech/email-setup.md) | Email infrastructure setup (dev console, production SMTP) |
 | [domain-model.md](tech/domain-model.md) | Core entities, aggregates, relationships |
 | [ddd-overview.md](tech/ddd-overview.md) | Domain-Driven Design concepts used in the project |
