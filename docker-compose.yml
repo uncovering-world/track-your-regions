@@ -92,7 +92,9 @@ services:
       db:
         condition: service_healthy
     command: ["--config", "/config.yaml"]
-    restart: unless-stopped
+    # No restart policy on purpose: with `unless-stopped`, a docker daemon
+    # restart resurrects Martin without the db (which has no policy), causing
+    # an endless crash-loop whose log backlog floods the next `compose up`.
 
   cv-python:
     build:
@@ -111,7 +113,7 @@ services:
       - ./data:/app/data:z
     environment:
       - PYTHONUNBUFFERED=1
-    restart: unless-stopped
+    # No restart policy on purpose — see the note on the martin service.
 
   # One-off GADM loader (GDAL + psycopg2 + dotenv + shapely). Not started by
   # `docker compose up` (tools profile); invoked by `npm run db:load-gadm` via
