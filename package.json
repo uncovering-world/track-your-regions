@@ -76,7 +76,7 @@
     "security:deps": "cd backend && npm audit --audit-level=moderate --omit=dev && cd ../frontend && npm audit --audit-level=moderate --omit=dev",
     "security:py:bandit": "cd cv-python && .venv/bin/bandit -r app -c pyproject.toml",
     "security:py:semgrep": "docker run --rm -v \"${PWD}/cv-python:/src:z\" semgrep/semgrep semgrep scan --config p/python --config p/owasp-top-ten --config p/secrets --error",
-    "security:py:deps": "cd cv-python && .venv/bin/pip-audit -r requirements.txt",
+    "security:py:deps": "cd cv-python && .venv/bin/pip-audit -r requirements.txt --ignore-vuln GHSA-rrmf-rvhw-rf47",
     "security:py:all": "npm run security:py:bandit && npm run security:py:semgrep && npm run security:py:deps",
     "security:image": "docker build -t track-your-regions/cv-python:scan ./cv-python && docker run --rm aquasec/trivy:0.70.0 image --severity HIGH,CRITICAL --exit-code 1 track-your-regions/cv-python:scan",
     "security:all": "npm run check && npm run security:scan && npm run security:py:semgrep && npm run security:image",

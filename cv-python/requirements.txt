@@ -16,6 +16,9 @@ scipy==1.14.1
 # python-multipart >=0.0.27 closes DoS-via-large-preamble, unbounded headers
 # DoS, and arbitrary file write CVEs from the 0.0.20 series.
 python-multipart==0.0.27
+# easyocr transitively pulls torch, currently flagged by GHSA-rrmf-rvhw-rf47
+# (low, torch.jit.script memory corruption, no fixed release). Ignored in the
+# security:py:deps npm script — see docs/security/SECURITY.md "Known Gaps".
 easyocr==1.7.2
 # segment-anything==1.0 dropped: pulls torch 1.8.1 (2021) with multiple critical
 # RCE/heap-overflow CVEs and no available patch path. Add back in rebuild/41-43
