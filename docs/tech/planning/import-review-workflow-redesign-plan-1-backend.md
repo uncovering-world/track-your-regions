@@ -317,21 +317,39 @@ In each mutating handler, after the success path (post-COMMIT, before `res.json`
 
 For deletions, capture the parent id BEFORE deleting and touch that. Member-moving handlers that already call `syncImportMatchStatus` for every affected region need no extra call (the chokepoint runs inside it) — only add the direct call where no sync happens (pure rename/reparent/create/delete).
 
-- [ ] **Step 3: Type-check and run the full backend suite**
+- [ ] **Step 3: Extend the undo snapshot/restore to carry the new columns**
+
+(Review finding from Task 1.) The destructive-op undo machinery snapshots and
+restores `region_import_state` rows with an explicit column list that predates
+this plan: `ImportStateSnapshot` in
+`backend/src/controllers/admin/wvImportUtils.ts:14` and the restore helpers in
+`backend/src/controllers/admin/wvImportHierarchyController.ts:44-77`. Without
+extending them, undoing a dismiss-children / handle-as-grouping resurrects
+rows with `is_work_unit`/`hierarchy_confirmed`/`signoff_status`/
+`signed_off_at`/`assignment_waived`/`reference_division_ids` reset to
+defaults — silently dropping curation state the spec says even Re-match All
+preserves. Add all six columns to the snapshot SELECT, the snapshot type, and
+the restore INSERT column list (read the existing code first and mirror its
+style). Add a test in the same style as the existing undo tests (or a
+source-contract test asserting the column lists include the six names) to
+pin this.
+
+- [ ] **Step 4: Type-check and run the full backend suite**
 
 Run: `cd backend && npx tsc --noEmit && npx vitest run`
 Expected: clean compile, all tests pass.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add backend/src/controllers/admin/wvImportTreeOpsController.ts backend/src/controllers/admin/wvImportFinalizeController.ts
+git add backend/src/controllers/admin/wvImportTreeOpsController.ts backend/src/controllers/admin/wvImportFinalizeController.ts backend/src/controllers/admin/wvImportUtils.ts backend/src/controllers/admin/wvImportHierarchyController.ts
 git commit -s -m "back: Invalidate work-unit sign-off on tree operations.
 
 Rename/reparent/create/delete and restructure operations now touch
 the owning work unit, so signed-off countries revert to in_progress
 when their subtree shape changes. Member-moving ops were already
-covered via syncImportMatchStatus.
+covered via syncImportMatchStatus. The destructive-op undo snapshot
+now carries the workflow columns so undo cannot reset curation state.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
@@ -895,9 +913,15 @@ export async function setWorkUnitFlag(req: AuthenticatedRequest, res: Response):
     [regionId, worldViewId],
   );
   if (owned.rows.length === 0) { res.status(404).json({ error: 'Region not found in this world view' }); return; }
+  // Demotion resets the sign-off lifecycle: stale signoff fields on
+  // non-units would leak into dashboards if the node is later re-promoted.
   await pool.query(
-    'UPDATE region_import_state SET is_work_unit = $1 WHERE region_id = $2',
-    [isWorkUnit, regionId],
+    isWorkUnit
+      ? 'UPDATE region_import_state SET is_work_unit = TRUE WHERE region_id = $1'
+      : `UPDATE region_import_state
+         SET is_work_unit = FALSE, signoff_status = 'not_started', signed_off_at = NULL
+         WHERE region_id = $1`,
+    [regionId],
   );
   res.json({ success: true });
 }
@@ -1593,6 +1617,8 @@ Run `/security-check` (Claude Code slash command) on the changed files. All new 
 - [ ] **Step 4: Update docs index entry**
 
 No docs/tech rewrite yet (plan 4/4 owns it), but add one line to `docs/tech/world-view-import.md`'s API table for the 9 new endpoints with a pointer to the spec, so the doc doesn't silently lag the code.
+
+Also rewrite `db/migrations/README.md` (review finding from Task 1): it still claims the directory is empty pending a first production release, while six migrations exist. Describe the actual workflow — numbered idempotent migrations applied manually via psql, always mirrored into `db/init/01-schema.sql`.
 
 ```bash
 git add docs/tech/world-view-import.md
