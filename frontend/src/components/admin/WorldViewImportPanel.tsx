@@ -7,7 +7,8 @@
  * Multi-phase progress: extraction → enrichment → import → matching
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -346,6 +347,8 @@ function QuestionCard({ q, isAnswering, showCustomInputOpen, customAnswer, onSho
 
 export function WorldViewImportPanel() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [name, setName] = useState('Wikivoyage Regions');
   const [treeData, setTreeData] = useState<unknown>(null);
   const [fileName, setFileName] = useState('');
@@ -354,6 +357,18 @@ export function WorldViewImportPanel() {
   const [selectedCache, setSelectedCache] = useState<string | undefined>(undefined); // undefined = default, 'none' = clean
   const [showReview, setShowReview] = useState(false);
   const [reviewWorldViewId, setReviewWorldViewId] = useState<number | null>(null);
+
+  // Deep-link: ?wvReview=<id> opens the legacy match review for that world view
+  useEffect(() => {
+    const raw = searchParams.get('wvReview');
+    const id = raw !== null ? parseInt(raw, 10) : NaN;
+    if (!Number.isNaN(id)) {
+      setReviewWorldViewId(id);
+      setShowReview(true);
+      setSearchParams({}, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [customAnswers, setCustomAnswers] = useState<Record<number, string>>({});
   const [showCustomInput, setShowCustomInput] = useState<Record<number, boolean>>({});
   const [answerError, setAnswerError] = useState<{ questionId: number; message: string } | null>(null);
@@ -555,10 +570,7 @@ export function WorldViewImportPanel() {
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={() => {
-                        setReviewWorldViewId(wv.id);
-                        setShowReview(true);
-                      }}
+                      onClick={() => navigate(`/admin/import/${wv.id}`)}
                     >
                       Review Matches
                     </Button>
@@ -892,7 +904,7 @@ export function WorldViewImportPanel() {
                 {isComplete && activeStatus.worldViewId && (
                   <Button
                     variant="contained"
-                    onClick={() => setShowReview(true)}
+                    onClick={() => navigate(`/admin/import/${activeStatus.worldViewId}`)}
                   >
                     Review Matches
                   </Button>

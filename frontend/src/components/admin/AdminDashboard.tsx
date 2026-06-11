@@ -54,7 +54,11 @@ export function AdminDashboard() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<AdminSection>('sync');
+  const [activeSection, setActiveSection] = useState<AdminSection>(() => {
+    const param = new URLSearchParams(window.location.search).get('section');
+    const valid: AdminSection[] = ['overview', 'sync', 'assignment', 'history', 'curators', 'ai', 'cv', 'extractionRules', 'wvImport'];
+    return (valid.includes(param as AdminSection) ? (param as AdminSection) : 'sync');
+  });
 
   // Listen for navigation events from child components
   useEffect(() => {
