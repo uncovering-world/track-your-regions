@@ -50,6 +50,8 @@ import {
   Sync as SyncIcon,
   CallMerge as CollapseIcon,
   UnfoldLess as PruneIcon,
+  ColorLens as CvMatchIcon,
+  Map as MapshapeIcon,
 } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { setAssignmentWaived } from '../../../api/admin/wvImportWorkflow';
@@ -57,6 +59,7 @@ import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
 import type { DivisionOverlapResult } from '../../../api/admin/wvImportTreeOps';
 import type { useTreeMutations } from '../useTreeMutations';
 import type { useImportTreeDialogs } from '../useImportTreeDialogs';
+import type { UseCvMatchPipelineResult } from '../useCvMatchPipeline';
 import { OverlapResolutionDialog } from '../OverlapResolutionDialog';
 
 type Mutations = ReturnType<typeof useTreeMutations>;
@@ -71,6 +74,53 @@ interface ActionPanelProps {
   hasDuplicateSourceUrl?: boolean;
   /** Callback to signal a mutation happened (so ChecksBar can go stale). */
   onMatchChange?: () => void;
+  /** CV color match / mapshape match pipeline (from CountryWorkspacePage). */
+  cvPipeline?: UseCvMatchPipelineResult;
+}
+
+// ─── CV / Mapshape buttons (extracted to keep ActionPanel complexity in budget) ─
+
+interface CvButtonsProps {
+  cvPipeline: UseCvMatchPipelineResult;
+  regionId: number;
+  node: MatchTreeNode;
+  hasCvPrereqs: boolean;
+  hasMapshapePrereqs: boolean;
+  cvBusy: boolean;
+  mapshapeBusy: boolean;
+  btn: (
+    label: string,
+    icon: React.ReactNode,
+    onClick: () => void,
+    opts?: { disabled?: boolean; tooltip?: string },
+  ) => React.ReactNode;
+}
+
+function CvButtons({ cvPipeline, regionId, node, hasCvPrereqs, hasMapshapePrereqs, cvBusy, mapshapeBusy, btn }: CvButtonsProps) {
+  let cvTooltip: string | undefined;
+  if (!hasCvPrereqs) {
+    cvTooltip = node.regionMapUrl ? 'Requires child regions' : 'Requires a region map image (regionMapUrl)';
+  }
+  let mapshapeTooltip: string | undefined;
+  if (!hasMapshapePrereqs) {
+    mapshapeTooltip = node.sourceUrl ? 'Requires child regions' : 'Requires a Wikivoyage source URL (sourceUrl)';
+  }
+  return (
+    <>
+      {btn(
+        cvBusy ? 'CV match running…' : 'CV color match',
+        <CvMatchIcon sx={{ fontSize: 14 }} />,
+        () => { cvPipeline.handleCVMatch(regionId).catch(() => {}); },
+        { disabled: !hasCvPrereqs || cvBusy, tooltip: cvTooltip },
+      )}
+      {btn(
+        mapshapeBusy ? 'Mapshape match running…' : 'Mapshape match',
+        <MapshapeIcon sx={{ fontSize: 14 }} />,
+        () => { cvPipeline.handleMapshapeMatch(regionId).catch(() => {}); },
+        { disabled: !hasMapshapePrereqs || mapshapeBusy, tooltip: mapshapeTooltip },
+      )}
+    </>
+  );
 }
 
 // ─── Section header ───────────────────────────────────────────────────────────
@@ -95,6 +145,7 @@ export function ActionPanel({
   dialogs,
   hasDuplicateSourceUrl = false,
   onMatchChange,
+  cvPipeline,
 }: ActionPanelProps) {
   const queryClient = useQueryClient();
   const [restructureMenuAnchor, setRestructureMenuAnchor] = useState<HTMLElement | null>(null);
@@ -141,6 +192,12 @@ export function ActionPanel({
   const hasChildren = node.children.length > 0;
   const hasSingleChild = node.children.length === 1;
   const busy = mutations.isMutating;
+
+  // CV pipeline prereqs
+  const hasCvPrereqs = !!node.regionMapUrl && hasChildren;
+  const hasMapshapePrereqs = !!node.sourceUrl && hasChildren;
+  const cvBusy = cvPipeline != null && cvPipeline.cvMatchingRegionId === regionId;
+  const mapshapeBusy = cvPipeline != null && cvPipeline.mapshapeMatchingRegionId === regionId;
 
   // I4: geocodeProgress for this node only
   const geocodeProgress = mutations.geocodeProgress?.regionId === regionId
@@ -255,6 +312,7 @@ export function ActionPanel({
         {btn('Match children independently', <GroupIcon sx={{ fontSize: 14 }} />,
           () => mutations.groupingMutation.mutate(regionId),
           { disabled: !hasChildren, tooltip: !hasChildren ? 'Only for parent nodes' : undefined })}
+        {cvPipeline && <CvButtons cvPipeline={cvPipeline} regionId={regionId} node={node} hasCvPrereqs={hasCvPrereqs} hasMapshapePrereqs={hasMapshapePrereqs} cvBusy={cvBusy} mapshapeBusy={mapshapeBusy} btn={btn} />}
         {/* I4: geocode/geoshape/point progress status + scope-fallback retry link */}
         {geocodeProgress && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5 }}>

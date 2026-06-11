@@ -63,6 +63,8 @@ import { deriveUnitStatus, groupUnitsByContinent } from '../importDashboard/dash
 import { findSubtree, deriveStage } from './workspaceUtils';
 import { useTreeMutations, type MapPickerState } from '../useTreeMutations';
 import { useImportTreeDialogs } from '../useImportTreeDialogs';
+import { useCvMatchPipeline } from '../useCvMatchPipeline';
+import { CvMatchDialog } from '../CvMatchDialog';
 import { WorkspaceTree } from './WorkspaceTree';
 import { SuggestionList } from './SuggestionList';
 import { ActionPanel } from './ActionPanel';
@@ -294,6 +296,19 @@ function WorkspaceInner({
     invalidateTree: mutations.invalidateTree,
   });
 
+  // CV color match / mapshape match pipeline.
+  // onComplete invalidates the match tree + dashboard and signals the checks bar,
+  // but does NOT auto-open smart-simplify: the workspace lacks a full sibling-
+  // geometry view to make that dialog useful in context. Users can invoke
+  // smart-simplify explicitly from the Cleanup group if needed.
+  const cvPipeline = useCvMatchPipeline(worldViewId, tree, (completedRegionId) => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] }).catch(() => {});
+    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
+    handleMatchChange();
+    // Keep selectedRegionId on the completed node so the user sees updated suggestions
+    setSelectedRegionId(completedRegionId);
+  });
+
   // ── Derived values ────────────────────────────────────────────────────────
   const selectedNode = useMemo(
     () => findSubtree([subtreeRoot], selectedRegionId),
@@ -387,6 +402,7 @@ function WorkspaceInner({
                   dialogs={dialogs}
                   hasDuplicateSourceUrl={hasDuplicateSourceUrl}
                   onMatchChange={handleMatchChange}
+                  cvPipeline={cvPipeline}
                 />
               </>
             )}
@@ -543,6 +559,26 @@ function WorkspaceInner({
         results={dialogs.divSearchResults}
         loading={dialogs.divSearchLoading}
         onInputChange={dialogs.handleDivSearchInput}
+      />
+      {/* CV color match dialog with SSE progress + suggestions */}
+      <CvMatchDialog
+        cvMatchDialog={cvPipeline.cvMatchDialog}
+        setCVMatchDialog={cvPipeline.setCVMatchDialog}
+        onClose={() => cvPipeline.cancelCvMatch()}
+        highlightClusterId={cvPipeline.highlightClusterId}
+        setHighlightClusterId={cvPipeline.setHighlightClusterId}
+        worldViewId={worldViewId}
+        invalidateTree={mutations.invalidateTree}
+        aiModelOverride={cvPipeline.aiModelOverride}
+        setAiModelOverride={cvPipeline.setAiModelOverride}
+        modelPickerOpen={cvPipeline.modelPickerOpen}
+        setModelPickerOpen={cvPipeline.setModelPickerOpen}
+        modelPickerModels={cvPipeline.modelPickerModels}
+        setModelPickerModels={cvPipeline.setModelPickerModels}
+        modelPickerGlobal={cvPipeline.modelPickerGlobal}
+        setModelPickerGlobal={cvPipeline.setModelPickerGlobal}
+        modelPickerSelected={cvPipeline.modelPickerSelected}
+        setModelPickerSelected={cvPipeline.setModelPickerSelected}
       />
     </Box>
   );
