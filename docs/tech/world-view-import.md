@@ -35,7 +35,8 @@ Option B: JSON file upload (for non-Wikivoyage sources)
 Import state is stored in dedicated relational tables (not JSONB):
 
 - **`import_runs`** — tracks each import operation (world_view_id, source_type, status, data_path, stats, timestamps)
-- **`region_import_state`** — 1:1 with region (region_id PK, import_run_id, source_url, source_external_id, match_status, needs_manual_fix, fix_note, region_map_url, map_image_reviewed)
+- **`region_import_state`** — 1:1 with region (region_id PK, import_run_id, source_url, source_external_id, match_status, needs_manual_fix, fix_note, region_map_url, map_image_reviewed). Six additional work-unit workflow columns added in migration 006: `is_work_unit`, `hierarchy_confirmed`, `signoff_status` (`not_started`/`in_progress`/`signed_off`), `signed_off_at`, `assignment_waived`, `reference_division_ids` — see `docs/tech/planning/import-review-workflow-redesign.md` for semantics.
+- **`world_views.skeleton_confirmed`** (BOOLEAN) — admin confirmed the continents/work-unit list (import workflow skeleton pass); required before `finalize` can close the review
 - **`region_match_suggestions`** — 1:N per region (division_id, name, path, score, geo_similarity, rejected flag, `conflict_type`, `donor_region_id`, `donor_division_id`, `donor_region_name`, `donor_division_name` — the last five are non-null when the suggestion conflicts with a sibling assignment, see ADR-0012)
 - **`region_map_images`** — 1:N per region (image_url candidates)
 - **`world_views.source_type`** (VARCHAR) — `'manual'` (default), `'wikivoyage'`/`'imported'` (import in review), or `'wikivoyage_done'`/`'imported_done'` (review finalized)
@@ -418,14 +419,25 @@ All require admin auth.
 | POST | `/matches/:worldViewId/approve-coverage` | Approve coverage suggestion — add member or create new region (body: `{ divisionId, regionId, action, gapName? }`) |
 | POST | `/matches/:worldViewId/accept-with-transfer` | Atomically transfer conflicting division from donor to target, accept match (ADR-0012) |
 | POST | `/matches/:worldViewId/transfer-preview` | Build 3-layer FeatureCollection (donor/moving/target_outline) for conflict preview (ADR-0012) |
-| POST | `/matches/:worldViewId/finalize` | Close review — appends `'_done'` to current `source_type` |
+| POST | `/matches/:worldViewId/finalize` | Close review — appends `'_done'` to current `source_type`; requires `skeleton_confirmed` and all work units signed off |
 | POST | `/matches/:worldViewId/rematch` | Reset all matches and re-run country-level matcher |
 | GET | `/matches/:worldViewId/rematch/status` | Poll re-match progress |
 | POST | `/matches/:worldViewId/add-child-region` | Create a new child region under a parent (sets `match_status = 'no_candidates'`) |
 | POST | `/matches/:worldViewId/remove-region` | Delete a region from the import tree (with optional child/division reparenting) |
 | POST | `/matches/:worldViewId/rename-region` | Rename a region and optionally update its source URL / external ID |
 | POST | `/matches/:worldViewId/ai-suggest-children` | AI audit + enrichment + verification — returns `ReviewChildAction[]` |
+| GET | `/matches/:worldViewId/dashboard` | Work units with computed progress (per-subtree leaf/status/warning counts + sign-off fields) in one query |
+| GET | `/matches/:worldViewId/verify/:regionId` | Combined local checks for a work unit: reference territory, unassigned leaves (waivers excluded), scoped coverage gaps, sibling overlaps; structured blocker list |
+| POST | `/matches/:worldViewId/sign-off` | Sign off a work unit; 409 with structured blockers when hierarchy unconfirmed or verify fails (same routine as `/verify`) |
+| POST | `/matches/:worldViewId/reopen` | Revert a signed-off work unit to in-progress (clears `signed_off_at`) |
+| POST | `/matches/:worldViewId/work-unit` | Toggle `is_work_unit`; demotion resets the sign-off lifecycle |
+| POST | `/matches/:worldViewId/confirm-hierarchy` | Set/clear a work unit's `hierarchy_confirmed` |
+| POST | `/matches/:worldViewId/confirm-skeleton` | Set/clear `world_views.skeleton_confirmed` |
+| POST | `/matches/:worldViewId/set-reference` | Set the fallback reference territory (used only when the unit has no direct members) |
+| POST | `/matches/:worldViewId/waive` | Waive a leaf's assignment (renders nothing on purpose); upserts import state; stales the owning unit |
 | GET | `/geoshape/:wikidataId` | Proxy Wikidata geoshape GeoJSON (validated `Q\d+`) |
+
+Semantics for the work-unit workflow (zones, sign-off gate, staleness, re-match survival) are specified in `docs/tech/planning/import-review-workflow-redesign.md`; the UI lands with plans 2–4.
 
 ## Backend Structure
 
