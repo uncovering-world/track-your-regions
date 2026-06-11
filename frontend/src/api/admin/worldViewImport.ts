@@ -101,6 +101,11 @@ export interface MatchTreeNode {
   hierarchyWarnings: string[];
   /** True once a curator has dismissed/acknowledged the warnings on this node */
   hierarchyReviewed: boolean;
+  /** Workflow (per-country sign-off) flags — see wvImportWorkflow.ts */
+  isWorkUnit: boolean;
+  hierarchyConfirmed: boolean;
+  signoffStatus: 'not_started' | 'in_progress' | 'signed_off';
+  assignmentWaived: boolean;
   children: MatchTreeNode[];
 }
 
