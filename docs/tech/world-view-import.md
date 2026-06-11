@@ -491,6 +491,47 @@ An import workflow dashboard lives at `/admin/import/:worldViewId` (Plan 2 of th
 
 The legacy Match Review (`WorldViewImportReview.tsx`) remains the place for assignment editing until Plan 4; it is reachable from the dashboard via the "Legacy match tree" button (navigates to `/admin?section=wvImport&wvReview=<id>`). "Review Matches" buttons on the import panel now navigate directly to the dashboard.
 
+## Country Workspace (Plan 3)
+
+Route: `/admin/import/:worldViewId/region/:regionId`
+
+A focused per-country editing environment replacing the need to hunt inside the full import tree. Clicking a country row in the dashboard (or choosing "Open workspace" from its menu) navigates here.
+
+### Layout
+
+```
+┌─ Header bar ──────────────────────────────────────────────────────────────┐
+│  ← Dashboard  ◐ Germany   [Hierarchy ✓] [Leaves 14/14] [verification]    │
+│                                              [Sign off]  [Next country →] │
+├─ Checks bar ──────────────────────────────────────────────────────────────┤
+│  [Run checks]  • stale — re-run  • Coverage gaps  • 2 unassigned          │
+├─ Left 40% ────────────────────────────┬─ Right 60% ────────────────────────┤
+│  WorkspaceTree (scoped to this unit)  │  WorkspaceMap (persistent)         │
+│  — state chips only, no action icons  │  — child-region colored fills      │
+│  ────────────────────────────────     │  — gap fills (red, click-assign)   │
+│  SuggestionList (selected node)       │  — hover/select sync with tree     │
+│  ────────────────────────────────     │  — legend: child colors + gaps     │
+│  ActionPanel (stage-grouped buttons)  │                                    │
+│  — Hierarchy / Assignment / Cleanup   │                                    │
+└───────────────────────────────────────┴────────────────────────────────────┘
+```
+
+### What moved off the legacy tree
+
+The full set of import mutations and dialogs is available via the ActionPanel and SuggestionList — admins no longer need to scroll a full-tree list to find a node's actions. The legacy tree remains available for tasks not yet in the workspace (Re-match, Compute Geometries, CV/mapshape pipelines, global-gaps resolution — Plan 4).
+
+### Key files
+
+| File | Role |
+|------|------|
+| `importWorkspace/CountryWorkspacePage.tsx` | Route shell: guard, data, header, layout |
+| `importWorkspace/WorkspaceTree.tsx` | Scoped virtualized tree (state chips only) |
+| `importWorkspace/SuggestionList.tsx` | Assigned divisions + suggestions for selected node |
+| `importWorkspace/ActionPanel.tsx` | Stage-grouped mutation buttons + undo snackbar |
+| `importWorkspace/WorkspaceMap.tsx` | Persistent map: child fills, gap overlays, click-assign |
+| `importWorkspace/ChecksBar.tsx` | Run checks → blocker chips → gates sign-off |
+| `importWorkspace/workspaceUtils.ts` | findSubtree, flattenSubtree, childColorMap, deriveStage |
+
 ## Usage
 
 ### Primary: Fetch from Wikivoyage

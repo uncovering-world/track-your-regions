@@ -521,12 +521,16 @@ export function AddChildDialog({ parentRegionId, name, onNameChange, onClose, on
 }
 
 /** Dialog showing AI-reviewed children actions grouped by type */
-export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, isPending }: {
+export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, isPending, submitLabel, submitCaption }: {
   state: SuggestChildrenState | null;
   onClose: () => void;
   onToggle: (key: string) => void;
   onSubmit: () => void;
   isPending: boolean;
+  /** Override the submit button label (default: "Apply N Selected") */
+  submitLabel?: string;
+  /** Optional caption shown below the submit button */
+  submitCaption?: string;
 }) {
   if (!state) return null;
 
@@ -625,15 +629,22 @@ export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, is
           </Typography>
         )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          variant="contained"
-          disabled={!state.selected.size || isPending}
-          onClick={onSubmit}
-        >
-          Apply {state.selected.size} Selected
-        </Button>
+      <DialogActions sx={{ flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+        {submitCaption && (
+          <Typography variant="caption" color="text.secondary" sx={{ px: 1, textAlign: 'right' }}>
+            {submitCaption}
+          </Typography>
+        )}
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!state.selected.size || isPending}
+            onClick={onSubmit}
+          >
+            {submitLabel ?? `Apply ${state.selected.size} Selected`}
+          </Button>
+        </Box>
       </DialogActions>
     </Dialog>
   );

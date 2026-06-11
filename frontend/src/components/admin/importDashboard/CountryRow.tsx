@@ -4,6 +4,7 @@ import {
 } from '@mui/material';
 import { MoreVert as MenuIcon } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   confirmHierarchy, reopenWorkUnit, type DashboardUnit,
 } from '../../../api/admin/wvImportWorkflow';
@@ -21,6 +22,7 @@ export function CountryRow({
   worldViewId, unit, isDuplicate,
 }: { worldViewId: number; unit: DashboardUnit; isDuplicate: boolean }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
   const status = deriveUnitStatus(unit);
@@ -39,11 +41,20 @@ export function CountryRow({
   });
   const busy = confirmMutation.isPending || reopenMutation.isPending;
 
+  const workspacePath = `/admin/import/${worldViewId}/region/${unit.regionId}`;
+
   return (
     <ListItem
       dense
+      onClick={() => navigate(workspacePath)}
+      sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
       secondaryAction={
-        <IconButton edge="end" size="small" aria-label={`actions for ${unit.name}`} onClick={e => setMenuAnchor(e.currentTarget)}>
+        <IconButton
+          edge="end"
+          size="small"
+          aria-label={`actions for ${unit.name}`}
+          onClick={e => { e.stopPropagation(); setMenuAnchor(e.currentTarget); }}
+        >
           {busy ? <CircularProgress size={16} /> : <MenuIcon fontSize="small" />}
         </IconButton>
       }
@@ -65,6 +76,9 @@ export function CountryRow({
         secondary={`Hierarchy ${unit.hierarchyConfirmed ? '✓' : '✗'} · ${unit.leafResolved}/${unit.leafTotal} leaves`}
       />
       <Menu anchorEl={menuAnchor} open={!!menuAnchor} onClose={() => setMenuAnchor(null)}>
+        <MenuItem onClick={() => { setMenuAnchor(null); navigate(workspacePath); }}>
+          Open workspace
+        </MenuItem>
         <MenuItem onClick={() => { setMenuAnchor(null); setVerifyOpen(true); }}>
           Checks & sign-off…
         </MenuItem>
