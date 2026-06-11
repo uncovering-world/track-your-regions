@@ -5,7 +5,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { invalidateRegionGeometry, ensureRegionMember } from './helpers.js';
+import { invalidateRegionGeometry, ensureRegionMember, syncImportMatchStatus } from './helpers.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -84,5 +84,29 @@ describe('ensureRegionMember — explicit ON CONFLICT arbiter (#378)', () => {
     const [sql] = mockedQuery.mock.calls[0] as [string];
     expect(sql).toMatch(/INSERT INTO region_members\s*\(\s*region_id\s*,\s*division_id\s*\)/i);
     expect(sql).not.toMatch(/custom_geom\s*[,)]/i); // not in column list or values
+  });
+});
+
+describe('syncImportMatchStatus — workflow staleness chokepoint', () => {
+  beforeEach(() => {
+    mockedQuery.mockClear();
+    mockedQuery.mockResolvedValue({ rows: [] });
+  });
+
+  it('touches the owning work unit after a member-driven sync', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ match_status: 'manual_matched' }] }) // ris lookup
+      .mockResolvedValueOnce({ rows: [{ count: '2' }] })                     // member count
+      .mockResolvedValue({ rows: [] });                                      // remaining queries
+    await syncImportMatchStatus(5);
+    const sqls = mockedQuery.mock.calls.map(c => c[0] as string);
+    expect(sqls.some(s => /WITH RECURSIVE walk_up/.test(s))).toBe(true);
+  });
+
+  it('does NOT touch work units for non-imported regions (early return)', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [] }); // no ris row
+    await syncImportMatchStatus(5);
+    const sqls = mockedQuery.mock.calls.map(c => c[0] as string);
+    expect(sqls.some(s => /walk_up/.test(s))).toBe(false);
   });
 });

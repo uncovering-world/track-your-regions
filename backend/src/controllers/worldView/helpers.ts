@@ -3,6 +3,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 /**
  * Insert into region_members for the (region_id, division_id) pair without a
@@ -112,6 +113,10 @@ export async function syncImportMatchStatus(regionId: number): Promise<void> {
       [newStatus, regionId]
     );
   }
+
+  // Workflow staleness: any member-driven change marks the owning work unit
+  // active / modified-after-sign-off (import-review redesign).
+  await touchWorkUnitForRegion(regionId);
 }
 
 /**
