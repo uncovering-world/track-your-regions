@@ -29,6 +29,7 @@ import type { WikiSection } from '../../services/wikivoyageExtract/types.js';
 import { geoshapeMatchRegion } from '../../services/worldViewImport/geoshapeCoverage.js';
 import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
 import { computeGeoSimilarityIfNeeded } from './wvImportUtils.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 // Lazy OpenAI singleton (same pattern as aiHierarchyReviewController.ts)
 let openaiClient: OpenAI | null = null;
@@ -242,9 +243,12 @@ export async function resetMatch(req: AuthenticatedRequest, res: Response): Prom
     }
     console.error(`[WV Import] Reset match failed:`, err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Reset match failed' });
+    return;
   } finally {
     client?.release();
   }
+  // Touch work unit after COMMIT — members were deleted, sign-off is now stale.
+  await touchWorkUnitForRegion(regionId);
 }
 
 /**

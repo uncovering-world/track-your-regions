@@ -8,6 +8,7 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { MatchSuggestion, MatchStatus, AIMatchProgress, AIMatchResult } from './types.js';
+import { touchWorkUnitForRegion } from './workUnits.js';
 
 // Geographic suffixes that the AI often appends but GADM omits
 // (e.g., "Donetsk Oblast" vs GADM's "Donets'k"). Matched case-insensitively.
@@ -274,24 +275,28 @@ async function insertNewSuggestions(
   }
 }
 
-/** Process a single AI result: resolve, suggest, update status, optionally auto-assign. */
+/**
+ * Process a single AI result: resolve, suggest, update status, optionally auto-assign.
+ * Returns the region ID if a member was auto-assigned (so the caller can touch the
+ * work unit AFTER the batch commits), or undefined otherwise.
+ */
 async function processSingleResult(
   client: PoolClient,
   worldViewId: number,
   result: AIMatchResult,
   autoAssign: boolean,
   progress: AIMatchProgress,
-): Promise<void> {
+): Promise<number | undefined> {
   const isLeaf = await loadRegionLeafFlag(client, result.regionId, worldViewId);
-  if (isLeaf == null) return;
+  if (isLeaf == null) return undefined;
 
   const rejected = await loadRejectedDivisionIds(client, result.regionId);
   const divisionIds = await collectDivisionIds(client, result, rejected);
-  if (divisionIds.length === 0) return;
+  if (divisionIds.length === 0) return undefined;
 
   const newStatus = decideMatchStatus(isLeaf, autoAssign, result, divisionIds.length);
   const aiSuggestions = await buildSuggestions(client, divisionIds, result.confidence);
-  if (aiSuggestions.length === 0) return;
+  if (aiSuggestions.length === 0) return undefined;
 
   const existingIds = await loadExistingDivisionIds(client, result.regionId);
   await insertNewSuggestions(client, result.regionId, aiSuggestions, existingIds);
@@ -308,7 +313,10 @@ async function processSingleResult(
       [result.regionId, divisionIds[0]],
     );
     progress.improved++;
+    // Return region ID so applyAIResults can touch work units after COMMIT.
+    return result.regionId;
   }
+  return undefined;
 }
 
 /**
@@ -319,6 +327,7 @@ async function processSingleResult(
  * 2. Handle multi-division regions (additionalDivisions)
  * 3. Insert suggestions, update match status
  * 4. Auto-assign high-confidence single-match leaves
+ * 5. Touch work units for auto-assigned regions (post-COMMIT, error-tolerant)
  */
 export async function applyAIResults(
   worldViewId: number,
@@ -327,10 +336,12 @@ export async function applyAIResults(
   autoAssign = true,
 ): Promise<void> {
   const client = await pool.connect();
+  const autoAssignedRegionIds: number[] = [];
   try {
     await client.query('BEGIN');
     for (const result of results) {
-      await processSingleResult(client, worldViewId, result, autoAssign, progress);
+      const assignedId = await processSingleResult(client, worldViewId, result, autoAssign, progress);
+      if (assignedId !== undefined) autoAssignedRegionIds.push(assignedId);
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -338,5 +349,10 @@ export async function applyAIResults(
     throw err;
   } finally {
     client.release();
+  }
+
+  // Touch work units after COMMIT so the inserted members are visible.
+  for (const regionId of autoAssignedRegionIds) {
+    await touchWorkUnitForRegion(regionId);
   }
 }

@@ -90,9 +90,14 @@ async function runRematch(worldViewId: number, progress: ImportProgress): Promis
       WHERE region_id IN (SELECT id FROM regions WHERE world_view_id = $1)
     `, [worldViewId]);
 
-    // Reset match status (keep source_url, region_map_url, etc.)
+    // Reset match status and sign-off lifecycle (assignments are gone), but
+    // KEEP hierarchy_confirmed / is_work_unit / reference_division_ids —
+    // re-match does not touch tree shape or unit curation.
     await client.query(`
-      UPDATE region_import_state SET match_status = 'no_candidates'
+      UPDATE region_import_state
+      SET match_status = 'no_candidates',
+          signoff_status = 'not_started',
+          signed_off_at = NULL
       WHERE region_id IN (SELECT id FROM regions WHERE world_view_id = $1)
     `, [worldViewId]);
 

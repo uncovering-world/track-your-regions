@@ -1,5 +1,6 @@
 import { pool } from '../../db/index.js';
 import type { PoolClient } from 'pg';
+import { touchWorkUnitForRegion } from './workUnits.js';
 
 const GEOSHAPE_URL = 'https://maps.wikimedia.org/geoshape';
 const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/nikolay/track-your-regions)';
@@ -368,6 +369,7 @@ async function rejectZeroOverlapSuggestions(
       [regionId, s.divisionId],
     );
   }
+  await touchWorkUnitForRegion(regionId);
 }
 
 /**
@@ -397,6 +399,7 @@ async function revokeAutoMatchOnZeroOverlap(
     `UPDATE region_import_state SET match_status = 'needs_review' WHERE region_id = $1`,
     [regionId],
   );
+  await touchWorkUnitForRegion(regionId);
   console.log(`[GeoSim] Revoked auto-match for region ${regionId} (zero geo overlap)`);
   return true;
 }
@@ -422,6 +425,8 @@ async function autoAcceptPerfectMatch(
     [regionId, bestDiv],
   );
   console.log(`[GeoSim] Auto-matched region ${regionId} → division ${bestDiv} (100% IoU)`);
+  // Assumes autocommit caller (verified: no caller wraps a transaction); a BEGIN-wrapped caller would self-deadlock since the touch uses a separate pool connection.
+  await touchWorkUnitForRegion(regionId);
 }
 
 async function markNoCandidatesIfAllRejected(

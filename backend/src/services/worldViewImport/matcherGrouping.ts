@@ -23,6 +23,8 @@ interface GroupingUpdate {
   matchStatus: MatchStatus;
   suggestions: MatchSuggestion[];
   divisionId?: number;
+  isWorkUnit?: boolean;
+  referenceDivisionIds?: number[];
 }
 
 type Gadm = Awaited<ReturnType<typeof loadGADMData>>;
@@ -298,6 +300,8 @@ function pushCountryLevelMatch(
     matchStatus: 'auto_matched',
     suggestions: [{ divisionId: countryId, name: entry.name, path, score: 700 }],
     divisionId: countryId,
+    isWorkUnit: true,
+    referenceDivisionIds: [countryId],
   });
 }
 
@@ -419,7 +423,13 @@ async function processUnscopedChild(
       const path = getPath(id, gadm.pathCache, gadm.divisionsById);
       return { divisionId: id, name: entry.name, path, score: 700 };
     });
-    updates.push({ id: child.id, matchStatus: 'needs_review', suggestions });
+    updates.push({
+      id: child.id,
+      matchStatus: 'needs_review',
+      suggestions,
+      isWorkUnit: true,
+      referenceDivisionIds: countryMatchIds,
+    });
     return false;
   }
 
@@ -446,8 +456,12 @@ async function writeGroupingUpdates(
 
     for (const update of updates) {
       await client.query(
-        `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
-        [update.matchStatus, update.id],
+        `UPDATE region_import_state
+         SET match_status = $1,
+             is_work_unit = COALESCE($3, is_work_unit),
+             reference_division_ids = COALESCE($4, reference_division_ids)
+         WHERE region_id = $2`,
+        [update.matchStatus, update.id, update.isWorkUnit ?? null, update.referenceDivisionIds ?? null],
       );
 
       await client.query(

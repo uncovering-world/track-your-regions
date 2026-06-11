@@ -373,6 +373,8 @@ export async function matchCountryLevel(
     matchStatus: MatchStatus;
     suggestions: MatchSuggestion[];
     divisionId?: number;
+    isWorkUnit?: boolean;
+    referenceDivisionIds?: number[];
   }> = [];
 
   /** Try to find GADM country IDs matching an import region name. Returns all matching IDs. */
@@ -404,6 +406,8 @@ export async function matchCountryLevel(
         matchStatus: 'auto_matched',
         suggestions: [{ divisionId: gadmCountryId, name: entry.name, path, score: 700 }],
         divisionId: gadmCountryId,
+        isWorkUnit: true,
+        referenceDivisionIds: [gadmCountryId],
       });
       progress.countriesMatched++;
       return;
@@ -431,6 +435,8 @@ export async function matchCountryLevel(
         id: wvCountry.id,
         matchStatus: 'children_matched',
         suggestions: [],
+        isWorkUnit: true,
+        referenceDivisionIds: [gadmCountryId],
       });
 
       // Mark each child as auto_matched
@@ -454,6 +460,8 @@ export async function matchCountryLevel(
         matchStatus: 'auto_matched',
         suggestions: [{ divisionId: gadmCountryId, name: entry.name, path, score: 700 }],
         divisionId: gadmCountryId,
+        isWorkUnit: true,
+        referenceDivisionIds: [gadmCountryId],
       });
       progress.countriesMatched++;
     }
@@ -498,6 +506,8 @@ export async function matchCountryLevel(
         matchStatus: 'auto_matched',
         suggestions: [buildSuggestionFor(countryId, gadm)],
         divisionId: countryId,
+        isWorkUnit: true,
+        referenceDivisionIds: [countryId],
       });
       progress.countriesMatched++;
       return;
@@ -510,6 +520,8 @@ export async function matchCountryLevel(
       id: node.id,
       matchStatus: 'needs_review',
       suggestions: countryIds.map(id => buildSuggestionFor(id, gadm)),
+      isWorkUnit: true,
+      referenceDivisionIds: countryIds,
     });
   }
 
@@ -567,10 +579,15 @@ export async function matchCountryLevel(
     await client.query('BEGIN');
 
     for (const update of updates) {
-      // Update match status in region_import_state
+      // Update match status in region_import_state — persist work-unit flags
+      // additively so a re-run never clears curator-set values (COALESCE).
       await client.query(
-        `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
-        [update.matchStatus, update.id],
+        `UPDATE region_import_state
+         SET match_status = $1,
+             is_work_unit = COALESCE($3, is_work_unit),
+             reference_division_ids = COALESCE($4, reference_division_ids)
+         WHERE region_id = $2`,
+        [update.matchStatus, update.id, update.isWorkUnit ?? null, update.referenceDivisionIds ?? null],
       );
 
       // Insert suggestions into region_match_suggestions
@@ -616,6 +633,8 @@ interface MatchUpdate {
   matchStatus: MatchStatus;
   suggestions: MatchSuggestion[];
   divisionId?: number;
+  isWorkUnit?: boolean;
+  referenceDivisionIds?: number[];
 }
 
 function buildSuggestionFor(id: number, gadm: GADMData, score = 700): MatchSuggestion {
