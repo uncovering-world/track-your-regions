@@ -10,6 +10,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 // =============================================================================
 // Division overlap detection helpers
@@ -299,6 +300,11 @@ export async function resolveOverlap(req: AuthenticatedRequest, res: Response): 
         );
       }
       await client.query('COMMIT');
+      // Stale work units for every region that lost a member row.
+      const affectedKeepRegions = new Set<number>(removeFromRegionIds as number[]);
+      for (const id of affectedKeepRegions) {
+        await touchWorkUnitForRegion(id);
+      }
       console.log(`[WV Import] Overlap resolved (keep): division ${divisionId} removed from regions ${removeFromRegionIds.join(', ')}`);
       res.json({ success: true, action: 'keep', removed: removeFromRegionIds.length });
 
@@ -327,6 +333,14 @@ export async function resolveOverlap(req: AuthenticatedRequest, res: Response): 
       }
 
       await client.query('COMMIT');
+      // Stale work units for every region that lost or gained a member row.
+      const affectedSplitRegions = new Set<number>([
+        splitRegionId,
+        ...assignments.map(a => a.targetRegionId),
+      ]);
+      for (const id of affectedSplitRegions) {
+        await touchWorkUnitForRegion(id);
+      }
       console.log(`[WV Import] Overlap resolved (split): division ${divisionId} in region ${splitRegionId} → ${assignments.length} GADM children redistributed`);
       res.json({ success: true, action: 'split', assigned: assignments.length });
 

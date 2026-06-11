@@ -95,6 +95,7 @@ describe('syncImportMatchStatus — workflow staleness chokepoint', () => {
 
   it('touches the owning work unit after a member-driven sync', async () => {
     mockedQuery
+      .mockResolvedValueOnce({ rows: [] })                                   // touchWorkUnitForRegion walk_up
       .mockResolvedValueOnce({ rows: [{ match_status: 'manual_matched' }] }) // ris lookup
       .mockResolvedValueOnce({ rows: [{ count: '2' }] })                     // member count
       .mockResolvedValue({ rows: [] });                                      // remaining queries
@@ -103,10 +104,18 @@ describe('syncImportMatchStatus — workflow staleness chokepoint', () => {
     expect(sqls.some(s => /WITH RECURSIVE walk_up/.test(s))).toBe(true);
   });
 
-  it('does NOT touch work units for non-imported regions (early return)', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [] }); // no ris row
+  it('touches the work unit EVEN when no region_import_state row exists (editor-created subregions)', async () => {
+    // The walk runs first (before the early return), so the owning work unit is
+    // staled even for regions that have no import-state row of their own.
+    // The match-status UPDATE query must NOT have fired.
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] }) // walk_up (touchWorkUnitForRegion)
+      .mockResolvedValueOnce({ rows: [] }); // region_import_state SELECT → no row → early return
     await syncImportMatchStatus(5);
     const sqls = mockedQuery.mock.calls.map(c => c[0] as string);
-    expect(sqls.some(s => /walk_up/.test(s))).toBe(false);
+    // Walk must have fired
+    expect(sqls.some(s => /walk_up/.test(s))).toBe(true);
+    // match_status UPDATE must NOT have fired (early return skipped it)
+    expect(sqls.some(s => /UPDATE region_import_state SET match_status/.test(s))).toBe(false);
   });
 });

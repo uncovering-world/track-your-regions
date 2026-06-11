@@ -10,6 +10,7 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 // =============================================================================
 // Coverage gap subtree helper
@@ -769,6 +770,7 @@ export async function approveCoverageSuggestion(req: AuthenticatedRequest, res: 
       'INSERT INTO region_members (region_id, division_id) VALUES ($1, $2)',
       [targetRegionId, divisionId],
     );
+    await touchWorkUnitForRegion(regionId);
   }
 
   // Auto-dismiss the gap

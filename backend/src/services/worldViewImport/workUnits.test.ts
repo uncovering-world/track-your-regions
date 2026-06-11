@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
@@ -19,6 +19,7 @@ describe('touchWorkUnitForRegion', () => {
     expect(params).toEqual([42]);
     expect(sql).toMatch(/WITH RECURSIVE walk_up/);
     expect(sql).toMatch(/is_work_unit = TRUE/);
+    expect(sql).toMatch(/ORDER BY w\.depth/);
     expect(sql).toMatch(/LIMIT 1/);
   });
 
@@ -33,5 +34,27 @@ describe('touchWorkUnitForRegion', () => {
     await touchWorkUnitForRegion(7);
     const [sql] = mockedQuery.mock.calls[0] as [string];
     expect(sql).not.toMatch(/signed_off_at\s*=\s*NULL/);
+  });
+
+  describe('error tolerance', () => {
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      errorSpy.mockRestore();
+    });
+
+    it('swallows a query rejection and returns undefined instead of throwing', async () => {
+      mockedQuery.mockRejectedValueOnce(new Error('DB unavailable'));
+      await expect(touchWorkUnitForRegion(1)).resolves.toBeUndefined();
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[workUnits] staleness touch failed for region %d',
+        1,
+        expect.any(Error),
+      );
+    });
   });
 });

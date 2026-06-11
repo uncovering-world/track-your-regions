@@ -20,6 +20,7 @@ import {
   undoEntries,
 } from './wvImportUtils.js';
 import { invalidateRegionGeometry, syncImportMatchStatus } from '../worldView/helpers.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 import { runSimplifyHierarchy } from './wvImportSimplifyShared.js';
 
 // Re-export smart-simplify and overlap handlers (callers import from this module)
@@ -127,6 +128,8 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/merge-child — regionId=${regionId}`);
 
+  let childId = 0;
+  let childName = '';
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -153,8 +156,8 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
       return;
     }
 
-    const childId = children.rows[0].id as number;
-    const childName = children.rows[0].name as string;
+    childId = children.rows[0].id as number;
+    childName = children.rows[0].name as string;
 
     await moveChildDataToParent(client, regionId, childId);
     await copyChildImportStateToParent(client, regionId, childId);
@@ -163,15 +166,16 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
     await client.query('DELETE FROM regions WHERE id = $1', [childId]);
 
     await client.query('COMMIT');
-
-    console.log(`[WV Import] Merged child "${childName}" (${childId}) into parent ${regionId}`);
-    res.json({ merged: true, childId, childName });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+
+  await touchWorkUnitForRegion(regionId);
+  console.log(`[WV Import] Merged child "${childName}" (${childId}) into parent ${regionId}`);
+  res.json({ merged: true, childId, childName });
 }
 
 /**
@@ -186,6 +190,11 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
   const { regionId, reparentChildren, reparentDivisions } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/remove-region — regionId=${regionId}, reparentChildren=${reparentChildren}, reparentDivisions=${reparentDivisions ?? false}`);
 
+  let regionName = '';
+  let parentRegionId: number | null = null;
+  let divisionsReparented = 0;
+  let reparentedCount = 0;
+  let descendantsRemoved = 0;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -201,11 +210,10 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       return;
     }
 
-    const regionName = region.rows[0].name as string;
-    const parentRegionId = region.rows[0].parent_region_id as number | null;
+    regionName = region.rows[0].name as string;
+    parentRegionId = region.rows[0].parent_region_id as number | null;
 
     // Move divisions to parent if requested (before deleting the region)
-    let divisionsReparented = 0;
     if (reparentDivisions && parentRegionId != null) {
       const moved = await client.query(
         `INSERT INTO region_members (region_id, division_id)
@@ -222,13 +230,10 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
         'UPDATE regions SET parent_region_id = $1 WHERE parent_region_id = $2 AND world_view_id = $3',
         [parentRegionId, regionId, worldViewId],
       );
+      reparentedCount = reparented.rowCount ?? 0;
 
       // Delete the region itself (CASCADE cleans up region_import_state, suggestions, map_images, members)
       await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
-
-      await client.query('COMMIT');
-      console.log(`[WV Import] Removed region "${regionName}" (${regionId}), reparented ${reparented.rowCount} children, ${divisionsReparented} divisions`);
-      res.json({ removed: true, regionName, childrenReparented: reparented.rowCount, divisionsReparented });
     } else {
       // Delete entire branch: all descendants first (depth-ordered), then the region
       const descendants = await client.query(`
@@ -241,6 +246,7 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       `, [regionId]);
 
       const descendantIds = descendants.rows.map(r => r.id as number);
+      descendantsRemoved = descendantIds.length;
 
       if (descendantIds.length > 0) {
         // Delete descendants deepest-first (CASCADE handles related tables)
@@ -252,16 +258,26 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
 
       // Delete the region itself
       await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
-
-      await client.query('COMMIT');
-      console.log(`[WV Import] Removed region "${regionName}" (${regionId}) and ${descendantIds.length} descendant(s)`);
-      res.json({ removed: true, regionName, descendantsRemoved: descendantIds.length });
     }
+
+    await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
+  }
+
+  // Stale the owning work unit for the parent (subtree shape changed) — both paths.
+  if (parentRegionId != null) {
+    await touchWorkUnitForRegion(parentRegionId);
+  }
+  if (reparentChildren) {
+    console.log(`[WV Import] Removed region "${regionName}" (${regionId}), reparented ${reparentedCount} children, ${divisionsReparented} divisions`);
+    res.json({ removed: true, regionName, childrenReparented: reparentedCount, divisionsReparented });
+  } else {
+    console.log(`[WV Import] Removed region "${regionName}" (${regionId}) and ${descendantsRemoved} descendant(s)`);
+    res.json({ removed: true, regionName, descendantsRemoved });
   }
 }
 
@@ -274,6 +290,7 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/dismiss-children — regionId=${regionId}`);
 
+  let descendantIds: number[] = [];
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -305,12 +322,13 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
       return;
     }
 
-    const descendantIds = descendants.rows.map(r => r.id as number);
+    descendantIds = descendants.rows.map(r => r.id as number);
 
     // Snapshot for undo: parent import state + members, all descendant regions + import state + suggestions + members
     const parentImportStateResult = await client.query(
       `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-              region_map_url, map_image_reviewed, import_run_id
+              region_map_url, map_image_reviewed, import_run_id,
+              is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids
        FROM region_import_state WHERE region_id = $1`,
       [regionId],
     );
@@ -329,7 +347,8 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
     );
     const descImportStatesResult = await client.query(
       `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-              region_map_url, map_image_reviewed, import_run_id
+              region_map_url, map_image_reviewed, import_run_id,
+              is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids
        FROM region_import_state WHERE region_id = ANY($1)`,
       [descendantIds],
     );
@@ -396,15 +415,16 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
       descendantMembers: descMembersResult.rows as Array<{ region_id: number; division_id: number }>,
       childSnapshots: [],
     });
-
-    console.log(`[WV Import] Dismissed ${descendantIds.length} descendants of region ${regionId}`);
-    res.json({ dismissed: descendantIds.length, undoAvailable: true });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+
+  await touchWorkUnitForRegion(regionId);
+  console.log(`[WV Import] Dismissed ${descendantIds.length} descendants of region ${regionId}`);
+  res.json({ dismissed: descendantIds.length, undoAvailable: true });
 }
 
 /**
@@ -417,6 +437,8 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/prune-to-leaves — regionId=${regionId}`);
 
+  let grandDescIds: number[] = [];
+  let childIds: number[] = [];
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -442,7 +464,7 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
       res.status(400).json({ error: 'Region has no children to prune' });
       return;
     }
-    const childIds = directChildren.rows.map(r => r.id as number);
+    childIds = directChildren.rows.map(r => r.id as number);
 
     // Get grandchildren+ (descendants of the direct children, NOT the children themselves)
     const grandDescendants = await client.query(`
@@ -460,7 +482,7 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    const grandDescIds = grandDescendants.rows.map(r => r.id as number);
+    grandDescIds = grandDescendants.rows.map(r => r.id as number);
 
     // Snapshot for undo
     const descRegionsResult = await client.query(
@@ -471,7 +493,8 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
     );
     const descImportStatesResult = await client.query(
       `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-              region_map_url, map_image_reviewed, import_run_id
+              region_map_url, map_image_reviewed, import_run_id,
+              is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids
        FROM region_import_state WHERE region_id = ANY($1)`,
       [grandDescIds],
     );
@@ -516,15 +539,16 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
       descendantMembers: descMembersResult.rows as Array<{ region_id: number; division_id: number }>,
       childSnapshots: [],
     });
-
-    console.log(`[WV Import] Pruned ${grandDescIds.length} grandchildren+ from region ${regionId} (kept ${childIds.length} direct children)`);
-    res.json({ pruned: grandDescIds.length, undoAvailable: true });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+
+  await touchWorkUnitForRegion(regionId);
+  console.log(`[WV Import] Pruned ${grandDescIds.length} grandchildren+ from region ${regionId} (kept ${childIds.length} direct children)`);
+  res.json({ pruned: grandDescIds.length, undoAvailable: true });
 }
 
 /**

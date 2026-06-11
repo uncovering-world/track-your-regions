@@ -77,9 +77,17 @@ export async function invalidateRegionGeometry(regionId: number): Promise<void> 
  * - No members, has suggestions → 'needs_review'
  * - No members, no suggestions → 'no_candidates'
  *
- * No-op for non-imported regions (no row in region_import_state).
+ * No-op for non-imported regions (no row in region_import_state) for
+ * the match-status logic, but the work-unit touch ALWAYS fires first so
+ * editor-created subregions without an import-state row still stale the
+ * owning unit (member-driven changes that flow through this helper;
+ * inline-SQL paths call touchWorkUnitForRegion directly).
  */
 export async function syncImportMatchStatus(regionId: number): Promise<void> {
+  // Workflow staleness: touch the owning work unit BEFORE the early return so
+  // editor-created subregions (no region_import_state row) still stale the unit.
+  await touchWorkUnitForRegion(regionId);
+
   // Check if this is an imported region
   const risResult = await pool.query(
     `SELECT match_status FROM region_import_state WHERE region_id = $1`,
@@ -113,10 +121,6 @@ export async function syncImportMatchStatus(regionId: number): Promise<void> {
       [newStatus, regionId]
     );
   }
-
-  // Workflow staleness: any member-driven change marks the owning work unit
-  // active / modified-after-sign-off (import-review redesign).
-  await touchWorkUnitForRegion(regionId);
 }
 
 /**

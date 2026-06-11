@@ -6,6 +6,7 @@ import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import { invalidateRegionGeometry } from './helpers.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 /**
  * Get all regions in a World View
@@ -373,6 +374,11 @@ export async function createRegion(req: Request, res: Response): Promise<void> {
     `, [worldViewId, name, description || null, parentId || null, color || '#3388ff']);
   }
 
+  // Stale the owning work unit — the new subregion starts as an unassigned leaf.
+  if (result.rows[0].parentRegionId) {
+    await touchWorkUnitForRegion(result.rows[0].parentRegionId);
+  }
+
   res.status(201).json(result.rows[0]);
 }
 
@@ -450,6 +456,12 @@ async function moveDivisionMembershipsForParentChange(
     throw err;
   } finally {
     client.release();
+  }
+
+  // Stale the owning work unit for both sides of the move.
+  await touchWorkUnitForRegion(oldParentId);
+  if (newParentId !== null) {
+    await touchWorkUnitForRegion(newParentId);
   }
 }
 
@@ -552,6 +564,9 @@ export async function deleteRegion(req: Request, res: Response): Promise<void> {
           ON CONFLICT (region_id, division_id) WHERE custom_geom IS NULL DO NOTHING
         `, [parentRegionId, row.division_id]);
       }
+
+      // Stale the owning work unit for the grandparent that received the members.
+      await touchWorkUnitForRegion(parentRegionId);
     }
   } else {
     // Delete all descendants first (since ON DELETE SET NULL won't cascade)
@@ -565,6 +580,11 @@ export async function deleteRegion(req: Request, res: Response): Promise<void> {
       )
       DELETE FROM regions WHERE id IN (SELECT id FROM descendants)
     `, [regionId]);
+
+    // Stale the owning work unit for the parent that lost the subtree's members.
+    if (parentRegionId) {
+      await touchWorkUnitForRegion(parentRegionId);
+    }
   }
 
   await pool.query('DELETE FROM regions WHERE id = $1', [regionId]);

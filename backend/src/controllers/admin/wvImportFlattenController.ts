@@ -11,6 +11,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import {
   matchChildrenAsCountries,
 } from '../../services/worldViewImport/index.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 import {
   dbSearchSingleRegion,
   trigramSearch,
@@ -73,7 +74,8 @@ export async function collapseToParent(req: AuthenticatedRequest, res: Response)
     // Snapshot for undo: parent import state + members, all descendant import state + suggestions + members
     const parentImportStateResult = await client.query(
       `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-              region_map_url, map_image_reviewed, import_run_id
+              region_map_url, map_image_reviewed, import_run_id,
+              is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids
        FROM region_import_state WHERE region_id = $1`,
       [regionId],
     );
@@ -86,7 +88,8 @@ export async function collapseToParent(req: AuthenticatedRequest, res: Response)
     );
     const descImportStatesResult = await client.query(
       `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-              region_map_url, map_image_reviewed, import_run_id
+              region_map_url, map_image_reviewed, import_run_id,
+              is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids
        FROM region_import_state WHERE region_id = ANY($1)`,
       [descendantIds],
     );
@@ -146,6 +149,9 @@ export async function collapseToParent(req: AuthenticatedRequest, res: Response)
       childSnapshots: [],
     });
 
+    // Stale the owning work unit before generating post-commit suggestions.
+    await touchWorkUnitForRegion(regionId);
+
     // Now generate suggestions for the parent region (outside transaction)
     try {
       const searchResult = await dbSearchSingleRegion(worldViewId, regionId);
@@ -172,6 +178,55 @@ export async function collapseToParent(req: AuthenticatedRequest, res: Response)
   } finally {
     client.release();
   }
+}
+
+/**
+ * Phase 1 of smart flatten (shared by preview + execute): auto-match unmatched
+ * descendant regions via trigram search, persisting each match immediately.
+ * Stales the parent's owning work unit when anything was persisted — even if
+ * Phase 2 blocks afterwards. Returns the descendants that still have no match.
+ */
+async function autoMatchDescendants(
+  regionId: number,
+  unmatchedDescendants: Array<{ id: unknown; name: unknown }>,
+): Promise<Array<{ id: number; name: string }>> {
+  const stillUnmatched: Array<{ id: number; name: string }> = [];
+  let persistedAny = false;
+  for (const desc of unmatchedDescendants) {
+    const descId = desc.id as number;
+    const descName = desc.name as string;
+    const candidates = await trigramSearch(descName, 3);
+
+    // Auto-match if a single candidate is strong enough, OR the top candidate
+    // clearly beats the runner-up. Both paths take the same action, so they
+    // collapse into one boolean expression (avoids sonarjs/no-duplicated-branches).
+    const autoMatched = (candidates.length === 1 && candidates[0].similarity >= 0.5)
+      || (candidates.length > 1 && candidates[0].similarity >= 0.7
+          && candidates[0].similarity - candidates[1].similarity >= 0.15);
+
+    if (autoMatched) {
+      await pool.query(
+        `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [descId, candidates[0].divisionId],
+      );
+      await pool.query(
+        `INSERT INTO region_import_state (region_id, match_status)
+         VALUES ($1, 'auto_matched')
+         ON CONFLICT (region_id) DO UPDATE SET match_status = 'auto_matched'`,
+        [descId],
+      );
+      persistedAny = true;
+    } else {
+      stillUnmatched.push({ id: descId, name: descName });
+    }
+  }
+
+  // Phase 1 actually INSERTed rows — stale the work unit even if Phase 2 blocks.
+  if (persistedAny) {
+    await touchWorkUnitForRegion(regionId);
+  }
+
+  return stillUnmatched;
 }
 
 /**
@@ -219,34 +274,7 @@ export async function smartFlattenPreview(req: AuthenticatedRequest, res: Respon
     const matchedIds = new Set(membersCheck.rows.map(r => r.region_id as number));
     const unmatchedDescendants = descendants.rows.filter(r => !matchedIds.has(r.id as number));
 
-    const stillUnmatched: Array<{ id: number; name: string }> = [];
-    for (const desc of unmatchedDescendants) {
-      const descId = desc.id as number;
-      const descName = desc.name as string;
-      const candidates = await trigramSearch(descName, 3);
-
-      // Auto-match if a single candidate is strong enough, OR the top candidate
-      // clearly beats the runner-up. Both paths take the same action, so they
-      // collapse into one boolean expression (avoids sonarjs/no-duplicated-branches).
-      const autoMatched = (candidates.length === 1 && candidates[0].similarity >= 0.5)
-        || (candidates.length > 1 && candidates[0].similarity >= 0.7
-            && candidates[0].similarity - candidates[1].similarity >= 0.15);
-
-      if (autoMatched) {
-        await pool.query(
-          `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [descId, candidates[0].divisionId],
-        );
-        await pool.query(
-          `INSERT INTO region_import_state (region_id, match_status)
-           VALUES ($1, 'auto_matched')
-           ON CONFLICT (region_id) DO UPDATE SET match_status = 'auto_matched'`,
-          [descId],
-        );
-      } else {
-        stillUnmatched.push({ id: descId, name: descName });
-      }
-    }
+    const stillUnmatched = await autoMatchDescendants(regionId, unmatchedDescendants);
 
     // Phase 2: Block if any remain unmatched
     if (stillUnmatched.length > 0) {
@@ -340,34 +368,7 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
     const matchedIds = new Set(membersCheck.rows.map(r => r.region_id as number));
     const unmatchedDescendants = descendants.rows.filter(r => !matchedIds.has(r.id as number));
 
-    const stillUnmatched: Array<{ id: number; name: string }> = [];
-    for (const desc of unmatchedDescendants) {
-      const descId = desc.id as number;
-      const descName = desc.name as string;
-      const candidates = await trigramSearch(descName, 3);
-
-      // Auto-match if a single candidate is strong enough, OR the top candidate
-      // clearly beats the runner-up. Both paths take the same action, so they
-      // collapse into one boolean expression (avoids sonarjs/no-duplicated-branches).
-      const autoMatched = (candidates.length === 1 && candidates[0].similarity >= 0.5)
-        || (candidates.length > 1 && candidates[0].similarity >= 0.7
-            && candidates[0].similarity - candidates[1].similarity >= 0.15);
-
-      if (autoMatched) {
-        await pool.query(
-          `INSERT INTO region_members (region_id, division_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [descId, candidates[0].divisionId],
-        );
-        await pool.query(
-          `INSERT INTO region_import_state (region_id, match_status)
-           VALUES ($1, 'auto_matched')
-           ON CONFLICT (region_id) DO UPDATE SET match_status = 'auto_matched'`,
-          [descId],
-        );
-      } else {
-        stillUnmatched.push({ id: descId, name: descName });
-      }
-    }
+    const stillUnmatched = await autoMatchDescendants(regionId, unmatchedDescendants);
 
     // Phase 2: Block if any remain unmatched
     if (stillUnmatched.length > 0) {
@@ -386,7 +387,8 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
       // Snapshot parent import state + members
       const parentImportStateResult = await client.query(
         `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-                region_map_url, map_image_reviewed, import_run_id
+                region_map_url, map_image_reviewed, import_run_id,
+                is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids
          FROM region_import_state WHERE region_id = $1`,
         [regionId],
       );
@@ -406,7 +408,8 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
       );
       const descImportStatesResult = await client.query(
         `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-                region_map_url, map_image_reviewed, import_run_id
+                region_map_url, map_image_reviewed, import_run_id,
+                is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids
          FROM region_import_state WHERE region_id = ANY($1)`,
         [descendantIds],
       );
@@ -472,6 +475,7 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
         childSnapshots: [],
       });
 
+      await touchWorkUnitForRegion(regionId);
       console.log(`[WV Import] Smart flatten: absorbed ${descendantIds.length} descendants (${uniqueDivisionIds.length} divisions) into region ${regionId}`);
       res.json({
         absorbed: descendantIds.length,
@@ -501,6 +505,7 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
   const { regionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/sync-instances — regionId=${regionId}`);
 
+  let siblingIds: number[] = [];
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -542,6 +547,8 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
       return;
     }
 
+    siblingIds = siblings.rows.map(r => r.id as number);
+
     // Get source region_members and suggestions
     const sourceMembers = await client.query(
       `SELECT division_id FROM region_members WHERE region_id = $1`,
@@ -556,9 +563,7 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
     );
 
     // Copy to each sibling
-    for (const sibling of siblings.rows) {
-      const siblingId = sibling.id as number;
-
+    for (const siblingId of siblingIds) {
       // Update import state
       await client.query(
         `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
@@ -593,16 +598,22 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
     }
 
     await client.query('COMMIT');
-
-    const syncedCount = siblings.rows.length;
-    console.log(`[WV Import] Synced ${syncedCount} instances of ${sourceUrl}`);
-    res.json({ synced: syncedCount });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+
+  // Stale the owning work unit for the source and all synced siblings.
+  await touchWorkUnitForRegion(regionId);
+  for (const siblingId of siblingIds) {
+    await touchWorkUnitForRegion(siblingId);
+  }
+
+  const syncedCount = siblingIds.length;
+  console.log(`[WV Import] Synced ${syncedCount} instances`);
+  res.json({ synced: syncedCount });
 }
 
 /**
@@ -640,7 +651,8 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
     // Snapshot for undo: parent import state + members, children import state + suggestions + members
     const parentImportStateResult = await pool.query(
       `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-              region_map_url, map_image_reviewed, import_run_id
+              region_map_url, map_image_reviewed, import_run_id,
+              is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids
        FROM region_import_state WHERE region_id = $1`,
       [regionId],
     );
@@ -660,7 +672,8 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
       const childId = child.id as number;
       const childImportStateResult = await pool.query(
         `SELECT region_id, match_status, needs_manual_fix, fix_note, source_url, source_external_id,
-                region_map_url, map_image_reviewed, import_run_id
+                region_map_url, map_image_reviewed, import_run_id,
+                is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids
          FROM region_import_state WHERE region_id = $1`,
         [childId],
       );
@@ -706,6 +719,7 @@ export async function handleAsGrouping(req: AuthenticatedRequest, res: Response)
       childSnapshots: childSnaps,
     });
 
+    await touchWorkUnitForRegion(regionId);
     console.log(`[WV Import] handle-as-grouping result: ${result.matched}/${result.total} children matched`);
     res.json({ ...result, undoAvailable: true });
   } catch (err) {

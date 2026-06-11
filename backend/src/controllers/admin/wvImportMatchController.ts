@@ -14,6 +14,7 @@ import {
   generateDivisionsSvg,
   fetchMarkersForDivisions,
 } from './wvImportMatchHelpers.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 // Re-export review API for adminRoutes (keeps existing import path working)
 export {
@@ -156,6 +157,8 @@ export async function acceptMatch(req: AuthenticatedRequest, res: Response): Pro
     [newStatus, regionId],
   );
 
+  await touchWorkUnitForRegion(regionId);
+
   res.json({ accepted: true });
 }
 
@@ -213,6 +216,8 @@ export async function rejectMatch(req: AuthenticatedRequest, res: Response): Pro
     [newStatus, regionId],
   );
 
+  await touchWorkUnitForRegion(regionId);
+
   res.json({ rejected: true });
 }
 
@@ -265,6 +270,8 @@ export async function rejectRemaining(req: AuthenticatedRequest, res: Response):
     [newStatus, regionId],
   );
 
+  await touchWorkUnitForRegion(regionId);
+
   res.json({ rejected: suggestionCount });
 }
 
@@ -303,6 +310,8 @@ export async function clearMembers(req: AuthenticatedRequest, res: Response): Pr
     'UPDATE region_import_state SET match_status = $1 WHERE region_id = $2',
     [newStatus, regionId],
   );
+
+  await touchWorkUnitForRegion(regionId);
 
   res.json({ cleared: deleted.rowCount });
 }
@@ -359,13 +368,16 @@ export async function acceptAndRejectRest(req: AuthenticatedRequest, res: Respon
     );
 
     await client.query('COMMIT');
-    res.json({ accepted: true, rejected: true });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+
+  await touchWorkUnitForRegion(regionId);
+
+  res.json({ accepted: true, rejected: true });
 }
 
 /**
@@ -379,6 +391,8 @@ export async function acceptBatchMatches(req: AuthenticatedRequest, res: Respons
     assignments: Array<{ regionId: number; divisionId: number }>;
   };
 
+  const processedRegionIds = new Set<number>();
+  let accepted = 0;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -387,9 +401,7 @@ export async function acceptBatchMatches(req: AuthenticatedRequest, res: Respons
     // their import status recomputed below. Using all input regionIds (including
     // those rejected by the world-view ownership check) would overwrite the
     // status of regions that belong to a different world view.
-    const processedRegionIds = new Set<number>();
 
-    let accepted = 0;
     for (const { regionId, divisionId } of assignments) {
       // Verify region belongs to this world view
       const check = await client.query(
@@ -432,13 +444,19 @@ export async function acceptBatchMatches(req: AuthenticatedRequest, res: Respons
     }
 
     await client.query('COMMIT');
-    res.json({ accepted });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+
+  // Touch each distinct region's owning work unit post-commit.
+  for (const regionId of processedRegionIds) {
+    await touchWorkUnitForRegion(regionId);
+  }
+
+  res.json({ accepted });
 }
 
 /**

@@ -21,6 +21,12 @@ export interface ImportStateSnapshot {
   region_map_url: string | null;
   map_image_reviewed: boolean;
   import_run_id: number | null;
+  is_work_unit: boolean;
+  hierarchy_confirmed: boolean;
+  signoff_status: string;
+  signed_off_at: Date | string | null;
+  assignment_waived: boolean;
+  reference_division_ids: number[] | null;
 }
 
 export interface SuggestionSnapshot {

@@ -11,6 +11,7 @@ import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { invalidateRegionGeometry } from '../worldView/helpers.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 interface TransferRequestBody {
   regionId: number;
@@ -194,6 +195,10 @@ export async function acceptWithTransfer(req: AuthenticatedRequest, res: Respons
   } catch (geomErr) {
     console.error('[acceptWithTransfer] post-commit geometry invalidation failed:', geomErr);
   }
+
+  // Stale the owning work unit for both the target and the donor.
+  await touchWorkUnitForRegion(regionId);
+  await touchWorkUnitForRegion(donorRegionId);
 
   res.json({ transferred: divisionIds.length, transferType });
 }

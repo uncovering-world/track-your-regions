@@ -19,6 +19,7 @@ import {
   type SuggestionSnapshot,
   undoEntries,
 } from './wvImportUtils.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 // =============================================================================
 // Undo helpers
@@ -48,12 +49,15 @@ async function insertImportStatesIfMissing(
   for (const state of states) {
     await client.query(
       `INSERT INTO region_import_state (region_id, match_status, needs_manual_fix, fix_note,
-        source_url, source_external_id, region_map_url, map_image_reviewed, import_run_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        source_url, source_external_id, region_map_url, map_image_reviewed, import_run_id,
+        is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        ON CONFLICT (region_id) DO NOTHING`,
       [state.region_id, state.match_status, state.needs_manual_fix, state.fix_note,
        state.source_url, state.source_external_id, state.region_map_url,
-       state.map_image_reviewed, state.import_run_id],
+       state.map_image_reviewed, state.import_run_id,
+       state.is_work_unit, state.hierarchy_confirmed, state.signoff_status,
+       state.signed_off_at, state.assignment_waived, state.reference_division_ids],
     );
   }
 }
@@ -64,15 +68,24 @@ async function upsertImportState(
 ): Promise<void> {
   await client.query(
     `INSERT INTO region_import_state (region_id, match_status, needs_manual_fix, fix_note,
-      source_url, source_external_id, region_map_url, map_image_reviewed, import_run_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      source_url, source_external_id, region_map_url, map_image_reviewed, import_run_id,
+      is_work_unit, hierarchy_confirmed, signoff_status, signed_off_at, assignment_waived, reference_division_ids)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      ON CONFLICT (region_id) DO UPDATE SET
        match_status = EXCLUDED.match_status,
        needs_manual_fix = EXCLUDED.needs_manual_fix,
-       fix_note = EXCLUDED.fix_note`,
+       fix_note = EXCLUDED.fix_note,
+       is_work_unit = EXCLUDED.is_work_unit,
+       hierarchy_confirmed = EXCLUDED.hierarchy_confirmed,
+       signoff_status = EXCLUDED.signoff_status,
+       signed_off_at = EXCLUDED.signed_off_at,
+       assignment_waived = EXCLUDED.assignment_waived,
+       reference_division_ids = EXCLUDED.reference_division_ids`,
     [state.region_id, state.match_status, state.needs_manual_fix, state.fix_note,
      state.source_url, state.source_external_id, state.region_map_url,
-     state.map_image_reviewed, state.import_run_id],
+     state.map_image_reviewed, state.import_run_id,
+     state.is_work_unit, state.hierarchy_confirmed, state.signoff_status,
+     state.signed_off_at, state.assignment_waived, state.reference_division_ids],
   );
 }
 
@@ -123,10 +136,16 @@ async function restoreParentImportState(
 ): Promise<void> {
   if (!parentImportState) return;
   await client.query(
-    `UPDATE region_import_state SET match_status = $1, needs_manual_fix = $2, fix_note = $3
-     WHERE region_id = $4`,
+    `UPDATE region_import_state
+     SET match_status = $1, needs_manual_fix = $2, fix_note = $3,
+         is_work_unit = $4, hierarchy_confirmed = $5, signoff_status = $6,
+         signed_off_at = $7, assignment_waived = $8, reference_division_ids = $9
+     WHERE region_id = $10`,
     [parentImportState.match_status, parentImportState.needs_manual_fix,
-     parentImportState.fix_note, regionId],
+     parentImportState.fix_note, parentImportState.is_work_unit,
+     parentImportState.hierarchy_confirmed, parentImportState.signoff_status,
+     parentImportState.signed_off_at, parentImportState.assignment_waived,
+     parentImportState.reference_division_ids, regionId],
   );
 }
 
@@ -193,9 +212,14 @@ async function undoCollapseToParent(client: DbClient, entry: UndoEntry): Promise
   for (const state of entry.descendantImportStates) {
     await client.query(
       `UPDATE region_import_state
-       SET match_status = $1, needs_manual_fix = $2, fix_note = $3
-       WHERE region_id = $4`,
-      [state.match_status, state.needs_manual_fix, state.fix_note, state.region_id],
+       SET match_status = $1, needs_manual_fix = $2, fix_note = $3,
+           is_work_unit = $4, hierarchy_confirmed = $5, signoff_status = $6,
+           signed_off_at = $7, assignment_waived = $8, reference_division_ids = $9
+       WHERE region_id = $10`,
+      [state.match_status, state.needs_manual_fix, state.fix_note,
+       state.is_work_unit, state.hierarchy_confirmed, state.signoff_status,
+       state.signed_off_at, state.assignment_waived, state.reference_division_ids,
+       state.region_id],
     );
   }
   await insertSuggestionsForRegionField(client, entry.descendantSuggestions);
@@ -698,6 +722,8 @@ export async function autoResolveChildren(req: AuthenticatedRequest, res: Respon
       descendantMembers: [],
       childSnapshots,
     });
+
+    await touchWorkUnitForRegion(regionId);
 
     console.log(`[WV Import] Auto-resolved ${result.autoMatched.length} auto-matched, ${result.needsReview.length} needs-review, ${result.unmatched.length} unmatched under region ${regionId}`);
 

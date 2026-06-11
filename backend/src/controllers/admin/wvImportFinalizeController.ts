@@ -8,6 +8,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 /**
  * Finalize review -- mark the world view as done.
@@ -110,6 +111,7 @@ export async function addChildRegion(req: AuthenticatedRequest, res: Response): 
   };
   console.log(`[WV Import] POST /matches/${worldViewId}/add-child-region — parent=${parentRegionId}, name="${name}"`);
 
+  let regionId = 0;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -138,7 +140,7 @@ export async function addChildRegion(req: AuthenticatedRequest, res: Response): 
        VALUES ($1, $2, $3) RETURNING id`,
       [worldViewId, name, parentRegionId],
     );
-    const regionId = result.rows[0].id as number;
+    regionId = result.rows[0].id as number;
 
     // Create region_import_state
     await client.query(
@@ -148,13 +150,15 @@ export async function addChildRegion(req: AuthenticatedRequest, res: Response): 
     );
 
     await client.query('COMMIT');
-    res.json({ created: true, regionId });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+
+  await touchWorkUnitForRegion(parentRegionId);
+  res.json({ created: true, regionId });
 }
 
 /**

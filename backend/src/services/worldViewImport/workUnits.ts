@@ -10,26 +10,33 @@
 import { pool } from '../../db/index.js';
 
 export async function touchWorkUnitForRegion(regionId: number): Promise<void> {
-  await pool.query(
-    `WITH RECURSIVE walk_up AS (
-       SELECT r.id, r.parent_region_id, 0 AS depth
-       FROM regions r WHERE r.id = $1
-       UNION ALL
-       SELECT r.id, r.parent_region_id, w.depth + 1
-       FROM regions r JOIN walk_up w ON r.id = w.parent_region_id
-     ),
-     nearest_unit AS (
-       SELECT w.id
-       FROM walk_up w
-       JOIN region_import_state ris ON ris.region_id = w.id
-       WHERE ris.is_work_unit = TRUE
-       ORDER BY w.depth
-       LIMIT 1
-     )
-     UPDATE region_import_state
-     SET signoff_status = 'in_progress'
-     WHERE region_id IN (SELECT id FROM nearest_unit)
-       AND signoff_status IN ('not_started', 'signed_off')`,
-    [regionId],
-  );
+  try {
+    await pool.query(
+      `WITH RECURSIVE walk_up AS (
+         SELECT r.id, r.parent_region_id, 0 AS depth
+         FROM regions r WHERE r.id = $1
+         UNION ALL
+         SELECT r.id, r.parent_region_id, w.depth + 1
+         FROM regions r JOIN walk_up w ON r.id = w.parent_region_id
+       ),
+       nearest_unit AS (
+         SELECT w.id
+         FROM walk_up w
+         JOIN region_import_state ris ON ris.region_id = w.id
+         WHERE ris.is_work_unit = TRUE
+         ORDER BY w.depth
+         LIMIT 1
+       )
+       UPDATE region_import_state
+       SET signoff_status = 'in_progress'
+       WHERE region_id IN (SELECT id FROM nearest_unit)
+         AND signoff_status IN ('not_started', 'signed_off')`,
+      [regionId],
+    );
+  } catch (err) {
+    // The touch always runs after the mutation committed; throwing here would
+    // 500 a succeeded operation and invite double-processing retries (same
+    // policy as the post-commit side-effect note in wvImportMatchTransfer.ts:~187).
+    console.error('[workUnits] staleness touch failed for region %d', regionId, err);
+  }
 }

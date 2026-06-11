@@ -8,6 +8,7 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { pool } from '../../db/index.js';
+import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
 
 // ---------------------------------------------------------------------------
 // Rename
@@ -75,6 +76,7 @@ export async function renameRegion(
     client.release();
   }
 
+  await touchWorkUnitForRegion(regionId);
   res.json({ renamed: true, regionId, oldName, newName: name.trim() });
 }
 
@@ -142,6 +144,11 @@ export async function reparentRegion(
     'UPDATE regions SET parent_region_id = $1 WHERE id = $2',
     [newParentId, regionId],
   );
+
+  // Stale the owning work unit for the region and both parent sides.
+  await touchWorkUnitForRegion(regionId);
+  if (oldParentId != null) await touchWorkUnitForRegion(oldParentId);
+  if (newParentId != null) await touchWorkUnitForRegion(newParentId);
 
   res.json({ reparented: true, regionId, oldParentId, newParentId });
 }
