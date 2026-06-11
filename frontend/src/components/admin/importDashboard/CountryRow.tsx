@@ -11,7 +11,7 @@ import {
 import { deriveUnitStatus, type UnitStatus } from './dashboardUtils';
 import { VerifyDialog } from './VerifyDialog';
 
-const STATUS_DOT: Record<UnitStatus, { glyph: string; color: string; label: string }> = {
+export const STATUS_DOT: Record<UnitStatus, { glyph: string; color: string; label: string }> = {
   not_started: { glyph: '○', color: 'text.disabled', label: 'not started' },
   in_progress: { glyph: '◐', color: 'info.main', label: 'in progress' },
   signed_off: { glyph: '⬤', color: 'success.main', label: 'signed off' },

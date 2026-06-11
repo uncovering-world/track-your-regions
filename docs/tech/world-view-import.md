@@ -486,7 +486,7 @@ Admin panel section "WorldView Import" (`WorldViewImportPanel.tsx`) with these v
 An import workflow dashboard lives at `/admin/import/:worldViewId` (Plan 2 of the import-review redesign — see `docs/tech/planning/import-review-workflow-redesign-plan-2-dashboard.md`). It has three tabs:
 
 - **Countries** — lists every work unit grouped by continent with status dots (not started / in progress / signed off / stale), leaf-resolution progress, and a row menu for per-unit verification checks (unassigned leaves, coverage gaps, overlaps) and sign-off.
-- **Skeleton** — lets the admin curate the work-unit list (promote unidentified nodes, demote units) and confirm the skeleton, which is required before Finalize.
+- **Skeleton** — shows an expandable container tree of the skeleton hierarchy (sub-continental groupings → work-unit leaves). Container rows have an action menu: Add grouping, Rename, Move under, Remove (children move up), Promote to work unit. Unit rows have a demote switch and status dot. An unidentified-countries worklist surfaces unresolved non-unit nodes for promotion or match-tree resolution. Confirming the skeleton is required before Finalize.
 - **Global gaps** — runs the world-view-level GADM coverage check via SSE, lists active gaps with dismiss/undismiss actions.
 
 The legacy Match Review (`WorldViewImportReview.tsx`) remains the place for assignment editing until Plan 4; it is reachable from the dashboard via the "Legacy match tree" button (navigates to `/admin?section=wvImport&wvReview=<id>`). "Review Matches" buttons on the import panel now navigate directly to the dashboard.

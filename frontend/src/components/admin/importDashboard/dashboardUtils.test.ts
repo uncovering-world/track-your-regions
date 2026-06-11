@@ -4,7 +4,7 @@ import {
   groupUnitsByContinent,
   groupUnitsByAncestorPath,
   findDuplicateSourceUrls,
-  collectSkeletonCandidates,
+  buildSkeletonForest,
   type UnitStatus,
 } from './dashboardUtils';
 import type { DashboardUnit } from '../../../api/admin/wvImportWorkflow';
@@ -95,25 +95,85 @@ describe('findDuplicateSourceUrls', () => {
   });
 });
 
-describe('collectSkeletonCandidates', () => {
-  const leaf = (id: number, name: string, matchStatus: string | null, isWorkUnit = false): MatchTreeNode =>
-    ({ id, name, matchStatus, isWorkUnit, children: [] } as unknown as MatchTreeNode);
+describe('buildSkeletonForest', () => {
+  const mkNode = (
+    id: number, name: string, matchStatus: string | null,
+    isWorkUnit: boolean, children: MatchTreeNode[] = [], memberCount = 0,
+  ): MatchTreeNode =>
+    ({ id, name, matchStatus, isWorkUnit, memberCount, children } as unknown as MatchTreeNode);
 
-  it('returns unresolved non-unit nodes that are not inside any work unit', () => {
+  it('turns work-unit nodes into leaves — their subtrees are dropped', () => {
     const tree: MatchTreeNode[] = [
-      {
-        ...leaf(1, 'Europe', null),
-        children: [
-          { ...leaf(2, 'France', 'needs_review') },               // candidate
-          { ...leaf(3, 'Germany', 'children_matched', true),      // unit: its subtree excluded
-            children: [leaf(4, 'Bavaria', 'no_candidates')] },
-        ],
-      } as unknown as MatchTreeNode,
+      mkNode(1, 'Africa', null, false, [
+        mkNode(2, 'West Africa', null, false, [
+          mkNode(3, 'Senegal', 'children_matched', true, [
+            mkNode(4, 'Ziguinchor', 'auto_matched', false),  // should be dropped
+          ]),
+        ]),
+      ]),
     ];
-    const ids = collectSkeletonCandidates(tree).map(c => c.id);
-    expect(ids).toContain(2);
-    expect(ids).not.toContain(3);
-    expect(ids).not.toContain(4);
-    expect(ids).not.toContain(1); // container without unresolved status is not a candidate
+    const forest = buildSkeletonForest(tree);
+    const westAfrica = forest[0].children[0];
+    const senegal = westAfrica.children[0];
+    // Senegal is a work unit — leaf in forest
+    expect(senegal.isWorkUnit).toBe(true);
+    expect(senegal.children).toHaveLength(0);
+    expect(senegal.hasChildren).toBe(false);
+    // Ziguinchor should not appear anywhere
+    const allIds = (nodes: typeof forest): number[] =>
+      nodes.flatMap(n => [n.id, ...allIds(n.children)]);
+    expect(allIds(forest)).not.toContain(4);
+    // Containers with children have hasChildren=true
+    expect(forest[0].hasChildren).toBe(true);
+    expect(westAfrica.hasChildren).toBe(true);
+  });
+
+  it('counts childUnits recursively on containers', () => {
+    const tree: MatchTreeNode[] = [
+      mkNode(1, 'Africa', null, false, [
+        mkNode(2, 'West Africa', null, false, [
+          mkNode(3, 'Senegal', 'children_matched', true),
+          mkNode(4, 'Ghana', 'children_matched', true),
+        ]),
+        mkNode(5, 'Central Africa', null, false, [
+          mkNode(6, 'Congo', 'children_matched', true),
+        ]),
+      ]),
+    ];
+    const forest = buildSkeletonForest(tree);
+    const africa = forest[0];
+    const westAfrica = africa.children[0];
+    const centralAfrica = africa.children[1];
+    expect(westAfrica.childUnits).toBe(2);
+    expect(centralAfrica.childUnits).toBe(1);
+    expect(africa.childUnits).toBe(3);
+  });
+
+  it('propagates memberCount from source MatchTreeNode onto SkeletonNode', () => {
+    const tree: MatchTreeNode[] = [
+      mkNode(1, 'Europe', null, false, [
+        mkNode(2, 'Chechnya', 'children_matched', true, [], 3),  // work unit with 3 members
+        mkNode(3, 'Sub-continent', null, false, [], 5),           // container with 5 members
+      ]),
+    ];
+    const forest = buildSkeletonForest(tree);
+    const europe = forest[0];
+    const chechnya = europe.children[0];
+    const subContinent = europe.children[1];
+    expect(chechnya.memberCount).toBe(3);
+    expect(subContinent.memberCount).toBe(5);
+  });
+
+  it('retains unresolved non-unit leaves (worklist candidates)', () => {
+    const tree: MatchTreeNode[] = [
+      mkNode(1, 'Africa', null, false, [
+        mkNode(2, 'UnknownRegion', 'needs_review', false),
+      ]),
+    ];
+    const forest = buildSkeletonForest(tree);
+    const unknown = forest[0].children[0];
+    expect(unknown.id).toBe(2);
+    expect(unknown.matchStatus).toBe('needs_review');
+    expect(unknown.isWorkUnit).toBe(false);
   });
 });
