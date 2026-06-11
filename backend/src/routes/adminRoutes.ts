@@ -121,6 +121,7 @@ import {
   // Workflow
   getWorkUnitVerification, signOffWorkUnit, reopenWorkUnit,
   setWorkUnitFlag, confirmHierarchy, confirmSkeleton, setReferenceTerritory,
+  getWorkflowDashboard,
 } from '../controllers/admin/worldViewImportController.js';
 import {
   startWikivoyageExtraction,
@@ -588,6 +589,9 @@ router.post('/wv-import/matches/:worldViewId/confirm-skeleton', validate(worldVi
 
 // Set the fallback reference territory (used only when the unit has no direct members)
 router.post('/wv-import/matches/:worldViewId/set-reference', validate(worldViewIdParamSchema, 'params'), validate(wvImportSetReferenceSchema), setReferenceTerritory);
+
+// Dashboard aggregate — all work units with progress, continent grouping, leaf/warning counts
+router.get('/wv-import/matches/:worldViewId/dashboard', validate(worldViewIdParamSchema, 'params'), getWorkflowDashboard);
 
 // Finalize review — mark world view as done
 router.post('/wv-import/matches/:worldViewId/finalize', validate(worldViewIdParamSchema, 'params'), finalizeReview);

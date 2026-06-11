@@ -178,3 +178,20 @@ describe('reopenWorkUnit', () => {
     expect(sql).toMatch(/signed_off_at = NULL/);
   });
 });
+
+import { getWorkflowDashboard } from './wvImportWorkflowController.js';
+
+describe('getWorkflowDashboard', () => {
+  beforeEach(() => { mockedQuery.mockReset(); mockedQuery.mockResolvedValue({ rows: [] }); });
+
+  it('aggregates per-unit progress in a single query (no full-tree fetch)', async () => {
+    const res = mockRes();
+    await getWorkflowDashboard(
+      { params: { worldViewId: '1' } } as unknown as AuthenticatedRequest, res);
+    expect(mockedQuery).toHaveBeenCalledTimes(2); // skeleton_confirmed + units
+    const unitSql = mockedQuery.mock.calls[1][0] as string;
+    expect(unitSql).toMatch(/is_work_unit = TRUE/);
+    expect(unitSql).toMatch(/WITH RECURSIVE/);
+    expect(unitSql).toMatch(/assignment_waived/);
+  });
+});

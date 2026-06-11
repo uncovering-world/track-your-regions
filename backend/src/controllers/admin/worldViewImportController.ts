@@ -23,4 +23,5 @@ export { renameRegion, reparentRegion } from './wvImportRenameController.js';
 export {
   getWorkUnitVerification, signOffWorkUnit, reopenWorkUnit,
   setWorkUnitFlag, confirmHierarchy, confirmSkeleton, setReferenceTerritory,
+  getWorkflowDashboard,
 } from './wvImportWorkflowController.js';

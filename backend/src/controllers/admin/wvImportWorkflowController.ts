@@ -147,3 +147,82 @@ export async function setReferenceTerritory(req: AuthenticatedRequest, res: Resp
   await touchWorkUnitForRegion(regionId);
   res.json({ success: true });
 }
+
+/** GET /wv-import/matches/:worldViewId/dashboard */
+export async function getWorkflowDashboard(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+
+  const wv = await pool.query(
+    'SELECT skeleton_confirmed FROM world_views WHERE id = $1',
+    [worldViewId],
+  );
+
+  const units = await pool.query(`
+    WITH RECURSIVE units AS (
+      SELECT r.id, r.name, r.parent_region_id
+      FROM regions r
+      JOIN region_import_state ris ON ris.region_id = r.id
+      WHERE r.world_view_id = $1 AND ris.is_work_unit = TRUE
+    ),
+    subtree AS (
+      SELECT u.id AS unit_id, u.id AS region_id FROM units u
+      UNION ALL
+      SELECT s.unit_id, r.id
+      FROM subtree s JOIN regions r ON r.parent_region_id = s.region_id
+    ),
+    root_walk AS (
+      SELECT u.id AS unit_id, u.id AS current_id, u.parent_region_id, u.name AS root_name
+      FROM units u
+      UNION ALL
+      SELECT w.unit_id, r.id, r.parent_region_id, r.name
+      FROM root_walk w JOIN regions r ON r.id = w.parent_region_id
+    ),
+    roots AS (
+      SELECT DISTINCT ON (unit_id) unit_id, root_name AS continent
+      FROM root_walk WHERE parent_region_id IS NULL
+      ORDER BY unit_id
+    )
+    SELECT u.id, u.name,
+           ris.signoff_status, ris.signed_off_at, ris.hierarchy_confirmed,
+           ris.reference_division_ids,
+           ris.source_url,
+           roots.continent,
+           COUNT(*) FILTER (WHERE r.is_leaf) AS leaf_total,
+           COUNT(*) FILTER (
+             WHERE r.is_leaf AND (sris.assignment_waived
+               OR EXISTS (SELECT 1 FROM region_members rm WHERE rm.region_id = r.id))
+           ) AS leaf_resolved,
+           COUNT(*) FILTER (
+             WHERE array_length(sris.hierarchy_warnings, 1) > 0
+               AND sris.hierarchy_reviewed = FALSE
+           ) AS warning_count
+    FROM units u
+    JOIN region_import_state ris ON ris.region_id = u.id
+    LEFT JOIN roots ON roots.unit_id = u.id
+    JOIN subtree s ON s.unit_id = u.id
+    JOIN regions r ON r.id = s.region_id
+    LEFT JOIN region_import_state sris ON sris.region_id = r.id
+    GROUP BY u.id, u.name, ris.signoff_status, ris.signed_off_at,
+             ris.hierarchy_confirmed, ris.reference_division_ids,
+             ris.source_url, roots.continent
+    ORDER BY roots.continent NULLS LAST, u.name
+  `, [worldViewId]);
+
+  res.json({
+    skeletonConfirmed: wv.rows[0]?.skeleton_confirmed === true,
+    units: units.rows.map(r => ({
+      regionId: r.id as number,
+      name: r.name as string,
+      continent: (r.continent as string) ?? null,
+      signoffStatus: r.signoff_status as string,
+      signedOffAt: (r.signed_off_at as string) ?? null,
+      hierarchyConfirmed: r.hierarchy_confirmed === true,
+      hasReference: ((r.reference_division_ids as number[] | null) ?? []).length > 0,
+      referenceDivisionIds: (r.reference_division_ids as number[] | null) ?? [],
+      sourceUrl: (r.source_url as string) ?? null,
+      leafTotal: parseInt(String(r.leaf_total)),
+      leafResolved: parseInt(String(r.leaf_resolved)),
+      warningCount: parseInt(String(r.warning_count)),
+    })),
+  });
+}

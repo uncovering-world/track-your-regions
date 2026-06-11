@@ -482,6 +482,7 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
       ris.source_external_id AS wikidata_id,
       ris.hierarchy_warnings,
       ris.hierarchy_reviewed,
+      ris.is_work_unit, ris.hierarchy_confirmed, ris.signoff_status, ris.assignment_waived,
       ris.marker_points,
       COALESCE(ris.geo_available, (
         SELECT NOT wg.not_available FROM wikidata_geoshapes wg
@@ -541,6 +542,10 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
     assignedDivisions: Array<{ divisionId: number; name: string; path: string; hasCustomGeom: boolean }>;
     hierarchyWarnings: string[];
     hierarchyReviewed: boolean;
+    isWorkUnit: boolean;
+    hierarchyConfirmed: boolean;
+    signoffStatus: string;
+    assignmentWaived: boolean;
     geoAvailable: boolean | null;
     markerPoints: Array<{ name: string; lat: number; lon: number }> | null;
     children: TreeNode[];
@@ -568,6 +573,10 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
       assignedDivisions: (row.assigned_divisions as TreeNode['assignedDivisions']) ?? [],
       hierarchyWarnings: (row.hierarchy_warnings as string[]) ?? [],
       hierarchyReviewed: row.hierarchy_reviewed === true,
+      isWorkUnit: row.is_work_unit === true,
+      hierarchyConfirmed: row.hierarchy_confirmed === true,
+      signoffStatus: (row.signoff_status as string) ?? 'not_started',
+      assignmentWaived: row.assignment_waived === true,
       geoAvailable: (row.geo_available as boolean | null) ?? null,
       markerPoints: (row.marker_points as TreeNode['markerPoints']) ?? null,
       children: [],
