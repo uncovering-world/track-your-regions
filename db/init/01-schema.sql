@@ -115,9 +115,12 @@ CREATE TABLE IF NOT EXISTS world_views (
     last_assignment_at TIMESTAMPTZ,  -- Last time region assignment was run
     tile_version INTEGER DEFAULT 0,  -- Incremented when geometry changes, used for tile cache busting
     dismissed_coverage_ids INTEGER[] DEFAULT '{}',  -- GADM division IDs dismissed from coverage checks
+    skeleton_confirmed BOOLEAN NOT NULL DEFAULT FALSE,  -- admin confirmed continents/work-unit list (import workflow skeleton pass)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+COMMENT ON COLUMN world_views.skeleton_confirmed IS 'Admin confirmed continents/work-unit list (import workflow skeleton pass)';
 
 -- Insert GADM as the default hierarchy
 INSERT INTO world_views (name, description, is_default, is_active)
@@ -1866,7 +1869,15 @@ CREATE TABLE IF NOT EXISTS region_import_state (
     marker_points JSONB,
     geo_available BOOLEAN,  -- NULL = unknown, set after geoshape lookup (geoshapeCoverage.ts)
     hierarchy_reviewed BOOLEAN NOT NULL DEFAULT FALSE,  -- admin confirmed child set via AI Review Children
-    hierarchy_warnings TEXT[]  -- AI-flagged issues with the region's child set
+    hierarchy_warnings TEXT[],  -- AI-flagged issues with the region's child set
+    is_work_unit BOOLEAN NOT NULL DEFAULT FALSE,  -- node appears on import dashboard as a country (work unit)
+    hierarchy_confirmed BOOLEAN NOT NULL DEFAULT FALSE,  -- admin confirmed the work unit's subtree shape (workflow stage 1)
+    signoff_status TEXT NOT NULL DEFAULT 'not_started',  -- work-unit workflow status
+    signed_off_at TIMESTAMPTZ,  -- retained on staleness revert; cleared only by explicit reopen
+    assignment_waived BOOLEAN NOT NULL DEFAULT FALSE,  -- leaf intentionally has no geometry
+    reference_division_ids INTEGER[],  -- GADM division IDs defining the work unit's territory
+    CONSTRAINT region_import_state_signoff_status_check
+        CHECK (signoff_status IN ('not_started', 'in_progress', 'signed_off'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_ris_status ON region_import_state(match_status);
@@ -1878,6 +1889,12 @@ COMMENT ON COLUMN region_import_state.source_external_id IS 'External identifier
 COMMENT ON COLUMN region_import_state.geo_available IS 'Whether a Wikidata geoshape is available for this region (NULL until checked)';
 COMMENT ON COLUMN region_import_state.hierarchy_reviewed IS 'True once an admin has run AI Review Children on this region';
 COMMENT ON COLUMN region_import_state.hierarchy_warnings IS 'AI-flagged issues with the current child set (empty/NULL = none)';
+COMMENT ON COLUMN region_import_state.is_work_unit IS 'Node appears on the import dashboard as a country (work unit)';
+COMMENT ON COLUMN region_import_state.hierarchy_confirmed IS 'Admin confirmed the work unit''s subtree shape (hierarchy sub-stage of the country loop)';
+COMMENT ON COLUMN region_import_state.signoff_status IS 'Work-unit workflow status: not_started / in_progress / signed_off';
+COMMENT ON COLUMN region_import_state.signed_off_at IS 'Retained on staleness revert (in_progress + non-null = "modified after sign-off"); cleared only by explicit reopen';
+COMMENT ON COLUMN region_import_state.assignment_waived IS 'Leaf intentionally has no geometry; its territory must be tiled by siblings';
+COMMENT ON COLUMN region_import_state.reference_division_ids IS 'Work units: GADM division IDs defining the unit''s territory for verification';
 
 -- Match suggestions (1:N per region, replaces metadata.suggestions + rejectedDivisionIds)
 CREATE TABLE IF NOT EXISTS region_match_suggestions (
