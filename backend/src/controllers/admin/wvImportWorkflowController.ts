@@ -148,6 +148,27 @@ export async function setReferenceTerritory(req: AuthenticatedRequest, res: Resp
   res.json({ success: true });
 }
 
+/** POST /wv-import/matches/:worldViewId/waive  { regionId, waived } */
+export async function setAssignmentWaived(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const worldViewId = parseInt(String(req.params.worldViewId));
+  const { regionId, waived } = req.body as { regionId: number; waived: boolean };
+  const owned = await pool.query(
+    'SELECT 1 FROM regions WHERE id = $1 AND world_view_id = $2',
+    [regionId, worldViewId],
+  );
+  if (owned.rows.length === 0) { res.status(404).json({ error: 'Region not found in this world view' }); return; }
+  // Upsert: editor-created regions may lack an import-state row.
+  // match_status has NOT NULL DEFAULT 'no_candidates'; all other NOT NULL columns have defaults.
+  await pool.query(
+    `INSERT INTO region_import_state (region_id, assignment_waived)
+     VALUES ($1, $2)
+     ON CONFLICT (region_id) DO UPDATE SET assignment_waived = $2`,
+    [regionId, waived],
+  );
+  await touchWorkUnitForRegion(regionId);
+  res.json({ success: true });
+}
+
 /** GET /wv-import/matches/:worldViewId/dashboard */
 export async function getWorkflowDashboard(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));

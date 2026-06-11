@@ -13,7 +13,7 @@ vi.mock('../../services/worldViewImport/workUnits.js', () => ({
 import { pool } from '../../db/index.js';
 import { verifyWorkUnit } from '../../services/worldViewImport/verifyWorkUnit.js';
 import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
-import { signOffWorkUnit, setWorkUnitFlag, reopenWorkUnit, setReferenceTerritory, confirmHierarchy } from './wvImportWorkflowController.js';
+import { signOffWorkUnit, setWorkUnitFlag, reopenWorkUnit, setAssignmentWaived, setReferenceTerritory, confirmHierarchy } from './wvImportWorkflowController.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import type { Response } from 'express';
 
@@ -193,5 +193,27 @@ describe('getWorkflowDashboard', () => {
     expect(unitSql).toMatch(/is_work_unit = TRUE/);
     expect(unitSql).toMatch(/WITH RECURSIVE/);
     expect(unitSql).toMatch(/assignment_waived/);
+  });
+});
+
+describe('setAssignmentWaived', () => {
+  beforeEach(() => { mockedQuery.mockReset(); mockedTouch.mockReset(); mockedTouch.mockResolvedValue(undefined); });
+
+  it('404s for regions outside the world view (IDOR guard)', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    const res = mockRes();
+    await setAssignmentWaived(req(1, { regionId: 9, waived: true }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('upserts the waiver and touches the owning unit', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+      .mockResolvedValue({ rows: [] });
+    const res = mockRes();
+    await setAssignmentWaived(req(1, { regionId: 9, waived: true }), res);
+    const sqls = mockedQuery.mock.calls.map(c => c[0] as string);
+    expect(sqls.some(s => /ON CONFLICT \(region_id\) DO UPDATE SET assignment_waived/.test(s))).toBe(true);
+    expect(mockedTouch).toHaveBeenCalledWith(9);
   });
 });

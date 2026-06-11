@@ -80,6 +80,28 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
     return;
   }
 
+  // Workflow gate (import-review redesign): skeleton confirmed + every work
+  // unit signed off. Global-gap zero-count remains validated client-side via
+  // the coverage check, same as before.
+  const gate = await pool.query(`
+    SELECT
+      (SELECT skeleton_confirmed FROM world_views WHERE id = $1) AS skeleton_confirmed,
+      COUNT(*) FILTER (WHERE ris.is_work_unit AND ris.signoff_status <> 'signed_off') AS unsigned_units
+    FROM region_import_state ris
+    JOIN regions r ON r.id = ris.region_id
+    WHERE r.world_view_id = $1
+  `, [worldViewId]);
+  const skeletonConfirmed = gate.rows[0].skeleton_confirmed === true;
+  const unsignedUnits = parseInt(gate.rows[0].unsigned_units as string);
+  if (!skeletonConfirmed || unsignedUnits > 0) {
+    res.status(400).json({
+      error: 'Workflow incomplete',
+      skeletonConfirmed,
+      unsignedUnits,
+    });
+    return;
+  }
+
   // Derive finalized source_type from current (e.g. 'wikivoyage' -> 'wikivoyage_done')
   const result = await pool.query(
     `UPDATE world_views SET source_type = source_type || '_done', updated_at = NOW()

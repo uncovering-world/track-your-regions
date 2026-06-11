@@ -586,6 +586,11 @@ export const wvImportSetReferenceSchema = z.object({
   divisionIds: z.array(z.number().int().positive()).min(1).max(50),
 });
 
+export const wvImportWaiveSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  waived: z.boolean(),
+});
+
 export const worldViewRegionIdParamSchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
   regionId: z.coerce.number().int().positive(),

@@ -67,6 +67,7 @@ import {
   wvImportConfirmHierarchySchema,
   wvImportConfirmSkeletonSchema,
   wvImportSetReferenceSchema,
+  wvImportWaiveSchema,
 } from '../types/index.js';
 import {
   startSync,
@@ -121,7 +122,7 @@ import {
   // Workflow
   getWorkUnitVerification, signOffWorkUnit, reopenWorkUnit,
   setWorkUnitFlag, confirmHierarchy, confirmSkeleton, setReferenceTerritory,
-  getWorkflowDashboard,
+  getWorkflowDashboard, setAssignmentWaived,
 } from '../controllers/admin/worldViewImportController.js';
 import {
   startWikivoyageExtraction,
@@ -589,6 +590,9 @@ router.post('/wv-import/matches/:worldViewId/confirm-skeleton', validate(worldVi
 
 // Set the fallback reference territory (used only when the unit has no direct members)
 router.post('/wv-import/matches/:worldViewId/set-reference', validate(worldViewIdParamSchema, 'params'), validate(wvImportSetReferenceSchema), setReferenceTerritory);
+
+// Waive (or un-waive) assignment for a leaf region (intentionally no geometry)
+router.post('/wv-import/matches/:worldViewId/waive', validate(worldViewIdParamSchema, 'params'), validate(wvImportWaiveSchema), setAssignmentWaived);
 
 // Dashboard aggregate — all work units with progress, continent grouping, leaf/warning counts
 router.get('/wv-import/matches/:worldViewId/dashboard', validate(worldViewIdParamSchema, 'params'), getWorkflowDashboard);
