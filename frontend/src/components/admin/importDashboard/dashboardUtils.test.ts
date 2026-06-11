@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   deriveUnitStatus,
   groupUnitsByContinent,
+  groupUnitsByAncestorPath,
   findDuplicateSourceUrls,
   collectSkeletonCandidates,
   type UnitStatus,
@@ -11,7 +12,8 @@ import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
 
 function unit(over: Partial<DashboardUnit>): DashboardUnit {
   return {
-    regionId: 1, name: 'X', continent: 'Europe', signoffStatus: 'not_started',
+    regionId: 1, name: 'X', continent: 'Europe', ancestorPath: [],
+    signoffStatus: 'not_started',
     signedOffAt: null, hierarchyConfirmed: false, hasReference: true,
     referenceDivisionIds: [1], sourceUrl: null, leafTotal: 1, leafResolved: 0,
     warningCount: 0, ...over,
@@ -45,6 +47,38 @@ describe('groupUnitsByContinent', () => {
       unit({ regionId: 2, name: 'Algeria', continent: 'Africa' }),
     ]);
     expect(groups[0].units.map(u => u.name)).toEqual(['Algeria', 'Zambia']);
+  });
+});
+
+describe('groupUnitsByAncestorPath', () => {
+  it('uses joined ancestorPath as label for units with a non-empty path', () => {
+    const groups = groupUnitsByAncestorPath([
+      unit({ regionId: 1, name: 'Senegal', ancestorPath: ['Africa', 'West Africa'], continent: 'Africa' }),
+      unit({ regionId: 2, name: 'Ghana', ancestorPath: ['Africa', 'West Africa'], continent: 'Africa' }),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].label).toBe('Africa › West Africa');
+    expect(groups[0].units.map(u => u.name)).toEqual(['Ghana', 'Senegal']);
+  });
+
+  it('falls back to continent then Ungrouped when ancestorPath is empty', () => {
+    const groups = groupUnitsByAncestorPath([
+      unit({ regionId: 1, name: 'Asia-root', ancestorPath: [], continent: 'Asia' }),
+      unit({ regionId: 2, name: 'Mystery', ancestorPath: [], continent: null }),
+    ]);
+    const labels = groups.map(g => g.label);
+    expect(labels).toContain('Asia');
+    expect(labels).toContain('Ungrouped');
+  });
+
+  it('sorts groups alphabetically with Ungrouped last', () => {
+    const groups = groupUnitsByAncestorPath([
+      unit({ regionId: 1, name: 'X', ancestorPath: [], continent: null }),
+      unit({ regionId: 2, name: 'Y', ancestorPath: ['Africa', 'West Africa'], continent: 'Africa' }),
+      unit({ regionId: 3, name: 'Z', ancestorPath: ['Africa', 'Central Africa'], continent: 'Africa' }),
+    ]);
+    const labels = groups.map(g => g.label);
+    expect(labels).toEqual(['Africa › Central Africa', 'Africa › West Africa', 'Ungrouped']);
   });
 });
 

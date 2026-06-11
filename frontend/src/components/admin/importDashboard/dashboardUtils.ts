@@ -39,6 +39,39 @@ export function groupUnitsByContinent(units: DashboardUnit[]): ContinentGroup[] 
     }));
 }
 
+export interface AncestorPathGroup {
+  label: string;
+  units: DashboardUnit[];
+}
+
+/**
+ * Groups units by their full ancestor path label (`ancestorPath.join(' › ')`).
+ * Falls back to `continent ?? 'Ungrouped'` when `ancestorPath` is empty.
+ * Groups are sorted alphabetically by label with 'Ungrouped' last.
+ * Units within each group are sorted by name.
+ */
+export function groupUnitsByAncestorPath(units: DashboardUnit[]): AncestorPathGroup[] {
+  const byLabel = new Map<string, DashboardUnit[]>();
+  for (const u of units) {
+    const label = u.ancestorPath.length > 0
+      ? u.ancestorPath.join(' › ')
+      : (u.continent ?? 'Ungrouped');
+    const list = byLabel.get(label) ?? [];
+    list.push(u);
+    byLabel.set(label, list);
+  }
+  return [...byLabel.entries()]
+    .sort(([a], [b]) => {
+      if (a === 'Ungrouped') return 1;
+      if (b === 'Ungrouped') return -1;
+      return a.localeCompare(b);
+    })
+    .map(([label, list]) => ({
+      label,
+      units: [...list].sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+}
+
 export function findDuplicateSourceUrls(units: DashboardUnit[]): Set<string> {
   const counts = new Map<string, number>();
   for (const u of units) {

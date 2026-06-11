@@ -27,6 +27,8 @@ export interface DashboardUnit {
   regionId: number;
   name: string;
   continent: string | null;
+  /** Root-first strict ancestor names, e.g. ["Africa", "West Africa"]. Empty when unit is a root. */
+  ancestorPath: string[];
   signoffStatus: SignoffStatus;
   signedOffAt: string | null;
   hierarchyConfirmed: boolean;
