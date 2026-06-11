@@ -192,22 +192,28 @@ export async function getWorkflowDashboard(req: AuthenticatedRequest, res: Respo
       FROM subtree s JOIN regions r ON r.parent_region_id = s.region_id
     ),
     root_walk AS (
-      SELECT u.id AS unit_id, u.id AS current_id, u.parent_region_id, u.name AS root_name
+      SELECT u.id AS unit_id, u.id AS current_id, u.parent_region_id, u.name AS root_name, 0 AS depth
       FROM units u
       UNION ALL
-      SELECT w.unit_id, r.id, r.parent_region_id, r.name
+      SELECT w.unit_id, r.id, r.parent_region_id, r.name, w.depth + 1
       FROM root_walk w JOIN regions r ON r.id = w.parent_region_id
     ),
     roots AS (
       SELECT DISTINCT ON (unit_id) unit_id, root_name AS continent
       FROM root_walk WHERE parent_region_id IS NULL
       ORDER BY unit_id
+    ),
+    ancestor_paths AS (
+      SELECT unit_id, array_agg(root_name ORDER BY depth DESC) AS path
+      FROM root_walk WHERE current_id <> unit_id
+      GROUP BY unit_id
     )
     SELECT u.id, u.name,
            ris.signoff_status, ris.signed_off_at, ris.hierarchy_confirmed,
            ris.reference_division_ids,
            ris.source_url,
            roots.continent,
+           ancestor_paths.path AS ancestor_path,
            COUNT(*) FILTER (WHERE r.is_leaf) AS leaf_total,
            COUNT(*) FILTER (
              WHERE r.is_leaf AND (sris.assignment_waived
@@ -220,12 +226,13 @@ export async function getWorkflowDashboard(req: AuthenticatedRequest, res: Respo
     FROM units u
     JOIN region_import_state ris ON ris.region_id = u.id
     LEFT JOIN roots ON roots.unit_id = u.id
+    LEFT JOIN ancestor_paths ON ancestor_paths.unit_id = u.id
     JOIN subtree s ON s.unit_id = u.id
     JOIN regions r ON r.id = s.region_id
     LEFT JOIN region_import_state sris ON sris.region_id = r.id
     GROUP BY u.id, u.name, ris.signoff_status, ris.signed_off_at,
              ris.hierarchy_confirmed, ris.reference_division_ids,
-             ris.source_url, roots.continent
+             ris.source_url, roots.continent, ancestor_paths.path
     ORDER BY roots.continent NULLS LAST, u.name
   `, [worldViewId]);
 
@@ -235,6 +242,7 @@ export async function getWorkflowDashboard(req: AuthenticatedRequest, res: Respo
       regionId: r.id as number,
       name: r.name as string,
       continent: (r.continent as string) ?? null,
+      ancestorPath: (r.ancestor_path as string[] | null) ?? [],
       signoffStatus: r.signoff_status as string,
       signedOffAt: (r.signed_off_at as string) ?? null,
       hierarchyConfirmed: r.hierarchy_confirmed === true,

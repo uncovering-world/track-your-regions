@@ -194,6 +194,15 @@ describe('getWorkflowDashboard', () => {
     expect(unitSql).toMatch(/WITH RECURSIVE/);
     expect(unitSql).toMatch(/assignment_waived/);
   });
+
+  it('SQL contains ancestor_paths CTE', async () => {
+    const res = mockRes();
+    await getWorkflowDashboard(
+      { params: { worldViewId: '1' } } as unknown as AuthenticatedRequest, res);
+    const unitSql = mockedQuery.mock.calls[1][0] as string;
+    expect(unitSql).toMatch(/ancestor_paths/);
+    expect(unitSql).toMatch(/ORDER BY depth DESC/);
+  });
 });
 
 describe('setAssignmentWaived', () => {
