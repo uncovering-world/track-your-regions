@@ -106,6 +106,8 @@ interface CoverageData {
   subtreeByGapId: Map<number, SubtreeNode[]>;
 }
 
+// Scoped variant: services/worldViewImport/verifyWorkUnit.ts (SCOPED_COVERAGE_SQL)
+// — keep the ancestors/covered_descendants/fully_covered machinery in sync.
 const COVERAGE_GAPS_SQL = `
   WITH RECURSIVE assigned AS (
     SELECT DISTINCT rm.division_id AS id
