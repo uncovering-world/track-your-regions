@@ -9,6 +9,7 @@ import { MainDisplay, setExplorationModeListener } from './components/MainDispla
 import { DiscoverPage } from './components/discover/DiscoverPage';
 import { AuthCallbackHandler, VerifyEmailPage } from './components/auth';
 import { AdminDashboard } from './components/admin';
+import { ImportDashboardPage } from './components/admin/importDashboard/ImportDashboardPage';
 import { NavigationProvider } from './hooks/useNavigation';
 import { AuthProvider } from './hooks/useAuth';
 import { AppThemeProvider, useAppTheme, createAppTheme } from './theme';
@@ -126,6 +127,7 @@ function ThemedApp() {
           <Routes>
             <Route path="/auth/callback" element={<AuthCallbackHandler />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/admin/import/:worldViewId" element={<ImportDashboardPage />} />
             <Route path="/admin/*" element={<AdminDashboard />} />
             <Route path="/discover" element={<DiscoverContent />} />
             <Route path="/*" element={<MainContent />} />
