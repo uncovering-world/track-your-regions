@@ -510,8 +510,11 @@ export function WorldViewImportPanel() {
   const isCancelled = !isRunning && activeStatus?.status === 'cancelled';
   const hasResult = isComplete || isFailed || isCancelled;
 
-  // Determine which world view to review
-  const activeWorldViewId = activeStatus?.worldViewId ?? reviewWorldViewId;
+  // Determine which world view to review.
+  // An explicit deep-link target (?wvReview=) takes precedence over a lingering
+  // completed/failed import status — the user navigated to a specific target and
+  // we must not let a stale activeStatus silently override it.
+  const activeWorldViewId = reviewWorldViewId ?? activeStatus?.worldViewId;
 
   // Show match review if requested
   if (showReview && activeWorldViewId) {
