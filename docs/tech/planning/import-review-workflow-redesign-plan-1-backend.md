@@ -289,13 +289,62 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Tree-op endpoints call the chokepoint
+### Task 3: All mutation paths call the chokepoint
 
 **Files:**
+- Modify: `backend/src/controllers/worldView/helpers.ts` (hoist the touch above the early return)
+- Modify: `backend/src/controllers/worldView/helpers.test.ts`, `backend/src/services/worldViewImport/workUnits.test.ts` (adjust/strengthen tests)
 - Modify: `backend/src/controllers/admin/wvImportTreeOpsController.ts` (every mutating handler)
 - Modify: `backend/src/controllers/admin/wvImportFinalizeController.ts` (`addChildRegion`)
+- Modify: `backend/src/controllers/admin/wvImportMatchController.ts` (accept/reject/clear handlers)
+- Modify: `backend/src/controllers/admin/wvImportMatchTransfer.ts` (`acceptWithTransfer`)
+- Modify: `backend/src/controllers/worldView/regionCrud.ts` (member-moving paths)
+- Modify: `backend/src/controllers/admin/wvImportUtils.ts` + `backend/src/controllers/admin/wvImportHierarchyController.ts` (undo snapshot columns)
 
-- [ ] **Step 1: Identify the mutating handlers**
+- [ ] **Step 0a: Hoist the chokepoint above the early return** (Task 2 review finding)
+
+Editor-created subregions under an imported country have NO
+`region_import_state` row (`ensureSubregion` doesn't create one), so the
+early return in `syncImportMatchStatus` skips the touch and member edits on
+such regions never stale the owning unit. Move the
+`await touchWorkUnitForRegion(regionId)` call to the TOP of
+`syncImportMatchStatus` (before the `region_import_state` lookup). The walk
+anchors on `regions`, so for plain world views it finds no unit and is a
+~1ms no-op. Update the helpers.test.ts regression test that currently
+asserts no-touch-on-early-return: it must now assert the touch fires even
+when no `region_import_state` row exists (the early return still skips the
+match-status logic). Temper the wired-in comment wording ("every member
+mutation" → accurate description) while there.
+
+- [ ] **Step 0b: Strengthen the nearest-unit test** (Task 2 review finding)
+
+In `workUnits.test.ts`, the first test asserts `LIMIT 1` but not the
+ordering; add `expect(sql).toMatch(/ORDER BY w\.depth/);` so dropping the
+ORDER BY fails the suite.
+
+- [ ] **Step 0c: Wire the chokepoint into the import tool's own member mutations** (Task 2 review finding)
+
+The design doc's "every member-mutating endpoint calls
+syncImportMatchStatus" is FALSE for the import review's own endpoints —
+they update `region_members` + `match_status` inline:
+`acceptMatch`, `rejectSuggestion`, `rejectRemaining`, `acceptBatchMatches`,
+`clearMembers` in `backend/src/controllers/admin/wvImportMatchController.ts`
+and `acceptWithTransfer` in
+`backend/src/controllers/admin/wvImportMatchTransfer.ts`. Add an
+`await touchWorkUnitForRegion(<mutated regionId>)` after each handler's
+successful mutation (for batch accept: touch each distinct regionId once —
+dedupe with a `Set`). Do NOT refactor their inline status logic in this
+task (consolidation into syncImportMatchStatus is a separate concern —
+leave a one-line `// TODO` only if the file already uses that convention,
+otherwise nothing).
+
+Also in `backend/src/controllers/worldView/regionCrud.ts`, the member-moving
+paths (`moveDivisionMembershipsForParentChange`, the `deleteRegion`
+member-reparenting branch) bypass `syncImportMatchStatus`; add direct
+`touchWorkUnitForRegion` calls there (touch BOTH the old and new parent
+region ids for moves).
+
+- [ ] **Step 1: Identify the mutating tree-op handlers**
 
 Run: `rg -n "export async function" backend/src/controllers/admin/wvImportTreeOpsController.ts`
 
@@ -342,7 +391,7 @@ Expected: clean compile, all tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/src/controllers/admin/wvImportTreeOpsController.ts backend/src/controllers/admin/wvImportFinalizeController.ts backend/src/controllers/admin/wvImportUtils.ts backend/src/controllers/admin/wvImportHierarchyController.ts
+git add backend/src/controllers/worldView/helpers.ts backend/src/controllers/worldView/helpers.test.ts backend/src/services/worldViewImport/workUnits.test.ts backend/src/controllers/admin/wvImportTreeOpsController.ts backend/src/controllers/admin/wvImportFinalizeController.ts backend/src/controllers/admin/wvImportMatchController.ts backend/src/controllers/admin/wvImportMatchTransfer.ts backend/src/controllers/worldView/regionCrud.ts backend/src/controllers/admin/wvImportUtils.ts backend/src/controllers/admin/wvImportHierarchyController.ts
 git commit -s -m "back: Invalidate work-unit sign-off on tree operations.
 
 Rename/reparent/create/delete and restructure operations now touch

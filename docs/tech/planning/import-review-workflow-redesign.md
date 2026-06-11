@@ -113,9 +113,11 @@ dashboard badges duplicates ("×2").
 - `signed_off → in_progress`: any mutation inside the subtree (member
   change, tree op, accept/reject) reverts it automatically; the
   dashboard shows a "modified after sign-off" badge (`signed_off_at`
-  retained). This includes **WorldViewEditor** edits — the editor's
-  member-mutation paths already call `syncImportMatchStatus()`, so
-  post-import editor work correctly invalidates sign-offs.
+  retained). Most member-mutation paths (including the
+  **WorldViewEditor**'s) flow through `syncImportMatchStatus()`, which
+  hosts the chokepoint; the paths that mutate members with inline SQL —
+  the import review's own accept/reject/transfer/clear endpoints and
+  `regionCrud`'s reparenting moves — call the chokepoint explicitly.
 - Verification results carry `verified_at` and go stale the same way.
   No hard locks anywhere.
 
