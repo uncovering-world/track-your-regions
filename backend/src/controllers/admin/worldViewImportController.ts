@@ -20,3 +20,7 @@ export { rematchWorldView, getRematchStatus } from './wvImportRematchController.
 export { finalizeReview, addChildRegion, dismissHierarchyWarnings } from './wvImportFinalizeController.js';
 export { mapshapeMatchDivisions } from './wvImportMapshapeController.js';
 export { renameRegion, reparentRegion } from './wvImportRenameController.js';
+export {
+  getWorkUnitVerification, signOffWorkUnit, reopenWorkUnit,
+  setWorkUnitFlag, confirmHierarchy, confirmSkeleton, setReferenceTerritory,
+} from './wvImportWorkflowController.js';

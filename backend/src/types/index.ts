@@ -559,6 +559,33 @@ export const wvImportSmartSimplifyApplySchema = z.object({
   memberRowIds: z.array(z.number().int().positive()).min(1),
 });
 
+// ---------------------------------------------------------------------------
+// Import-review workflow schemas
+// ---------------------------------------------------------------------------
+
+export const wvImportRegionIdBodySchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+});
+
+export const wvImportWorkUnitSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  isWorkUnit: z.boolean(),
+});
+
+export const wvImportConfirmHierarchySchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  confirmed: z.boolean(),
+});
+
+export const wvImportConfirmSkeletonSchema = z.object({
+  confirmed: z.boolean(),
+});
+
+export const wvImportSetReferenceSchema = z.object({
+  regionId: z.coerce.number().int().positive(),
+  divisionIds: z.array(z.number().int().positive()).min(1).max(50),
+});
+
 export const worldViewRegionIdParamSchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
   regionId: z.coerce.number().int().positive(),

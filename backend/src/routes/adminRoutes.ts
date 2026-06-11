@@ -62,6 +62,11 @@ import {
   wvImportResolveOverlapSchema,
   coverageSSEQuerySchema,
   childrenCoverageQuerySchema,
+  wvImportRegionIdBodySchema,
+  wvImportWorkUnitSchema,
+  wvImportConfirmHierarchySchema,
+  wvImportConfirmSkeletonSchema,
+  wvImportSetReferenceSchema,
 } from '../types/index.js';
 import {
   startSync,
@@ -113,6 +118,9 @@ import {
   getChildrenCoverage, getCoverageGeometry, analyzeCoverageGaps, getChildrenRegionGeometry,
   // Mapshape + rename + guided match
   mapshapeMatchDivisions, renameRegion, reparentRegion,
+  // Workflow
+  getWorkUnitVerification, signOffWorkUnit, reopenWorkUnit,
+  setWorkUnitFlag, confirmHierarchy, confirmSkeleton, setReferenceTerritory,
 } from '../controllers/admin/worldViewImportController.js';
 import {
   startWikivoyageExtraction,
@@ -555,6 +563,31 @@ router.post('/wv-import/matches/:worldViewId/undismiss-gap', validate(worldViewI
 
 // Approve coverage suggestion (add to existing region or create new)
 router.post('/wv-import/matches/:worldViewId/approve-coverage', validate(worldViewIdParamSchema, 'params'), validate(wvImportApproveCoverageSchema), approveCoverageSuggestion);
+
+// =============================================================================
+// Import-review workflow (work-unit lifecycle)
+// =============================================================================
+
+// Verify a work unit — returns blockers, unassigned leaves, coverage gaps, overlaps
+router.get('/wv-import/matches/:worldViewId/verify/:regionId', validate(worldViewRegionIdParamSchema, 'params'), getWorkUnitVerification);
+
+// Sign off a work unit (409 + structured blockers if not ready)
+router.post('/wv-import/matches/:worldViewId/sign-off', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdBodySchema), signOffWorkUnit);
+
+// Reopen a previously signed-off work unit
+router.post('/wv-import/matches/:worldViewId/reopen', validate(worldViewIdParamSchema, 'params'), validate(wvImportRegionIdBodySchema), reopenWorkUnit);
+
+// Promote or demote a region as a work unit (demotion resets sign-off lifecycle)
+router.post('/wv-import/matches/:worldViewId/work-unit', validate(worldViewIdParamSchema, 'params'), validate(wvImportWorkUnitSchema), setWorkUnitFlag);
+
+// Confirm (or unconfirm) the child hierarchy for a work unit
+router.post('/wv-import/matches/:worldViewId/confirm-hierarchy', validate(worldViewIdParamSchema, 'params'), validate(wvImportConfirmHierarchySchema), confirmHierarchy);
+
+// Confirm (or unconfirm) the top-level skeleton for a world view
+router.post('/wv-import/matches/:worldViewId/confirm-skeleton', validate(worldViewIdParamSchema, 'params'), validate(wvImportConfirmSkeletonSchema), confirmSkeleton);
+
+// Set the fallback reference territory (used only when the unit has no direct members)
+router.post('/wv-import/matches/:worldViewId/set-reference', validate(worldViewIdParamSchema, 'params'), validate(wvImportSetReferenceSchema), setReferenceTerritory);
 
 // Finalize review — mark world view as done
 router.post('/wv-import/matches/:worldViewId/finalize', validate(worldViewIdParamSchema, 'params'), finalizeReview);
