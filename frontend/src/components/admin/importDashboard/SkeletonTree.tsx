@@ -1,10 +1,15 @@
 /**
  * SkeletonTree — expandable indented tree for the Skeleton tab.
  *
- * Container rows (non-unit nodes): name, "N countries" badge, action menu
- *   (Add grouping… / Rename… / Move under… / Remove (children move up) /
- *   Promote to work unit).
- * Unit rows (work-unit leaves): STATUS_DOT + demote switch.
+ * Container rows (non-unit nodes): name, "N countries" badge or match-status
+ *   chip, action menu (Add grouping… / Rename… / Move under… / Remove (children
+ *   move up) / Promote to work unit).
+ * Unit rows (work-unit leaves): STATUS_DOT + name + demote switch.
+ *
+ * Alignment guarantee: both row kinds share the same fixed-width ICON_SLOT_PX
+ * leading slot (caret for containers, dot for units) so names at equal depth
+ * align exactly. Indentation is applied once to the wrapping List via
+ * `pl: depth * INDENT_PX` — no per-row padding offsets.
  *
  * All mutations are invoked via callbacks from SkeletonTab to keep this
  * component a pure rendering layer.
@@ -35,6 +40,32 @@ import { STATUS_DOT } from './CountryRow';
 import type { SkeletonNode } from './dashboardUtils';
 import type { DashboardUnit } from '../../../api/admin/wvImportWorkflow';
 import type { RenameDialogState, ReparentDialogState } from '../useImportTreeDialogs';
+
+// ─── Layout constants ─────────────────────────────────────────────────────────
+
+/** px of left-padding added per depth level by the wrapping List. */
+const INDENT_PX = 16;
+
+/**
+ * Width (px) of the fixed leading slot shared by both row kinds:
+ * - containers: the expand/collapse caret IconButton (size="small" = 30px + 0.5 mr = ~34px ≈ 36)
+ * - units: the status dot Typography
+ * Matching these keeps names at equal depth aligned exactly.
+ */
+const ICON_SLOT_PX = 36;
+
+// ─── Match-status chip helper (mirrors WorkspaceTree's statusStyle) ───────────
+
+type ChipColor = 'success' | 'info' | 'warning' | 'default';
+interface ChipStyle { label: string; color: ChipColor }
+
+function matchStatusChipStyle(status: string | null): ChipStyle | null {
+  switch (status) {
+    case 'needs_review':  return { label: 'review', color: 'warning' };
+    case 'no_candidates': return { label: 'no match', color: 'default' };
+    default:              return null;
+  }
+}
 
 // ─── Prop types ───────────────────────────────────────────────────────────────
 
@@ -73,6 +104,7 @@ interface ContainerRowProps {
 
 function ContainerRow({ node, expanded, onToggle, callbacks }: ContainerRowProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const chipStyle = matchStatusChipStyle(node.matchStatus);
 
   return (
     <ListItem
@@ -90,18 +122,38 @@ function ContainerRow({ node, expanded, onToggle, callbacks }: ContainerRowProps
         </IconButton>
       }
     >
-      <IconButton size="small" onClick={onToggle} sx={{ mr: 0.5, flexShrink: 0 }}>
+      {/* Leading slot: fixed-width caret to align with unit dot */}
+      <IconButton
+        size="small"
+        onClick={onToggle}
+        sx={{ mr: 0.5, flexShrink: 0, width: ICON_SLOT_PX, justifyContent: 'center' }}
+      >
         {expanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
       </IconButton>
       <ListItemText
         primary={
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Typography variant="body2" component="span">{node.name}</Typography>
+            {/* Muted medium-weight name distinguishes containers from bold unit names */}
+            <Typography
+              variant="body2"
+              component="span"
+              sx={{ fontWeight: 500, color: 'text.secondary' }}
+            >
+              {node.name}
+            </Typography>
             {node.childUnits > 0 && (
               <Chip
                 label={`${node.childUnits} ${node.childUnits === 1 ? 'country' : 'countries'}`}
                 size="small"
                 variant="outlined"
+              />
+            )}
+            {node.childUnits === 0 && chipStyle !== null && (
+              <Chip
+                label={chipStyle.label}
+                color={chipStyle.color}
+                size="small"
+                sx={{ height: 18, fontSize: '0.65rem' }}
               />
             )}
           </Box>
@@ -149,10 +201,9 @@ interface UnitRowProps {
   node: SkeletonNode;
   unit: DashboardUnit | undefined;
   callbacks: SkeletonTreeCallbacks;
-  depth: number;
 }
 
-function UnitRow({ node, unit, callbacks, depth }: UnitRowProps) {
+function UnitRow({ node, unit, callbacks }: UnitRowProps) {
   const status = unit ? deriveUnitStatus(unit) : 'not_started';
   const dot = STATUS_DOT[status];
 
@@ -160,7 +211,6 @@ function UnitRow({ node, unit, callbacks, depth }: UnitRowProps) {
     <ListItem
       dense
       disablePadding
-      sx={{ pl: depth > 0 ? 1 : 0 }}
       secondaryAction={
         <Tooltip title="Demote (resets sign-off lifecycle)">
           <Switch
@@ -172,14 +222,22 @@ function UnitRow({ node, unit, callbacks, depth }: UnitRowProps) {
         </Tooltip>
       }
     >
-      {/* Indent to align with container rows (icon button width + margin) */}
-      <Box sx={{ width: 36, flexShrink: 0 }} />
+      {/* Leading slot: fixed-width dot to align with container caret */}
       <Tooltip title={dot.label}>
-        <Typography sx={{ color: dot.color, fontWeight: 700, mr: 1, flexShrink: 0 }}>
+        <Typography
+          sx={{
+            width: ICON_SLOT_PX,
+            mr: 0.5,
+            color: dot.color,
+            fontWeight: 700,
+            flexShrink: 0,
+            textAlign: 'center',
+          }}
+        >
           {dot.glyph}
         </Typography>
       </Tooltip>
-      <ListItemText primary={node.name} secondary={unit?.continent ?? undefined} />
+      <ListItemText primary={node.name} />
     </ListItem>
   );
 }
@@ -210,12 +268,13 @@ export function SkeletonTree({
   });
 
   return (
-    <List dense disablePadding sx={{ pl: depth > 0 ? 2 : 0 }}>
+    // Indentation is applied once here — neither row kind adds its own pl.
+    <List dense disablePadding sx={{ pl: `${depth * INDENT_PX}px` }}>
       {nodes.map(node => {
         if (node.isWorkUnit) {
           const unit = units.find(u => u.regionId === node.id);
           return (
-            <UnitRow key={node.id} node={node} unit={unit} callbacks={callbacks} depth={depth} />
+            <UnitRow key={node.id} node={node} unit={unit} callbacks={callbacks} />
           );
         }
         const expanded = expandedIds.has(node.id);
