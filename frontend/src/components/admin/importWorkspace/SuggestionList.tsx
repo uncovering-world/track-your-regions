@@ -31,6 +31,14 @@ import {
   SwapHoriz as ConflictIcon,
   Layers as UnionIcon,
 } from '@mui/icons-material';
+
+/** Color-code geo-similarity identical to legacy TNC:64-69 */
+function geoSimColor(geo: number | null | undefined): string | undefined {
+  if (geo == null) return undefined;
+  if (geo >= 0.7) return 'success.main';
+  if (geo >= 0.5) return 'warning.main';
+  return 'text.disabled';
+}
 import type { MatchTreeNode, MatchSuggestion } from '../../../api/admin/worldViewImport';
 import type { useTreeMutations } from '../useTreeMutations';
 
@@ -281,9 +289,25 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
                             <ConflictIcon sx={{ fontSize: 14, color: 'warning.main', flexShrink: 0 }} />
                           </Tooltip>
                         )}
+                        {/* Name score */}
                         <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
                           {Math.round(sug.score * 100)}%
                         </Typography>
+                        {/* Geo-similarity — color-coded like legacy TNC:103-109 */}
+                        {sug.geoSimilarity != null ? (
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: geoSimColor(sug.geoSimilarity),
+                              fontWeight: sug.geoSimilarity >= 0.5 ? 600 : 400,
+                              flexShrink: 0,
+                            }}
+                          >
+                            geo {Math.round(sug.geoSimilarity * 100)}%
+                          </Typography>
+                        ) : (
+                          <Typography variant="caption" color="text.disabled" sx={{ flexShrink: 0 }}>geo —</Typography>
+                        )}
                       </Box>
                     }
                     secondary={sug.path && sug.path !== sug.name ? (

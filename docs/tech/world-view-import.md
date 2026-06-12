@@ -495,7 +495,7 @@ The legacy Match Review (`WorldViewImportReview.tsx`) remains the place for assi
 
 Route: `/admin/import/:worldViewId/region/:regionId`
 
-A focused per-country editing environment replacing the need to hunt inside the full import tree. Clicking a country row in the dashboard (or choosing "Open workspace" from its menu) navigates here.
+A focused per-country editing environment replacing the need to hunt inside the full import tree. Clicking a country row in the dashboard (or choosing "Open workspace" from its menu) navigates here. The persistent map shows child-region colored fills, a dashed reference-outline (from `referenceDivisionIds`), and orange overlap fills — gap fills (red, click-to-assign) and overlap fills render below the reference outline via MapLibre `beforeId`. Container rows in the tree display coverage % chips (both area-based and geoshape-based). The preview-comparison suite covers four modes: single-division preview, union preview (all clean suggestions vs region map/geoshape, with parent-map fallback), transfer preview (three-layer donor/moving/target dialog, per-row only when `wikidataId` is present), and view-map comparison of assigned divisions.
 
 ### Layout
 

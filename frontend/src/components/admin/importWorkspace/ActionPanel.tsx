@@ -76,6 +76,11 @@ interface ActionPanelProps {
   dialogs: Dialogs;
   /** True when this node has a sourceUrl that might be a duplicate (enables Sync) */
   hasDuplicateSourceUrl?: boolean;
+  /**
+   * Set of sourceUrls that are already in sync across all instances (from the full
+   * tree syncedUrls computation — legacy WorldViewImportTree.tsx:451-481).
+   */
+  syncedUrls?: Set<string>;
   /** Callback to signal a mutation happened (so ChecksBar can go stale). */
   onMatchChange?: () => void;
   /** CV color match / mapshape match pipeline (from CountryWorkspacePage). */
@@ -188,6 +193,30 @@ function SectionLabel({ label, caption }: { label: string; caption: string }) {
   );
 }
 
+// ─── Manual-fix helpers (extracted to keep ActionPanel complexity in budget) ──
+
+/** Build the label for the manual-fix toggle button (no nested ternary). */
+function buildManualFixLabel(node: MatchTreeNode): string {
+  if (!node.needsManualFix) return 'Manual-fix flag';
+  if (!node.fixNote) return 'Manual fix: click to clear';
+  const note = node.fixNote.length > 30 ? node.fixNote.slice(0, 30) + '…' : node.fixNote;
+  return `Manual fix: ${note}`;
+}
+
+/** Handle manual-fix toggle: clear when set, open dialog when not set. */
+function handleManualFixToggle(
+  node: MatchTreeNode,
+  regionId: number,
+  mutations: Mutations,
+  dialogs: Dialogs,
+): void {
+  if (node.needsManualFix) {
+    mutations.manualFixMutation.mutate({ regionId, needsManualFix: false });
+  } else {
+    dialogs.setFixDialogState({ regionId, regionName: node.name });
+  }
+}
+
 // ─── ActionPanel ─────────────────────────────────────────────────────────────
 
 export function ActionPanel({
@@ -196,6 +225,7 @@ export function ActionPanel({
   mutations,
   dialogs,
   hasDuplicateSourceUrl = false,
+  syncedUrls,
   onMatchChange,
   cvPipeline,
   onViewMap,
@@ -268,6 +298,9 @@ export function ActionPanel({
   const geocodeProgress = mutations.geocodeProgress?.regionId === regionId
     ? mutations.geocodeProgress
     : null;
+
+  // Sync: "already in sync" detection (legacy TreeNodeActions.tsx:308 pattern)
+  const isSynced = !!(node.sourceUrl && syncedUrls?.has(node.sourceUrl));
 
   const btn = (
     label: string,
@@ -507,11 +540,22 @@ export function ActionPanel({
           <WaiveIcon sx={{ fontSize: 14 }} />,
           () => waiveMutation.mutate({ regionId, waived: !node.assignmentWaived }),
         )}
-        {btn('Manual-fix flag', 'manualFixFlag', <FixIcon sx={{ fontSize: 14 }} />,
-          () => dialogs.setFixDialogState({ regionId, regionName: node.name }))}
-        {btn('Sync instances', 'syncInstances', <SyncIcon sx={{ fontSize: 14 }} />,
-          () => mutations.syncMutation.mutate(regionId),
-          { disabled: !hasDuplicateSourceUrl })}
+        {/* Manual-fix toggle (legacy ManualFixButton:321-345) — when already set,
+            click clears it; when not set, opens the note dialog */}
+        {btn(
+          buildManualFixLabel(node),
+          'manualFixFlag',
+          <FixIcon sx={{ fontSize: 14, color: node.needsManualFix ? 'error.main' : undefined }} />,
+          () => handleManualFixToggle(node, regionId, mutations, dialogs),
+        )}
+        {/* Sync — disabled with "Already in sync" when syncedUrls has this sourceUrl */}
+        <Tooltip title={isSynced ? 'Already in sync' : ''} placement="top">
+          <span>
+            {btn('Sync instances', 'syncInstances', <SyncIcon sx={{ fontSize: 14 }} />,
+              () => mutations.syncMutation.mutate(regionId),
+              { disabled: !hasDuplicateSourceUrl || isSynced })}
+          </span>
+        </Tooltip>
       </Box>
 
       {/* ── Undo snackbar ─────────────────────────────────────────────── */}

@@ -54,6 +54,14 @@ interface ChecksBarProps {
    * (Plan 6 — for now selects the first affected item or unit root).
    */
   onFocusBlocker?: (kind: FocusBlockerKind) => void;
+  /** Unit's own children-coverage percentage (0–1) — shown next to gap count */
+  coveragePct?: number;
+}
+
+function coveragePctColor(pct: number): 'success' | 'warning' | 'error' {
+  if (pct >= 0.9) return 'success';
+  if (pct >= 0.5) return 'warning';
+  return 'error';
 }
 
 export function ChecksBar({
@@ -63,6 +71,7 @@ export function ChecksBar({
   onVerifyChange,
   verify,
   onFocusBlocker,
+  coveragePct,
 }: ChecksBarProps) {
   const lastRunAtRef = useRef<number>(0);
 
@@ -134,6 +143,16 @@ export function ChecksBar({
       {blockers.map(b => (
         <Chip key={b} label={BLOCKER_LABEL[b]} size="small" color="warning" variant="outlined" />
       ))}
+
+      {/* Unit coverage % — shown next to gap count */}
+      {coveragePct != null && (
+        <Chip
+          label={`cover ${(coveragePct * 100).toFixed(1)}%`}
+          size="small"
+          color={coveragePctColor(coveragePct)}
+          variant="outlined"
+        />
+      )}
 
       {/* Count summaries — clicking focuses the map on the first affected region (I8) */}
       {verify !== null && (

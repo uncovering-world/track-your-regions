@@ -44,6 +44,7 @@ import {
   getMatchTree,
   type MatchTreeNode,
 } from '../../../api/admin/worldViewImport';
+import { getChildrenCoverage } from '../../../api/admin/wvImportCoverage';
 import { DivisionPreviewDialog } from '../../WorldViewEditor/components/dialogs/DivisionPreviewDialog';
 import { useWorkspacePreview } from './useWorkspacePreview';
 import {
@@ -338,6 +339,49 @@ function WorkspaceInner({
     return count > 1;
   }, [selectedNode, tree]);
 
+  // Children coverage query — same cache key + staleTime=Infinity as legacy
+  // (WorldViewImportTree.tsx:99-103). The workspace only needs reading; the
+  // legacy tree's refreshCoverage mutation maintains the cache on writes.
+  const { data: coverageData, isLoading: coverageLoading } = useQuery({
+    queryKey: ['admin', 'wvImport', 'childrenCoverage', worldViewId],
+    queryFn: () => getChildrenCoverage(worldViewId),
+    staleTime: Infinity,
+  });
+
+  // syncedUrls: port of WorldViewImportTree.tsx:451-481 — computed over the
+  // FULL tree (not just the subtree) so cross-country sync detection works.
+  const syncedUrls = useMemo<Set<string>>(() => {
+    if (!tree) return new Set<string>();
+    const urlNodes = new Map<string, MatchTreeNode[]>();
+    function walkTree(nodes: MatchTreeNode[]) {
+      for (const node of nodes) {
+        if (node.sourceUrl) {
+          const existing = urlNodes.get(node.sourceUrl);
+          if (existing) existing.push(node);
+          else urlNodes.set(node.sourceUrl, [node]);
+        }
+        walkTree(node.children);
+      }
+    }
+    walkTree(tree);
+    const synced = new Set<string>();
+    for (const [url, nodes] of urlNodes) {
+      if (nodes.length > 1) {
+        const refStatus = nodes[0].matchStatus;
+        const refDivs = nodes[0].assignedDivisions.map(d => d.divisionId).sort((a, b) => a - b).join(',');
+        const allSame = nodes.every(n =>
+          n.matchStatus === refStatus &&
+          n.assignedDivisions.map(d => d.divisionId).sort((a, b) => a - b).join(',') === refDivs,
+        );
+        if (allSame) synced.add(url);
+      }
+    }
+    return synced;
+  }, [tree]);
+
+  // Unit's own coverage % for ChecksBar (the unit root is a container node)
+  const unitCoveragePct: number | undefined = coverageData?.coverage[String(regionId)];
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <WorkspaceHeader
@@ -357,6 +401,7 @@ function WorkspaceInner({
         lastMutationAt={lastMutationAt}
         verify={verify}
         onVerifyChange={setVerify}
+        coveragePct={unitCoveragePct}
         onFocusBlocker={(kind) => {
           // I8: focus the first affected region for unassigned; select unit root for gaps/overlaps
           if (kind === 'unassigned' && verify?.unassignedLeaves[0]) {
@@ -381,6 +426,9 @@ function WorkspaceInner({
               hoveredId={hoveredRegionId}
               onSelect={setSelectedRegionId}
               onHover={setHoveredRegionId}
+              coverageData={coverageData}
+              coverageLoading={coverageLoading}
+              onDismissWarnings={(id) => mutations.dismissWarningsMutation.mutate(id)}
             />
           </Box>
           <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
@@ -408,6 +456,7 @@ function WorkspaceInner({
                   mutations={mutations}
                   dialogs={dialogs}
                   hasDuplicateSourceUrl={hasDuplicateSourceUrl}
+                  syncedUrls={syncedUrls}
                   onMatchChange={handleMatchChange}
                   cvPipeline={cvPipeline}
                   onViewMap={preview.handleViewMap}
