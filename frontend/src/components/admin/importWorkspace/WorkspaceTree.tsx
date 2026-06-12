@@ -57,6 +57,8 @@ interface WorkspaceTreeProps {
   coverageData?: ChildrenCoverageResult;
   /** True while coverage data is first loading */
   coverageLoading?: boolean;
+  /** True when the coverage query errored — hides "Calculating…" chip permanently */
+  coverageError?: boolean;
   /** Called when warning chip is clicked — dismisses all warnings for the region */
   onDismissWarnings?: (regionId: number) => void;
 }
@@ -71,13 +73,15 @@ function coverageChipColor(pct: number): 'success' | 'warning' | 'error' {
 }
 
 /** Coverage chips for container rows — extracted to avoid nested ternary */
-function CoverageChips({ coverageLoading, coveragePct, coverageFetching, geoshapePct }: {
+function CoverageChips({ coverageLoading, coveragePct, coverageFetching, geoshapePct, coverageError }: {
   coverageLoading: boolean;
   coveragePct: number | undefined;
   coverageFetching: boolean;
   geoshapePct: number | undefined;
+  coverageError: boolean;
 }) {
-  if (coverageLoading && coveragePct == null) {
+  // Never show "Calculating…" if the query errored or data loaded but this node has no entry
+  if (coverageLoading && coveragePct == null && !coverageError) {
     return (
       <Chip
         size="small"
@@ -90,7 +94,8 @@ function CoverageChips({ coverageLoading, coveragePct, coverageFetching, geoshap
   }
   if (coveragePct == null) return null;
   return (
-    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+    // flexWrap:'nowrap' keeps chips inline on the same line as the row content
+    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'nowrap' }}>
       <Chip
         size="small"
         icon={coverageFetching ? <CircularProgress size={12} color="inherit" /> : undefined}
@@ -127,13 +132,14 @@ interface RowContentProps {
   coveragePct: number | undefined;
   coverageFetching: boolean;
   geoshapePct: number | undefined;
+  coverageError: boolean;
   onDismissWarnings?: (regionId: number) => void;
   onToggleExpand: (nodeId: number, e: React.MouseEvent) => void;
 }
 
 function WorkspaceTreeRowContent({
   node, depth, isSelected, hasChildren, isExpanded,
-  coverageLoading, coveragePct, coverageFetching, geoshapePct,
+  coverageLoading, coveragePct, coverageFetching, geoshapePct, coverageError,
   onDismissWarnings, onToggleExpand,
 }: RowContentProps) {
   const style = statusStyle(node.matchStatus);
@@ -234,6 +240,7 @@ function WorkspaceTreeRowContent({
             coveragePct={coveragePct}
             coverageFetching={coverageFetching}
             geoshapePct={geoshapePct}
+            coverageError={coverageError}
           />
         </Box>
       )}
@@ -280,6 +287,7 @@ export function WorkspaceTree({
   onHover,
   coverageData,
   coverageLoading,
+  coverageError,
   onDismissWarnings,
 }: WorkspaceTreeProps) {
   // Default: root and its direct children expanded
@@ -361,6 +369,7 @@ export function WorkspaceTree({
                 coveragePct={coveragePct}
                 coverageFetching={coverageFetching}
                 geoshapePct={geoshapePct}
+                coverageError={coverageError ?? false}
                 onDismissWarnings={onDismissWarnings}
                 onToggleExpand={toggleExpand}
               />

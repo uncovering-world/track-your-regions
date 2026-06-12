@@ -33,10 +33,11 @@ import {
   ArrowBack as BackIcon,
   ArrowForward as NextIcon,
 } from '@mui/icons-material';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../../../hooks/useAuth';
 import {
   getWorkflowDashboard,
+  confirmHierarchy,
   type DashboardUnit,
   type VerifyResult,
 } from '../../../api/admin/wvImportWorkflow';
@@ -111,20 +112,32 @@ function WorkspaceHeader({
   onSignOff,
   onNavigate,
 }: WorkspaceHeaderProps) {
+  const queryClient = useQueryClient();
   const unitStatus = unit ? deriveUnitStatus(unit) : 'not_started';
   const dot = STATUS_DOT[unitStatus] ?? STATUS_DOT.not_started;
   const signOffEnabled = unit?.hierarchyConfirmed && verify !== null && verify.blockers.length === 0;
 
-  const stageChips: Array<{ label: string; color: ChipColor }> = unit ? [
-    {
-      label: `Hierarchy ${unit.hierarchyConfirmed ? '✓' : '✗'}`,
-      color: unit.hierarchyConfirmed ? 'success' : 'default',
+  const hierarchyMutation = useMutation({
+    mutationFn: (confirmed: boolean) =>
+      confirmHierarchy(worldViewId, unit!.regionId, confirmed),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
     },
+  });
+
+  function buildHierarchyTooltip(): string {
+    if (!unit) return '';
+    if (unit.hierarchyConfirmed) return 'Hierarchy confirmed — click to toggle';
+    return 'Hierarchy not confirmed — click to toggle';
+  }
+  const hierarchyTooltip = buildHierarchyTooltip();
+
+  const plainChips: Array<{ label: string; color: ChipColor }> = unit ? [
     {
       label: `Leaves ${unit.leafResolved}/${unit.leafTotal}`,
       color: unit.leafTotal > 0 && unit.leafResolved === unit.leafTotal ? 'success' : 'default',
     },
-    ...(stage ? [{ label: stage, color: stageColor(stage) }] : []),
+    ...(stage ? [{ label: `Stage: ${stage}`, color: stageColor(stage) }] : []),
   ] : [];
 
   return (
@@ -141,7 +154,20 @@ function WorkspaceHeader({
         <Typography sx={{ color: dot.color, fontWeight: 700 }}>{dot.glyph}</Typography>
       </Tooltip>
       <Typography variant="h6" sx={{ fontWeight: 600 }}>{subtreeRoot.name}</Typography>
-      {stageChips.map(c => (
+      {/* Hierarchy chip — clickable toggle with tooltip */}
+      {unit && (
+        <Tooltip title={hierarchyTooltip}>
+          <Chip
+            label={`Hierarchy ${unit.hierarchyConfirmed ? '✓' : '✗'}`}
+            size="small"
+            color={unit.hierarchyConfirmed ? 'success' : 'default'}
+            clickable
+            onClick={() => hierarchyMutation.mutate(!unit.hierarchyConfirmed)}
+            disabled={hierarchyMutation.isPending}
+          />
+        </Tooltip>
+      )}
+      {plainChips.map(c => (
         <Chip key={c.label} label={c.label} size="small" color={c.color} />
       ))}
       {unit && !unit.hasReference && (
@@ -342,7 +368,7 @@ function WorkspaceInner({
   // Children coverage query — same cache key + staleTime=Infinity as legacy
   // (WorldViewImportTree.tsx:99-103). The workspace only needs reading; the
   // legacy tree's refreshCoverage mutation maintains the cache on writes.
-  const { data: coverageData, isLoading: coverageLoading } = useQuery({
+  const { data: coverageData, isLoading: coverageLoading, isError: coverageError } = useQuery({
     queryKey: ['admin', 'wvImport', 'childrenCoverage', worldViewId],
     queryFn: () => getChildrenCoverage(worldViewId),
     staleTime: Infinity,
@@ -428,6 +454,7 @@ function WorkspaceInner({
               onHover={setHoveredRegionId}
               coverageData={coverageData}
               coverageLoading={coverageLoading}
+              coverageError={coverageError}
               onDismissWarnings={(id) => mutations.dismissWarningsMutation.mutate(id)}
             />
           </Box>

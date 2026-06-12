@@ -128,6 +128,8 @@ export function WorkspaceMap({
   const mapRef = useRef<MapRef>(null);
   const [mapReady, setMapReady] = useState(false);
   const [boundsSet, setBoundsSet] = useState(false);
+  // Track whether the initial bounds came from children-only (no reference yet)
+  const [boundsFromChildrenOnly, setBoundsFromChildrenOnly] = useState(false);
   const [gapPopover, setGapPopover] = useState<{
     anchor: { top: number; left: number };
     divisionId: number;
@@ -229,19 +231,58 @@ export function WorkspaceMap({
   }, [overlapGeoms]);
 
   // ── Fit bounds on first load ─────────────────────────────────────────────
+  // Prefer the reference outline geometry (it represents the full unit territory).
+  // Fall back to children union if reference is unavailable.
+  // If reference loads after children-only bounds were set, re-fit once to the
+  // combined bbox so Cabinda-style exclaves don't clip the view.
 
   useEffect(() => {
-    if (mapReady && !boundsSet && childrenData && childrenData.childRegions.length > 0) {
-      const bbox = computeBbox(childrenData.childRegions);
-      if (bbox) {
-        mapRef.current?.fitBounds(
-          [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-          { padding: 40, duration: 500 },
-        );
-        setBoundsSet(true);
-      }
+    if (!mapReady || boundsSet) return;
+    // Use reference geometry if available; otherwise fall back to children
+    const refFeatures = referenceFC.features.length > 0 ? referenceFC.features : null;
+    const childFeatures = childrenData?.childRegions ?? [];
+
+    let bboxSources: Array<{ geometry: GeoJSON.Geometry }> = [];
+    if (refFeatures) {
+      // Combine reference + children for the widest coverage
+      bboxSources = [
+        ...refFeatures as Array<{ geometry: GeoJSON.Geometry }>,
+        ...childFeatures,
+      ];
+    } else if (childFeatures.length > 0) {
+      bboxSources = childFeatures;
     }
-  }, [mapReady, boundsSet, childrenData]);
+
+    if (bboxSources.length === 0) return;
+
+    const bbox = computeBbox(bboxSources);
+    if (bbox) {
+      mapRef.current?.fitBounds(
+        [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+        { padding: 40, duration: 500 },
+      );
+      setBoundsSet(true);
+      setBoundsFromChildrenOnly(!refFeatures && childFeatures.length > 0);
+    }
+  }, [mapReady, boundsSet, childrenData, referenceFC]);
+
+  // Re-fit when reference arrives after a children-only initial fit
+  useEffect(() => {
+    if (!mapReady || !boundsFromChildrenOnly || referenceFC.features.length === 0) return;
+    const childFeatures = childrenData?.childRegions ?? [];
+    const bboxSources: Array<{ geometry: GeoJSON.Geometry }> = [
+      ...referenceFC.features as Array<{ geometry: GeoJSON.Geometry }>,
+      ...childFeatures,
+    ];
+    const bbox = computeBbox(bboxSources);
+    if (bbox) {
+      mapRef.current?.fitBounds(
+        [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+        { padding: 40, duration: 500 },
+      );
+      setBoundsFromChildrenOnly(false);
+    }
+  }, [mapReady, boundsFromChildrenOnly, referenceFC, childrenData]);
 
   // ── Interactions ─────────────────────────────────────────────────────────
 

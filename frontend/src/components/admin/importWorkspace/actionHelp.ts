@@ -236,6 +236,7 @@ export const ACTION_HELP: Record<string, ActionHelp> = {
     description:
       'Marks this leaf as intentionally unassigned (e.g. an uninhabited territory). ' +
       'Waived leaves are excluded from "unassigned" blockers in the checks bar.',
+    requires: 'Leaf region',
   },
 
   unwaiveAssignment: {
@@ -243,6 +244,7 @@ export const ACTION_HELP: Record<string, ActionHelp> = {
     description:
       'Restores this leaf to normal status. It will again appear in the "unassigned" ' +
       'blocker list if it lacks division members.',
+    requires: 'Leaf region',
   },
 
   manualFixFlag: {

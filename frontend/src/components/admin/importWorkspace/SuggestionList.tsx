@@ -237,7 +237,7 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
                   key={sug.divisionId}
                   dense
                   secondaryAction={
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       {isBusy && <CircularProgress size={14} sx={{ mt: 0.5 }} />}
                       <Tooltip title="Preview">
                         <IconButton
@@ -289,13 +289,21 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
                             <ConflictIcon sx={{ fontSize: 14, color: 'warning.main', flexShrink: 0 }} />
                           </Tooltip>
                         )}
-                        {/* Name score */}
-                        <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
-                          {Math.round(sug.score * 100)}%
+                      </Box>
+                    }
+                    secondary={
+                      <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'nowrap' }}>
+                        {sug.path && sug.path !== sug.name && (
+                          <Typography component="span" variant="caption" color="text.secondary" noWrap sx={{ flex: 1, minWidth: 0 }}>{sug.path}</Typography>
+                        )}
+                        {/* Name score — raw 0-1000 trigram/exact value, shown as plain number */}
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                          {Math.round(sug.score)}
                         </Typography>
-                        {/* Geo-similarity — color-coded like legacy TNC:103-109 */}
-                        {sug.geoSimilarity != null ? (
+                        {/* Geo-similarity — shown only when present; 0..1 value ×100 → % */}
+                        {sug.geoSimilarity != null && (
                           <Typography
+                            component="span"
                             variant="caption"
                             sx={{
                               color: geoSimColor(sug.geoSimilarity),
@@ -305,14 +313,9 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
                           >
                             geo {Math.round(sug.geoSimilarity * 100)}%
                           </Typography>
-                        ) : (
-                          <Typography variant="caption" color="text.disabled" sx={{ flexShrink: 0 }}>geo —</Typography>
                         )}
                       </Box>
                     }
-                    secondary={sug.path && sug.path !== sug.name ? (
-                      <Typography variant="caption" color="text.secondary" noWrap>{sug.path}</Typography>
-                    ) : undefined}
                   />
                 </ListItem>
               );

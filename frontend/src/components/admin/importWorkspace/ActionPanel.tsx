@@ -276,6 +276,7 @@ export function ActionPanel({
   const hasWikidata = !!node.wikidataId;
   const hasChildren = node.children.length > 0;
   const hasSingleChild = node.children.length === 1;
+  const isLeaf = node.isLeaf || !hasChildren;
   const busy = mutations.isMutating;
 
   // View map comparison: requires wikidata ID, own map, or an inherited parent map
@@ -539,6 +540,7 @@ export function ActionPanel({
           waiveHelpKey,
           <WaiveIcon sx={{ fontSize: 14 }} />,
           () => waiveMutation.mutate({ regionId, waived: !node.assignmentWaived }),
+          { disabled: !isLeaf },
         )}
         {/* Manual-fix toggle (legacy ManualFixButton:321-345) — when already set,
             click clears it; when not set, opens the note dialog */}
