@@ -260,4 +260,13 @@ export const ACTION_HELP: Record<string, ActionHelp> = {
       'Useful for regions that appear under multiple continents.',
     requires: 'Another region with the same source URL',
   },
+
+  viewMapComparison: {
+    title: 'View map comparison',
+    description:
+      'Opens the preview dialog showing the union of all currently assigned GADM divisions ' +
+      'alongside the Wikidata geoshape or region map image. Use this to visually verify ' +
+      'that the assignment covers the correct territory.',
+    requires: 'Wikidata ID or region map image',
+  },
 };

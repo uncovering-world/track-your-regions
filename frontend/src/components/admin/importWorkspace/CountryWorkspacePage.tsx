@@ -9,7 +9,8 @@
  *
  * Wiring:
  *   - useTreeMutations + useImportTreeDialogs + ImportTreeDialogs (full dialog layer)
- *   - DivisionPreviewDialog for preview accept/reject
+ *   - useWorkspacePreview (preview/comparison suite, ported from legacy WVIR)
+ *   - DivisionPreviewDialog for all preview modes (single, union, transfer, view-map)
  *   - VerifyDialog from Plan 2 for sign-off
  *   - MapImagePickerDialog excluded (non-trivial to plumb here; map-image-picker
  *     action in ActionPanel is still available via legacy tree link)
@@ -32,7 +33,7 @@ import {
   ArrowBack as BackIcon,
   ArrowForward as NextIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../hooks/useAuth';
 import {
   getWorkflowDashboard,
@@ -41,12 +42,10 @@ import {
 } from '../../../api/admin/wvImportWorkflow';
 import {
   getMatchTree,
-  acceptMatch,
-  rejectSuggestion,
   type MatchTreeNode,
 } from '../../../api/admin/worldViewImport';
-import { fetchDivisionGeometry } from '../../../api/divisions';
 import { DivisionPreviewDialog } from '../../WorldViewEditor/components/dialogs/DivisionPreviewDialog';
+import { useWorkspacePreview } from './useWorkspacePreview';
 import {
   ManualFixDialog,
   RemoveRegionDialog,
@@ -216,58 +215,58 @@ function WorkspaceInner({
   const [hoveredRegionId, setHoveredRegionId] = useState<number | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
 
-  // ── Preview state ─────────────────────────────────────────────────────────
-  const [previewState, setPreviewState] = useState<{
-    divisionId: number; name: string; path?: string;
-    regionMapUrl?: string; wikidataId?: string; regionId?: number; isAssigned?: boolean;
-  } | null>(null);
-  const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Geometry | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-
-  const handlePreviewDivision = useCallback(async (
-    divisionId: number, name: string, path?: string,
-    regionMapUrl?: string, wikidataId?: string, regId?: number, isAssigned?: boolean,
-  ) => {
-    setPreviewState({ divisionId, name, path, regionMapUrl, wikidataId, regionId: regId, isAssigned });
-    setPreviewGeometry(null);
-    setPreviewLoading(true);
-    try {
-      const feature = await fetchDivisionGeometry(divisionId, 1, { detail: 'medium' });
-      setPreviewGeometry((feature?.geometry as GeoJSON.Geometry) ?? null);
-    } finally {
-      setPreviewLoading(false);
-    }
-  }, []);
-
-  const handleClosePreview = useCallback(() => {
-    setPreviewState(null);
-    setPreviewGeometry(null);
-  }, []);
-
-  // ── Preview mutations ─────────────────────────────────────────────────────
-  const onPreviewSuccess = useCallback(() => {
-    handleClosePreview();
+  // ── Preview suite (all modes: single, union, transfer, view-map) ──────────
+  const onPreviewDone = useCallback(() => {
     handleMatchChange();
-  }, [handleClosePreview, handleMatchChange]);
+  }, [handleMatchChange]);
 
-  const previewAcceptMutation = useMutation({
-    mutationFn: ({ regionId: rid, divisionId }: { regionId: number; divisionId: number }) =>
-      acceptMatch(worldViewId, rid, divisionId),
-    onSuccess: () => {
-      // Invalidate match tree so SuggestionList reflects the accepted division (I1)
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] }).catch(() => {});
-      onPreviewSuccess();
-    },
-  });
-  const previewRejectMutation = useMutation({
-    mutationFn: ({ regionId: rid, divisionId }: { regionId: number; divisionId: number }) =>
-      rejectSuggestion(worldViewId, rid, divisionId),
-    onSuccess: () => {
-      // Invalidate match tree so SuggestionList reflects the rejected division (I1)
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] }).catch(() => {});
-      onPreviewSuccess();
-    },
-  });
+  const preview = useWorkspacePreview(worldViewId, onPreviewDone);
+
+  // Parent-map fallback: for each node in the subtree, store the direct parent's
+  // own regionMapUrl/name so the node can fall back to it when it lacks its own.
+  // Each node inherits only from its direct parent's own map — inherited maps do
+  // not propagate further. Adapted from WorldViewImportTree.tsx:484-498.
+  const { parentRegionMapUrlById, parentRegionMapNameById } = useMemo(() => {
+    const urlMap = new Map<number, string>();
+    const nameMap = new Map<number, string>();
+    function walk(nodes: MatchTreeNode[], parentMapUrl: string | null, parentMapName: string | null) {
+      for (const node of nodes) {
+        if (parentMapUrl) urlMap.set(node.id, parentMapUrl);
+        if (parentMapName) nameMap.set(node.id, parentMapName);
+        // Only pass THIS node's own map to children — do not propagate inherited maps
+        walk(node.children, node.regionMapUrl ?? null, node.regionMapUrl ? node.name : null);
+      }
+    }
+    walk([subtreeRoot], null, null);
+    return { parentRegionMapUrlById: urlMap, parentRegionMapNameById: nameMap };
+  }, [subtreeRoot]);
+
+  // Wraps handlePreviewDivision: injects parent-map fallback when the node
+  // lacks its own regionMapUrl, mirroring the legacy WorldViewImportTree behaviour.
+  const handlePreviewDivision = useCallback((
+    divisionId: number, name: string, path?: string,
+    regionMapUrl?: string, wikidataId?: string,
+    regId?: number, isAssigned?: boolean,
+    regionMapLabel?: string, regionName?: string,
+    markerPoints?: Array<{ name: string; lat: number; lon: number }>,
+  ) => {
+    const effectiveMapUrl = regionMapUrl ?? (regId != null ? parentRegionMapUrlById.get(regId) : undefined);
+    let effectiveMapLabel: string | undefined;
+    if (regionMapUrl) {
+      effectiveMapLabel = regionMapLabel;
+    } else if (regId != null && parentRegionMapUrlById.has(regId)) {
+      effectiveMapLabel = `${parentRegionMapNameById.get(regId) ?? 'Parent'} map`;
+    } else {
+      effectiveMapLabel = regionMapLabel;
+    }
+    return preview.handlePreviewDivision(
+      divisionId, name, path,
+      effectiveMapUrl, wikidataId,
+      regId, isAssigned,
+      effectiveMapLabel, regionName,
+      markerPoints,
+    );
+  }, [preview, parentRegionMapUrlById, parentRegionMapNameById]);
 
   // ── Remove dialog state ───────────────────────────────────────────────────
   const [removeDialogState, setRemoveDialogState] = useState<{
@@ -393,7 +392,15 @@ function WorkspaceInner({
                   </Typography>
                 </Box>
                 <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>
-                  <SuggestionList node={selectedNode} mutations={mutations} onPreview={handlePreviewDivision} />
+                  <SuggestionList
+                    node={selectedNode}
+                    mutations={mutations}
+                    onPreview={handlePreviewDivision}
+                    onPreviewTransfer={preview.handlePreviewTransfer}
+                    onPreviewUnion={preview.handlePreviewUnion}
+                    parentMapUrlById={parentRegionMapUrlById}
+                    parentMapNameById={parentRegionMapNameById}
+                  />
                 </Box>
                 <ActionPanel
                   worldViewId={worldViewId}
@@ -403,6 +410,9 @@ function WorkspaceInner({
                   hasDuplicateSourceUrl={hasDuplicateSourceUrl}
                   onMatchChange={handleMatchChange}
                   cvPipeline={cvPipeline}
+                  onViewMap={preview.handleViewMap}
+                  parentMapUrlById={parentRegionMapUrlById}
+                  parentMapNameById={parentRegionMapNameById}
                 />
               </>
             )}
@@ -428,27 +438,25 @@ function WorkspaceInner({
       </Box>
 
       {/* ── Dialog layer ─────────────────────────────────────────────────── */}
-      {previewState && (
+      {preview.previewState && (
         <DivisionPreviewDialog
-          division={{ name: previewState.name, path: previewState.path }}
-          geometry={previewGeometry}
-          loading={previewLoading}
-          onClose={handleClosePreview}
-          regionMapUrl={previewState.regionMapUrl}
-          wikidataId={previewState.wikidataId}
+          division={{ name: preview.previewState.name, path: preview.previewState.path }}
+          geometry={preview.previewGeometry}
+          loading={preview.previewLoading}
+          onClose={preview.handleClosePreview}
+          regionMapUrl={preview.previewState.regionMapUrl}
+          regionMapLabel={preview.previewState.regionMapLabel}
+          regionName={preview.previewState.regionName}
+          wikidataId={preview.previewState.wikidataId}
+          markerPoints={preview.previewState.markerPoints}
           worldViewId={worldViewId}
-          regionId={previewState.regionId}
-          actionPending={previewAcceptMutation.isPending || previewRejectMutation.isPending}
-          onAccept={
-            previewState.regionId != null && previewState.divisionId != null
-              ? () => previewAcceptMutation.mutate({ regionId: previewState.regionId!, divisionId: previewState.divisionId! })
-              : undefined
-          }
-          onReject={
-            previewState.regionId != null && previewState.divisionId != null
-              ? () => previewRejectMutation.mutate({ regionId: previewState.regionId!, divisionId: previewState.divisionId! })
-              : undefined
-          }
+          regionId={preview.previewState.regionId}
+          actionPending={preview.actionPending}
+          onAccept={preview.dialogHandlers.onAccept}
+          onAcceptAndRejectRest={preview.dialogHandlers.onAcceptAndRejectRest}
+          onReject={preview.dialogHandlers.onReject}
+          onSplitDeeper={preview.onSplitDeeperEnabled ? preview.handleSplitDeeper : undefined}
+          onVisionMatch={preview.onVisionMatchEnabled ? preview.handleVisionMatch : undefined}
         />
       )}
       {verifyOpen && unit && (

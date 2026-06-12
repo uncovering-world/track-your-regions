@@ -3,7 +3,13 @@
  *
  * Assigned divisions: name + path + preview icon + remove (removeDivisionsFromRegion).
  * Suggestions: name/path/score + conflict chip + Accept/Reject/preview.
- * Bulk: "Accept all" (clean suggestions), "Reject remaining".
+ * Bulk: "Accept all" (clean suggestions), "Reject remaining", "Preview union" (>1 suggestion).
+ *
+ * onPreviewTransfer: conflict-accept (↑) triggers the 3-layer transfer preview dialog
+ *   instead of a blind direct acceptWithTransfer call. The dialog's Accept button
+ *   executes the grouped transfer.
+ * onPreviewUnion: shown when >1 clean suggestion, lets the user compare the union
+ *   of all suggested divisions against the region map/geoshape before accepting.
  */
 
 import {
@@ -23,8 +29,9 @@ import {
   Preview as PreviewIcon,
   Delete as RemoveIcon,
   SwapHoriz as ConflictIcon,
+  Layers as UnionIcon,
 } from '@mui/icons-material';
-import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
+import type { MatchTreeNode, MatchSuggestion } from '../../../api/admin/worldViewImport';
 import type { useTreeMutations } from '../useTreeMutations';
 
 type Mutations = ReturnType<typeof useTreeMutations>;
@@ -32,10 +39,36 @@ type Mutations = ReturnType<typeof useTreeMutations>;
 interface SuggestionListProps {
   node: MatchTreeNode | null;
   mutations: Mutations;
-  onPreview: (divisionId: number, name: string, path?: string, regionMapUrl?: string, wikidataId?: string, regionId?: number, isAssigned?: boolean) => void;
+  /** Single-division preview — full legacy signature including markerPoints + regionName */
+  onPreview: (
+    divisionId: number, name: string, path?: string,
+    regionMapUrl?: string, wikidataId?: string,
+    regionId?: number, isAssigned?: boolean,
+    regionMapLabel?: string, regionName?: string,
+    markerPoints?: Array<{ name: string; lat: number; lon: number }>,
+  ) => void;
+  /** Transfer preview: opens the 3-layer donor/moving/target dialog */
+  onPreviewTransfer?: (
+    divisionId: number, name: string, path: string | undefined,
+    conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' },
+    wikidataId: string, regionName: string,
+    regionId?: number,
+  ) => void;
+  /** Union preview: shown when >1 suggestion exists */
+  onPreviewUnion?: (
+    regionId: number,
+    divisionIds: number[],
+    context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string },
+  ) => void;
+  /**
+   * Parent-map fallback maps: nodes without their own regionMapUrl/name inherit
+   * from the nearest ancestor that has one (ported from CountryWorkspacePage).
+   */
+  parentMapUrlById?: ReadonlyMap<number, string>;
+  parentMapNameById?: ReadonlyMap<number, string>;
 }
 
-export function SuggestionList({ node, mutations, onPreview }: SuggestionListProps) {
+export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, onPreviewUnion, parentMapUrlById, parentMapNameById }: SuggestionListProps) {
   if (!node) {
     return (
       <Box sx={{ p: 2 }}>
@@ -46,7 +79,14 @@ export function SuggestionList({ node, mutations, onPreview }: SuggestionListPro
     );
   }
 
-  const { assignedDivisions, suggestions, id: regionId, regionMapUrl, wikidataId } = node;
+  const { assignedDivisions, suggestions, id: regionId, regionMapUrl, wikidataId, name: regionName, markerPoints } = node;
+
+  // Parent-map fallback for union preview (mirrors the single-division path in CountryWorkspacePage)
+  const effectiveMapUrl = regionMapUrl ?? parentMapUrlById?.get(regionId);
+  const parentLabel = parentMapUrlById?.has(regionId)
+    ? `${parentMapNameById?.get(regionId) ?? 'Parent'} map`
+    : undefined;
+  const effectiveMapLabel: string | undefined = regionMapUrl ? undefined : parentLabel;
 
   const handleRemoveDivision = (divisionId: number) => {
     mutations.rejectMutation.mutate({ regionId, divisionId });
@@ -60,8 +100,25 @@ export function SuggestionList({ node, mutations, onPreview }: SuggestionListPro
     mutations.rejectMutation.mutate({ regionId, divisionId });
   };
 
-  const handleAcceptTransfer = (divisionId: number, conflict: { type: 'direct' | 'split'; donorRegionId: number; donorDivisionId: number }) => {
-    mutations.onAcceptTransfer(regionId, divisionId, conflict);
+  // Conflict accept (↑): if onPreviewTransfer is provided AND the node has a
+  // wikidataId, open the 3-layer transfer preview dialog (legacy behaviour);
+  // otherwise fall back to direct transfer (pre-3d behaviour, same as legacy
+  // TreeNodeRow.tsx:177 guard).
+  const handleConflictAccept = (sug: MatchSuggestion) => {
+    if (!sug.conflict) return;
+    if (onPreviewTransfer && wikidataId) {
+      // Pass ONLY this suggestion — per-row semantics = single suggestion.
+      // Multi-donor batch machinery in useWorkspacePreview stays correct for
+      // future batch use but must NOT be triggered here.
+      onPreviewTransfer(
+        sug.divisionId, sug.name, sug.path,
+        { donorDivisionId: sug.conflict.donorDivisionId, donorDivisionName: sug.conflict.donorDivisionName, donorRegionId: sug.conflict.donorRegionId, type: sug.conflict.type },
+        wikidataId, regionName,
+        regionId,
+      );
+    } else {
+      mutations.onAcceptTransfer(regionId, sug.divisionId, { type: sug.conflict.type, donorRegionId: sug.conflict.donorRegionId, donorDivisionId: sug.conflict.donorDivisionId });
+    }
   };
 
   const handleAcceptAll = () => {
@@ -98,7 +155,7 @@ export function SuggestionList({ node, mutations, onPreview }: SuggestionListPro
                     <Tooltip title="Preview">
                       <IconButton
                         size="small"
-                        onClick={() => onPreview(div.divisionId, div.name, div.path, regionMapUrl ?? undefined, wikidataId ?? undefined, regionId, true)}
+                        onClick={() => onPreview(div.divisionId, div.name, div.path, regionMapUrl ?? undefined, wikidataId ?? undefined, regionId, true, undefined, regionName, markerPoints ?? undefined)}
                       >
                         <PreviewIcon sx={{ fontSize: 14 }} />
                       </IconButton>
@@ -136,6 +193,22 @@ export function SuggestionList({ node, mutations, onPreview }: SuggestionListPro
               Suggestions ({suggestions.length})
             </Typography>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
+              {cleanSuggestions.length > 1 && onPreviewUnion && (
+                <Tooltip title="Preview the union of all suggested divisions vs region map/geoshape">
+                  <Button
+                    size="small"
+                    startIcon={<UnionIcon sx={{ fontSize: 13 }} />}
+                    onClick={() => onPreviewUnion(
+                      regionId,
+                      cleanSuggestions.map(s => s.divisionId),
+                      { wikidataId: wikidataId ?? undefined, regionMapUrl: effectiveMapUrl, regionMapLabel: effectiveMapLabel, regionName },
+                    )}
+                    disabled={isBusy}
+                  >
+                    Preview union
+                  </Button>
+                </Tooltip>
+              )}
               {cleanSuggestions.length > 1 && (
                 <Button size="small" onClick={handleAcceptAll} disabled={isBusy}>
                   Accept all
@@ -161,12 +234,12 @@ export function SuggestionList({ node, mutations, onPreview }: SuggestionListPro
                       <Tooltip title="Preview">
                         <IconButton
                           size="small"
-                          onClick={() => onPreview(sug.divisionId, sug.name, sug.path, regionMapUrl ?? undefined, wikidataId ?? undefined, regionId, false)}
+                          onClick={() => onPreview(sug.divisionId, sug.name, sug.path, regionMapUrl ?? undefined, wikidataId ?? undefined, regionId, false, undefined, regionName, markerPoints ?? undefined)}
                         >
                           <PreviewIcon sx={{ fontSize: 14 }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title={hasConflict ? `Accept (transfer from ${sug.conflict!.donorRegionName})` : 'Accept'}>
+                      <Tooltip title={hasConflict ? `Transfer preview: ${sug.conflict!.donorRegionName}` : 'Accept'}>
                         <Button
                           size="small"
                           variant="outlined"
@@ -174,7 +247,7 @@ export function SuggestionList({ node, mutations, onPreview }: SuggestionListPro
                           sx={{ minWidth: 0, px: 0.5, py: 0, fontSize: '0.65rem', height: 22 }}
                           onClick={() => {
                             if (hasConflict) {
-                              handleAcceptTransfer(sug.divisionId, { type: sug.conflict!.type, donorRegionId: sug.conflict!.donorRegionId, donorDivisionId: sug.conflict!.donorDivisionId });
+                              handleConflictAccept(sug);
                             } else {
                               handleAccept(sug.divisionId);
                             }

@@ -54,6 +54,7 @@ import {
   UnfoldLess as PruneIcon,
   ColorLens as CvMatchIcon,
   Map as MapshapeIcon,
+  CompareArrows as ViewMapIcon,
 } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { setAssignmentWaived } from '../../../api/admin/wvImportWorkflow';
@@ -79,6 +80,20 @@ interface ActionPanelProps {
   onMatchChange?: () => void;
   /** CV color match / mapshape match pipeline (from CountryWorkspacePage). */
   cvPipeline?: UseCvMatchPipelineResult;
+  /**
+   * View map comparison: shows the union of this node's assigned divisions next to
+   * its Wikidata geoshape or region map (ported from legacy handleViewMap).
+   */
+  onViewMap?: (
+    regionId: number,
+    context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string; divisionIds: number[] },
+  ) => void;
+  /**
+   * Parent-map fallback maps: nodes without their own regionMapUrl/name inherit
+   * from the nearest ancestor that has one (ported from CountryWorkspacePage).
+   */
+  parentMapUrlById?: ReadonlyMap<number, string>;
+  parentMapNameById?: ReadonlyMap<number, string>;
 }
 
 // ─── HelpTip ──────────────────────────────────────────────────────────────────
@@ -183,6 +198,9 @@ export function ActionPanel({
   hasDuplicateSourceUrl = false,
   onMatchChange,
   cvPipeline,
+  onViewMap,
+  parentMapUrlById,
+  parentMapNameById,
 }: ActionPanelProps) {
   const queryClient = useQueryClient();
   const [restructureMenuAnchor, setRestructureMenuAnchor] = useState<HTMLElement | null>(null);
@@ -229,6 +247,16 @@ export function ActionPanel({
   const hasChildren = node.children.length > 0;
   const hasSingleChild = node.children.length === 1;
   const busy = mutations.isMutating;
+
+  // View map comparison: requires wikidata ID, own map, or an inherited parent map
+  const parentMapUrl = parentMapUrlById?.get(regionId);
+  const effectiveMapUrl = node.regionMapUrl ?? parentMapUrl;
+  const parentLabel = parentMapUrl
+    ? `${parentMapNameById?.get(regionId) ?? 'Parent'} map`
+    : undefined;
+  const effectiveMapLabel: string | undefined = node.regionMapUrl ? undefined : parentLabel;
+  const hasViewMapPrereqs = hasWikidata || !!effectiveMapUrl;
+  const assignedDivisionIds = node.assignedDivisions.map(d => d.divisionId);
 
   // CV pipeline prereqs
   const hasCvPrereqs = !!node.regionMapUrl && hasChildren;
@@ -458,6 +486,17 @@ export function ActionPanel({
               }
             },
           }))}
+        {onViewMap && btn(
+          'View map comparison', 'viewMapComparison', <ViewMapIcon sx={{ fontSize: 14 }} />,
+          () => onViewMap(regionId, {
+            wikidataId: node.wikidataId ?? undefined,
+            regionMapUrl: effectiveMapUrl,
+            regionMapLabel: effectiveMapLabel,
+            regionName: node.name,
+            divisionIds: assignedDivisionIds,
+          }),
+          { disabled: !hasViewMapPrereqs },
+        )}
         {btn('Clear members', 'clearMembers', <ClearIcon sx={{ fontSize: 14 }} />,
           () => mutations.clearMembersMutation.mutate(regionId))}
         {btn('Reset match', 'resetMatch', <ResetIcon sx={{ fontSize: 14 }} />,

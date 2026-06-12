@@ -37,7 +37,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getChildrenRegionGeometry,
   analyzeCoverageGaps,
+  getUnionGeometry,
 } from '../../../api/admin/wvImportCoverage';
+import { fetchDivisionGeometry } from '../../../api/divisions';
 import { addDivisionsToRegion } from '../../../api/regions';
 import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
 import type { VerifyResult } from '../../../api/admin/wvImportWorkflow';
@@ -151,6 +153,37 @@ export function WorkspaceMap({
     enabled: hasGaps,
   });
 
+  // Reference outline: fetch union geometry of referenceDivisionIds (no regionId —
+  // marker points are unused by the line layer)
+  const hasReference = unit.referenceDivisionIds.length > 0;
+  const { data: referenceGeomData } = useQuery({
+    queryKey: ['admin', 'wvImport', 'referenceOutline', worldViewId, unit.regionId],
+    queryFn: () => getUnionGeometry(worldViewId, unit.referenceDivisionIds),
+    enabled: hasReference,
+    staleTime: Infinity,
+  });
+
+  // Overlap divisions: shown when verify reports overlaps. Gaps and overlaps are
+  // disjoint sets — fetch each overlap division's geometry independently.
+  const overlapDivisionIds = useMemo(
+    () => (verify?.overlaps ?? []).map(o => o.divisionId),
+    [verify],
+  );
+  const hasOverlaps = overlapDivisionIds.length > 0;
+
+  const { data: overlapGeoms } = useQuery({
+    queryKey: ['admin', 'wvImport', 'overlapGeoms', worldViewId, unit.regionId, overlapDivisionIds.join(',')],
+    queryFn: async () => {
+      const results: Array<{ divisionId: number; geometry: GeoJSON.Geometry }> = [];
+      await Promise.all(overlapDivisionIds.map(async (divId) => {
+        const geom = await fetchDivisionGeometry(divId, worldViewId, { detail: 'low' });
+        if (geom?.geometry) results.push({ divisionId: divId, geometry: geom.geometry as GeoJSON.Geometry });
+      }));
+      return results;
+    },
+    enabled: hasOverlaps,
+    staleTime: 5 * 60 * 1000,
+  });
   // ── Build FeatureCollections ──────────────────────────────────────────────
 
   // Per-child colored fills + outlines
@@ -178,6 +211,22 @@ export function WorkspaceMap({
       }));
     return { type: 'FeatureCollection', features };
   }, [gapData]);
+
+  // Reference outline FeatureCollection (from union geometry of referenceDivisionIds)
+  const referenceFC = useMemo((): GeoJSON.FeatureCollection => {
+    if (!referenceGeomData) return { type: 'FeatureCollection', features: [] };
+    return referenceGeomData.geometry;
+  }, [referenceGeomData]);
+
+  // Overlap fills (orange) — distinct from gap fills (red)
+  const overlapFC = useMemo((): GeoJSON.FeatureCollection => {
+    const features: GeoJSON.Feature[] = (overlapGeoms ?? []).map(og => ({
+      type: 'Feature',
+      properties: { divisionId: og.divisionId },
+      geometry: og.geometry,
+    }));
+    return { type: 'FeatureCollection', features };
+  }, [overlapGeoms]);
 
   // ── Fit bounds on first load ─────────────────────────────────────────────
 
@@ -319,18 +368,58 @@ export function WorkspaceMap({
           />
         </Source>
 
-        {/* Gap fills (red) */}
+        {/* Gap fills (red) — beforeId keeps fills below the reference outline */}
         {hasGaps && (
           <Source id="gaps" type="geojson" data={gapFC}>
             <Layer
               id="gap-fill"
               type="fill"
+              beforeId={hasReference ? 'reference-outline' : undefined}
               paint={{ 'fill-color': '#ef5350', 'fill-opacity': 0.4 }}
             />
             <Layer
               id="gap-outline"
               type="line"
+              beforeId={hasReference ? 'reference-outline' : undefined}
               paint={{ 'line-color': '#c62828', 'line-width': 2 }}
+            />
+          </Source>
+        )}
+
+        {/* Reference outline (dashed) — drawn from referenceDivisionIds union geometry */}
+        {hasReference && (
+          <Source id="reference" type="geojson" data={referenceFC}>
+            <Layer
+              id="reference-outline"
+              type="line"
+              paint={{
+                'line-color': '#1565c0',
+                'line-width': 2,
+                'line-dasharray': [4, 3],
+                'line-opacity': 0.9,
+              }}
+            />
+          </Source>
+        )}
+
+        {/* Overlap fills (orange) — beforeId keeps fills below the reference outline */}
+        {hasOverlaps && (
+          <Source id="overlaps" type="geojson" data={overlapFC}>
+            <Layer
+              id="overlap-fill"
+              type="fill"
+              beforeId={hasReference ? 'reference-outline' : undefined}
+              paint={{ 'fill-color': '#ff9800', 'fill-opacity': 0.35 }}
+            />
+            <Layer
+              id="overlap-outline"
+              type="line"
+              beforeId={hasReference ? 'reference-outline' : undefined}
+              paint={{
+                'line-color': '#e65100',
+                'line-width': 2,
+                'line-dasharray': [3, 2],
+              }}
             />
           </Source>
         )}
@@ -362,6 +451,22 @@ export function WorkspaceMap({
             <Stack direction="row" spacing={0.5} alignItems="center">
               <Box sx={{ width: 12, height: 12, bgcolor: '#ef5350', borderRadius: '2px', flexShrink: 0, opacity: 0.7 }} />
               <Typography variant="caption">Gap</Typography>
+            </Stack>
+          )}
+          {hasReference && (
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              {/* Dashed line swatch for reference outline */}
+              <Box sx={{
+                width: 22, height: 3, flexShrink: 0,
+                borderTop: '2px dashed #1565c0',
+              }} />
+              <Typography variant="caption">Reference</Typography>
+            </Stack>
+          )}
+          {hasOverlaps && (
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Box sx={{ width: 12, height: 12, bgcolor: '#ff9800', borderRadius: '2px', flexShrink: 0, opacity: 0.7 }} />
+              <Typography variant="caption">Overlap</Typography>
             </Stack>
           )}
         </Stack>
