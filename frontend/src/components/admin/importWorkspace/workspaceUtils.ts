@@ -137,6 +137,20 @@ export function deriveStage(
   return 'verification';
 }
 
+// ─── formatCoveragePct ────────────────────────────────────────────────────────
+
+/**
+ * Format a coverage fraction (0–1) for display.
+ *
+ * Rule: if the percentage is < 10%, show one decimal place; otherwise show an
+ * integer. Examples: 0.092 → "9.2%", 0.1 → "10%", 0.9876 → "99%".
+ */
+export function formatCoveragePct(fraction: number): string {
+  const pct = fraction * 100;
+  if (pct < 10) return `${pct.toFixed(1)}%`;
+  return `${Math.round(pct)}%`;
+}
+
 /** Count leaves that are unresolved (no members, not waived). */
 function countUnresolvedLeaves(node: MatchTreeNode): number {
   if (node.isLeaf || node.children.length === 0) {

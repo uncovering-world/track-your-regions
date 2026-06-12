@@ -8,6 +8,7 @@ import {
   flattenSubtree,
   childColorMap,
   deriveStage,
+  formatCoveragePct,
   CHILD_PALETTE,
 } from './workspaceUtils';
 import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
@@ -193,6 +194,30 @@ describe('childColorMap', () => {
 
   it('palette has exactly 12 entries', () => {
     expect(CHILD_PALETTE).toHaveLength(12);
+  });
+});
+
+// ─── formatCoveragePct ───────────────────────────────────────────────────────
+
+describe('formatCoveragePct', () => {
+  it('shows one decimal for values under 10%', () => {
+    expect(formatCoveragePct(0.092)).toBe('9.2%');
+    expect(formatCoveragePct(0.001)).toBe('0.1%');
+    expect(formatCoveragePct(0.0)).toBe('0.0%');
+  });
+
+  it('shows integer for values at or above 10%', () => {
+    expect(formatCoveragePct(0.1)).toBe('10%');
+    expect(formatCoveragePct(0.5)).toBe('50%');
+    expect(formatCoveragePct(0.9876)).toBe('99%');
+    expect(formatCoveragePct(1.0)).toBe('100%');
+  });
+
+  it('rounds correctly at the boundary', () => {
+    // 9.95% rounds to 10.0 with toFixed(1) — still < 10, so one decimal
+    expect(formatCoveragePct(0.0995)).toBe('10.0%');
+    // 10.0% exact → integer
+    expect(formatCoveragePct(0.1004)).toBe('10%');
   });
 });
 

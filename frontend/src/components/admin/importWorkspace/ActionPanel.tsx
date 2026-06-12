@@ -131,7 +131,19 @@ function HelpTip({ helpKey, disabled, children }: HelpTipProps) {
   );
 
   return (
-    <Tooltip title={content} enterDelay={300} placement="top" arrow>
+    <Tooltip
+      title={content}
+      enterDelay={300}
+      placement="top"
+      arrow
+      disableInteractive
+      slotProps={{
+        popper: {
+          modifiers: [{ name: 'hide', enabled: true }],
+          sx: { '&[data-popper-reference-hidden]': { visibility: 'hidden', pointerEvents: 'none' } },
+        },
+      }}
+    >
       <span>{children}</span>
     </Tooltip>
   );
@@ -551,7 +563,17 @@ export function ActionPanel({
           () => handleManualFixToggle(node, regionId, mutations, dialogs),
         )}
         {/* Sync — disabled with "Already in sync" when syncedUrls has this sourceUrl */}
-        <Tooltip title={isSynced ? 'Already in sync' : ''} placement="top">
+        <Tooltip
+          title={isSynced ? 'Already in sync' : ''}
+          placement="top"
+          disableInteractive
+          slotProps={{
+            popper: {
+              modifiers: [{ name: 'hide', enabled: true }],
+              sx: { '&[data-popper-reference-hidden]': { visibility: 'hidden', pointerEvents: 'none' } },
+            },
+          }}
+        >
           <span>
             {btn('Sync instances', 'syncInstances', <SyncIcon sx={{ fontSize: 14 }} />,
               () => mutations.syncMutation.mutate(regionId),

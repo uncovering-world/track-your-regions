@@ -26,7 +26,7 @@ import {
 } from '@mui/icons-material';
 import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
 import type { ChildrenCoverageResult } from '../../../api/admin/wvImportCoverage';
-import { flattenSubtree } from './workspaceUtils';
+import { flattenSubtree, formatCoveragePct } from './workspaceUtils';
 
 // ─── Status chip helpers ─────────────────────────────────────────────────────
 
@@ -72,7 +72,9 @@ function coverageChipColor(pct: number): 'success' | 'warning' | 'error' {
   return 'error';
 }
 
-/** Coverage chips for container rows — extracted to avoid nested ternary */
+/** Coverage chips for container rows — extracted to avoid nested ternary.
+ *  Rendered inline inside the right-side chip stack (not in a second sub-row).
+ *  Suppressed at depth===0 (unit root): ChecksBar owns that coverage signal. */
 function CoverageChips({ coverageLoading, coveragePct, coverageFetching, geoshapePct, coverageError }: {
   coverageLoading: boolean;
   coveragePct: number | undefined;
@@ -94,12 +96,11 @@ function CoverageChips({ coverageLoading, coveragePct, coverageFetching, geoshap
   }
   if (coveragePct == null) return null;
   return (
-    // flexWrap:'nowrap' keeps chips inline on the same line as the row content
-    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'nowrap' }}>
+    <>
       <Chip
         size="small"
         icon={coverageFetching ? <CircularProgress size={12} color="inherit" /> : undefined}
-        label={`cover ${(coveragePct * 100).toFixed(2)}%`}
+        label={`cover ${formatCoveragePct(coveragePct)}`}
         color={coverageChipColor(coveragePct)}
         variant="outlined"
         onClick={(e) => e.stopPropagation()}
@@ -108,14 +109,14 @@ function CoverageChips({ coverageLoading, coveragePct, coverageFetching, geoshap
       {geoshapePct != null && (
         <Chip
           size="small"
-          label={`geo ${(geoshapePct * 100).toFixed(1)}%`}
+          label={`geo ${formatCoveragePct(geoshapePct)}`}
           color={coverageChipColor(geoshapePct)}
           variant="outlined"
           onClick={(e) => e.stopPropagation()}
           sx={{ height: 18, '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' } }}
         />
       )}
-    </Box>
+    </>
   );
 }
 
@@ -147,94 +148,84 @@ function WorkspaceTreeRowContent({
   const topGeo = topSug?.geoSimilarity;
   const showGeoSimBadge = node.assignedDivisions.length === 0 && topGeo != null && topGeo >= 0.5;
 
+  // Coverage chips: suppress at unit root (depth===0) — ChecksBar owns that scope.
+  // Show for deeper container rows only, rendered inline in the right-side chip stack.
+  const showCoverageChips = hasChildren && depth > 0;
+
   return (
-    <>
-      {/* Main row */}
-      <Box sx={{
-        display: 'flex', alignItems: 'center', gap: 0.5,
-        px: 1, py: 0.25, pl: `${8 + depth * 16}px`, minHeight: 36,
-      }}>
-        {/* Expand/collapse caret */}
-        {hasChildren ? (
-          <Box
-            component="span"
-            onClick={(e) => onToggleExpand(node.id, e)}
-            sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, color: 'text.secondary' }}
-          >
-            {isExpanded ? <CollapseIcon sx={{ fontSize: 16 }} /> : <ExpandIcon sx={{ fontSize: 16 }} />}
-          </Box>
-        ) : (
-          <Box sx={{ width: 16, flexShrink: 0 }} />
-        )}
-
-        {/* Name */}
-        <Typography
-          variant="body2" noWrap
-          sx={{ flex: 1, fontWeight: isSelected ? 600 : 400, minWidth: 0 }}
+    <Box sx={{
+      display: 'flex', alignItems: 'center', gap: 0.5,
+      px: 1, py: 0.25, pl: `${8 + depth * 16}px`, minHeight: 36,
+    }}>
+      {/* Expand/collapse caret */}
+      {hasChildren ? (
+        <Box
+          component="span"
+          onClick={(e) => onToggleExpand(node.id, e)}
+          sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, color: 'text.secondary' }}
         >
-          {node.name}
-        </Typography>
-
-        {/* Source-page link glyph (legacy TNR:259-271) */}
-        {node.sourceUrl && (
-          <Link
-            href={node.sourceUrl} target="_blank" rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}
-          >
-            <OpenInNewIcon sx={{ fontSize: 13 }} />
-          </Link>
-        )}
-
-        {/* Geo-sim badge (top suggestion) — legacy TNR:274-298 */}
-        {showGeoSimBadge && topGeo != null && (
-          <Chip
-            size="small" variant="outlined"
-            label={`${topGeo >= 0.7 ? 'Strong geo' : 'Geo'} ${Math.round(topGeo * 100)}%`}
-            color={topGeo >= 0.7 ? 'success' : 'warning'}
-            sx={{ height: 18, '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' } }}
-            onClick={(e) => e.stopPropagation()}
-          />
-        )}
-        {node.assignedDivisions.length === 0 && node.geoAvailable === false && (
-          <Tooltip title="No geoshape available for comparison">
-            <PublicOffIcon sx={{ fontSize: 14, color: 'text.disabled', flexShrink: 0 }} />
-          </Tooltip>
-        )}
-
-        {/* Manual-fix icon */}
-        {node.matchStatus != null && node.needsManualFix && (
-          <Tooltip title={node.fixNote ?? 'Needs manual fix'}>
-            <ManualFixIcon sx={{ fontSize: 14, color: 'error.main', flexShrink: 0 }} />
-          </Tooltip>
-        )}
-
-        {/* State indicators — right-aligned */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-          <Chip label={style.label} color={style.color} size="small"
-            sx={{ height: 18, fontSize: '0.65rem' }} />
-
-          {node.assignedDivisions.length > 0 && (
-            <Tooltip title={`${node.assignedDivisions.length} assigned division(s)`}>
-              <Chip label={`${node.assignedDivisions.length}d`} size="small" variant="outlined"
-                sx={{ height: 18, fontSize: '0.65rem' }} />
-            </Tooltip>
-          )}
-
-          {node.hierarchyWarnings.length > 0 && !node.hierarchyReviewed && (
-            <WarningChip node={node} onDismissWarnings={onDismissWarnings} />
-          )}
-
-          {node.assignmentWaived && (
-            <Chip label="waived" size="small" variant="outlined"
-              sx={{ height: 18, fontSize: '0.65rem', color: 'text.secondary' }} />
-          )}
+          {isExpanded ? <CollapseIcon sx={{ fontSize: 16 }} /> : <ExpandIcon sx={{ fontSize: 16 }} />}
         </Box>
-      </Box>
+      ) : (
+        <Box sx={{ width: 16, flexShrink: 0 }} />
+      )}
 
-      {/* Coverage chips — container nodes only (legacy TNC:194-254) */}
-      {hasChildren && (
-        <Box sx={{ pl: `${8 + depth * 16 + 20}px`, pb: 0.25 }}>
+      {/* Name — ellipsis when space is tight */}
+      <Typography
+        variant="body2" noWrap
+        sx={{ flex: 1, fontWeight: isSelected ? 600 : 400, minWidth: 0 }}
+      >
+        {node.name}
+      </Typography>
+
+      {/* Source-page link glyph (legacy TNR:259-271) */}
+      {node.sourceUrl && (
+        <Link
+          href={node.sourceUrl} target="_blank" rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}
+        >
+          <OpenInNewIcon sx={{ fontSize: 13 }} />
+        </Link>
+      )}
+
+      {/* Geo-sim badge (top suggestion) — legacy TNR:274-298 */}
+      {showGeoSimBadge && topGeo != null && (
+        <Chip
+          size="small" variant="outlined"
+          label={`${topGeo >= 0.7 ? 'Strong geo' : 'Geo'} ${Math.round(topGeo * 100)}%`}
+          color={topGeo >= 0.7 ? 'success' : 'warning'}
+          sx={{ height: 18, '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' } }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      )}
+      {node.assignedDivisions.length === 0 && node.geoAvailable === false && (
+        <Tooltip title="No geoshape available for comparison">
+          <PublicOffIcon sx={{ fontSize: 14, color: 'text.disabled', flexShrink: 0 }} />
+        </Tooltip>
+      )}
+
+      {/* Manual-fix icon */}
+      {node.matchStatus != null && node.needsManualFix && (
+        <Tooltip title={node.fixNote ?? 'Needs manual fix'}>
+          <ManualFixIcon sx={{ fontSize: 14, color: 'error.main', flexShrink: 0 }} />
+        </Tooltip>
+      )}
+
+      {/* Right-aligned chip stack: status, division count, coverage, warnings, waived */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0, flexWrap: 'nowrap' }}>
+        <Chip label={style.label} color={style.color} size="small"
+          sx={{ height: 18, fontSize: '0.65rem' }} />
+
+        {node.assignedDivisions.length > 0 && (
+          <Tooltip title={`${node.assignedDivisions.length} assigned division(s)`}>
+            <Chip label={`${node.assignedDivisions.length}d`} size="small" variant="outlined"
+              sx={{ height: 18, fontSize: '0.65rem' }} />
+          </Tooltip>
+        )}
+
+        {/* Coverage chips inline — only for container rows below the unit root */}
+        {showCoverageChips && (
           <CoverageChips
             coverageLoading={coverageLoading}
             coveragePct={coveragePct}
@@ -242,9 +233,18 @@ function WorkspaceTreeRowContent({
             geoshapePct={geoshapePct}
             coverageError={coverageError}
           />
-        </Box>
-      )}
-    </>
+        )}
+
+        {node.hierarchyWarnings.length > 0 && !node.hierarchyReviewed && (
+          <WarningChip node={node} onDismissWarnings={onDismissWarnings} />
+        )}
+
+        {node.assignmentWaived && (
+          <Chip label="waived" size="small" variant="outlined"
+            sx={{ height: 18, fontSize: '0.65rem', color: 'text.secondary' }} />
+        )}
+      </Box>
+    </Box>
   );
 }
 

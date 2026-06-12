@@ -28,6 +28,7 @@ import {
   type SignOffBlocker,
   type VerifyResult,
 } from '../../../api/admin/wvImportWorkflow';
+import { formatCoveragePct } from './workspaceUtils';
 
 // For the onFocusBlocker prop
 type FocusBlockerKind = 'unassigned' | 'gaps' | 'overlaps';
@@ -147,7 +148,7 @@ export function ChecksBar({
       {/* Unit coverage % — shown next to gap count */}
       {coveragePct != null && (
         <Chip
-          label={`cover ${(coveragePct * 100).toFixed(1)}%`}
+          label={`cover ${formatCoveragePct(coveragePct)}`}
           size="small"
           color={coveragePctColor(coveragePct)}
           variant="outlined"
