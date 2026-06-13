@@ -41,6 +41,7 @@ function geoSimColor(geo: number | null | undefined): string | undefined {
 }
 import type { MatchTreeNode, MatchSuggestion } from '../../../api/admin/worldViewImport';
 import type { useTreeMutations } from '../useTreeMutations';
+import type { FinderMethod } from './finderFeedback';
 
 type Mutations = ReturnType<typeof useTreeMutations>;
 
@@ -74,9 +75,14 @@ interface SuggestionListProps {
    */
   parentMapUrlById?: ReadonlyMap<number, string>;
   parentMapNameById?: ReadonlyMap<number, string>;
+  /**
+   * Client-side provenance: divisionId → finder method that proposed it.
+   * Populated from each finder's returned suggestions; reset on node change.
+   */
+  proposedSource?: ReadonlyMap<number, FinderMethod>;
 }
 
-export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, onPreviewUnion, parentMapUrlById, parentMapNameById }: SuggestionListProps) {
+export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, onPreviewUnion, parentMapUrlById, parentMapNameById, proposedSource }: SuggestionListProps) {
   if (!node) {
     return (
       <Box sx={{ p: 2 }}>
@@ -139,6 +145,12 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
     mutations.rejectRemainingMutation.mutate(regionId);
   };
 
+  // "Dismiss all" rejects every current suggestion (uses rejectRemainingMutation
+  // which is a single-call bulk reject — no need for Promise.all).
+  const handleDismissAll = () => {
+    mutations.rejectRemainingMutation.mutate(regionId);
+  };
+
   const isBusy = mutations.acceptMutation.isPending || mutations.rejectMutation.isPending ||
     mutations.acceptAllMutation.isPending || mutations.rejectRemainingMutation.isPending ||
     mutations.acceptTransferMutation.isPending;
@@ -193,12 +205,19 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
         </Box>
       )}
 
-      {/* Suggestions */}
+      {/* Proposed (Suggestions) */}
       {suggestions.length > 0 && (
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1 }}>
-            <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
-              Suggestions ({suggestions.length})
+        <Box
+          sx={suggestions.length > 0 ? {
+            borderLeft: '3px solid',
+            borderColor: 'primary.light',
+            bgcolor: 'action.hover',
+            borderRadius: '0 4px 4px 0',
+          } : undefined}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, pt: 0.5 }}>
+            <Typography variant="overline" sx={{ color: 'primary.main', fontSize: '0.65rem', fontWeight: 700 }}>
+              Proposed ({suggestions.length})
             </Typography>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
               {cleanSuggestions.length > 1 && onPreviewUnion && (
@@ -222,6 +241,9 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
                   Accept all
                 </Button>
               )}
+              <Button size="small" color="error" onClick={handleDismissAll} disabled={isBusy}>
+                Dismiss all
+              </Button>
               {assignedDivisions.length > 0 && (
                 <Button size="small" color="error" onClick={handleRejectRemaining} disabled={isBusy}>
                   Reject remaining
@@ -232,6 +254,7 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
           <List dense disablePadding>
             {suggestions.map(sug => {
               const hasConflict = !!sug.conflict;
+              const sourceMethod = proposedSource?.get(sug.divisionId);
               return (
                 <ListItem
                   key={sug.divisionId}
@@ -312,6 +335,12 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
                             }}
                           >
                             geo {Math.round(sug.geoSimilarity * 100)}%
+                          </Typography>
+                        )}
+                        {/* Source chip — shows which finder proposed this candidate */}
+                        {sourceMethod && (
+                          <Typography component="span" variant="caption" color="text.disabled" sx={{ flexShrink: 0 }}>
+                            · {sourceMethod}
                           </Typography>
                         )}
                       </Box>

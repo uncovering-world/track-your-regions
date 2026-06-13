@@ -65,6 +65,11 @@ import type { useImportTreeDialogs } from '../useImportTreeDialogs';
 import type { UseCvMatchPipelineResult } from '../useCvMatchPipeline';
 import { OverlapResolutionDialog } from '../OverlapResolutionDialog';
 import { ACTION_HELP } from './actionHelp';
+import {
+  formatFinderFeedback,
+  type FinderMethod,
+  type FinderFeedback,
+} from './finderFeedback';
 
 type Mutations = ReturnType<typeof useTreeMutations>;
 type Dialogs = ReturnType<typeof useImportTreeDialogs>;
@@ -99,6 +104,20 @@ interface ActionPanelProps {
    */
   parentMapUrlById?: ReadonlyMap<number, string>;
   parentMapNameById?: ReadonlyMap<number, string>;
+  /**
+   * Current finder feedback — rendered as an inline colour-coded line below the
+   * Assignment buttons (persists until the next run or node change).
+   */
+  finderFeedback?: FinderFeedback | null;
+  /**
+   * Called by each finder's onSuccess with the formatted feedback + returned
+   * suggestions (for proposedSource tracking) + method name.
+   */
+  onFinderResult?: (
+    feedback: FinderFeedback,
+    suggestions: Array<{ divisionId: number }>,
+    method: FinderMethod,
+  ) => void;
 }
 
 // ─── HelpTip ──────────────────────────────────────────────────────────────────
@@ -243,6 +262,8 @@ export function ActionPanel({
   onViewMap,
   parentMapUrlById,
   parentMapNameById,
+  finderFeedback,
+  onFinderResult,
 }: ActionPanelProps) {
   const queryClient = useQueryClient();
   const [restructureMenuAnchor, setRestructureMenuAnchor] = useState<HTMLElement | null>(null);
@@ -426,19 +447,53 @@ export function ActionPanel({
       <SectionLabel label="Assignment" caption="Find and assign GADM divisions for the selected region" />
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         {btn('Geoshape match', 'geoshapeMatch', <GeoIcon sx={{ fontSize: 14 }} />,
-          () => mutations.geoshapeMatchMutation.mutate({ regionId }),
+          () => mutations.geoshapeMatchMutation.mutate({ regionId }, {
+            onSuccess: (data) => {
+              const fb = formatFinderFeedback('Geoshape', data.found, 0);
+              onFinderResult?.(fb, data.suggestions, 'Geoshape');
+            },
+          }),
           { disabled: !hasWikidata })}
         {btn('Points match', 'pointsMatch', <PointIcon sx={{ fontSize: 14 }} />,
-          () => mutations.pointMatchMutation.mutate({ regionId }),
+          () => mutations.pointMatchMutation.mutate({ regionId }, {
+            onSuccess: (data) => {
+              const fb = formatFinderFeedback('Points', data.found, 0);
+              onFinderResult?.(fb, data.suggestions, 'Points');
+            },
+          }),
           { disabled: !hasWikidata })}
         {btn('Geocode', 'geocode', <GeocodeIcon sx={{ fontSize: 14 }} />,
-          () => mutations.geocodeMatchMutation.mutate(regionId))}
+          () => mutations.geocodeMatchMutation.mutate(regionId, {
+            onSuccess: (data) => {
+              const fb = formatFinderFeedback('Geocode', data.found, 0);
+              onFinderResult?.(fb, data.suggestions, 'Geocode');
+            },
+          }))}
         {btn('DB search', 'dbSearch', <DBIcon sx={{ fontSize: 14 }} />,
-          () => mutations.dbSearchOneMutation.mutate(regionId))}
+          () => mutations.dbSearchOneMutation.mutate(regionId, {
+            onSuccess: (data) => {
+              const fb = formatFinderFeedback('DB search', data.found, 0);
+              onFinderResult?.(fb, data.suggestions, 'DB search');
+            },
+          }))}
         {btn('AI match', 'aiMatch', <AIMatchIcon sx={{ fontSize: 14 }} />,
-          () => mutations.aiMatchOneMutation.mutate(regionId))}
+          () => mutations.aiMatchOneMutation.mutate(regionId, {
+            onSuccess: (data) => {
+              // AIMatchOneResult has a single optional suggestion, not a found count
+              const suggestions = data.suggestion ? [data.suggestion] : [];
+              const found = suggestions.length;
+              const fb = formatFinderFeedback('AI match', found, 0);
+              onFinderResult?.(fb, suggestions, 'AI match');
+            },
+          }))}
         {btn('Auto-resolve subtree', 'autoResolveSubtree', <AutoIcon sx={{ fontSize: 14 }} />,
-          () => mutations.autoResolveMutation.mutate(regionId),
+          () => mutations.autoResolveMutation.mutate(regionId, {
+            onSuccess: (data) => {
+              // autoResolve operates on the subtree; report resolved count as "found"
+              const fb = formatFinderFeedback('Auto-resolve', data.resolved, 0);
+              onFinderResult?.(fb, [], 'Auto-resolve');
+            },
+          }),
           { disabled: !hasChildren })}
         {btn('Division search', 'divisionSearch', <SearchIcon sx={{ fontSize: 14 }} />,
           () => dialogs.handleManualDivisionSearch(regionId))}
@@ -480,6 +535,20 @@ export function ActionPanel({
               </Link>
             )}
           </Box>
+        )}
+        {/* Inline finder feedback line (persists until next run or node change) */}
+        {finderFeedback && (
+          <Typography
+            variant="caption"
+            sx={{
+              px: 0.5,
+              fontSize: '0.65rem',
+              color: finderFeedback.hasResults ? 'success.main' : 'text.secondary',
+              fontStyle: 'italic',
+            }}
+          >
+            {finderFeedback.message}
+          </Typography>
         )}
       </Box>
 

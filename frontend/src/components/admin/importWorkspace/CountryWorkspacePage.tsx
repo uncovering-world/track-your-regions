@@ -26,6 +26,7 @@ import {
   CircularProgress,
   Container,
   Divider,
+  Snackbar,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -71,6 +72,7 @@ import { SuggestionList } from './SuggestionList';
 import { ActionPanel } from './ActionPanel';
 import { WorkspaceMap } from './WorkspaceMap';
 import { ChecksBar } from './ChecksBar';
+import type { FinderMethod, FinderFeedback } from './finderFeedback';
 
 // ─── STATUS_DOT (local copy — avoiding circular import with CountryRow) ───────
 
@@ -243,6 +245,24 @@ function WorkspaceInner({
   const [hoveredRegionId, setHoveredRegionId] = useState<number | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
 
+  // ── Finder feedback (snackbar + inline line below assignment buttons) ──────
+  const [finderFeedback, setFinderFeedback] = useState<FinderFeedback | null>(null);
+  const [finderFeedbackOpen, setFinderFeedbackOpen] = useState(false);
+
+  // ── Proposed-source tracking: divisionId → method, reset on node change ───
+  const [proposedSource, setProposedSource] = useState<Map<number, FinderMethod>>(() => new Map());
+
+  // Reset feedback and proposedSource when the selected node changes.
+  const prevSelectedRef = useRef<number>(selectedRegionId);
+  useEffect(() => {
+    if (prevSelectedRef.current !== selectedRegionId) {
+      prevSelectedRef.current = selectedRegionId;
+      setFinderFeedback(null);
+      setFinderFeedbackOpen(false);
+      setProposedSource(new Map());
+    }
+  }, [selectedRegionId]);
+
   // ── Preview suite (all modes: single, union, transfer, view-map) ──────────
   const onPreviewDone = useCallback(() => {
     handleMatchChange();
@@ -295,6 +315,25 @@ function WorkspaceInner({
       markerPoints,
     );
   }, [preview, parentRegionMapUrlById, parentRegionMapNameById]);
+
+  /** Called by ActionPanel when a finder returns; updates feedback + proposedSource. */
+  const handleFinderResult = useCallback((
+    feedback: FinderFeedback,
+    suggestions: Array<{ divisionId: number }>,
+    method: FinderMethod,
+  ) => {
+    setFinderFeedback(feedback);
+    setFinderFeedbackOpen(true);
+    if (suggestions.length > 0) {
+      setProposedSource(prev => {
+        const next = new Map(prev);
+        for (const s of suggestions) {
+          next.set(s.divisionId, method);
+        }
+        return next;
+      });
+    }
+  }, []);
 
   // ── Remove dialog state ───────────────────────────────────────────────────
   const [removeDialogState, setRemoveDialogState] = useState<{
@@ -476,6 +515,7 @@ function WorkspaceInner({
                     onPreviewUnion={preview.handlePreviewUnion}
                     parentMapUrlById={parentRegionMapUrlById}
                     parentMapNameById={parentRegionMapNameById}
+                    proposedSource={proposedSource}
                   />
                 </Box>
                 <ActionPanel
@@ -490,6 +530,8 @@ function WorkspaceInner({
                   onViewMap={preview.handleViewMap}
                   parentMapUrlById={parentRegionMapUrlById}
                   parentMapNameById={parentRegionMapNameById}
+                  finderFeedback={finderFeedback}
+                  onFinderResult={handleFinderResult}
                 />
               </>
             )}
@@ -513,6 +555,15 @@ function WorkspaceInner({
           )}
         </Box>
       </Box>
+
+      {/* ── Finder feedback snackbar ─────────────────────────────────────── */}
+      <Snackbar
+        open={finderFeedbackOpen}
+        message={finderFeedback?.message ?? ''}
+        onClose={() => setFinderFeedbackOpen(false)}
+        autoHideDuration={4000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
 
       {/* ── Dialog layer ─────────────────────────────────────────────────── */}
       {preview.previewState && (
