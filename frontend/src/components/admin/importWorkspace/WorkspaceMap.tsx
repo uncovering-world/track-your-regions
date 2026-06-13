@@ -41,6 +41,7 @@ import {
 } from '../../../api/admin/wvImportCoverage';
 import { fetchDivisionGeometry } from '../../../api/divisions';
 import { addDivisionsToRegion } from '../../../api/regions';
+import { acceptMatch } from '../../../api/admin/worldViewImport';
 import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
 import type { VerifyResult } from '../../../api/admin/wvImportWorkflow';
 import { childColorMap } from './workspaceUtils';
@@ -61,6 +62,12 @@ interface WorkspaceMapProps {
   onHover?: (regionId: number | null) => void;
   verify: VerifyResult | null;
   onMatchChange?: () => void;
+  /** Proposed candidates for the selected node — divisionId + name for amber overlay + popover */
+  proposedDivisionIds?: number[];
+  /** Name lookup for proposed divisions (divisionId → name from suggestions) */
+  proposedDivisionNames?: ReadonlyMap<number, string>;
+  /** The row-hovered proposed divisionId from SuggestionList — brightens that feature */
+  hoveredProposedId?: number | null;
 }
 
 // ─── Compute bbox from a FeatureCollection ───────────────────────────────────
@@ -111,6 +118,14 @@ function mapCursor(hasPopover: boolean, overInteractive: boolean): string {
   return 'grab';
 }
 
+// Determine beforeId for the proposed layers (below gaps/overlaps, above children).
+// Avoids nested ternaries (sonarjs/no-nested-conditional).
+function proposedBeforeId(hasGaps: boolean, hasReference: boolean): string | undefined {
+  if (hasGaps) return 'gap-fill';
+  if (hasReference) return 'reference-outline';
+  return undefined;
+}
+
 // ─── WorkspaceMap ─────────────────────────────────────────────────────────────
 
 export function WorkspaceMap({
@@ -123,6 +138,9 @@ export function WorkspaceMap({
   onHover,
   verify,
   onMatchChange,
+  proposedDivisionIds = [],
+  proposedDivisionNames,
+  hoveredProposedId = null,
 }: WorkspaceMapProps) {
   const queryClient = useQueryClient();
   const mapRef = useRef<MapRef>(null);
@@ -131,6 +149,11 @@ export function WorkspaceMap({
   // Track whether the initial bounds came from children-only (no reference yet)
   const [boundsFromChildrenOnly, setBoundsFromChildrenOnly] = useState(false);
   const [gapPopover, setGapPopover] = useState<{
+    anchor: { top: number; left: number };
+    divisionId: number;
+    divisionName: string;
+  } | null>(null);
+  const [proposedPopover, setProposedPopover] = useState<{
     anchor: { top: number; left: number };
     divisionId: number;
     divisionName: string;
@@ -186,6 +209,30 @@ export function WorkspaceMap({
     enabled: hasOverlaps,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Proposed divisions: the selected node's suggestions rendered as an amber overlay.
+  // Key includes sorted IDs so it refetches automatically when suggestions change (e.g.
+  // after accept/reject — the optimistic tree update removes the division from suggestions,
+  // which changes proposedDivisionIds, which changes this key, which triggers a refetch).
+  const hasProposed = proposedDivisionIds.length > 0;
+  const sortedProposedKey = useMemo(
+    () => [...proposedDivisionIds].sort((a, b) => a - b).join(','),
+    [proposedDivisionIds],
+  );
+  const { data: proposedGeoms } = useQuery({
+    queryKey: ['admin', 'wvImport', 'proposedGeoms', worldViewId, sortedProposedKey],
+    queryFn: async () => {
+      const results: Array<{ divisionId: number; geometry: GeoJSON.Geometry }> = [];
+      await Promise.all(proposedDivisionIds.map(async (divId) => {
+        const geom = await fetchDivisionGeometry(divId, worldViewId, { detail: 'low' });
+        if (geom?.geometry) results.push({ divisionId: divId, geometry: geom.geometry as GeoJSON.Geometry });
+      }));
+      return results;
+    },
+    enabled: hasProposed,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // ── Build FeatureCollections ──────────────────────────────────────────────
 
   // Per-child colored fills + outlines
@@ -229,6 +276,21 @@ export function WorkspaceMap({
     }));
     return { type: 'FeatureCollection', features };
   }, [overlapGeoms]);
+
+  // Proposed fills (amber) — selected node's suggestions overlay.
+  // The `hovered` property drives the brightened highlight layer.
+  const proposedFC = useMemo((): GeoJSON.FeatureCollection => {
+    const features: GeoJSON.Feature[] = (proposedGeoms ?? []).map(pg => ({
+      type: 'Feature',
+      properties: {
+        divisionId: pg.divisionId,
+        divisionName: proposedDivisionNames?.get(pg.divisionId) ?? 'Unknown division',
+        hovered: pg.divisionId === hoveredProposedId,
+      },
+      geometry: pg.geometry,
+    }));
+    return { type: 'FeatureCollection', features };
+  }, [proposedGeoms, proposedDivisionNames, hoveredProposedId]);
 
   // ── Fit bounds on first load ─────────────────────────────────────────────
   // Prefer the reference outline geometry (it represents the full unit territory).
@@ -317,13 +379,44 @@ export function WorkspaceMap({
     });
   }, []);
 
-  // Assign division to selected region
+  const handleProposedClick = useCallback((e: MapLayerMouseEvent) => {
+    const feature = e.features?.[0];
+    if (!feature) return;
+    const divisionId = feature.properties?.divisionId as number | undefined;
+    const divisionName = feature.properties?.divisionName as string ?? 'Unknown division';
+    if (divisionId == null) return;
+    setProposedPopover({
+      anchor: { top: e.point.y + 60, left: e.point.x + 10 },
+      divisionId,
+      divisionName,
+    });
+  }, []);
+
+  // Assign division to selected region (gap assign path)
   const assignMutation = useMutation({
     mutationFn: ({ divisionId }: { divisionId: number }) =>
       addDivisionsToRegion(selectedId, [divisionId]),
     onSuccess: () => {
       setGapPopover(null);
       queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] }).catch(() => {});
+      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
+      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'verify', worldViewId] }).catch(() => {});
+      onMatchChange?.();
+    },
+  });
+
+  // Accept a proposed (suggestion) division to the selected region from the map.
+  // Uses acceptMatch (same as the SuggestionList/useTreeMutations accept path) which
+  // deletes the region_match_suggestions row AND creates a region_member — so the amber
+  // overlay disappears after the query invalidation. Do NOT use addDivisionsToRegion here:
+  // that would create the member without deleting the suggestion, leaving a ghost amber fill.
+  const acceptProposedMutation = useMutation({
+    mutationFn: ({ divisionId }: { divisionId: number }) =>
+      acceptMatch(worldViewId, selectedId, divisionId),
+    onSuccess: () => {
+      setProposedPopover(null);
+      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] }).catch(() => {});
+      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'childrenGeometry', worldViewId, unit.regionId] }).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'verify', worldViewId] }).catch(() => {});
       onMatchChange?.();
@@ -371,16 +464,21 @@ export function WorkspaceMap({
         initialViewState={{ longitude: 0, latitude: 20, zoom: 1 }}
         style={{ width: '100%', height: '100%' }}
         mapStyle={MAP_STYLE}
-        interactiveLayerIds={hasGaps ? ['child-fill', 'gap-fill'] : ['child-fill']}
+        interactiveLayerIds={[
+          'child-fill',
+          ...(hasGaps ? ['gap-fill'] : []),
+          ...(hasProposed ? ['proposed-fill'] : []),
+        ]}
         onClick={(e) => {
           const layers = e.features?.map(f => f.layer?.id) ?? [];
           if (layers.includes('child-fill')) handleChildClick(e);
           else if (layers.includes('gap-fill')) handleGapClick(e);
+          else if (layers.includes('proposed-fill')) handleProposedClick(e);
         }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => { setOverInteractive(false); onHover?.(null); }}
         onLoad={() => setMapReady(true)}
-        cursor={mapCursor(gapPopover !== null, overInteractive)}
+        cursor={mapCursor(gapPopover !== null || proposedPopover !== null, overInteractive)}
       >
         <NavigationControl position="top-left" showCompass={false} />
 
@@ -408,6 +506,38 @@ export function WorkspaceMap({
             }}
           />
         </Source>
+
+        {/* Proposed fills (amber) — selected node's suggestions. Above child fills,
+            below gaps/overlaps. Dashed outline + brightened highlight for row-hovered division. */}
+        {hasProposed && (
+          <Source id="proposed" type="geojson" data={proposedFC}>
+            {/* Base amber fill — all proposed divisions */}
+            <Layer
+              id="proposed-fill"
+              type="fill"
+              beforeId={proposedBeforeId(hasGaps, hasReference)}
+              paint={{
+                'fill-color': '#f59e0b',
+                'fill-opacity': [
+                  'case',
+                  ['get', 'hovered'], 0.55,
+                  0.25,
+                ],
+              }}
+            />
+            {/* Dashed amber outline */}
+            <Layer
+              id="proposed-outline"
+              type="line"
+              beforeId={proposedBeforeId(hasGaps, hasReference)}
+              paint={{
+                'line-color': '#d97706',
+                'line-width': 2,
+                'line-dasharray': [4, 2],
+              }}
+            />
+          </Source>
+        )}
 
         {/* Gap fills (red) — beforeId keeps fills below the reference outline */}
         {hasGaps && (
@@ -510,6 +640,12 @@ export function WorkspaceMap({
               <Typography variant="caption">Overlap</Typography>
             </Stack>
           )}
+          {hasProposed && (
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Box sx={{ width: 12, height: 12, bgcolor: '#f59e0b', borderRadius: '2px', flexShrink: 0, opacity: 0.7 }} />
+              <Typography variant="caption">Proposed</Typography>
+            </Stack>
+          )}
         </Stack>
       </Paper>
 
@@ -538,6 +674,33 @@ export function WorkspaceMap({
             <Tooltip title="Select the target region in the tree first">
               <Button size="small" onClick={() => setGapPopover(null)}>Cancel</Button>
             </Tooltip>
+          </Stack>
+        </Popover>
+      )}
+
+      {/* Proposed accept popover — mirrors gap-assign popover pattern */}
+      {proposedPopover && (
+        <Popover
+          open
+          anchorReference="anchorPosition"
+          anchorPosition={proposedPopover.anchor}
+          onClose={() => setProposedPopover(null)}
+          PaperProps={{ sx: { p: 1.5 } }}
+        >
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Accept <strong>{proposedPopover.divisionName}</strong> into <strong>{selectedName}</strong>?
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant="contained"
+              color="warning"
+              onClick={() => acceptProposedMutation.mutate({ divisionId: proposedPopover.divisionId })}
+              disabled={acceptProposedMutation.isPending}
+            >
+              Accept
+            </Button>
+            <Button size="small" onClick={() => setProposedPopover(null)}>Cancel</Button>
           </Stack>
         </Popover>
       )}

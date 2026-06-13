@@ -80,9 +80,14 @@ interface SuggestionListProps {
    * Populated from each finder's returned suggestions; reset on node change.
    */
   proposedSource?: ReadonlyMap<number, FinderMethod>;
+  /**
+   * Called on mouseenter/leave over a proposed row — syncs hover highlight to
+   * the map amber layer. Pass null on leave.
+   */
+  onHoverProposed?: (divisionId: number | null) => void;
 }
 
-export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, onPreviewUnion, parentMapUrlById, parentMapNameById, proposedSource }: SuggestionListProps) {
+export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, onPreviewUnion, parentMapUrlById, parentMapNameById, proposedSource, onHoverProposed }: SuggestionListProps) {
   if (!node) {
     return (
       <Box sx={{ p: 2 }}>
@@ -259,6 +264,8 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
                 <ListItem
                   key={sug.divisionId}
                   dense
+                  onMouseEnter={() => onHoverProposed?.(sug.divisionId)}
+                  onMouseLeave={() => onHoverProposed?.(null)}
                   secondaryAction={
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       {isBusy && <CircularProgress size={14} sx={{ mt: 0.5 }} />}

@@ -243,6 +243,7 @@ function WorkspaceInner({
   // ── Selection state ───────────────────────────────────────────────────────
   const [selectedRegionId, setSelectedRegionId] = useState<number>(regionId);
   const [hoveredRegionId, setHoveredRegionId] = useState<number | null>(null);
+  const [hoveredProposedId, setHoveredProposedId] = useState<number | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
 
   // ── Finder feedback (snackbar + inline line below assignment buttons) ──────
@@ -252,7 +253,7 @@ function WorkspaceInner({
   // ── Proposed-source tracking: divisionId → method, reset on node change ───
   const [proposedSource, setProposedSource] = useState<Map<number, FinderMethod>>(() => new Map());
 
-  // Reset feedback and proposedSource when the selected node changes.
+  // Reset feedback, proposedSource, and hoveredProposedId when the selected node changes.
   const prevSelectedRef = useRef<number>(selectedRegionId);
   useEffect(() => {
     if (prevSelectedRef.current !== selectedRegionId) {
@@ -260,6 +261,7 @@ function WorkspaceInner({
       setFinderFeedback(null);
       setFinderFeedbackOpen(false);
       setProposedSource(new Map());
+      setHoveredProposedId(null);
     }
   }, [selectedRegionId]);
 
@@ -380,6 +382,20 @@ function WorkspaceInner({
     () => findSubtree([subtreeRoot], selectedRegionId),
     [subtreeRoot, selectedRegionId],
   );
+
+  // Division IDs and names of proposed candidates for the SELECTED node (not unit root).
+  // Drives the amber proposed overlay on WorkspaceMap.
+  const proposedDivisionIds = useMemo(
+    () => (selectedNode?.suggestions ?? []).map(s => s.divisionId),
+    [selectedNode],
+  );
+  const proposedDivisionNames = useMemo((): ReadonlyMap<number, string> => {
+    const m = new Map<number, string>();
+    for (const s of selectedNode?.suggestions ?? []) {
+      m.set(s.divisionId, s.name);
+    }
+    return m;
+  }, [selectedNode]);
 
   // M7: if the selected node was removed (e.g. after a flatten/remove operation),
   // fall back to the unit root so the panel shows something useful.
@@ -516,6 +532,7 @@ function WorkspaceInner({
                     parentMapUrlById={parentRegionMapUrlById}
                     parentMapNameById={parentRegionMapNameById}
                     proposedSource={proposedSource}
+                    onHoverProposed={setHoveredProposedId}
                   />
                 </Box>
                 <ActionPanel
@@ -551,6 +568,9 @@ function WorkspaceInner({
               onHover={setHoveredRegionId}
               verify={verify}
               onMatchChange={handleMatchChange}
+              proposedDivisionIds={proposedDivisionIds}
+              proposedDivisionNames={proposedDivisionNames}
+              hoveredProposedId={hoveredProposedId}
             />
           )}
         </Box>
