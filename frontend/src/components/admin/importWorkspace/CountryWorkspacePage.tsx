@@ -235,6 +235,7 @@ function WorkspaceInner({
     setLastMutationAt(Date.now());
     queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
     queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'verify', worldViewId, regionId] }).catch(() => {});
+    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'childrenGeometry', worldViewId] }).catch(() => {});
   }, [queryClient, worldViewId, regionId]);
 
   // ── Selection state ───────────────────────────────────────────────────────
