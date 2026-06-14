@@ -98,7 +98,17 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
     );
   }
 
-  const { assignedDivisions, suggestions, id: regionId, regionMapUrl, wikidataId, name: regionName, markerPoints } = node;
+  const { suggestions, id: regionId, regionMapUrl, wikidataId, name: regionName, markerPoints } = node;
+
+  // Belt-and-suspenders render-time dedup: keeps a legit custom-geom + plain pair
+  // but kills exact duplicates created by a prior optimistic-accept race.
+  const seenKeys = new Set<string>();
+  const assignedDivisions = node.assignedDivisions.filter(d => {
+    const key = `${d.divisionId}-${String(d.hasCustomGeom)}`;
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
 
   // Parent-map fallback for union preview (mirrors the single-division path in CountryWorkspacePage)
   const effectiveMapUrl = regionMapUrl ?? parentMapUrlById?.get(regionId);

@@ -199,13 +199,16 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
       const prev = optimisticTreeUpdate(regionId, (node) => {
         const accepted = node.suggestions.find(s => s.divisionId === divisionId);
         const remaining = node.suggestions.filter(s => s.divisionId !== divisionId);
+        const alreadyAssigned = accepted
+          ? node.assignedDivisions.some(d => d.divisionId === accepted.divisionId)
+          : false;
         return {
           ...node,
           suggestions: remaining,
-          assignedDivisions: accepted
+          assignedDivisions: accepted && !alreadyAssigned
             ? [...node.assignedDivisions, { divisionId: accepted.divisionId, name: accepted.name, path: accepted.path, hasCustomGeom: false }]
             : node.assignedDivisions,
-          memberCount: node.memberCount + 1,
+          memberCount: alreadyAssigned ? node.memberCount : node.memberCount + 1,
           matchStatus: remaining.length > 0 ? 'needs_review' : 'manual_matched',
         };
       });
@@ -260,13 +263,16 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     onMutate: ({ regionId, divisionId }) => {
       const prev = optimisticTreeUpdate(regionId, (node) => {
         const accepted = node.suggestions.find(s => s.divisionId === divisionId);
+        const alreadyAssigned = accepted
+          ? node.assignedDivisions.some(d => d.divisionId === accepted.divisionId)
+          : false;
         return {
           ...node,
           suggestions: [],
-          assignedDivisions: accepted
+          assignedDivisions: accepted && !alreadyAssigned
             ? [...node.assignedDivisions, { divisionId: accepted.divisionId, name: accepted.name, path: accepted.path, hasCustomGeom: false }]
             : node.assignedDivisions,
-          memberCount: node.memberCount + 1,
+          memberCount: alreadyAssigned ? node.memberCount : node.memberCount + 1,
           matchStatus: 'manual_matched',
         };
       });
