@@ -1914,6 +1914,9 @@ CREATE TABLE IF NOT EXISTS region_match_suggestions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rms_region ON region_match_suggestions(region_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_region_match_suggestions_active_unique
+  ON region_match_suggestions (region_id, division_id)
+  WHERE rejected = false;
 
 COMMENT ON TABLE region_match_suggestions IS 'GADM division match suggestions for imported regions (1:N per region)';
 COMMENT ON COLUMN region_match_suggestions.rejected IS 'True if admin rejected this suggestion (prevents re-suggestion)';
