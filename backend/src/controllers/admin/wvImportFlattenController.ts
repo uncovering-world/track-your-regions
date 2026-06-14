@@ -8,6 +8,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { upsertSuggestion } from '../../services/worldViewImport/suggestionUpsert.js';
 import {
   matchChildrenAsCountries,
 } from '../../services/worldViewImport/index.js';
@@ -576,11 +577,11 @@ export async function syncInstances(req: AuthenticatedRequest, res: Response): P
         [siblingId],
       );
       for (const sugg of sourceSuggestions.rows) {
-        await client.query(
-          `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, rejected, geo_similarity)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [siblingId, sugg.division_id, sugg.name, sugg.path, sugg.score, sugg.rejected, sugg.geo_similarity ?? null],
-        );
+        await upsertSuggestion(client, {
+          regionId: siblingId, divisionId: sugg.division_id as number,
+          name: sugg.name as string, path: sugg.path as string, score: sugg.score as number,
+          rejected: sugg.rejected as boolean, geoSimilarity: sugg.geo_similarity as number ?? null,
+        });
       }
 
       // Sync region_members: remove existing, insert source's members

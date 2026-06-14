@@ -8,6 +8,7 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { MatchSuggestion, MatchStatus, AIMatchProgress, AIMatchResult } from './types.js';
+import { upsertSuggestion } from './suggestionUpsert.js';
 import { touchWorkUnitForRegion } from './workUnits.js';
 
 // Geographic suffixes that the AI often appends but GADM omits
@@ -266,11 +267,11 @@ async function insertNewSuggestions(
 ): Promise<void> {
   for (const s of suggestions) {
     if (!existingIds.has(s.divisionId)) {
-      await client.query(
-        `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [regionId, s.divisionId, s.name, s.path, s.score],
-      );
+      await upsertSuggestion(client, {
+        regionId, divisionId: s.divisionId,
+        name: s.name, path: s.path, score: s.score,
+        skipIfMember: true,
+      });
     }
   }
 }

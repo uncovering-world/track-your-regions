@@ -20,6 +20,7 @@ import { calculateCost } from '../ai/pricingService.js';
 import type { MatchSuggestion, MatchStatus, AIMatchProgress, AIMatchResult } from './types.js';
 import { tryTrigramMatch } from './dbSearchMatcher.js';
 import { applyAIResults } from './aiMatcherApply.js';
+import { upsertSuggestion } from './suggestionUpsert.js';
 
 // Re-export for backward compatibility — consumers import from aiMatcher.ts
 export type { AIMatchProgress, AIMatchResult } from './types.js';
@@ -413,17 +414,11 @@ async function handleTrigramOnlyFallback(
     [newStatus, regionId],
   );
 
-  const existingCheck = await pool.query(
-    `SELECT 1 FROM region_match_suggestions WHERE region_id = $1 AND division_id = $2`,
-    [regionId, suggestion.divisionId],
-  );
-  if (existingCheck.rows.length === 0) {
-    await pool.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [regionId, suggestion.divisionId, suggestion.name, suggestion.path, suggestion.score],
-    );
-  }
+  await upsertSuggestion(pool, {
+    regionId, divisionId: suggestion.divisionId,
+    name: suggestion.name, path: suggestion.path, score: suggestion.score,
+    skipIfMember: true,
+  });
 
   return {
     improved: false,

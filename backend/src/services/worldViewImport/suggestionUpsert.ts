@@ -7,7 +7,7 @@
 import type { Pool, PoolClient } from 'pg';
 
 export interface SuggestionUpsert {
-  regionId: number; divisionId: number; name: string; path: string; score: number;
+  regionId: number; divisionId: number; name: string; path: string | null; score: number;
   rejected?: boolean; geoSimilarity?: number | null;
   conflictType?: string | null; donorRegionId?: number | null; donorDivisionId?: number | null;
   donorRegionName?: string | null; donorDivisionName?: string | null;

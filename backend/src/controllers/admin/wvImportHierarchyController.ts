@@ -7,6 +7,7 @@
 import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
+import { upsertSuggestion } from '../../services/worldViewImport/suggestionUpsert.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import {
   trigramSearch,
@@ -94,11 +95,11 @@ async function insertSuggestionsForRegionField(
   suggestions: SuggestionSnapshot[],
 ): Promise<void> {
   for (const sugg of suggestions) {
-    await client.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, rejected, geo_similarity)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [sugg.region_id, sugg.division_id, sugg.name, sugg.path, sugg.score, sugg.rejected, sugg.geo_similarity ?? null],
-    );
+    await upsertSuggestion(client, {
+      regionId: sugg.region_id, divisionId: sugg.division_id,
+      name: sugg.name, path: sugg.path, score: sugg.score,
+      rejected: sugg.rejected, geoSimilarity: sugg.geo_similarity ?? null,
+    });
   }
 }
 
@@ -108,11 +109,11 @@ async function insertSuggestionsForRegionId(
   suggestions: SuggestionSnapshot[],
 ): Promise<void> {
   for (const sugg of suggestions) {
-    await client.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, rejected, geo_similarity)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [regionId, sugg.division_id, sugg.name, sugg.path, sugg.score, sugg.rejected, sugg.geo_similarity ?? null],
-    );
+    await upsertSuggestion(client, {
+      regionId, divisionId: sugg.division_id,
+      name: sugg.name, path: sugg.path, score: sugg.score,
+      rejected: sugg.rejected, geoSimilarity: sugg.geo_similarity ?? null,
+    });
   }
 }
 
@@ -594,18 +595,12 @@ async function insertSuggestionIfMissing(
   client: DbClient,
   match: AutoResolveMatch,
 ): Promise<void> {
-  const existing = await client.query(
-    `SELECT 1 FROM region_match_suggestions WHERE region_id = $1 AND division_id = $2`,
-    [match.regionId, match.divisionId],
-  );
-  if (existing.rows.length === 0) {
-    await client.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, geo_similarity)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [match.regionId, match.divisionId, match.divisionName, match.divisionPath,
-       Math.round(match.similarity * 1000), match.geoSimilarity],
-    );
-  }
+  await upsertSuggestion(client, {
+    regionId: match.regionId, divisionId: match.divisionId,
+    name: match.divisionName, path: match.divisionPath,
+    score: Math.round(match.similarity * 1000), geoSimilarity: match.geoSimilarity,
+    skipIfMember: true,
+  });
 }
 
 async function applyAutoMatches(

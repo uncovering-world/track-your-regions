@@ -7,6 +7,7 @@
 
 import { pool } from '../../db/index.js';
 import type { MatchSuggestion, MatchStatus } from './types.js';
+import { upsertSuggestion } from './suggestionUpsert.js';
 
 const NOMINATIM_USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
 let lastNominatimRequestTime = 0;
@@ -255,11 +256,11 @@ async function persistGeocodeSuggestions(
   );
 
   for (const s of newSuggestions) {
-    await pool.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [regionId, s.divisionId, s.name, s.path, s.score],
-    );
+    await upsertSuggestion(pool, {
+      regionId, divisionId: s.divisionId,
+      name: s.name, path: s.path, score: s.score,
+      skipIfMember: true,
+    });
   }
 }
 

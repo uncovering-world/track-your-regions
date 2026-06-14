@@ -10,6 +10,7 @@
 
 import { pool } from '../../db/index.js';
 import { parseMarkers, parseGeoTag } from '../wikivoyageExtract/markerParser.js';
+import { upsertSuggestion } from './suggestionUpsert.js';
 import type { ParsedMarker } from '../wikivoyageExtract/markerParser.js';
 
 const WIKIVOYAGE_API = 'https://en.wikivoyage.org/w/api.php';
@@ -475,16 +476,16 @@ async function persistPointSuggestions(
       const score = 500; // Point-based is less precise than geoshape
       const conflict = conflictMap.get(c.id);
       suggestions.push({ divisionId: c.id, name: c.name, path: c.path, score, conflict });
-      await client.query(
-        `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, conflict_type, donor_region_id, donor_division_id, donor_region_name, donor_division_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          regionId, c.id, c.name, c.path, score,
-          conflict?.type ?? null, conflict?.donorRegionId ?? null,
-          conflict?.donorDivisionId ?? null, conflict?.donorRegionName ?? null,
-          conflict?.donorDivisionName ?? null,
-        ],
-      );
+      await upsertSuggestion(client, {
+        regionId, divisionId: c.id,
+        name: c.name, path: c.path, score,
+        conflictType: conflict?.type ?? null,
+        donorRegionId: conflict?.donorRegionId ?? null,
+        donorDivisionId: conflict?.donorDivisionId ?? null,
+        donorRegionName: conflict?.donorRegionName ?? null,
+        donorDivisionName: conflict?.donorDivisionName ?? null,
+        skipIfMember: true,
+      });
     }
     await client.query('COMMIT');
   } catch (err) {

@@ -7,6 +7,7 @@
 
 import { pool } from '../../db/index.js';
 import type { MatchSuggestion, MatchStatus } from './types.js';
+import { upsertSuggestion } from './suggestionUpsert.js';
 import { computeGeoSimilarityForRegion } from './geoshapeCache.js';
 import {
   normalizeName,
@@ -469,11 +470,11 @@ async function writeGroupingUpdates(
         [update.id],
       );
       for (const suggestion of update.suggestions) {
-        await client.query(
-          `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [update.id, suggestion.divisionId, suggestion.name, suggestion.path, suggestion.score],
-        );
+        await upsertSuggestion(client, {
+          regionId: update.id, divisionId: suggestion.divisionId,
+          name: suggestion.name, path: suggestion.path, score: suggestion.score,
+          skipIfMember: false,
+        });
       }
 
       if (update.divisionId) {

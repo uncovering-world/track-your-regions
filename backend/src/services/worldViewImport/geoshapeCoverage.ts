@@ -10,6 +10,7 @@
 import { pool } from '../../db/index.js';
 import { getOrFetchGeoshape } from './geoshapeCache.js';
 import { tryBuildCompositeGeoshape } from './geoshapeComposite.js';
+import { upsertSuggestion } from './suggestionUpsert.js';
 
 // =============================================================================
 // Division-to-division coverage helpers
@@ -775,11 +776,16 @@ async function writeCoveringSuggestions(
     suggestions.push({ divisionId: c.id, name: c.name, path: c.path, score });
 
     const conflict = conflictMap.get(c.id);
-    await pool.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, geo_similarity, conflict_type, donor_region_id, donor_division_id, donor_region_name, donor_division_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [regionId, c.id, c.name, c.path, score, geoSimilarity, conflict?.type ?? null, conflict?.donorRegionId ?? null, conflict?.donorDivisionId ?? null, conflict?.donorRegionName ?? null, conflict?.donorDivisionName ?? null],
-    );
+    await upsertSuggestion(pool, {
+      regionId, divisionId: c.id,
+      name: c.name, path: c.path, score, geoSimilarity,
+      conflictType: conflict?.type ?? null,
+      donorRegionId: conflict?.donorRegionId ?? null,
+      donorDivisionId: conflict?.donorDivisionId ?? null,
+      donorRegionName: conflict?.donorRegionName ?? null,
+      donorDivisionName: conflict?.donorDivisionName ?? null,
+      skipIfMember: true,
+    });
   }
 
   return suggestions;
