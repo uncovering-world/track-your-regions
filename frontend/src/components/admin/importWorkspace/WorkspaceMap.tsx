@@ -43,7 +43,7 @@ import { addDivisionsToRegion } from '../../../api/regions';
 import { acceptMatch } from '../../../api/admin/worldViewImport';
 import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
 import type { VerifyResult } from '../../../api/admin/wvImportWorkflow';
-import { childColorMap } from './workspaceUtils';
+import { childColorMap, CHILD_PALETTE } from './workspaceUtils';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -171,8 +171,18 @@ export function WorkspaceMap({
   // M6: track whether pointer is over an interactive feature for cursor
   const [overInteractive, setOverInteractive] = useState(false);
 
-  // Per-child color map
-  const colors = useMemo(() => childColorMap(root), [root]);
+  // Per-child color map.
+  // When root has no children (directly-assigned leaf unit), extend the map with
+  // the root's own ID so its geometry returned by getChildrenRegionGeometry renders
+  // as a filled colored polygon rather than falling back to grey.
+  const colors = useMemo(() => {
+    const map = childColorMap(root);
+    if (root.children.length === 0) {
+      // Use the first palette color — same source as children use
+      map.set(root.id, CHILD_PALETTE[0]);
+    }
+    return map;
+  }, [root]);
 
   // ── Data queries ─────────────────────────────────────────────────────────
 
@@ -488,13 +498,15 @@ export function WorkspaceMap({
   // ── Legend ────────────────────────────────────────────────────────────────
 
   const legendItems = useMemo(() => {
-    const items = root.children.slice(0, 8).map(c => ({
+    // For a directly-assigned leaf (no children), show the root itself in the legend.
+    const legendNodes = root.children.length > 0 ? root.children : [root];
+    const items = legendNodes.slice(0, 8).map(c => ({
       name: c.name,
       color: colors.get(c.id) ?? '#808080',
     }));
-    const overflow = root.children.length > 8 ? root.children.length - 8 : 0;
+    const overflow = legendNodes.length > 8 ? legendNodes.length - 8 : 0;
     return { items, overflow };
-  }, [root.children, colors]);
+  }, [root, colors]);
 
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>

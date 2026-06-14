@@ -813,25 +813,57 @@ export async function analyzeCoverageGaps(req: AuthenticatedRequest, res: Respon
  * Get per-child region geometries for a given parent region.
  * Used to drill down into sibling regions on the gap context map.
  * GET /api/admin/wv-import/matches/:worldViewId/children-geometry/:regionId
+ *
+ * When the region has no child regions but has its own direct members (a
+ * directly-assigned leaf unit such as CAR), the region's own geometry is
+ * returned as a single entry keyed by its own regionId so the workspace map
+ * renders a filled colored polygon instead of only the dashed reference outline.
+ *
+ * A region that is "children_matched" (it delegates to children; it has 0 own
+ * members) adds nothing, preserving current behavior for container regions.
  */
 export async function getChildrenRegionGeometry(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
   const regionId = parseInt(String(req.params.regionId));
 
   try {
-    const childrenResult = await pool.query(
-      'SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2 ORDER BY name',
-      [regionId, worldViewId],
+    const [childrenResult, rootResult] = await Promise.all([
+      pool.query(
+        'SELECT id, name FROM regions WHERE parent_region_id = $1 AND world_view_id = $2 ORDER BY name',
+        [regionId, worldViewId],
+      ),
+      pool.query(
+        'SELECT r.name, array_agg(rm.division_id) FILTER (WHERE rm.division_id IS NOT NULL) AS division_ids FROM regions r LEFT JOIN region_members rm ON rm.region_id = r.id WHERE r.id = $1 GROUP BY r.name',
+        [regionId],
+      ),
+    ]);
+
+    const hasChildren = childrenResult.rows.length > 0;
+    const rootDivisionIds: number[] = (rootResult.rows[0]?.division_ids as number[] | null) ?? [];
+    const rootName: string = rootResult.rows[0]?.name as string ?? `Region ${regionId}`;
+
+    // Build the division-id map from child subtrees
+    const childRegionDivIds = hasChildren
+      ? await loadChildRegionDivIds(worldViewId, regionId)
+      : new Map<number, number[]>();
+
+    const childNames = new Map<number, string>(
+      childrenResult.rows.map(r => [r.id as number, r.name as string]),
     );
-    if (childrenResult.rows.length === 0) {
+
+    // Include the root region's own direct members when it has no children
+    // (directly-assigned leaf unit). This produces a filled polygon on the map.
+    // Container regions (children_matched, 0 own members) are unaffected.
+    if (!hasChildren && rootDivisionIds.length > 0) {
+      childRegionDivIds.set(regionId, rootDivisionIds);
+      childNames.set(regionId, rootName);
+    }
+
+    if (childRegionDivIds.size === 0) {
       res.json({ childRegions: [] });
       return;
     }
 
-    const childRegionDivIds = await loadChildRegionDivIds(worldViewId, regionId);
-    const childNames = new Map(
-      childrenResult.rows.map(r => [r.id as number, r.name as string]),
-    );
     const childRegions = await buildChildRegionGeometries(childRegionDivIds, childNames);
 
     res.json({ childRegions });
