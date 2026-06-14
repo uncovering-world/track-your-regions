@@ -273,6 +273,27 @@ function makeBtn(
   };
 }
 
+// ─── SectionLabel ─────────────────────────────────────────────────────────────
+// Quiet overline caption above a button group.
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Typography
+      variant="overline"
+      sx={{
+        fontSize: '0.6rem',
+        letterSpacing: '0.08em',
+        color: 'text.secondary',
+        lineHeight: 1.5,
+        display: 'block',
+        mb: 0.25,
+      }}
+    >
+      {children}
+    </Typography>
+  );
+}
+
 // ─── HierarchyTools ──────────────────────────────────────────────────────────
 // Stage: Hierarchy — AI review, rename, reparent, add child, remove, restructure.
 
@@ -302,102 +323,109 @@ export function HierarchyTools({
   const btn = makeBtn(busy);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, overflow: 'auto', p: 0.5 }}>
-      {/* Hierarchy confirm toggle (moved from header chip) */}
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'auto', p: 1 }}>
+      {/* Hierarchy confirm toggle — full-width, visually prominent */}
       {onConfirmHierarchy !== undefined && (
         <Tooltip title={hierarchyConfirmed ? 'Hierarchy confirmed — click to toggle' : 'Hierarchy not confirmed — click to toggle'}>
-          <span>
+          <span style={{ display: 'block' }}>
             <Button
+              fullWidth
               size="small"
               variant={hierarchyConfirmed ? 'contained' : 'outlined'}
               color={hierarchyConfirmed ? 'success' : 'warning'}
               onClick={() => onConfirmHierarchy(!hierarchyConfirmed)}
               disabled={confirmHierarchyPending}
-              sx={{ textTransform: 'none', fontSize: '0.75rem', mb: 0.5 }}
+              sx={{ textTransform: 'none', fontSize: '0.75rem' }}
             >
               {hierarchyConfirmed ? 'Hierarchy ✓ confirmed' : 'Hierarchy ✗ — click to confirm'}
             </Button>
           </span>
         </Tooltip>
       )}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        {btn('AI review children', 'aiReviewChildren', <AIIcon sx={{ fontSize: 14 }} />,
-          () => { dialogs.handleAISuggestChildren(regionId).catch(() => {}); })}
-        {btn('Rename', 'rename', <RenameIcon sx={{ fontSize: 14 }} />,
-          () => dialogs.setRenameDialog({ regionId, currentName: node.name, newName: node.name }))}
-        {btn('Reparent', 'reparent', <ReparentIcon sx={{ fontSize: 14 }} />,
-          () => {
-            const item = dialogs.flatRegionList.find(r => r.id === regionId);
-            dialogs.setReparentDialog({ regionId, regionName: item?.name ?? node.name, selectedParentId: null });
-          })}
-        {btn('Add child', 'addChild', <AddIcon sx={{ fontSize: 14 }} />,
-          () => dialogs.handleAddChild(regionId))}
-        {btn('Remove', 'remove', <RemoveIcon sx={{ fontSize: 14 }} />,
-          () => dialogs.handleRemoveRegion(regionId))}
-        {/* Restructure submenu */}
-        <HelpTip helpKey="restructure">
-          <Button
-            size="small"
-            startIcon={<RestructureIcon sx={{ fontSize: 14 }} />}
-            onClick={e => setRestructureMenuAnchor(e.currentTarget)}
-            disabled={busy}
-            sx={{ justifyContent: 'flex-start', textTransform: 'none', fontSize: '0.75rem' }}
-          >
-            Restructure ▾
-          </Button>
-        </HelpTip>
-        <Menu
-          anchorEl={restructureMenuAnchor}
-          open={!!restructureMenuAnchor}
-          onClose={() => setRestructureMenuAnchor(null)}
-          slotProps={{ paper: { sx: { maxWidth: 360 } } }}
-        >
-          <MenuItem dense onClick={() => { setRestructureMenuAnchor(null); mutations.dismissMutation.mutate(regionId); }}>
-            <ListItemIcon><PruneIcon sx={{ fontSize: 14 }} /></ListItemIcon>
-            <ListItemText
-              primary={ACTION_HELP.dismissChildren.title}
-              secondary={ACTION_HELP.dismissChildren.description}
-              secondaryTypographyProps={{ variant: 'caption' }}
-            />
-          </MenuItem>
-          <MenuItem dense onClick={() => { setRestructureMenuAnchor(null); mutations.pruneMutation.mutate(regionId); }}>
-            <ListItemIcon><PruneIcon sx={{ fontSize: 14 }} /></ListItemIcon>
-            <ListItemText
-              primary={ACTION_HELP.pruneToLeaves.title}
-              secondary={ACTION_HELP.pruneToLeaves.description}
-              secondaryTypographyProps={{ variant: 'caption' }}
-            />
-          </MenuItem>
-          <MenuItem dense onClick={() => { setRestructureMenuAnchor(null); mutations.collapseToParentMutation.mutate(regionId); }}>
-            <ListItemIcon><CollapseIcon sx={{ fontSize: 14 }} /></ListItemIcon>
-            <ListItemText
-              primary={ACTION_HELP.collapseToParent.title}
-              secondary={ACTION_HELP.collapseToParent.description}
-              secondaryTypographyProps={{ variant: 'caption' }}
-            />
-          </MenuItem>
-          <MenuItem
-            dense
-            disabled={!hasSingleChild}
-            onClick={() => { setRestructureMenuAnchor(null); mutations.mergeMutation.mutate(regionId); }}
-          >
-            <ListItemIcon><MergeIcon sx={{ fontSize: 14 }} /></ListItemIcon>
-            <ListItemText
-              primary={ACTION_HELP.mergeSingleChild.title}
-              secondary={ACTION_HELP.mergeSingleChild.description}
-              secondaryTypographyProps={{ variant: 'caption' }}
-            />
-          </MenuItem>
-          <MenuItem dense onClick={() => { setRestructureMenuAnchor(null); dialogs.handleSmartFlatten(regionId).catch(() => {}); }}>
-            <ListItemIcon><MergeIcon sx={{ fontSize: 14 }} /></ListItemIcon>
-            <ListItemText
-              primary={ACTION_HELP.smartFlatten.title}
-              secondary={ACTION_HELP.smartFlatten.description}
-              secondaryTypographyProps={{ variant: 'caption' }}
-            />
-          </MenuItem>
-        </Menu>
+
+      {/* Node actions row */}
+      <Box>
+        <SectionLabel>Node actions</SectionLabel>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+          {btn('AI review', 'aiReviewChildren', <AIIcon sx={{ fontSize: 14 }} />,
+            () => { dialogs.handleAISuggestChildren(regionId).catch(() => {}); })}
+          {btn('Rename', 'rename', <RenameIcon sx={{ fontSize: 14 }} />,
+            () => dialogs.setRenameDialog({ regionId, currentName: node.name, newName: node.name }))}
+          {btn('Reparent', 'reparent', <ReparentIcon sx={{ fontSize: 14 }} />,
+            () => {
+              const item = dialogs.flatRegionList.find(r => r.id === regionId);
+              dialogs.setReparentDialog({ regionId, regionName: item?.name ?? node.name, selectedParentId: null });
+            })}
+          {btn('Add child', 'addChild', <AddIcon sx={{ fontSize: 14 }} />,
+            () => dialogs.handleAddChild(regionId))}
+          {btn('Remove', 'remove', <RemoveIcon sx={{ fontSize: 14 }} />,
+            () => dialogs.handleRemoveRegion(regionId))}
+          {/* Restructure submenu */}
+          <HelpTip helpKey="restructure">
+            <Button
+              size="small"
+              startIcon={<RestructureIcon sx={{ fontSize: 14 }} />}
+              onClick={e => setRestructureMenuAnchor(e.currentTarget)}
+              disabled={busy}
+              sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+            >
+              Restructure ▾
+            </Button>
+          </HelpTip>
+        </Box>
       </Box>
+
+      <Menu
+        anchorEl={restructureMenuAnchor}
+        open={!!restructureMenuAnchor}
+        onClose={() => setRestructureMenuAnchor(null)}
+        slotProps={{ paper: { sx: { maxWidth: 360 } } }}
+      >
+        <MenuItem dense onClick={() => { setRestructureMenuAnchor(null); mutations.dismissMutation.mutate(regionId); }}>
+          <ListItemIcon><PruneIcon sx={{ fontSize: 14 }} /></ListItemIcon>
+          <ListItemText
+            primary={ACTION_HELP.dismissChildren.title}
+            secondary={ACTION_HELP.dismissChildren.description}
+            secondaryTypographyProps={{ variant: 'caption' }}
+          />
+        </MenuItem>
+        <MenuItem dense onClick={() => { setRestructureMenuAnchor(null); mutations.pruneMutation.mutate(regionId); }}>
+          <ListItemIcon><PruneIcon sx={{ fontSize: 14 }} /></ListItemIcon>
+          <ListItemText
+            primary={ACTION_HELP.pruneToLeaves.title}
+            secondary={ACTION_HELP.pruneToLeaves.description}
+            secondaryTypographyProps={{ variant: 'caption' }}
+          />
+        </MenuItem>
+        <MenuItem dense onClick={() => { setRestructureMenuAnchor(null); mutations.collapseToParentMutation.mutate(regionId); }}>
+          <ListItemIcon><CollapseIcon sx={{ fontSize: 14 }} /></ListItemIcon>
+          <ListItemText
+            primary={ACTION_HELP.collapseToParent.title}
+            secondary={ACTION_HELP.collapseToParent.description}
+            secondaryTypographyProps={{ variant: 'caption' }}
+          />
+        </MenuItem>
+        <MenuItem
+          dense
+          disabled={!hasSingleChild}
+          onClick={() => { setRestructureMenuAnchor(null); mutations.mergeMutation.mutate(regionId); }}
+        >
+          <ListItemIcon><MergeIcon sx={{ fontSize: 14 }} /></ListItemIcon>
+          <ListItemText
+            primary={ACTION_HELP.mergeSingleChild.title}
+            secondary={ACTION_HELP.mergeSingleChild.description}
+            secondaryTypographyProps={{ variant: 'caption' }}
+          />
+        </MenuItem>
+        <MenuItem dense onClick={() => { setRestructureMenuAnchor(null); dialogs.handleSmartFlatten(regionId).catch(() => {}); }}>
+          <ListItemIcon><MergeIcon sx={{ fontSize: 14 }} /></ListItemIcon>
+          <ListItemText
+            primary={ACTION_HELP.smartFlatten.title}
+            secondary={ACTION_HELP.smartFlatten.description}
+            secondaryTypographyProps={{ variant: 'caption' }}
+          />
+        </MenuItem>
+      </Menu>
 
       {/* Undo snackbar — rendered in Hierarchy because rename/reparent/add/remove all use it */}
       <Snackbar
@@ -422,6 +450,9 @@ export function HierarchyTools({
 
 // ─── AssignmentTools ─────────────────────────────────────────────────────────
 // Stage: Assignment — all finders + progress + feedback + CV/Mapshape.
+// Layout: primary row (Geoshape · Points · AI match) → secondary row
+//         (Geocode · DB search · Auto-resolve · Division search · Match children)
+//         → CV/Mapshape tertiary (prereq-gated) → feedback line.
 
 export function AssignmentTools({
   node,
@@ -460,111 +491,140 @@ export function AssignmentTools({
   const btn = makeBtn(busy);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, overflow: 'auto', p: 0.5 }}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        {btn('Geoshape match', 'geoshapeMatch', <GeoIcon sx={{ fontSize: 14 }} />,
-          () => mutations.geoshapeMatchMutation.mutate({ regionId }, {
-            onSuccess: (data) => {
-              const fb = formatFinderFeedback('Geoshape', data.found, 0);
-              onFinderResult?.(fb, data.suggestions, 'Geoshape');
-            },
-          }),
-          { disabled: !hasWikidata })}
-        {btn('Points match', 'pointsMatch', <PointIcon sx={{ fontSize: 14 }} />,
-          () => mutations.pointMatchMutation.mutate({ regionId }, {
-            onSuccess: (data) => {
-              const fb = formatFinderFeedback('Points', data.found, 0);
-              onFinderResult?.(fb, data.suggestions, 'Points');
-            },
-          }),
-          { disabled: !hasWikidata })}
-        {btn('Geocode', 'geocode', <GeocodeIcon sx={{ fontSize: 14 }} />,
-          () => mutations.geocodeMatchMutation.mutate(regionId, {
-            onSuccess: (data) => {
-              const fb = formatFinderFeedback('Geocode', data.found, 0);
-              onFinderResult?.(fb, data.suggestions, 'Geocode');
-            },
-          }))}
-        {btn('DB search', 'dbSearch', <DBIcon sx={{ fontSize: 14 }} />,
-          () => mutations.dbSearchOneMutation.mutate(regionId, {
-            onSuccess: (data) => {
-              const fb = formatFinderFeedback('DB search', data.found, 0);
-              onFinderResult?.(fb, data.suggestions, 'DB search');
-            },
-          }))}
-        {btn('AI match', 'aiMatch', <AIMatchIcon sx={{ fontSize: 14 }} />,
-          () => mutations.aiMatchOneMutation.mutate(regionId, {
-            onSuccess: (data) => {
-              const suggestions = data.suggestion ? [data.suggestion] : [];
-              const found = suggestions.length;
-              const fb = formatFinderFeedback('AI match', found, 0);
-              onFinderResult?.(fb, suggestions, 'AI match');
-            },
-          }))}
-        {btn('Auto-resolve subtree', 'autoResolveSubtree', <AutoIcon sx={{ fontSize: 14 }} />,
-          () => mutations.autoResolveMutation.mutate(regionId, {
-            onSuccess: (data) => {
-              const fb = formatFinderFeedback('Auto-resolve', data.resolved, 0);
-              onFinderResult?.(fb, [], 'Auto-resolve');
-            },
-          }),
-          { disabled: !hasChildren })}
-        {btn('Division search', 'divisionSearch', <SearchIcon sx={{ fontSize: 14 }} />,
-          () => dialogs.handleManualDivisionSearch(regionId))}
-        {btn('Match children independently', 'matchChildrenIndependently', <GroupIcon sx={{ fontSize: 14 }} />,
-          () => mutations.groupingMutation.mutate(regionId),
-          { disabled: !hasChildren })}
-        {cvPipeline && <CvButtons cvPipeline={cvPipeline} regionId={regionId} hasCvPrereqs={hasCvPrereqs} hasMapshapePrereqs={hasMapshapePrereqs} cvBusy={cvBusy} mapshapeBusy={mapshapeBusy} busy={busy} />}
-        {/* I4: geocode/geoshape/point progress status + scope-fallback retry link */}
-        {geocodeProgress && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-              {geocodeProgress.message}
-            </Typography>
-            {geocodeProgress.nextScope && (
-              <Link
-                component="button"
-                type="button"
-                variant="caption"
-                onClick={() => {
-                  const retry = geocodeProgress.retryType === 'point'
-                    ? mutations.pointMatchMutation
-                    : mutations.geoshapeMatchMutation;
-                  retry.mutate({ regionId, scopeAncestorId: geocodeProgress.nextScope!.ancestorId });
-                }}
-                sx={{
-                  fontSize: '0.65rem',
-                  color: 'primary.main',
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  background: 'none',
-                  border: 0,
-                  padding: 0,
-                  font: 'inherit',
-                  lineHeight: 'inherit',
-                  '&:hover': { color: 'primary.dark' },
-                }}
-              >
-                Try wider: {geocodeProgress.nextScope.ancestorName}
-              </Link>
-            )}
-          </Box>
-        )}
-        {/* Inline finder feedback line (persists until next run or node change) */}
-        {finderFeedback && (
-          <Typography
-            variant="caption"
-            sx={{
-              px: 0.5,
-              fontSize: '0.65rem',
-              color: finderFeedback.hasResults ? 'success.main' : 'text.secondary',
-              fontStyle: 'italic',
-            }}
-          >
-            {finderFeedback.message}
-          </Typography>
-        )}
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'auto', p: 1 }}>
+      {/* Primary finders — Geoshape · Points · AI match (highest-use) */}
+      <Box>
+        <SectionLabel>Primary finders</SectionLabel>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+          {btn('Geoshape', 'geoshapeMatch', <GeoIcon sx={{ fontSize: 14 }} />,
+            () => mutations.geoshapeMatchMutation.mutate({ regionId }, {
+              onSuccess: (data) => {
+                const fb = formatFinderFeedback('Geoshape', data.found, 0);
+                onFinderResult?.(fb, data.suggestions, 'Geoshape');
+              },
+            }),
+            { disabled: !hasWikidata })}
+          {btn('Points', 'pointsMatch', <PointIcon sx={{ fontSize: 14 }} />,
+            () => mutations.pointMatchMutation.mutate({ regionId }, {
+              onSuccess: (data) => {
+                const fb = formatFinderFeedback('Points', data.found, 0);
+                onFinderResult?.(fb, data.suggestions, 'Points');
+              },
+            }),
+            { disabled: !hasWikidata })}
+          {btn('AI match', 'aiMatch', <AIMatchIcon sx={{ fontSize: 14 }} />,
+            () => mutations.aiMatchOneMutation.mutate(regionId, {
+              onSuccess: (data) => {
+                const suggestions = data.suggestion ? [data.suggestion] : [];
+                const found = suggestions.length;
+                const fb = formatFinderFeedback('AI match', found, 0);
+                onFinderResult?.(fb, suggestions, 'AI match');
+              },
+            }))}
+        </Box>
       </Box>
+
+      {/* Secondary finders — Geocode · DB search · Auto-resolve · Division search · Match children */}
+      <Box>
+        <SectionLabel>More finders</SectionLabel>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+          {btn('Geocode', 'geocode', <GeocodeIcon sx={{ fontSize: 14 }} />,
+            () => mutations.geocodeMatchMutation.mutate(regionId, {
+              onSuccess: (data) => {
+                const fb = formatFinderFeedback('Geocode', data.found, 0);
+                onFinderResult?.(fb, data.suggestions, 'Geocode');
+              },
+            }))}
+          {btn('DB search', 'dbSearch', <DBIcon sx={{ fontSize: 14 }} />,
+            () => mutations.dbSearchOneMutation.mutate(regionId, {
+              onSuccess: (data) => {
+                const fb = formatFinderFeedback('DB search', data.found, 0);
+                onFinderResult?.(fb, data.suggestions, 'DB search');
+              },
+            }))}
+          {btn('Auto-resolve', 'autoResolveSubtree', <AutoIcon sx={{ fontSize: 14 }} />,
+            () => mutations.autoResolveMutation.mutate(regionId, {
+              onSuccess: (data) => {
+                const fb = formatFinderFeedback('Auto-resolve', data.resolved, 0);
+                onFinderResult?.(fb, [], 'Auto-resolve');
+              },
+            }),
+            { disabled: !hasChildren })}
+          {btn('Division search', 'divisionSearch', <SearchIcon sx={{ fontSize: 14 }} />,
+            () => dialogs.handleManualDivisionSearch(regionId))}
+          {btn('Match children', 'matchChildrenIndependently', <GroupIcon sx={{ fontSize: 14 }} />,
+            () => mutations.groupingMutation.mutate(regionId),
+            { disabled: !hasChildren })}
+        </Box>
+      </Box>
+
+      {/* Tertiary — CV / Mapshape (only when pipeline + prereqs exist) */}
+      {cvPipeline && (
+        <Box>
+          <SectionLabel>Visual finders</SectionLabel>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+            <CvButtons
+              cvPipeline={cvPipeline}
+              regionId={regionId}
+              hasCvPrereqs={hasCvPrereqs}
+              hasMapshapePrereqs={hasMapshapePrereqs}
+              cvBusy={cvBusy}
+              mapshapeBusy={mapshapeBusy}
+              busy={busy}
+            />
+          </Box>
+        </Box>
+      )}
+
+      {/* I4: geocode/geoshape/point progress status + scope-fallback retry link */}
+      {geocodeProgress && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+            {geocodeProgress.message}
+          </Typography>
+          {geocodeProgress.nextScope && (
+            <Link
+              component="button"
+              type="button"
+              variant="caption"
+              onClick={() => {
+                const retry = geocodeProgress.retryType === 'point'
+                  ? mutations.pointMatchMutation
+                  : mutations.geoshapeMatchMutation;
+                retry.mutate({ regionId, scopeAncestorId: geocodeProgress.nextScope!.ancestorId });
+              }}
+              sx={{
+                fontSize: '0.65rem',
+                color: 'primary.main',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                background: 'none',
+                border: 0,
+                padding: 0,
+                font: 'inherit',
+                lineHeight: 'inherit',
+                '&:hover': { color: 'primary.dark' },
+              }}
+            >
+              Try wider: {geocodeProgress.nextScope.ancestorName}
+            </Link>
+          )}
+        </Box>
+      )}
+
+      {/* Inline finder feedback line (persists until next run or node change) */}
+      {finderFeedback && (
+        <Typography
+          variant="caption"
+          sx={{
+            fontSize: '0.65rem',
+            color: finderFeedback.hasResults ? 'success.main' : 'text.secondary',
+            fontStyle: 'italic',
+          }}
+        >
+          {finderFeedback.message}
+        </Typography>
+      )}
     </Box>
   );
 }
@@ -646,101 +706,131 @@ export function VerificationTools({
   const btn = makeBtn(busy);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, overflow: 'auto', p: 0.5 }}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        {/* M8: simplify with success snackbar */}
-        {btn('Simplify', 'simplify', <SimplifyIcon sx={{ fontSize: 14 }} />,
-          () => mutations.simplifyHierarchyMutation.mutate(regionId, {
-            onSuccess: (data) => {
-              if (data.replacements.length === 0) {
-                setSimplifySnackbar('Nothing to simplify');
-              } else {
-                const summary = data.replacements
-                  .map(r => `${r.parentName} (${r.replacedCount} → 1)`)
-                  .join(', ');
-                setSimplifySnackbar(`Simplified: ${summary}`);
-              }
-            },
-          }))}
-        {btn('Simplify children', 'simplifyChildren', <SimplifyIcon sx={{ fontSize: 14 }} />,
-          () => mutations.simplifyChildrenMutation.mutate(regionId, {
-            onSuccess: (data) => {
-              if (data.totalSimplified === 0) {
-                setSimplifySnackbar('No children could be simplified');
-              } else {
-                const summary = data.results.map(r => `${r.regionName} (${r.totalReduced} reduced)`).join(', ');
-                setSimplifySnackbar(`Simplified ${data.totalSimplified} children: ${summary}`);
-              }
-            },
-          }),
-          { disabled: !hasChildren })}
-        {btn('Smart simplify', 'smartSimplify', <SimplifyIcon sx={{ fontSize: 14 }} />,
-          () => dialogs.handleSmartSimplify(regionId))}
-        {/* I3: overlap check — show dialog if overlaps found, snackbar if none */}
-        {btn('Overlap check', 'overlapCheck', <OverlapIcon sx={{ fontSize: 14 }} />,
-          () => mutations.overlapCheckMutation.mutate(regionId, {
-            onSuccess: (data) => {
-              if (data.overlaps.length === 0) {
-                setNoOverlapsSnackbar(true);
-              } else {
-                setOverlapDialog({
-                  regionId,
-                  regionName: node.name,
-                  regionMapUrl: node.regionMapUrl ?? null,
-                  data,
-                });
-              }
-            },
-          }))}
-        {onViewMap && btn(
-          'View map comparison', 'viewMapComparison', <ViewMapIcon sx={{ fontSize: 14 }} />,
-          () => onViewMap(regionId, {
-            wikidataId: node.wikidataId ?? undefined,
-            regionMapUrl: effectiveMapUrl,
-            regionMapLabel: effectiveMapLabel,
-            regionName: node.name,
-            divisionIds: assignedDivisionIds,
-          }),
-          { disabled: !hasViewMapPrereqs },
-        )}
-        <Divider sx={{ my: 0.5 }} />
-        {btn('Clear members', 'clearMembers', <ClearIcon sx={{ fontSize: 14 }} />,
-          () => mutations.clearMembersMutation.mutate(regionId))}
-        {btn('Reset match', 'resetMatch', <ResetIcon sx={{ fontSize: 14 }} />,
-          () => mutations.resetMatchMutation.mutate(regionId))}
-        {btn(
-          node.assignmentWaived ? 'Unwaive assignment' : 'Waive assignment',
-          waiveHelpKey,
-          <WaiveIcon sx={{ fontSize: 14 }} />,
-          () => waiveMutation.mutate({ regionId, waived: !node.assignmentWaived }),
-          { disabled: !isLeaf },
-        )}
-        {/* Manual-fix toggle */}
-        {btn(
-          buildManualFixLabel(node),
-          'manualFixFlag',
-          <FixIcon sx={{ fontSize: 14, color: node.needsManualFix ? 'error.main' : undefined }} />,
-          () => handleManualFixToggle(node, regionId, mutations, dialogs),
-        )}
-        {/* Sync — disabled with "Already in sync" when syncedUrls has this sourceUrl */}
-        <Tooltip
-          title={isSynced ? 'Already in sync' : ''}
-          placement="top"
-          disableInteractive
-          slotProps={{
-            popper: {
-              modifiers: [{ name: 'hide', enabled: true }],
-              sx: { '&[data-popper-reference-hidden]': { visibility: 'hidden', pointerEvents: 'none' } },
-            },
-          }}
-        >
-          <span>
-            {btn('Sync instances', 'syncInstances', <SyncIcon sx={{ fontSize: 14 }} />,
-              () => mutations.syncMutation.mutate(regionId),
-              { disabled: !hasDuplicateSourceUrl || isSynced })}
-          </span>
-        </Tooltip>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'auto', p: 1 }}>
+      {/* Section A — Cleanup (safe operations) */}
+      <Box>
+        <SectionLabel>Cleanup</SectionLabel>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+          {/* M8: simplify with success snackbar */}
+          {btn('Simplify', 'simplify', <SimplifyIcon sx={{ fontSize: 14 }} />,
+            () => mutations.simplifyHierarchyMutation.mutate(regionId, {
+              onSuccess: (data) => {
+                if (data.replacements.length === 0) {
+                  setSimplifySnackbar('Nothing to simplify');
+                } else {
+                  const summary = data.replacements
+                    .map(r => `${r.parentName} (${r.replacedCount} → 1)`)
+                    .join(', ');
+                  setSimplifySnackbar(`Simplified: ${summary}`);
+                }
+              },
+            }))}
+          {btn('Simplify children', 'simplifyChildren', <SimplifyIcon sx={{ fontSize: 14 }} />,
+            () => mutations.simplifyChildrenMutation.mutate(regionId, {
+              onSuccess: (data) => {
+                if (data.totalSimplified === 0) {
+                  setSimplifySnackbar('No children could be simplified');
+                } else {
+                  const summary = data.results.map(r => `${r.regionName} (${r.totalReduced} reduced)`).join(', ');
+                  setSimplifySnackbar(`Simplified ${data.totalSimplified} children: ${summary}`);
+                }
+              },
+            }),
+            { disabled: !hasChildren })}
+          {btn('Smart simplify', 'smartSimplify', <SimplifyIcon sx={{ fontSize: 14 }} />,
+            () => dialogs.handleSmartSimplify(regionId))}
+          {/* I3: overlap check — show dialog if overlaps found, snackbar if none */}
+          {btn('Overlap check', 'overlapCheck', <OverlapIcon sx={{ fontSize: 14 }} />,
+            () => mutations.overlapCheckMutation.mutate(regionId, {
+              onSuccess: (data) => {
+                if (data.overlaps.length === 0) {
+                  setNoOverlapsSnackbar(true);
+                } else {
+                  setOverlapDialog({
+                    regionId,
+                    regionName: node.name,
+                    regionMapUrl: node.regionMapUrl ?? null,
+                    data,
+                  });
+                }
+              },
+            }))}
+          {onViewMap && btn(
+            'View map', 'viewMapComparison', <ViewMapIcon sx={{ fontSize: 14 }} />,
+            () => onViewMap(regionId, {
+              wikidataId: node.wikidataId ?? undefined,
+              regionMapUrl: effectiveMapUrl,
+              regionMapLabel: effectiveMapLabel,
+              regionName: node.name,
+              divisionIds: assignedDivisionIds,
+            }),
+            { disabled: !hasViewMapPrereqs },
+          )}
+        </Box>
       </Box>
+
+      {/* Thin divider with "Destructive" label */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Divider sx={{ flex: 1 }} />
+        <Typography
+          variant="overline"
+          sx={{ fontSize: '0.58rem', letterSpacing: '0.07em', color: 'error.light', lineHeight: 1 }}
+        >
+          Destructive
+        </Typography>
+        <Divider sx={{ flex: 1 }} />
+      </Box>
+
+      {/* Section B — Destructive actions */}
+      <Box>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+          {btn('Clear members', 'clearMembers', <ClearIcon sx={{ fontSize: 14 }} />,
+            () => mutations.clearMembersMutation.mutate(regionId))}
+          {btn('Reset match', 'resetMatch', <ResetIcon sx={{ fontSize: 14 }} />,
+            () => mutations.resetMatchMutation.mutate(regionId))}
+          {btn(
+            node.assignmentWaived ? 'Unwaive' : 'Waive',
+            waiveHelpKey,
+            <WaiveIcon sx={{ fontSize: 14 }} />,
+            () => waiveMutation.mutate({ regionId, waived: !node.assignmentWaived }),
+            { disabled: !isLeaf },
+          )}
+          {/* Manual-fix toggle */}
+          {btn(
+            buildManualFixLabel(node),
+            'manualFixFlag',
+            <FixIcon sx={{ fontSize: 14, color: node.needsManualFix ? 'error.main' : undefined }} />,
+            () => handleManualFixToggle(node, regionId, mutations, dialogs),
+          )}
+        </Box>
+      </Box>
+
+      {/* Section C — Sync (only meaningful when duplicates exist) */}
+      {hasDuplicateSourceUrl && (
+        <Box>
+          <SectionLabel>Sync</SectionLabel>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+            {/* Sync — disabled with "Already in sync" when syncedUrls has this sourceUrl */}
+            <Tooltip
+              title={isSynced ? 'Already in sync' : ''}
+              placement="top"
+              disableInteractive
+              slotProps={{
+                popper: {
+                  modifiers: [{ name: 'hide', enabled: true }],
+                  sx: { '&[data-popper-reference-hidden]': { visibility: 'hidden', pointerEvents: 'none' } },
+                },
+              }}
+            >
+              <span>
+                {btn('Sync instances', 'syncInstances', <SyncIcon sx={{ fontSize: 14 }} />,
+                  () => mutations.syncMutation.mutate(regionId),
+                  { disabled: isSynced })}
+              </span>
+            </Tooltip>
+          </Box>
+        </Box>
+      )}
 
       {/* M8: simplify success snackbar */}
       <Snackbar

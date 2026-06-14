@@ -89,6 +89,7 @@ export function StageSwitcher({
         // keep the current selection in that case.
         if (next !== null) onChange(next);
       }}
+      aria-label="Workspace stage"
       sx={{ height: 28 }}
     >
       {stages.map(({ id, label, badge, colorKey, tooltip }) => {
