@@ -4,7 +4,7 @@
  * Assigned divisions: name + path + preview icon + remove (removeDivisionsFromRegion).
  * Suggestions: name/path/score + conflict chip + Accept/Reject/preview.
  * Bulk: "Accept all" (clean suggestions), "Reject remaining", "Preview union" (>1 suggestion).
- * Multi-select: checkboxes per row + select-all header checkbox.
+ * Multi-select: checkboxes per row + select-all; selection toolbar for batch accept/reject.
  *
  * onPreviewTransfer: conflict-accept (↑) triggers the 3-layer transfer preview dialog
  *   instead of a blind direct acceptWithTransfer call. The dialog's Accept button
@@ -45,6 +45,7 @@ function geoSimColor(geo: number | null | undefined): string | undefined {
 import type { MatchTreeNode, MatchSuggestion } from '../../../api/admin/worldViewImport';
 import type { useTreeMutations } from '../useTreeMutations';
 import type { FinderMethod } from './finderFeedback';
+import { splitSelectionForAccept } from './splitSelectionForAccept';
 
 type Mutations = ReturnType<typeof useTreeMutations>;
 
@@ -65,6 +66,8 @@ interface SuggestionListProps {
     conflict: { donorDivisionId: number; donorDivisionName: string; donorRegionId: number; type: 'direct' | 'split' },
     wikidataId: string, regionName: string,
     regionId?: number,
+    allDivisionIds?: number[],
+    allSuggestions?: Array<{ divisionId: number; conflict?: { donorDivisionId: number; donorRegionId: number; type: 'direct' | 'split' } }>,
   ) => void;
   /** Union preview: shown when >1 suggestion exists */
   onPreviewUnion?: (
@@ -203,6 +206,70 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
     }
   };
 
+  // Batch action handlers (Task 2)
+  const isSelectionBusy =
+    mutations.acceptSelectedMutation.isPending ||
+    mutations.acceptSelectedRejectRestMutation.isPending ||
+    mutations.rejectSelectedMutation.isPending;
+
+  const handleRejectSelected = () => {
+    const divisionIds = [...selectedIds];
+    mutations.rejectSelectedMutation.mutate({ regionId, divisionIds }, {
+      onSuccess: () => setSelectedIds(new Set()),
+    });
+  };
+
+  const handleAcceptSelectedRejectRest = () => {
+    const divisionIds = [...selectedIds];
+    mutations.acceptSelectedRejectRestMutation.mutate({ regionId, divisionIds }, {
+      onSuccess: () => setSelectedIds(new Set()),
+    });
+  };
+
+  const handleAcceptSelected = () => {
+    const selectedSugs = suggestions.filter(s => selectedIds.has(s.divisionId));
+    const { cleanIds, conflictedSugs } = splitSelectionForAccept(selectedSugs);
+
+    // Accept clean divisions immediately (no transfer needed).
+    if (cleanIds.length > 0) {
+      mutations.acceptSelectedMutation.mutate({ regionId, divisionIds: cleanIds });
+    }
+
+    // Route conflicted divisions through the transfer preview (or fallback).
+    if (conflictedSugs.length > 0) {
+      const firstConflicted = conflictedSugs[0];
+      if (onPreviewTransfer && wikidataId) {
+        // Pass ONLY the conflicted ids — clean ones must NOT enter the transfer
+        // batch or the donor-ownership check will 409 for them.
+        onPreviewTransfer(
+          firstConflicted.divisionId, firstConflicted.name, firstConflicted.path,
+          {
+            donorDivisionId: firstConflicted.conflict!.donorDivisionId,
+            donorDivisionName: firstConflicted.conflict!.donorDivisionName,
+            donorRegionId: firstConflicted.conflict!.donorRegionId,
+            type: firstConflicted.conflict!.type,
+          },
+          wikidataId, regionName,
+          regionId,
+          conflictedSugs.map(s => s.divisionId),
+          conflictedSugs.map(s => ({ divisionId: s.divisionId, conflict: s.conflict })),
+        );
+      } else {
+        // Fallback: no dialog / no wikidataId — direct transfer per row.
+        conflictedSugs.forEach(s => {
+          mutations.onAcceptTransfer(regionId, s.divisionId, {
+            type: s.conflict!.type,
+            donorRegionId: s.conflict!.donorRegionId,
+            donorDivisionId: s.conflict!.donorDivisionId,
+          });
+        });
+      }
+    }
+
+    // Clear selection regardless of which path was taken.
+    setSelectedIds(new Set());
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' }}>
       {/* Assigned Divisions */}
@@ -274,37 +341,81 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
                 Proposed ({suggestions.length})
               </Typography>
             </Box>
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              {cleanSuggestions.length > 1 && onPreviewUnion && (
-                <Tooltip title="Preview the union of all suggested divisions vs region map/geoshape">
+            {selectedIds.size > 0 ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+                  {selectedIds.size} selected
+                </Typography>
+                <Tooltip title="Accept selected">
                   <Button
                     size="small"
-                    startIcon={<UnionIcon sx={{ fontSize: 13 }} />}
-                    onClick={() => onPreviewUnion(
-                      regionId,
-                      cleanSuggestions.map(s => s.divisionId),
-                      { wikidataId: wikidataId ?? undefined, regionMapUrl: effectiveMapUrl, regionMapLabel: effectiveMapLabel, regionName },
-                    )}
-                    disabled={isBusy}
+                    color="success"
+                    onClick={handleAcceptSelected}
+                    disabled={isBusy || isSelectionBusy}
                   >
-                    Preview union
+                    Accept selected
                   </Button>
                 </Tooltip>
-              )}
-              {cleanSuggestions.length > 1 && (
-                <Button size="small" onClick={handleAcceptAll} disabled={isBusy}>
-                  Accept all
+                <Tooltip title="Accept selected + reject rest">
+                  <Button
+                    size="small"
+                    onClick={handleAcceptSelectedRejectRest}
+                    disabled={isBusy || isSelectionBusy}
+                  >
+                    Accept + reject rest
+                  </Button>
+                </Tooltip>
+                <Tooltip title="Reject selected">
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={handleRejectSelected}
+                    disabled={isBusy || isSelectionBusy}
+                  >
+                    Reject selected
+                  </Button>
+                </Tooltip>
+                <Button
+                  size="small"
+                  onClick={() => setSelectedIds(new Set())}
+                  disabled={isSelectionBusy}
+                >
+                  Clear
                 </Button>
-              )}
-              <Button size="small" color="error" onClick={handleDismissAll} disabled={isBusy}>
-                Dismiss all
-              </Button>
-              {assignedDivisions.length > 0 && (
-                <Button size="small" color="error" onClick={handleRejectRemaining} disabled={isBusy}>
-                  Reject remaining
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                {cleanSuggestions.length > 1 && onPreviewUnion && (
+                  <Tooltip title="Preview the union of all suggested divisions vs region map/geoshape">
+                    <Button
+                      size="small"
+                      startIcon={<UnionIcon sx={{ fontSize: 13 }} />}
+                      onClick={() => onPreviewUnion(
+                        regionId,
+                        cleanSuggestions.map(s => s.divisionId),
+                        { wikidataId: wikidataId ?? undefined, regionMapUrl: effectiveMapUrl, regionMapLabel: effectiveMapLabel, regionName },
+                      )}
+                      disabled={isBusy}
+                    >
+                      Preview union
+                    </Button>
+                  </Tooltip>
+                )}
+                {cleanSuggestions.length > 1 && (
+                  <Button size="small" onClick={handleAcceptAll} disabled={isBusy}>
+                    Accept all
+                  </Button>
+                )}
+                <Button size="small" color="error" onClick={handleDismissAll} disabled={isBusy}>
+                  Dismiss all
                 </Button>
-              )}
-            </Box>
+                {assignedDivisions.length > 0 && (
+                  <Button size="small" color="error" onClick={handleRejectRemaining} disabled={isBusy}>
+                    Reject remaining
+                  </Button>
+                )}
+              </Box>
+            )}
           </Box>
           <List dense disablePadding>
             {suggestions.map(sug => {
