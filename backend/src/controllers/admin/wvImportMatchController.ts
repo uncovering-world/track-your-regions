@@ -488,14 +488,24 @@ export async function getMatchTree(req: AuthenticatedRequest, res: Response): Pr
         SELECT NOT wg.not_available FROM wikidata_geoshapes wg
         WHERE wg.wikidata_id = ris.source_external_id
       )) AS geo_available,
-      (SELECT COALESCE(json_agg(json_build_object(
-        'divisionId', rms.division_id, 'name', rms.name, 'path', rms.path, 'score', rms.score, 'geoSimilarity', rms.geo_similarity,
-        'conflict', CASE WHEN rms.conflict_type IS NOT NULL THEN json_build_object(
-          'type', rms.conflict_type, 'donorRegionId', rms.donor_region_id, 'donorRegionName', rms.donor_region_name,
-          'donorDivisionId', rms.donor_division_id, 'donorDivisionName', rms.donor_division_name
-        ) ELSE NULL END
-      ) ORDER BY rms.score DESC), '[]'::json)
-      FROM region_match_suggestions rms WHERE rms.region_id = r.id AND rms.rejected = false) AS suggestions,
+      (SELECT COALESCE(json_agg(sub.obj ORDER BY sub.score DESC), '[]'::json)
+       FROM (
+         SELECT DISTINCT ON (rms.division_id)
+           rms.division_id, rms.score,
+           json_build_object(
+             'divisionId', rms.division_id, 'name', rms.name, 'path', rms.path,
+             'score', rms.score, 'geoSimilarity', rms.geo_similarity,
+             'conflict', CASE WHEN rms.conflict_type IS NOT NULL THEN json_build_object(
+               'type', rms.conflict_type, 'donorRegionId', rms.donor_region_id, 'donorRegionName', rms.donor_region_name,
+               'donorDivisionId', rms.donor_division_id, 'donorDivisionName', rms.donor_division_name
+             ) ELSE NULL END
+           ) AS obj
+         FROM region_match_suggestions rms
+         WHERE rms.region_id = r.id AND rms.rejected = false
+           AND rms.division_id NOT IN (SELECT division_id FROM region_members rm2 WHERE rm2.region_id = r.id)
+         ORDER BY rms.division_id, rms.score DESC
+       ) sub
+      ) AS suggestions,
       (SELECT COALESCE(json_agg(rmi.image_url), '[]'::json)
       FROM region_map_images rmi WHERE rmi.region_id = r.id) AS map_image_candidates,
       (SELECT COUNT(*) FROM region_members rm WHERE rm.region_id = r.id) AS member_count,
