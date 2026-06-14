@@ -1,5 +1,6 @@
 /**
- * actionHelp.ts — Tooltip content for every ActionPanel action.
+ * actionHelp.ts — Tooltip content for every stage tool action
+ * (HierarchyTools, AssignmentTools, VerificationTools).
  *
  * Descriptions verified against the backend handlers.
  */

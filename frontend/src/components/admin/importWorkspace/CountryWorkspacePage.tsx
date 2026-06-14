@@ -3,7 +3,7 @@
  * Route: /admin/import/:worldViewId/region/:regionId
  *
  * Layout:
- *   Header row (back, name, status dot, stage chips, sign-off, next-country)
+ *   Header row (back, name, status dot, StageSwitcher, sign-off, next-country)
  *   ChecksBar
  *   [40% tree + action panel | 60% WorkspaceMap] (full viewport height minus header)
  *

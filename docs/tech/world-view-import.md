@@ -503,7 +503,7 @@ Coverage gaps found by the checks bar now appear in a **Coverage Gaps panel** (r
 
 ```
 ┌─ Header bar ──────────────────────────────────────────────────────────────┐
-│  ← Dashboard  ◐ Germany   [Hierarchy ✓] [Leaves 14/14] [verification]    │
+│  ← Dashboard  ◐ Germany   [Hierarchy ✓/✗] [Assign n/m] [Verify —/✓/⚠]   │
 │                                              [Sign off]  [Next country →] │
 ├─ Checks bar ──────────────────────────────────────────────────────────────┤
 │  [Run checks]  • stale — re-run  • Coverage gaps  • 2 unassigned          │
@@ -513,14 +513,17 @@ Coverage gaps found by the checks bar now appear in a **Coverage Gaps panel** (r
 │  ────────────────────────────────     │  — gap fills (red, click-assign)   │
 │  SuggestionList (selected node)       │  — hover/select sync with tree     │
 │  ────────────────────────────────     │  — legend: child colors + gaps     │
-│  ActionPanel (stage-grouped buttons)  │                                    │
-│  — Hierarchy / Assignment / Cleanup   │                                    │
+│  Stage-specific tools (active stage)  │                                    │
+│  — HierarchyTools / AssignmentTools   │                                    │
+│  — VerificationTools                  │                                    │
 └───────────────────────────────────────┴────────────────────────────────────┘
 ```
 
+The header carries a 3-segment `StageSwitcher` (Hierarchy / Assign / Verify) with a progress glyph per segment — Hierarchy shows ✓ or ✗ depending on whether the hierarchy is confirmed, Assign shows resolved/total leaves (e.g. 14/14), and Verify shows — (not run), ✓ (clean), or ⚠ (blockers). The lower-left of the left column renders only the active stage's tools: `HierarchyTools` (rename, reparent, add/remove, Restructure menu, AI review, confirm-hierarchy), `AssignmentTools` (finders + finder-feedback line + the Proposed/Assigned `SuggestionList`), or `VerificationTools` (`CoverageGapsPanel` when gaps exist, plus cleanup/validate tools). The active stage defaults to the selected node's derived stage via `deriveStage` and is freely switchable; clicking a checks-bar count chip for coverage gaps jumps directly to the Verify stage. The map remains persistent across all stage switches.
+
 ### What moved off the legacy tree
 
-The full set of import mutations and dialogs is available via the ActionPanel and SuggestionList — admins no longer need to scroll a full-tree list to find a node's actions. The legacy tree remains available for tasks not yet in the workspace (Re-match, Compute Geometries, CV/mapshape pipelines, global-gaps resolution — Plan 4).
+The full set of import mutations and dialogs is available via the stage-specific tool components and SuggestionList — admins no longer need to scroll a full-tree list to find a node's actions. The legacy tree remains available for tasks not yet in the workspace (Re-match, Compute Geometries, CV/mapshape pipelines, global-gaps resolution — Plan 4).
 
 ### Key files
 
@@ -529,7 +532,8 @@ The full set of import mutations and dialogs is available via the ActionPanel an
 | `importWorkspace/CountryWorkspacePage.tsx` | Route shell: guard, data, header, layout |
 | `importWorkspace/WorkspaceTree.tsx` | Scoped virtualized tree (state chips only) |
 | `importWorkspace/SuggestionList.tsx` | Assigned divisions + suggestions for selected node |
-| `importWorkspace/ActionPanel.tsx` | Stage-grouped mutation buttons + undo snackbar |
+| `importWorkspace/ActionPanel.tsx` | Exports HierarchyTools, AssignmentTools, VerificationTools — stage-specific tool components |
+| `importWorkspace/StageSwitcher.tsx` | 3-segment stage toggle (Hierarchy / Assign / Verify) with progress glyphs |
 | `importWorkspace/WorkspaceMap.tsx` | Persistent map: child fills, gap overlays, click-assign |
 | `importWorkspace/ChecksBar.tsx` | Run checks → blocker chips → gates sign-off |
 | `importWorkspace/workspaceUtils.ts` | findSubtree, flattenSubtree, childColorMap, deriveStage |

@@ -2,7 +2,7 @@
  * WorkspaceTree — Scoped virtualized tree for the country workspace.
  *
  * Shows only the subtree rooted at the work unit, with state-only row indicators
- * (status chip, division count, warnings). No action icons — everything via ActionPanel.
+ * (status chip, division count, warnings). No action icons — everything via stage tool components.
  *
  * Virtualization: @tanstack/react-virtual (same setup as WorldViewImportTree).
  */
