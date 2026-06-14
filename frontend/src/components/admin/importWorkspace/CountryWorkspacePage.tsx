@@ -72,6 +72,7 @@ import { SuggestionList } from './SuggestionList';
 import { ActionPanel } from './ActionPanel';
 import { WorkspaceMap } from './WorkspaceMap';
 import { ChecksBar } from './ChecksBar';
+import { CoverageGapsPanel } from './CoverageGapsPanel';
 import type { FinderMethod, FinderFeedback } from './finderFeedback';
 
 // ─── STATUS_DOT (local copy — avoiding circular import with CountryRow) ───────
@@ -246,6 +247,10 @@ function WorkspaceInner({
   const [hoveredProposedId, setHoveredProposedId] = useState<number | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
 
+  // ── Gap panel state ───────────────────────────────────────────────────────
+  const [gapsPanelOpen, setGapsPanelOpen] = useState(false);
+  const [focusedGapDivisionId, setFocusedGapDivisionId] = useState<number | null>(null);
+
   // ── Finder feedback (snackbar + inline line below assignment buttons) ──────
   const [finderFeedback, setFinderFeedback] = useState<FinderFeedback | null>(null);
   const [finderFeedbackOpen, setFinderFeedbackOpen] = useState(false);
@@ -253,7 +258,7 @@ function WorkspaceInner({
   // ── Proposed-source tracking: divisionId → method, reset on node change ───
   const [proposedSource, setProposedSource] = useState<Map<number, FinderMethod>>(() => new Map());
 
-  // Reset feedback, proposedSource, and hoveredProposedId when the selected node changes.
+  // Reset feedback, proposedSource, hoveredProposedId, and gap focus when the selected node changes.
   const prevSelectedRef = useRef<number>(selectedRegionId);
   useEffect(() => {
     if (prevSelectedRef.current !== selectedRegionId) {
@@ -262,8 +267,22 @@ function WorkspaceInner({
       setFinderFeedbackOpen(false);
       setProposedSource(new Map());
       setHoveredProposedId(null);
+      setFocusedGapDivisionId(null);
     }
   }, [selectedRegionId]);
+
+  // Reset gap panel + focus when the unit (regionId) changes.
+  // The component is remounted via key={`${worldViewId}-${regionId}`} at the
+  // CountryWorkspacePage level, so this effect fires on navigation too — but
+  // adding it here makes the intent explicit.
+  const prevRegionIdRef = useRef<number>(regionId);
+  useEffect(() => {
+    if (prevRegionIdRef.current !== regionId) {
+      prevRegionIdRef.current = regionId;
+      setGapsPanelOpen(false);
+      setFocusedGapDivisionId(null);
+    }
+  }, [regionId]);
 
   // ── Preview suite (all modes: single, union, transfer, view-map) ──────────
   const onPreviewDone = useCallback(() => {
@@ -484,6 +503,8 @@ function WorkspaceInner({
         verify={verify}
         onVerifyChange={setVerify}
         coveragePct={unitCoveragePct}
+        gapsPanelOpen={gapsPanelOpen}
+        onToggleGapsPanel={() => setGapsPanelOpen(prev => !prev)}
         onFocusBlocker={(kind) => {
           // I8: focus the first affected region for unassigned; select unit root for gaps/overlaps
           if (kind === 'unassigned' && verify?.unassignedLeaves[0]) {
@@ -496,63 +517,83 @@ function WorkspaceInner({
       />
 
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left column */}
+        {/* Left column — gaps panel OR normal tree+action stack */}
         <Box sx={{
           width: '40%', display: 'flex', flexDirection: 'column',
           borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden',
         }}>
-          <Box sx={{ flex: '0 0 40%', overflow: 'hidden', borderBottom: '1px solid', borderColor: 'divider' }}>
-            <WorkspaceTree
-              root={subtreeRoot}
-              selectedId={selectedRegionId}
-              hoveredId={hoveredRegionId}
-              onSelect={setSelectedRegionId}
-              onHover={setHoveredRegionId}
-              coverageData={coverageData}
-              coverageLoading={coverageLoading}
-              coverageError={coverageError}
-              onDismissWarnings={(id) => mutations.dismissWarningsMutation.mutate(id)}
+          {gapsPanelOpen && verify !== null && verify.coverageGaps.length > 0 ? (
+            <CoverageGapsPanel
+              worldViewId={worldViewId}
+              unitId={regionId}
+              subtreeRoot={subtreeRoot}
+              verify={verify}
+              focusedGapDivisionId={focusedGapDivisionId}
+              onFocusGap={(divisionId) => {
+                setFocusedGapDivisionId(prev => prev === divisionId ? null : divisionId);
+              }}
+              onCollapse={() => {
+                setGapsPanelOpen(false);
+                setFocusedGapDivisionId(null);
+              }}
+              onMatchChange={handleMatchChange}
             />
-          </Box>
-          <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-            {selectedNode && (
-              <>
-                <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                    {selectedNode.name}
-                  </Typography>
-                </Box>
-                <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>
-                  <SuggestionList
-                    node={selectedNode}
-                    mutations={mutations}
-                    onPreview={handlePreviewDivision}
-                    onPreviewTransfer={preview.handlePreviewTransfer}
-                    onPreviewUnion={preview.handlePreviewUnion}
-                    parentMapUrlById={parentRegionMapUrlById}
-                    parentMapNameById={parentRegionMapNameById}
-                    proposedSource={proposedSource}
-                    onHoverProposed={setHoveredProposedId}
-                  />
-                </Box>
-                <ActionPanel
-                  worldViewId={worldViewId}
-                  node={selectedNode}
-                  mutations={mutations}
-                  dialogs={dialogs}
-                  hasDuplicateSourceUrl={hasDuplicateSourceUrl}
-                  syncedUrls={syncedUrls}
-                  onMatchChange={handleMatchChange}
-                  cvPipeline={cvPipeline}
-                  onViewMap={preview.handleViewMap}
-                  parentMapUrlById={parentRegionMapUrlById}
-                  parentMapNameById={parentRegionMapNameById}
-                  finderFeedback={finderFeedback}
-                  onFinderResult={handleFinderResult}
+          ) : (
+            <>
+              <Box sx={{ flex: '0 0 40%', overflow: 'hidden', borderBottom: '1px solid', borderColor: 'divider' }}>
+                <WorkspaceTree
+                  root={subtreeRoot}
+                  selectedId={selectedRegionId}
+                  hoveredId={hoveredRegionId}
+                  onSelect={setSelectedRegionId}
+                  onHover={setHoveredRegionId}
+                  coverageData={coverageData}
+                  coverageLoading={coverageLoading}
+                  coverageError={coverageError}
+                  onDismissWarnings={(id) => mutations.dismissWarningsMutation.mutate(id)}
                 />
-              </>
-            )}
-          </Box>
+              </Box>
+              <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+                {selectedNode && (
+                  <>
+                    <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                        {selectedNode.name}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>
+                      <SuggestionList
+                        node={selectedNode}
+                        mutations={mutations}
+                        onPreview={handlePreviewDivision}
+                        onPreviewTransfer={preview.handlePreviewTransfer}
+                        onPreviewUnion={preview.handlePreviewUnion}
+                        parentMapUrlById={parentRegionMapUrlById}
+                        parentMapNameById={parentRegionMapNameById}
+                        proposedSource={proposedSource}
+                        onHoverProposed={setHoveredProposedId}
+                      />
+                    </Box>
+                    <ActionPanel
+                      worldViewId={worldViewId}
+                      node={selectedNode}
+                      mutations={mutations}
+                      dialogs={dialogs}
+                      hasDuplicateSourceUrl={hasDuplicateSourceUrl}
+                      syncedUrls={syncedUrls}
+                      onMatchChange={handleMatchChange}
+                      cvPipeline={cvPipeline}
+                      onViewMap={preview.handleViewMap}
+                      parentMapUrlById={parentRegionMapUrlById}
+                      parentMapNameById={parentRegionMapNameById}
+                      finderFeedback={finderFeedback}
+                      onFinderResult={handleFinderResult}
+                    />
+                  </>
+                )}
+              </Box>
+            </>
+          )}
         </Box>
 
         {/* Right column: map */}
@@ -571,6 +612,12 @@ function WorkspaceInner({
               proposedDivisionIds={proposedDivisionIds}
               proposedDivisionNames={proposedDivisionNames}
               hoveredProposedId={hoveredProposedId}
+              focusedGapDivisionId={focusedGapDivisionId}
+              onGapFocus={(divisionId) => {
+                setFocusedGapDivisionId(divisionId);
+                // Auto-open the panel when a gap is clicked on the map
+                setGapsPanelOpen(true);
+              }}
             />
           )}
         </Box>

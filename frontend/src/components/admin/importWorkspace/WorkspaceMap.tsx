@@ -30,7 +30,6 @@ import {
   Paper,
   Popover,
   Stack,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -68,6 +67,13 @@ interface WorkspaceMapProps {
   proposedDivisionNames?: ReadonlyMap<number, string>;
   /** The row-hovered proposed divisionId from SuggestionList — brightens that feature */
   hoveredProposedId?: number | null;
+  /**
+   * Gap division to focus — map flies to its bbox + brightens the fill.
+   * Set from CoverageGapsPanel "Focus" button or a gap-click.
+   */
+  focusedGapDivisionId?: number | null;
+  /** Called when a gap is clicked — parent sets focusedGapDivisionId + opens panel row */
+  onGapFocus?: (divisionId: number) => void;
 }
 
 // ─── Compute bbox from a FeatureCollection ───────────────────────────────────
@@ -141,6 +147,8 @@ export function WorkspaceMap({
   proposedDivisionIds = [],
   proposedDivisionNames,
   hoveredProposedId = null,
+  focusedGapDivisionId = null,
+  onGapFocus,
 }: WorkspaceMapProps) {
   const queryClient = useQueryClient();
   const mapRef = useRef<MapRef>(null);
@@ -152,6 +160,8 @@ export function WorkspaceMap({
     anchor: { top: number; left: number };
     divisionId: number;
     divisionName: string;
+    suggestedTargetId: number | null;
+    suggestedTargetName: string | null;
   } | null>(null);
   const [proposedPopover, setProposedPopover] = useState<{
     anchor: { top: number; left: number };
@@ -249,17 +259,22 @@ export function WorkspaceMap({
     return { type: 'FeatureCollection', features };
   }, [childrenData, colors, selectedId, hoveredId]);
 
-  // Gap fills (red)
+  // Gap fills (red) — `focused` property drives brightened highlight for the focused gap
   const gapFC = useMemo((): GeoJSON.FeatureCollection => {
     const features: GeoJSON.Feature[] = (gapData?.gapDivisions ?? [])
       .filter(g => g.geometry)
       .map(g => ({
         type: 'Feature',
-        properties: { divisionId: g.divisionId, divisionName: g.name },
+        properties: {
+          divisionId: g.divisionId,
+          divisionName: g.name,
+          focused: g.divisionId === focusedGapDivisionId,
+          suggestedTargetId: g.suggestedTarget?.regionId ?? null,
+        },
         geometry: g.geometry!,
       }));
     return { type: 'FeatureCollection', features };
-  }, [gapData]);
+  }, [gapData, focusedGapDivisionId]);
 
   // Reference outline FeatureCollection (from union geometry of referenceDivisionIds)
   const referenceFC = useMemo((): GeoJSON.FeatureCollection => {
@@ -346,6 +361,21 @@ export function WorkspaceMap({
     }
   }, [mapReady, boundsFromChildrenOnly, referenceFC, childrenData]);
 
+  // ── Fly to focused gap ──────────────────────────────────────────────────
+  // When focusedGapDivisionId changes, fitBounds to that gap's geometry.
+  useEffect(() => {
+    if (!mapReady || focusedGapDivisionId == null || !gapData) return;
+    const gap = gapData.gapDivisions.find(g => g.divisionId === focusedGapDivisionId);
+    if (!gap?.geometry) return;
+    const bbox = computeBbox([gap as { geometry: GeoJSON.Geometry }]);
+    if (bbox) {
+      mapRef.current?.fitBounds(
+        [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+        { padding: 80, duration: 600 },
+      );
+    }
+  }, [mapReady, focusedGapDivisionId, gapData]);
+
   // ── Interactions ─────────────────────────────────────────────────────────
 
   const handleMouseMove = useCallback((e: MapLayerMouseEvent) => {
@@ -371,13 +401,24 @@ export function WorkspaceMap({
     if (!feature) return;
     const divisionId = feature.properties?.divisionId as number | undefined;
     const divisionName = feature.properties?.divisionName as string ?? 'Unknown division';
+    const suggestedTargetId = feature.properties?.suggestedTargetId as number | null ?? null;
     if (divisionId == null) return;
+    // (a) Focus panel row
+    onGapFocus?.(divisionId);
+    // (b) Resolve suggested target name from siblingRegions in gapData
+    let suggestedTargetName: string | null = null;
+    if (suggestedTargetId != null && gapData) {
+      const siblingMatch = gapData.siblingRegions.find(r => r.regionId === suggestedTargetId);
+      suggestedTargetName = siblingMatch?.name ?? null;
+    }
     setGapPopover({
       anchor: { top: e.point.y + 60, left: e.point.x + 10 },
       divisionId,
       divisionName,
+      suggestedTargetId,
+      suggestedTargetName,
     });
-  }, []);
+  }, [onGapFocus, gapData]);
 
   const handleProposedClick = useCallback((e: MapLayerMouseEvent) => {
     const feature = e.features?.[0];
@@ -392,13 +433,20 @@ export function WorkspaceMap({
     });
   }, []);
 
-  // Assign division to selected region (gap assign path)
+  // Assign gap division to the geo-suggested target region (NOT selectedId).
+  // The popover carries suggestedTargetId; if absent, no Assign button is shown.
   const assignMutation = useMutation({
-    mutationFn: ({ divisionId }: { divisionId: number }) =>
-      addDivisionsToRegion(selectedId, [divisionId]),
+    mutationFn: ({ divisionId, targetRegionId }: { divisionId: number; targetRegionId: number }) =>
+      addDivisionsToRegion(targetRegionId, [divisionId]),
     onSuccess: () => {
       setGapPopover(null);
       queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] }).catch(() => {});
+      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'childrenGeometry', worldViewId, unit.regionId] }).catch(() => {});
+      // Invalidate gapAnalysis (prefix match) — refetches both panel + map
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'wvImport', 'gapAnalysis', worldViewId, unit.regionId],
+        exact: false,
+      }).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'verify', worldViewId] }).catch(() => {});
       onMatchChange?.();
@@ -539,14 +587,22 @@ export function WorkspaceMap({
           </Source>
         )}
 
-        {/* Gap fills (red) — beforeId keeps fills below the reference outline */}
+        {/* Gap fills (red) — beforeId keeps fills below the reference outline.
+            Focused gap brightens using the `focused` feature property (mirrors proposed-hover). */}
         {hasGaps && (
           <Source id="gaps" type="geojson" data={gapFC}>
             <Layer
               id="gap-fill"
               type="fill"
               beforeId={hasReference ? 'reference-outline' : undefined}
-              paint={{ 'fill-color': '#ef5350', 'fill-opacity': 0.4 }}
+              paint={{
+                'fill-color': '#ef5350',
+                'fill-opacity': [
+                  'case',
+                  ['get', 'focused'], 0.65,
+                  0.4,
+                ],
+              }}
             />
             <Layer
               id="gap-outline"
@@ -649,7 +705,7 @@ export function WorkspaceMap({
         </Stack>
       </Paper>
 
-      {/* Gap assign popover */}
+      {/* Gap assign popover — uses geo-suggested target (not selectedId) */}
       {gapPopover && (
         <Popover
           open
@@ -659,22 +715,37 @@ export function WorkspaceMap({
           PaperProps={{ sx: { p: 1.5 } }}
         >
           <Typography variant="body2" sx={{ mb: 1 }}>
-            Assign <strong>{gapPopover.divisionName}</strong> to <strong>{selectedName}</strong>?
+            Assign <strong>{gapPopover.divisionName}</strong>
+            {gapPopover.suggestedTargetId != null ? (
+              <> to <strong>{gapPopover.suggestedTargetName ?? `region ${gapPopover.suggestedTargetId}`}</strong>?</>
+            ) : (
+              <> (select target in panel)</>
+            )}
           </Typography>
           <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              variant="contained"
-              color="primary"
-              onClick={() => assignMutation.mutate({ divisionId: gapPopover.divisionId })}
-              disabled={assignMutation.isPending}
-            >
-              Assign
+            {gapPopover.suggestedTargetId != null && (
+              <Button
+                size="small"
+                variant="contained"
+                color="error"
+                onClick={() => assignMutation.mutate({
+                  divisionId: gapPopover.divisionId,
+                  targetRegionId: gapPopover.suggestedTargetId!,
+                })}
+                disabled={assignMutation.isPending}
+              >
+                Assign
+              </Button>
+            )}
+            <Button size="small" onClick={() => setGapPopover(null)}>
+              {gapPopover.suggestedTargetId != null ? 'Cancel' : 'Close'}
             </Button>
-            <Tooltip title="Select the target region in the tree first">
-              <Button size="small" onClick={() => setGapPopover(null)}>Cancel</Button>
-            </Tooltip>
           </Stack>
+          {gapPopover.suggestedTargetId == null && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+              Use the gaps panel to assign this division.
+            </Typography>
+          )}
         </Popover>
       )}
 

@@ -57,6 +57,10 @@ interface ChecksBarProps {
   onFocusBlocker?: (kind: FocusBlockerKind) => void;
   /** Unit's own children-coverage percentage (0–1) — shown next to gap count */
   coveragePct?: number;
+  /** Whether the coverage-gaps panel is open (controlled by parent) */
+  gapsPanelOpen?: boolean;
+  /** Toggle the coverage-gaps panel; called when the "N gaps" chip is clicked */
+  onToggleGapsPanel?: () => void;
 }
 
 function coveragePctColor(pct: number): 'success' | 'warning' | 'error' {
@@ -73,6 +77,8 @@ export function ChecksBar({
   verify,
   onFocusBlocker,
   coveragePct,
+  gapsPanelOpen = false,
+  onToggleGapsPanel,
 }: ChecksBarProps) {
   const lastRunAtRef = useRef<number>(0);
 
@@ -171,14 +177,16 @@ export function ChecksBar({
             </Tooltip>
           )}
           {verify.coverageGaps.length > 0 && (
-            <Chip
-              label={`${verify.coverageGaps.length} gaps`}
-              size="small"
-              color="error"
-              variant="outlined"
-              onClick={onFocusBlocker ? () => onFocusBlocker('gaps') : undefined}
-              clickable={!!onFocusBlocker}
-            />
+            <Tooltip title={gapsPanelOpen ? 'Hide gaps panel' : 'Show gaps panel'}>
+              <Chip
+                label={`${verify.coverageGaps.length} gaps`}
+                size="small"
+                color="error"
+                variant={gapsPanelOpen ? 'filled' : 'outlined'}
+                onClick={onToggleGapsPanel ?? (onFocusBlocker ? () => onFocusBlocker('gaps') : undefined)}
+                clickable
+              />
+            </Tooltip>
           )}
           {verify.overlaps.length > 0 && (
             <Chip

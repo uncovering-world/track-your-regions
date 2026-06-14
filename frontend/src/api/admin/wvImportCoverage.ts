@@ -267,9 +267,8 @@ export async function analyzeCoverageGaps(
   worldViewId: number,
   regionId: number,
 ): Promise<AnalyzeCoverageGapsResult> {
-  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/analyze-coverage-gaps`, {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/matches/${worldViewId}/coverage-gap-analysis/${regionId}`, {
     method: 'POST',
-    body: JSON.stringify({ regionId }),
   });
 }
 
