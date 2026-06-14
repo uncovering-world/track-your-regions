@@ -1,16 +1,19 @@
 /**
- * ActionPanel — Stage-grouped action buttons for the selected workspace node.
+ * ActionPanel — Stage-split action components for the selected workspace node.
  *
- * Three groups:
- *   Hierarchy: AI review, rename, reparent, add child, remove, restructure menu.
- *   Assignment: geoshape, points, geocode, DB search, AI match, auto-resolve, division search, grouping.
- *   Cleanup & checks: simplify variants, overlap check, clear members, reset match,
- *                     waive toggle, manual-fix, sync.
+ * Exports three presentational components, one per stage:
+ *   HierarchyTools  — AI review, rename, reparent, add child, remove, restructure menu.
+ *   AssignmentTools — Finders (geoshape, points, geocode, DB, AI), auto-resolve,
+ *                     division search, grouping, CV/Mapshape (prereq-gated),
+ *                     geocode progress line, finder feedback line.
+ *   VerificationTools — Simplify variants, overlap check, view-map comparison,
+ *                       clear members, reset match, waive, manual-fix, sync.
+ *
+ * Snackbars (undo, simplify-success, no-overlaps) live in their respective tool
+ * component; OverlapResolutionDialog lives in VerificationTools.
  *
  * No map-image-picker action (excluded: requires MapImagePickerDialog wiring that
  * is non-trivial to plumb here without extra context — see commit body).
- *
- * Undo snackbar: mirrors the legacy tree's Snackbar + Undo button.
  */
 
 import { useState } from 'react';
@@ -74,7 +77,9 @@ import {
 type Mutations = ReturnType<typeof useTreeMutations>;
 type Dialogs = ReturnType<typeof useImportTreeDialogs>;
 
-interface ActionPanelProps {
+// ─── Shared prop type (all three tool components receive identical props) ──────
+
+export interface StageToolsProps {
   worldViewId: number;
   node: MatchTreeNode | null;
   mutations: Mutations;
@@ -118,6 +123,13 @@ interface ActionPanelProps {
     suggestions: Array<{ divisionId: number }>,
     method: FinderMethod,
   ) => void;
+  /**
+   * Hierarchy confirm toggle — moved from the old header chip into HierarchyTools.
+   * Passed from CountryWorkspacePage so HierarchyTools can render the confirm button.
+   */
+  hierarchyConfirmed?: boolean;
+  onConfirmHierarchy?: (confirmed: boolean) => void;
+  confirmHierarchyPending?: boolean;
 }
 
 // ─── HelpTip ──────────────────────────────────────────────────────────────────
@@ -168,7 +180,7 @@ function HelpTip({ helpKey, disabled, children }: HelpTipProps) {
   );
 }
 
-// ─── CV / Mapshape buttons (extracted to keep ActionPanel complexity in budget) ─
+// ─── CV / Mapshape buttons (extracted to keep component complexity in budget) ─
 
 interface CvButtonsProps {
   cvPipeline: UseCvMatchPipelineResult;
@@ -209,22 +221,7 @@ function CvButtons({ cvPipeline, regionId, hasCvPrereqs, hasMapshapePrereqs, cvB
   );
 }
 
-// ─── Section header ───────────────────────────────────────────────────────────
-
-function SectionLabel({ label, caption }: { label: string; caption: string }) {
-  return (
-    <Box sx={{ px: 0.5 }}>
-      <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem', lineHeight: 1.4 }}>
-        {label}
-      </Typography>
-      <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.6rem', display: 'block', lineHeight: 1.3, mt: -0.25 }}>
-        {caption}
-      </Typography>
-    </Box>
-  );
-}
-
-// ─── Manual-fix helpers (extracted to keep ActionPanel complexity in budget) ──
+// ─── Manual-fix helpers ───────────────────────────────────────────────────────
 
 /** Build the label for the manual-fix toggle button (no nested ternary). */
 function buildManualFixLabel(node: MatchTreeNode): string {
@@ -248,52 +245,46 @@ function handleManualFixToggle(
   }
 }
 
-// ─── ActionPanel ─────────────────────────────────────────────────────────────
+// ─── Shared btn factory (used inside each stage component) ────────────────────
 
-export function ActionPanel({
-  worldViewId,
+function makeBtn(
+  busy: boolean,
+) {
+  return function btn(
+    label: string,
+    helpKey: string,
+    icon: React.ReactNode,
+    onClick: () => void,
+    opts?: { disabled?: boolean },
+  ) {
+    return (
+      <HelpTip key={label} helpKey={helpKey} disabled={opts?.disabled}>
+        <Button
+          size="small"
+          startIcon={icon}
+          onClick={onClick}
+          disabled={busy || (opts?.disabled ?? false)}
+          sx={{ justifyContent: 'flex-start', textTransform: 'none', fontSize: '0.75rem' }}
+        >
+          {label}
+        </Button>
+      </HelpTip>
+    );
+  };
+}
+
+// ─── HierarchyTools ──────────────────────────────────────────────────────────
+// Stage: Hierarchy — AI review, rename, reparent, add child, remove, restructure.
+
+export function HierarchyTools({
   node,
   mutations,
   dialogs,
-  hasDuplicateSourceUrl = false,
-  syncedUrls,
-  onMatchChange,
-  cvPipeline,
-  onViewMap,
-  parentMapUrlById,
-  parentMapNameById,
-  finderFeedback,
-  onFinderResult,
-}: ActionPanelProps) {
-  const queryClient = useQueryClient();
+  hierarchyConfirmed,
+  onConfirmHierarchy,
+  confirmHierarchyPending,
+}: StageToolsProps) {
   const [restructureMenuAnchor, setRestructureMenuAnchor] = useState<HTMLElement | null>(null);
-  // I3: overlap resolution dialog state
-  const [overlapDialog, setOverlapDialog] = useState<{
-    regionId: number;
-    regionName: string;
-    regionMapUrl: string | null;
-    data: DivisionOverlapResult;
-  } | null>(null);
-  // M8: simplify success snackbar
-  const [simplifySnackbar, setSimplifySnackbar] = useState<string | null>(null);
-  // I3: no-overlaps snackbar
-  const [noOverlapsSnackbar, setNoOverlapsSnackbar] = useState(false);
-
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] }).catch(() => {});
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
-    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'verify', worldViewId] }).catch(() => {});
-  };
-
-  const waiveMutation = useMutation({
-    mutationFn: ({ regionId, waived }: { regionId: number; waived: boolean }) =>
-      setAssignmentWaived(worldViewId, regionId, waived),
-    onSuccess: () => {
-      invalidate();
-      // I6: signal mutation to parent so ChecksBar goes stale
-      onMatchChange?.();
-    },
-  });
 
   if (!node) {
     return (
@@ -306,62 +297,29 @@ export function ActionPanel({
   }
 
   const regionId = node.id;
-  const hasWikidata = !!node.wikidataId;
-  const hasChildren = node.children.length > 0;
   const hasSingleChild = node.children.length === 1;
-  const isLeaf = node.isLeaf || !hasChildren;
   const busy = mutations.isMutating;
-
-  // View map comparison: requires wikidata ID, own map, or an inherited parent map
-  const parentMapUrl = parentMapUrlById?.get(regionId);
-  const effectiveMapUrl = node.regionMapUrl ?? parentMapUrl;
-  const parentLabel = parentMapUrl
-    ? `${parentMapNameById?.get(regionId) ?? 'Parent'} map`
-    : undefined;
-  const effectiveMapLabel: string | undefined = node.regionMapUrl ? undefined : parentLabel;
-  const hasViewMapPrereqs = hasWikidata || !!effectiveMapUrl;
-  const assignedDivisionIds = node.assignedDivisions.map(d => d.divisionId);
-
-  // CV pipeline prereqs
-  const hasCvPrereqs = !!node.regionMapUrl && hasChildren;
-  const hasMapshapePrereqs = !!node.sourceUrl && hasChildren;
-  const cvBusy = cvPipeline != null && cvPipeline.cvMatchingRegionId === regionId;
-  const mapshapeBusy = cvPipeline != null && cvPipeline.mapshapeMatchingRegionId === regionId;
-
-  // I4: geocodeProgress for this node only
-  const geocodeProgress = mutations.geocodeProgress?.regionId === regionId
-    ? mutations.geocodeProgress
-    : null;
-
-  // Sync: "already in sync" detection (legacy TreeNodeActions.tsx:308 pattern)
-  const isSynced = !!(node.sourceUrl && syncedUrls?.has(node.sourceUrl));
-
-  const btn = (
-    label: string,
-    helpKey: string,
-    icon: React.ReactNode,
-    onClick: () => void,
-    opts?: { disabled?: boolean },
-  ) => (
-    <HelpTip key={label} helpKey={helpKey} disabled={opts?.disabled}>
-      <Button
-        size="small"
-        startIcon={icon}
-        onClick={onClick}
-        disabled={busy || (opts?.disabled ?? false)}
-        sx={{ justifyContent: 'flex-start', textTransform: 'none', fontSize: '0.75rem' }}
-      >
-        {label}
-      </Button>
-    </HelpTip>
-  );
-
-  const waiveHelpKey = node.assignmentWaived ? 'unwaiveAssignment' : 'waiveAssignment';
+  const btn = makeBtn(busy);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, overflow: 'auto', p: 0.5 }}>
-      {/* ── Hierarchy ───────────────────────────────────────────────────── */}
-      <SectionLabel label="Hierarchy" caption="Shape the subtree before assigning" />
+      {/* Hierarchy confirm toggle (moved from header chip) */}
+      {onConfirmHierarchy !== undefined && (
+        <Tooltip title={hierarchyConfirmed ? 'Hierarchy confirmed — click to toggle' : 'Hierarchy not confirmed — click to toggle'}>
+          <span>
+            <Button
+              size="small"
+              variant={hierarchyConfirmed ? 'contained' : 'outlined'}
+              color={hierarchyConfirmed ? 'success' : 'warning'}
+              onClick={() => onConfirmHierarchy(!hierarchyConfirmed)}
+              disabled={confirmHierarchyPending}
+              sx={{ textTransform: 'none', fontSize: '0.75rem', mb: 0.5 }}
+            >
+              {hierarchyConfirmed ? 'Hierarchy ✓ confirmed' : 'Hierarchy ✗ — click to confirm'}
+            </Button>
+          </span>
+        </Tooltip>
+      )}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         {btn('AI review children', 'aiReviewChildren', <AIIcon sx={{ fontSize: 14 }} />,
           () => { dialogs.handleAISuggestChildren(regionId).catch(() => {}); })}
@@ -441,10 +399,68 @@ export function ActionPanel({
         </Menu>
       </Box>
 
-      <Divider sx={{ my: 0.5 }} />
+      {/* Undo snackbar — rendered in Hierarchy because rename/reparent/add/remove all use it */}
+      <Snackbar
+        open={mutations.undoSnackbar?.open ?? false}
+        message={mutations.undoSnackbar?.message}
+        action={
+          <Button
+            color="secondary"
+            size="small"
+            onClick={() => mutations.undoMutation.mutate()}
+            disabled={mutations.undoMutation.isPending}
+          >
+            Undo
+          </Button>
+        }
+        onClose={() => mutations.setUndoSnackbar(null)}
+        autoHideDuration={10000}
+      />
+    </Box>
+  );
+}
 
-      {/* ── Assignment ──────────────────────────────────────────────────── */}
-      <SectionLabel label="Assignment" caption="Find and assign GADM divisions for the selected region" />
+// ─── AssignmentTools ─────────────────────────────────────────────────────────
+// Stage: Assignment — all finders + progress + feedback + CV/Mapshape.
+
+export function AssignmentTools({
+  node,
+  mutations,
+  dialogs,
+  cvPipeline,
+  finderFeedback,
+  onFinderResult,
+}: StageToolsProps) {
+  if (!node) {
+    return (
+      <Box sx={{ p: 1 }}>
+        <Typography variant="body2" color="text.secondary">
+          Select a node to see actions.
+        </Typography>
+      </Box>
+    );
+  }
+
+  const regionId = node.id;
+  const hasWikidata = !!node.wikidataId;
+  const hasChildren = node.children.length > 0;
+  const busy = mutations.isMutating;
+
+  // CV pipeline prereqs
+  const hasCvPrereqs = !!node.regionMapUrl && hasChildren;
+  const hasMapshapePrereqs = !!node.sourceUrl && hasChildren;
+  const cvBusy = cvPipeline != null && cvPipeline.cvMatchingRegionId === regionId;
+  const mapshapeBusy = cvPipeline != null && cvPipeline.mapshapeMatchingRegionId === regionId;
+
+  // I4: geocodeProgress for this node only
+  const geocodeProgress = mutations.geocodeProgress?.regionId === regionId
+    ? mutations.geocodeProgress
+    : null;
+
+  const btn = makeBtn(busy);
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, overflow: 'auto', p: 0.5 }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         {btn('Geoshape match', 'geoshapeMatch', <GeoIcon sx={{ fontSize: 14 }} />,
           () => mutations.geoshapeMatchMutation.mutate({ regionId }, {
@@ -479,7 +495,6 @@ export function ActionPanel({
         {btn('AI match', 'aiMatch', <AIMatchIcon sx={{ fontSize: 14 }} />,
           () => mutations.aiMatchOneMutation.mutate(regionId, {
             onSuccess: (data) => {
-              // AIMatchOneResult has a single optional suggestion, not a found count
               const suggestions = data.suggestion ? [data.suggestion] : [];
               const found = suggestions.length;
               const fb = formatFinderFeedback('AI match', found, 0);
@@ -489,7 +504,6 @@ export function ActionPanel({
         {btn('Auto-resolve subtree', 'autoResolveSubtree', <AutoIcon sx={{ fontSize: 14 }} />,
           () => mutations.autoResolveMutation.mutate(regionId, {
             onSuccess: (data) => {
-              // autoResolve operates on the subtree; report resolved count as "found"
               const fb = formatFinderFeedback('Auto-resolve', data.resolved, 0);
               onFinderResult?.(fb, [], 'Auto-resolve');
             },
@@ -551,11 +565,88 @@ export function ActionPanel({
           </Typography>
         )}
       </Box>
+    </Box>
+  );
+}
 
-      <Divider sx={{ my: 0.5 }} />
+// ─── VerificationTools ────────────────────────────────────────────────────────
+// Stage: Verification — simplify variants, overlap, view-map, clear, reset,
+//                       waive, manual-fix, sync.
 
-      {/* ── Cleanup & checks ────────────────────────────────────────────── */}
-      <SectionLabel label="Cleanup & checks" caption="Tidy granularity and validate before sign-off" />
+export function VerificationTools({
+  worldViewId,
+  node,
+  mutations,
+  dialogs,
+  hasDuplicateSourceUrl = false,
+  syncedUrls,
+  onMatchChange,
+  onViewMap,
+  parentMapUrlById,
+  parentMapNameById,
+}: StageToolsProps) {
+  const queryClient = useQueryClient();
+  // I3: overlap resolution dialog state
+  const [overlapDialog, setOverlapDialog] = useState<{
+    regionId: number;
+    regionName: string;
+    regionMapUrl: string | null;
+    data: DivisionOverlapResult;
+  } | null>(null);
+  // M8: simplify success snackbar
+  const [simplifySnackbar, setSimplifySnackbar] = useState<string | null>(null);
+  // I3: no-overlaps snackbar
+  const [noOverlapsSnackbar, setNoOverlapsSnackbar] = useState(false);
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] }).catch(() => {});
+    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
+    queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'verify', worldViewId] }).catch(() => {});
+  };
+
+  const waiveMutation = useMutation({
+    mutationFn: ({ regionId, waived }: { regionId: number; waived: boolean }) =>
+      setAssignmentWaived(worldViewId, regionId, waived),
+    onSuccess: () => {
+      invalidate();
+      onMatchChange?.();
+    },
+  });
+
+  if (!node) {
+    return (
+      <Box sx={{ p: 1 }}>
+        <Typography variant="body2" color="text.secondary">
+          Select a node to see actions.
+        </Typography>
+      </Box>
+    );
+  }
+
+  const regionId = node.id;
+  const hasChildren = node.children.length > 0;
+  const isLeaf = node.isLeaf || !hasChildren;
+  const busy = mutations.isMutating;
+
+  // View map comparison: requires wikidata ID, own map, or an inherited parent map
+  const parentMapUrl = parentMapUrlById?.get(regionId);
+  const effectiveMapUrl = node.regionMapUrl ?? parentMapUrl;
+  const parentLabel = parentMapUrl
+    ? `${parentMapNameById?.get(regionId) ?? 'Parent'} map`
+    : undefined;
+  const effectiveMapLabel: string | undefined = node.regionMapUrl ? undefined : parentLabel;
+  const hasViewMapPrereqs = !!node.wikidataId || !!effectiveMapUrl;
+  const assignedDivisionIds = node.assignedDivisions.map(d => d.divisionId);
+
+  // Sync: "already in sync" detection
+  const isSynced = !!(node.sourceUrl && syncedUrls?.has(node.sourceUrl));
+
+  const waiveHelpKey = node.assignmentWaived ? 'unwaiveAssignment' : 'waiveAssignment';
+
+  const btn = makeBtn(busy);
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, overflow: 'auto', p: 0.5 }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         {/* M8: simplify with success snackbar */}
         {btn('Simplify', 'simplify', <SimplifyIcon sx={{ fontSize: 14 }} />,
@@ -612,6 +703,7 @@ export function ActionPanel({
           }),
           { disabled: !hasViewMapPrereqs },
         )}
+        <Divider sx={{ my: 0.5 }} />
         {btn('Clear members', 'clearMembers', <ClearIcon sx={{ fontSize: 14 }} />,
           () => mutations.clearMembersMutation.mutate(regionId))}
         {btn('Reset match', 'resetMatch', <ResetIcon sx={{ fontSize: 14 }} />,
@@ -623,8 +715,7 @@ export function ActionPanel({
           () => waiveMutation.mutate({ regionId, waived: !node.assignmentWaived }),
           { disabled: !isLeaf },
         )}
-        {/* Manual-fix toggle (legacy ManualFixButton:321-345) — when already set,
-            click clears it; when not set, opens the note dialog */}
+        {/* Manual-fix toggle */}
         {btn(
           buildManualFixLabel(node),
           'manualFixFlag',
@@ -650,24 +741,6 @@ export function ActionPanel({
           </span>
         </Tooltip>
       </Box>
-
-      {/* ── Undo snackbar ─────────────────────────────────────────────── */}
-      <Snackbar
-        open={mutations.undoSnackbar?.open ?? false}
-        message={mutations.undoSnackbar?.message}
-        action={
-          <Button
-            color="secondary"
-            size="small"
-            onClick={() => mutations.undoMutation.mutate()}
-            disabled={mutations.undoMutation.isPending}
-          >
-            Undo
-          </Button>
-        }
-        onClose={() => mutations.setUndoSnackbar(null)}
-        autoHideDuration={10000}
-      />
 
       {/* M8: simplify success snackbar */}
       <Snackbar

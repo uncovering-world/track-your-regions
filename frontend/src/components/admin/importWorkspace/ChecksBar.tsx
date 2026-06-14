@@ -57,10 +57,11 @@ interface ChecksBarProps {
   onFocusBlocker?: (kind: FocusBlockerKind) => void;
   /** Unit's own children-coverage percentage (0–1) — shown next to gap count */
   coveragePct?: number;
-  /** Whether the coverage-gaps panel is open (controlled by parent) */
-  gapsPanelOpen?: boolean;
-  /** Toggle the coverage-gaps panel; called when the "N gaps" chip is clicked */
-  onToggleGapsPanel?: () => void;
+  /**
+   * Called when any gaps/overlaps/unassigned count chip is clicked to switch to
+   * the Verify stage tab (replaces the old gaps-panel toggle).
+   */
+  onOpenVerify?: () => void;
 }
 
 function coveragePctColor(pct: number): 'success' | 'warning' | 'error' {
@@ -77,8 +78,7 @@ export function ChecksBar({
   verify,
   onFocusBlocker,
   coveragePct,
-  gapsPanelOpen = false,
-  onToggleGapsPanel,
+  onOpenVerify,
 }: ChecksBarProps) {
   const lastRunAtRef = useRef<number>(0);
 
@@ -161,7 +161,7 @@ export function ChecksBar({
         />
       )}
 
-      {/* Count summaries — clicking focuses the map on the first affected region (I8) */}
+      {/* Count summaries — clicking switches to Verify tab (I8) */}
       {verify !== null && (
         <Stack direction="row" spacing={0.5}>
           {verify.unassignedLeaves.length > 0 && (
@@ -171,19 +171,25 @@ export function ChecksBar({
                 size="small"
                 color="warning"
                 variant="outlined"
-                onClick={onFocusBlocker ? () => onFocusBlocker('unassigned') : undefined}
-                clickable={!!onFocusBlocker}
+                onClick={() => {
+                  onOpenVerify?.();
+                  onFocusBlocker?.('unassigned');
+                }}
+                clickable={!!(onOpenVerify ?? onFocusBlocker)}
               />
             </Tooltip>
           )}
           {verify.coverageGaps.length > 0 && (
-            <Tooltip title={gapsPanelOpen ? 'Hide gaps panel' : 'Show gaps panel'}>
+            <Tooltip title="Show in Verify tab">
               <Chip
                 label={`${verify.coverageGaps.length} gaps`}
                 size="small"
                 color="error"
-                variant={gapsPanelOpen ? 'filled' : 'outlined'}
-                onClick={onToggleGapsPanel ?? (onFocusBlocker ? () => onFocusBlocker('gaps') : undefined)}
+                variant="outlined"
+                onClick={() => {
+                  onOpenVerify?.();
+                  onFocusBlocker?.('gaps');
+                }}
                 clickable
               />
             </Tooltip>
@@ -194,8 +200,11 @@ export function ChecksBar({
               size="small"
               color="error"
               variant="outlined"
-              onClick={onFocusBlocker ? () => onFocusBlocker('overlaps') : undefined}
-              clickable={!!onFocusBlocker}
+              onClick={() => {
+                onOpenVerify?.();
+                onFocusBlocker?.('overlaps');
+              }}
+              clickable={!!(onOpenVerify ?? onFocusBlocker)}
             />
           )}
         </Stack>

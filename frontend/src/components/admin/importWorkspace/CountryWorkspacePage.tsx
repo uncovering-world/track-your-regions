@@ -69,10 +69,11 @@ import { useCvMatchPipeline } from '../useCvMatchPipeline';
 import { CvMatchDialog } from '../CvMatchDialog';
 import { WorkspaceTree } from './WorkspaceTree';
 import { SuggestionList } from './SuggestionList';
-import { ActionPanel } from './ActionPanel';
+import { HierarchyTools, AssignmentTools, VerificationTools } from './ActionPanel';
 import { WorkspaceMap } from './WorkspaceMap';
 import { ChecksBar } from './ChecksBar';
 import { CoverageGapsPanel } from './CoverageGapsPanel';
+import { StageSwitcher, type StageTab } from './StageSwitcher';
 import type { FinderMethod, FinderFeedback } from './finderFeedback';
 
 // ─── STATUS_DOT (local copy — avoiding circular import with CountryRow) ───────
@@ -86,20 +87,13 @@ const STATUS_DOT: Record<string, { glyph: string; color: string; label: string }
 
 // ─── WorkspaceHeader ─────────────────────────────────────────────────────────
 
-type ChipColor = 'success' | 'default' | 'warning' | 'info' | 'error' | 'primary' | 'secondary';
-
-function stageColor(s: string): ChipColor {
-  if (s === 'done') return 'success';
-  if (s === 'hierarchy' || s === 'assignment') return 'warning';
-  return 'info';
-}
-
 interface WorkspaceHeaderProps {
   worldViewId: number;
   subtreeRoot: MatchTreeNode;
   unit: DashboardUnit | undefined;
   verify: VerifyResult | null;
-  stage: string | null;
+  activeStageTab: StageTab;
+  onStageTabChange: (tab: StageTab) => void;
   nextUnit: DashboardUnit | null;
   onSignOff: () => void;
   onNavigate: (path: string) => void;
@@ -110,38 +104,15 @@ function WorkspaceHeader({
   subtreeRoot,
   unit,
   verify,
-  stage,
+  activeStageTab,
+  onStageTabChange,
   nextUnit,
   onSignOff,
   onNavigate,
 }: WorkspaceHeaderProps) {
-  const queryClient = useQueryClient();
   const unitStatus = unit ? deriveUnitStatus(unit) : 'not_started';
   const dot = STATUS_DOT[unitStatus] ?? STATUS_DOT.not_started;
   const signOffEnabled = unit?.hierarchyConfirmed && verify !== null && verify.blockers.length === 0;
-
-  const hierarchyMutation = useMutation({
-    mutationFn: (confirmed: boolean) =>
-      confirmHierarchy(worldViewId, unit!.regionId, confirmed),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
-    },
-  });
-
-  function buildHierarchyTooltip(): string {
-    if (!unit) return '';
-    if (unit.hierarchyConfirmed) return 'Hierarchy confirmed — click to toggle';
-    return 'Hierarchy not confirmed — click to toggle';
-  }
-  const hierarchyTooltip = buildHierarchyTooltip();
-
-  const plainChips: Array<{ label: string; color: ChipColor }> = unit ? [
-    {
-      label: `Leaves ${unit.leafResolved}/${unit.leafTotal}`,
-      color: unit.leafTotal > 0 && unit.leafResolved === unit.leafTotal ? 'success' : 'default',
-    },
-    ...(stage ? [{ label: `Stage: ${stage}`, color: stageColor(stage) }] : []),
-  ] : [];
 
   return (
     <Box sx={{
@@ -157,22 +128,17 @@ function WorkspaceHeader({
         <Typography sx={{ color: dot.color, fontWeight: 700 }}>{dot.glyph}</Typography>
       </Tooltip>
       <Typography variant="h6" sx={{ fontWeight: 600 }}>{subtreeRoot.name}</Typography>
-      {/* Hierarchy chip — clickable toggle with tooltip */}
+      {/* Stage switcher — replaces the old stage chips */}
       {unit && (
-        <Tooltip title={hierarchyTooltip}>
-          <Chip
-            label={`Hierarchy ${unit.hierarchyConfirmed ? '✓' : '✗'}`}
-            size="small"
-            color={unit.hierarchyConfirmed ? 'success' : 'default'}
-            clickable
-            onClick={() => hierarchyMutation.mutate(!unit.hierarchyConfirmed)}
-            disabled={hierarchyMutation.isPending}
-          />
-        </Tooltip>
+        <StageSwitcher
+          value={activeStageTab}
+          onChange={onStageTabChange}
+          hierarchyConfirmed={unit.hierarchyConfirmed}
+          leafResolved={unit.leafResolved}
+          leafTotal={unit.leafTotal}
+          verify={verify}
+        />
       )}
-      {plainChips.map(c => (
-        <Chip key={c.label} label={c.label} size="small" color={c.color} />
-      ))}
       {unit && !unit.hasReference && (
         <Chip label="no reference" size="small" color="error" variant="outlined" />
       )}
@@ -247,8 +213,7 @@ function WorkspaceInner({
   const [hoveredProposedId, setHoveredProposedId] = useState<number | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
 
-  // ── Gap panel state ───────────────────────────────────────────────────────
-  const [gapsPanelOpen, setGapsPanelOpen] = useState(false);
+  // ── Gap focus state (no longer tied to a panel toggle; Verify stage owns the panel) ──
   const [focusedGapDivisionId, setFocusedGapDivisionId] = useState<number | null>(null);
 
   // ── Finder feedback (snackbar + inline line below assignment buttons) ──────
@@ -258,20 +223,47 @@ function WorkspaceInner({
   // ── Proposed-source tracking: divisionId → method, reset on node change ───
   const [proposedSource, setProposedSource] = useState<Map<number, FinderMethod>>(() => new Map());
 
-  // Reset feedback, proposedSource, hoveredProposedId, and gap focus when the selected node changes.
+  // ── Stage tab state ───────────────────────────────────────────────────────
+  // Default: derived from the unit's current stage. Clicking a tab overrides until
+  // the selected node changes (userClickedRef tracks whether the user clicked a tab
+  // on the CURRENT node to avoid resetting a fresh click on a same-node re-render).
+  const computeDefaultTab = useCallback((): StageTab => {
+    if (!unit) return 'hierarchy';
+    const s = deriveStage(subtreeRoot, verify);
+    return s === 'done' ? 'verification' : s;
+  }, [unit, subtreeRoot, verify]);
+
+  const [activeStageTab, setActiveStageTab] = useState<StageTab>(() => computeDefaultTab());
+  // Ref: true when the current tab was set by user click (not auto-derived).
+  const userOverrodeTabRef = useRef(false);
+
+  // Reset stage tab when selected node changes. If the user clicks a tab then
+  // immediately clicks a different node, the override clears and we re-derive.
+  // The ref is cleared on node change so the NEXT click can override again.
   const prevSelectedRef = useRef<number>(selectedRegionId);
   useEffect(() => {
     if (prevSelectedRef.current !== selectedRegionId) {
       prevSelectedRef.current = selectedRegionId;
+      userOverrodeTabRef.current = false;
+      // Re-derive the stage for the new selection context
+      setActiveStageTab(computeDefaultTab());
+      // Also reset feedback, proposedSource, hoveredProposedId, and gap focus
       setFinderFeedback(null);
       setFinderFeedbackOpen(false);
       setProposedSource(new Map());
       setHoveredProposedId(null);
       setFocusedGapDivisionId(null);
     }
-  }, [selectedRegionId]);
+  }, [selectedRegionId, computeDefaultTab]);
 
-  // Reset gap panel + focus when the unit (regionId) changes.
+  // Handle user stage tab click — sets override flag so the auto-derive effect
+  // won't clobber a click on the same node.
+  const handleStageTabChange = useCallback((tab: StageTab) => {
+    userOverrodeTabRef.current = true;
+    setActiveStageTab(tab);
+  }, []);
+
+  // Also reset on unit (regionId) change.
   // The component is remounted via key={`${worldViewId}-${regionId}`} at the
   // CountryWorkspacePage level, so this effect fires on navigation too — but
   // adding it here makes the intent explicit.
@@ -279,10 +271,19 @@ function WorkspaceInner({
   useEffect(() => {
     if (prevRegionIdRef.current !== regionId) {
       prevRegionIdRef.current = regionId;
-      setGapsPanelOpen(false);
+      userOverrodeTabRef.current = false;
       setFocusedGapDivisionId(null);
     }
   }, [regionId]);
+
+  // ── Hierarchy mutation (moved from WorkspaceHeader — now shown in HierarchyTools) ──
+  const hierarchyMutation = useMutation({
+    mutationFn: (confirmed: boolean) =>
+      confirmHierarchy(worldViewId, unit!.regionId, confirmed),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
+    },
+  });
 
   // ── Preview suite (all modes: single, union, transfer, view-map) ──────────
   const onPreviewDone = useCallback(() => {
@@ -422,11 +423,6 @@ function WorkspaceInner({
     if (!selectedNode) setSelectedRegionId(regionId);
   }, [selectedNode, regionId]);
 
-  const stage = useMemo(
-    () => unit ? deriveStage(subtreeRoot, verify) : null,
-    [subtreeRoot, unit, verify],
-  );
-
   const hasDuplicateSourceUrl = useMemo(() => {
     if (!selectedNode?.sourceUrl || !tree) return false;
     let count = 0;
@@ -483,6 +479,23 @@ function WorkspaceInner({
   // Unit's own coverage % for ChecksBar (the unit root is a container node)
   const unitCoveragePct: number | undefined = coverageData?.coverage[String(regionId)];
 
+  // Shared props passed to all three stage tool components
+  const stageToolsProps = {
+    worldViewId,
+    node: selectedNode,
+    mutations,
+    dialogs,
+    hasDuplicateSourceUrl,
+    syncedUrls,
+    onMatchChange: handleMatchChange,
+    cvPipeline,
+    onViewMap: preview.handleViewMap,
+    parentMapUrlById: parentRegionMapUrlById,
+    parentMapNameById: parentRegionMapNameById,
+    finderFeedback,
+    onFinderResult: handleFinderResult,
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <WorkspaceHeader
@@ -490,7 +503,8 @@ function WorkspaceInner({
         subtreeRoot={subtreeRoot}
         unit={unit}
         verify={verify}
-        stage={stage}
+        activeStageTab={activeStageTab}
+        onStageTabChange={handleStageTabChange}
         nextUnit={nextUnit}
         onSignOff={() => setVerifyOpen(true)}
         onNavigate={navigate}
@@ -503,8 +517,7 @@ function WorkspaceInner({
         verify={verify}
         onVerifyChange={setVerify}
         coveragePct={unitCoveragePct}
-        gapsPanelOpen={gapsPanelOpen}
-        onToggleGapsPanel={() => setGapsPanelOpen(prev => !prev)}
+        onOpenVerify={() => handleStageTabChange('verification')}
         onFocusBlocker={(kind) => {
           // I8: focus the first affected region for unassigned; select unit root for gaps/overlaps
           if (kind === 'unassigned' && verify?.unassignedLeaves[0]) {
@@ -517,51 +530,48 @@ function WorkspaceInner({
       />
 
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left column — gaps panel OR normal tree+action stack */}
+        {/* Left column — tree (top) + stage-driven actions (bottom) */}
         <Box sx={{
           width: '40%', display: 'flex', flexDirection: 'column',
           borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden',
         }}>
-          {gapsPanelOpen && verify !== null && verify.coverageGaps.length > 0 ? (
-            <CoverageGapsPanel
-              worldViewId={worldViewId}
-              unitId={regionId}
-              subtreeRoot={subtreeRoot}
-              verify={verify}
-              focusedGapDivisionId={focusedGapDivisionId}
-              onFocusGap={(divisionId) => {
-                setFocusedGapDivisionId(prev => prev === divisionId ? null : divisionId);
-              }}
-              onCollapse={() => {
-                setGapsPanelOpen(false);
-                setFocusedGapDivisionId(null);
-              }}
-              onMatchChange={handleMatchChange}
+          <Box sx={{ flex: '0 0 40%', overflow: 'hidden', borderBottom: '1px solid', borderColor: 'divider' }}>
+            <WorkspaceTree
+              root={subtreeRoot}
+              selectedId={selectedRegionId}
+              hoveredId={hoveredRegionId}
+              onSelect={setSelectedRegionId}
+              onHover={setHoveredRegionId}
+              coverageData={coverageData}
+              coverageLoading={coverageLoading}
+              coverageError={coverageError}
+              onDismissWarnings={(id) => mutations.dismissWarningsMutation.mutate(id)}
             />
-          ) : (
-            <>
-              <Box sx={{ flex: '0 0 40%', overflow: 'hidden', borderBottom: '1px solid', borderColor: 'divider' }}>
-                <WorkspaceTree
-                  root={subtreeRoot}
-                  selectedId={selectedRegionId}
-                  hoveredId={hoveredRegionId}
-                  onSelect={setSelectedRegionId}
-                  onHover={setHoveredRegionId}
-                  coverageData={coverageData}
-                  coverageLoading={coverageLoading}
-                  coverageError={coverageError}
-                  onDismissWarnings={(id) => mutations.dismissWarningsMutation.mutate(id)}
-                />
-              </Box>
-              <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-                {selectedNode && (
+          </Box>
+          <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {selectedNode && (
+              <>
+                {/* Selected-node header line — always visible above stage area */}
+                <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                    {selectedNode.name}
+                  </Typography>
+                </Box>
+
+                {/* Stage-driven action area */}
+                {activeStageTab === 'hierarchy' && (
+                  <HierarchyTools
+                    {...stageToolsProps}
+                    hierarchyConfirmed={unit?.hierarchyConfirmed}
+                    onConfirmHierarchy={(confirmed) => hierarchyMutation.mutate(confirmed)}
+                    confirmHierarchyPending={hierarchyMutation.isPending}
+                  />
+                )}
+
+                {activeStageTab === 'assignment' && (
                   <>
-                    <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                        {selectedNode.name}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>
+                    <AssignmentTools {...stageToolsProps} />
+                    <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pb: 1 }}>
                       <SuggestionList
                         node={selectedNode}
                         mutations={mutations}
@@ -574,26 +584,33 @@ function WorkspaceInner({
                         onHoverProposed={setHoveredProposedId}
                       />
                     </Box>
-                    <ActionPanel
-                      worldViewId={worldViewId}
-                      node={selectedNode}
-                      mutations={mutations}
-                      dialogs={dialogs}
-                      hasDuplicateSourceUrl={hasDuplicateSourceUrl}
-                      syncedUrls={syncedUrls}
-                      onMatchChange={handleMatchChange}
-                      cvPipeline={cvPipeline}
-                      onViewMap={preview.handleViewMap}
-                      parentMapUrlById={parentRegionMapUrlById}
-                      parentMapNameById={parentRegionMapNameById}
-                      finderFeedback={finderFeedback}
-                      onFinderResult={handleFinderResult}
-                    />
                   </>
                 )}
-              </Box>
-            </>
-          )}
+
+                {activeStageTab === 'verification' && (
+                  <>
+                    {verify !== null && verify.coverageGaps.length > 0 && (
+                      <CoverageGapsPanel
+                        worldViewId={worldViewId}
+                        unitId={regionId}
+                        subtreeRoot={subtreeRoot}
+                        verify={verify}
+                        focusedGapDivisionId={focusedGapDivisionId}
+                        onFocusGap={(divisionId) => {
+                          setFocusedGapDivisionId(prev => prev === divisionId ? null : divisionId);
+                        }}
+                        onCollapse={() => {
+                          setFocusedGapDivisionId(null);
+                        }}
+                        onMatchChange={handleMatchChange}
+                      />
+                    )}
+                    <VerificationTools {...stageToolsProps} />
+                  </>
+                )}
+              </>
+            )}
+          </Box>
         </Box>
 
         {/* Right column: map */}
@@ -615,8 +632,8 @@ function WorkspaceInner({
               focusedGapDivisionId={focusedGapDivisionId}
               onGapFocus={(divisionId) => {
                 setFocusedGapDivisionId(divisionId);
-                // Auto-open the panel when a gap is clicked on the map
-                setGapsPanelOpen(true);
+                // Auto-switch to Verify stage when a gap is clicked on the map
+                handleStageTabChange('verification');
               }}
             />
           )}
