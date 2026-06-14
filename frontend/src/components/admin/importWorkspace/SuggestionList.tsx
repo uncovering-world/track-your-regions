@@ -4,6 +4,7 @@
  * Assigned divisions: name + path + preview icon + remove (removeDivisionsFromRegion).
  * Suggestions: name/path/score + conflict chip + Accept/Reject/preview.
  * Bulk: "Accept all" (clean suggestions), "Reject remaining", "Preview union" (>1 suggestion).
+ * Multi-select: checkboxes per row + select-all header checkbox.
  *
  * onPreviewTransfer: conflict-accept (↑) triggers the 3-layer transfer preview dialog
  *   instead of a blind direct acceptWithTransfer call. The dialog's Accept button
@@ -12,9 +13,11 @@
  *   of all suggested divisions against the region map/geoshape before accepting.
  */
 
+import { useState, useEffect } from 'react';
 import {
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Divider,
@@ -88,6 +91,13 @@ interface SuggestionListProps {
 }
 
 export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, onPreviewUnion, parentMapUrlById, parentMapNameById, proposedSource, onHoverProposed }: SuggestionListProps) {
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  // Reset selection when the active node changes.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [node?.id]);
+
   if (!node) {
     return (
       <Box sx={{ p: 2 }}>
@@ -172,6 +182,27 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
 
   const cleanSuggestions = suggestions.filter(s => !s.conflict);
 
+  // ── Multi-select helpers ──────────────────────────────────────────────────
+
+  const toggleSelected = (divisionId: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(divisionId)) next.delete(divisionId); else next.add(divisionId);
+      return next;
+    });
+  };
+
+  const allSelected = suggestions.length > 0 && suggestions.every(s => selectedIds.has(s.divisionId));
+  const someSelected = suggestions.some(s => selectedIds.has(s.divisionId)) && !allSelected;
+
+  const handleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(suggestions.map(s => s.divisionId)));
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' }}>
       {/* Assigned Divisions */}
@@ -231,9 +262,18 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
           } : undefined}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, pt: 0.5 }}>
-            <Typography variant="overline" sx={{ color: 'primary.main', fontSize: '0.65rem', fontWeight: 700 }}>
-              Proposed ({suggestions.length})
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Checkbox
+                size="small"
+                checked={allSelected}
+                indeterminate={someSelected}
+                onChange={handleSelectAll}
+                sx={{ p: 0.25 }}
+              />
+              <Typography variant="overline" sx={{ color: 'primary.main', fontSize: '0.65rem', fontWeight: 700 }}>
+                Proposed ({suggestions.length})
+              </Typography>
+            </Box>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
               {cleanSuggestions.length > 1 && onPreviewUnion && (
                 <Tooltip title="Preview the union of all suggested divisions vs region map/geoshape">
@@ -320,6 +360,15 @@ export function SuggestionList({ node, mutations, onPreview, onPreviewTransfer, 
                     </Box>
                   }
                 >
+                  <Checkbox
+                    size="small"
+                    edge="start"
+                    checked={selectedIds.has(sug.divisionId)}
+                    onChange={() => toggleSelected(sug.divisionId)}
+                    onClick={e => e.stopPropagation()}
+                    sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}
+                    tabIndex={-1}
+                  />
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
