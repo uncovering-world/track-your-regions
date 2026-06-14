@@ -5,7 +5,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { resolveReference, verifyWorkUnit } from './verifyWorkUnit.js';
+import { resolveReference, verifyWorkUnit, getCoverageBoundaries } from './verifyWorkUnit.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -136,5 +136,32 @@ describe('verifyWorkUnit', () => {
     expect(result.coverageGaps).toEqual([{ divisionId: 77, name: 'Gapland', parentName: 'France' }]);
     expect(result.overlaps).toEqual([{ divisionId: 88, name: 'Shared', regionIds: [2, 3] }]);
     expect(result.blockers).toEqual(expect.arrayContaining(['coverage_gaps', 'overlaps']));
+  });
+});
+
+describe('getCoverageBoundaries', () => {
+  beforeEach(() => mockedQuery.mockClear());
+
+  it('runs SCOPED_COVERAGE_SQL and maps rows to {id, name, parentName}', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [
+        { id: 2761, name: 'Cunene', parent_name: 'Angola' },
+        { id: 3000, name: 'Orphan', parent_name: null },
+      ],
+    });
+    const result = await getCoverageBoundaries(164, [2487]);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ id: 2761, name: 'Cunene', parentName: 'Angola' });
+    expect(result[1]).toEqual({ id: 3000, name: 'Orphan', parentName: null });
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/reference_closure/);
+    expect(params).toEqual([164, [2487]]);
+  });
+
+  it('returns an empty array when no gaps exist', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    const result = await getCoverageBoundaries(1, [99]);
+    expect(result).toEqual([]);
   });
 });

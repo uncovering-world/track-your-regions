@@ -91,6 +91,27 @@ const SCOPED_COVERAGE_SQL = `
   ORDER BY p.name NULLS FIRST, d.name
 `;
 
+/**
+ * Return the minimal set of highest-level uncovered GADM divisions (gap boundaries)
+ * for a region. A boundary is the highest-level division that is entirely uncovered
+ * AND whose parent already has partial coverage — so assigning it covers the whole
+ * subtree in one step.
+ *
+ * Shared by verifyWorkUnit (for the ChecksBar chip count) and analyzeCoverageGaps
+ * (for the Coverage Gaps panel) so the two endpoints can never drift.
+ */
+export async function getCoverageBoundaries(
+  regionId: number,
+  referenceDivisionIds: number[],
+): Promise<Array<{ id: number; name: string; parentName: string | null }>> {
+  const result = await pool.query(SCOPED_COVERAGE_SQL, [regionId, referenceDivisionIds]);
+  return result.rows.map(r => ({
+    id: r.id as number,
+    name: r.name as string,
+    parentName: (r.parent_name as string) ?? null,
+  }));
+}
+
 // A division overlaps when it (or a GADM ancestor of it) is claimed by two
 // different direct-child subtrees. child_of maps every subtree member row to
 // the direct child it belongs to.
@@ -177,11 +198,11 @@ export async function verifyWorkUnit(worldViewId: number, regionId: number): Pro
   let coverageGaps: VerifyResult['coverageGaps'] = [];
   let overlaps: VerifyResult['overlaps'] = [];
   if (hasChildren) {
-    const gaps = await pool.query(SCOPED_COVERAGE_SQL, [regionId, reference.divisionIds]);
-    coverageGaps = gaps.rows.map(r => ({
-      divisionId: r.id as number,
-      name: r.name as string,
-      parentName: (r.parent_name as string) ?? null,
+    const boundaries = await getCoverageBoundaries(regionId, reference.divisionIds);
+    coverageGaps = boundaries.map(b => ({
+      divisionId: b.id,
+      name: b.name,
+      parentName: b.parentName,
     }));
     if (coverageGaps.length > 0) blockers.push('coverage_gaps');
 
