@@ -30,13 +30,14 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  AddCircleOutline as CreateRegionIcon,
   CheckCircle as CheckCircleIcon,
   Close as CloseIcon,
   MyLocation as FocusIcon,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { analyzeCoverageGaps, geoSuggestGap } from '../../../api/admin/wvImportCoverage';
+import { analyzeCoverageGaps, approveCoverageSuggestion, geoSuggestGap } from '../../../api/admin/wvImportCoverage';
 import { addDivisionsToRegion } from '../../../api/regions';
 import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
 import type { VerifyResult } from '../../../api/admin/wvImportWorkflow';
@@ -61,6 +62,7 @@ interface GapRowProps {
   isFocused: boolean;
   onFocus: () => void;
   onAssigned: () => void;
+  onMatchChange?: () => void;
 }
 
 // ─── Subtree walker ───────────────────────────────────────────────────────────
@@ -75,6 +77,64 @@ function collectRegionOptions(node: MatchTreeNode, depth = 0, acc: RegionOption[
 
 // ─── GapRow ──────────────────────────────────────────────────────────────────
 
+function useGapRowMutations(
+  worldViewId: number,
+  unitId: number,
+  divisionId: number,
+  name: string,
+  selectedRegionId: number | null,
+  onAssigned: () => void,
+  onMatchChange?: () => void,
+) {
+  const queryClient = useQueryClient();
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({
+      queryKey: ['admin', 'wvImport', 'gapAnalysis', worldViewId, unitId],
+      exact: false,
+    }).catch(() => {});
+    queryClient.invalidateQueries({
+      queryKey: ['admin', 'wvImport', 'matchTree', worldViewId],
+    }).catch(() => {});
+    queryClient.invalidateQueries({
+      queryKey: ['admin', 'wvImport', 'childrenGeometry', worldViewId],
+    }).catch(() => {});
+    queryClient.invalidateQueries({
+      queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId],
+    }).catch(() => {});
+    queryClient.invalidateQueries({
+      queryKey: ['admin', 'wvImport', 'verify', worldViewId],
+    }).catch(() => {});
+  };
+
+  const assignMutation = useMutation({
+    mutationFn: () => {
+      if (selectedRegionId == null) throw new Error('No target region selected');
+      return addDivisionsToRegion(selectedRegionId, [divisionId]);
+    },
+    onSuccess: () => {
+      // Invalidate the exact gapAnalysis key — both panel and map observe it,
+      // so both refetch immediately and the resolved gap drops from the list + map.
+      invalidateAll();
+      onAssigned();
+    },
+  });
+
+  const createRegionMutation = useMutation({
+    mutationFn: () => {
+      const parentId = selectedRegionId ?? unitId;
+      return approveCoverageSuggestion(worldViewId, divisionId, parentId, 'create_region', name);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      onMatchChange?.();
+      onAssigned();
+    },
+  });
+
+  return { assignMutation, createRegionMutation };
+}
+
 function GapRow({
   divisionId,
   name,
@@ -87,8 +147,8 @@ function GapRow({
   isFocused,
   onFocus,
   onAssigned,
+  onMatchChange,
 }: GapRowProps) {
-  const queryClient = useQueryClient();
   const [selectedRegionId, setSelectedRegionId] = useState<number | null>(suggestedTargetId);
   const [geoLoading, setGeoLoading] = useState(false);
   const hasFetchedGeoRef = useRef(false);
@@ -113,35 +173,22 @@ function GapRow({
     [subtreeOptions, selectedRegionId],
   );
 
-  const assignMutation = useMutation({
-    mutationFn: () => {
-      if (selectedRegionId == null) throw new Error('No target region selected');
-      return addDivisionsToRegion(selectedRegionId, [divisionId]);
-    },
-    onSuccess: () => {
-      // Invalidate the exact gapAnalysis key — both panel and map observe it,
-      // so both refetch immediately and the resolved gap drops from the list + map.
-      queryClient.invalidateQueries({
-        queryKey: ['admin', 'wvImport', 'gapAnalysis', worldViewId, unitId],
-        exact: false,
-      }).catch(() => {});
-      queryClient.invalidateQueries({
-        queryKey: ['admin', 'wvImport', 'matchTree', worldViewId],
-      }).catch(() => {});
-      queryClient.invalidateQueries({
-        queryKey: ['admin', 'wvImport', 'childrenGeometry', worldViewId],
-      }).catch(() => {});
-      queryClient.invalidateQueries({
-        queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId],
-      }).catch(() => {});
-      queryClient.invalidateQueries({
-        queryKey: ['admin', 'wvImport', 'verify', worldViewId],
-      }).catch(() => {});
-      onAssigned();
-    },
-  });
+  const { assignMutation, createRegionMutation } = useGapRowMutations(
+    worldViewId,
+    unitId,
+    divisionId,
+    name,
+    selectedRegionId,
+    onAssigned,
+    onMatchChange,
+  );
+
+  const anyPending = assignMutation.isPending || createRegionMutation.isPending;
 
   const areaDisplay = `${Math.round(areaKm2).toLocaleString()} km²`;
+
+  const parentOption = selectedOption ?? subtreeOptions.find(o => o.id === unitId) ?? null;
+  const createTooltip = `Create region "${name}" under ${parentOption?.name ?? 'unit root'}`;
 
   return (
     <Box
@@ -182,7 +229,7 @@ function GapRow({
         {path}
       </Typography>
 
-      {/* Line 3: Autocomplete + Assign */}
+      {/* Line 3: Autocomplete + Assign + Create region */}
       <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.75 }}>
         {geoLoading ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}>
@@ -222,16 +269,36 @@ function GapRow({
           variant="contained"
           color="error"
           onClick={() => assignMutation.mutate()}
-          disabled={selectedRegionId == null || assignMutation.isPending}
+          disabled={selectedRegionId == null || anyPending}
           sx={{ flexShrink: 0, minWidth: 60 }}
         >
           {assignMutation.isPending ? <CircularProgress size={14} color="inherit" /> : 'Assign'}
         </Button>
+        <Tooltip title={createTooltip}>
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              color="primary"
+              startIcon={createRegionMutation.isPending ? <CircularProgress size={12} color="inherit" /> : <CreateRegionIcon sx={{ fontSize: 14 }} />}
+              onClick={() => createRegionMutation.mutate()}
+              disabled={anyPending}
+              sx={{ flexShrink: 0, minWidth: 60 }}
+            >
+              Create
+            </Button>
+          </span>
+        </Tooltip>
       </Stack>
 
       {assignMutation.isError && (
         <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
           Failed to assign — try again.
+        </Typography>
+      )}
+      {createRegionMutation.isError && (
+        <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+          Failed to create region — try again.
         </Typography>
       )}
     </Box>
@@ -387,6 +454,7 @@ export function CoverageGapsPanel({
                   isFocused={focusedGapDivisionId === gap.divisionId}
                   onFocus={() => onFocusGap(gap.divisionId)}
                   onAssigned={handleAssigned}
+                  onMatchChange={onMatchChange}
                 />
               </Box>
             ))}
