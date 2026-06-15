@@ -32,6 +32,7 @@ import {
 } from '@mui/material';
 import {
   Psychology as AIIcon,
+  RateReview as AIReviewBranchIcon,
   Edit as RenameIcon,
   AccountTree as ReparentIcon,
   Add as AddIcon,
@@ -130,6 +131,11 @@ export interface StageToolsProps {
   hierarchyConfirmed?: boolean;
   onConfirmHierarchy?: (confirmed: boolean) => void;
   confirmHierarchyPending?: boolean;
+  /**
+   * AI review branch — triggers a markdown hierarchy-review report for the selected
+   * node's branch (distinct from "AI review children" which suggests add/remove/rename).
+   */
+  onReviewBranch?: (regionId: number) => void;
 }
 
 // ─── HelpTip ──────────────────────────────────────────────────────────────────
@@ -304,6 +310,7 @@ export function HierarchyTools({
   hierarchyConfirmed,
   onConfirmHierarchy,
   confirmHierarchyPending,
+  onReviewBranch,
 }: StageToolsProps) {
   const [restructureMenuAnchor, setRestructureMenuAnchor] = useState<HTMLElement | null>(null);
 
@@ -347,8 +354,10 @@ export function HierarchyTools({
       <Box>
         <SectionLabel>Node actions</SectionLabel>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-          {btn('AI review', 'aiReviewChildren', <AIIcon sx={{ fontSize: 14 }} />,
+          {btn('AI review children', 'aiReviewChildren', <AIIcon sx={{ fontSize: 14 }} />,
             () => { dialogs.handleAISuggestChildren(regionId).catch(() => {}); })}
+          {onReviewBranch && btn('AI review branch', 'aiReviewBranch', <AIReviewBranchIcon sx={{ fontSize: 14 }} />,
+            () => onReviewBranch(regionId))}
           {btn('Rename', 'rename', <RenameIcon sx={{ fontSize: 14 }} />,
             () => dialogs.setRenameDialog({ regionId, currentName: node.name, newName: node.name }))}
           {btn('Reparent', 'reparent', <ReparentIcon sx={{ fontSize: 14 }} />,

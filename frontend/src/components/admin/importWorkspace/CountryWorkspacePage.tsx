@@ -58,6 +58,7 @@ import {
   AISuggestChildrenDialog,
   DivisionSearchDialog,
 } from '../ImportTreeDialogs';
+import { AIReviewDrawer } from '../AIReviewDrawer';
 import { SmartFlattenPreviewDialog } from '../SmartFlattenPreviewDialog';
 import { SmartSimplifyDialog } from '../SmartSimplifyDialog';
 import { VerifyDialog } from '../importDashboard/VerifyDialog';
@@ -479,6 +480,10 @@ function WorkspaceInner({
   // Unit's own coverage % for ChecksBar (the unit root is a container node)
   const unitCoveragePct: number | undefined = coverageData?.coverage[String(regionId)];
 
+  const handleReviewBranch = useCallback((reviewRegionId: number) => {
+    dialogs.handleReview(reviewRegionId).catch(() => {});
+  }, [dialogs]);
+
   // Shared props passed to all three stage tool components
   const stageToolsProps = {
     worldViewId,
@@ -494,6 +499,7 @@ function WorkspaceInner({
     parentMapNameById: parentRegionMapNameById,
     finderFeedback,
     onFinderResult: handleFinderResult,
+    onReviewBranch: handleReviewBranch,
   };
 
   return (
@@ -781,6 +787,19 @@ function WorkspaceInner({
         loading={dialogs.divSearchLoading}
         onInputChange={dialogs.handleDivSearchInput}
       />
+      {/* AI hierarchy review drawer */}
+      <AIReviewDrawer
+        activeReviewKey={dialogs.activeReviewKey}
+        setActiveReviewKey={dialogs.setActiveReviewKey}
+        reviewReports={dialogs.reviewReports}
+        setReviewReports={dialogs.setReviewReports}
+        reviewLoading={dialogs.reviewLoading}
+        handleReview={dialogs.handleReview}
+        regionNameRegex={dialogs.regionNameRegex}
+        regionNameToId={dialogs.regionNameToId}
+        navigateToRegion={setSelectedRegionId}
+      />
+
       {/* CV color match dialog with SSE progress + suggestions */}
       <CvMatchDialog
         cvMatchDialog={cvPipeline.cvMatchDialog}

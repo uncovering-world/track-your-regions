@@ -107,6 +107,14 @@ export const ACTION_HELP: Record<string, ActionHelp> = {
       'child set, surfacing missing, removed, or renamed sub-regions for the admin to apply.',
   },
 
+  aiReviewBranch: {
+    title: 'AI review branch',
+    description:
+      'Runs a multi-pass AI hierarchy review of this branch and displays a ' +
+      'markdown report with findings and a recommended-actions checklist. ' +
+      'Use this for a structural audit; "AI review children" is for quick add/remove/rename suggestions.',
+  },
+
   rename: {
     title: 'Rename',
     description:
