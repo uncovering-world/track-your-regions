@@ -135,11 +135,20 @@ export function WorkspaceMap({
   // When root has no children (directly-assigned leaf unit), extend the map with
   // the root's own ID so its geometry returned by getChildrenRegionGeometry renders
   // as a filled colored polygon rather than falling back to grey.
+  // When root HAS children but also has own members (mixed unit), the API returns
+  // a root entry too — color it at CHILD_PALETTE[root.children.length] so it gets
+  // a distinct slot that cannot collide with any child color.
   const colors = useMemo(() => {
     const map = childColorMap(root);
     if (root.children.length === 0) {
-      // Use the first palette color — same source as children use
+      // Childless unit — root IS the only fill, use the first palette color
       map.set(root.id, CHILD_PALETTE[0]);
+    } else {
+      // Mixed unit (children + own members) — color root AFTER the last child slot
+      // to avoid colliding with CHILD_PALETTE[0] which is already used by child 0.
+      // The API only returns a root entry when rootDivisionIds.length > 0, so this
+      // color will only appear on the map when the root actually has own members.
+      map.set(root.id, CHILD_PALETTE[root.children.length % CHILD_PALETTE.length]);
     }
     return map;
   }, [root]);
@@ -458,15 +467,30 @@ export function WorkspaceMap({
   // ── Legend ────────────────────────────────────────────────────────────────
 
   const legendItems = useMemo(() => {
-    // For a directly-assigned leaf (no children), show the root itself in the legend.
-    const legendNodes = root.children.length > 0 ? root.children : [root];
+    // For a directly-assigned leaf (no children) OR a mixed unit (children + own members),
+    // the root itself has a fill and needs a legend row.
+    // A mixed unit is detected by the API returning an entry keyed by root.id —
+    // check childrenData for that entry.
+    const rootHasOwnFill =
+      root.children.length === 0 ||
+      (childrenData?.childRegions ?? []).some(cr => cr.regionId === root.id);
+
+    let legendNodes: MatchTreeNode[];
+    if (root.children.length === 0) {
+      legendNodes = [root];
+    } else if (rootHasOwnFill) {
+      // Mixed unit: show children first, then root (as "own area" / root name)
+      legendNodes = [...root.children, root];
+    } else {
+      legendNodes = root.children;
+    }
     const items = legendNodes.slice(0, 8).map(c => ({
       name: c.name,
       color: colors.get(c.id) ?? '#808080',
     }));
     const overflow = legendNodes.length > 8 ? legendNodes.length - 8 : 0;
     return { items, overflow };
-  }, [root, colors]);
+  }, [root, colors, childrenData]);
 
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>

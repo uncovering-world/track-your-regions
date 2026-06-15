@@ -851,10 +851,12 @@ export async function getChildrenRegionGeometry(req: AuthenticatedRequest, res: 
       childrenResult.rows.map(r => [r.id as number, r.name as string]),
     );
 
-    // Include the root region's own direct members when it has no children
-    // (directly-assigned leaf unit). This produces a filled polygon on the map.
-    // Container regions (children_matched, 0 own members) are unaffected.
-    if (!hasChildren && rootDivisionIds.length > 0) {
+    // Always include the root region's own direct members when present.
+    // This covers both the childless leaf case AND units with both children
+    // and own members (e.g. a country directly assigned to itself as a member
+    // while also having child regions). Container regions that are children_matched
+    // with 0 own members are unaffected (rootDivisionIds.length === 0).
+    if (rootDivisionIds.length > 0) {
       childRegionDivIds.set(regionId, rootDivisionIds);
       childNames.set(regionId, rootName);
     }
