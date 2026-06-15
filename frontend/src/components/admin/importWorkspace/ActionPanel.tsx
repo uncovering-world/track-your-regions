@@ -12,8 +12,8 @@
  * Snackbars (undo, simplify-success, no-overlaps) live in their respective tool
  * component; OverlapResolutionDialog lives in VerificationTools.
  *
- * No map-image-picker action (excluded: requires MapImagePickerDialog wiring that
- * is non-trivial to plumb here without extra context — see commit body).
+ * Map-image picker: AssignmentTools shows a "Pick map image" button when the node
+ * has mapImageCandidates.length > 1; the dialog itself is rendered in CountryWorkspacePage.
  */
 
 import { useState } from 'react';
@@ -59,6 +59,7 @@ import {
   ColorLens as CvMatchIcon,
   Map as MapshapeIcon,
   CompareArrows as ViewMapIcon,
+  Image as MapImageIcon,
 } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { setAssignmentWaived } from '../../../api/admin/wvImportWorkflow';
@@ -136,6 +137,10 @@ export interface StageToolsProps {
    * node's branch (distinct from "AI review children" which suggests add/remove/rename).
    */
   onReviewBranch?: (regionId: number) => void;
+  /**
+   * Opens the MapImagePickerDialog for this node (shown when mapImageCandidates.length > 1).
+   */
+  onPickMapImage?: (regionId: number) => void;
 }
 
 // ─── HelpTip ──────────────────────────────────────────────────────────────────
@@ -470,6 +475,7 @@ export function AssignmentTools({
   cvPipeline,
   finderFeedback,
   onFinderResult,
+  onPickMapImage,
 }: StageToolsProps) {
   if (!node) {
     return (
@@ -491,6 +497,10 @@ export function AssignmentTools({
   const hasMapshapePrereqs = !!node.sourceUrl && hasChildren;
   const cvBusy = cvPipeline != null && cvPipeline.cvMatchingRegionId === regionId;
   const mapshapeBusy = cvPipeline != null && cvPipeline.mapshapeMatchingRegionId === regionId;
+
+  // Map image picker prereq
+  const hasMapImageCandidates = node.mapImageCandidates.length > 1;
+  const mapImagePickerColor = node.mapImageReviewed ? 'success' : 'warning';
 
   // I4: geocodeProgress for this node only
   const geocodeProgress = mutations.geocodeProgress?.regionId === regionId
@@ -581,6 +591,27 @@ export function AssignmentTools({
               mapshapeBusy={mapshapeBusy}
               busy={busy}
             />
+          </Box>
+        </Box>
+      )}
+
+      {/* Map image picker — shown when node has multiple candidates */}
+      {hasMapImageCandidates && onPickMapImage && (
+        <Box>
+          <SectionLabel>Map image</SectionLabel>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+            <HelpTip helpKey="pickMapImage">
+              <Button
+                size="small"
+                startIcon={<MapImageIcon sx={{ fontSize: 14 }} />}
+                onClick={() => onPickMapImage(regionId)}
+                disabled={busy}
+                color={mapImagePickerColor}
+                sx={{ justifyContent: 'flex-start', textTransform: 'none', fontSize: '0.75rem' }}
+              >
+                Pick map image
+              </Button>
+            </HelpTip>
           </Box>
         </Box>
       )}

@@ -280,4 +280,12 @@ export const ACTION_HELP: Record<string, ActionHelp> = {
       'that the assignment covers the correct territory.',
     requires: 'Wikidata ID or region map image',
   },
+
+  pickMapImage: {
+    title: 'Pick map image',
+    description:
+      'Choose the correct region map from the Wikivoyage candidates; used by CV match and ' +
+      'the region-map preview comparison; warning colour until reviewed.',
+    requires: 'Node with more than one map image candidate',
+  },
 };

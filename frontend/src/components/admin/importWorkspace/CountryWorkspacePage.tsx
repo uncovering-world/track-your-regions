@@ -12,8 +12,7 @@
  *   - useWorkspacePreview (preview/comparison suite, ported from legacy WVIR)
  *   - DivisionPreviewDialog for all preview modes (single, union, transfer, view-map)
  *   - VerifyDialog from Plan 2 for sign-off
- *   - MapImagePickerDialog excluded (non-trivial to plumb here; map-image-picker
- *     action in ActionPanel is still available via legacy tree link)
+ *   - MapImagePickerDialog for picking region map image from candidates
  */
 
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
@@ -68,6 +67,7 @@ import { useTreeMutations, type MapPickerState } from '../useTreeMutations';
 import { useImportTreeDialogs } from '../useImportTreeDialogs';
 import { useCvMatchPipeline } from '../useCvMatchPipeline';
 import { CvMatchDialog } from '../CvMatchDialog';
+import { MapImagePickerDialog } from '../MapImagePickerDialog';
 import { WorkspaceTree } from './WorkspaceTree';
 import { SuggestionList } from './SuggestionList';
 import { HierarchyTools, AssignmentTools, VerificationTools } from './ActionPanel';
@@ -363,8 +363,8 @@ function WorkspaceInner({
     regionId: number; regionName: string; hasChildren: boolean; hasDivisions: boolean;
   } | null>(null);
 
-  // ── mapPickerState (no-op — map image picker excluded) ────────────────────
-  const [mapPickerState] = useState<MapPickerState | null>(null);
+  // ── mapPickerState ────────────────────────────────────────────────────────
+  const [mapPickerState, setMapPickerState] = useState<MapPickerState | null>(null);
   const mapPickerStateRef = useRef<MapPickerState | null>(null);
   mapPickerStateRef.current = mapPickerState;
 
@@ -372,7 +372,7 @@ function WorkspaceInner({
   const mutations = useTreeMutations(worldViewId, {
     onPreview: handlePreviewDivision,
     mapPickerStateRef,
-    setMapPickerState: () => {},
+    setMapPickerState,
     setRemoveDialogState,
     onMatchChange: handleMatchChange,
   });
@@ -484,6 +484,18 @@ function WorkspaceInner({
     dialogs.handleReview(reviewRegionId).catch(() => {});
   }, [dialogs]);
 
+  const handlePickMapImage = useCallback((pickRegionId: number) => {
+    const node = findSubtree([subtreeRoot], pickRegionId);
+    if (!node) return;
+    setMapPickerState({
+      regionId: node.id,
+      regionName: node.name,
+      candidates: node.mapImageCandidates,
+      currentSelection: node.regionMapUrl,
+      wikidataId: node.wikidataId,
+    });
+  }, [subtreeRoot, setMapPickerState]);
+
   // Shared props passed to all three stage tool components
   const stageToolsProps = {
     worldViewId,
@@ -500,6 +512,7 @@ function WorkspaceInner({
     finderFeedback,
     onFinderResult: handleFinderResult,
     onReviewBranch: handleReviewBranch,
+    onPickMapImage: handlePickMapImage,
   };
 
   return (
@@ -820,6 +833,17 @@ function WorkspaceInner({
         modelPickerSelected={cvPipeline.modelPickerSelected}
         setModelPickerSelected={cvPipeline.setModelPickerSelected}
       />
+      {mapPickerState && (
+        <MapImagePickerDialog
+          open
+          regionName={mapPickerState.regionName}
+          candidates={mapPickerState.candidates}
+          currentSelection={mapPickerState.currentSelection}
+          onSelect={(imageUrl) => mutations.selectMapMutation.mutate({ regionId: mapPickerState.regionId, imageUrl })}
+          onClose={() => setMapPickerState(null)}
+          loading={mutations.selectMapMutation.isPending}
+        />
+      )}
     </Box>
   );
 }
