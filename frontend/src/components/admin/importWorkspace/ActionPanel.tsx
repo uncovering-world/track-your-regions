@@ -845,8 +845,15 @@ export function VerificationTools({
         </Box>
       </Box>
 
-      {/* Section C — Sync (only meaningful when duplicates exist) */}
+      {/* Section C — Sync (only when duplicates exist AND node is matched).
+          Mirrors legacy TreeNodeActions.tsx SyncToInstancesButton gate:
+          requires hasDuplicate && matchStatus ∈ {auto_matched, manual_matched, children_matched}.
+          An unmatched duplicate has nothing to sync yet. */}
       {hasDuplicateSourceUrl && (
+        node.matchStatus === 'auto_matched' ||
+        node.matchStatus === 'manual_matched' ||
+        node.matchStatus === 'children_matched'
+      ) && (
         <Box>
           <SectionLabel>Sync</SectionLabel>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
