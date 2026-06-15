@@ -761,10 +761,11 @@ function WorkspaceInner({
             return { ...prev, selected: next };
           });
         }}
-        onSubmit={() => dialogs.setSuggestChildrenResult(null)}
-        isPending={false}
-        submitLabel="Close"
-        submitCaption="Apply actions in the legacy match tree (Plan 4 migrates this)"
+        onSubmit={() => {
+          dialogs.applySuggestChildren().catch(() => {});
+          handleMatchChange();
+        }}
+        isPending={dialogs.applyingChildren}
       />
       <DivisionSearchDialog
         state={dialogs.divisionSearchDialog}

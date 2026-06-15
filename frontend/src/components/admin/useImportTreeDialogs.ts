@@ -17,6 +17,11 @@ import {
   type CoverageGapDivision,
   type SiblingRegionGeometry,
 } from '../../api/admin/worldViewImport';
+import {
+  addChildRegion,
+  removeRegionFromImport,
+  renameRegion,
+} from '../../api/admin/wvImportTreeOps';
 import { searchDivisions } from '../../api/divisions';
 import { runHierarchyReview } from '../../api/admin/ai';
 import { type StoredReport } from './AIReviewDrawer';
@@ -41,6 +46,43 @@ function findNameById(nodes: MatchTreeNode[], id: number): string {
     if (found) return found;
   }
   return '';
+}
+
+/** Find the ID of a direct child of the given parent node by child name. */
+function findChildIdByName(nodes: MatchTreeNode[], parentId: number, childName: string): number | undefined {
+  for (const node of nodes) {
+    if (node.id === parentId) {
+      return node.children.find(c => c.name === childName)?.id;
+    }
+    const found = findChildIdByName(node.children, parentId, childName);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Build a single promise for an AI-suggested child action (add / remove / rename / enrich). */
+function buildSuggestActionPromise(
+  worldViewId: number,
+  parentId: number,
+  tree: MatchTreeNode[] | undefined,
+  action: { type: string; name: string; newName?: string; sourceUrl?: string | null; sourceExternalId?: string | null },
+): Promise<unknown> | undefined {
+  if (action.type === 'add') {
+    return addChildRegion(
+      worldViewId, parentId, action.name,
+      action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
+    );
+  }
+  const childId = tree ? findChildIdByName(tree, parentId, action.name) : undefined;
+  if (!childId) return undefined;
+  if (action.type === 'remove') {
+    return removeRegionFromImport(worldViewId, childId, true, true);
+  }
+  // rename or enrich
+  return renameRegion(
+    worldViewId, childId, action.newName ?? action.name,
+    action.sourceUrl ?? undefined, action.sourceExternalId ?? undefined,
+  );
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -125,6 +167,10 @@ export interface UseImportTreeDialogsResult {
   setSuggestChildrenResult: React.Dispatch<React.SetStateAction<SuggestChildrenState | null>>;
   aiSuggestingRegionId: number | null;
   handleAISuggestChildren: (regionId: number) => Promise<void>;
+  /** Apply the currently selected actions from suggestChildrenResult, then invalidate the tree. */
+  applySuggestChildren: () => Promise<void>;
+  /** True while applySuggestChildren is running. */
+  applyingChildren: boolean;
 
   // Division search
   divisionSearchDialog: DivisionSearchDialogState | null;
@@ -257,6 +303,44 @@ export function useImportTreeDialogs(
       setAISuggestingRegionId(null);
     }
   }, [tree, worldViewId, setUndoSnackbar]);
+
+  const [applyingChildren, setApplyingChildren] = useState(false);
+
+  const applySuggestChildren = useCallback(async () => {
+    if (!suggestChildrenResult) return;
+    const { regionId: parentId, result, selected } = suggestChildrenResult;
+    setSuggestChildrenResult(null);
+    setApplyingChildren(true);
+
+    const promises: Promise<unknown>[] = [];
+    for (const key of selected) {
+      const colonIdx = key.indexOf(':');
+      const type = key.slice(0, colonIdx);
+      const name = key.slice(colonIdx + 1);
+      const action = result.actions.find(a => a.type === type && a.name === name);
+      if (!action) continue;
+      const p = buildSuggestActionPromise(worldViewId, parentId, tree, action);
+      if (p) promises.push(p);
+    }
+
+    try {
+      const results = await Promise.allSettled(promises);
+      const failures = results.filter(r => r.status === 'rejected');
+      if (failures.length > 0) {
+        for (const f of failures) {
+          console.error('[AI Review Children] action failed:', (f as PromiseRejectedResult).reason);
+        }
+        setUndoSnackbar({
+          open: true,
+          message: `AI Review Children: ${failures.length} of ${results.length} action(s) failed. See console.`,
+          worldViewId,
+        });
+      }
+    } finally {
+      setApplyingChildren(false);
+      invalidateTree();
+    }
+  }, [suggestChildrenResult, worldViewId, tree, invalidateTree, setUndoSnackbar]);
 
   // ── Division Search ────────────────────────────────────────────────────────
   const [divisionSearchDialog, setDivisionSearchDialog] = useState<DivisionSearchDialogState | null>(null);
@@ -497,6 +581,7 @@ export function useImportTreeDialogs(
     reparentDialog, setReparentDialog, handleReparentSubmit,
     // AI suggest children
     suggestChildrenResult, setSuggestChildrenResult, aiSuggestingRegionId, handleAISuggestChildren,
+    applySuggestChildren, applyingChildren,
     // Division search
     divisionSearchDialog, setDivisionSearchDialog,
     divSearchQuery, divSearchResults, divSearchLoading,
