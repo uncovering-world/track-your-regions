@@ -562,6 +562,8 @@ The full set of import mutations and dialogs is available via the stage-specific
 
 The **AI Review Children** feature lets an admin audit the current child set of any region against its live Wikivoyage article. It is available on tree rows where `region_import_state.source_url` is set. A sparkle icon button triggers the flow; the button is disabled while another region is being reviewed.
 
+In the new workspace (Plan 4d), both AI tools live in the Hierarchy stage: **"AI review children"** opens the suggest dialog and now **applies** the selected add/remove/rename actions (via `addChildRegion`/`removeRegionFromImport`/`renameRegion` + `Promise.allSettled`, shared through `useImportTreeDialogs.applySuggestChildren`), and **"AI review branch"** opens the `AIReviewDrawer` markdown hierarchy-review report (region-name links select the node in the workspace tree). The legacy match tree keeps its own copies unchanged.
+
 ### Three-Phase Pipeline
 
 The backend handler `aiSuggestChildren` (`wvImportAIController.ts`) runs three sequential phases:
