@@ -4,7 +4,7 @@
  * Tabs: Countries (sign-off progress) · Skeleton · Global gaps.
  * Assignment editing stays in the legacy Match Review until Plan 4.
  */
-import { useState } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import {
   Alert, Box, Button, Chip, Container, Dialog, DialogActions, DialogContent,
@@ -16,9 +16,64 @@ import { useAuth } from '../../../hooks/useAuth';
 import { getWorkflowDashboard } from '../../../api/admin/wvImportWorkflow';
 import { finalizeReview } from '../../../api/admin/wvImportCoverage';
 import { startRematch, getRematchStatus } from '../../../api/admin/worldViewImport';
+import {
+  startWorldViewGeometryComputation,
+  fetchWorldViewComputationStatus,
+  cancelWorldViewGeometryComputation,
+} from '../../../api/geometry';
 import { CountriesTab } from './CountriesTab';
 import { SkeletonTab } from './SkeletonTab';
 import { GlobalGapsTab } from './GlobalGapsTab';
+
+// ── Local geometry-progress alert ────────────────────────────────────────────
+
+interface GeomStatus {
+  percent: number;
+  computed: number;
+  total: number;
+  errors: number;
+  currentRegion?: string;
+  status?: string;
+}
+
+function GeomComputationAlert({
+  geomStatus, geomComputing, onCancel,
+}: {
+  geomStatus: GeomStatus;
+  geomComputing: boolean;
+  onCancel: () => void;
+}) {
+  let severity: 'info' | 'warning' | 'success';
+  if (geomComputing) severity = 'info';
+  else if (geomStatus.errors > 0) severity = 'warning';
+  else severity = 'success';
+
+  const currentRegionSuffix = geomStatus.currentRegion ? ` — ${geomStatus.currentRegion}` : '';
+  const errorsSuffix = geomStatus.errors > 0 ? `, ${geomStatus.errors} errors` : '';
+  const statusLabel = geomStatus.status ?? 'Complete';
+  const progressText = geomComputing
+    ? `Computing geometries... ${geomStatus.computed}/${geomStatus.total}${currentRegionSuffix}`
+    : `${statusLabel} — ${geomStatus.computed} computed${errorsSuffix}`;
+
+  return (
+    <Alert
+      severity={severity}
+      sx={{ mb: 2 }}
+      action={geomComputing ? (
+        <Button color="inherit" size="small" onClick={onCancel}>Cancel</Button>
+      ) : undefined}
+    >
+      <Box sx={{ width: '100%' }}>
+        <Typography variant="body2">{progressText}</Typography>
+        {geomComputing && (
+          <LinearProgress variant="determinate" value={geomStatus.percent} sx={{ mt: 0.5 }} />
+        )}
+      </Box>
+    </Alert>
+  );
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export function ImportDashboardPage() {
   const { worldViewId: wvParam } = useParams();
@@ -31,6 +86,11 @@ export function ImportDashboardPage() {
 
   // Re-match state
   const [rematchDialogOpen, setRematchDialogOpen] = useState(false);
+
+  // Geometry computation state
+  const [geomComputing, setGeomComputing] = useState(false);
+  const [geomStatus, setGeomStatus] = useState<GeomStatus | null>(null);
+  const geomPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId],
@@ -79,6 +139,60 @@ export function ImportDashboardPage() {
 
   const rematchRunning = rematchStatus?.status === 'matching';
 
+  // ── Geometry computation ───────────────────────────────────────────────────
+
+  const stopGeomPolling = useCallback(() => {
+    if (geomPollRef.current) { clearInterval(geomPollRef.current); geomPollRef.current = null; }
+  }, []);
+
+  // Cleanup interval on unmount
+  useEffect(() => stopGeomPolling, [stopGeomPolling]);
+
+  const startGeomPolling = useCallback(() => {
+    stopGeomPolling();
+    setGeomComputing(true);
+    geomPollRef.current = setInterval(async () => {
+      try {
+        const s = await fetchWorldViewComputationStatus(worldViewId);
+        setGeomStatus({
+          percent: s.percent ?? 0,
+          computed: s.progress ?? 0,
+          total: s.total ?? 0,
+          errors: s.errors ?? 0,
+          currentRegion: s.currentRegion,
+          status: s.status,
+        });
+        if (!s.running) {
+          stopGeomPolling();
+          setGeomComputing(false);
+        }
+      } catch {
+        stopGeomPolling();
+        setGeomComputing(false);
+      }
+    }, 1500);
+  }, [worldViewId, stopGeomPolling]);
+
+  const handleComputeGeometries = useCallback(async () => {
+    try {
+      const result = await startWorldViewGeometryComputation(worldViewId, false, true);
+      if (result.started) {
+        setGeomStatus({ percent: 0, computed: 0, total: result.total ?? 0, errors: 0, status: 'Starting...' });
+        startGeomPolling();
+      } else {
+        setGeomStatus({ percent: 100, computed: result.alreadyComputed ?? 0, total: result.total ?? 0, errors: 0, status: result.message });
+      }
+    } catch (err) {
+      console.error('Failed to start geometry computation:', err);
+    }
+  }, [worldViewId, startGeomPolling]);
+
+  const handleCancelGeomComputation = useCallback(async () => {
+    try {
+      await cancelWorldViewGeometryComputation(worldViewId);
+    } catch { /* poll will detect stopped state */ }
+  }, [worldViewId]);
+
   if (!authLoading && !isAdmin) return <Navigate to="/" replace />;
   if (!Number.isInteger(worldViewId)) return <Navigate to="/admin" replace />;
 
@@ -95,11 +209,19 @@ export function ImportDashboardPage() {
 
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
+      {/* Main header row */}
       <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1 }}>
         <Button startIcon={<BackIcon />} onClick={() => navigate('/admin?section=wvImport')}>
           Admin
         </Button>
         <Typography variant="h4" sx={{ flex: 1 }}>Import Dashboard</Typography>
+        <Button
+          variant="outlined"
+          onClick={handleComputeGeometries}
+          disabled={geomComputing || rematchRunning}
+        >
+          {geomComputing ? 'Computing...' : 'Compute Geometries'}
+        </Button>
         <Button
           variant="outlined"
           onClick={() => navigate(`/admin?section=wvImport&wvReview=${worldViewId}`)}
@@ -161,6 +283,15 @@ export function ImportDashboardPage() {
         <Alert severity="error" onClose={() => setFinalizeError(null)} sx={{ mb: 2 }}>
           {finalizeError}
         </Alert>
+      )}
+
+      {/* Geometry computation progress */}
+      {geomStatus && (
+        <GeomComputationAlert
+          geomStatus={geomStatus}
+          geomComputing={geomComputing}
+          onCancel={handleCancelGeomComputation}
+        />
       )}
 
       {/* Re-match progress */}
