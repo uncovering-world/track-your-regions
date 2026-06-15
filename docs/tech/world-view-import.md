@@ -487,7 +487,7 @@ An import workflow dashboard lives at `/admin/import/:worldViewId` (Plan 2 of th
 
 - **Countries** — lists every work unit grouped by continent with status dots (not started / in progress / signed off / stale), leaf-resolution progress, and a row menu for per-unit verification checks (unassigned leaves, coverage gaps, overlaps) and sign-off.
 - **Skeleton** — shows an expandable container tree of the skeleton hierarchy (sub-continental groupings → work-unit leaves). Container rows have an action menu: Add grouping, Rename, Move under, Remove (children move up), Promote to work unit. Unit rows have a demote switch and status dot. An unidentified-countries worklist surfaces unresolved non-unit nodes for promotion or match-tree resolution. Confirming the skeleton is required before Finalize.
-- **Global gaps** — runs the world-view-level GADM coverage check via SSE, lists active gaps with dismiss/undismiss actions.
+- **Global gaps** — runs the world-view-level GADM coverage check via SSE, lists active gaps with dismiss/undismiss actions, and resolves gaps per-row: approve the pre-computed tree-based suggestion, geo-suggest the nearest region by geographic proximity, or pick a region manually — all resolved via `add_member` or `create_region`.
 
 The legacy Match Review (`WorldViewImportReview.tsx`) remains the place for assignment editing until Plan 4; it is reachable from the dashboard via the "Legacy match tree" button (navigates to `/admin?section=wvImport&wvReview=<id>`). "Review Matches" buttons on the import panel now navigate directly to the dashboard.
 
@@ -523,7 +523,7 @@ The header carries a 3-segment `StageSwitcher` (Hierarchy / Assign / Verify) wit
 
 ### What moved off the legacy tree
 
-The full set of import mutations and dialogs is available via the stage-specific tool components and SuggestionList — admins no longer need to scroll a full-tree list to find a node's actions. The legacy tree remains available for tasks not yet in the workspace (Re-match, Compute Geometries, CV/mapshape pipelines, global-gaps resolution — Plan 4).
+The full set of import mutations and dialogs is available via the stage-specific tool components and SuggestionList — admins no longer need to scroll a full-tree list to find a node's actions. The legacy tree remains available for tasks not yet in the workspace (Re-match, Compute Geometries, CV/mapshape pipelines). Dashboard global-gap resolution is now done (Global gaps tab); the heavier per-node gap-tree drill-down with shadow insertions described in the legacy `CoverageResolveDialog` remains obsolete/legacy.
 
 ### Key files
 
