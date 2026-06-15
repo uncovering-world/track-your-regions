@@ -108,7 +108,7 @@ interface CoverageData {
 
 // Scoped variant: services/worldViewImport/verifyWorkUnit.ts (SCOPED_COVERAGE_SQL)
 // — keep the ancestors/covered_descendants/fully_covered machinery in sync.
-const COVERAGE_GAPS_SQL = `
+export const COVERAGE_GAPS_SQL = `
   WITH RECURSIVE assigned AS (
     SELECT DISTINCT rm.division_id AS id
     FROM region_members rm
@@ -149,6 +149,24 @@ const COVERAGE_GAPS_SQL = `
     )
   ORDER BY p.name NULLS FIRST, d.name
 `;
+
+/**
+ * Count active (non-dismissed) coverage gaps for a world view.
+ * Returns 0 if there are no gaps or all gaps have been dismissed.
+ * Used by the finalize gate to enforce server-side that no active gaps remain.
+ */
+export async function countActiveCoverageGaps(worldViewId: number): Promise<number> {
+  const wvResult = await pool.query(
+    'SELECT COALESCE(dismissed_coverage_ids, ARRAY[]::integer[]) AS dismissed FROM world_views WHERE id = $1',
+    [worldViewId],
+  );
+  const dismissedIds = new Set<number>((wvResult.rows[0]?.dismissed as number[]) ?? []);
+
+  const result = await pool.query(COVERAGE_GAPS_SQL, [worldViewId]);
+  const allGapIds = result.rows.map(r => r.id as number);
+  const activeCount = allGapIds.filter(id => !dismissedIds.has(id)).length;
+  return activeCount;
+}
 
 async function loadCoverageData(worldViewId: number): Promise<CoverageData> {
   const wvResult = await pool.query(

@@ -9,6 +9,7 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { touchWorkUnitForRegion } from '../../services/worldViewImport/workUnits.js';
+import { countActiveCoverageGaps } from './wvImportCoverageController.js';
 
 /**
  * Finalize review -- mark the world view as done.
@@ -81,23 +82,30 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
   }
 
   // Workflow gate (import-review redesign): skeleton confirmed + every work
-  // unit signed off. Global-gap zero-count remains validated client-side via
-  // the coverage check, same as before.
-  const gate = await pool.query(`
-    SELECT
-      (SELECT skeleton_confirmed FROM world_views WHERE id = $1) AS skeleton_confirmed,
-      COUNT(*) FILTER (WHERE ris.is_work_unit AND ris.signoff_status <> 'signed_off') AS unsigned_units
-    FROM region_import_state ris
-    JOIN regions r ON r.id = ris.region_id
-    WHERE r.world_view_id = $1
-  `, [worldViewId]);
+  // unit signed off + zero active global gaps (gaps not in dismissed_coverage_ids).
+  const [gate, activeGaps] = await Promise.all([
+    pool.query(`
+      SELECT
+        (SELECT skeleton_confirmed FROM world_views WHERE id = $1) AS skeleton_confirmed,
+        COUNT(*) FILTER (WHERE ris.is_work_unit AND ris.signoff_status <> 'signed_off') AS unsigned_units
+      FROM region_import_state ris
+      JOIN regions r ON r.id = ris.region_id
+      WHERE r.world_view_id = $1
+    `, [worldViewId]),
+    countActiveCoverageGaps(worldViewId),
+  ]);
   const skeletonConfirmed = gate.rows[0].skeleton_confirmed === true;
   const unsignedUnits = parseInt(gate.rows[0].unsigned_units as string);
-  if (!skeletonConfirmed || unsignedUnits > 0) {
+  if (!skeletonConfirmed || unsignedUnits > 0 || activeGaps > 0) {
+    const parts: string[] = [];
+    if (!skeletonConfirmed) parts.push('skeleton not confirmed');
+    if (unsignedUnits > 0) parts.push(`${unsignedUnits} unit(s) not signed off`);
+    if (activeGaps > 0) parts.push(`${activeGaps} active global gap(s)`);
     res.status(400).json({
-      error: 'Workflow incomplete',
+      error: `Cannot finalize: ${parts.join('; ')}`,
       skeletonConfirmed,
       unsignedUnits,
+      activeGaps,
     });
     return;
   }
