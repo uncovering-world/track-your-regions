@@ -44,6 +44,7 @@ import { acceptMatch } from '../../../api/admin/worldViewImport';
 import type { MatchTreeNode } from '../../../api/admin/worldViewImport';
 import type { VerifyResult } from '../../../api/admin/wvImportWorkflow';
 import { childColorMap, CHILD_PALETTE } from './workspaceUtils';
+import { computeBbox } from './bboxUtils';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -74,47 +75,6 @@ interface WorkspaceMapProps {
   focusedGapDivisionId?: number | null;
   /** Called when a gap is clicked — parent sets focusedGapDivisionId + opens panel row */
   onGapFocus?: (divisionId: number) => void;
-}
-
-// ─── Compute bbox from a FeatureCollection ───────────────────────────────────
-
-// Plan-4: make computeBbox antimeridian-aware (west>east crossing)
-function computeBbox(
-  features: Array<{ geometry: GeoJSON.Geometry }>
-): [number, number, number, number] | null {
-  let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
-
-  function processCoord(coord: number[]) {
-    const [lon, lat] = coord;
-    if (lon < minLon) minLon = lon;
-    if (lon > maxLon) maxLon = lon;
-    if (lat < minLat) minLat = lat;
-    if (lat > maxLat) maxLat = lat;
-  }
-
-  function processCoords(coords: unknown): void {
-    if (!coords) return;
-    if (Array.isArray(coords) && typeof coords[0] === 'number') {
-      processCoord(coords as number[]);
-    } else if (Array.isArray(coords)) {
-      for (const c of coords) processCoords(c);
-    }
-  }
-
-  function processGeom(geom: GeoJSON.Geometry): void {
-    if (geom.type === 'GeometryCollection') {
-      for (const g of geom.geometries) processGeom(g);
-    } else {
-      processCoords(geom.coordinates);
-    }
-  }
-
-  for (const f of features) {
-    processGeom(f.geometry);
-  }
-
-  if (!isFinite(minLon)) return null;
-  return [minLon, minLat, maxLon, maxLat];
 }
 
 // M6: cursor helper — avoids nested ternary (sonarjs/no-nested-conditional)
