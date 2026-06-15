@@ -7,13 +7,15 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import {
-  Alert, Box, Button, Chip, Container, LinearProgress, Stack, Tab, Tabs, Tooltip, Typography,
+  Alert, Box, Button, Chip, Container, Dialog, DialogActions, DialogContent,
+  DialogTitle, LinearProgress, Paper, Stack, Tab, Tabs, Tooltip, Typography,
 } from '@mui/material';
 import { ArrowBack as BackIcon } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../hooks/useAuth';
 import { getWorkflowDashboard } from '../../../api/admin/wvImportWorkflow';
 import { finalizeReview } from '../../../api/admin/wvImportCoverage';
+import { startRematch, getRematchStatus } from '../../../api/admin/worldViewImport';
 import { CountriesTab } from './CountriesTab';
 import { SkeletonTab } from './SkeletonTab';
 import { GlobalGapsTab } from './GlobalGapsTab';
@@ -26,6 +28,9 @@ export function ImportDashboardPage() {
   const { isAdmin, isLoading: authLoading } = useAuth();
   const [tab, setTab] = useState<'countries' | 'skeleton' | 'gaps'>('countries');
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
+
+  // Re-match state
+  const [rematchDialogOpen, setRematchDialogOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId],
@@ -43,6 +48,36 @@ export function ImportDashboardPage() {
       setFinalizeError(err instanceof Error ? err.message : 'Finalize failed');
     },
   });
+
+  // ── Re-match All ───────────────────────────────────────────────────────────
+
+  const rematchMutation = useMutation({
+    mutationFn: () => startRematch(worldViewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'rematchStatus'] }).catch(() => {});
+    },
+  });
+
+  const { data: rematchStatus } = useQuery({
+    queryKey: ['admin', 'wvImport', 'rematchStatus', worldViewId],
+    queryFn: () => getRematchStatus(worldViewId),
+    refetchInterval: (query) => {
+      const st = query.state.data;
+      if (st?.status === 'matching') return 1000;
+      if (st?.status === 'complete') {
+        // Invalidate dashboard + tree + coverage but NOT rematchStatus itself —
+        // otherwise the invalidation triggers a refetch, which sees 'complete'
+        // again, calls these invalidations again → infinite loop that freezes
+        // the page.
+        queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'workflowDashboard', worldViewId] }).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'matchTree', worldViewId] }).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'coverage', worldViewId] }).catch(() => {});
+      }
+      return false;
+    },
+  });
+
+  const rematchRunning = rematchStatus?.status === 'matching';
 
   if (!authLoading && !isAdmin) return <Navigate to="/" replace />;
   if (!Number.isInteger(worldViewId)) return <Navigate to="/admin" replace />;
@@ -101,9 +136,42 @@ export function ImportDashboardPage() {
         </Stack>
       )}
 
+      {/* Danger zone — destructive world-view-level operations */}
+      <Paper
+        variant="outlined"
+        sx={{ p: 1.5, mb: 2, borderColor: 'warning.main', bgcolor: 'warning.50' }}
+      >
+        <Stack direction="row" alignItems="center" spacing={2}>
+          <Typography variant="caption" color="warning.dark" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Danger zone
+          </Typography>
+          <Button
+            variant="outlined"
+            color="warning"
+            size="small"
+            onClick={() => setRematchDialogOpen(true)}
+            disabled={rematchRunning || rematchMutation.isPending}
+          >
+            {rematchRunning ? 'Re-matching...' : 'Re-match All'}
+          </Button>
+        </Stack>
+      </Paper>
+
       {finalizeError && (
         <Alert severity="error" onClose={() => setFinalizeError(null)} sx={{ mb: 2 }}>
           {finalizeError}
+        </Alert>
+      )}
+
+      {/* Re-match progress */}
+      {rematchRunning && rematchStatus && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {rematchStatus.statusMessage}
+        </Alert>
+      )}
+      {rematchStatus?.status === 'complete' && rematchStatus.statusMessage && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {rematchStatus.statusMessage}
         </Alert>
       )}
 
@@ -119,6 +187,36 @@ export function ImportDashboardPage() {
         <SkeletonTab worldViewId={worldViewId} skeletonConfirmed={data?.skeletonConfirmed ?? false} units={units} />
       )}
       {tab === 'gaps' && <GlobalGapsTab worldViewId={worldViewId} />}
+
+      {/* Re-match confirmation dialog */}
+      <Dialog
+        open={rematchDialogOpen}
+        onClose={() => setRematchDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Re-match All Regions?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            This will clear all match assignments and suggestions, then re-run
+            automatic matching from scratch. Manual matches and rejections will
+            be lost.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRematchDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={() => {
+              setRematchDialogOpen(false);
+              rematchMutation.mutate();
+            }}
+          >
+            Re-match All
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }
