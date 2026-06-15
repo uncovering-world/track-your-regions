@@ -335,6 +335,8 @@ The admin reviews candidates via a **picker dialog** in the match review tree:
 
 API: `POST /api/admin/wv-import/matches/:worldViewId/select-map-image` with `{ regionId, imageUrl }` (imageUrl validated against candidates list).
 
+The same picker is available in the new workspace (Plan 4e): a "Pick map image" button in the Assignment stage (shown when the selected node has >1 candidate, tinted warning until reviewed) opens `MapImagePickerDialog` wired to the existing `selectMapMutation`; the chosen `region_map_url` then feeds CV color match and the region-map preview comparison.
+
 ### Link validation and missing pages
 
 Wikivoyage `{{Regionlist}}` templates sometimes list sub-regions that don't have their own articles. This happens in three ways:
