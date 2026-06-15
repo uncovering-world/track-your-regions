@@ -525,7 +525,7 @@ The header carries a 3-segment `StageSwitcher` (Hierarchy / Assign / Verify) wit
 
 ### What moved off the legacy tree
 
-The full set of import mutations and dialogs is available via the stage-specific tool components and SuggestionList — admins no longer need to scroll a full-tree list to find a node's actions. The legacy tree remains available for tasks not yet in the workspace (Re-match, Compute Geometries, CV/mapshape pipelines). Dashboard global-gap resolution is now done (Global gaps tab); the heavier per-node gap-tree drill-down with shadow insertions described in the legacy `CoverageResolveDialog` remains obsolete/legacy.
+The full set of import mutations and dialogs is available via the stage-specific tool components and SuggestionList — admins no longer need to scroll a full-tree list to find a node's actions. **Re-match All** (a warning-tinted danger-zone confirm) and **Compute Geometries** (start/poll/cancel with a progress alert) now run from the dashboard header (Plan 4f), reusing the existing `rematchStatus`/computation polling. Dashboard global-gap resolution is now done (Global gaps tab); the heavier per-node gap-tree drill-down with shadow insertions described in the legacy `CoverageResolveDialog` remains obsolete/legacy. The legacy tree is kept as a `?wvReview=` fallback (its eventual deletion is a separate future branch).
 
 ### Key files
 
