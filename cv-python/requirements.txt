@@ -1,11 +1,12 @@
-# fastapi >=0.134.0 is the minimum that allows starlette>=1.0.1, which closes
-# GHSA-86qp-5c8j-p5mr / PYSEC-2026-161 (Host header validation bypass) on top
-# of the earlier GHSA-2c2j-9gv5-cj73 and GHSA-7f5h-v6xp-fcq8 fixes.
-# Upgrade if newer GHSAs land via pip-audit.
+# fastapi >=0.134.0 permits starlette 1.3.1, which closes GHSA-86qp-5c8j-p5mr /
+# PYSEC-2026-161 (Host header validation bypass) plus the 1.1.0/1.3.x advisories
+# GHSA-wqp7-x3pw-xc5r, GHSA-x746-7m8f-x49c, GHSA-82w8-qh3p-5jfq,
+# GHSA-jp82-jpqv-5vv3, on top of the earlier GHSA-2c2j-9gv5-cj73 /
+# GHSA-7f5h-v6xp-fcq8 fixes. Upgrade if newer GHSAs land via pip-audit.
 # Stay on 0.136.1 — 0.136.3 was flagged MAL-2026-4750 (typosquat `fastar`
 # injected into the [standard] extras group); 0.136.2 was never published.
 fastapi==0.136.1
-starlette==1.0.1
+starlette==1.3.1
 # uvicorn[standard] >=0.46.0 transitively pulls h11>=0.16.0 (closes the
 # malformed-chunked-encoding CVE in older h11).
 uvicorn[standard]==0.46.0
@@ -13,9 +14,11 @@ numpy==2.2.4
 opencv-python-headless==4.11.0.86
 scikit-image==0.25.2
 scipy==1.14.1
-# python-multipart >=0.0.27 closes DoS-via-large-preamble, unbounded headers
-# DoS, and arbitrary file write CVEs from the 0.0.20 series.
-python-multipart==0.0.27
+# python-multipart 0.0.31 closes the 0.0.20-series CVEs (DoS-via-large-preamble,
+# unbounded-headers DoS, arbitrary file write) plus GHSA-v9pg-7xvm-68hf,
+# GHSA-5rvq-cxj2-64vf, GHSA-6jv3-5f52-599m. >=0.0.31 also adds stricter input
+# validation (rejects negative Content-Length, bounds header-name size).
+python-multipart==0.0.31
 # easyocr transitively pulls torch, currently flagged by GHSA-rrmf-rvhw-rf47
 # (low, torch.jit.script memory corruption, no fixed release). Ignored in the
 # security:py:deps npm script — see docs/security/SECURITY.md "Known Gaps".
