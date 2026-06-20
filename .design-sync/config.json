@@ -1,0 +1,18 @@
+{
+  "pkg": "frontend",
+  "globalName": "TyrUI",
+  "shape": "package",
+  "projectId": "74f5b72c-bf36-4a1f-b62c-42c6efaef274",
+  "srcDir": "frontend/src",
+  "tsconfig": "frontend/tsconfig.json",
+  "componentSrcMap": {
+    "EmptyState": "frontend/src/components/shared/EmptyState.tsx",
+    "LoadingSpinner": "frontend/src/components/shared/LoadingSpinner.tsx"
+  },
+  "dtsPropsFor": {
+    "EmptyState": "/** Message to display */ message: string; /** Padding shorthand (default: 3) */ padding?: number | string;",
+    "LoadingSpinner": "/** CircularProgress size in px (default: MUI default ~40) */ size?: number; /** Padding shorthand (default: 3) */ padding?: number | string;"
+  },
+  "provider": { "component": "DsPreviewProvider" },
+  "readmeHeader": ".design-sync/conventions.md"
+}

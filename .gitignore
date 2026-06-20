@@ -103,3 +103,10 @@ data/cv-python-tests/
 
 # Python CV model artifacts (downloaded at runtime)
 backend/data/models/
+
+# design-sync (claude.ai/design) — staged scripts, build output, machine state
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
