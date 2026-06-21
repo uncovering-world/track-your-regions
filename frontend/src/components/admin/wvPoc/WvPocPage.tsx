@@ -6,6 +6,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { getWorkflowDashboard, type DashboardUnit } from '../../../api/admin/wvImportWorkflow';
 import { computeLevelProgress, type LevelId } from './wvPocLevels';
 import { LevelSwitcher } from './LevelSwitcher';
+import { L1GroupEditor } from './L1GroupEditor';
 
 export function WvPocPage() {
   const { worldViewId: wvParam } = useParams<{ worldViewId?: string }>();
@@ -23,15 +24,6 @@ export function WvPocPage() {
   const units: DashboardUnit[] = useMemo(() => data?.units ?? [], [data]);
   const progress = useMemo(() => computeLevelProgress(units), [units]);
 
-  const byContinent = useMemo(() => {
-    const m = new Map<string, DashboardUnit[]>();
-    for (const u of units) {
-      const c = u.continent ?? (u.ancestorPath[0] ?? 'Ungrouped');
-      (m.get(c) ?? m.set(c, []).get(c)!).push(u);
-    }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [units]);
-
   if (authLoading || isLoading) return <Box sx={{ p: 4 }}><CircularProgress /></Box>;
   if (!isAdmin) return <Box sx={{ p: 4 }}><Alert severity="error">Admin only.</Alert></Box>;
   if (!Number.isFinite(worldViewId)) return <Box sx={{ p: 4 }}><Alert severity="error">Bad world view id.</Alert></Box>;
@@ -46,17 +38,7 @@ export function WvPocPage() {
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-        {level === 'l1' && (
-          <Box>
-            <Typography variant="subtitle2" gutterBottom>Supra-national — countries grouped by continent (view-only in this POC slice)</Typography>
-            {byContinent.map(([continent, list]) => (
-              <Box key={continent} sx={{ mb: 1.5 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>{continent} · {list.length}</Typography>
-                <Typography variant="caption" color="text.secondary">{list.map((u) => u.name).join(', ')}</Typography>
-              </Box>
-            ))}
-          </Box>
-        )}
+        {level === 'l1' && <L1GroupEditor units={units} />}
 
         {level === 'l2' && (
           <List dense>
