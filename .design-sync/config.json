@@ -7,12 +7,15 @@
   "tsconfig": "frontend/tsconfig.json",
   "componentSrcMap": {
     "EmptyState": "frontend/src/components/shared/EmptyState.tsx",
-    "LoadingSpinner": "frontend/src/components/shared/LoadingSpinner.tsx"
+    "LoadingSpinner": "frontend/src/components/shared/LoadingSpinner.tsx",
+    "LevelSwitcher": "frontend/src/components/admin/wvPoc/LevelSwitcher.tsx"
   },
   "dtsPropsFor": {
-    "EmptyState": "/** Message to display */ message: string; /** Padding shorthand (default: 3) */ padding?: number | string;",
-    "LoadingSpinner": "/** CircularProgress size in px (default: MUI default ~40) */ size?: number; /** Padding shorthand (default: 3) */ padding?: number | string;"
+    "EmptyState": "/** Body text */ message: string; /** Optional display heading above the message */ title?: string; /** Optional decorative icon in the medallion */ icon?: React.ReactNode; /** Optional call-to-action button */ action?: { label: string; onClick: () => void }; /** Padding shorthand (default: 3) */ padding?: number | string;",
+    "LoadingSpinner": "/** CircularProgress size in px (default: MUI default ~40) */ size?: number; /** Padding shorthand (default: 3) */ padding?: number | string;",
+    "LevelSwitcher": "/** Active level */ value: 'l1' | 'l2' | 'l3'; /** Called when a level is selected */ onChange: (level: 'l1' | 'l2' | 'l3') => void; /** Per-level build progress */ progress: { l1: { continents: number; countries: number; status: 'empty' | 'in_progress' | 'done' }; l2: { signedOff: number; total: number; status: 'empty' | 'in_progress' | 'done' }; l3: { leafResolved: number; leafTotal: number; status: 'empty' | 'in_progress' | 'done' } };"
   },
   "provider": { "component": "DsPreviewProvider" },
-  "readmeHeader": ".design-sync/conventions.md"
+  "readmeHeader": ".design-sync/conventions.md",
+  "overrides": { "LevelSwitcher": { "cardMode": "column" } }
 }

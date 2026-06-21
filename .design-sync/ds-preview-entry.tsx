@@ -4,4 +4,5 @@
 // This minimal entry re-exports only the seed components + the preview provider.
 export { EmptyState } from '../frontend/src/components/shared/EmptyState';
 export { LoadingSpinner } from '../frontend/src/components/shared/LoadingSpinner';
+export { LevelSwitcher } from '../frontend/src/components/admin/wvPoc/LevelSwitcher';
 export { DsPreviewProvider } from './DsPreviewProvider';

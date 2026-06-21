@@ -21,6 +21,19 @@
   router / auth / MapLibre). Excluded for now: `CurationDialog`, `AddExperienceDialog`,
   `LocationPicker`, `AuthImage`.
 
+## Step 2 — Meridian theme + LevelSwitcher
+- The app adopted the **Meridian v2** design language (warm paper, Sea Teal `#0f766e` primary,
+  Sunset Clay `#c2683c` accent, Bricolage Grotesque display). Source canvas:
+  `.design-sync/designs/meridian-design-system-v2.html`. All synced components render under it
+  via `DsPreviewProvider` (= `createAppTheme('light')`).
+- Added `LevelSwitcher` (group `wvpoc`, from `frontend/src/components/admin/wvPoc/`). Needs a
+  `dtsPropsFor` entry (inlined `value`/`onChange`/`progress` — the `LevelProgress` type lives in
+  a sibling module ts-morph won't flatten from repo-root).
+- **Font fidelity caveat:** the DS preview cards do NOT load the Google Fonts the app loads in
+  `index.html`, so Bricolage Grotesque falls back to a default sans in the claude.ai/design pane.
+  The real app renders Bricolage correctly. To ship the font to previews, add `cfg.extraFonts`
+  (or `runtimeFontPrefixes` to silence any `[FONT_MISSING]`). Colors/layout are faithful.
+
 ## Build & verify (learned in Step 1)
 - **Manual entry, not whole-src synth.** A pure synth entry `export *`s every `frontend/src/*.tsx`
   including `main.tsx` (`ReactDOM.createRoot`) → the bundle crashes at eval. We use a minimal
