@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Meridian Design System v2 — pulled from claude.ai/design (project 74f5b72c) 2026-06-21.
+  Authored by the user in the Claude Design web app. Standalone reconstruction of the
+  design canvas (the original .dc.html wraps this in <x-dc> + support.js runtime).
+  This is a DESIGN REFERENCE, not shipped code — the app theme adopts from it.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+  @keyframes mer-spin { to { transform: rotate(360deg); } }
+  @keyframes mer-dash { 0% { stroke-dashoffset: 180; } 50% { stroke-dashoffset: 50; } 100% { stroke-dashoffset: 180; } }
+</style>
+</head>
+<body>
+
+<div style="background:#FBF8F3; color:#1C1917; font-family:'Figtree',sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; padding:0 0 96px;">
+
+  <!-- ===== MASTHEAD ===== -->
+  <header style="max-width:1140px; margin:0 auto; padding:64px 32px 40px;">
+    <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:0.22em; text-transform:uppercase; color:#0F766E; margin-bottom:22px;">Meridian · Design System v2</div>
+    <h1 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:72px; line-height:0.98; letter-spacing:-0.025em; margin:0 0 20px; max-width:14ch;">Track Your Regions</h1>
+    <p style="font-size:20px; line-height:1.5; color:#79716B; max-width:56ch; margin:0;">A warm, modern visual language for logging where you've been. Deep sea-teal anchored by a sunset clay accent, on warm paper neutrals — built for maps, stats, and the quiet thrill of filling in the world.</p>
+    <div style="display:flex; flex-wrap:wrap; gap:32px; margin-top:36px; padding-top:28px; border-top:1px solid #E8E1D8;">
+      <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:26px;">Bricolage · Figtree</div><div style="font-size:13px; color:#A8A29E; margin-top:2px;">Typefaces</div></div>
+      <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:26px;">Teal + Clay</div><div style="font-size:13px; color:#A8A29E; margin-top:2px;">Palette</div></div>
+      <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:26px;">8px</div><div style="font-size:13px; color:#A8A29E; margin-top:2px;">Spacing grid</div></div>
+      <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:26px;">Light · Dark</div><div style="font-size:13px; color:#A8A29E; margin-top:2px;">Themes</div></div>
+    </div>
+  </header>
+
+  <!-- ===== COLOR ===== -->
+  <section style="max-width:1140px; margin:0 auto; padding:40px 32px;">
+    <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:24px;">
+      <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0F766E; letter-spacing:0.18em;">01</span>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:32px; letter-spacing:-0.02em; margin:0;">Color</h2>
+    </div>
+
+    <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#A8A29E; margin:0 0 14px;">Brand</div>
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:36px;">
+      <div style="border-radius:16px; overflow:hidden; background:#fff; border:1px solid #EFE8DF; box-shadow:0 1px 2px rgba(28,25,23,0.04);">
+        <div style="height:104px; background:#0F766E;"></div>
+        <div style="padding:12px 14px;"><div style="font-weight:600; font-size:14px;">Sea Teal</div><div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#A8A29E;">#0F766E · primary</div></div>
+      </div>
+      <div style="border-radius:16px; overflow:hidden; background:#fff; border:1px solid #EFE8DF; box-shadow:0 1px 2px rgba(28,25,23,0.04);">
+        <div style="height:104px; background:#115E56;"></div>
+        <div style="padding:12px 14px;"><div style="font-weight:600; font-size:14px;">Deep Teal</div><div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#A8A29E;">#115E56 · hover</div></div>
+      </div>
+      <div style="border-radius:16px; overflow:hidden; background:#fff; border:1px solid #EFE8DF; box-shadow:0 1px 2px rgba(28,25,23,0.04);">
+        <div style="height:104px; background:#C2683C;"></div>
+        <div style="padding:12px 14px;"><div style="font-weight:600; font-size:14px;">Sunset Clay</div><div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#A8A29E;">#C2683C · accent</div></div>
+      </div>
+      <div style="border-radius:16px; overflow:hidden; background:#fff; border:1px solid #EFE8DF; box-shadow:0 1px 2px rgba(28,25,23,0.04);">
+        <div style="height:104px; background:#E4A951;"></div>
+        <div style="padding:12px 14px;"><div style="font-weight:600; font-size:14px;">Amber Sand</div><div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#A8A29E;">#E4A951 · highlight</div></div>
+      </div>
+    </div>
+
+    <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#A8A29E; margin:0 0 14px;">Neutrals — warm paper</div>
+    <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:36px;">
+      <div style="border-radius:12px; overflow:hidden; border:1px solid #EFE8DF;"><div style="height:64px; background:#FBF8F3;"></div><div style="padding:8px 10px; background:#fff;"><div style="font-size:12px; font-weight:600;">Canvas</div><div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#A8A29E;">#FBF8F3</div></div></div>
+      <div style="border-radius:12px; overflow:hidden; border:1px solid #EFE8DF;"><div style="height:64px; background:#FFFFFF;"></div><div style="padding:8px 10px; background:#fff;"><div style="font-size:12px; font-weight:600;">Surface</div><div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#A8A29E;">#FFFFFF</div></div></div>
+      <div style="border-radius:12px; overflow:hidden; border:1px solid #EFE8DF;"><div style="height:64px; background:#E8E1D8;"></div><div style="padding:8px 10px; background:#fff;"><div style="font-size:12px; font-weight:600;">Hairline</div><div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#A8A29E;">#E8E1D8</div></div></div>
+      <div style="border-radius:12px; overflow:hidden; border:1px solid #EFE8DF;"><div style="height:64px; background:#A8A29E;"></div><div style="padding:8px 10px; background:#fff;"><div style="font-size:12px; font-weight:600;">Muted</div><div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#A8A29E;">#A8A29E</div></div></div>
+      <div style="border-radius:12px; overflow:hidden; border:1px solid #EFE8DF;"><div style="height:64px; background:#79716B;"></div><div style="padding:8px 10px; background:#fff;"><div style="font-size:12px; font-weight:600; color:#1C1917;">Subtle</div><div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#A8A29E;">#79716B</div></div></div>
+      <div style="border-radius:12px; overflow:hidden; border:1px solid #EFE8DF;"><div style="height:64px; background:#1C1917;"></div><div style="padding:8px 10px; background:#fff;"><div style="font-size:12px; font-weight:600;">Ink</div><div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#A8A29E;">#1C1917</div></div></div>
+    </div>
+
+    <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#A8A29E; margin:0 0 14px;">Semantic</div>
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+      <div style="display:flex; align-items:center; gap:14px; background:#fff; border:1px solid #EFE8DF; border-radius:14px; padding:14px 16px;"><span style="width:36px; height:36px; border-radius:9px; background:#3F8F5B; flex:none;"></span><div><div style="font-weight:600; font-size:14px;">Success</div><div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#A8A29E;">#3F8F5B</div></div></div>
+      <div style="display:flex; align-items:center; gap:14px; background:#fff; border:1px solid #EFE8DF; border-radius:14px; padding:14px 16px;"><span style="width:36px; height:36px; border-radius:9px; background:#D9920A; flex:none;"></span><div><div style="font-weight:600; font-size:14px;">Warning</div><div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#A8A29E;">#D9920A</div></div></div>
+      <div style="display:flex; align-items:center; gap:14px; background:#fff; border:1px solid #EFE8DF; border-radius:14px; padding:14px 16px;"><span style="width:36px; height:36px; border-radius:9px; background:#C0492F; flex:none;"></span><div><div style="font-weight:600; font-size:14px;">Error</div><div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#A8A29E;">#C0492F</div></div></div>
+    </div>
+  </section>
+
+  <!-- ===== TYPOGRAPHY ===== -->
+  <section style="max-width:1140px; margin:0 auto; padding:40px 32px;">
+    <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:24px;">
+      <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0F766E; letter-spacing:0.18em;">02</span>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:32px; letter-spacing:-0.02em; margin:0;">Typography</h2>
+    </div>
+    <div style="display:grid; grid-template-columns:1.3fr 1fr; gap:40px; align-items:start;">
+      <div style="background:#fff; border:1px solid #EFE8DF; border-radius:18px; padding:32px; box-shadow:0 1px 2px rgba(28,25,23,0.04);">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#A8A29E; margin-bottom:20px;">Bricolage Grotesque — Display</div>
+        <div style="border-bottom:1px solid #F0EAE1; padding-bottom:14px; margin-bottom:14px;"><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:56px; line-height:1; letter-spacing:-0.025em;">Hokkaido</div><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#A8A29E; margin-top:8px;">Display / 56 / 800 / -2.5%</div></div>
+        <div style="border-bottom:1px solid #F0EAE1; padding-bottom:14px; margin-bottom:14px;"><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:40px; line-height:1.05; letter-spacing:-0.02em;">Patagonia trail</div><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#A8A29E; margin-top:8px;">H1 / 40 / 700</div></div>
+        <div style="border-bottom:1px solid #F0EAE1; padding-bottom:14px; margin-bottom:14px;"><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:30px; letter-spacing:-0.015em;">Coastal regions</div><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#A8A29E; margin-top:8px;">H2 / 30 / 700</div></div>
+        <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:22px;">Visited this year</div><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#A8A29E; margin-top:8px;">H3 / 22 / 600</div></div>
+      </div>
+      <div style="background:#fff; border:1px solid #EFE8DF; border-radius:18px; padding:32px; box-shadow:0 1px 2px rgba(28,25,23,0.04);">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#A8A29E; margin-bottom:20px;">Figtree — UI &amp; Body</div>
+        <p style="font-size:18px; line-height:1.55; margin:0 0 18px;">You've explored 47 of 195 countries — roughly a quarter of the world by region count.</p>
+        <p style="font-size:16px; line-height:1.6; color:#44403C; margin:0 0 18px;">Body text sits at 16px with comfortable 1.6 leading. Figtree keeps long passages legible while staying friendly and geometric.</p>
+        <p style="font-size:14px; line-height:1.55; color:#79716B; margin:0 0 18px;">Secondary text drops to 14px and the muted ink for captions, metadata, and helper copy.</p>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:#0F766E;">Mono · labels &amp; coordinates</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== BUTTONS + TAGS ===== -->
+  <section style="max-width:1140px; margin:0 auto; padding:40px 32px;">
+    <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:24px;">
+      <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0F766E; letter-spacing:0.18em;">03</span>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:32px; letter-spacing:-0.02em; margin:0;">Buttons &amp; Tags</h2>
+    </div>
+    <div style="background:#fff; border:1px solid #EFE8DF; border-radius:18px; padding:32px; box-shadow:0 1px 2px rgba(28,25,23,0.04);">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:14px; margin-bottom:24px;">
+        <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:15px; color:#fff; background:#0F766E; border:none; border-radius:11px; padding:13px 22px; cursor:pointer; box-shadow:0 2px 8px rgba(15,118,110,0.25);">Log a region</button>
+        <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:15px; color:#fff; background:#C2683C; border:none; border-radius:11px; padding:13px 22px; cursor:pointer; box-shadow:0 2px 8px rgba(194,104,60,0.25);">Plan a trip</button>
+        <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:15px; color:#0F766E; background:transparent; border:1.5px solid #0F766E; border-radius:11px; padding:11.5px 22px; cursor:pointer;">View map</button>
+        <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:15px; color:#44403C; background:transparent; border:none; border-radius:11px; padding:13px 18px; cursor:pointer;">Cancel</button>
+        <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:15px; color:#fff; background:#0F766E; border:none; border-radius:11px; padding:13px 22px; opacity:0.4; cursor:not-allowed;">Disabled</button>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:14px; margin-bottom:28px;">
+        <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:13px; color:#fff; background:#0F766E; border:none; border-radius:9px; padding:8px 14px; cursor:pointer;">Small</button>
+        <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:13px; color:#0F766E; background:transparent; border:1.5px solid #D6CEC3; border-radius:9px; padding:6.5px 14px; cursor:pointer;">Small outline</button>
+      </div>
+      <div style="height:1px; background:#F0EAE1; margin:0 0 24px;"></div>
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+        <span style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:#0F766E; background:#E6F2F0; border-radius:999px; padding:6px 13px;"><span style="width:7px; height:7px; border-radius:50%; background:#0F766E;"></span>Visited</span>
+        <span style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:#9A5530; background:#F6E9E0; border-radius:999px; padding:6px 13px;"><span style="width:7px; height:7px; border-radius:50%; background:#C2683C;"></span>Wishlist</span>
+        <span style="font-size:13px; font-weight:600; color:#8A6510; background:#FAF0DA; border-radius:999px; padding:6px 13px;">Planned</span>
+        <span style="font-size:13px; font-weight:500; color:#57534E; background:#F4EFE8; border-radius:999px; padding:6px 13px;">Asia</span>
+        <span style="font-size:13px; font-weight:500; color:#57534E; background:#F4EFE8; border-radius:999px; padding:6px 13px;">Europe</span>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:500; color:#57534E; background:#F4EFE8; border-radius:7px; padding:5px 10px;">35.6° N</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== INPUTS ===== -->
+  <section style="max-width:1140px; margin:0 auto; padding:40px 32px;">
+    <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:24px;">
+      <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0F766E; letter-spacing:0.18em;">04</span>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:32px; letter-spacing:-0.02em; margin:0;">Inputs</h2>
+    </div>
+    <div style="background:#fff; border:1px solid #EFE8DF; border-radius:18px; padding:32px; box-shadow:0 1px 2px rgba(28,25,23,0.04); display:grid; grid-template-columns:1fr 1fr; gap:24px; max-width:760px;">
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; color:#44403C; margin-bottom:8px;">Region name</label>
+        <input value="Tōhoku" style="font-family:'Figtree',sans-serif; width:100%; font-size:15px; color:#1C1917; background:#FBF8F3; border:1.5px solid #E0D8CD; border-radius:11px; padding:12px 14px; outline:none;">
+      </div>
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; color:#44403C; margin-bottom:8px;">Search</label>
+        <div style="display:flex; align-items:center; gap:10px; background:#FBF8F3; border:1.5px solid #0F766E; border-radius:11px; padding:12px 14px; box-shadow:0 0 0 3px rgba(15,118,110,0.12);">
+          <span style="width:14px; height:14px; border:2px solid #0F766E; border-radius:50%; flex:none; position:relative; display:inline-block;"></span>
+          <input value="Find a country…" style="font-family:'Figtree',sans-serif; border:none; background:transparent; font-size:15px; color:#79716B; outline:none; width:100%;">
+        </div>
+        <div style="font-size:12px; color:#A8A29E; margin-top:7px;">Focused state — teal ring</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== COMPONENTS IN CONTEXT ===== -->
+  <section style="max-width:1140px; margin:0 auto; padding:40px 32px;">
+    <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:24px;">
+      <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0F766E; letter-spacing:0.18em;">05</span>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:32px; letter-spacing:-0.02em; margin:0;">Components in context</h2>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+
+      <!-- Region card -->
+      <div style="background:#fff; border:1px solid #EFE8DF; border-radius:20px; overflow:hidden; box-shadow:0 4px 20px rgba(28,25,23,0.06);">
+        <div style="height:168px; position:relative; background:repeating-linear-gradient(135deg,#E9F1EF,#E9F1EF 11px,#E3ECEA 11px,#E3ECEA 22px);">
+          <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-size:12px; color:#7DA39C; letter-spacing:0.08em;">[ map preview ]</div>
+          <span style="position:absolute; top:14px; left:14px; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#0F766E; background:rgba(255,255,255,0.92); border-radius:999px; padding:5px 11px;"><span style="width:6px; height:6px; border-radius:50%; background:#0F766E;"></span>Visited</span>
+        </div>
+        <div style="padding:20px 22px 22px;">
+          <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#A8A29E; margin-bottom:6px;">Japan · Asia</div>
+          <h3 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:25px; letter-spacing:-0.015em; margin:0 0 14px;">Tōhoku Region</h3>
+          <div style="display:flex; gap:24px;">
+            <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:22px;">6</div><div style="font-size:12px; color:#79716B;">cities</div></div>
+            <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:22px;">14</div><div style="font-size:12px; color:#79716B;">days</div></div>
+            <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:22px;">2023</div><div style="font-size:12px; color:#79716B;">last visit</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trip / wishlist card -->
+      <div style="background:#fff; border:1px solid #EFE8DF; border-radius:20px; overflow:hidden; box-shadow:0 4px 20px rgba(28,25,23,0.06);">
+        <div style="height:168px; position:relative; background:repeating-linear-gradient(135deg,#F6ECE3,#F6ECE3 11px,#F1E4D8 11px,#F1E4D8 22px);">
+          <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-size:12px; color:#C09A7C; letter-spacing:0.08em;">[ photo ]</div>
+          <span style="position:absolute; top:14px; left:14px; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#9A5530; background:rgba(255,255,255,0.92); border-radius:999px; padding:5px 11px;"><span style="width:6px; height:6px; border-radius:50%; background:#C2683C;"></span>Wishlist</span>
+        </div>
+        <div style="padding:20px 22px 22px;">
+          <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#A8A29E; margin-bottom:6px;">Argentina · South America</div>
+          <h3 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:25px; letter-spacing:-0.015em; margin:0 0 14px;">Patagonia</h3>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+            <span style="font-size:14px; color:#79716B;">Planned for spring 2026</span>
+            <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:13px; color:#C2683C; background:#F6E9E0; border:none; border-radius:9px; padding:8px 14px; cursor:pointer;">Plan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats hero -->
+    <div style="margin-top:24px; background:#0F766E; border-radius:20px; padding:36px 40px; color:#fff; display:grid; grid-template-columns:auto 1fr; gap:48px; align-items:center; box-shadow:0 8px 30px rgba(15,118,110,0.25);">
+      <div style="width:148px; height:148px; border-radius:50%; background:conic-gradient(#E4A951 0deg 88deg, rgba(255,255,255,0.18) 88deg 360deg); display:flex; align-items:center; justify-content:center;">
+        <div style="width:114px; height:114px; border-radius:50%; background:#0F766E; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:38px; line-height:1;">24%</div>
+          <div style="font-size:12px; color:#A7D7D0; margin-top:2px;">of the world</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; color:#A7D7D0; margin-bottom:14px;">World explored</div>
+        <div style="display:flex; flex-wrap:wrap; gap:40px;">
+          <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:42px; line-height:1;">47</div><div style="font-size:14px; color:#A7D7D0; margin-top:4px;">countries</div></div>
+          <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:42px; line-height:1;">128</div><div style="font-size:14px; color:#A7D7D0; margin-top:4px;">regions</div></div>
+          <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:42px; line-height:1;">312</div><div style="font-size:14px; color:#A7D7D0; margin-top:4px;">cities</div></div>
+          <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:42px; line-height:1;">6</div><div style="font-size:14px; color:#A7D7D0; margin-top:4px;">continents</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== STATES (redesigned existing components) ===== -->
+  <section style="max-width:1140px; margin:0 auto; padding:40px 32px;">
+    <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:24px;">
+      <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0F766E; letter-spacing:0.18em;">06</span>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:32px; letter-spacing:-0.02em; margin:0;">States</h2>
+      <span style="font-size:14px; color:#A8A29E;">— the two existing components, reimagined</span>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+      <div style="background:#fff; border:1px solid #EFE8DF; border-radius:18px; padding:48px 32px; box-shadow:0 1px 2px rgba(28,25,23,0.04); text-align:center;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#A8A29E; margin-bottom:24px;">EmptyState</div>
+        <div style="width:64px; height:64px; border-radius:50%; background:#F4EFE8; margin:0 auto 18px; display:flex; align-items:center; justify-content:center;">
+          <span style="width:24px; height:24px; border:2.5px dashed #C7BEB2; border-radius:50%; display:inline-block;"></span>
+        </div>
+        <div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:20px; margin-bottom:6px;">No regions yet</div>
+        <p style="font-size:14px; color:#79716B; margin:0 auto 20px; max-width:30ch; line-height:1.5;">Start logging the places you've been and watch your map fill in.</p>
+        <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:14px; color:#fff; background:#0F766E; border:none; border-radius:10px; padding:11px 20px; cursor:pointer;">Add your first region</button>
+      </div>
+      <div style="background:#fff; border:1px solid #EFE8DF; border-radius:18px; padding:48px 32px; box-shadow:0 1px 2px rgba(28,25,23,0.04); text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#A8A29E; margin-bottom:28px;">LoadingSpinner</div>
+        <svg width="48" height="48" viewBox="0 0 48 48" style="animation:mer-spin 1s linear infinite;">
+          <circle cx="24" cy="24" r="20" fill="none" stroke="#E8E1D8" stroke-width="4"></circle>
+          <circle cx="24" cy="24" r="20" fill="none" stroke="#0F766E" stroke-width="4" stroke-linecap="round" stroke-dasharray="100" stroke-dashoffset="70"></circle>
+        </svg>
+        <div style="font-size:14px; color:#79716B; margin-top:20px;">Loading your map…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== DARK VARIANT ===== -->
+  <section style="max-width:1140px; margin:0 auto; padding:40px 32px;">
+    <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:24px;">
+      <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0F766E; letter-spacing:0.18em;">07</span>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:32px; letter-spacing:-0.02em; margin:0;">Dark theme</h2>
+    </div>
+    <div style="background:#14110E; border-radius:20px; padding:36px; display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+      <div style="background:#1F1B16; border:1px solid #2C2620; border-radius:18px; padding:26px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8A817A; margin-bottom:8px;">Iceland · Europe</div>
+        <h3 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:26px; letter-spacing:-0.015em; color:#F5F1EB; margin:0 0 16px;">Highlands</h3>
+        <div style="display:flex; gap:24px; margin-bottom:20px;">
+          <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:22px; color:#F5F1EB;">3</div><div style="font-size:12px; color:#8A817A;">cities</div></div>
+          <div><div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:22px; color:#F5F1EB;">9</div><div style="font-size:12px; color:#8A817A;">days</div></div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <span style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:#2DD4BF; background:rgba(45,212,191,0.12); border-radius:999px; padding:6px 13px;"><span style="width:7px; height:7px; border-radius:50%; background:#2DD4BF;"></span>Visited</span>
+          <button style="font-family:'Figtree',sans-serif; font-weight:600; font-size:13px; background:#2DD4BF; border:none; border-radius:9px; padding:6px 14px; cursor:pointer; color:#0A2E2A;">Open</button>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px; justify-content:center;">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span style="width:32px; height:32px; border-radius:8px; background:#14110E; border:1px solid #2C2620;"></span>
+          <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A817A;">#14110E · canvas</span>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span style="width:32px; height:32px; border-radius:8px; background:#1F1B16; border:1px solid #2C2620;"></span>
+          <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A817A;">#1F1B16 · surface</span>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span style="width:32px; height:32px; border-radius:8px; background:#2DD4BF;"></span>
+          <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A817A;">#2DD4BF · primary</span>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span style="width:32px; height:32px; border-radius:8px; background:#E08A5C;"></span>
+          <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A817A;">#E08A5C · accent</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
