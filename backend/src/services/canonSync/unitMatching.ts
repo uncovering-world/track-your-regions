@@ -148,6 +148,13 @@ export async function matchRootUnits(
  */
 /** Max levels to descend below the country-level unit when landing. */
 const DISPUTE_MAX_DESCENT = 4;
+/**
+ * Best-effort landings only count when the dispute covers at least this
+ * share of the unit it lands on. Below it, a dust-sized feature (Rockall,
+ * Hans Island) would "land" on a unit thousands of times its size — an
+ * honest zero-unit dispute is better than hatching half a country.
+ */
+const DISPUTE_MIN_LANDING_SHARE = 0.01;
 
 async function queryChildShares(
   client: import('pg').PoolClient, parentId: number,
@@ -200,6 +207,9 @@ export async function landDisputeUnits(
     // while it has children of its own, until some level yields real
     // selections or the tree bottoms out.
     let parentId = root.id;
+    let parentShare = Number(root.share) || 0;
+    const bestEffort = (id: number, share: number): { divisionIds: number[]; approximate: boolean } =>
+      (share >= DISPUTE_MIN_LANDING_SHARE ? { divisionIds: [id], approximate: true } : { divisionIds: [], approximate: true });
     for (let depth = 0; depth < DISPUTE_MAX_DESCENT; depth++) {
       const childShares = await queryChildShares(client, parentId);
       if (childShares.length === 0) break;
@@ -211,10 +221,11 @@ export async function landDisputeUnits(
       }
       const top = childShares.reduce((acc, s) => (s.share > acc.share ? s : acc), childShares[0]);
       if (!top.hasChildren || depth === DISPUTE_MAX_DESCENT - 1) {
-        return { divisionIds: [top.id], approximate: true };
+        return bestEffort(top.id, top.share);
       }
       parentId = top.id;
+      parentShare = top.share;
     }
-    return { divisionIds: [parentId], approximate: true };
+    return bestEffort(parentId, parentShare);
   });
 }
