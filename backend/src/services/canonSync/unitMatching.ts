@@ -57,9 +57,18 @@ async function withNeTempTable<T>(
     // Islands and Ashmore and Cartier Islands alike): merge their geometry
     // on conflict instead of dropping every feature after the first.
     for (const f of features) {
+      // The CASE guards against degenerate NE polygons that ST_MakeValid
+      // "un-crosses" into a world-spanning band (observed: the Rockall islet
+      // inverting to cover half the planet and landing on Russia's Far
+      // East). No legitimate feature approaches 20000 deg² (largest real
+      // units are ~1800), so anything bigger is inverted — take its
+      // complement within the world envelope instead.
       await client.query(
         `INSERT INTO canon_ne_tmp (key, geom)
-         VALUES ($1, ST_SetSRID(ST_CollectionExtract(ST_MakeValid(ST_GeomFromGeoJSON($2)), 3), 4326))
+         SELECT $1, CASE WHEN ST_Area(g.geom) > 20000
+             THEN ST_CollectionExtract(ST_Difference(ST_MakeEnvelope(-180, -90, 180, 90, 4326), g.geom), 3)
+             ELSE g.geom END
+         FROM (SELECT ST_SetSRID(ST_CollectionExtract(ST_MakeValid(ST_GeomFromGeoJSON($2)), 3), 4326) AS geom) g
          ON CONFLICT (key) DO UPDATE
          SET geom = ST_CollectionExtract(ST_Collect(canon_ne_tmp.geom, EXCLUDED.geom), 3)`,
         [f.key, JSON.stringify(f.geometry)],
@@ -137,6 +146,36 @@ export async function matchRootUnits(
  * is_approximate. Validate against real NE data during sync calibration
  * before extending to multi-root landing.
  */
+/** Max levels to descend below the country-level unit when landing. */
+const DISPUTE_MAX_DESCENT = 4;
+
+async function queryChildShares(
+  client: import('pg').PoolClient, parentId: number,
+): Promise<{ id: number; share: number; hasChildren: boolean }[]> {
+  const res = await client.query(`
+    SELECT ad.id, ad.has_children,
+           ST_Area(ST_Intersection(ad.geom, t.geom)) / NULLIF(ST_Area(ad.geom), 0) AS share
+    FROM administrative_divisions ad, canon_ne_tmp t
+    WHERE ad.parent_id = $1 AND ad.geom && t.geom`, [parentId]);
+  return (res.rows as { id: number; has_children: boolean; share: number }[])
+    .map((c) => ({ id: c.id, share: Number(c.share) || 0, hasChildren: c.has_children }));
+}
+
+async function queryCoverage(
+  client: import('pg').PoolClient, ids: number[],
+): Promise<number> {
+  // ST_Union(ad.geom) here is the single-argument AGGREGATE form; mixing
+  // it with the bare t.geom column with no GROUP BY is a PostgreSQL
+  // 42803 error (t.geom appears outside an aggregate/GROUP BY). Pre-
+  // aggregate in a subquery instead — canon_ne_tmp always has exactly
+  // one row for this call, so the cross join stays a single pairing.
+  const cov = await client.query(`
+    SELECT ST_Area(ST_Intersection(u.geom, t.geom)) / NULLIF(ST_Area(t.geom), 0) AS coverage
+    FROM (SELECT ST_Union(geom) AS geom FROM administrative_divisions WHERE id = ANY($1)) u, canon_ne_tmp t`,
+    [ids]);
+  return Number((cov.rows[0] as { coverage: number }).coverage) || 0;
+}
+
 export async function landDisputeUnits(
   neFeature: NeDisputedFeature,
 ): Promise<{ divisionIds: number[]; approximate: boolean }> {
@@ -151,30 +190,31 @@ export async function landDisputeUnits(
       ORDER BY share DESC LIMIT 1`);
     if (roots.rows.length === 0) return { divisionIds: [], approximate: true };
     const root = roots.rows[0] as { id: number; share: number; coverage: number };
-
-    const children = await client.query(`
-      SELECT ad.id,
-             ST_Area(ST_Intersection(ad.geom, t.geom)) / NULLIF(ST_Area(ad.geom), 0) AS share
-      FROM administrative_divisions ad, canon_ne_tmp t
-      WHERE ad.parent_id = $1 AND ad.geom && t.geom`, [root.id]);
-    const childShares = (children.rows as { id: number; share: number }[])
-      .map((c) => ({ id: c.id, share: Number(c.share) || 0 }));
-
-    const selectedForCoverage = childShares.filter((c) => c.share >= DISPUTE_CHILD_SHARE).map((c) => c.id);
-    const coverageIds = Number(root.share) >= DISPUTE_ROOT_SHARE ? [root.id] : selectedForCoverage;
-    let coverage = Number(root.coverage) || 0;
-    if (coverageIds.length > 0 && Number(root.share) < DISPUTE_ROOT_SHARE) {
-      // ST_Union(ad.geom) here is the single-argument AGGREGATE form; mixing
-      // it with the bare t.geom column with no GROUP BY is a PostgreSQL
-      // 42803 error (t.geom appears outside an aggregate/GROUP BY). Pre-
-      // aggregate in a subquery instead — canon_ne_tmp always has exactly
-      // one row for this call, so the cross join stays a single pairing.
-      const cov = await client.query(`
-        SELECT ST_Area(ST_Intersection(u.geom, t.geom)) / NULLIF(ST_Area(t.geom), 0) AS coverage
-        FROM (SELECT ST_Union(geom) AS geom FROM administrative_divisions WHERE id = ANY($1)) u, canon_ne_tmp t`,
-        [coverageIds]);
-      coverage = Number((cov.rows[0] as { coverage: number }).coverage) || 0;
+    if (Number(root.share) >= DISPUTE_ROOT_SHARE) {
+      return decideLanding({ rootId: root.id, rootShare: Number(root.share) || 0 }, [], Number(root.coverage) || 0);
     }
-    return decideLanding({ rootId: root.id, rootShare: Number(root.share) || 0 }, childShares, coverage);
+
+    // Recursive descent: a small dispute inside a huge unit clears no child
+    // at the first level (Kurils vs a whole federal district — best-effort
+    // would hatch the entire district). Follow the most-covered child down
+    // while it has children of its own, until some level yields real
+    // selections or the tree bottoms out.
+    let parentId = root.id;
+    for (let depth = 0; depth < DISPUTE_MAX_DESCENT; depth++) {
+      const childShares = await queryChildShares(client, parentId);
+      if (childShares.length === 0) break;
+      const selected = childShares.filter((c) => c.share >= DISPUTE_CHILD_SHARE);
+      if (selected.length > 0) {
+        const ids = selected.map((c) => c.id);
+        return decideLanding(
+          { rootId: parentId, rootShare: 0 }, childShares, await queryCoverage(client, ids));
+      }
+      const top = childShares.reduce((acc, s) => (s.share > acc.share ? s : acc), childShares[0]);
+      if (!top.hasChildren || depth === DISPUTE_MAX_DESCENT - 1) {
+        return { divisionIds: [top.id], approximate: true };
+      }
+      parentId = top.id;
+    }
+    return { divisionIds: [parentId], approximate: true };
   });
 }
