@@ -20,10 +20,15 @@ vi.mock('./loader.js', () => ({
   finishCanonSyncLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { fetchWikidataCountries } from './wikidataSource.js';
+import { finishCanonSyncLog } from './loader.js';
 import { syncCanon, getCanonSyncStatus, cancelCanonSync, _resetForTests } from './index.js';
 
 describe('canon sync orchestration', () => {
-  beforeEach(() => _resetForTests());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
 
   it('starts a sync and refuses a second concurrent start', async () => {
     expect(syncCanon(1)).toBe(true);
@@ -40,12 +45,18 @@ describe('canon sync orchestration', () => {
   it('cancel flips the flag only while running', async () => {
     expect(cancelCanonSync()).toBe(false);
     syncCanon(null);
-    // May already be complete (all mocks resolve instantly) — accept either
-    const cancelled = cancelCanonSync();
-    expect(typeof cancelled).toBe('boolean');
-    await vi.waitFor(() => {
-      const s = getCanonSyncStatus()?.status;
-      expect(s === 'complete' || s === 'cancelled').toBe(true);
-    });
+    // Deterministic: the cancel flag is set synchronously, before the run's
+    // first awaited microtask resumes — the run must observe it and stop.
+    expect(cancelCanonSync()).toBe(true);
+    await vi.waitFor(() => expect(getCanonSyncStatus()?.status).toBe('cancelled'));
+    expect(vi.mocked(finishCanonSyncLog)).toHaveBeenCalledWith(7, 'cancelled', null);
+  });
+
+  it('marks the run failed and finalizes the log when a source fetch rejects', async () => {
+    vi.mocked(fetchWikidataCountries).mockRejectedValueOnce(new Error('SPARQL endpoint down'));
+    syncCanon(null);
+    await vi.waitFor(() => expect(getCanonSyncStatus()?.status).toBe('failed'));
+    expect(getCanonSyncStatus()?.statusMessage).toContain('SPARQL endpoint down');
+    expect(vi.mocked(finishCanonSyncLog)).toHaveBeenCalledWith(7, 'failed', null);
   });
 });

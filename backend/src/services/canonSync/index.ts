@@ -12,7 +12,7 @@ import { fetchNeCountries, fetchNeDisputed, NE_SOURCE_VERSION } from './naturalE
 import { deriveCanon } from './rules.js';
 import { matchRootUnits, landDisputeUnits } from './unitMatching.js';
 import { loadCanon, createCanonSyncLog, finishCanonSyncLog } from './loader.js';
-import type { CanonException, CanonSyncProgress, UnitMatchOverride } from './types.js';
+import type { CanonException, CanonSyncProgress, CanonSyncReport, UnitMatchOverride } from './types.js';
 
 const LOG_PREFIX = '[Canon Sync]';
 const configDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'config');
@@ -31,6 +31,15 @@ function isRunning(p: CanonSyncProgress | null): boolean {
 
 function checkCancel(progress: CanonSyncProgress): void {
   if (progress.cancel) throw new Error('Canon sync cancelled');
+}
+
+/** Finalize the sync log without letting a bookkeeping failure change the run's outcome. */
+async function finalizeLogBestEffort(
+  logId: number | null, status: 'success' | 'failed' | 'cancelled', report: CanonSyncReport | null,
+): Promise<void> {
+  if (logId === null) return;
+  await finishCanonSyncLog(logId, status, report)
+    .catch((e) => console.error(`${LOG_PREFIX} failed to finalize log:`, e));
 }
 
 async function runSync(progress: CanonSyncProgress, triggeredBy: number | null): Promise<void> {
@@ -57,6 +66,9 @@ async function runSync(progress: CanonSyncProgress, triggeredBy: number | null):
     const overrides = readConfig<UnitMatchOverride[]>('unit-match-overrides.json', 'overrides');
     const { crosswalk, unmatched } = await matchRootUnits(
       neCountries, draft.countries.map((c) => ({ slug: c.slug, iso3: c.iso3 })), overrides);
+    // Checked here too: with zero disputes the loop below never runs its
+    // checkCancel, and a cancel issued during matching must not reach loadCanon.
+    checkCancel(progress);
     const disputeUnits = new Map<string, { divisionIds: number[]; approximate: boolean }>();
     for (const d of draft.disputes) {
       checkCancel(progress);
@@ -76,17 +88,17 @@ async function runSync(progress: CanonSyncProgress, triggeredBy: number | null):
     progress.statusMessage =
       `Complete: ${report.countriesTotal} countries (+${report.added.length}/-${report.removed.length}/~${report.changed.length}), `
       + `${report.disputes.length} disputes, ${report.unmatchedRootUnits.length} unmatched root units`;
-    await finishCanonSyncLog(progress.logId, 'success', report);
+    // Progress is finalized BEFORE the log write: a transient DB error in the
+    // bookkeeping below must not relabel a genuinely successful sync as failed.
+    await finalizeLogBestEffort(progress.logId, 'success', report);
     console.log(`${LOG_PREFIX} ${progress.statusMessage}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    progress.status = progress.cancel ? 'cancelled' : 'failed';
+    const status: 'cancelled' | 'failed' = progress.cancel ? 'cancelled' : 'failed';
+    progress.status = status;
     progress.statusMessage = msg;
-    if (progress.logId !== null) {
-      await finishCanonSyncLog(progress.logId, progress.status === 'cancelled' ? 'cancelled' : 'failed', progress.report)
-        .catch((e) => console.error(`${LOG_PREFIX} failed to finalize log:`, e));
-    }
-    console.error(`${LOG_PREFIX} ${progress.status}:`, msg);
+    await finalizeLogBestEffort(progress.logId, status, progress.report);
+    console.error(`${LOG_PREFIX} ${status}:`, msg);
   }
 }
 
