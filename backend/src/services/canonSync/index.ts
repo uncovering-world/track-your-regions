@@ -8,7 +8,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool } from '../../db/index.js';
 import { fetchWikidataCountries } from './wikidataSource.js';
-import { fetchNeCountries, fetchNeDisputed, NE_SOURCE_VERSION } from './naturalEarthSource.js';
+import {
+  fetchNeCountries, fetchNeDisputed, NE_SOURCE_VERSION, buildSovereignIso3Map, resolveSovereignCodes,
+} from './naturalEarthSource.js';
 import { deriveCanon } from './rules.js';
 import { matchRootUnits, landDisputeUnits } from './unitMatching.js';
 import { loadCanon, createCanonSyncLog, finishCanonSyncLog } from './loader.js';
@@ -48,10 +50,18 @@ async function runSync(progress: CanonSyncProgress, triggeredBy: number | null):
 
     progress.status = 'fetching';
     progress.statusMessage = 'Fetching Wikidata + Natural Earth...';
-    const [wikidata, neCountries, neDisputed] = await Promise.all([
+    const [wikidata, neCountriesRaw, neDisputedRaw] = await Promise.all([
       fetchWikidataCountries(LOG_PREFIX), fetchNeCountries(), fetchNeDisputed(),
     ]);
     checkCancel(progress);
+
+    // Bug D: NE SOV_A3 sovereignty codes (GB1/IS1/CH1/...) are composite
+    // group codes, not ISO3 — resolve every sovIso3 through the countries
+    // layer's sovereignty map before anything downstream (derive/match/land)
+    // reads it.
+    const sovereignIso3 = buildSovereignIso3Map(neCountriesRaw);
+    const neCountries = resolveSovereignCodes(neCountriesRaw, sovereignIso3);
+    const neDisputed = resolveSovereignCodes(neDisputedRaw, sovereignIso3);
 
     progress.status = 'deriving';
     progress.statusMessage = `Deriving canon from ${wikidata.length} Wikidata rows, ${neDisputed.length} NE disputed features...`;

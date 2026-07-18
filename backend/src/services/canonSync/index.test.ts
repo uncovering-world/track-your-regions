@@ -6,6 +6,8 @@ vi.mock('./naturalEarthSource.js', () => ({
   fetchNeCountries: vi.fn().mockResolvedValue([]),
   fetchNeDisputed: vi.fn().mockResolvedValue([]),
   NE_SOURCE_VERSION: 'test',
+  buildSovereignIso3Map: vi.fn().mockReturnValue(new Map()),
+  resolveSovereignCodes: vi.fn((features: unknown[]) => features),
 }));
 vi.mock('./unitMatching.js', () => ({
   matchRootUnits: vi.fn().mockResolvedValue({ crosswalk: new Map(), unmatched: [] }),
@@ -21,8 +23,10 @@ vi.mock('./loader.js', () => ({
 }));
 
 import { fetchWikidataCountries } from './wikidataSource.js';
+import { fetchNeCountries, fetchNeDisputed, buildSovereignIso3Map, resolveSovereignCodes } from './naturalEarthSource.js';
 import { finishCanonSyncLog } from './loader.js';
 import { syncCanon, getCanonSyncStatus, cancelCanonSync, _resetForTests } from './index.js';
+import type { NeCountryFeature } from './types.js';
 
 describe('canon sync orchestration', () => {
   beforeEach(() => {
@@ -58,5 +62,27 @@ describe('canon sync orchestration', () => {
     await vi.waitFor(() => expect(getCanonSyncStatus()?.status).toBe('failed'));
     expect(getCanonSyncStatus()?.statusMessage).toContain('SPARQL endpoint down');
     expect(vi.mocked(finishCanonSyncLog)).toHaveBeenCalledWith(7, 'failed', null);
+  });
+
+  it('resolves NE sovereignty codes (Bug D) before matching/deriving', async () => {
+    const neCountries: NeCountryFeature[] = [
+      { name: 'United Kingdom', iso2: 'GB', iso3: 'GBR', sovIso3: 'GB1', homePart: true, type: 'Country', wikidataQid: null, geometry: null },
+    ];
+    vi.mocked(fetchNeCountries).mockResolvedValueOnce(neCountries);
+    vi.mocked(fetchNeDisputed).mockResolvedValueOnce([
+      { name: 'Gibraltar', note: null, sovIso3: 'GB1', type: 'Disputed', wikidataQid: null, geometry: null },
+    ]);
+
+    syncCanon(null);
+    await vi.waitFor(() => expect(getCanonSyncStatus()?.status).toBe('complete'));
+
+    expect(vi.mocked(buildSovereignIso3Map)).toHaveBeenCalledWith(neCountries);
+    // resolveSovereignCodes runs over both the countries and disputed layers,
+    // through the same map, before either feeds matching/deriving.
+    expect(vi.mocked(resolveSovereignCodes)).toHaveBeenCalledWith(neCountries, expect.any(Map));
+    expect(vi.mocked(resolveSovereignCodes)).toHaveBeenCalledWith(
+      [{ name: 'Gibraltar', note: null, sovIso3: 'GB1', type: 'Disputed', wikidataQid: null, geometry: null }],
+      expect.any(Map),
+    );
   });
 });

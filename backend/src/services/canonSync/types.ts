@@ -43,7 +43,9 @@ export interface NeCountryFeature {
   name: string;
   iso2: string | null;
   iso3: string | null;           // ISO_A3_EH with ADM0_A3 fallback (NE quirk: ISO_A3 = -99 for FR/NO)
-  sovIso3: string | null;
+  sovIso3: string | null;        // SOV_A3 — a composite group code (GB1, FR1, CH1...) for sovereignties
+                                  // with dependencies; resolve via buildSovereignIso3Map, not directly
+  homePart: boolean;             // NE HOMEPART=1: the home/mainland feature within its SOV_A3 group
   type: string;                  // 'Sovereign country' | 'Country' | 'Dependency' | 'Disputed' | ...
   wikidataQid: string | null;
   geometry: unknown;             // GeoJSON geometry, passed to PostGIS as-is

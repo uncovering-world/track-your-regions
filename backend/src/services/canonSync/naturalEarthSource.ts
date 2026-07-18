@@ -34,6 +34,7 @@ export function normalizeNeCountry(props: NeProps, geometry: unknown): NeCountry
     iso2: str(props, 'ISO_A2_EH', 'ISO_A2'),
     iso3: str(props, 'ISO_A3_EH', 'ISO_A3', 'ADM0_A3'),
     sovIso3: str(props, 'SOV_A3'),
+    homePart: props.HOMEPART === 1,
     type: str(props, 'TYPE', 'FCLASS') ?? 'Unknown',
     wikidataQid: str(props, 'WIKIDATAID'),
     geometry,
@@ -49,6 +50,46 @@ export function normalizeNeDisputed(props: NeProps, geometry: unknown): NeDisput
     wikidataQid: str(props, 'WIKIDATAID'),
     geometry,
   };
+}
+
+/**
+ * SOV_A3 group code -> the sovereign feature's iso3. NE's composite
+ * sovereignty codes (GB1, FR1, CH1, IS1, KA1, NL1...) are not ISO3 — they
+ * key a whole group of features sharing one SOV_A3, and the group's
+ * sovereign/home member is identified by NE's own HOMEPART=1 flag, not by
+ * TYPE: TYPE alone is ambiguous for several real groups (GB1 has FOUR
+ * 'Country'-typed members — United Kingdom, Jersey, Guernsey, Isle of Man;
+ * picking by array order resolves NL1 to Sint Maarten instead of the
+ * Netherlands in the live dataset). Verified against the fetched NE cache
+ * in the task-9 fix-wave. Single-member groups (SOV_A3 already equal to the
+ * member's own iso3) map to themselves through the same length===1
+ * fallback. Entries are added only when the sovereign feature's iso3 is
+ * non-null.
+ */
+export function buildSovereignIso3Map(countries: NeCountryFeature[]): Map<string, string> {
+  const bySov = new Map<string, NeCountryFeature[]>();
+  for (const c of countries) {
+    if (!c.sovIso3) continue;
+    const group = bySov.get(c.sovIso3);
+    if (group) group.push(c); else bySov.set(c.sovIso3, [c]);
+  }
+  const map = new Map<string, string>();
+  for (const [sov, members] of bySov) {
+    const sovereign = members.length === 1 ? members[0] : members.find((m) => m.homePart);
+    if (sovereign?.iso3) map.set(sov, sovereign.iso3);
+  }
+  return map;
+}
+
+/**
+ * Copies of `features` with sovIso3 rewritten through `map` (SOV_A3 group
+ * code -> sovereign iso3). Values not in the map — already a plain iso3, or
+ * a group with no resolvable home feature — are left untouched.
+ */
+export function resolveSovereignCodes<T extends { sovIso3: string | null }>(
+  features: T[], map: Map<string, string>,
+): T[] {
+  return features.map((f) => (f.sovIso3 && map.has(f.sovIso3) ? { ...f, sovIso3: map.get(f.sovIso3) as string } : f));
 }
 
 async function fetchGeojson(url: string): Promise<NeRawFeature[]> {
