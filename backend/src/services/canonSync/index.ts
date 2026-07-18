@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool } from '../../db/index.js';
-import { fetchWikidataCountries } from './wikidataSource.js';
+import { fetchWikidataCountries, fetchDisputeClaims } from './wikidataSource.js';
 import {
   fetchNeCountries, fetchNeDisputed, NE_SOURCE_VERSION, buildSovereignIso3Map, resolveSovereignCodes,
 } from './naturalEarthSource.js';
@@ -63,12 +63,22 @@ async function runSync(progress: CanonSyncProgress, triggeredBy: number | null):
     const neCountries = resolveSovereignCodes(neCountriesRaw, sovereignIso3);
     const neDisputed = resolveSovereignCodes(neDisputedRaw, sovereignIso3);
 
+    // Bug E: the membership query never returns rows for entities that are
+    // not themselves countries (e.g. Crimea Q7835), so their P1336 claims
+    // need a dedicated fetch keyed by the dispute feature's own QID.
+    progress.statusMessage = `Fetching claims for ${neDisputed.length} disputed features...`;
+    const disputeQids = [...new Set(
+      neDisputed.map((d) => d.wikidataQid).filter((q): q is string => q !== null),
+    )];
+    const disputeClaims = await fetchDisputeClaims(disputeQids, LOG_PREFIX);
+    checkCancel(progress);
+
     progress.status = 'deriving';
     progress.statusMessage = `Deriving canon from ${wikidata.length} Wikidata rows, ${neDisputed.length} NE disputed features...`;
     const exceptions = readConfig<CanonException[]>('exceptions.json', 'exceptions');
     // neCountries is NOT passed to deriveCanon (rules are geometry-free);
     // it feeds matchRootUnits below.
-    const draft = deriveCanon({ wikidata, neDisputed, exceptions });
+    const draft = deriveCanon({ wikidata, neDisputed, exceptions, disputeClaims });
     checkCancel(progress);
 
     progress.status = 'matching';

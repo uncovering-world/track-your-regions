@@ -25,12 +25,13 @@ const UKRAINE = wd({ qid: 'Q212', label: 'Ukraine', iso2: 'UA', iso3: 'UKR', isU
 const RUSSIA = wd({ qid: 'Q159', label: 'Russia', iso2: 'RU', iso3: 'RUS', isUnMember: true });
 
 function derive(extra: {
-  wikidata?: WikidataCountryRow[]; neDisputed?: NeDisputedFeature[];
+  wikidata?: WikidataCountryRow[]; neDisputed?: NeDisputedFeature[]; disputeClaims?: Map<string, string[]>;
 } = {}) {
   return deriveCanon({
     wikidata: extra.wikidata ?? [FRANCE, DENMARK, GREENLAND, VATICAN, ANTARCTICA, SERBIA, KOSOVO, UKRAINE, RUSSIA],
     neDisputed: extra.neDisputed ?? [],
     exceptions: [],
+    disputeClaims: extra.disputeClaims,
   });
 }
 
@@ -80,10 +81,11 @@ describe('deriveCanon — disputes (rules 4-5)', () => {
   });
 
   it('builds an attribution dispute with the NE sovereign as controller', () => {
-    const crimeaWd = wd({ qid: 'Q7835', label: 'Crimea', claimedByQids: ['Q212'] });
+    // Crimea itself is not a membership-query row (it's not a country) — its
+    // claimant comes from disputeClaims, keyed by the dispute feature's QID.
     const d = derive({
-      wikidata: [FRANCE, DENMARK, GREENLAND, VATICAN, ANTARCTICA, SERBIA, KOSOVO, UKRAINE, RUSSIA, crimeaWd],
       neDisputed: [ned({ name: 'Crimea', sovIso3: 'RUS', wikidataQid: 'Q7835' })],
+      disputeClaims: new Map([['Q7835', ['Q212']]]),
     });
     const c = d.disputes.find((x) => x.slug === 'crimea');
     expect(c?.kind).toBe('attribution');
@@ -132,10 +134,9 @@ describe('deriveCanon — presets (rule 6)', () => {
   });
 
   it('derives preset choices for the Crimea attribution dispute (de_facto -> ru, un -> ua)', () => {
-    const crimeaWd = wd({ qid: 'Q7835', label: 'Crimea', claimedByQids: ['Q212'] });
     const d = derive({
-      wikidata: [FRANCE, DENMARK, GREENLAND, VATICAN, ANTARCTICA, SERBIA, KOSOVO, UKRAINE, RUSSIA, crimeaWd],
       neDisputed: [ned({ name: 'Crimea', sovIso3: 'RUS', wikidataQid: 'Q7835' })],
+      disputeClaims: new Map([['Q7835', ['Q212']]]),
     });
     const presets = new Map(d.presets.map((p) => [p.slug, p]));
     const defactoCrimea = presets.get('de_facto')?.choices.find((c) => c.disputeSlug === 'crimea');
@@ -197,11 +198,11 @@ describe('deriveCanon — exceptions (rule 7)', () => {
   });
 
   it('dropCountry cascades: neutralizes dangling preset choices and drops orphaned disputes', () => {
-    const crimeaWd = wd({ qid: 'Q7835', label: 'Crimea', claimedByQids: ['Q212'] });
     const a = deriveCanon({
-      wikidata: [FRANCE, DENMARK, GREENLAND, VATICAN, ANTARCTICA, SERBIA, KOSOVO, UKRAINE, RUSSIA, crimeaWd],
+      wikidata: [FRANCE, DENMARK, GREENLAND, VATICAN, ANTARCTICA, SERBIA, KOSOVO, UKRAINE, RUSSIA],
       neDisputed: [ned({ name: 'Crimea', sovIso3: 'RUS', wikidataQid: 'Q7835' })],
       exceptions: [{ target: 'ua', action: { dropCountry: true }, justification: 'test', source: 'test' }],
+      disputeClaims: new Map([['Q7835', ['Q212']]]),
     });
     expect(a.countries.find((c) => c.slug === 'ua')).toBeUndefined();
     // dispute survives: the controller claim (ru) is untouched, and ua wasn't the subject

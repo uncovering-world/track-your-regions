@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn().mockResolvedValue({ rows: [{ id: 1 }] }), connect: vi.fn() } }));
-vi.mock('./wikidataSource.js', () => ({ fetchWikidataCountries: vi.fn().mockResolvedValue([]) }));
+vi.mock('./wikidataSource.js', () => ({
+  fetchWikidataCountries: vi.fn().mockResolvedValue([]),
+  fetchDisputeClaims: vi.fn().mockResolvedValue(new Map()),
+}));
 vi.mock('./naturalEarthSource.js', () => ({
   fetchNeCountries: vi.fn().mockResolvedValue([]),
   fetchNeDisputed: vi.fn().mockResolvedValue([]),
@@ -22,11 +25,11 @@ vi.mock('./loader.js', () => ({
   finishCanonSyncLog: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { fetchWikidataCountries } from './wikidataSource.js';
+import { fetchWikidataCountries, fetchDisputeClaims } from './wikidataSource.js';
 import { fetchNeCountries, fetchNeDisputed, buildSovereignIso3Map, resolveSovereignCodes } from './naturalEarthSource.js';
-import { finishCanonSyncLog } from './loader.js';
+import { loadCanon, finishCanonSyncLog } from './loader.js';
 import { syncCanon, getCanonSyncStatus, cancelCanonSync, _resetForTests } from './index.js';
-import type { NeCountryFeature } from './types.js';
+import type { CanonDraft, NeCountryFeature, WikidataCountryRow } from './types.js';
 
 describe('canon sync orchestration', () => {
   beforeEach(() => {
@@ -84,5 +87,33 @@ describe('canon sync orchestration', () => {
       [{ name: 'Gibraltar', note: null, sovIso3: 'GB1', type: 'Disputed', wikidataQid: null, geometry: null }],
       expect.any(Map),
     );
+  });
+
+  it('fetches dispute claims (Bug E) with deduped QIDs and threads them into deriveCanon', async () => {
+    const russia: WikidataCountryRow = {
+      qid: 'Q159', label: 'Russia', iso2: 'RU', iso3: 'RUS', isoNumeric: null,
+      isUnMember: true, hasLimitedRecognition: false, sovereignQid: null, claimedByQids: [],
+    };
+    const ukraine: WikidataCountryRow = {
+      qid: 'Q212', label: 'Ukraine', iso2: 'UA', iso3: 'UKR', isoNumeric: null,
+      isUnMember: true, hasLimitedRecognition: false, sovereignQid: null, claimedByQids: [],
+    };
+    vi.mocked(fetchWikidataCountries).mockResolvedValueOnce([russia, ukraine]);
+    // Two NE features share one wikidataQid — fetchDisputeClaims must only be
+    // asked for it once.
+    vi.mocked(fetchNeDisputed).mockResolvedValueOnce([
+      { name: 'Crimea', note: null, sovIso3: 'RUS', type: 'Disputed', wikidataQid: 'Q7835', geometry: null },
+      { name: 'Crimea (other polygon)', note: null, sovIso3: 'RUS', type: 'Disputed', wikidataQid: 'Q7835', geometry: null },
+    ]);
+    vi.mocked(fetchDisputeClaims).mockResolvedValueOnce(new Map([['Q7835', ['Q212']]]));
+
+    syncCanon(null);
+    await vi.waitFor(() => expect(getCanonSyncStatus()?.status).toBe('complete'));
+
+    expect(vi.mocked(fetchDisputeClaims)).toHaveBeenCalledWith(['Q7835'], expect.any(String));
+    const draftArg = vi.mocked(loadCanon).mock.calls[0][0] as CanonDraft;
+    const crimea = draftArg.disputes.find((d) => d.slug === 'crimea');
+    expect(crimea?.claims).toContainEqual({ countrySlug: 'ru', role: 'controls', note: null });
+    expect(crimea?.claims).toContainEqual({ countrySlug: 'ua', role: 'claims', note: null });
   });
 });

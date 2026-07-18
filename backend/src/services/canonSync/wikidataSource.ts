@@ -124,3 +124,48 @@ export async function fetchWikidataCountries(logPrefix: string): Promise<Wikidat
   const bindings = await sparqlQuery(WIKIDATA_COUNTRIES_QUERY, logPrefix);
   return parseWikidataBindings(bindings);
 }
+
+// QIDs come from NE's WIKIDATAID property — untrusted external data spliced
+// directly into a VALUES clause below, so validate the shape before use.
+const QID_PATTERN = /^Q\d+$/;
+
+/**
+ * P1336 (claimed by) for the dispute FEATURE's own Wikidata entity. Bug E:
+ * WIKIDATA_COUNTRIES_QUERY only returns rows for entities that pass the
+ * country membership rule, so a territory that is itself not a country
+ * (Crimea Q7835) never appears there and its claims are invisible to
+ * collectClaims — observed as Crimea/Kuril Islands resolving to only their
+ * controller, with the claimant's claim silently dropped.
+ */
+export const DISPUTE_CLAIMS_QUERY = (qids: string[]) => `
+SELECT ?item ?claimedBy WHERE {
+  VALUES ?item { ${qids.map((q) => `wd:${q}`).join(' ')} }
+  ?item wdt:P1336 ?claimedBy .
+}`;
+
+/** Pure: SPARQL bindings (one row per item×claimedBy) -> qid -> deduped claimant QIDs. */
+export function parseDisputeClaimBindings(bindings: SparqlBinding[]): Map<string, string[]> {
+  const byQid = new Map<string, string[]>();
+  for (const b of bindings) {
+    if (!b.item || !b.claimedBy) continue;
+    const qid = extractQid(b.item.value);
+    const claimant = extractQid(b.claimedBy.value);
+    const claimants = byQid.get(qid) ?? [];
+    if (!claimants.includes(claimant)) claimants.push(claimant);
+    byQid.set(qid, claimants);
+  }
+  return byQid;
+}
+
+/** [] input -> empty Map without querying (no dispute-feature QIDs to look up). */
+export async function fetchDisputeClaims(qids: string[], logPrefix: string): Promise<Map<string, string[]>> {
+  if (qids.length === 0) return new Map();
+  const validQids: string[] = [];
+  for (const q of qids) {
+    if (QID_PATTERN.test(q)) validQids.push(q);
+    else console.warn(`${logPrefix} dropping malformed Wikidata QID from dispute-claims query: ${JSON.stringify(q)}`);
+  }
+  if (validQids.length === 0) return new Map();
+  const bindings = await sparqlQuery(DISPUTE_CLAIMS_QUERY(validQids), logPrefix);
+  return parseDisputeClaimBindings(bindings);
+}

@@ -97,17 +97,22 @@ function resolveSubject(f: NeDisputedFeature, idx: CountryIndex): CountryDraft |
 }
 
 // Claims: the controller (subject, else NE de-facto sovereign) plus every P1336
-// claimant resolvable to a canon entry, deduped by slug.
+// claimant resolvable to a canon entry, deduped by slug. Claimants come from
+// the subject's Wikidata row (existence disputes, e.g. Serbia claiming
+// Kosovo) and from disputeClaims — a dedicated fetch keyed by the dispute
+// FEATURE's own QID (attribution disputes like Crimea are not membership-
+// query rows, so their P1336 only lives there; see fetchDisputeClaims).
 function collectClaims(
   f: NeDisputedFeature, subject: CountryDraft | null,
   idx: CountryIndex, wikidataByQid: Map<string, WikidataCountryRow>,
+  disputeClaims: Map<string, string[]>,
 ): ClaimDraft[] {
   const claims: ClaimDraft[] = [];
   const controller = subject ?? (f.sovIso3 ? idx.byIso3.get(f.sovIso3) ?? null : null);
   if (controller) claims.push({ countrySlug: controller.slug, role: 'controls', note: null });
   const subjectRow = subject?.wikidataQid ? wikidataByQid.get(subject.wikidataQid) : undefined;
-  const featureRow = f.wikidataQid ? wikidataByQid.get(f.wikidataQid) : undefined;
-  for (const claimantQid of [...(subjectRow?.claimedByQids ?? []), ...(featureRow?.claimedByQids ?? [])]) {
+  const featureClaimantQids = f.wikidataQid ? disputeClaims.get(f.wikidataQid) ?? [] : [];
+  for (const claimantQid of [...(subjectRow?.claimedByQids ?? []), ...featureClaimantQids]) {
     const claimant = idx.byQid.get(claimantQid);
     if (claimant && !claims.some((c) => c.countrySlug === claimant.slug)) {
       claims.push({ countrySlug: claimant.slug, role: 'claims', note: null });
@@ -119,13 +124,14 @@ function collectClaims(
 function buildDisputes(
   neDisputed: NeDisputedFeature[], idx: CountryIndex,
   wikidataByQid: Map<string, WikidataCountryRow>, warnings: string[],
+  disputeClaims: Map<string, string[]>,
 ): DisputeDraft[] {
   const out: DisputeDraft[] = [];
   for (const f of neDisputed) {
     const slug = slugify(f.name);
     if (out.some((d) => d.slug === slug)) { warnings.push(`duplicate NE disputed feature ${slug} — kept first`); continue; }
     const subject = resolveSubject(f, idx);
-    const claims = collectClaims(f, subject, idx, wikidataByQid);
+    const claims = collectClaims(f, subject, idx, wikidataByQid, disputeClaims);
     if (claims.length === 0) { warnings.push(`dispute ${slug}: no claimants resolved — dropped (add exception if it must exist)`); continue; }
     out.push({
       slug, name: f.name, kind: subject ? 'existence' : 'attribution',
@@ -282,12 +288,13 @@ export function deriveCanon(input: {
   wikidata: WikidataCountryRow[];
   neDisputed: NeDisputedFeature[];
   exceptions: CanonException[];
+  disputeClaims?: Map<string, string[]>;
 }): CanonDraft {
   const warnings: string[] = [];
   const countries = buildCountries(input.wikidata, warnings);
   const idx = indexCountries(countries);
   const wikidataByQid = new Map(input.wikidata.map((r) => [r.qid, r]));
-  const disputes = buildDisputes(input.neDisputed, idx, wikidataByQid, warnings);
+  const disputes = buildDisputes(input.neDisputed, idx, wikidataByQid, warnings, input.disputeClaims ?? new Map());
   const presets = buildPresets(disputes, idx);
   const draft: CanonDraft = { countries, disputes, presets, warnings };
   applyExceptions(draft, input.exceptions);

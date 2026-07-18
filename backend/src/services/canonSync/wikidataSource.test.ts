@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { parseWikidataBindings } from './wikidataSource.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { parseWikidataBindings, parseDisputeClaimBindings, fetchDisputeClaims } from './wikidataSource.js';
+import * as wikidataUtils from '../sync/wikidataUtils.js';
 import type { SparqlBinding } from '../sync/wikidataUtils.js';
+
+vi.mock('../sync/wikidataUtils.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../sync/wikidataUtils.js')>();
+  return { ...actual, sparqlQuery: vi.fn() };
+});
 
 const E = 'http://www.wikidata.org/entity/';
 
@@ -68,5 +74,72 @@ describe('parseWikidataBindings', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].iso3).toBe('GRL');
     expect(rows[0].sovereignQid).toBe('Q35');
+  });
+});
+
+describe('parseDisputeClaimBindings', () => {
+  it('maps item qid -> deduped claimant qids', () => {
+    const bindings: SparqlBinding[] = [
+      binding({ item: `${E}Q7835`, claimedBy: `${E}Q212` }),
+      binding({ item: `${E}Q7835`, claimedBy: `${E}Q212` }), // dup
+      binding({ item: `${E}Q7835`, claimedBy: `${E}Q159` }),
+    ];
+    const result = parseDisputeClaimBindings(bindings);
+    expect(result.get('Q7835')).toEqual(['Q212', 'Q159']);
+  });
+
+  it('keeps separate items separate and skips bindings missing item or claimedBy', () => {
+    const result = parseDisputeClaimBindings([
+      binding({ item: `${E}Q7835`, claimedBy: `${E}Q212` }),
+      binding({ item: `${E}Q80389` }), // no claimedBy
+      binding({ claimedBy: `${E}Q159` }), // no item
+    ]);
+    expect(result.size).toBe(1);
+    expect(result.get('Q7835')).toEqual(['Q212']);
+    expect(result.has('Q80389')).toBe(false);
+  });
+});
+
+describe('fetchDisputeClaims', () => {
+  beforeEach(() => {
+    vi.mocked(wikidataUtils.sparqlQuery).mockReset();
+  });
+
+  it('returns an empty Map without querying when given no qids', async () => {
+    const result = await fetchDisputeClaims([], '[test]');
+    expect(result.size).toBe(0);
+    expect(wikidataUtils.sparqlQuery).not.toHaveBeenCalled();
+  });
+
+  it('drops QIDs that do not match /^Q\\d+$/, warns, and only queries the valid ones', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.mocked(wikidataUtils.sparqlQuery).mockResolvedValue([]);
+
+    await fetchDisputeClaims(['Q7835', 'DROP TABLE items', 'Q212; -- ', 'not-a-qid'], '[test]');
+
+    expect(wikidataUtils.sparqlQuery).toHaveBeenCalledTimes(1);
+    const [queryArg] = vi.mocked(wikidataUtils.sparqlQuery).mock.calls[0];
+    expect(queryArg).toContain('wd:Q7835');
+    expect(queryArg).not.toContain('DROP TABLE');
+    expect(queryArg).not.toContain('Q212; --');
+    expect(queryArg).not.toContain('not-a-qid');
+    expect(warn).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
+  it('returns an empty Map without querying when every qid is invalid', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const result = await fetchDisputeClaims(['nope', ''], '[test]');
+    expect(result.size).toBe(0);
+    expect(wikidataUtils.sparqlQuery).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('parses a successful response into the qid -> claimants map', async () => {
+    vi.mocked(wikidataUtils.sparqlQuery).mockResolvedValue([
+      binding({ item: `${E}Q7835`, claimedBy: `${E}Q212` }),
+    ]);
+    const result = await fetchDisputeClaims(['Q7835'], '[test]');
+    expect(result.get('Q7835')).toEqual(['Q212']);
   });
 });
