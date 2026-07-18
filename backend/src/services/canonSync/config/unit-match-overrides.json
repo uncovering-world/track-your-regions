@@ -1,0 +1,4 @@
+{
+  "$comment": "Manual matches of country-level units of the CURRENT unit source (GADM today; children of the continent roots) to canon country slugs. Optional rootName disambiguates duplicate names (Antarctic claims). Matching-only — never membership. Filled during calibration (Task 9).",
+  "overrides": []
+}
