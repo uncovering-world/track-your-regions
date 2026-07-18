@@ -52,11 +52,16 @@ async function withNeTempTable<T>(
     await client.query(`
       CREATE TEMP TABLE canon_ne_tmp (key TEXT PRIMARY KEY, geom GEOMETRY(Geometry, 4326))
       ON COMMIT DROP`);
+    // Several NE features can key to the same country slug (e.g. NE assigns
+    // ISO_A3_EH=AUS to Australia, Indian Ocean Territories, Coral Sea
+    // Islands and Ashmore and Cartier Islands alike): merge their geometry
+    // on conflict instead of dropping every feature after the first.
     for (const f of features) {
       await client.query(
         `INSERT INTO canon_ne_tmp (key, geom)
          VALUES ($1, ST_SetSRID(ST_CollectionExtract(ST_MakeValid(ST_GeomFromGeoJSON($2)), 3), 4326))
-         ON CONFLICT (key) DO NOTHING`,
+         ON CONFLICT (key) DO UPDATE
+         SET geom = ST_CollectionExtract(ST_Collect(canon_ne_tmp.geom, EXCLUDED.geom), 3)`,
         [f.key, JSON.stringify(f.geometry)],
       );
     }
