@@ -7,9 +7,14 @@
 import {
   RULES_VERSION, UN_OBSERVER_ISO2,
   type CanonDraft, type CanonException, type ClaimDraft, type CountryClass, type CountryDraft,
-  type DisputeDraft, type NeCountryFeature, type NeDisputedFeature, type PresetChoiceDraft,
+  type DisputeDraft, type NeDisputedFeature, type PresetChoiceDraft,
   type PresetDraft, type Provenance, type WikidataCountryRow,
 } from './types.js';
+
+// Existence subjects: entries whose statehood is contested. un_member is
+// deliberately excluded — matching the CONTROLLING UN member (Crimea -> RUS)
+// must stay an attribution dispute.
+const SUBJECT_CLASSES: CountryClass[] = ['de_facto', 'un_observer'];
 
 export function slugify(name: string): string {
   // Strip combining diacritics (U+0300-U+036F) after NFD decomposition
@@ -58,7 +63,10 @@ function buildCountries(wikidata: WikidataCountryRow[], warnings: string[]): Cou
   // Second pass: sovereign links (qid -> slug)
   for (const row of wikidata) {
     const draft = byQid.get(row.qid);
-    if (draft && row.sovereignQid) draft.sovereignSlug = byQid.get(row.sovereignQid)?.slug ?? null;
+    if (!draft || !row.sovereignQid) continue;
+    const sovereign = byQid.get(row.sovereignQid);
+    draft.sovereignSlug = sovereign?.slug ?? null;
+    if (!sovereign) warnings.push(`sovereign ${row.sovereignQid} of ${draft.slug} not in canon — link dropped`);
   }
   return drafts;
 }
@@ -87,8 +95,8 @@ function buildDisputes(
     // Subject: a canon entry this feature IS (existence), matched by QID or by NE self-sovereignty
     const byQid = f.wikidataQid ? idx.byQid.get(f.wikidataQid) : undefined;
     const bySov = f.sovIso3 ? idx.byIso3.get(f.sovIso3) : undefined;
-    const subject = byQid && byQid.class === 'de_facto' ? byQid
-      : bySov && bySov.class === 'de_facto' ? bySov : null;
+    const subject = byQid && SUBJECT_CLASSES.includes(byQid.class) ? byQid
+      : bySov && SUBJECT_CLASSES.includes(bySov.class) ? bySov : null;
     const kind = subject ? 'existence' as const : 'attribution' as const;
 
     const claims: ClaimDraft[] = [];
@@ -140,11 +148,97 @@ function buildPresets(disputes: DisputeDraft[], idx: CountryIndex): PresetDraft[
     } else if (controller) {
       un.choices.push(presetChoice(d.slug, 'country', controller.countrySlug, 'natural-earth', 'un: no distinct claimant; controller'));
     } else {
+      // defensive: unreachable while zero-claimant disputes are dropped above
       un.choices.push(presetChoice(d.slug, 'not_counted', null, 'rules', 'un: unresolvable'));
     }
     neutral.choices.push(presetChoice(d.slug, 'not_counted', null, 'rules', 'strict_neutral: everything not_counted'));
   }
   return [deFacto, un, neutral];
+}
+
+// mergeInto side of cascadeCountryRemoval: redirect every dispute reference from
+// removedSlug to survivorSlug, deduping claims by countrySlug (first role wins).
+function redirectDisputeReferences(disputes: DisputeDraft[], removedSlug: string, survivorSlug: string): void {
+  for (const d of disputes) {
+    if (d.subjectCountrySlug === removedSlug) d.subjectCountrySlug = survivorSlug;
+    const seen = new Set<string>();
+    const redirected: ClaimDraft[] = [];
+    for (const c of d.claims) {
+      const countrySlug = c.countrySlug === removedSlug ? survivorSlug : c.countrySlug;
+      if (seen.has(countrySlug)) continue; // dedupe by countrySlug, keeping the first role
+      seen.add(countrySlug);
+      redirected.push({ ...c, countrySlug });
+    }
+    d.claims = redirected;
+  }
+}
+
+function redirectCountryRemoval(draft: CanonDraft, removedSlug: string, survivorSlug: string): void {
+  redirectDisputeReferences(draft.disputes, removedSlug, survivorSlug);
+  for (const p of draft.presets) {
+    for (const c of p.choices) if (c.countrySlug === removedSlug) c.countrySlug = survivorSlug;
+  }
+  for (const c of draft.countries) if (c.sovereignSlug === removedSlug) c.sovereignSlug = survivorSlug;
+  draft.countries = draft.countries.filter((c) => c.slug !== removedSlug);
+}
+
+// dropCountry side of cascadeCountryRemoval: a dispute is orphaned once its claims are
+// empty or it lost its subject; orphaned disputes and their preset choices are removed.
+function dropOrphanedDisputes(draft: CanonDraft, removedSlug: string): void {
+  const orphaned = new Set<string>();
+  for (const d of draft.disputes) {
+    d.claims = d.claims.filter((c) => c.countrySlug !== removedSlug);
+    if (d.claims.length === 0 || d.subjectCountrySlug === removedSlug) orphaned.add(d.slug);
+  }
+  for (const d of draft.disputes) {
+    if (orphaned.has(d.slug)) draft.warnings.push(`dispute ${d.slug} (${d.name}) dropped: country ${removedSlug} removed by dropCountry`);
+  }
+  draft.disputes = draft.disputes.filter((d) => !orphaned.has(d.slug));
+  for (const p of draft.presets) p.choices = p.choices.filter((c) => !orphaned.has(c.disputeSlug));
+}
+
+// Preset choices in surviving disputes that still pointed at removedSlug can no longer
+// resolve to a country, so they fall back to not_counted.
+function neutralizeDanglingChoices(draft: CanonDraft, removedSlug: string): void {
+  for (const p of draft.presets) {
+    for (const c of p.choices) {
+      if (c.countrySlug !== removedSlug) continue;
+      c.countsAs = 'not_counted'; c.countrySlug = null;
+      draft.warnings.push(`preset ${p.slug} choice for dispute ${c.disputeSlug}: country ${removedSlug} dropped — set not_counted`);
+    }
+  }
+}
+
+function clearDanglingSovereignLinks(draft: CanonDraft, removedSlug: string): void {
+  for (const c of draft.countries) {
+    if (c.sovereignSlug !== removedSlug) continue;
+    c.sovereignSlug = null;
+    draft.warnings.push(`sovereign ${removedSlug} of ${c.slug} dropped by dropCountry — link removed`);
+  }
+}
+
+function stripCountryRemoval(draft: CanonDraft, removedSlug: string): void {
+  dropOrphanedDisputes(draft, removedSlug);
+  neutralizeDanglingChoices(draft, removedSlug);
+  clearDanglingSovereignLinks(draft, removedSlug);
+  draft.countries = draft.countries.filter((c) => c.slug !== removedSlug);
+}
+
+// Redirects (mergeInto) or strips (dropCountry) every reference to removedSlug across the
+// draft, so applyExceptions never leaves a dangling countrySlug/subjectCountrySlug behind.
+function cascadeCountryRemoval(draft: CanonDraft, removedSlug: string, survivorSlug: string | null): void {
+  if (survivorSlug) redirectCountryRemoval(draft, removedSlug, survivorSlug);
+  else stripCountryRemoval(draft, removedSlug);
+}
+
+function applyMergeInto(draft: CanonDraft, ex: CanonException, mergeInto: string, stamp: Provenance): void {
+  if (mergeInto === ex.target) {
+    draft.warnings.push(`exception mergeInto ${ex.target}: target and mergeInto are the same slug — ignored`);
+    return;
+  }
+  const survivor = draft.countries.find((c) => c.slug === mergeInto);
+  if (survivor) { survivor.provenance.push(stamp); cascadeCountryRemoval(draft, ex.target, survivor.slug); }
+  else draft.warnings.push(`exception mergeInto ${JSON.stringify(ex.action)}: survivor not found`);
 }
 
 function applyExceptions(draft: CanonDraft, exceptions: CanonException[]): void {
@@ -155,14 +249,12 @@ function applyExceptions(draft: CanonDraft, exceptions: CanonException[]): void 
     if ('setClass' in ex.action && country) {
       country.class = ex.action.setClass; country.provenance.push(stamp);
     } else if ('dropCountry' in ex.action && country) {
-      draft.countries = draft.countries.filter((c) => c !== country);
+      cascadeCountryRemoval(draft, ex.target, null);
     } else if ('dropDispute' in ex.action && dispute) {
       draft.disputes = draft.disputes.filter((d) => d !== dispute);
       for (const p of draft.presets) p.choices = p.choices.filter((c) => c.disputeSlug !== ex.target);
     } else if ('mergeInto' in ex.action && country) {
-      const survivor = draft.countries.find((c) => c.slug === (ex.action as { mergeInto: string }).mergeInto);
-      if (survivor) { survivor.provenance.push(stamp); draft.countries = draft.countries.filter((c) => c !== country); }
-      else draft.warnings.push(`exception mergeInto ${JSON.stringify(ex.action)}: survivor not found`);
+      applyMergeInto(draft, ex, ex.action.mergeInto, stamp);
     } else {
       draft.warnings.push(`exception target not found: ${ex.target}`);
     }
@@ -171,7 +263,6 @@ function applyExceptions(draft: CanonDraft, exceptions: CanonException[]): void 
 
 export function deriveCanon(input: {
   wikidata: WikidataCountryRow[];
-  neCountries: NeCountryFeature[];
   neDisputed: NeDisputedFeature[];
   exceptions: CanonException[];
 }): CanonDraft {
