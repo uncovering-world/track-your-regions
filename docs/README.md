@@ -40,6 +40,7 @@ docs/
 | [maplibre-patterns.md](tech/maplibre-patterns.md) | MapLibre + react-map-gl patterns and pitfalls — overlapping layers, MVT properties, feature IDs, fonts, paint priority |
 | [world-view-import.md](tech/world-view-import.md) | WorldView Import — matching algorithm, API endpoints, admin UI |
 | [world-view-import-format.md](tech/world-view-import-format.md) | WorldView Import JSON format specification for source-agnostic imports |
+| [country-canon.md](tech/country-canon.md) | Country canon data layer — tables, derivation sync (Wikidata + Natural Earth), admin API |
 
 ## Tech — Planning
 
