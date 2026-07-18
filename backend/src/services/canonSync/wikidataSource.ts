@@ -32,20 +32,39 @@ SELECT ?item ?itemLabel ?iso2 ?iso3 ?isoNumeric ?unMember ?limited ?sovereign ?c
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
 
-function rowFromBinding(b: SparqlBinding): WikidataCountryRow {
-  const qid = extractQid(b.item?.value ?? '');
+function rowFromBinding(b: SparqlBinding, qid: string): WikidataCountryRow {
   const sovereignQid = b.sovereign ? extractQid(b.sovereign.value) : null;
+  const isoNumeric = b.isoNumeric ? Number(b.isoNumeric.value) : NaN;
   return {
     qid,
     label: b.itemLabel?.value ?? qid,
     iso2: b.iso2?.value ?? null,
     iso3: b.iso3?.value ?? null,
-    isoNumeric: b.isoNumeric ? Number(b.isoNumeric.value) : null,
+    isoNumeric: Number.isFinite(isoNumeric) ? isoNumeric : null,
     isUnMember: b.unMember?.value === 'true',
     hasLimitedRecognition: b.limited?.value === 'true',
     sovereignQid: sovereignQid === qid ? null : sovereignQid,
     claimedByQids: [],
   };
+}
+
+function mergeRow(row: WikidataCountryRow, b: SparqlBinding, qid: string): void {
+  if (b.unMember?.value === 'true') row.isUnMember = true;
+  if (b.limited?.value === 'true') row.hasLimitedRecognition = true;
+  const claimant = b.claimedBy ? extractQid(b.claimedBy.value) : null;
+  if (claimant && !row.claimedByQids.includes(claimant)) row.claimedByQids.push(claimant);
+  // Backfill single-valued facts earlier rows lacked (endpoint row order is
+  // unspecified): first non-null value wins per field.
+  if (row.iso2 === null && b.iso2) row.iso2 = b.iso2.value;
+  if (row.iso3 === null && b.iso3) row.iso3 = b.iso3.value;
+  if (row.isoNumeric === null && b.isoNumeric) {
+    const n = Number(b.isoNumeric.value);
+    if (Number.isFinite(n)) row.isoNumeric = n;
+  }
+  if (row.sovereignQid === null && b.sovereign) {
+    const sov = extractQid(b.sovereign.value);
+    if (sov !== qid) row.sovereignQid = sov;
+  }
 }
 
 /** Pure: SPARQL bindings (one row per item×claimedBy) -> deduped country rows. */
@@ -55,13 +74,9 @@ export function parseWikidataBindings(bindings: SparqlBinding[]): WikidataCountr
     if (!b.item) continue;
     const qid = extractQid(b.item.value);
     const existing = byQid.get(qid);
-    const row = existing ?? rowFromBinding(b);
+    const row = existing ?? rowFromBinding(b, qid);
     if (!existing) byQid.set(qid, row);
-    // Merge multi-valued facts across rows of the same item
-    if (b.unMember?.value === 'true') row.isUnMember = true;
-    if (b.limited?.value === 'true') row.hasLimitedRecognition = true;
-    const claimant = b.claimedBy ? extractQid(b.claimedBy.value) : null;
-    if (claimant && !row.claimedByQids.includes(claimant)) row.claimedByQids.push(claimant);
+    mergeRow(row, b, qid);
   }
   return [...byQid.values()];
 }

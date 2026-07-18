@@ -41,4 +41,32 @@ describe('parseWikidataBindings', () => {
     expect(rows.find((r) => r.qid === 'Q223')?.sovereignQid).toBe('Q35');
     expect(rows.find((r) => r.qid === 'Q35')?.sovereignQid).toBeNull();
   });
+
+  it('accumulates two distinct claimants', () => {
+    const rows = parseWikidataBindings([
+      binding({ item: `${E}Q1246`, itemLabel: 'Kosovo', iso2: 'XK', limited: 'true', claimedBy: `${E}Q403` }),
+      binding({ item: `${E}Q1246`, itemLabel: 'Kosovo', iso2: 'XK', limited: 'true', claimedBy: `${E}Q212` }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].claimedByQids).toEqual(['Q403', 'Q212']);
+  });
+
+  it('upgrades flags from later rows', () => {
+    const rows = parseWikidataBindings([
+      binding({ item: `${E}Q142`, itemLabel: 'France', iso2: 'FR' }),
+      binding({ item: `${E}Q142`, itemLabel: 'France', iso2: 'FR', unMember: 'true' }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].isUnMember).toBe(true);
+  });
+
+  it('backfills iso3 and sovereign from later rows', () => {
+    const rows = parseWikidataBindings([
+      binding({ item: `${E}Q223`, itemLabel: 'Greenland', iso2: 'GL', sovereign: `${E}Q223` }),
+      binding({ item: `${E}Q223`, itemLabel: 'Greenland', iso3: 'GRL', sovereign: `${E}Q35` }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].iso3).toBe('GRL');
+    expect(rows[0].sovereignQid).toBe('Q35');
+  });
 });
