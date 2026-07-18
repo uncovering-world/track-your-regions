@@ -66,6 +66,12 @@
       "rootName": "Antarctica",
       "countrySlug": "bv",
       "reason": "Unit is Bouvet Island (bbox 3.3..3.5 E, -54.5..-54.4), not an Antarctic claim sector. Geometry matched 'no' (NE polygon packing), but ISO 3166-1 and the project's no-rollup travel-identity convention model Bouvet as the separate territory bv (BVT); the mainland-Norway record must not absorb it."
+    },
+    {
+      "divisionName": "Northern Cyprus",
+      "rootName": "Asia",
+      "countrySlug": "northern-cyprus",
+      "reason": "De-facto state without ISO codes: the NE feature (ADM0_A3=CYN, ISO_A3=-99) can never enter the iso3-keyed matching pool, and NE Cyprus (CYP) excludes the north, so geometry cannot reach the 0.5 share. Name-only match to the limited-recognition canon entry (present since the fixed membership query, run 2). The n-cyprus dispute overlays the contested status."
     }
   ]
 }

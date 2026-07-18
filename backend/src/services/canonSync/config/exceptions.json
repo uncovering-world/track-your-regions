@@ -12,6 +12,60 @@
       "action": { "dropCountry": true },
       "justification": "Q124653007 'realm of the United Kingdom' duplicates the UK polity: it carries an un-ended UN membership statement, so it enters as an extra un_member with no ISO codes, while Q145 (gb) is the canonical UK entry. Nothing in the derived canon references the realm entity (no sovereign links, no dispute claims), so dropping it is a clean dedup of one UN seat counted twice.",
       "source": "https://www.wikidata.org/wiki/Q124653007 (P463 -> Q1065 with no end date, no P297/P298); live SPARQL evidence in task-9 calibration runs (2026-07-18)"
+    },
+    {
+      "target": "dk",
+      "action": { "setClass": "un_member" },
+      "justification": "Companion to the kingdom-of-denmark merge above: Wikidata puts Denmark's open UN-membership statement on the realm entity Q756617, not on Q35 (dk), so after the merge dk classified as 'territory' and the canon had 192 UN members with DK missing. Denmark's UN seat (member since 1945) must live on the ISO entity that survives the merge.",
+      "source": "https://www.wikidata.org/wiki/Q35 (no un-ended P463->Q1065) vs https://www.wikidata.org/wiki/Q756617 (carries it); un.org member list (Denmark, admitted 1945); run-2 evidence: un_member ISO2 diff showed exactly DK missing"
+    },
+    {
+      "target": "third-hellenic-republic",
+      "action": { "dropCountry": true },
+      "justification": "Q17765809 'Third Hellenic Republic' is the current Greek constitutional order (1974-) modeled as a separate entity carrying its own un-ended UN membership statement — the same polity/state duality as the Danish and UK realm entities above. Greece (gr, Q41) is the canonical ISO entry; this duplicate padded un_member counts (it masked the missing-DK bug in run 2 by making the total 193 by coincidence). Nothing references it.",
+      "source": "https://www.wikidata.org/wiki/Q17765809 (P463 -> Q1065 with no end date, no P297, no P576 — verified 2026-07-18)"
+    },
+    {
+      "target": "provisional-government-of-kentucky",
+      "action": { "dropCountry": true },
+      "justification": "Q3112525 is the Confederate shadow government of Kentucky (1861-1865) — factually dissolved for 160 years but missing P576 in Wikidata, so the dissolved-filter cannot remove it. It entered as a de_facto row and produced a dangling-sovereign warning (its P17 points to the Confederate States, Q81931, which is not in the canon).",
+      "source": "https://www.wikidata.org/wiki/Q3112525 (P576 absent — verified 2026-07-18; dissolution 1865 is settled history); run-2 warning 'sovereign Q81931 of provisional-government-of-kentucky not in canon'"
+    },
+    {
+      "target": "sahrawi-arab-democratic-republic",
+      "action": { "mergeInto": "eh" },
+      "justification": "SADR (Q40362, limited recognition) and Western Sahara (Q6250, ISO EH) are two Wikidata entities for one territory — the duplicate pair the spec names as the expected exceptions case. ISO EH is the stable identity; the w-sahara attribution dispute (ma controls / claims redirected to eh by this merge) carries the politics. Known cosmetic artifact: eh's sovereign link (Q6250 P17 -> Q40362) becomes a self-reference after the merge, same as dk above.",
+      "source": "https://www.wikidata.org/wiki/Q40362 + https://www.wikidata.org/wiki/Q6250; spec docs/tech/planning/country-canon-and-disputes.md (SADR/W.Sahara named duplicate); plan Task 9 Step 2"
+    },
+    {
+      "target": "tw",
+      "action": { "setClass": "de_facto" },
+      "justification": "Taiwan (Q865) has P31 'state with limited recognition' (Q10711424) at NORMAL rank while three other P31 values (island country, sovereign state, ...) are PREFERRED rank — wdt:P31 only returns best-rank statements, so the membership query cannot see the limited-recognition fact and Taiwan fell to 'special'. Limited recognition is factually true (recognized by ~12 UN members) and deterministic here (rank artifact, not endpoint flakiness). With de_facto class the taiwan dispute becomes an existence dispute (subject tw), giving all three presets their intended semantics (de_facto: independent; un: counts toward cn; neutral: not counted).",
+      "source": "https://www.wikidata.org/wiki/Q865 P31 ranks (verified 2026-07-18: Q10711424 normal, Q3624078/Q112099/Q5255892 preferred); spec's expected existence-dispute set includes Taiwan"
+    },
+    {
+      "target": "im",
+      "action": { "setClass": "territory" },
+      "justification": "Isle of Man (Q9676) has P17 pointing to ITSELF, which the parser correctly nulls as a self-reference, leaving no sovereign — so an ISO entry (IM) with no UN membership fell to 'special'. Factually it is a UK Crown dependency; 'territory' is the class the rule intends for ISO dependencies. Deterministic self-reference artifact, not flakiness.",
+      "source": "https://www.wikidata.org/wiki/Q9676 (P17 = Q9676, verified 2026-07-18); ISO 3166-1 IM; gov.im (Crown dependency status)"
+    },
+    {
+      "target": "aw",
+      "action": { "setClass": "territory" },
+      "justification": "Aruba (Q21203) has P17 with ITSELF at preferred rank and the Kingdom of the Netherlands (Q29999) at normal rank — wdt:P17 returns only the preferred self-reference, which the parser nulls, so Aruba fell to 'special'. Factually a constituent country of the Kingdom of the Netherlands; 'territory' is the intended class for ISO dependencies. Deterministic rank artifact.",
+      "source": "https://www.wikidata.org/wiki/Q21203 (P17 ranks verified 2026-07-18); ISO 3166-1 AW"
+    },
+    {
+      "target": "nu",
+      "action": { "setClass": "territory" },
+      "justification": "Niue (Q34020) has P17 pointing to itself (nulled as self-reference) — fell to 'special'. Free association with New Zealand; the spec's membership-rule walkthrough expects class 'territory' for Niue and explicitly reserves revisiting free-association classes as an open question for review.",
+      "source": "https://www.wikidata.org/wiki/Q34020 (P17 = Q34020, verified 2026-07-18); ISO 3166-1 NU; spec open question 'Свободная ассоциация (Острова Кука, Ниуэ)'"
+    },
+    {
+      "target": "ck",
+      "action": { "setClass": "territory" },
+      "justification": "Cook Islands (Q26988) has P17 with itself at preferred rank (New Zealand Q664 at normal rank) — wdt:P17 sees only the self-reference, nulled by the parser, so it fell to 'special'. Free association with New Zealand; same rule intent and spec open question as Niue.",
+      "source": "https://www.wikidata.org/wiki/Q26988 (P17 ranks verified 2026-07-18); ISO 3166-1 CK; spec open question 'Свободная ассоциация (Острова Кука, Ниуэ)'"
     }
   ]
 }
