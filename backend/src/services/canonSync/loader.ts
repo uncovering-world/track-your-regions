@@ -193,9 +193,17 @@ async function replacePresets(client: PoolClient, draft: CanonDraft, ids: Map<st
  * user_disputed_preferences row still references them. Runs LAST (after
  * disputes/presets are rebuilt): disputed_territories.subject_country_id and
  * disputed_preset_choices.country_id for every row touched by THIS sync only
- * ever resolve through `ids` (current countries), so by this point the only
- * remaining NO ACTION exposure on a stale country is user_disputed_preferences,
- * which the pref-count check below clears before deleting.
+ * ever resolve through `ids` (current countries); the pref-count check below
+ * clears the user_disputed_preferences NO ACTION exposure before deleting.
+ *
+ * Known residual (fails safe via the transaction, never corrupts): rows this
+ * sync RETAINED as stale (pref-referenced) keep their old derived pointers —
+ * a retained dispute's subject_country_id or a retained country's
+ * sovereign_id may still reference a country being deleted here, raising
+ * 23503 → clean ROLLBACK, and every later sync repeats it until resolved.
+ * Deterministic remedy if it bites: NULL derived pointers on retained stale
+ * rows (derived fields on derived rows — prefs-safe). Validate during real
+ * sync calibration.
  */
 async function deleteStaleCountries(client: PoolClient, draft: CanonDraft): Promise<string[]> {
   const res = await client.query(`
