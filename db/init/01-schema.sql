@@ -2007,5 +2007,143 @@ CREATE INDEX IF NOT EXISTS idx_ai_learned_rules_feature ON ai_learned_rules(feat
 COMMENT ON TABLE ai_learned_rules IS 'User-provided rules injected into AI prompts to improve future extractions';
 
 -- =============================================================================
+-- Country Canon (docs/tech/planning/country-canon-and-disputes.md)
+-- =============================================================================
+-- Global registry of countries + disputed territories, derived dynamically
+-- from open sources (Wikidata, Natural Earth) by published rules. References
+-- only internal administrative_divisions ids — no unit-source codes here.
+
+CREATE TABLE IF NOT EXISTS countries (
+    id SERIAL PRIMARY KEY,
+    slug TEXT UNIQUE NOT NULL,             -- stable across rebuilds: iso2 lowercase or slugified name
+    name VARCHAR(255) NOT NULL,
+    class TEXT NOT NULL CHECK (class IN ('un_member','un_observer','de_facto','territory','special')),
+    iso_alpha2 CHAR(2) UNIQUE,
+    iso_alpha3 CHAR(3) UNIQUE,
+    m49_code SMALLINT,
+    sovereign_id INTEGER REFERENCES countries(id),   -- territories: Greenland -> Denmark
+    wikidata_qid VARCHAR(20),
+    valid_period DATERANGE NOT NULL DEFAULT '(,)',   -- temporal hook, unused in v1
+    description TEXT,
+    sources JSONB NOT NULL DEFAULT '[]',             -- provenance: [{source, version, rule}]
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Base coverage: country-level unit of the current unit source -> country
+-- (country level = children of the tree roots; roots are continents here).
+CREATE TABLE IF NOT EXISTS country_divisions (
+    id SERIAL PRIMARY KEY,
+    country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE CASCADE,
+    division_id INTEGER NOT NULL UNIQUE REFERENCES administrative_divisions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_country_divisions_country ON country_divisions(country_id);
+
+CREATE TABLE IF NOT EXISTS disputed_territories (
+    id SERIAL PRIMARY KEY,
+    slug TEXT UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('attribution','existence')),
+    subject_country_id INTEGER REFERENCES countries(id),  -- existence: whose statehood is contested
+    is_approximate BOOLEAN NOT NULL DEFAULT false,
+    wikidata_qid VARCHAR(20),
+    description TEXT,
+    sources JSONB NOT NULL DEFAULT '[]'
+);
+
+-- Dispute = set of units of ANY level; filled geometrically by the sync.
+CREATE TABLE IF NOT EXISTS disputed_territory_members (
+    id SERIAL PRIMARY KEY,
+    dispute_id INTEGER NOT NULL REFERENCES disputed_territories(id) ON DELETE CASCADE,
+    division_id INTEGER NOT NULL REFERENCES administrative_divisions(id) ON DELETE CASCADE,
+    UNIQUE(dispute_id, division_id)
+);
+CREATE INDEX IF NOT EXISTS idx_disputed_members_division ON disputed_territory_members(division_id);
+
+CREATE TABLE IF NOT EXISTS disputed_territory_claims (
+    id SERIAL PRIMARY KEY,
+    dispute_id INTEGER NOT NULL REFERENCES disputed_territories(id) ON DELETE CASCADE,
+    country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('controls','claims')),
+    note TEXT,
+    UNIQUE(dispute_id, country_id)
+);
+
+CREATE TABLE IF NOT EXISTS disputed_presets (
+    id SERIAL PRIMARY KEY,
+    slug TEXT UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_default BOOLEAN NOT NULL DEFAULT false
+);
+
+CREATE TABLE IF NOT EXISTS disputed_preset_choices (
+    preset_id INTEGER NOT NULL REFERENCES disputed_presets(id) ON DELETE CASCADE,
+    dispute_id INTEGER NOT NULL REFERENCES disputed_territories(id) ON DELETE CASCADE,
+    counts_as TEXT NOT NULL CHECK (counts_as IN ('country','independent','not_counted')),
+    country_id INTEGER REFERENCES countries(id),
+    sources JSONB NOT NULL DEFAULT '[]',
+    PRIMARY KEY (preset_id, dispute_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_disputed_preferences (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    dispute_id INTEGER NOT NULL REFERENCES disputed_territories(id) ON DELETE CASCADE,
+    counts_as TEXT NOT NULL CHECK (counts_as IN ('country','independent','not_counted')),
+    country_id INTEGER REFERENCES countries(id),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, dispute_id)
+);
+
+CREATE TABLE IF NOT EXISTS canon_sync_logs (
+    id SERIAL PRIMARY KEY,
+    started_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    status VARCHAR(50) DEFAULT 'running',  -- 'running','success','partial','failed','cancelled'
+    report JSONB,                          -- CanonSyncReport (diff, unmatched units, disputes)
+    source_versions JSONB,                 -- {wikidata: fetchedAt, naturalEarth: url+etag,...}
+    triggered_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_canon_sync_logs_status ON canon_sync_logs(status) WHERE status = 'running';
+
+COMMENT ON TABLE countries IS 'Country canon: superset registry derived from open sources by published rules';
+COMMENT ON TABLE disputed_territories IS 'Disputed territories registry; unit sets landed geometrically from Natural Earth';
+COMMENT ON TABLE user_disputed_preferences IS 'Per-user resolution of disputes. SENSITIVE (political opinion) — owner-only, never public, never logged';
+
+-- Every unit -> (base country, dispute-if-inside). Base level = COUNTRY-LEVEL
+-- units (children of the continent roots in the current import); children
+-- inherit from their country-level ancestor; dispute member subtrees
+-- override. Continent roots are supra-units and are NOT in the map; country
+-- units without a country_divisions row are absent (they surface in the sync
+-- report instead).
+CREATE MATERIALIZED VIEW IF NOT EXISTS division_canon_map AS
+WITH RECURSIVE division_tree AS (
+    SELECT ad.id AS division_id, ad.id AS country_unit_id
+    FROM administrative_divisions ad
+    WHERE ad.parent_id IN (SELECT r.id FROM administrative_divisions r WHERE r.parent_id IS NULL)
+    UNION ALL
+    SELECT ad.id, dt.country_unit_id
+    FROM administrative_divisions ad
+    JOIN division_tree dt ON ad.parent_id = dt.division_id
+), dispute_subtree AS (
+    SELECT dtm.division_id, dtm.dispute_id
+    FROM disputed_territory_members dtm
+    UNION ALL
+    SELECT ad.id, ds.dispute_id
+    FROM administrative_divisions ad
+    JOIN dispute_subtree ds ON ad.parent_id = ds.division_id
+)
+SELECT dt.division_id,
+       cd.country_id AS base_country_id,
+       (SELECT MIN(ds.dispute_id) FROM dispute_subtree ds
+         WHERE ds.division_id = dt.division_id) AS disputed_territory_id
+FROM division_tree dt
+JOIN country_divisions cd ON cd.division_id = dt.country_unit_id;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_division_canon_map_division ON division_canon_map(division_id);
+CREATE INDEX IF NOT EXISTS idx_division_canon_map_country ON division_canon_map(base_country_id);
+
+-- =============================================================================
 -- Schema Complete
 -- =============================================================================
