@@ -236,5 +236,6 @@ describe('deriveCanon — exceptions (rule 7)', () => {
 describe('slugify', () => {
   it('lowercases, strips diacritics, hyphenates', () => {
     expect(slugify('São Tomé and Príncipe')).toBe('sao-tome-and-principe');
+    expect(slugify('--Åland Islands--')).toBe('aland-islands'); // leading/trailing runs trimmed
   });
 });

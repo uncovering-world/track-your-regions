@@ -18,8 +18,11 @@ const SUBJECT_CLASSES: CountryClass[] = ['de_facto', 'un_observer'];
 
 export function slugify(name: string): string {
   // Strip combining diacritics (U+0300-U+036F) after NFD decomposition
-  return name.normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const collapsed = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  // The collapse above never emits consecutive hyphens, so trimming one hyphen
+  // per end is exhaustive — and linear (no quantifier before an anchor).
+  return collapsed.replace(/^-|-$/g, '');
 }
 
 function prov(source: string, rule: string, version = RULES_VERSION): Provenance {
@@ -84,6 +87,35 @@ function indexCountries(countries: CountryDraft[]): CountryIndex {
   };
 }
 
+// Subject: a canon entry this feature IS (existence), matched by QID or by NE self-sovereignty
+function resolveSubject(f: NeDisputedFeature, idx: CountryIndex): CountryDraft | null {
+  const byQid = f.wikidataQid ? idx.byQid.get(f.wikidataQid) : undefined;
+  if (byQid && SUBJECT_CLASSES.includes(byQid.class)) return byQid;
+  const bySov = f.sovIso3 ? idx.byIso3.get(f.sovIso3) : undefined;
+  if (bySov && SUBJECT_CLASSES.includes(bySov.class)) return bySov;
+  return null;
+}
+
+// Claims: the controller (subject, else NE de-facto sovereign) plus every P1336
+// claimant resolvable to a canon entry, deduped by slug.
+function collectClaims(
+  f: NeDisputedFeature, subject: CountryDraft | null,
+  idx: CountryIndex, wikidataByQid: Map<string, WikidataCountryRow>,
+): ClaimDraft[] {
+  const claims: ClaimDraft[] = [];
+  const controller = subject ?? (f.sovIso3 ? idx.byIso3.get(f.sovIso3) ?? null : null);
+  if (controller) claims.push({ countrySlug: controller.slug, role: 'controls', note: null });
+  const subjectRow = subject?.wikidataQid ? wikidataByQid.get(subject.wikidataQid) : undefined;
+  const featureRow = f.wikidataQid ? wikidataByQid.get(f.wikidataQid) : undefined;
+  for (const claimantQid of [...(subjectRow?.claimedByQids ?? []), ...(featureRow?.claimedByQids ?? [])]) {
+    const claimant = idx.byQid.get(claimantQid);
+    if (claimant && !claims.some((c) => c.countrySlug === claimant.slug)) {
+      claims.push({ countrySlug: claimant.slug, role: 'claims', note: null });
+    }
+  }
+  return claims;
+}
+
 function buildDisputes(
   neDisputed: NeDisputedFeature[], idx: CountryIndex,
   wikidataByQid: Map<string, WikidataCountryRow>, warnings: string[],
@@ -92,27 +124,12 @@ function buildDisputes(
   for (const f of neDisputed) {
     const slug = slugify(f.name);
     if (out.some((d) => d.slug === slug)) { warnings.push(`duplicate NE disputed feature ${slug} — kept first`); continue; }
-    // Subject: a canon entry this feature IS (existence), matched by QID or by NE self-sovereignty
-    const byQid = f.wikidataQid ? idx.byQid.get(f.wikidataQid) : undefined;
-    const bySov = f.sovIso3 ? idx.byIso3.get(f.sovIso3) : undefined;
-    const subject = byQid && SUBJECT_CLASSES.includes(byQid.class) ? byQid
-      : bySov && SUBJECT_CLASSES.includes(bySov.class) ? bySov : null;
-    const kind = subject ? 'existence' as const : 'attribution' as const;
-
-    const claims: ClaimDraft[] = [];
-    const controller = subject ?? (f.sovIso3 ? idx.byIso3.get(f.sovIso3) ?? null : null);
-    if (controller) claims.push({ countrySlug: controller.slug, role: 'controls', note: null });
-    const subjectRow = subject?.wikidataQid ? wikidataByQid.get(subject.wikidataQid) : undefined;
-    const featureRow = f.wikidataQid ? wikidataByQid.get(f.wikidataQid) : undefined;
-    for (const claimantQid of [...(subjectRow?.claimedByQids ?? []), ...(featureRow?.claimedByQids ?? [])]) {
-      const claimant = idx.byQid.get(claimantQid);
-      if (claimant && !claims.some((c) => c.countrySlug === claimant.slug)) {
-        claims.push({ countrySlug: claimant.slug, role: 'claims', note: null });
-      }
-    }
+    const subject = resolveSubject(f, idx);
+    const claims = collectClaims(f, subject, idx, wikidataByQid);
     if (claims.length === 0) { warnings.push(`dispute ${slug}: no claimants resolved — dropped (add exception if it must exist)`); continue; }
     out.push({
-      slug, name: f.name, kind, subjectCountrySlug: subject?.slug ?? null,
+      slug, name: f.name, kind: subject ? 'existence' : 'attribution',
+      subjectCountrySlug: subject?.slug ?? null,
       claims, neFeature: f, wikidataQid: f.wikidataQid,
       provenance: [prov('natural-earth', `dispute from NE disputed/breakaway layer (type=${f.type})`)],
     });
