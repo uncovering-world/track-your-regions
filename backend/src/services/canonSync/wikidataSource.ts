@@ -48,19 +48,25 @@ function rowFromBinding(b: SparqlBinding, qid: string): WikidataCountryRow {
   };
 }
 
-function mergeRow(row: WikidataCountryRow, b: SparqlBinding, qid: string): void {
-  if (b.unMember?.value === 'true') row.isUnMember = true;
-  if (b.limited?.value === 'true') row.hasLimitedRecognition = true;
-  const claimant = b.claimedBy ? extractQid(b.claimedBy.value) : null;
-  if (claimant && !row.claimedByQids.includes(claimant)) row.claimedByQids.push(claimant);
-  // Backfill single-valued facts earlier rows lacked (endpoint row order is
-  // unspecified): first non-null value wins per field.
+// Backfill single-valued facts earlier rows lacked (endpoint row order is
+// unspecified): first non-null value wins per field.
+function backfillScalarFacts(row: WikidataCountryRow, b: SparqlBinding): void {
   if (row.iso2 === null && b.iso2) row.iso2 = b.iso2.value;
   if (row.iso3 === null && b.iso3) row.iso3 = b.iso3.value;
   if (row.isoNumeric === null && b.isoNumeric) {
     const n = Number(b.isoNumeric.value);
     if (Number.isFinite(n)) row.isoNumeric = n;
   }
+}
+
+function mergeRow(row: WikidataCountryRow, b: SparqlBinding, qid: string): void {
+  if (b.unMember?.value === 'true') row.isUnMember = true;
+  if (b.limited?.value === 'true') row.hasLimitedRecognition = true;
+  const claimant = b.claimedBy ? extractQid(b.claimedBy.value) : null;
+  if (claimant && !row.claimedByQids.includes(claimant)) row.claimedByQids.push(claimant);
+  backfillScalarFacts(row, b);
+  // Sovereign backfills the same first-non-null-wins way, except a
+  // self-reference stays null (matches rowFromBinding).
   if (row.sovereignQid === null && b.sovereign) {
     const sov = extractQid(b.sovereign.value);
     if (sov !== qid) row.sovereignQid = sov;
