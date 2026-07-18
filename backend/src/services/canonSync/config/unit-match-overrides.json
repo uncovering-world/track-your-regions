@@ -1,4 +1,71 @@
 {
-  "$comment": "Manual matches of country-level units of the CURRENT unit source (GADM today; children of the continent roots) to canon country slugs. Optional rootName disambiguates duplicate names (Antarctic claims). Matching-only — never membership. Filled during calibration (Task 9).",
-  "overrides": []
+  "$comment": "Manual matches of country-level units of the CURRENT unit source (GADM today; children of the continent roots) to canon country slugs. Optional rootName disambiguates duplicate names (Antarctic claims). Matching-only — never membership. Filled during calibration (Task 9). Every entry cites the observed mis-match it corrects; bbox evidence in .superpowers/sdd/task-9-report.md.",
+  "overrides": [
+    {
+      "divisionName": "Maldives",
+      "rootName": "Asia",
+      "countrySlug": "mv",
+      "reason": "Geometric share < 0.5: NE 10m draws the atolls as simplified specks that barely intersect GADM's Maldives land polygons (unit went unmatched in calibration runs). Unambiguous 1:1 with ISO MV/MDV; NE feature 'Maldives' (MDV, Sovereign country) exists."
+    },
+    {
+      "divisionName": "Kosovo",
+      "rootName": "Europe",
+      "countrySlug": "xk",
+      "reason": "ISO-key mismatch, not geometry: NE Kosovo carries ADM0_A3=KOS (ISO_A3=-99) while Wikidata/canon iso3 is XKS, so the NE feature never enters the iso3-keyed matching pool and the unit stays unmatched. Canon entry xk (Q1246) is the same polity."
+    },
+    {
+      "divisionName": "Western Sahara",
+      "rootName": "Africa",
+      "countrySlug": "eh",
+      "reason": "Both NE 'Morocco' (MAR) and NE 'Western Sahara' (ESH, type Indeterminate) polygons cover this unit with near-1.0 shares; the geometric winner is share-noise/row-order dependent (landed 'ma' in both calibration runs). Spec (country-canon-and-disputes.md, resolution semantics) requires the neutral base record for disputed ground — the Western Sahara entry itself (eh); the w-sahara attribution dispute overlays the user-facing choice."
+    },
+    {
+      "divisionName": "Vatican City",
+      "rootName": "Europe",
+      "countrySlug": "va",
+      "reason": "NE 10m does not carve the Vatican enclave out of Italy, so the unit matched 'it' geometrically in calibration runs. The Holy See is a UN-observer canon record (va) and must own its unit; otherwise visits to it count as Italy."
+    },
+    {
+      "divisionName": "Australia",
+      "rootName": "Asia",
+      "countrySlug": "au",
+      "reason": "Unit is Christmas Island + Cocos (Keeling) Islands (bbox 96.8..105.7 E, -12.2..-10.4). NE keys the covering feature 'Indian Ocean Territories' as ISO_A3_EH=AUS, which collides with mainland Australia in the slug-keyed temp table and is dropped. The unit aggregates two ISO territories (cx, cc), so the only single canon record covering the whole unit is their sovereign, au."
+    },
+    {
+      "divisionName": "Ashmore and Cartier Islands",
+      "rootName": "Australia",
+      "countrySlug": "au",
+      "reason": "NE feature 'Ashmore and Cartier Islands' is keyed ISO_A3_EH=AUS (ADM0_A3=ATC) and lost to the mainland-Australia slug-key collision, leaving the unit unmatched. Australian external territory with no own ISO 3166-1 code — au is the correct record."
+    },
+    {
+      "divisionName": "Coral Sea Islands Territory",
+      "rootName": "Australia",
+      "countrySlug": "au",
+      "reason": "Same as Ashmore and Cartier: NE 'Coral Sea Islands' keyed ISO_A3_EH=AUS (ADM0_A3=CSI), dropped by the slug-key collision. Australian external territory without own ISO code."
+    },
+    {
+      "divisionName": "Brazil",
+      "rootName": "Africa",
+      "countrySlug": "br",
+      "reason": "Unit is Brazil's oceanic islands placed under the Africa root by GADM (bbox -40.4..-28.8, -20.5..-20.2: Trindade & Martim Vaz; unmatched in calibration). NE 10m Brazil omits/simplifies these specks, so no geometric overlap. Brazilian federal territory."
+    },
+    {
+      "divisionName": "Costa Rica",
+      "rootName": "South America",
+      "countrySlug": "cr",
+      "reason": "Unit is Cocos Island (bbox -87.1, 5.5), Costa Rica's Pacific territory placed under the South America root. NE 10m Costa Rica polygon does not reach the speck, so the unit went unmatched."
+    },
+    {
+      "divisionName": "Colombia",
+      "rootName": "North America",
+      "countrySlug": "co",
+      "reason": "Unit is the San Andres y Providencia archipelago (bbox -81.8..-78.6, 12.2..15.9), a Colombian department placed under the North America root. NE 10m islands are too small/offset for a 0.5 share, so the unit went unmatched."
+    },
+    {
+      "divisionName": "Norway",
+      "rootName": "Antarctica",
+      "countrySlug": "bv",
+      "reason": "Unit is Bouvet Island (bbox 3.3..3.5 E, -54.5..-54.4), not an Antarctic claim sector. Geometry matched 'no' (NE polygon packing), but ISO 3166-1 and the project's no-rollup travel-identity convention model Bouvet as the separate territory bv (BVT); the mainland-Norway record must not absorb it."
+    }
+  ]
 }

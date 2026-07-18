@@ -1,4 +1,17 @@
 {
-  "$comment": "Justified deviations from rule output. Target state: empty. Every entry needs justification + source.",
-  "exceptions": []
+  "$comment": "Justified deviations from rule output. Target state: empty. Every entry needs justification + source. Calibration evidence: .superpowers/sdd/task-9-report.md. NOTE: 13 historical UN-member entities (Estado Novo, Kingdom of Laos, ...) and the DD/YU historical ISO codes are deliberately NOT listed here — the recommended fix is a P576 (dissolved) filter in the membership query (code change, controller decision); see the report.",
+  "exceptions": [
+    {
+      "target": "kingdom-of-denmark",
+      "action": { "mergeInto": "dk" },
+      "justification": "Wikidata models the Danish polity twice: Q35 'Denmark' (carries ISO 3166-1 DK) and Q756617 'Kingdom of Denmark' (the sovereign realm, carries the un-ended UN membership statement and is the P17 sovereign of fo/gl/dk). Both pass the membership rule and yield two un_member entries for one UN seat. ISO 3166-1 DK is defined as the Kingdom, so the realm entity merges into dk; mergeInto redirects the Faroe Islands' and Greenland's sovereign links to dk. Known cosmetic artifact: dk's own sovereign link (Q35 -> Q756617) becomes a self-reference after the merge.",
+      "source": "https://www.wikidata.org/wiki/Q756617 (P463 -> Q1065 with no end date; P17 target of Q23408/Q4628); ISO 3166-1 alpha-2 DK scope 'Denmark' covering the Kingdom; live SPARQL evidence in task-9 calibration runs (2026-07-18)"
+    },
+    {
+      "target": "realm-of-the-united-kingdom",
+      "action": { "dropCountry": true },
+      "justification": "Q124653007 'realm of the United Kingdom' duplicates the UK polity: it carries an un-ended UN membership statement, so it enters as an extra un_member with no ISO codes, while Q145 (gb) is the canonical UK entry. Nothing in the derived canon references the realm entity (no sovereign links, no dispute claims), so dropping it is a clean dedup of one UN seat counted twice.",
+      "source": "https://www.wikidata.org/wiki/Q124653007 (P463 -> Q1065 with no end date, no P297/P298); live SPARQL evidence in task-9 calibration runs (2026-07-18)"
+    }
+  ]
 }
