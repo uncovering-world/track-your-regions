@@ -56,7 +56,7 @@ async function fetchGeojson(url: string): Promise<NeRawFeature[]> {
   if (cache.has(key)) {
     return (cache.get(key) as { features: NeRawFeature[] }).features;
   }
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`Natural Earth fetch failed ${res.status}: ${url}`);
   const data = await res.json() as { features: NeRawFeature[] };
   cache.set(key, data);
