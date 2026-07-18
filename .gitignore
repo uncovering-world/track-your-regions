@@ -100,6 +100,8 @@ repomix-output.*
 # Generated cache files (Wikivoyage extraction cache, CV test data)
 data/cache/
 data/cv-python-tests/
+# Canon sync cache lands under backend/ when the backend runs with cwd=backend/
+backend/data/
 
 # Python CV model artifacts (downloaded at runtime)
 backend/data/models/
