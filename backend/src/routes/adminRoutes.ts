@@ -132,6 +132,11 @@ import {
   deleteCacheFile,
 } from '../controllers/admin/wikivoyageExtractController.js';
 import {
+  startCanonSync,
+  getCanonSyncState,
+  cancelCanonSyncEndpoint,
+} from '../controllers/admin/canonSyncController.js';
+import {
   getAISettings, updateAISetting, getAIUsage, updatePricing,
   getLearnedRules, addLearnedRule, deleteLearnedRule,
   reviewLearnedRules, applyRuleReviewSuggestion,
@@ -236,6 +241,14 @@ router.post('/wv-extract/answer', validate(wvExtractAnswerSchema), answerExtract
 
 // Delete a cache file
 router.delete('/wv-extract/caches/:name', validate(wvCacheNameParamSchema, 'params'), deleteCacheFile);
+
+// =============================================================================
+// Country canon: rebuild from open sources (spec: country-canon-and-disputes.md)
+// =============================================================================
+
+router.post('/canon/sync', startCanonSync);
+router.get('/canon/sync', getCanonSyncState);
+router.delete('/canon/sync', cancelCanonSyncEndpoint);
 
 // =============================================================================
 // WorldView Import Routes
