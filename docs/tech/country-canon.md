@@ -54,7 +54,10 @@ in-memory-progress pattern as the project's other sync services:
    = ISO ∪ UN ∪ limited-recognition; classes by rule; disputes from NE
    features; presets from source attributes. Manual input =
    `config/unit-match-overrides.json` (unit matching only) +
-   `config/exceptions.json` (justified deviations, each with a citation).
+   `config/exceptions.json` (justified deviations, each with a citation). A
+   third, minimal manual constant also feeds classification:
+   `UN_OBSERVER_ISO2` (`types.ts`), the 2-entry UN GA observer list (VA, PS),
+   hardcoded with its un.org citation and unchanged since 2012.
 3. **Match geometrically** (`unitMatching.ts`): country-level units ↔ NE
    country polygons by max overlap; dispute polygons land on units (whole
    country unit or its children; partial → `is_approximate`). No unit-source
@@ -112,8 +115,14 @@ Results of the first real calibrated sync (full log:
   harmless. This set is far richer than the design doc's illustrative ~13 —
   that is the derivative principle working as intended: the dispute set
   comes from Natural Earth, not from us.
-- Rebuilds are **idempotent**: a repeat sync against unchanged sources
-  produces an empty diff (no added/removed/changed countries).
+- Rebuilds against **unchanged sources** are idempotent: consecutive real
+  syncs have been verified to produce an empty diff (no added/removed/changed
+  countries). Genuine upstream edits (Wikidata/Natural Earth data changing
+  between runs) surface in the build diff instead — that's the drift
+  detector working as designed, not a regression. Identity collisions (two
+  live entities sharing one ISO code, e.g. Q229 Republic of Cyprus vs
+  Q644636 British Cyprus both carrying CY) resolve deterministically: the
+  UN-member entity wins, else the entity with the lower Wikidata QID.
 - 11 `exceptions.json` entries and 12 `unit-match-overrides.json` entries
   currently bridge Wikidata/NE data quirks (duplicate polity entities like
   the Danish/UK/Greek "realm" duals, Wikidata statement-rank artifacts,
