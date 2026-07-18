@@ -34,7 +34,7 @@ function classify(row: WikidataCountryRow): { cls: CountryClass; rule: string } 
   if (row.iso2 && UN_OBSERVER_ISO2.includes(row.iso2)) {
     return { cls: 'un_observer', rule: 'un_observer: UN GA observer list (un.org non-member states)' };
   }
-  if (row.hasLimitedRecognition) return { cls: 'de_facto', rule: 'de_facto: state with limited recognition (P31 Q15634554)' };
+  if (row.hasLimitedRecognition) return { cls: 'de_facto', rule: 'de_facto: state with limited recognition (P31 Q10711424)' };
   if (row.iso2 && row.sovereignQid) return { cls: 'territory', rule: 'territory: ISO entry with sovereign (P17)' };
   if (row.iso2) return { cls: 'special', rule: 'special: ISO entry, no sovereign, not UN, not limited-recognition' };
   return null; // fails the membership rule entirely
