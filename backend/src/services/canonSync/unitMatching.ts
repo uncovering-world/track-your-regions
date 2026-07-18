@@ -122,7 +122,16 @@ export async function matchRootUnits(
   return { crosswalk, unmatched };
 }
 
-/** Land one dispute's NE polygon on units: whole root, else child units. */
+/**
+ * Land one dispute's NE polygon on units: whole root, else child units.
+ *
+ * Known v1 limitation: the LIMIT 1 below anchors the dispute to a SINGLE
+ * country-level unit (ranked by share of that unit's own area), so a dispute
+ * straddling two countries' trees (Kashmir across India/Pakistan) lands only
+ * in one of them and the rest of its extent surfaces as low coverage →
+ * is_approximate. Validate against real NE data during sync calibration
+ * before extending to multi-root landing.
+ */
 export async function landDisputeUnits(
   neFeature: NeDisputedFeature,
 ): Promise<{ divisionIds: number[]; approximate: boolean }> {
