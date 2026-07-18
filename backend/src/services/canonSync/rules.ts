@@ -40,30 +40,70 @@ function classify(row: WikidataCountryRow): { cls: CountryClass; rule: string } 
   return null; // fails the membership rule entirely
 }
 
-function buildCountries(wikidata: WikidataCountryRow[], warnings: string[]): CountryDraft[] {
-  const byIso2 = new Map<string, CountryDraft>();
-  const drafts: CountryDraft[] = [];
-  const byQid = new Map<string, CountryDraft>();
-  for (const row of wikidata) {
-    const classified = classify(row);
-    if (!classified) continue;
-    const slug = row.iso2 ? row.iso2.toLowerCase() : slugify(row.label);
-    if (row.iso2 && byIso2.has(row.iso2)) {
-      warnings.push(`duplicate iso2 ${row.iso2}: kept ${byIso2.get(row.iso2)?.name}, dropped ${row.label} (${row.qid})`);
-      continue;
-    }
-    const draft: CountryDraft = {
-      slug, name: row.label, class: classified.cls,
-      iso2: row.iso2, iso3: row.iso3, m49: row.isoNumeric,
-      sovereignSlug: null, // resolved below once all rows are in
-      wikidataQid: row.qid,
-      provenance: [prov('wikidata', classified.rule)],
-    };
-    drafts.push(draft);
-    byQid.set(row.qid, draft);
-    if (row.iso2) byIso2.set(row.iso2, draft);
+interface Iso2Entry { row: WikidataCountryRow; draft: CountryDraft }
+
+// Deterministic winner between two Wikidata rows claiming the same iso2 (live
+// case: Q229 Republic of Cyprus vs Q644636 British Cyprus, both carrying CY),
+// independent of source result order: (1) current UN membership wins; (2)
+// else the lower numeric QID wins (older, more canonical entity).
+function pickDuplicateWinner(a: WikidataCountryRow, b: WikidataCountryRow): {
+  winner: WikidataCountryRow; loser: WikidataCountryRow; reason: 'un_member' | 'lower QID';
+} {
+  if (a.isUnMember !== b.isUnMember) {
+    const winner = a.isUnMember ? a : b;
+    return { winner, loser: winner === a ? b : a, reason: 'un_member' };
   }
-  // Second pass: sovereign links (qid -> slug)
+  const winner = Number(a.qid.slice(1)) <= Number(b.qid.slice(1)) ? a : b;
+  return { winner, loser: winner === a ? b : a, reason: 'lower QID' };
+}
+
+// On an iso2 collision, resolve the winner and — if the incoming row displaces
+// the previously kept draft — reconcile drafts/byQid/byIso2 so byQid keeps
+// holding only kept drafts (the second-pass sovereign-link loop below relies
+// on that invariant).
+function resolveDuplicateIso2(
+  iso2: string, existing: Iso2Entry, incoming: Iso2Entry,
+  drafts: CountryDraft[], byQid: Map<string, CountryDraft>, byIso2: Map<string, Iso2Entry>,
+  warnings: string[],
+): void {
+  const { winner, loser, reason } = pickDuplicateWinner(existing.row, incoming.row);
+  warnings.push(`duplicate iso2 ${iso2}: kept ${winner.label} (${winner.qid}, ${reason}), dropped ${loser.label} (${loser.qid})`);
+  if (winner === existing.row) return; // existing draft already kept — nothing else to change
+  drafts.splice(drafts.indexOf(existing.draft), 1);
+  byQid.delete(existing.row.qid);
+  drafts.push(incoming.draft);
+  byQid.set(incoming.row.qid, incoming.draft);
+  byIso2.set(iso2, incoming);
+}
+
+// Classifies one row and inserts it (mutating drafts/byQid/byIso2), unless it
+// fails the membership rule or loses an iso2 collision to a prior row.
+function addCountryRow(
+  row: WikidataCountryRow, warnings: string[],
+  byIso2: Map<string, Iso2Entry>, drafts: CountryDraft[], byQid: Map<string, CountryDraft>,
+): void {
+  const classified = classify(row);
+  if (!classified) return;
+  const slug = row.iso2 ? row.iso2.toLowerCase() : slugify(row.label);
+  const draft: CountryDraft = {
+    slug, name: row.label, class: classified.cls,
+    iso2: row.iso2, iso3: row.iso3, m49: row.isoNumeric,
+    sovereignSlug: null, // resolved below once all rows are in
+    wikidataQid: row.qid,
+    provenance: [prov('wikidata', classified.rule)],
+  };
+  const existing = row.iso2 ? byIso2.get(row.iso2) : undefined;
+  if (row.iso2 && existing) {
+    resolveDuplicateIso2(row.iso2, existing, { row, draft }, drafts, byQid, byIso2, warnings);
+    return;
+  }
+  drafts.push(draft);
+  byQid.set(row.qid, draft);
+  if (row.iso2) byIso2.set(row.iso2, { row, draft });
+}
+
+// Second pass: sovereign links (qid -> slug), once every kept draft is in byQid.
+function linkSovereigns(wikidata: WikidataCountryRow[], byQid: Map<string, CountryDraft>, warnings: string[]): void {
   for (const row of wikidata) {
     const draft = byQid.get(row.qid);
     if (!draft || !row.sovereignQid) continue;
@@ -71,6 +111,14 @@ function buildCountries(wikidata: WikidataCountryRow[], warnings: string[]): Cou
     draft.sovereignSlug = sovereign?.slug ?? null;
     if (!sovereign) warnings.push(`sovereign ${row.sovereignQid} of ${draft.slug} not in canon — link dropped`);
   }
+}
+
+function buildCountries(wikidata: WikidataCountryRow[], warnings: string[]): CountryDraft[] {
+  const byIso2 = new Map<string, Iso2Entry>();
+  const drafts: CountryDraft[] = [];
+  const byQid = new Map<string, CountryDraft>();
+  for (const row of wikidata) addCountryRow(row, warnings, byIso2, drafts, byQid);
+  linkSovereigns(wikidata, byQid, warnings);
   return drafts;
 }
 

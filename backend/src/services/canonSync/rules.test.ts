@@ -62,6 +62,33 @@ describe('deriveCanon — classes (rule 2)', () => {
     expect(d.warnings.some((w) => w.includes('ZZ'))).toBe(true);
   });
 
+  it('resolves a duplicate iso2 deterministically: the UN member wins regardless of input order', () => {
+    // Live case: Q229 Republic of Cyprus vs Q644636 British Cyprus, both carrying CY.
+    const britishCyprus = wd({ qid: 'Q644636', label: 'British Cyprus', iso2: 'CY' });
+    const republicOfCyprus = wd({ qid: 'Q229', label: 'Republic of Cyprus', iso2: 'CY', iso3: 'CYP', isUnMember: true });
+    for (const rows of [[britishCyprus, republicOfCyprus], [republicOfCyprus, britishCyprus]]) {
+      const d = deriveCanon({ wikidata: rows, neDisputed: [], exceptions: [] });
+      const cy = d.countries.filter((c) => c.iso2 === 'CY');
+      expect(cy).toHaveLength(1);
+      expect(cy[0]?.name).toBe('Republic of Cyprus');
+      expect(cy[0]?.class).toBe('un_member');
+      expect(d.warnings.some((w) => w.includes('British Cyprus'))).toBe(true);
+    }
+  });
+
+  it('resolves a duplicate iso2 deterministically: the lower QID wins when neither is a UN member', () => {
+    const olderEntity = wd({ qid: 'Q100', label: 'Older Entity', iso2: 'ZY', iso3: 'ZYA' });
+    const newerEntity = wd({ qid: 'Q200', label: 'Newer Entity', iso2: 'ZY', iso3: 'ZYB' });
+    for (const rows of [[olderEntity, newerEntity], [newerEntity, olderEntity]]) {
+      const d = deriveCanon({ wikidata: rows, neDisputed: [], exceptions: [] });
+      const zy = d.countries.filter((c) => c.iso2 === 'ZY');
+      expect(zy).toHaveLength(1);
+      expect(zy[0]?.name).toBe('Older Entity');
+      expect(zy[0]?.wikidataQid).toBe('Q100');
+      expect(d.warnings.some((w) => w.includes('Newer Entity'))).toBe(true);
+    }
+  });
+
   it('excludes rows that fail the membership rule entirely', () => {
     const nowhere = wd({ qid: 'Q1', label: 'Nowhere' }); // no iso2, no UN membership, no limited recognition
     const d = deriveCanon({ wikidata: [nowhere], neDisputed: [], exceptions: [] });
