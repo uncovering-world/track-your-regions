@@ -159,10 +159,15 @@ export async function landDisputeUnits(
     const coverageIds = Number(root.share) >= DISPUTE_ROOT_SHARE ? [root.id] : selectedForCoverage;
     let coverage = Number(root.coverage) || 0;
     if (coverageIds.length > 0 && Number(root.share) < DISPUTE_ROOT_SHARE) {
+      // ST_Union(ad.geom) here is the single-argument AGGREGATE form; mixing
+      // it with the bare t.geom column with no GROUP BY is a PostgreSQL
+      // 42803 error (t.geom appears outside an aggregate/GROUP BY). Pre-
+      // aggregate in a subquery instead — canon_ne_tmp always has exactly
+      // one row for this call, so the cross join stays a single pairing.
       const cov = await client.query(`
-        SELECT ST_Area(ST_Intersection(ST_Union(ad.geom), t.geom)) / NULLIF(ST_Area(t.geom), 0) AS coverage
-        FROM administrative_divisions ad, canon_ne_tmp t
-        WHERE ad.id = ANY($1)`, [coverageIds]);
+        SELECT ST_Area(ST_Intersection(u.geom, t.geom)) / NULLIF(ST_Area(t.geom), 0) AS coverage
+        FROM (SELECT ST_Union(geom) AS geom FROM administrative_divisions WHERE id = ANY($1)) u, canon_ne_tmp t`,
+        [coverageIds]);
       coverage = Number((cov.rows[0] as { coverage: number }).coverage) || 0;
     }
     return decideLanding({ rootId: root.id, rootShare: Number(root.share) || 0 }, childShares, coverage);
