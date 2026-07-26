@@ -75,6 +75,7 @@ npm run check
 npm run knip
 npm run security:all
 TEST_REPORT_LOCAL=1 npm test
+npm run test:e2e:smoke
 ```
 
 Plus `/security-check` for Claude Code security review.

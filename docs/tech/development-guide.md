@@ -537,6 +537,7 @@ Before pushing (slow scans):
 
 ```bash
 npm run security:all   # check + slow Semgrep (Node + Python) + Trivy image scan
+npm run test:e2e:smoke # isolated test stack, seeded fixture, Playwright smoke
 ```
 
 ## Slash Commands
