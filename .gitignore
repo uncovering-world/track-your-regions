@@ -98,5 +98,18 @@ repomix-output.*
 data/cache/
 data/cv-python-tests/
 
-# Python CV model artifacts (downloaded at runtime)
-backend/data/models/
+# Experience images downloaded at runtime, and CV/matching debug dumps
+data/images/
+data/cv-debug/
+data/matching-dumps/
+
+# Canon sync cache and CV model artifacts, both downloaded/written at runtime.
+# Also catches the cache landing here when the backend runs with cwd=backend/.
+backend/data/
+
+# Design-system sync: local converter staging area and its generated bundle
+.ds-sync/
+ds-bundle/
+
+# Superpowers skill working directory
+.superpowers/
