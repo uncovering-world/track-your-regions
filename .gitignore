@@ -85,6 +85,12 @@ deployment/
 # Inbox (local scratchpad, not for version control)
 docs/inbox/
 
+# Plans and design specs are local working documents. What gets committed is
+# documentation of what exists, under docs/tech/ — a committed plan drifts from
+# reality and becomes a second, wrong source of truth.
+# Note: this hides new plans only. Docs already tracked here stay tracked.
+docs/tech/planning/
+
 # Debug screenshots
 *.png
 
