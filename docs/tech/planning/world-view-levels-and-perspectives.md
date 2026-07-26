@@ -1,15 +1,24 @@
 # World View Levels & Perspectives — Design
 
 **Status**: Approved design (umbrella vision), not yet implemented.
-**Decided**: 2026-06-14, brainstorming session.
+**Decided**: 2026-06-14, brainstorming session; extended 2026-06-17
+(staged editing workflow + transcontinental countries).
 **Scope**: A rethink of how the app models and edits geographic hierarchies
 ("world views"). Introduces three explicit working levels, an orthogonal
 political-perspective axis, reusable sub-national templates, a layered
-import pipeline, and a level-aware editing shell.
+import pipeline, a level-aware editing shell with a soft staged-build
+workflow, and handling for transcontinental countries.
 **Relationship to in-flight work**: This is the umbrella target the
 [import-review workflow redesign](import-review-workflow-redesign.md)
 evolves toward. Import-review ships **as-is** (it is phase 0); nothing
 here reverses it. See *Relationship to import-review* below.
+**Amended 2026-07-26**: the L1/L2/L3 framing below is refined by
+[canon-model-rethink-2026-07-26.md](canon-model-rethink-2026-07-26.md) —
+there is **one** tree, a country is an explicit marking on a node (not a
+depth, and not a leaf), L1 is a country→group *mapping* rather than a tree,
+L3 sources are pluggable per country with fallback to the substrate, and
+hierarchy is sourced separately from geometry. Read that document before
+building against the levels model.
 
 ---
 
@@ -87,6 +96,8 @@ over GADM.**
 | Editing interface? | **Shared shell + level switcher**; "level" (altitude) ≠ "stage" (phase). | Each level feels like a distinct approach without losing drill-down and a shared map/tree. Generalizes import-review's `StageSwitcher` from *stage* to *altitude*. |
 | Relationship to import-review? | **Import-review = phase 0**, finish and merge as-is; this doc is the umbrella target it evolves toward. | No throwaway. The per-country work-unit + sign-off machinery already built *is* the future L3 ingestion loop — forward-compatible. |
 | Import architecture? | **Layered ingestion around the country pivot** (seed L2 → build L1 schemes → import L3 per country); a later phase. | The importer catches up to the pivot-centric model. An authoritative country canon de-risks the whole POV axis; per-level matching is smaller and more reliable than matching a monolith. |
+| Staged editing order? | **Soft / recommended**: ① countries + disputed + POV → ② supra-national → ③ sub-national. Progress is tracked, nothing is locked; the level switcher *is* the stage tracker. | "Work in order" without a cage. Matches import-review's "soft path, hard sign-off". Light gate at ②: grouping is meaningful once a country set exists. |
+| Transcontinental countries (Russia ∈ Europe + Asia)? | **One country = one pivot** (counted once); its **territory** is split across super-regions at L1 along recognizable admin boundaries, with edge units annotated. | Keeps the country canon clean while still showing the country in each super-region. Travel-meaning over geographic precision; reflect ambiguity, don't force a binary. |
 
 ## The three levels
 
@@ -166,6 +177,39 @@ keeps a single base and localizes the politics — the industry consensus.
   approaches possible: above it → grouping/arrangement tools; on it →
   perspective / country-set tools; below it → subdivision tools.
 
+## Transcontinental / multi-super-region countries
+
+A country can span several L1 super-regions (Russia ∈ Europe + Asia;
+also Turkey, Kazakhstan, Egypt). Resolution:
+
+- **One country = one pivot.** Russia is a single L2 pivot, counted once
+  in the canon and in "countries visited" — *not* split into two countries.
+- **The territory is split at L1, not the country.** A transcontinental
+  country's GADM units are distributed across super-regions and shown as
+  labelled parts ("European Russia" / "Asian Russia") — two parts of one
+  country. Mechanically this is **partial membership** (the same overlap
+  mechanism as groupings), applied symmetrically on both sides.
+- **Split on a recognizable admin boundary, never an arbitrary line.**
+  Cut along GADM division borders travellers already read as "the
+  crossing". For **Russia**, split by federal district: **European** =
+  Central, Northwestern, Southern, North Caucasian, Volga; **Asian** =
+  Ural, Siberian, Far Eastern — the **Ural FD goes to the Asian side**
+  (Yekaterinburg is the conventional Europe/Asia marker). Same rule
+  elsewhere: Turkey → Thrace (Europe) vs Anatolia (Asia); Kazakhstan →
+  the strip west of the Ural river (Europe), rest Asia (or all-Asia by
+  travel-meaning, annotated); Egypt → Sinai (Asia), rest Africa.
+- **Annotate the edge, don't hide it.** Straddling units carry an
+  "on the Europe–Asia line" note (the [groupings](groupings.md)
+  "sometimes included" convention), so the boundary reads as a convention,
+  not a fact.
+- **Future:** because the POV axis + annotated groupings exist, the edge
+  could later be made perspective-switchable. For v1 a single sensible
+  default is enough (YAGNI).
+
+Grounding: this is a travel-memory platform, not a geographic reference —
+recognizability to travellers and honest ambiguity beat cartographic
+precision.
+
 ## Sub-national reuse — subdivision templates
 
 A **subdivision template** is a named, reusable L3 subtree over GADM
@@ -190,11 +234,22 @@ styling; drilling into a country raises the level automatically.
 - **L3 sub-national** — the import-review country workspace: assign GADM,
   build/instantiate templates, verify, sign off.
 
-**Level ≠ stage.** "Level" is altitude (L1/L2/L3). "Stage" is the work
-phase *within* a country (Hierarchy / Assign / Verify — already built in
-import-review). Stages nest inside the L3 level. The existing
-`StageSwitcher` generalizes: an outer level switcher, an inner stage
-switcher.
+**Staged build workflow (soft).** Building a world view follows a
+recommended order — **① countries + disputed + POV → ② supra-national
+hierarchy → ③ sub-national** — but nothing is locked: the level switcher
+doubles as a **stage tracker** (each level shows ○ / ◐ / ⬤ progress with a
+"you are here / next" hint), you can switch freely, and a soft **confirm**
+per level advances progress (like import-review's `skeleton_confirmed` /
+sign-off). A light gate at the ①→② boundary: grouping countries is
+meaningful only once a country set exists. This mirrors import-review's
+"soft path, hard sign-off".
+
+**Two senses of "stage", nested.** The *build order* above is the outer
+axis and coincides with the three **levels** (working a level = a build
+stage). *Within* a country (level ③) live the inner phases
+**Hierarchy / Assign / Verify** — import-review's existing `StageSwitcher`.
+So: an outer **level / build-stage** switcher, and an inner per-country
+stage switcher nested under level ③.
 
 ## Import — layered ingestion around the country pivot
 
@@ -277,8 +332,10 @@ over the marked nodes; the de-facto base is the stored tree.
 
 - **Phase 0** — finish and merge import-review as-is (= L3 editor +
   backend foundation). No pivot.
-- **Phase 1** — level-aware shell + level switcher; L1 groupings
-  ([groupings.md](groupings.md)); formalize the `country` node role.
+- **Phase 1** — level-aware shell + level switcher **doubling as the soft
+  staged-build tracker**; L1 groupings ([groupings.md](groupings.md))
+  **including transcontinental partial membership**; formalize the
+  `country` node role.
 - **Phase 2** — perspective axis: `perspectives` + `disputed_features` +
   `perspective_rulings` + resolver + L2 editor. Attachment/existence
   rulings (no alt-geometry yet).
