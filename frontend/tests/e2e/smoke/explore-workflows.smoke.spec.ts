@@ -1,19 +1,16 @@
 import { expect, type Page, test } from '@playwright/test';
 
-async function selectRootRegion(page: Page) {
-  const regionButton = page.getByRole('button', { name: 'Africa' });
-  if (await regionButton.count()) {
-    await regionButton.first().click();
-    return;
-  }
+// Mirrors backend/src/db/seed/e2eFixture.ts — keep in sync.
+const FIXTURE_WORLD_VIEW = 9001;
+const FIXTURE_REGION = 'Testland';
 
-  // Fallback for custom datasets/world views: pick first region-like nav entry.
-  await page.locator('[role="button"]').first().click();
+async function selectRootRegion(page: Page) {
+  await page.getByRole('button', { name: FIXTURE_REGION }).click();
 }
 
 test.describe('Explore Workflows @smoke', () => {
   test('map mode can open and close region explore panel', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?wv=' + FIXTURE_WORLD_VIEW);
 
     await selectRootRegion(page);
     await expect(page.getByRole('heading', { level: 2 })).not.toHaveText('Select a region');
@@ -29,7 +26,7 @@ test.describe('Explore Workflows @smoke', () => {
   });
 
   test('discover mode opens source workflow from region source tag', async ({ page }) => {
-    await page.goto('/discover');
+    await page.goto('/discover?wv=' + FIXTURE_WORLD_VIEW);
 
     await expect(page.getByText('Select a category in the tree')).toBeVisible();
 
