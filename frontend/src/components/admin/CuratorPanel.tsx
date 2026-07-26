@@ -6,7 +6,7 @@
  * revoking assignments, and viewing activity logs.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, type JSX } from 'react';
 import {
   Box,
   Typography,

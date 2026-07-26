@@ -2,9 +2,8 @@
   "$schema": "https://unpkg.com/knip@latest/schema.json",
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": [
-    "src/dev/**",
     "src/components/admin/ClusterPaintEditor.tsx"
   ],
-  "ignoreDependencies": ["@react-buddy/ide-toolbox", "globals", "@vitest/coverage-v8"],
+  "ignoreDependencies": ["globals", "@vitest/coverage-v8"],
   "ignoreExportsUsedInFile": true
 }

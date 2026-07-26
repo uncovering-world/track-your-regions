@@ -55,7 +55,7 @@ interface ExperienceGroup {
 }
 
 interface ExperienceListProps {
-  scrollContainerRef: React.RefObject<HTMLDivElement>;
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
