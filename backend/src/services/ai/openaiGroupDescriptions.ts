@@ -13,6 +13,8 @@ import {
   invokeModel,
   buildTokenUsage,
   parseJsonResponse,
+  sanitizePromptData,
+  UNTRUSTED_DATA_RULE,
   type TokenUsage,
 } from './openaiShared.js';
 
@@ -33,13 +35,17 @@ function buildDescriptionsPrompts(
   worldViewSource: string | undefined,
   useWebSearch: boolean,
 ): { systemPrompt: string; userPrompt: string } {
+  // Both values are operator-supplied and reach the model as data, never as
+  // instructions — hence the sanitising and the fence. See sanitizePromptData.
   const contextParts: string[] = [];
-  if (worldViewDescription) contextParts.push(`World View purpose: ${worldViewDescription}`);
-  if (worldViewSource) {
-    contextParts.push(`Groups were defined according to: ${worldViewSource}`);
+  const safeDescription = worldViewDescription ? sanitizePromptData(worldViewDescription) : '';
+  const safeSource = worldViewSource ? sanitizePromptData(worldViewSource) : '';
+  if (safeDescription) contextParts.push(`World View purpose: <<<${safeDescription}>>>`);
+  if (safeSource) {
+    contextParts.push(`Groups were defined according to this source: <<<${safeSource}>>>`);
     if (useWebSearch) {
       contextParts.push(
-        `IMPORTANT: You have web search enabled. FIRST search for "${worldViewSource}" as your PRIMARY source of truth for understanding these groups.`,
+        'Web search is enabled: treat that source as the primary reference for understanding these groups.',
       );
     }
   }
@@ -54,6 +60,7 @@ Include:
 - Any defining characteristics
 
 Be factual and crisp. This will be used to classify administrative divisions into these groups.
+${UNTRUSTED_DATA_RULE}
 Respond with valid JSON only, no markdown.`;
 
   const groupsList = groups.map(g => `- ${g}`).join('\n');
