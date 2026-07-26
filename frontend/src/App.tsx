@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Container, Box, CssBaseline, ThemeProvider, IconButton, Tooltip } from '@mui/material';
 import { ChevronLeft as CollapseIcon, ChevronRight as ExpandIcon } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router';
 import { Header } from './components/Header';
 import { NavigationPane } from './components/NavigationPane';
 import { MainDisplay, setExplorationModeListener } from './components/MainDisplay';
@@ -138,7 +138,7 @@ function ThemedApp() {
 
 function App() {
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <AppThemeProvider>
           <ThemedApp />

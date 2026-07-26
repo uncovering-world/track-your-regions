@@ -35,7 +35,7 @@ interface RenderRightPanelArgs {
   geometry: DivisionGeometry;
   childRegions: Array<{ regionId: number; name: string; geometry: GeoJSON.Geometry }> | null;
   childrenLoading: boolean;
-  mapRef: React.RefObject<MapRef>;
+  mapRef: React.RefObject<MapRef | null>;
   aiSuggestedIds: Set<number>;
   aiRejectedIds: Set<number>;
   aiUnclearIds: Set<number>;
@@ -89,7 +89,7 @@ function getRightPanelToggleLabel(
 interface GeoshapeMapContentProps {
   geoshapeLoading: boolean;
   geoshapeData: GeoJSON.FeatureCollection | null;
-  geoshapeMapRef: React.RefObject<MapRef>;
+  geoshapeMapRef: React.RefObject<MapRef | null>;
 }
 
 function GeoshapeMapContent({ geoshapeLoading, geoshapeData, geoshapeMapRef }: GeoshapeMapContentProps) {
@@ -193,7 +193,7 @@ interface DivisionPreviewDialogProps {
 
 /** Right panel: GADM divisions with AI classification colors */
 function DivisionsMapPanel({ mapRef, geometry, aiSuggestedIds, aiRejectedIds, aiUnclearIds }: {
-  mapRef: React.RefObject<MapRef>;
+  mapRef: React.RefObject<MapRef | null>;
   geometry: GeoJSON.Geometry | GeoJSON.FeatureCollection;
   aiSuggestedIds: Set<number>;
   aiRejectedIds: Set<number>;

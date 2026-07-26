@@ -1,6 +1,6 @@
 // @refresh reset - This file exports both a Provider component and a hook
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { AdministrativeDivision, WorldView, Region } from '../types';
 import { fetchWorldViews, fetchDivisionAncestors, fetchRootRegions, fetchRegionAncestors } from '../api';

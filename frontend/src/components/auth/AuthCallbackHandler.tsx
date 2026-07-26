@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import { exchangeAuthCode } from '../../api/auth';
 
