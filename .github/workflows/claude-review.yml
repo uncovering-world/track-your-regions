@@ -136,7 +136,11 @@ jobs:
             project's patterns and conventions for this domain.
 
             **Phase 2 — Diff.** Get the diff with `gh pr diff`. Identify
-            what changed: pure move vs new behavior vs deletion.
+            what changed: pure move vs new behavior vs deletion. For each
+            hunk also name the *claim* it changes — a rule, a threshold, a
+            command, a flag, a signature, a schema field, a documented
+            behaviour. Phase 4 checks those claims against the rest of the
+            repo.
 
             **Phase 3 — Trace.** For each non-trivial change, MENTALLY
             EXECUTE the code paths — happy path, early returns, error
@@ -146,7 +150,38 @@ jobs:
             must satisfy the required contract (commit/rollback, release,
             close, unlock, cleanup). Verify, don't pattern-match.
 
-            **Phase 4 — Verify.** For each candidate finding, run the
+            **Phase 4 — Ripple.** The diff is not the blast radius. For
+            each claim from Phase 2, `Grep` the repo for OTHER places that
+            state the same claim, and check they still agree. A PR that
+            changes a rule in one file and leaves the contradicting
+            statement standing in another is a defect even though the
+            second file never appears in the diff — that file is now
+            wrong, and nothing else will catch it. This phase is not
+            optional and cannot be done from the diff alone: if you have
+            not run a search this phase did not happen.
+
+            Places this repo states the same thing twice — check the ones
+            the diff actually touches, not all of them:
+              - `CLAUDE.md` ⇄ `docs/tech/development-guide.md` — both
+                state process rules (commit format, pre-commit gates,
+                file-size limits, refactoring hygiene)
+              - `CLAUDE.md` command table ⇄ `package.json` scripts
+              - any user-visible change ⇄ `docs/vision/vision.md`
+              - auth / endpoint / role / input-surface changes ⇄
+                `docs/security/SECURITY.md` and
+                `docs/security/asvs-checklist.yaml`
+              - architectural choices ⇄ accepted ADRs in `docs/decisions/`
+              - backend response shape ⇄ its frontend consumer
+              - `.env.example` ⇄ `docker-compose.yml` ⇄ any doc naming
+                the variable
+              - `db/init/*.sql` ⇄ Drizzle schema ⇄ the domain model
+                described in CLAUDE.md
+
+            An inline comment must land on a line that exists in the diff,
+            so anchor a ripple finding on the line the PR *changed* and
+            name the other `file:line` that now disagrees.
+
+            **Phase 5 — Verify.** For each candidate finding, run the
             CRITICAL INSTRUCTION #3 check (upstream/downstream) before
             posting. Drop verified-handled candidates.
 
@@ -167,6 +202,11 @@ jobs:
               a genuine linter false positive). The latter is the more common
               and more dangerous failure mode — verify each new suppression's
               reason actually justifies the suppression.
+            - **Cross-file consistency** — a rule, command, constant, env
+              var, schema, or documented behaviour changed in one file
+              while another file still states the old version (Phase 4).
+              Docs count: a stale rule in CLAUDE.md is as real a defect as
+              a stale constant in code, because both are read as truth.
             - **Convention adherence** — code reuse (shared components/utils),
               file-size limits, dev-guide patterns, commit hygiene
 
@@ -194,17 +234,21 @@ jobs:
 
             Workflow:
             1. Get the diff: `gh pr diff`
-            2. For each specific line-level concern → inline comment
-            3. Once all inline comments are posted → ONE top-level summary via `gh pr comment`
-            4. **Re-run only**: if there are existing UNRESOLVED claude[bot] inline review threads on this PR (use `gh api graphql` with the `reviewThreads` query), check whether the diff at the thread's path/line still contains the issue you previously flagged. For each thread whose concern is now addressed, resolve it via the GraphQL `resolveReviewThread` mutation. Skip threads where the original concern still applies — leave those open. Skip threads from other authors (CodeQL, CodeRabbit, humans) — only resolve your own.
+            2. Run the Phase 4 repo search for every claim the diff changes
+            3. For each specific line-level concern → inline comment
+            4. Once all inline comments are posted → ONE top-level summary via `gh pr comment`
+            5. **Re-run only**: if there are existing UNRESOLVED claude[bot] inline review threads on this PR (use `gh api graphql` with the `reviewThreads` query), check whether the diff at the thread's path/line still contains the issue you previously flagged. For each thread whose concern is now addressed, resolve it via the GraphQL `resolveReviewThread` mutation. Skip threads where the original concern still applies — leave those open. Skip threads from other authors (CodeQL, CodeRabbit, humans) — only resolve your own.
 
             Other rules:
             - Only post GitHub comments — don't submit review text as chat messages.
             - Be terse. Actionable findings only, no narration of what the PR does.
             - On a clean re-review (everything resolved + no new findings), the top-level summary should explicitly mention how many threads you resolved (e.g. "Resolved 3 prior findings; no new issues.").
 
+          # Grep/Glob/Read come from the action's own base tool set; the
+          # grep/rg shell entries mirror claude-qa.yml + claude-dependabot.yml
+          # so the Phase 4 repo search has a path either way.
           claude_args: |
             --model claude-sonnet-4-6
             --effort xhigh
             --max-turns 50
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(grep:*),Bash(rg:*)"
