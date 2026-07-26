@@ -22,6 +22,8 @@ Backend runs on port 3001, frontend on port 5173, Martin tile server on port 300
 2. `TEST_REPORT_LOCAL=1 npm test` + `npm run test:py` — unit tests for both stacks
 3. `/security-check` — Claude Code security review of changed files
 
+The exception is a deliberately layered sequence — a schema committed before its consumer, a test before its implementation. Those intermediate commits are expected not to build, so commit them with the gate red and get it green before the branch leaves your machine. The gate binds the branch, not every commit in it. See `docs/tech/development-guide.md` § "Granular Commits".
+
 **Before pushing**, also run `npm run security:all` — it adds the slow scans (full Semgrep on both stacks, Trivy image CVE scan) on top of `check`. CI runs the slow Semgrep + Trivy in their own jobs. CodeQL (JS+Python) runs via GitHub's default-setup code scanning, configured in repo settings rather than as a workflow file.
 
 **Before opening a PR**, the branch history must be clean: **no commit may exist solely to fix, amend, or "address review" on an earlier commit of the same branch.** Fold such fixes into the commits they belong to (run `/pr-changes-amend`) so every commit is self-contained and independently reviewable. The `/pr-create` command enforces this as a gate. See `docs/tech/development-guide.md` § "Granular Commits".
@@ -189,7 +191,7 @@ When executing **any** skill workflow (brainstorming, writing-plans, debugging, 
 3. **Docs alongside code** — update `docs/tech/` for implementation details and `docs/vision/vision.md` for any user-facing change, in the same step as the code change (never as a follow-up)
 4. **ADRs for architecture** — check `docs/decisions/` before proposing architectural choices; create a new ADR if one is needed
 5. **Security standards** — follow OWASP ASVS 5.0 Level 2 rules (see Security Standards section above)
-6. **Pre-commit checks** — before every commit, run `npm run check` (comprehensive gate; includes knip + lint:extra), `TEST_REPORT_LOCAL=1 npm test` + `npm run test:py`, and `/security-check`. Run `npm run security:all` before pushing (it adds the slow Semgrep + Trivy scans on top of `check`).
+6. **Pre-commit checks** — before every commit, run `npm run check` (comprehensive gate; includes knip + lint:extra), `TEST_REPORT_LOCAL=1 npm test` + `npm run test:py`, and `/security-check`. The gate binds the branch, not every commit in it: an intermediate commit in a deliberately layered sequence may be red, provided the branch is green before it leaves your machine. Run `npm run security:all` before pushing (it adds the slow Semgrep + Trivy scans on top of `check`).
 7. **Design docs path** — save design documents and plans to `docs/tech/planning/` (not `docs/plans/`), and leave them **uncommitted**: plans are local working documents. What gets committed when the work lands is documentation of what exists, in `docs/tech/`. Guideline edits a plan calls for (this file, `.claude/commands/*`) ship with the implementation, never ahead of it
 8. **Development guide** — follow all conventions in `docs/tech/development-guide.md` (file size limits, commit format, refactoring hygiene)
 9. **Refactoring cleanup** — after any code change, remove unused imports, dead variables, and now-redundant checks

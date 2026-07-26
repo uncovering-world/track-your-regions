@@ -493,7 +493,7 @@ Good commit sequence for a feature:
 Bad: one giant commit "Add batch location fetching" with all of the above mixed together.
 
 **Guidelines:**
-- Each commit compiles and passes lint on its own
+- Each commit is one logical unit. An intermediate commit need **not** compile or pass lint on its own — introducing a schema before its consumer, or a test before its implementation, is often clearer than hiding both in one blob. What must pass every gate is the branch as a whole
 - Backend and frontend changes can be separate commits when the feature has distinct layers
 - Documentation updates get their own dedicated commit
 - Refactoring and feature work never share a commit
