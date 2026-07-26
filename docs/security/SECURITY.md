@@ -43,6 +43,7 @@ Level 3 requirements are tracked but optional for now.
 ## Trust Boundaries
 
 - **Browser ↔ Node backend** — public boundary. All standard ASVS hardening applies.
+- **Node backend ↔ OpenAI** — the model is an untrusted execution surface, and stored operator text (a world view's `source`/`description`) reaches it. Treated as a boundary: that text is data, never instruction. With web search enabled the model also holds a tool, so injected text could otherwise redirect an outbound fetch.
 - **Node backend ↔ cv-python** — private Docker bridge. cv-python has no auth; trust derives from network isolation. Anyone with intra-network access could call cv-python directly. ASVS L2 considers this defence-in-depth — adequate for the current threat model but documented as a known limitation; if cv-python ever moves out of the bridge or onto a shared cluster, a shared-secret header or mTLS becomes mandatory.
 - **cv-python ↔ external services** — none. cv-python is sandboxed at the network level (only Wikimedia downloads happen on the Node side).
 
@@ -68,6 +69,7 @@ Level 3 requirements are tracked but optional for now.
 | Static analysis (semantic) | CodeQL (JS+Python) via GitHub default-setup code scanning |
 | Secret detection | GitHub native secret scanning + push protection (server-side); Semgrep `p/secrets` (CI) |
 | Containers | Dockerfiles run as non-root user (`node` for backend/frontend, `appuser` for cv-python) |
+| LLM prompt construction | System prompts are static. Operator-supplied text (`world_views.source`, `world_views.description`) is sanitised by `sanitizePromptData()` and quoted inside `<<< >>>` in the **user** message only; every system prompt carries `UNTRUSTED_DATA_RULE`. See `backend/src/services/ai/openaiShared.ts` |
 
 ## cv-python Hardening (V5/V8/V13/V16)
 
