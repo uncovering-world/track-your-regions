@@ -1,0 +1,20 @@
+# Dependencies are installed inside the image by `RUN npm install`. Copying the
+# host tree over that result makes the container a merge of two installs, and it
+# is ~282 MB of the ~299 MB build context.
+node_modules
+
+# Runtime artifacts written by the running backend: canon sync cache and the CV
+# model files downloaded on demand. Both are gitignored; neither belongs in a layer.
+data
+
+# Build and test output, regenerated on demand.
+dist
+coverage
+
+# Never ship secrets into an image layer.
+.env
+.env.*
+
+# The build recipe itself.
+Dockerfile
+.dockerignore
