@@ -1,0 +1,19 @@
+# Dependencies are installed inside the image by `RUN npm install`. Copying the
+# host tree over that result makes the container a merge of two installs, and it
+# is ~493 MB of the ~500 MB build context — the reason a no-op rebuild took 80s.
+node_modules
+
+# Build and test output, regenerated on demand and never needed in the image.
+dist
+test-results
+playwright-report
+coverage
+
+# Never ship secrets into an image layer.
+.env
+.env.*
+
+# The build recipes themselves.
+Dockerfile
+Dockerfile.e2e
+.dockerignore
