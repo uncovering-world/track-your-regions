@@ -133,8 +133,8 @@ See `docs/README.md` for the full index.
 
 When working on this codebase, keep docs in sync:
 
-- **Planning a feature** → create or update a doc in `docs/tech/planning/`
-- **Implementing a feature** → update relevant `docs/tech/` doc (or create one)
+- **Planning a feature** → create or update a doc in `docs/tech/planning/`. **Plans are never committed** — they stay untracked local working documents (the directory is gitignored). Do not stage one, and never open a PR for one
+- **Implementing a feature** → update relevant `docs/tech/` doc (or create one). This is the committed artefact: docs describe **what exists**, never what is planned. A committed plan starts drifting from reality the moment it lands and becomes a second, wrong source of truth
 - **Any user-facing change** → **always** update `docs/vision/vision.md`. This applies to any change that affects what visitors, users, curators, or admins can see or do — new UI, changed workflows, new input methods, etc. Vision docs describe the product from the user's perspective
 - **Security-relevant change** → update `docs/security/SECURITY.md` (profile, known gaps) and/or `docs/security/asvs-checklist.yaml` (requirement status). This applies to new auth flows, new API endpoints, new input surfaces, file handling changes, new roles/permissions, or changes to token/session handling
 - **Completing a plan** → trim the planning doc to only unimplemented ideas/improvements. Remove fully implemented sections
@@ -190,6 +190,6 @@ When executing **any** skill workflow (brainstorming, writing-plans, debugging, 
 4. **ADRs for architecture** — check `docs/decisions/` before proposing architectural choices; create a new ADR if one is needed
 5. **Security standards** — follow OWASP ASVS 5.0 Level 2 rules (see Security Standards section above)
 6. **Pre-commit checks** — before every commit, run `npm run check` (comprehensive gate; includes knip + lint:extra), `TEST_REPORT_LOCAL=1 npm test` + `npm run test:py`, and `/security-check`. Run `npm run security:all` before pushing (it adds the slow Semgrep + Trivy scans on top of `check`).
-7. **Design docs path** — save design documents and plans to `docs/tech/planning/` (not `docs/plans/`)
+7. **Design docs path** — save design documents and plans to `docs/tech/planning/` (not `docs/plans/`), and leave them **uncommitted**: plans are local working documents. What gets committed when the work lands is documentation of what exists, in `docs/tech/`. Guideline edits a plan calls for (this file, `.claude/commands/*`) ship with the implementation, never ahead of it
 8. **Development guide** — follow all conventions in `docs/tech/development-guide.md` (file size limits, commit format, refactoring hygiene)
 9. **Refactoring cleanup** — after any code change, remove unused imports, dead variables, and now-redundant checks
