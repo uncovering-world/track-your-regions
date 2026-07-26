@@ -18,6 +18,8 @@ import {
   buildGroupDescriptionsBlock,
   buildWorldViewSourceContext,
   buildStrictnessNote,
+  sanitizePromptData,
+  UNTRUSTED_DATA_RULE,
   type TokenUsage,
   type EscalationLevel,
   type RawModelResult,
@@ -85,9 +87,10 @@ CRITICAL RULES:
 - If a region spans multiple PROVIDED groups (2 or more), set shouldSplit=true and list them in splitGroups
 - NEVER say a region "doesn't fit" or "is outside scope" - always find the best match from the list
 - If shouldSplit is true, you MUST set suggestedGroup to null
+${UNTRUSTED_DATA_RULE}
 ${strictnessNote}
 
-Respond with valid JSON only, no markdown.${contextInfo}`;
+Respond with valid JSON only, no markdown.`;
 
   const sourceInstruction = args.shouldUseWebSearch
     ? '\nInclude a "sources" array of URLs you used for verification.'
@@ -101,7 +104,7 @@ Respond with valid JSON only, no markdown.${contextInfo}`;
 \nIMPORTANT: You MUST use ONLY the groups listed below. These groups are authoritative.
 \nAvailable groups (USE ONLY THESE):
 ${groupList}
-${descriptionsBlock}
+${descriptionsBlock}${contextInfo}
 \nFind the BEST match from the provided groups. If the region spans multiple groups, set shouldSplit=true and list ALL of them in splitGroups.${sourceInstruction}
 \nJSON response (no markdown):
 {"suggestedGroup": "Exact Group Name" or null, "confidence": "high"|"medium"|"low", "shouldSplit": true|false, "splitGroups": [...], "reasoning": "Brief explanation", "needsEscalation": true|false, "sources": [...]}`;
@@ -320,7 +323,10 @@ function buildBatchContextInfo(
 ): string {
   let contextInfo = '';
   if (worldViewDescription) {
-    contextInfo += `\nContext: This classification is for a World View used by: ${worldViewDescription}`;
+    const safeDescription = sanitizePromptData(worldViewDescription);
+    if (safeDescription) {
+      contextInfo += `\nThis classification is for a World View described as: <<<${safeDescription}>>>`;
+    }
   }
   contextInfo += buildWorldViewSourceContext(worldViewSource, useWebSearch, 'regions');
   return contextInfo;
@@ -344,7 +350,8 @@ CRITICAL RULES:
 - "low" = uncertain, but still pick the BEST match from the provided groups
 - If a region spans multiple PROVIDED groups (2 or more), set shouldSplit=true and list them in splitGroups
 - NEVER say a region "doesn't fit" or "is outside scope" - always find the best match from the list
-- Respond with valid JSON only, no markdown.${contextInfo}`;
+${UNTRUSTED_DATA_RULE}
+- Respond with valid JSON only, no markdown.`;
 
   const sourceInstruction = args.useWebSearch
     ? '\nInclude a "sources" array of URLs you used for verification.'
@@ -358,7 +365,7 @@ CRITICAL RULES:
 \nDivisions to classify:
 ${divisionsList}
 \nAvailable groups (USE ONLY THESE): ${args.availableGroups.join(', ')}
-${descriptionsBlock}
+${descriptionsBlock}${contextInfo}
 \nFor EACH division, find the BEST match from the provided groups. If a division spans MULTIPLE groups historically, set shouldSplit=true and list ALL groups in splitGroups.${sourceInstruction}
 \nJSON response (no markdown, use exact division names as keys):
 {"DivisionName": {"suggestedGroup": "Group" or null, "confidence": "high"|"medium"|"low", "shouldSplit": true|false, "splitGroups": ["G1","G2",...] (if shouldSplit=true), "reasoning": "brief fact", "sources": ["url1",...] (if web search)}, ...}`;
