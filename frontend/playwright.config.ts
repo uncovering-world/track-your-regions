@@ -17,6 +17,14 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    // Without this, an action whose target never appears (e.g. a locator
+    // for data that isn't in the database) inherits the full test-level
+    // `timeout` above instead of failing on its own. Measured against this
+    // suite, the slowest legitimate action - the fixture region button,
+    // which waits on an API round trip plus a React re-render - takes under
+    // 2s locally; 15s leaves ~8x headroom for slower/GPU-less CI runners
+    // while staying well under the 60s test budget.
+    actionTimeout: 15000,
   },
   projects: [
     {

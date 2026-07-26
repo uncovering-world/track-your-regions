@@ -16,6 +16,16 @@ npm --prefix frontend install
 
 2. Ensure Docker is running.
 
+3. E2E smoke expects the seeded fixture, not your dev data: `npm run
+   test:e2e:smoke` stands up the isolated test stack and seeds world view
+   9001 (`backend/src/db/seed/e2eFixture.ts`) automatically — the only path
+   that seeds it for you (`npm run db:seed:e2e` seeds manually, against
+   whatever test DB the backend env names). Pointing Playwright at a dev
+   stack or a restored dump fails: `explore-workflows` selects the fixture
+   via `?wv=9001`, and `shell-navigation`'s first test relies on it being
+   the only non-default world view, since `useNavigation` hides the GADM
+   default from non-admin users.
+
 ## Commands
 
 From repo root:
