@@ -54,7 +54,7 @@ services:
       - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
     volumes:
       - ./backend/src:/app/src:ro,z
-      - ./data:/app/data:z
+      - ${DATA_DIR:-./data}:/app/data:z
     depends_on:
       db:
         condition: service_healthy
@@ -66,8 +66,25 @@ services:
       dockerfile: Dockerfile
     container_name: ${STACK_NAME:-tyr-ng}-frontend
     environment:
-      VITE_API_URL: http://localhost:${BACKEND_PORT:-3001}
-      VITE_MARTIN_URL: http://localhost:${MARTIN_PORT:-3000}
+      # Defaults target the host-mapped ports, for a browser running on the
+      # host (the normal dev workflow: `npm run dev`, open localhost:5173).
+      # The isolated test stack (scripts/test-stack.sh) overrides both to the
+      # backend/martin container hostnames instead, because there the browser
+      # navigating these URLs runs inside the `e2e` container on the compose
+      # network, where "localhost" is that container, not the host.
+      #
+      # The override variables are named *_OVERRIDE, deliberately not
+      # VITE_API_URL/VITE_MARTIN_URL: .env.example shipped fixed values for
+      # those two names until this change, and scripts/setup.sh copied them
+      # into every developer's .env, where they remain. Compose only
+      # evaluates a "${VAR:-default}" fallback when VAR is entirely unset -
+      # a value from .env counts as set. Reusing those names here would
+      # have made the nested
+      # `${BACKEND_PORT:-3001}` default unreachable for any dev stack whose
+      # .env came from setup.sh, silently pinning the frontend to port 3001
+      # even after changing BACKEND_PORT.
+      VITE_API_URL: ${FRONTEND_API_URL_OVERRIDE:-http://localhost:${BACKEND_PORT:-3001}}
+      VITE_MARTIN_URL: ${FRONTEND_MARTIN_URL_OVERRIDE:-http://localhost:${MARTIN_PORT:-3000}}
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
     volumes:
@@ -110,7 +127,7 @@ services:
       - "8000"
     volumes:
       - ./cv-python/app:/app/app:ro,z
-      - ./data:/app/data:z
+      - ${DATA_DIR:-./data}:/app/data:z
     environment:
       - PYTHONUNBUFFERED=1
     # No restart policy on purpose — see the note on the martin service.

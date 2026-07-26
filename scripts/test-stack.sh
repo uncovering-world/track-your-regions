@@ -16,7 +16,39 @@ DB_PORT="${TEST_DB_PORT:-55432}"
 BACKEND_PORT="${TEST_BACKEND_PORT:-5301}"
 FRONTEND_PORT="${TEST_FRONTEND_PORT:-5174}"
 MARTIN_PORT="${TEST_MARTIN_PORT:-5300}"
-FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
+DATA_DIR="${TEST_DATA_DIR:-./.test-data}"
+# Playwright's browser runs inside the `e2e` container (see
+# run_e2e_playwright below), on the compose network, not on the host - so
+# every URL the *browser itself* resolves must use Docker DNS service names
+# and in-container ports, fixed regardless of TEST_BACKEND_PORT/
+# TEST_FRONTEND_PORT/TEST_MARTIN_PORT (which only affect the host-side
+# mapping), rather than the host-facing "localhost:<port>" URLs the dev
+# stack bakes in for a browser running on the developer's own machine:
+#  - FRONTEND_API_URL_OVERRIDE / FRONTEND_MARTIN_URL_OVERRIDE: baked into
+#    the frontend bundle as VITE_API_URL/VITE_MARTIN_URL (see
+#    docker-compose.yml), used by the browser to call the backend/martin
+#    directly. Named *_OVERRIDE rather than reused as VITE_API_URL/
+#    VITE_MARTIN_URL directly: .env.example shipped fixed values under
+#    those exact names until this change, and scripts/setup.sh copied them
+#    into every developer's .env, where they remain. Compose treats a value
+#    from .env as "set" - so a "${VITE_API_URL:-
+#    default}" fallback in the compose file would never reach its default
+#    for any dev-stack .env that came from setup.sh, regardless of what
+#    this script exports.
+#  - FRONTEND_URL: read by the backend for its CORS/CSRF origin check
+#    (backend/src/index.ts) and for building user-facing links (email
+#    verification, OAuth redirects). It must equal the *frontend's* origin
+#    as the browser sees it - "http://frontend:5173" here - or the backend
+#    rejects every cross-origin request with a CORS/Origin mismatch. curl
+#    doesn't enforce CORS, so this class of bug is invisible to curl-based
+#    smoke-checks and only shows up in an actual browser. (This one isn't
+#    nested behind a nested default in the compose file, so unlike the two
+#    above it doesn't strictly need the *_OVERRIDE treatment - a plain
+#    shell-exported FRONTEND_URL already wins over .env - but the value
+#    itself still has to change for the test stack.)
+FRONTEND_URL="http://frontend:5173"
+FRONTEND_API_URL_OVERRIDE="http://backend:3001"
+FRONTEND_MARTIN_URL_OVERRIDE="http://martin:3000"
 COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.test.yml)
 GOLDEN_DB_FILE="$PROJECT_ROOT/.golden-db"
 
@@ -37,6 +69,56 @@ if [ -f "$GOLDEN_DB_FILE" ]; then
   fi
 fi
 
+# Hard safety rail: never allow test commands to bind-mount the dev
+# stack's data directory (docker-compose.yml's `${DATA_DIR:-./data}`).
+# realpath -m needs no existing target, so `./data`, `data`, and an
+# absolute path all resolve the same way.
+RESOLVED_DATA_DIR="$(realpath -m "$DATA_DIR")"
+if [ "$RESOLVED_DATA_DIR" = "$(realpath -m "$PROJECT_ROOT/data")" ]; then
+  echo "Refusing to run: test environment data dir must not be the dev stack's data dir." >&2
+  echo "Current value: TEST_DATA_DIR resolves to '$RESOLVED_DATA_DIR'; set it to something else." >&2
+  exit 1
+fi
+
+# Pre-create DATA_DIR unconditionally, before any code path can bring up a
+# container that bind-mounts it - not just the common ensure_up path: with
+# TEST_STACK_SKIP_UP=1, ensure_e2e_runner reaches compose_test_profile
+# without ever running ensure_up's body. Left to the bind mount, an absent
+# host path gets auto-created owned by root, and the backend/cv-python
+# containers run as a fixed uid baked into their images (1000 for
+# backend's `node` user, node:22-alpine's default) with no reason to match
+# whichever uid runs this script. This is throwaway test data, so make it
+# world-writable rather than try to match uids: GitHub-hosted runners use
+# uid 1001, so a fix that merely matched this developer's uid (1000) would
+# pass here and still fail in CI.
+#
+# chmod only the two paths mkdir just touched - deliberately not -R.
+# test-report.mjs re-execs this whole script per test step plus once more
+# for `down`, so this block runs repeatedly against a tree the backend
+# container is actively writing into (data/images/experiences, data/cache,
+# data/cv-debug, ...). Those entries end up owned by the container's uid,
+# not this script's; a recursive chmod would try to change permissions on
+# them too and die with "Operation not permitted" on the first one it
+# doesn't own - including on the `down` invocation that's supposed to
+# tear the stack back down. It doesn't need to: once DATA_DIR/images
+# themselves are world-writable, the container can freely create its own
+# subdirectories inside them, and it will always own whatever it creates,
+# so it can always write there again later. Nothing under this script's
+# control ever needs its permissions changed twice.
+mkdir -p "$DATA_DIR/images"
+chmod a+rwX "$DATA_DIR" "$DATA_DIR/images"
+
+# Same reasoning, for the `e2e` service's playwright-report/test-results
+# bind mounts (added in docker-compose.test.yml so Playwright's HTML
+# report, screenshots, videos and traces survive the container being torn
+# down - see run_e2e_playwright). frontend/Dockerfile.e2e's base image
+# (mcr.microsoft.com/playwright) runs as root with no USER override, so an
+# absent host path would be auto-created root-owned; pre-creating and
+# opening it up avoids relying on root's umask happening to leave it
+# readable.
+mkdir -p frontend/playwright-report frontend/test-results
+chmod a+rwX frontend/playwright-report frontend/test-results
+
 compose() {
   STACK_NAME="$STACK_NAME" \
   DB_NAME="$DB_NAME" \
@@ -45,6 +127,9 @@ compose() {
   FRONTEND_PORT="$FRONTEND_PORT" \
   MARTIN_PORT="$MARTIN_PORT" \
   FRONTEND_URL="$FRONTEND_URL" \
+  FRONTEND_API_URL_OVERRIDE="$FRONTEND_API_URL_OVERRIDE" \
+  FRONTEND_MARTIN_URL_OVERRIDE="$FRONTEND_MARTIN_URL_OVERRIDE" \
+  DATA_DIR="$DATA_DIR" \
     docker compose -p "$PROJECT" "${COMPOSE_FILES[@]}" "$@"
 }
 
@@ -57,6 +142,9 @@ compose_test_profile() {
   FRONTEND_PORT="$FRONTEND_PORT" \
   MARTIN_PORT="$MARTIN_PORT" \
   FRONTEND_URL="$FRONTEND_URL" \
+  FRONTEND_API_URL_OVERRIDE="$FRONTEND_API_URL_OVERRIDE" \
+  FRONTEND_MARTIN_URL_OVERRIDE="$FRONTEND_MARTIN_URL_OVERRIDE" \
+  DATA_DIR="$DATA_DIR" \
     docker compose -p "$PROJECT" "${COMPOSE_FILES[@]}" "$@"
 }
 
@@ -87,6 +175,9 @@ ensure_up() {
   compose up -d --build db backend frontend martin
   wait_for_url "Backend" "http://localhost:${BACKEND_PORT}/health"
   wait_for_url "Frontend" "http://localhost:${FRONTEND_PORT}"
+
+  echo "Seeding E2E fixture into db='$DB_NAME'"
+  compose exec -T backend npm run seed:e2e
 }
 
 ensure_e2e_runner() {
@@ -125,10 +216,44 @@ run_e2e_playwright() {
   local project_name="$1"
   local out_path="$2"
   local report_path="/tmp/playwright-${project_name}-report.json"
+  local playwright_rc=0
 
   ensure_e2e_runner
-  compose_test_profile exec -T e2e sh -lc "E2E_BASE_URL='http://frontend:5173' PLAYWRIGHT_JSON_OUTPUT_FILE='${report_path}' npx playwright test --project='${project_name}' --reporter=list,json --config=playwright.config.ts"
+  # Under `set -e`, a bare failing command here would abort the script
+  # before the `cat` below ever runs - losing the JSON report (which
+  # test-report.mjs needs to print pass/fail counts) on every single test
+  # failure, i.e. on exactly the runs anyone would want it for. `|| rc=$?`
+  # captures the exit code without tripping errexit, so the `cat` always
+  # runs and the caller still sees the real Playwright exit status.
+  #
+  # --reporter on the CLI *replaces* playwright.config.ts's `reporter:`
+  # array rather than adding to it, so the config's `html` entry is
+  # otherwise silently dropped and playwright-report/ stays empty forever
+  # regardless of how the volume mount is wired up - listing it here is
+  # what actually makes the html reporter run. No explicit output-folder
+  # option needed: CI=1 (set on the e2e service) already makes the html
+  # reporter default open:'never', matching the config's explicit setting.
+  compose_test_profile exec -T e2e sh -lc "E2E_BASE_URL='http://frontend:5173' PLAYWRIGHT_JSON_OUTPUT_FILE='${report_path}' npx playwright test --project='${project_name}' --reporter=list,json,html --config=playwright.config.ts" || playwright_rc=$?
+  # The e2e image runs as root (no USER in frontend/Dockerfile.e2e), so
+  # playwright-report/ and test-results/ - bind-mounted host directories -
+  # come out root-owned. Reading them back (e.g. actions/upload-artifact)
+  # works fine either way, but a GitHub-hosted CI runner throws the whole
+  # VM away after the job, so nothing there ever needs to delete these
+  # files - a persistent host does: without this, a later `git clean -fdx`
+  # or plain `rm -rf` on a developer's own machine hits "Permission
+  # denied" partway through, because deleting a file needs write access to
+  # its *parent* directory, and Playwright's per-test subdirectories are
+  # root-owned at their default 755. Best-effort (`|| true`): must never
+  # turn a real test failure captured in $playwright_rc into a script
+  # abort.
+  # Ordered before the `cat` below deliberately: that read is not guarded,
+  # so when Playwright dies before writing the json report (config error,
+  # a stray test.only tripping forbidOnly, container OOM) it exits non-zero
+  # and `set -e` unwinds this function - leaving the artifacts Playwright
+  # *did* write root-owned, which is the very case this prevents.
+  compose_test_profile exec -T e2e sh -lc "chmod -R a+rwX /app/playwright-report /app/test-results" || true
   compose_test_profile exec -T e2e sh -lc "cat '${report_path}'" > "$out_path"
+  return "$playwright_rc"
 }
 
 cmd_up() {
@@ -185,6 +310,7 @@ Environment overrides:
   TEST_BACKEND_PORT    (default: 5301)
   TEST_FRONTEND_PORT   (default: 5174)
   TEST_MARTIN_PORT     (default: 5300)
+  TEST_DATA_DIR        (default: ./.test-data)
 EOF
 }
 
