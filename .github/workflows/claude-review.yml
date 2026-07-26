@@ -73,16 +73,21 @@ jobs:
             You are reviewing this PR. Project conventions live in CLAUDE.md
             (already in your context). The structure below mirrors
             anthropics/claude-code-security-review's prompt design — phased
-            methodology, generic categories, confidence-based filter.
+            methodology, generic categories, confidence-based publish bar.
 
             ## CRITICAL INSTRUCTIONS
 
-            1. **Confidence-based filter.** Only flag findings you'd defend
-               in a real PR review. Skip speculative ("could be"),
-               theoretical, or low-impact findings. If you can't name the
-               specific control-flow path that's broken or the specific
-               contract that's violated, you're guessing — trace harder or
-               skip.
+            1. **Find first, filter second — separate steps.** While
+               analysing, note EVERY candidate with a severity and a
+               confidence, including ones you suspect are weak. Do not
+               suppress candidates while you are still looking. Only once
+               analysis is complete, apply the publish bar: post a finding
+               if you can name the specific control-flow path that's
+               broken, the specific contract that's violated, or the
+               specific other file that now contradicts this change. Drop
+               the rest silently, without narrating what you dropped. A bar
+               applied during discovery costs you real findings; the same
+               bar applied at publish time costs you nothing.
             2. **Avoid noise.** Skip stylistic preferences, defensive-code
                wishes where internal guarantees exist, reformatting wishes.
             3. **Verify before flagging.** When tempted to flag "X is
@@ -248,7 +253,7 @@ jobs:
           # grep/rg shell entries mirror claude-qa.yml + claude-dependabot.yml
           # so the Phase 4 repo search has a path either way.
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-opus-5
             --effort xhigh
             --max-turns 50
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(grep:*),Bash(rg:*)"
