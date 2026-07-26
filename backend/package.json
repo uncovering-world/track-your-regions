@@ -30,15 +30,15 @@
     "express-rate-limit": "^8.5.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
-    "nodemailer": "^8.0.9",
+    "nodemailer": "^9.0.1",
     "openai": "^6.17.0",
     "passport": "^0.7.0",
     "passport-apple": "^2.0.2",
     "passport-google-oauth20": "^2.0.0",
     "passport-local": "^1.0.0",
     "pg": "^8.13.0",
-    "sharp": "^0.34.5",
-    "undici": "^8.1.0",
+    "sharp": "^0.35.3",
+    "undici": "^8.5.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
