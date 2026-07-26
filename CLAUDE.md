@@ -7,29 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run check              # Comprehensive gate: lint + typecheck (Node + Python) + fast security + knip + lint:extra. Same script CI runs. (~90s, run before committing)
 TEST_REPORT_LOCAL=1 npm test  # Unit tests without Docker (run before committing)
-npm run test:py            # cv-python pytest with coverage
-npm run knip               # Find unused files + dependencies (already part of check; standalone for ad-hoc use)
-npm run security:all       # check + slow Semgrep (Node+Python) + Trivy image scan (run before pushing)
 npm run dev                # Start all services via Docker Compose
-npm run dev:backend        # Start backend only (local, no Docker)
-npm run dev:frontend       # Start frontend only (local, no Docker)
 npm run db:shell           # Open psql shell to active database
-npm run db:status          # Show current DB info and row counts
-npm run check:py           # Ruff lint + format check + mypy on cv-python
-npm run lint:py:fix        # Ruff auto-fix on cv-python
-npm run format:py:fix      # Ruff format apply on cv-python
-npm run security:scan      # Semgrep SAST scan, Node configs (via Docker)
-npm run security:py:semgrep  # Semgrep SAST scan, Python configs (via Docker)
-npm run security:py:bandit # Bandit SAST on cv-python/app
-npm run security:py:deps   # pip-audit on cv-python/requirements.txt
-npm run security:py:all    # All Python security scans
-npm run security:image     # Build cv-python image and Trivy CVE scan
-npm run security:deps      # npm audit for backend + frontend
-npm run lint:circular      # madge: find circular ts/tsx imports
-npm run lint:shell         # shellcheck on scripts/*.sh (Docker)
-npm run lint:docker        # hadolint on every Dockerfile (Docker)
-npm run lint:extra         # composite: lint:circular + lint:shell + lint:docker (already part of check)
-npm run help               # Full command reference
+npm run help               # Full command reference (all other scripts: package.json)
 ```
 
 Backend runs on port 3001, frontend on port 5173, Martin tile server on port 3000, cv-python on port 8000.
@@ -69,19 +49,10 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 - **treasures** — Independently trackable items inside venues (artworks, artifacts). Globally unique by `external_id`. Linked to experiences via `experience_treasures` junction table (many-to-many)
 - **is_iconic** — Boolean flag on both `experiences` and `treasures` for highlighting must-see items
 
-### Backend Structure
-- **Routes** (`backend/src/routes/`): authRoutes, divisionRoutes, worldViewRoutes, experienceRoutes, adminRoutes, userRoutes, aiRoutes, viewRoutes
-- **Controllers** (`backend/src/controllers/`): Organized by domain — division*, worldView/region*, experience*, sync*, ai*
-- **Services** (`backend/src/services/`): Sync services (UNESCO, museum, landmark), hull calculation, image downloading, region assignment, OpenAI integration
-- **Middleware**: `requireAuth`, `requireAdmin`, `optionalAuth` in `middleware/auth.ts`
-- Startup cleanup in `index.ts` marks orphaned `running` sync logs as `failed`
-
-### Frontend Structure
-- **Routing** (`App.tsx`): `/` (main map), `/discover` (experience browsing), `/auth/callback`, `/admin/*`
-- **State**: TanStack Query for server state, Context API for UI state (`useNavigation`, `useAuth`, `useExperienceContext`)
-- **API layer** (`frontend/src/api/`): All calls use `authFetchJson()` from `fetchUtils.ts` with in-memory JWT. Refresh token stored as httpOnly cookie
-- **Map**: MapLibre GL via react-map-gl. `RegionMapVT.tsx` renders vector tiles from Martin. `ExperienceMarkers.tsx` uses declarative `<Source>`/`<Layer>` with native GeoJSON clustering
-- **Hooks** (`frontend/src/hooks/`): `useNavigation` (world views, divisions, breadcrumbs, tile version), `useExperienceContext` (experiences, hover sync, selection), `useAuth`, `useVisitedRegions`, `useVisitedExperiences`
+### Structure notes (non-obvious contracts; layout itself — see `ls backend/src`, `ls frontend/src`)
+- Startup cleanup in backend `index.ts` marks orphaned `running` sync logs as `failed`
+- All frontend API calls go through `authFetchJson()` (`frontend/src/api/fetchUtils.ts`) with in-memory JWT; refresh token lives in an httpOnly cookie
+- Map: MapLibre GL via react-map-gl; `RegionMapVT.tsx` renders Martin vector tiles; `ExperienceMarkers.tsx` uses declarative `<Source>`/`<Layer>` with native GeoJSON clustering
 
 ### Martin Vector Tiles
 - Config: `martin/config.yaml` (auto-discovers PostGIS tables/functions)
