@@ -106,8 +106,9 @@ Line/branch coverage thresholds are useful guardrails, but not the primary succe
 - Use minimal API/SQL helpers only for non-product setup concerns (for example: creating admin/curator seed users).
 - Preserve artifacts on failure (trace/video/screenshots/logs, DB name/dump when needed).
 - Role-seed policy by lane:
-  - PR smoke: `user`
-  - Nightly/full: `user + curator + admin`
+  - PR smoke (implemented): no accounts — the lane runs against the synthetic
+    fixture in `backend/src/db/seed/e2eFixture.ts`
+  - Nightly/full (not built): `user + curator + admin`
 
 ## Rollout Plan
 

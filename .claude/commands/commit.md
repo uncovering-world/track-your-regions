@@ -170,6 +170,13 @@ If anything's off and the commit hasn't been pushed yet, undo with `git reset --
 
 ### 8. Push
 
+Before pushing, run `npm run test:e2e:smoke` — it stands up the isolated
+test stack and seeds its fixture automatically, then runs the Playwright
+smoke specs. This is the before-pushing tier from `CLAUDE.md`'s Mandatory
+Pre-Commit Checks, alongside `npm run security:all`; both assume Docker and
+minutes of runtime, which is why they aren't part of step 4's per-commit
+gates.
+
 After all commits are created and verified:
 
 ```bash

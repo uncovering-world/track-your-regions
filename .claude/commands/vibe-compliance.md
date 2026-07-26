@@ -93,6 +93,7 @@ npm run check          # lint + typecheck
 npm run knip           # unused files + dependencies
 npm run security:all   # Semgrep SAST + npm audit
 TEST_REPORT_LOCAL=1 npm test  # unit tests
+npm run test:e2e:smoke # isolated test stack + Playwright smoke (before pushing)
 ```
 
 Also run `/security-check` for Claude Code security review of changed files.

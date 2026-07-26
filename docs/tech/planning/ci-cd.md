@@ -85,5 +85,5 @@ After pushing, CI should execute automatically for `push`/`pull_request` to `mai
 
 - Add caching optimization for monorepo dependency install speed
 - Add test jobs if dedicated backend/frontend test suites are introduced
-- Add fresh-DB E2E pipelines based on `e2e-fresh-db-strategy.md` (smoke on PR, full nightly/manual)
+- Add a full nightly/manual E2E pipeline based on `e2e-fresh-db-strategy.md` (smoke-on-PR already ships as the `E2E Smoke` job in `ci.yml`)
 - Add path-filtered jobs if CI time becomes a bottleneck

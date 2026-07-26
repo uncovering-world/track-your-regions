@@ -83,6 +83,8 @@ git log --oneline {base}..HEAD
 
 If any commit just patches a previous one on this branch (e.g. "fix typo from <earlier>", "address review", "harden X added two commits ago"), **STOP and fold it into the original** before proceeding — run `/pr-changes-amend`. Only continue to the PR once every commit stands on its own.
 
+Also confirm the before-pushing tier ran on this branch: `npm run test:e2e:smoke` (stands up the isolated test stack and seeds its fixture automatically) alongside `npm run security:all`, per `CLAUDE.md`'s Mandatory Pre-Commit Checks.
+
 ### 3. For each branch, analyze the changes
 
 Switch context to the branch (without checking it out) and gather info:
