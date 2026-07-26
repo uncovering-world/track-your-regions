@@ -102,7 +102,11 @@ jobs:
             Be terse. No narration of what the PR does — Dependabot
             already says it in the PR body.
 
+          # Turn budget sized off observed runs: 6-16 turns for minor bumps.
+          # A major bump with a wide usage surface costs more, and running
+          # out mid-analysis posts a truncated verdict rather than failing
+          # loudly — so leave headroom. Unused turns cost nothing.
           claude_args: |
-            --model claude-sonnet-4-6
-            --max-turns 30
+            --model claude-opus-5
+            --max-turns 40
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(grep:*),Bash(rg:*)"
