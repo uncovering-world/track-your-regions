@@ -164,3 +164,55 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: true
+
+  e2e-smoke:
+    # Not yet in branch-protection required checks: promote it to a required
+    # check once it has proven stable across PRs. Revisit around 2026-08-09
+    # (two weeks after the 2026-07-26 run this landed on).
+    name: E2E Smoke
+    runs-on: ubuntu-latest
+    # Gated on lint+typecheck so a PR that does not compile fails in 4 min
+    # with a tsc error instead of burning a full smoke run and surfacing the
+    # same error buried in `docker compose build` output. Costs ~12s on the
+    # green path: the critical path is already check -> build -> trivy.
+    needs: [check]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # This job runs no authenticated git commands - it hands the
+          # checkout straight to docker compose - so leave no token behind
+          # in .git/config for the containers it starts.
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Playwright itself runs inside the `e2e` service container (built from
+      # frontend/Dockerfile.e2e, FROM mcr.microsoft.com/playwright:v1.58.2-jammy),
+      # which ships chromium preinstalled. No `playwright install` step here:
+      # this job's host process never invokes Playwright directly, so an
+      # install on the runner would just burn minutes for a browser nothing
+      # on the runner uses.
+      #
+      # No root/backend/frontend `npm ci` either: `npm run test:e2e:smoke`
+      # runs scripts/test-report.mjs, which for e2e-smoke always takes the
+      # container branch and shells out to scripts/test-stack.sh - every
+      # service under test installs its own dependencies inside its own
+      # container image (backend/Dockerfile, frontend/Dockerfile). Host
+      # node_modules are never read on this path.
+      - name: Run E2E smoke suite
+        run: npm run test:e2e:smoke
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+            .test-results
+          retention-days: 7
