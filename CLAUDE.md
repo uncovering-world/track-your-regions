@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run check              # Comprehensive gate: lint + typecheck (Node + Python) + fast security + knip + lint:extra. Same script CI runs. (~90s, run before committing)
 TEST_REPORT_LOCAL=1 npm test  # Unit tests without Docker (run before committing)
-npm run dev                # Start all services via Docker Compose
+npm run dev                # Start all services via Docker Compose (rebuilds images, so container deps track package.json)
 npm run db:shell           # Open psql shell to active database
 npm run help               # Full command reference (all other scripts: package.json)
 ```
