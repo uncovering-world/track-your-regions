@@ -117,5 +117,8 @@ backend/data/
 .ds-sync/
 ds-bundle/
 
+# Isolated test stack's runtime data (see scripts/test-stack.sh)
+.test-data/
+
 # Superpowers skill working directory
 .superpowers/

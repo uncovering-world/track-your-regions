@@ -7,6 +7,15 @@ services:
     environment:
       E2E_BASE_URL: http://frontend:5173
       CI: "1"
+    volumes:
+      # So Playwright's HTML report and test-results/ (screenshots, videos,
+      # traces on failure - both written relative to /app, this image's
+      # WORKDIR) survive `docker compose down` in scripts/test-stack.sh,
+      # instead of disappearing with the container. Both are gitignored;
+      # scripts/test-stack.sh pre-creates and opens up permissions on both
+      # host paths before this service starts (its base image runs as root).
+      - ./frontend/playwright-report:/app/playwright-report:z
+      - ./frontend/test-results:/app/test-results:z
     depends_on:
       - frontend
     command: ["bash", "-lc", "sleep infinity"]
