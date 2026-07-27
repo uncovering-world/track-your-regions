@@ -13,6 +13,7 @@ import {
   getLatestImportStatus,
   cancelImport,
 } from '../../services/worldViewImport/index.js';
+import { IMPORT_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
 
 // =============================================================================
 // Geoshape proxy
@@ -139,9 +140,9 @@ export async function getWorldViewImportStatus(_req: AuthenticatedRequest, res: 
   // Always fetch existing imported world views from DB (both active and finalized)
   const result = await pool.query(`
     SELECT id, name, source_type FROM world_views
-    WHERE source_type IN ('wikivoyage', 'wikivoyage_done', 'imported', 'imported_done')
+    WHERE source_type = ANY($1)
     ORDER BY id DESC
-  `);
+  `, [IMPORT_SOURCE_TYPES_ALL]);
   const importedWorldViews = result.rows.length > 0
     ? result.rows.map(r => ({
         id: r.id as number,

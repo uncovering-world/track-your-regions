@@ -11,6 +11,7 @@ import type { ImportTreeOptions } from './importer.js';
 import { matchCountryLevel } from './matcher.js';
 import type { ImportTreeNode, ImportProgress, MatchingPolicy } from './types.js';
 import { createInitialProgress } from './types.js';
+import type { ImportSourceType } from './sourceTypes.js';
 
 export type { ImportTreeNode, ImportProgress, MatchSuggestion, MatchingPolicy } from './types.js';
 export { matchCountryLevel } from './matcher.js';
@@ -25,7 +26,7 @@ let nextOpId = 1;
 /** Options for starting an import */
 export interface StartImportOptions {
   matchingPolicy?: MatchingPolicy;
-  sourceType?: string;
+  sourceType?: ImportSourceType;
   source?: string;
   description?: string;
 }

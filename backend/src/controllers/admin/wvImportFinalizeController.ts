@@ -8,6 +8,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { IMPORT_SOURCE_TYPES } from '../../services/worldViewImport/sourceTypes.js';
 
 /**
  * Finalize review -- mark the world view as done.
@@ -82,9 +83,9 @@ export async function finalizeReview(req: AuthenticatedRequest, res: Response): 
   // Derive finalized source_type from current (e.g. 'wikivoyage' -> 'wikivoyage_done')
   const result = await pool.query(
     `UPDATE world_views SET source_type = source_type || '_done', updated_at = NOW()
-     WHERE id = $1 AND source_type IN ('wikivoyage', 'imported')
+     WHERE id = $1 AND source_type = ANY($2)
      RETURNING id, name`,
-    [worldViewId],
+    [worldViewId, [...IMPORT_SOURCE_TYPES]],
   );
 
   if (result.rows.length === 0) {
