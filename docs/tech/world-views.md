@@ -242,6 +242,7 @@ Compute merged geometries for regions.
 - Uses SSE (Server-Sent Events) streaming for real-time progress (6-step pipeline)
 - Computes bottom-up: recursively computes children without geometry first, then parent
 - Pipeline: collect geometries → analyze → snap neighbors → union → clean holes/slivers → save
+- **Except for a region that is exactly one division** (one member, no child regions, no hand-drawn boundary): all three writers — the SSE stream, the `/geometry/compute` endpoint and the bulk core — short-circuit to `computeSingleMemberFastPath`, which copies the member's geometry through the same `validate_multipolygon` normalization the normal path applies and runs none of the six steps, so no simplification is applied and the SSE `complete` event carries no polygon/hole counts. This is deliberate: the single member already *is* the answer, and simplifying it would only degrade it. Common well beyond base-layer imports — it is the shape of any 1:1 match
 - "Skip snapping" checkbox (default: on) skips the expensive neighbor-snapping step for faster computation. Snapping adds shared boundary vertices but is O(n²) on child count — can be slow for continents
 - Uses a dedicated `pool.connect()` client for all computation queries, ensuring `SET statement_timeout` applies to the correct connection (not a random pool connection)
 - Generates TS hull for archipelagos, clears stale hull data for non-archipelagos

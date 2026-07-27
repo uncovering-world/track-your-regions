@@ -7,6 +7,7 @@ import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
 import { recomputeRegionGeometry } from './helpers.js';
+import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
 
 interface ProgressEvent {
   type: 'progress' | 'complete' | 'error';
@@ -55,6 +56,7 @@ interface RegionRow {
   is_custom_boundary: boolean;
   name: string;
   has_geom: boolean;
+  uses_hull: boolean;
 }
 
 /**
@@ -120,6 +122,7 @@ interface ComplexityStats {
   memberPoints: number;
   childPoints: number;
   childCount: number;
+  childRowCount: number;
   memberCount: number;
   totalPoints: number;
 }
@@ -130,6 +133,7 @@ async function fetchComplexityStats(client: PoolClient, regionId: number): Promi
       COALESCE(SUM(ST_NPoints(COALESCE(rm.custom_geom, ad.geom))), 0) as member_points,
       COALESCE((SELECT SUM(ST_NPoints(geom)) FROM regions WHERE parent_region_id = $1 AND geom IS NOT NULL), 0) as child_points,
       (SELECT COUNT(*) FROM regions WHERE parent_region_id = $1 AND geom IS NOT NULL) as child_count,
+      (SELECT COUNT(*) FROM regions WHERE parent_region_id = $1) as child_row_count,
       (SELECT COUNT(*) FROM region_members WHERE region_id = $1) as member_count
     FROM region_members rm
     LEFT JOIN administrative_divisions ad ON rm.division_id = ad.id
@@ -142,6 +146,7 @@ async function fetchComplexityStats(client: PoolClient, regionId: number): Promi
     memberPoints,
     childPoints,
     childCount: parseInt(complexityCheck.rows[0]?.child_count || '0'),
+    childRowCount: parseInt(complexityCheck.rows[0]?.child_row_count || '0'),
     memberCount: parseInt(complexityCheck.rows[0]?.member_count || '0'),
     totalPoints: memberPoints + childPoints,
   };
@@ -446,6 +451,83 @@ async function applyCoverageAndFetchFocus(
   return { focusBbox, anchorPoint, tileVersion };
 }
 
+interface UnionPipelineResult {
+  finalPoints?: number;
+  usesHull: boolean;
+  numPolygons?: number;
+  numHoles?: number;
+}
+
+/**
+ * Runs the full 6-step union pipeline (collect, analyze, snap, union, clean,
+ * save) for a region that didn't qualify for computeSingleMemberFastPath.
+ * Returns null when there is nothing to merge — the caller owns the SSE
+ * stream, so it sends the error event and ends the response itself.
+ */
+async function runUnionPipelineSteps(
+  client: PoolClient,
+  regionId: number,
+  stats: ComplexityStats,
+  shouldSimplify: boolean,
+  skipSnapping: boolean,
+  logStep: LogStep,
+): Promise<UnionPipelineResult | null> {
+  logStep('Step 1/6: Collecting geometries...');
+  const collected = await collectGeometriesStep(client, regionId, shouldSimplify);
+  let collectedGeom = collected.collectedGeom;
+  if (!collectedGeom) return null;
+  logStep('Step 1/6: Complete', { geomCount: collected.geomCount });
+
+  logStep('Step 2/6: Analyzing input geometry...');
+  const inputStats = await analyzeInputGeometryStep(client, collectedGeom);
+  logStep('Step 2/6: Complete', inputStats);
+
+  // Step 3: Snap each child region to its neighbors (unless skipSnapping is true).
+  // Borders like a---b vs a---c---b have mismatched vertices — ST_Snap adds
+  // vertices from neighbors to each region's boundary so the union has no slivers.
+  if (skipSnapping) {
+    logStep('Step 3/6: Skipped (fast mode - no snapping)');
+  } else if (stats.childCount > 0) {
+    logStep(`Step 3/6: Snapping ${stats.childCount} child regions to their neighbors...`);
+    const snappedGeom = await snapChildRegionsSSE(client, regionId, inputStats.inputPoints, logStep);
+    if (snappedGeom) collectedGeom = snappedGeom;
+  } else {
+    logStep('Step 3/6: No child regions (using direct members)');
+  }
+
+  logStep('Step 4/6: Unioning geometries...');
+  const unionResult = await client.query(
+    `SELECT ST_UnaryUnion(ST_MakeValid($1::geometry)) as union_geom`,
+    [collectedGeom],
+  );
+  const unionGeom = unionResult.rows[0]?.union_geom;
+  logStep('Step 4/6: Complete');
+
+  logStep('Step 5/6: Cleaning, removing small holes & slivers, simplifying...');
+  const cleaned = await cleanupAndSimplifyStep(client, unionGeom);
+  logStep('Step 5/6: Complete', {
+    numPolygons: cleaned.numPolygons,
+    holesBefore: cleaned.holesBefore,
+    holesAfter: cleaned.numHoles,
+    holesRemoved: cleaned.holesBefore - cleaned.numHoles,
+    numPoints: cleaned.numPoints,
+  });
+
+  logStep('Step 6/6: Saving to database...');
+  const updateResult = await client.query(`
+    UPDATE regions
+    SET geom = validate_multipolygon($2)
+    WHERE id = $1
+    RETURNING ST_NPoints(geom) as points, uses_hull
+  `, [regionId, cleaned.cleanedGeom]);
+
+  const finalPoints = updateResult.rows[0]?.points;
+  const usesHull = !!updateResult.rows[0]?.uses_hull;
+  logStep('Step 6/6: Complete', { finalPoints });
+
+  return { finalPoints, usesHull, numPolygons: cleaned.numPolygons, numHoles: cleaned.numHoles };
+}
+
 /**
  * Compute geometry for a single region with SSE progress streaming
  * GET /api/world-views/regions/:regionId/geometry/compute-stream
@@ -458,7 +540,7 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
 
   try {
     const regionCheck = await pool.query(
-      'SELECT is_custom_boundary, name, geom IS NOT NULL as has_geom FROM regions WHERE id = $1',
+      'SELECT is_custom_boundary, name, geom IS NOT NULL as has_geom, uses_hull FROM regions WHERE id = $1',
       [regionId],
     );
     if (regionCheck.rows.length === 0) {
@@ -498,10 +580,17 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
 
     await client.query(`SET statement_timeout = '${GEOMETRY_QUERY_TIMEOUT_MS}'`);
 
-    logStep('Step 1/6: Collecting geometries...');
-    const collected = await collectGeometriesStep(client, regionId, shouldSimplify);
-    let collectedGeom = collected.collectedGeom;
-    if (!collectedGeom) {
+    // shortCircuitForCustomBoundary above already guarantees is_custom_boundary=false;
+    // see computeSingleMemberFastPath's docstring for the rest of the eligibility rules.
+    const fastResult = await computeSingleMemberFastPath(
+      client, regionId, stats.memberCount, stats.childRowCount, false, (msg) => logStep(msg),
+    );
+
+    const pipelineResult: UnionPipelineResult | null = fastResult
+      ? { finalPoints: fastResult.points, usesHull: regionRow.uses_hull }
+      : await runUnionPipelineSteps(client, regionId, stats, shouldSimplify, skipSnapping, logStep);
+
+    if (!pipelineResult) {
       // Don't reset/release here — the outer `finally` already does both.
       // Releasing twice on the same client throws and propagates out of
       // `finally`, ending up in the outer catch that then tries to `res.write`
@@ -510,60 +599,11 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
       res.end();
       return;
     }
-    logStep('Step 1/6: Complete', { geomCount: collected.geomCount });
-
-    logStep('Step 2/6: Analyzing input geometry...');
-    const inputStats = await analyzeInputGeometryStep(client, collectedGeom);
-    logStep('Step 2/6: Complete', inputStats);
-
-    // Step 3: Snap each child region to its neighbors (unless skipSnapping is true).
-    // Borders like a---b vs a---c---b have mismatched vertices — ST_Snap adds
-    // vertices from neighbors to each region's boundary so the union has no slivers.
-    if (skipSnapping) {
-      logStep('Step 3/6: Skipped (fast mode - no snapping)');
-    } else if (stats.childCount > 0) {
-      logStep(`Step 3/6: Snapping ${stats.childCount} child regions to their neighbors...`);
-      const snappedGeom = await snapChildRegionsSSE(client, regionId, inputStats.inputPoints, logStep);
-      if (snappedGeom) collectedGeom = snappedGeom;
-    } else {
-      logStep('Step 3/6: No child regions (using direct members)');
-    }
-
-    logStep('Step 4/6: Unioning geometries...');
-    const unionResult = await client.query(
-      `SELECT ST_UnaryUnion(ST_MakeValid($1::geometry)) as union_geom`,
-      [collectedGeom],
-    );
-    const unionGeom = unionResult.rows[0]?.union_geom;
-    logStep('Step 4/6: Complete');
-
-    logStep('Step 5/6: Cleaning, removing small holes & slivers, simplifying...');
-    const { cleanedGeom, holesBefore, numPolygons, numHoles, numPoints } =
-      await cleanupAndSimplifyStep(client, unionGeom);
-    logStep('Step 5/6: Complete', {
-      numPolygons,
-      holesBefore,
-      holesAfter: numHoles,
-      holesRemoved: holesBefore - numHoles,
-      numPoints,
-    });
-
-    // Step 6: Update
-    logStep('Step 6/6: Saving to database...');
-    const updateResult = await client.query(`
-      UPDATE regions
-      SET geom = validate_multipolygon($2)
-      WHERE id = $1
-      RETURNING ST_NPoints(geom) as points, uses_hull
-    `, [regionId, cleanedGeom]);
 
     await client.query('RESET statement_timeout');
 
-    const finalPoints = updateResult.rows[0]?.points;
-    const usesHull = updateResult.rows[0]?.uses_hull;
-    logStep('Step 6/6: Complete', { finalPoints });
-
-    const hullResult = await applyHullPostStep(client, regionId, !!usesHull, logStep);
+    const { finalPoints, usesHull, numPolygons, numHoles } = pipelineResult;
+    const hullResult = await applyHullPostStep(client, regionId, usesHull, logStep);
     const focusData = await applyCoverageAndFetchFocus(regionId, logStep);
 
     sendEvent({

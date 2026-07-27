@@ -10,6 +10,8 @@ import { Request, Response } from 'express';
 import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
+import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
+import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
 
 const GEOMETRY_QUERY_TIMEOUT_MS = 300000;
 
@@ -17,96 +19,6 @@ interface PipelineResult {
   computed: boolean;
   points?: number;
   error?: string;
-}
-
-interface SnapStepOutcome {
-  collectedGeom: unknown;
-  totalAdded: number;
-  snappedPoints: number;
-  rowCount: number;
-}
-
-async function snapChildRegionsForGroup(
-  client: PoolClient,
-  gId: number,
-  initialGeom: unknown,
-): Promise<SnapStepOutcome> {
-  const snapResult = await client.query(`
-    WITH child_regions AS (
-      SELECT id, name, ST_MakeValid(geom) as geom
-      FROM regions
-      WHERE parent_region_id = $1 AND geom IS NOT NULL
-    ),
-    with_neighbors AS (
-      SELECT
-        a.id,
-        a.name,
-        a.geom,
-        ST_Collect(b.geom) as neighbor_geom,
-        COUNT(b.id) as neighbor_count
-      FROM child_regions a
-      LEFT JOIN child_regions b ON a.id != b.id
-        AND (ST_Touches(a.geom, b.geom) OR ST_DWithin(a.geom, b.geom, 0.0001))
-      GROUP BY a.id, a.name, a.geom
-    ),
-    snapped AS (
-      SELECT
-        w.id,
-        w.name,
-        w.neighbor_count,
-        ST_NPoints(w.geom) as original_points,
-        CASE
-          WHEN w.neighbor_count > 0 AND w.neighbor_geom IS NOT NULL THEN
-            ST_MakeValid(ST_Snap(w.geom, w.neighbor_geom, 0.001))
-          ELSE
-            w.geom
-        END as geom
-      FROM with_neighbors w
-    ),
-    with_new_points AS (
-      SELECT *, ST_NPoints(geom) as new_points FROM snapped
-    ),
-    collected AS (
-      SELECT ST_Collect(geom) as geom FROM with_new_points WHERE geom IS NOT NULL
-    ),
-    totals AS (
-      SELECT SUM(new_points) as total_points FROM with_new_points
-    )
-    SELECT
-      id, name, neighbor_count, original_points, new_points,
-      new_points - original_points as added_points,
-      (SELECT geom FROM collected) as collected_geom,
-      (SELECT total_points FROM totals) as total_snapped_points
-    FROM with_new_points
-    ORDER BY name
-  `, [gId]);
-
-  let totalAdded = 0;
-  let snappedGeom: unknown = null;
-  let snappedPoints = 0;
-
-  console.log(`[Snap] Snapping ${snapResult.rows.length} regions to neighbors:`);
-  for (const row of snapResult.rows) {
-    if (snappedGeom === null) {
-      snappedGeom = row.collected_geom;
-      snappedPoints = parseInt(row.total_snapped_points || '0');
-    }
-    const neighbors = parseInt(row.neighbor_count);
-    const added = parseInt(row.added_points);
-    totalAdded += added;
-    if (neighbors > 0) {
-      console.log(`[Snap]   ${row.name}: ${row.original_points} -> ${row.new_points} pts (+${added}), ${neighbors} neighbors`);
-    } else {
-      console.log(`[Snap]   ${row.name}: ${row.original_points} pts, isolated`);
-    }
-  }
-
-  return {
-    collectedGeom: snappedGeom ?? initialGeom,
-    totalAdded,
-    snappedPoints,
-    rowCount: snapResult.rows.length,
-  };
 }
 
 function classifyPipelineError(
@@ -139,6 +51,7 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
       COALESCE(SUM(ST_NPoints(COALESCE(rm.custom_geom, ad.geom))), 0) as member_points,
       COALESCE((SELECT SUM(ST_NPoints(geom)) FROM regions WHERE parent_region_id = $1 AND geom IS NOT NULL), 0) as child_points,
       (SELECT COUNT(*) FROM regions WHERE parent_region_id = $1 AND geom IS NOT NULL) as child_count,
+      (SELECT COUNT(*) FROM regions WHERE parent_region_id = $1) as child_row_count,
       (SELECT COUNT(*) FROM region_members WHERE region_id = $1) as member_count
     FROM region_members rm
     LEFT JOIN administrative_divisions ad ON rm.division_id = ad.id
@@ -148,6 +61,7 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
   const memberPoints = parseInt(complexityCheck.rows[0]?.member_points || '0');
   const childPoints = parseInt(complexityCheck.rows[0]?.child_points || '0');
   const childCount = parseInt(complexityCheck.rows[0]?.child_count || '0');
+  const childRowCount = parseInt(complexityCheck.rows[0]?.child_row_count || '0');
   const memberCount = parseInt(complexityCheck.rows[0]?.member_count || '0');
   const totalPoints = memberPoints + childPoints;
 
@@ -165,6 +79,12 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
 
   try {
     await client.query(`SET statement_timeout = '${GEOMETRY_QUERY_TIMEOUT_MS}'`);
+
+    // Both callers already guarantee is_custom_boundary=false; see computeSingleMemberFastPath's docstring for the rest.
+    const fastResult = await computeSingleMemberFastPath(
+      client, gId, memberCount, childRowCount, false, logStep,
+    );
+    if (fastResult) return fastResult;
 
     logStep('Step 1/6: Collecting geometries...');
     const collectResult = await client.query(`
@@ -609,6 +529,7 @@ export async function computeRegionGeometryCore(
         COALESCE(SUM(ST_NPoints(COALESCE(rm.custom_geom, ad.geom))), 0) as member_points,
         COALESCE((SELECT SUM(ST_NPoints(geom)) FROM regions WHERE parent_region_id = $1 AND geom IS NOT NULL), 0) as child_points,
         (SELECT COUNT(*) FROM regions WHERE parent_region_id = $1 AND geom IS NOT NULL) as child_count,
+        (SELECT COUNT(*) FROM regions WHERE parent_region_id = $1) as child_row_count,
         (SELECT COUNT(*) FROM region_members WHERE region_id = $1) as member_count
       FROM region_members rm
       LEFT JOIN administrative_divisions ad ON rm.division_id = ad.id
@@ -618,6 +539,7 @@ export async function computeRegionGeometryCore(
     const memberPoints = parseInt(complexityCheck.rows[0]?.member_points || '0');
     const childPoints = parseInt(complexityCheck.rows[0]?.child_points || '0');
     const childCount = parseInt(complexityCheck.rows[0]?.child_count || '0');
+    const childRowCount = parseInt(complexityCheck.rows[0]?.child_row_count || '0');
     const memberCount = parseInt(complexityCheck.rows[0]?.member_count || '0');
     const totalPoints = memberPoints + childPoints;
 
@@ -627,6 +549,12 @@ export async function computeRegionGeometryCore(
     }
 
     const shouldSimplify = totalPoints > 300000;
+
+    // computeSingleMemberFastPath docstring: eligibility rules, and why childRowCount (structural) not childCount (geometry-bearing).
+    const fastResult = await computeSingleMemberFastPath(
+      client, regionId, memberCount, childRowCount, regionCheck.rows[0].is_custom_boundary, log,
+    );
+    if (fastResult) return fastResult;
 
     // Step 1: Collect all geometries
     log('Step 1: Collecting geometries...');
