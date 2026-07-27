@@ -48,6 +48,7 @@ export const worldViews = pgTable('world_views', {
   source: varchar('source', { length: 1000 }),
   isDefault: boolean('is_default').default(false),
   isActive: boolean('is_active').default(true),
+  isPublic: boolean('is_public').notNull().default(false),
   lastAssignmentAt: timestamp('last_assignment_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

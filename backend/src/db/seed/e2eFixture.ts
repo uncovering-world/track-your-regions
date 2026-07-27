@@ -77,6 +77,9 @@ export async function seedE2eFixture(): Promise<void> {
       description: 'Synthetic data for the smoke lane',
       isDefault: false,
       isActive: true,
+      // The smoke specs browse anonymously; a hidden world view is invisible
+      // to them and every region read under it answers 404.
+      isPublic: true,
     });
 
     await tx.insert(regions).values({
