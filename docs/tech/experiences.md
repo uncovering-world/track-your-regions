@@ -117,6 +117,7 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 
 ### Region assignment
 
+- `experience_regions` and `experience_location_regions` reference `regions(id)` only — there is no direct experience-to-division relation. Experiences reach the administrative base layer through a mirror world view imported from it (`source_type = 'base_layer'`, one region per division), never directly; assignment always targets a region, whether it belongs to a hand-built world view or to the base layer mirror. See [ADR-0018](../decisions/0018-base-layer-mirror-world-view.md)
 - Spatial assignment writes `auto` rows to `experience_regions`
 - Manual curator assignment writes/overwrites `manual`
 - Re-assignment and sync flows only clear/recompute `auto`, preserving manual curation

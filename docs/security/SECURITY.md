@@ -54,6 +54,7 @@ Level 3 requirements are tracked but optional for now.
 | Password hashing | bcryptjs, 12 salt rounds |
 | JWT | jsonwebtoken, HS256 only, iss/aud claims, 15min access + rotated refresh with family tracking |
 | Auth middleware | requireAuth, requireAdmin, requireCurator, optionalAuth |
+| World view visibility | Two mechanisms. `requireVisibleWorldView` gates the region/experience-by-region read surface by `world_views.is_public`, answering 404 (not 403) for a hidden or nonexistent world view. `getWorldViews` filters the world view listing the same way. `GET /api/experiences/:id` can't use that guard — the experience itself is public data, only its world-view association is sensitive — so it filters the `regions[]` array it returns instead, using the same predicate. Admins bypass all three. See [world-views.md](../tech/world-views.md) |
 | Validation | Zod schemas on all routes (body, query, params via `validate()` middleware). SSE endpoints include `token` in query schema to preserve JWT for auth |
 | ORM | Drizzle ORM + parameterized `pool.query()` |
 | Headers | Helmet (CSP, X-Frame-Options, etc.) |
@@ -88,6 +89,7 @@ The Python service has a smaller surface than the Node backend but introduces ne
 
 ## Known Gaps
 
+- **World view visibility does not reach the tile server.** `requireVisibleWorldView` and `getWorldViews` bound the REST API (see the security stack table above), but Martin (`martin/config.yaml`) auto-publishes every table and function — including a hidden world view's regions — on its own public port (`ports:` in `docker-compose.yml`) with no authentication, so its geometry stays fetchable by tile id regardless of `is_public`. The fix is the pattern already used for cv-python below: drop the `ports:` mapping so Martin is reachable only on the Docker compose network (`expose:` only), plus an authorizing proxy in the backend (e.g. `/api/tiles/:source/:z/:x/:y` against a per-source allowlist) that MapLibre reaches via `transformRequest`. Deferred to the tile-boundary follow-up branch, which will carry its own ADR.
 - cv-python uses `print()` rather than structured `logging`. Acceptable at L2 (no auth/authz events to log), but follow up with a logging adapter once the audit/observability story expands.
 - Python dev tooling (`mypy`, `pytest`, `bandit`) lives in `cv-python/requirements-dev.txt` and assumes a venv at `cv-python/.venv` or system-installed tools on PATH for the local `npm run check`. CI installs via `actions/setup-python` + pip.
 - **Accepted advisory (June 2026):** `torch 2.12.0` — [GHSA-rrmf-rvhw-rf47](https://github.com/advisories/GHSA-rrmf-rvhw-rf47), low severity, memory corruption in `torch.jit.script`. No patched release exists (range `<= 2.12.0`, no fix version). torch is not a direct dependency — it is pulled transitively by `easyocr`, which uses it only for internal model inference; nothing in cv-python calls `torch.jit.script`, let alone on untrusted input. Suppressed via `--ignore-vuln` in the `security:py:deps` npm script; **remove the ignore once a fixed torch release ships.**
