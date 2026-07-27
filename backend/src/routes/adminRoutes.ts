@@ -30,6 +30,7 @@ import {
   wvExtractAnswerSchema,
   wvCacheNameParamSchema,
   wvImportBodySchema,
+  baseLayerImportBodySchema,
   wvImportAcceptMatchSchema,
   wvImportAcceptBatchSchema,
   wvImportUnionGeometrySchema,
@@ -127,6 +128,7 @@ import {
   reviewLearnedRules, applyRuleReviewSuggestion,
 } from '../controllers/admin/aiController.js';
 import { hierarchyReview } from '../controllers/admin/aiHierarchyReviewController.js';
+import { startBaseLayerImportEndpoint } from '../controllers/admin/baseLayerImportController.js';
 
 const router = Router();
 
@@ -233,6 +235,9 @@ router.delete('/wv-extract/caches/:name', validate(wvCacheNameParamSchema, 'para
 
 // Start import from JSON body
 router.post('/wv-import/import', validate(wvImportBodySchema), startWorldViewImport);
+
+// Start a base layer mirror import (progress via /wv-import/import/status)
+router.post('/wv-import/base-layer', validate(baseLayerImportBodySchema), startBaseLayerImportEndpoint);
 
 // Poll import progress
 router.get('/wv-import/import/status', getWorldViewImportStatus);
