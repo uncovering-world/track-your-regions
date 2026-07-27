@@ -69,9 +69,18 @@ the schema file is re-applied to an existing database. Databases created before
 it exists get both the cleanup and the index from
 `db/migrations/006-single-default-world-view.sql`.
 
-The default World View is admin-only — `useNavigation` hides it from everyone
-else — so a duplicate default row is visible only to admins, as a repeated
-"GADM (Default)" entry in the World View picker.
+The default World View's visibility is governed by the same `is_public`
+column as any other world view (see [Visibility](#visibility) below) —
+`is_default` carries no visibility meaning of its own, and the client has no
+hardcoded rule hiding it. In practice, though, the picker's Settings dialog —
+where the "Visible to everyone" toggle lives — is only offered when the
+selected world view is not the default one (`isCustomWorldView` in
+`HierarchySwitcher.tsx`), so there is currently no path from the picker to
+flip the default world view's flag; only a direct
+`PUT /api/world-views/:worldViewId` call reaches it. A duplicate default row,
+the case the invariant above rules out going forward, would be hidden by that
+same default until published that way, then showing as a repeated default
+entry in the World View picker.
 
 ### Region
 A node in the World View hierarchy that can contain:
@@ -82,6 +91,87 @@ A node in the World View hierarchy that can contain:
 The contents of a region, which can be:
 - **Administrative Divisions** - standard GADM boundaries
 - **Subregions** - child regions in the hierarchy
+
+---
+
+## Visibility
+
+Every world view carries an `is_public` flag (`world_views.is_public`, default `false`), enforced server-side rather than left to a client-side filter:
+
+- **Listing** — `getWorldViews` (`backend/src/controllers/worldView/worldViewCrud.ts`) always filters to `is_active = true`, and on top of that filters by `is_public` for non-admins; admins see every active world view regardless of public/hidden visibility, but not inactive ones — that filter applies regardless of role. The filter is a `WHERE` clause, so a hidden world view is absent from the response for non-admins (an inactive one for everyone), not merely unlabeled in it.
+- **Region reads** — `requireVisibleWorldView` (`backend/src/middleware/worldViewVisibility.ts`) guards routes that take a `worldViewId` or a `regionId`. It resolves the id from a `worldViewId` (route or query param) or a `regionId` (route param on most of these; an optional query filter on the experience list and experience-locations reads, marked below). Admins bypass the check; everyone else gets **404**, never 403 — a 403 would confirm the world view exists, which is exactly what hiding it is meant to prevent. A missing mandatory id and a hidden world view answer identically; the optional `regionId` query filter is the exception — an absent one is a legitimate unfiltered read, so the guard passes it through rather than 404ing. The guarded routes (check against `worldViewRoutes.ts` / `experienceRoutes.ts` for the current set):
+  - `GET /api/world-views/:worldViewId/regions`
+  - `GET /api/world-views/:worldViewId/regions/root`
+  - `GET /api/world-views/:worldViewId/regions/search`
+  - `GET /api/world-views/:worldViewId/regions/leaf`
+  - `GET /api/world-views/:worldViewId/regions/root/geometries`
+  - `GET /api/world-views/:worldViewId/compute-geometries/status`
+  - `POST /api/world-views/:worldViewId/division-usage`
+  - `GET /api/world-views/:worldViewId/display-geometry-status`
+  - `GET /api/world-views/regions/:regionId/ancestors`
+  - `GET /api/world-views/regions/:regionId/subregions`
+  - `GET /api/world-views/regions/:regionId/members`
+  - `GET /api/world-views/regions/:regionId/members/geometries`
+  - `GET /api/world-views/regions/:regionId/members/descendant-geometries`
+  - `GET /api/world-views/regions/:regionId/geometry`
+  - `GET /api/world-views/regions/:regionId/subregions/geometries`
+  - `GET /api/world-views/regions/:regionId/hull/params`
+  - `GET /api/experiences/region-counts`
+  - `GET /api/experiences/by-region/:regionId`
+  - `GET /api/experiences/by-region/:regionId/locations`
+  - `GET /api/experiences` (`regionId` query param is optional)
+  - `GET /api/experiences/:id/locations` (`regionId` query param is optional)
+- **Single-experience reads** — the second mechanism, for the one route the first can't cover. `GET /api/experiences/:id` (`getExperience`, `backend/src/controllers/experience/experienceQueryController.ts`) can never 404 on visibility, because the experience it serves is public data — only its association with a hidden world view is sensitive, not the experience itself. So instead of guarding the route, the controller filters the `regions[]` array it returns, using the same predicate `getWorldViews` (above) uses to filter its list — `wv.is_active = true`, plus `wv.is_public = true` unless the caller is an admin — matching it exactly so the two cannot drift apart.
+- **Defaults hidden** — `is_public` defaults to `false` at the column level, so every newly created world view — imported through any source, or built by hand in the World View Editor — starts hidden. An admin publishes it explicitly.
+- **Toggle** — the world view settings dialog (`HierarchySwitcher.tsx`) has a "Visible to everyone" switch; a hidden world view carries a "Hidden" chip in the picker.
+
+This is **not** a tile boundary. Martin serves vector tiles on its own public port without authentication, so a hidden world view's geometry stays fetchable by anyone who knows its tile id — visibility bounds the REST API, not the tile server. See `docs/security/SECURITY.md` for the known gap and its planned fix.
+
+---
+
+## Base Layer Import
+
+A world view can be created directly from the administrative base layer itself — `administrative_divisions` — rather than from an external hierarchy. `source_type = 'base_layer'` marks this kind of import in `world_views.source_type`, alongside `wikivoyage` and `imported`; like both of those it becomes `base_layer_done` once its match review is finalized (`backend/src/services/worldViewImport/sourceTypes.ts`).
+
+**Creating one**: from the "Administrative base layer" source in the import panel, an admin gives the world view a name, a provider label (free text — the provider is never hardcoded; see below), and a depth (1, 2, or 3). `buildBaseLayerTree()` (`backend/src/services/worldViewImport/baseLayerImporter.ts`) reads `administrative_divisions` down to that depth with a recursive CTE and shapes it as an ordinary import tree, one node per division, carrying only names and hierarchy — never the division a node was read from, even though the tree is generated from those divisions and could trivially carry it. From that point on it is indistinguishable from a Wikivoyage or file import: the ordinary matcher runs against it, unmatched regions land in the ordinary review UI, and geometry is computed by the normal compute path. Most of a base-layer mirror's regions are exactly one division, so most of them take the single-division fast path described under § Geometry Computation — that path is general, not specific to this source.
+
+Depth 2 (the default) produces 3831 regions — 8 root-level entries, 237 countries, 3586 subdivisions — matching the division counts at each level exactly. Depth is capped at 3; mirroring the full ~392,112-row table would roughly double the largest table in the database.
+
+### Measured match outcome
+
+A depth-2 base layer import, run through the `country-based` policy, resolved 2372 of 3831 regions (62%):
+
+| `match_status` | Regions |
+|---|---|
+| `auto_matched` | 2372 |
+| `no_candidates` | 1251 |
+| `children_matched` | 157 |
+| `needs_review` | 51 |
+
+Of the 2372 matched regions, 2371 have a member division whose name equals the region's exactly; the single exception matched "Osh (city)" to the division "Osh" — a variant match, and the clearest evidence that the matcher resolved these rather than being handed the answer.
+
+The 1251 `no_candidates` regions carry **zero** suggestions — unlike the 51 `needs_review` regions, they cannot be resolved by review clicks alone. An admin can still invoke a targeted per-region matcher (geoshape, point, AI, or a database search) from the review UI one region at a time, but at this scale a matching pass is what makes resolving all 1251 tractable. They decompose into four distinct causes — three of them matcher gaps, one of them expected behavior:
+
+1. **Children of country-level nodes that themselves went unmatched (572 regions).** The base layer places Australia at root level beside the continents, but `matchCountryLevel` assumes continent → country → subdivision, so a country-level node the algorithm never recognizes as a country has its children skipped along with it. Australia's six states account for 547 of the 572: New South Wales 153 unmatched children, Western Australia 140, Victoria 80, Queensland 73, South Australia 71, Tasmania 30. The remaining 25 belong to other country-level nodes affected the same way.
+2. **Ambiguous country matches (51 countries, 507 regions).** These countries matched *too many* candidates rather than none — United Kingdom 30, France 20, United States 9, all at score 700 — so they land in `needs_review`, and drill-down never runs for their children. They carry 143 suggestions between them and are resolvable by hand in the review UI.
+3. **All-or-nothing drill-down (9 countries, 166 regions).** `trySubdivisionDrillDown` abandons a country's entire subdivision level when even one child fails to match. Vietnam is the clearest case: the country matched cleanly, and 63 subdivisions got nothing.
+4. **The continent nodes themselves (6 regions).** These are container nodes with no division of their own to match, so a `no_candidates` status here is the expected, correct outcome — not a failure, and not part of the gap the first three causes describe.
+
+572 + 507 + 166 + 6 = 1251.
+
+This is a finding about the matcher, not the mirror: a node's name plus its parent's resolved division is already enough information to resolve those subdivisions, and `findBestAmongChildren` already implements the lookup — the matcher simply stops after one level and gives up as a unit. A matching policy that walks the hierarchy recursively is the identified fix, tracked as follow-up work with its own ADR; the base layer import is what makes that fix measurable, since it is the only source where the correct answer is known in advance and was deliberately withheld from the importer. See [ADR-0018](../decisions/0018-base-layer-mirror-world-view.md) for the full analysis, the rejected alternatives, and a related finding (the name-matching core is duplicated and has diverged between `matcher.ts` and `matcherUtils.ts`).
+
+---
+
+## Import Sources
+
+Every world view import — Wikivoyage, JSON file, or base layer — starts from one panel (`WorldViewImportPanel.tsx` → `ImportSourcePanel.tsx`) over a single registry, `IMPORT_SOURCES` (`frontend/src/components/admin/importSources/`). A source contributes a stable id, a label for the selector, an optional suggested world view name (offered until the admin types their own), and a form component that owns its own inputs, mutation, error surface and start button; the shared panel owns only the card, the source selector, and the world view name field every source needs. That registry entry is only the frontend half of adding a source. See "How to Add a New Import Source" in `docs/tech/world-view-import-format.md` for the full recipe, including the backend half this section doesn't cover.
+
+The three sources today:
+
+- **Wikivoyage** (`WikivoyageSource.tsx`) — fetches and enriches the full Wikivoyage region hierarchy (extraction → enrichment → import → matching), with a persistent on-disk cache.
+- **JSON file** (`FileSource.tsx`) — uploads a pre-generated JSON region tree for any other external source, with a matching-policy dropdown.
+- **Administrative base layer** (`BaseLayerSource.tsx`) — see Base Layer Import above.
 
 ---
 
