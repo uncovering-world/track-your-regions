@@ -29,14 +29,29 @@ function countLeaves(node: ImportTreeNode): number {
 }
 
 /**
- * Hierarchy-review warnings for a node: any extractor-supplied warnings, plus a
- * flag for grouping nodes (no source page but with children — parsed from an item
- * list) that an admin should review. Feeds region_import_state.hierarchy_warnings.
- * Source-neutral wording: importTree is source-agnostic (wikivoyage, osm, ...).
+ * Whether any node in the tree carries a sourceUrl. A source built from
+ * articles (e.g. an item-list extractor) has pages; a source read straight
+ * from a structured table (e.g. the administrative base layer) never does.
+ * Computed once per import so the grouping heuristic below can tell "no page
+ * because this node was grouped" from "no page because this source has none."
  */
-function hierarchyWarningsFor(node: ImportTreeNode): string[] {
+function treeHasSourcePages(node: ImportTreeNode): boolean {
+  if (node.sourceUrl) return true;
+  return node.children.some(treeHasSourcePages);
+}
+
+/**
+ * Hierarchy-review warnings for a node: any extractor-supplied warnings, plus —
+ * only for a tree that has source pages at all — a flag for grouping nodes (no
+ * source page but with children — parsed from an item list) that an admin
+ * should review. A source with no pages by construction would otherwise flag
+ * every parent node, which is not a parsing ambiguity but the source's normal
+ * shape. Feeds region_import_state.hierarchy_warnings. Source-neutral wording:
+ * importTree is source-agnostic (wikivoyage, osm, base layer, ...).
+ */
+function hierarchyWarningsFor(node: ImportTreeNode, hasSourcePages: boolean): string[] {
   const warnings = [...(node.warnings ?? [])];
-  if (!node.sourceUrl && node.children.length > 0) {
+  if (hasSourcePages && !node.sourceUrl && node.children.length > 0) {
     warnings.push('Grouping: no source page (parsed from item list)');
   }
   return warnings;
@@ -52,8 +67,9 @@ async function mergeHierarchyWarnings(
   client: PoolClient,
   regionId: number,
   node: ImportTreeNode,
+  hasSourcePages: boolean,
 ): Promise<void> {
-  const warnings = hierarchyWarningsFor(node);
+  const warnings = hierarchyWarningsFor(node, hasSourcePages);
   if (warnings.length === 0) return;
   await client.query(
     `UPDATE region_import_state
@@ -97,6 +113,7 @@ export async function importTree(
   progress.statusMessage = `Creating WorldView with ${progress.totalRegions} regions...`;
 
   const leafCount = countLeaves(tree);
+  const hasSourcePages = treeHasSourcePages(tree);
   console.log(`[WV Importer] Tree stats: ${progress.totalRegions} total regions, ${leafCount} leaves, ${tree.children.length} root children`);
 
   const client = await pool.connect();
@@ -133,7 +150,7 @@ export async function importTree(
         progress.statusMessage = 'Import cancelled';
         return worldViewId;
       }
-      await insertRegion(client, child, worldViewId, null, importRunId, progress);
+      await insertRegion(client, child, worldViewId, null, importRunId, progress, hasSourcePages);
     }
 
     // Update import run status (matching will be performed later; do not mark as completed yet)
@@ -166,6 +183,10 @@ export async function importTree(
  * created regions get a `region_import_state` row and advance the progress
  * counter; root rows (NULL parent) are exempt from the partial index, so
  * duplicate root names still insert.
+ *
+ * `hasSourcePages` is the tree-wide decision from `importTree` (or, in tests,
+ * supplied directly): whether the grouping warning in `hierarchyWarningsFor`
+ * applies at all for this import.
  */
 export async function insertRegion(
   client: PoolClient,
@@ -174,6 +195,7 @@ export async function insertRegion(
   parentRegionId: number | null,
   importRunId: number,
   progress: ImportProgress,
+  hasSourcePages: boolean,
 ): Promise<void> {
   if (progress.cancel) return;
 
@@ -196,7 +218,7 @@ export async function insertRegion(
     await client.query(
       `INSERT INTO region_import_state (region_id, import_run_id, source_url, source_external_id, region_map_url, hierarchy_warnings)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [regionId, importRunId, sourceUrl, node.wikidataId || null, node.regionMapUrl || null, hierarchyWarningsFor(node)],
+      [regionId, importRunId, sourceUrl, node.wikidataId || null, node.regionMapUrl || null, hierarchyWarningsFor(node, hasSourcePages)],
     );
 
     // Insert map image candidates
@@ -221,12 +243,12 @@ export async function insertRegion(
       `[WV Importer] Duplicate sibling "${node.name}" under parent ${parentRegionId} — reusing region ${regionId} and merging its subtree.`,
     );
     // Don't lose warnings carried only by this duplicate occurrence.
-    await mergeHierarchyWarnings(client, regionId, node);
+    await mergeHierarchyWarnings(client, regionId, node, hasSourcePages);
   }
 
   // Recurse into children (merging a duplicate's subtree under the reused region)
   for (const child of node.children) {
     if (progress.cancel) return;
-    await insertRegion(client, child, worldViewId, regionId, importRunId, progress);
+    await insertRegion(client, child, worldViewId, regionId, importRunId, progress, hasSourcePages);
   }
 }
