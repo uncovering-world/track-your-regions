@@ -12,6 +12,7 @@ import { matchCountryLevel } from './matcher.js';
 import type { ImportTreeNode, ImportProgress, MatchingPolicy } from './types.js';
 import { createInitialProgress } from './types.js';
 import type { ImportSourceType } from './sourceTypes.js';
+import { buildBaseLayerTree } from './baseLayerImporter.js';
 
 export type { ImportTreeNode, ImportProgress, MatchSuggestion, MatchingPolicy } from './types.js';
 export { matchCountryLevel } from './matcher.js';
@@ -22,6 +23,23 @@ const runningImports = new Map<string, ImportProgress>();
 
 /** Auto-incrementing operation ID */
 let nextOpId = 1;
+
+/**
+ * Reserve a new import operation slot synchronously, with no `await` anywhere
+ * in between creating it and registering it in `runningImports`. Callers that
+ * do their own async setup (e.g. `startBaseLayerImport` building its tree)
+ * must call this *before* their first `await`, so a concurrent request's
+ * "is one already running" check (`getLatestImportStatus`) can never land in
+ * the gap between deciding to start an import and that import registering.
+ * Mirrors the pattern in
+ * backend/src/controllers/worldView/computationProgress.ts.
+ */
+function reserveImportSlot(): { opId: string; progress: ImportProgress } {
+  const opId = `wv-import-${nextOpId++}`;
+  const progress = createInitialProgress();
+  runningImports.set(opId, progress);
+  return { opId, progress };
+}
 
 /** Options for starting an import */
 export interface StartImportOptions {
@@ -40,14 +58,74 @@ export function startImport(
   name: string,
   options: StartImportOptions = {},
 ): string {
-  const opId = `wv-import-${nextOpId++}`;
-  const progress = createInitialProgress();
-  runningImports.set(opId, progress);
+  const { opId, progress } = reserveImportSlot();
 
   console.log(`[WV Import] Starting import ${opId}: name="${name}", root children=${jsonData.children?.length ?? 0}, policy=${options.matchingPolicy ?? 'country-based'}`);
 
   // Fire and forget — runs in background
   runImport(opId, jsonData, name, progress, options).catch((err) => {
+    console.error(`[WV Import] Import error for ${opId}:`, err);
+  });
+
+  return opId;
+}
+
+/** Options for starting a base layer import */
+export interface BaseLayerImportOptions {
+  /** World view name. */
+  name: string;
+  /** Provider label stored as world_views.source, e.g. the dataset and version. */
+  providerLabel: string;
+  /** Deepest division level to mirror. */
+  maxDepth: number;
+}
+
+/**
+ * Start an import that mirrors the administrative base layer.
+ *
+ * Deliberately thin: the tree is built from the base layer, then handed to the
+ * ordinary import pipeline, which imports it and runs the matcher over it. The
+ * base layer gets no privileged path — that is what makes this import a test of
+ * the generic one.
+ *
+ * The slot is reserved synchronously, before `buildBaseLayerTree` is awaited,
+ * rather than delegating to `startImport` (which only registers afterwards).
+ * `startBaseLayerImportEndpoint` checks `getLatestImportStatus` for an active
+ * import before calling this function, with no `await` of its own in between;
+ * reserving here first is what makes that check race-free for a second,
+ * concurrent request instead of a check the tree build could run straight
+ * past.
+ *
+ * That reservation must not outlive a failed build, though. buildBaseLayerTree
+ * can reject (its own orphaned-parent invariant, the statement timeout a
+ * deep recursive CTE can hit, any pool error), and if it does, the catch
+ * below removes the slot before rethrowing — never leaves it in a terminal
+ * state — so getLatestImportStatus() goes back to reporting nothing running.
+ * Left in place, a failed slot would stay 'importing' forever and the 409
+ * guard in startBaseLayerImportEndpoint and startWorldViewImport would
+ * refuse every import after it until the process restarts.
+ */
+export async function startBaseLayerImport(options: BaseLayerImportOptions): Promise<string> {
+  const { opId, progress } = reserveImportSlot();
+
+  let tree: ImportTreeNode;
+  try {
+    tree = await buildBaseLayerTree({ maxDepth: options.maxDepth });
+  } catch (err) {
+    runningImports.delete(opId);
+    throw err;
+  }
+
+  console.log(`[WV Import] Starting base layer import ${opId}: name="${options.name}", root children=${tree.children?.length ?? 0}`);
+
+  // Fire and forget, reusing the slot reserved above — not startImport, which
+  // would reserve a second one.
+  runImport(opId, tree, options.name, progress, {
+    matchingPolicy: 'country-based',
+    sourceType: 'base_layer',
+    source: options.providerLabel,
+    description: `Mirror of the administrative base layer (${options.providerLabel}), depth ${options.maxDepth}`,
+  }).catch((err) => {
     console.error(`[WV Import] Import error for ${opId}:`, err);
   });
 

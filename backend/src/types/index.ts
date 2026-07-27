@@ -416,6 +416,21 @@ export const wvImportBodySchema = z.object({
   matchingPolicy: z.enum(['country-based', 'none']).default('country-based'),
 });
 
+export const baseLayerImportBodySchema = z.object({
+  name: z.string().min(1).max(255),
+  // Bounded by world_views.description, not world_views.source: both are
+  // VARCHAR(1000), but startBaseLayerImport embeds the label in
+  // `Mirror of the administrative base layer (<label>), depth <n>` — 51 fixed
+  // characters — so a label sized against `source` alone would pass validation
+  // here and then fail with 22001 inside the import run, minutes later and
+  // after the endpoint has already answered { started: true }.
+  providerLabel: z.string().min(1).max(949),
+  // Depth 2 mirrors roots + countries + first-level subdivisions (~3800 regions).
+  // 3 is allowed but adds tens of thousands; deeper is refused outright, since
+  // the base layer has 392k divisions.
+  maxDepth: z.number().int().min(1).max(3),
+});
+
 export const wvImportAcceptMatchSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   divisionId: z.coerce.number().int().positive(),
