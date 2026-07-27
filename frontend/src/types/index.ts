@@ -38,7 +38,9 @@ export interface WorldView {
   description: string | null;
   source: string | null;
   isDefault: boolean;
-  /** False = admin-only. Absent for non-admins, who only ever receive public ones. */
+  /** False = admin-only. The server returns this to every caller; non-admins
+   *  just never receive a world view where it's false, since the listing
+   *  filters those out server-side. */
   isPublic?: boolean;
   tileVersion?: number;
 }

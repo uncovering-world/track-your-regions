@@ -147,6 +147,25 @@ export async function startWorldViewImport(
   });
 }
 
+export interface BaseLayerImportRequest {
+  name: string;
+  providerLabel: string;
+  maxDepth: number;
+}
+
+/**
+ * Start an import mirroring the administrative base layer.
+ * Progress, review and finalize all run through the shared import endpoints.
+ */
+export async function startBaseLayerImport(
+  request: BaseLayerImportRequest,
+): Promise<{ started: boolean; operationId: string }> {
+  return authFetchJson(`${API_URL}/api/admin/wv-import/base-layer`, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
 export async function getImportStatus(): Promise<ImportStatus> {
   return authFetchJson(`${API_URL}/api/admin/wv-import/import/status`);
 }
