@@ -13,6 +13,7 @@ import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { matchCountryLevel } from '../../services/worldViewImport/index.js';
 import { createInitialProgress, type ImportProgress } from '../../services/worldViewImport/types.js';
+import { IMPORT_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
 
 // =============================================================================
 // Rematch (run + status)
@@ -32,8 +33,8 @@ export async function rematchWorldView(req: AuthenticatedRequest, res: Response)
 
   // Check world view exists and is import-sourced
   const wvCheck = await pool.query(
-    `SELECT id FROM world_views WHERE id = $1 AND source_type IN ('wikivoyage', 'wikivoyage_done', 'imported', 'imported_done')`,
-    [worldViewId],
+    `SELECT id FROM world_views WHERE id = $1 AND source_type = ANY($2)`,
+    [worldViewId, IMPORT_SOURCE_TYPES_ALL],
   );
   if (wvCheck.rows.length === 0) {
     res.status(404).json({ error: 'Imported world view not found' });

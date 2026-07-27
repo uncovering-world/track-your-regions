@@ -16,6 +16,7 @@ import {
   deleteCache,
 } from '../../services/wikivoyageExtract/index.js';
 import { addRule, deleteRule } from '../../services/ai/learnedRulesService.js';
+import { WIKIVOYAGE_ELIGIBLE_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
 
 /**
  * Start a Wikivoyage extraction.
@@ -55,9 +56,9 @@ export async function getWikivoyageExtractionStatus(
   const wvResult = await pool.query(`
     SELECT wv.id, wv.name, wv.source_type
     FROM world_views wv
-    WHERE wv.source_type IN ('wikivoyage', 'wikivoyage_done', 'imported', 'imported_done')
+    WHERE wv.source_type = ANY($1)
     ORDER BY wv.id DESC
-  `);
+  `, [WIKIVOYAGE_ELIGIBLE_SOURCE_TYPES_ALL]);
 
   const importedWorldViews = wvResult.rows.map((row) => ({
     id: row.id as number,
