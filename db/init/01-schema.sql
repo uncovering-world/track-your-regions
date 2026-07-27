@@ -133,6 +133,13 @@ CREATE TABLE IF NOT EXISTS world_views (
 -- the index would otherwise reject.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_world_views_single_default ON world_views(is_default) WHERE is_default;
 
+-- Visibility: a world view is admin-only until an admin publishes it. New
+-- imports and the seeded base-layer default start hidden, which is why the
+-- column defaults to false. Enforced server-side in getWorldViews and the
+-- requireVisibleWorldView middleware, not in the browser.
+ALTER TABLE world_views ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false;
+COMMENT ON COLUMN world_views.is_public IS 'False = admin-only. True = listed and readable for everyone.';
+
 -- Insert GADM as the default hierarchy
 INSERT INTO world_views (name, description, is_default, is_active)
 VALUES ('GADM', 'Global Administrative Areas - Default hierarchy from GADM database', true, true)
