@@ -6,13 +6,13 @@ This document describes the geometry pipeline: columns, rules, functions, trigge
 
 ### Core Geometry Rules
 
-1. **`geom` is sacred** — never simplify source geometry. Full-resolution geometry is always stored in `geom`.
+1. **`geom` is sacred** — never simplify source geometry. `administrative_divisions.geom` holds GADM at full resolution and nothing writes a simplified shape back into it. **`regions.geom` has one exception**, long-standing and previously undocumented: the union compute path ends its hole/sliver cleaning step with `ST_SimplifyPreserveTopology(geom, 0.0001)` — roughly 11 m at the equator — and saves that (`geometryComputeSingle.ts`, `geometryComputeSSE.ts`). The single-division fast path simplifies not at all, so a region that is exactly one division carries its member's full resolution — that path is the one obeying this rule. Which of the two behaviours is wanted is open, tracked as #443. See `world-views.md` § Geometry Computation.
 2. **Always validate** — every geometry write uses `validate_multipolygon()` for canonical validation.
 3. **Type consistency** — always MultiPolygon via `ST_Multi()`.
 4. **SRID discipline** — store 4326, compute in appropriate SRID, render 3857.
 5. **Derivation chain** — derive from source, not from derived.
 6. **Computation order** — bottom-up for hierarchies.
-7. **Simplify last** — only in derived columns.
+7. **Simplify last** — only in derived columns, apart from the 0.0001° cleaning pass named in rule 1.
 8. **Triggers idempotent and deterministic** — same input = same output.
 9. **NULL vs empty geometry** — `validate_multipolygon()` returns NULL for empty.
 10. **Antimeridian** — never assume [-180, 180].
@@ -45,7 +45,7 @@ This document describes the geometry pipeline: columns, rules, functions, trigge
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `geom` | MultiPolygon | **Primary geometry**. Computed by merging member division geometries. Never simplified — this is the authoritative shape. |
+| `geom` | MultiPolygon | **Primary geometry**. Computed by merging member division geometries, with a 0.0001° topology-preserving pass on the union path and none on the single-division fast path (rule 1). The authoritative shape: every simplified column derives from it. |
 | `hull_geom` | MultiPolygon | **Concave hull** generated for hull regions. Provides territorial extent for scattered island groups. |
 | `hull_params` | JSONB | Parameters used to generate the hull (buffer, concavity, simplify tolerance). |
 | `anchor_point` | Point | Label anchor point. Auto-computed by `update_region_focus_data()` trigger. |
