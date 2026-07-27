@@ -7,6 +7,24 @@ function makeProgress(): ImportProgress {
   return { createdRegions: 0, totalRegions: 0, cancel: false } as unknown as ImportProgress;
 }
 
+/**
+ * A PoolClient stand-in that records every query as {sql, params} instead of
+ * hitting a database. Region inserts always report as fresh (xmax = 0), with
+ * sequential ids, which is all these tests need to locate a node's
+ * region_import_state row.
+ */
+function collectingClient(): { client: never; calls: Array<{ sql: string; params: unknown[] }> } {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  let nextId = 10;
+  const query = vi.fn(async (sql: string, params?: unknown[]) => {
+    calls.push({ sql, params: params ?? [] });
+    return sql.includes('INSERT INTO regions')
+      ? { rows: [{ id: nextId++, inserted: true }] }
+      : { rows: [] };
+  });
+  return { client: { query } as never, calls };
+}
+
 describe('insertRegion duplicate-sibling resilience', () => {
   it('uses ON CONFLICT find-or-reuse and records import state for fresh regions', async () => {
     const query = vi.fn(async (sql: string) =>
@@ -17,7 +35,7 @@ describe('insertRegion duplicate-sibling resilience', () => {
     const progress = makeProgress();
     const tree: ImportTreeNode = { name: 'A', children: [{ name: 'B', children: [] }] };
 
-    await insertRegion({ query } as never, tree, 1, null, 99, progress);
+    await insertRegion({ query } as never, tree, 1, null, 99, progress, false);
 
     const sqls = query.mock.calls.map((c) => String(c[0]));
     // The region INSERT must be a find-or-reuse against the partial unique index.
@@ -52,7 +70,10 @@ describe('insertRegion duplicate-sibling resilience', () => {
       children: [{ name: 'Child', children: [] }],
     };
 
-    await insertRegion({ query } as never, tree, 2, 3120, 99, progress);
+    // hasSourcePages=true: this exercises the merge-warnings path itself, which
+    // must still carry the grouping warning through when the tree does have
+    // source pages elsewhere (the whole-tree decision is covered separately below).
+    await insertRegion({ query } as never, tree, 2, 3120, 99, progress, true);
 
     const sqls = query.mock.calls.map((c) => String(c[0]));
     // The reused parent must NOT get a duplicate import-state INSERT; only the fresh child does.
@@ -72,15 +93,20 @@ describe('insertRegion duplicate-sibling resilience', () => {
 });
 
 describe('insertRegion hierarchy warnings', () => {
-  /** Run insertRegion and return the hierarchy_warnings param for each region_import_state insert, keyed by region id. */
-  async function warningsByRegion(tree: ImportTreeNode): Promise<Map<number, string[]>> {
+  /**
+   * Run insertRegion and return the hierarchy_warnings param for each
+   * region_import_state insert, keyed by region id. `hasSourcePages` is passed
+   * through as-is — these tests are about the per-node heuristic, not the
+   * whole-tree decision (covered by the 'no source pages at all' tests below).
+   */
+  async function warningsByRegion(tree: ImportTreeNode, hasSourcePages: boolean): Promise<Map<number, string[]>> {
     let nextId = 10;
     const query = vi.fn(async (sql: string, _params?: unknown[]) =>
       sql.includes('INSERT INTO regions')
         ? { rows: [{ id: nextId++, inserted: true }] }
         : { rows: [] },
     );
-    await insertRegion({ query } as never, tree, 1, null, 99, makeProgress());
+    await insertRegion({ query } as never, tree, 1, null, 99, makeProgress(), hasSourcePages);
 
     const map = new Map<number, string[]>();
     for (const [sql, params] of query.mock.calls) {
@@ -94,7 +120,9 @@ describe('insertRegion hierarchy warnings', () => {
 
   it('flags grouping nodes (no source page, has children) with a hierarchy warning', async () => {
     // Parent has no sourceUrl but has a child → grouping node; the leaf child is not.
-    const warnings = await warningsByRegion({ name: 'Grouping', children: [{ name: 'Leaf', children: [] }] });
+    // hasSourcePages=true: this tree stands in for one that has source pages
+    // elsewhere, which is what makes the grouping heuristic meaningful.
+    const warnings = await warningsByRegion({ name: 'Grouping', children: [{ name: 'Leaf', children: [] }] }, true);
     expect(warnings.get(10)).toContain('Grouping: no source page (parsed from item list)');
     expect(warnings.get(11)).toEqual([]);
   });
@@ -104,7 +132,7 @@ describe('insertRegion hierarchy warnings', () => {
       name: 'HasPage',
       sourceUrl: 'https://en.wikivoyage.org/wiki/HasPage',
       children: [{ name: 'Leaf', children: [] }],
-    });
+    }, true);
     expect(warnings.get(10)).toEqual([]);
   });
 
@@ -114,7 +142,33 @@ describe('insertRegion hierarchy warnings', () => {
       sourceUrl: 'https://en.wikivoyage.org/wiki/Sourced',
       warnings: ['Extractor flagged something'],
       children: [],
-    });
+    }, true);
     expect(warnings.get(10)).toEqual(['Extractor flagged something']);
+  });
+
+  it('does not warn about missing source pages when the tree has none', async () => {
+    const { client, calls } = collectingClient();
+    const tree: ImportTreeNode = {
+      name: 'Europe',
+      children: [{ name: 'Germany', children: [] }],
+    };
+
+    await insertRegion(client, tree, 1, null, 99, makeProgress(), false);
+
+    const state = calls.find((c) => c.sql.includes('INSERT INTO region_import_state'));
+    expect(state!.params.some((p) => Array.isArray(p) && p.length > 0)).toBe(false);
+  });
+
+  it('still warns about a grouping node when the tree does carry source pages', async () => {
+    const { client, calls } = collectingClient();
+    const tree: ImportTreeNode = {
+      name: 'Europe',
+      children: [{ name: 'Germany', sourceUrl: 'https://example.org/Germany', children: [] }],
+    };
+
+    await insertRegion(client, tree, 1, null, 99, makeProgress(), true);
+
+    const state = calls.find((c) => c.sql.includes('INSERT INTO region_import_state'));
+    expect(state!.params.some((p) => Array.isArray(p) && p.some((w: string) => w.includes('Grouping')))).toBe(true);
   });
 });
