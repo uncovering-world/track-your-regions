@@ -76,9 +76,8 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 - **Name**: `track_regions` (not `track_your_regions`)
 - **Container**: `tyr-ng-db` (access via `docker exec -i tyr-ng-db psql -U postgres -d track_regions`)
 - **Schema**:
-  - `db/init/01-schema.sql` (tables, triggers, auth)
-  - `db/init/02-martin-functions.sql` (tile functions)
-  - `db/init/03-geom-3857-columns.sql` (SRID 3857 for Martin)
+  - `db/init/01-schema.sql` — the only init file: tables, triggers, auth, Martin tile functions, SRID 3857 columns
+  - `db/migrations/` — one-shot changes for databases that already hold data (see its README)
 - **Extensions**: PostGIS, pg_trgm, unaccent
 
 ### Domain Model
