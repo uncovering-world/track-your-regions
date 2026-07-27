@@ -3,20 +3,28 @@
  */
 
 import { Request, Response } from 'express';
+import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { pool } from '../../db/index.js';
 import { notFound } from '../../middleware/errorHandler.js';
 
 /**
- * Get all World Views (including default GADM)
+ * Get all World Views visible to the caller.
+ *
+ * Non-admins see only published (`is_public`) world views. The filter lives here
+ * rather than in the client so a hidden world view is not merely absent from a
+ * dropdown — it is absent from the response.
  */
-export async function getWorldViews(_req: Request, res: Response): Promise<void> {
+export async function getWorldViews(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const isAdmin = req.user?.role === 'admin';
   const result = await pool.query(`
     SELECT id, name, description, source, is_default as "isDefault",
+           is_public as "isPublic",
            COALESCE(tile_version, 0) as "tileVersion"
     FROM world_views
     WHERE is_active = true
+      AND ($1::boolean OR is_public)
     ORDER BY is_default DESC, name
-  `);
+  `, [isAdmin]);
 
   res.json(result.rows);
 }
@@ -30,7 +38,8 @@ export async function createWorldView(req: Request, res: Response): Promise<void
   const result = await pool.query(
     `INSERT INTO world_views (name, description, source, is_default, is_active)
      VALUES ($1, $2, $3, false, true)
-     RETURNING id, name, description, source, is_default as "isDefault"`,
+     RETURNING id, name, description, source, is_default as "isDefault",
+               is_public as "isPublic"`,
     [name, description || null, source || null]
   );
 
@@ -42,17 +51,20 @@ export async function createWorldView(req: Request, res: Response): Promise<void
  */
 export async function updateWorldView(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
-  const { name, description, source } = req.body;
+  const { name, description, source, isPublic } = req.body;
 
   const result = await pool.query(
     `UPDATE world_views
      SET name = COALESCE($1, name),
          description = COALESCE($2, description),
          source = COALESCE($3, source),
+         is_public = COALESCE($4, is_public),
          updated_at = NOW()
-     WHERE id = $4
-     RETURNING id, name, description, source, is_default as "isDefault"`,
-    [name || null, description || null, source || null, worldViewId]
+     WHERE id = $5
+     RETURNING id, name, description, source, is_default as "isDefault",
+               is_public as "isPublic"`,
+    // `?? null`, not `|| null`: false is a meaningful value here.
+    [name || null, description || null, source || null, isPublic ?? null, worldViewId]
   );
 
   if (result.rows.length === 0) {

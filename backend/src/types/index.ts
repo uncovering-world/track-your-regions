@@ -658,6 +658,7 @@ export const updateWorldViewBodySchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().max(2000).optional(),
   source: z.string().max(1000).optional(),
+  isPublic: z.boolean().optional(),
 });
 
 export const createRegionBodySchema = z.object({
