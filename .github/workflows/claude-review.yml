@@ -251,9 +251,50 @@ jobs:
 
           # Grep/Glob/Read come from the action's own base tool set; the
           # grep/rg shell entries mirror claude-qa.yml + claude-dependabot.yml
-          # so the Phase 4 repo search has a path either way.
+          # so the Phase 4 repo search has a path either way. `gh api repos`
+          # closes the one concrete asymmetry with claude-qa.yml, which has it.
+          #
+          # --max-turns is headroom, not a fix: across seven review rounds on
+          # PR #430 the reported num_turns ran 29-59 against a cap of 50 and
+          # every run still ended `subtype: success`, so the two do not count
+          # the same unit and the cap was never observed to bite. 80 costs
+          # nothing when unused and keeps a genuinely large PR off the limit.
           claude_args: |
             --model claude-opus-5
             --effort xhigh
-            --max-turns 50
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(grep:*),Bash(rg:*)"
+            --max-turns 80
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*),Bash(gh api repos:*),Bash(grep:*),Bash(rg:*)"
+
+      # Every review round on PR #430 reported 1-6 permission_denials_count
+      # with no way to tell which tool was refused: the action prints only the
+      # count, and the detail lives in an execution log it does not surface.
+      # This lists the tools the run actually reached for, so the allowlist can
+      # be tuned against evidence instead of guesswork — anything here that is
+      # absent from --allowedTools above is a denial.
+      #
+      # Names only, never the transcript: this repo is public, and the log
+      # holds full tool results including file contents the review read.
+      - name: List tools the review reached for
+        if: always()
+        run: |
+          log="${RUNNER_TEMP}/claude-execution-output.json"
+          if [ ! -f "$log" ]; then
+            echo "No execution log at $log — the action skipped or died early."
+            exit 0
+          fi
+          # The result record carries a `permission_denials` array alongside the
+          # count the action already prints, with the tool and the exact input
+          # that was refused. That is the direct answer when it is present.
+          echo "Denied tool calls:"
+          jq -r '[.. | objects | select(has("permission_denials")) | .permission_denials[]?]
+                 | if length == 0 then "  (none recorded under permission_denials)"
+                   else (.[] | "  \(.tool_name): \(.tool_input | tostring | .[0:200])") end' \
+            "$log" 2>/dev/null || echo "  (could not parse the log)"
+          echo
+          # Fallback, and a cross-check: anything listed here that is absent
+          # from --allowedTools was refused, whatever the log's own shape.
+          # Recursive descent keeps both queries shape-agnostic, so an upstream
+          # change to the envelope fails loudly rather than printing nothing.
+          echo "Tools attempted this run:"
+          jq -r '[.. | objects | select(.type? == "tool_use") | .name] | unique[]?' \
+            "$log" | sed 's/^/  /' || echo "  (could not parse the log)"
