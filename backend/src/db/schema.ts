@@ -1,5 +1,5 @@
-import { pgTable, serial, varchar, integer, boolean, timestamp, jsonb, index, unique, text } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { pgTable, serial, varchar, integer, boolean, timestamp, jsonb, index, unique, uniqueIndex, text } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
 
 /**
  * Database Schema for Track Your Regions
@@ -51,7 +51,13 @@ export const worldViews = pgTable('world_views', {
   lastAssignmentAt: timestamp('last_assignment_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+  // At most one default world view (GADM). Also the ON CONFLICT arbiter that
+  // keeps the GADM seed in db/init/01-schema.sql idempotent on re-application.
+  singleDefaultIdx: uniqueIndex('idx_world_views_single_default')
+    .on(table.isDefault)
+    .where(sql`${table.isDefault}`),
+}));
 
 // =============================================================================
 // Regions (user-defined groupings within a WorldView)
