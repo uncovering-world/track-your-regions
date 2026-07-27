@@ -119,10 +119,24 @@ CREATE TABLE IF NOT EXISTS world_views (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- At most one world view carries is_default (GADM's). That is all an index can
+-- state — zero defaults satisfies it too, which is why deleteWorldView refuses
+-- to delete the default one (backend/src/controllers/worldView/worldViewCrud.ts);
+-- the two together keep it at exactly one.
+--
+-- The index also doubles as the arbiter for the seed below, which is what makes
+-- re-applying this file to an existing database idempotent. Without it the
+-- seed's ON CONFLICT had nothing to fire on — world_views has no unique
+-- constraint besides the serial primary key, so every re-application inserted
+-- another "GADM (Default)" row. Databases that predate the index get it from
+-- db/migrations/006-single-default-world-view.sql, which clears the duplicates
+-- the index would otherwise reject.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_world_views_single_default ON world_views(is_default) WHERE is_default;
+
 -- Insert GADM as the default hierarchy
 INSERT INTO world_views (name, description, is_default, is_active)
 VALUES ('GADM', 'Global Administrative Areas - Default hierarchy from GADM database', true, true)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (is_default) WHERE is_default DO NOTHING;
 
 -- =============================================================================
 -- Regions (user-defined groupings within a WorldView)
