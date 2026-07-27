@@ -73,18 +73,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     ? !selectedWorldView.isDefault
     : urlWorldViewId !== null;
 
-  // Fetch world views — public endpoint, no auth required
-  const { data: allWorldViews = [], isLoading: worldViewsLoading } = useQuery({
+  // Fetch world views — public endpoint, no auth required. The server already
+  // filters by visibility (getWorldViews); whatever arrives here is what this
+  // user may see.
+  const { data: worldViews = [], isLoading: worldViewsLoading } = useQuery({
     queryKey: ['worldViews'],
     queryFn: fetchWorldViews,
     staleTime: Infinity, // World views rarely change
   });
-
-  // Filter out GADM (isDefault) for non-admin users - GADM is admin-only
-  const worldViews = useMemo(() => {
-    if (isAdmin) return allWorldViews;
-    return allWorldViews.filter((w: WorldView) => !w.isDefault);
-  }, [allWorldViews, isAdmin]);
 
   // Fetch root regions for custom world views
   // Uses selectedWorldViewId for eager loading (before full world view object loads)

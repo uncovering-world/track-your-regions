@@ -17,6 +17,9 @@ import {
   ListItemIcon,
   ListItemText,
   CircularProgress,
+  FormControlLabel,
+  Switch,
+  Chip,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
@@ -32,6 +35,8 @@ import { getDeleteImpact } from '../api/worldViews';
 import type { DeleteImpact } from '../api/worldViews';
 
 export function HierarchySwitcher() {
+  // The server already filters by visibility (requireVisibleWorldView /
+  // getWorldViews); whatever arrived here is what this user may see.
   const { worldViews, selectedWorldView, setSelectedWorldView, invalidateTileCache } = useNavigation();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
@@ -43,6 +48,7 @@ export function HierarchySwitcher() {
   const [newWorldViewDescription, setNewWorldViewDescription] = useState('');
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editIsPublic, setEditIsPublic] = useState(false);
   const [adminMenuEl, setAdminMenuEl] = useState<HTMLElement | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<DeleteImpact | null>(null);
   const [loadingImpact, setLoadingImpact] = useState(false);
@@ -60,7 +66,7 @@ export function HierarchySwitcher() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: { name?: string; description?: string }) =>
+    mutationFn: (data: { name?: string; description?: string; isPublic?: boolean }) =>
       updateWorldView(selectedWorldView!.id, data),
     onSuccess: (updatedWorldView) => {
       queryClient.invalidateQueries({ queryKey: ['worldViews'] });
@@ -95,6 +101,7 @@ export function HierarchySwitcher() {
     if (selectedWorldView) {
       setEditName(selectedWorldView.name);
       setEditDescription(selectedWorldView.description || '');
+      setEditIsPublic(selectedWorldView.isPublic ?? false);
       setSettingsDialogOpen(true);
     }
   };
@@ -104,6 +111,7 @@ export function HierarchySwitcher() {
       updateMutation.mutate({
         name: editName.trim(),
         description: editDescription.trim() || undefined,
+        isPublic: editIsPublic,
       });
     }
   };
@@ -115,27 +123,22 @@ export function HierarchySwitcher() {
   // Check if selected world view is custom (not GADM)
   const isCustomWorldView = selectedWorldView && !selectedWorldView.isDefault;
 
-  // Filter world views - non-admin users can't see GADM (default) world view
-  const visibleWorldViews = isAdmin
-    ? worldViews
-    : worldViews.filter(w => !w.isDefault);
-
   // Auto-select a valid world view when auth state changes and current selection is invalid
   useEffect(() => {
-    if (visibleWorldViews.length > 0 && selectedWorldView) {
-      const isCurrentValid = visibleWorldViews.some(w => w.id === selectedWorldView.id);
+    if (worldViews.length > 0 && selectedWorldView) {
+      const isCurrentValid = worldViews.some(w => w.id === selectedWorldView.id);
       if (!isCurrentValid) {
         // Current selection is not visible (e.g., GADM selected but user is not admin)
         // Select the first available world view
-        setSelectedWorldView(visibleWorldViews[0]);
+        setSelectedWorldView(worldViews[0]);
       }
     }
-  }, [isAdmin, visibleWorldViews, selectedWorldView, setSelectedWorldView]);
+  }, [worldViews, selectedWorldView, setSelectedWorldView]);
 
   // Don't render until we have world views loaded and a valid selection
   // Also ensure the selected value exists in the worldViews array
-  const selectedValueExists = selectedWorldView && visibleWorldViews.some(w => w.id === selectedWorldView.id);
-  if (visibleWorldViews.length === 0 || !selectedWorldView || !selectedValueExists) {
+  const selectedValueExists = selectedWorldView && worldViews.some(w => w.id === selectedWorldView.id);
+  if (worldViews.length === 0 || !selectedWorldView || !selectedValueExists) {
     return null;
   }
 
@@ -150,16 +153,19 @@ export function HierarchySwitcher() {
             value={selectedWorldView.id}
             label="World View"
             onChange={(e) => {
-              const worldView = visibleWorldViews.find(w => w.id === Number(e.target.value));
+              const worldView = worldViews.find(w => w.id === Number(e.target.value));
               if (worldView) {
                 setSelectedWorldView(worldView);
               }
             }}
           >
-            {visibleWorldViews.map((worldView) => (
+            {worldViews.map((worldView) => (
               <MenuItem key={worldView.id} value={worldView.id}>
                 {worldView.name}
                 {worldView.isDefault && ' (Default)'}
+                {worldView.isPublic === false && (
+                  <Chip label="Hidden" size="small" sx={{ ml: 1 }} />
+                )}
               </MenuItem>
             ))}
           </Select>
@@ -264,6 +270,18 @@ export function HierarchySwitcher() {
             multiline
             rows={3}
           />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={editIsPublic}
+                onChange={(e) => setEditIsPublic(e.target.checked)}
+              />
+            }
+            label="Visible to everyone"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: -0.5 }}>
+            Off: only admins can see or read this world view.
+          </Typography>
 
           <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
             <Typography variant="subtitle2" color="error" gutterBottom>

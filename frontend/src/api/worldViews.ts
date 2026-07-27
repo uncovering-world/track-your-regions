@@ -16,7 +16,10 @@ export async function createWorldView(data: { name: string; description?: string
   });
 }
 
-export async function updateWorldView(worldViewId: number, data: { name?: string; description?: string; source?: string }): Promise<WorldView> {
+export async function updateWorldView(
+  worldViewId: number,
+  data: { name?: string; description?: string; source?: string; isPublic?: boolean },
+): Promise<WorldView> {
   return authFetchJson<WorldView>(`${API_URL}/api/world-views/${worldViewId}`, {
     method: 'PUT',
     body: JSON.stringify(data),

@@ -38,6 +38,8 @@ export interface WorldView {
   description: string | null;
   source: string | null;
   isDefault: boolean;
+  /** False = admin-only. Absent for non-admins, who only ever receive public ones. */
+  isPublic?: boolean;
   tileVersion?: number;
 }
 
