@@ -41,6 +41,7 @@ import {
   getSavedHullParams,
 } from '../controllers/worldView/index.js';
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js';
+import { requireVisibleWorldView } from '../middleware/worldViewVisibility.js';
 import { publicReadLimiter } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/errorHandler.js';
 import {
@@ -84,40 +85,40 @@ router.delete('/:worldViewId', validate(worldViewIdParamSchema, 'params'), requi
 // Regions within a World View (user-defined groupings)
 // =============================================================================
 // Read operations are public
-router.get('/:worldViewId/regions', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getRegions);
-router.get('/:worldViewId/regions/root', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getRootRegions);
-router.get('/:worldViewId/regions/search', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), validate(regionSearchQuerySchema, 'query'), optionalAuth, searchRegions);
-router.get('/:worldViewId/regions/leaf', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getLeafRegions);
+router.get('/:worldViewId/regions', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getRegions);
+router.get('/:worldViewId/regions/root', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getRootRegions);
+router.get('/:worldViewId/regions/search', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), validate(regionSearchQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), searchRegions);
+router.get('/:worldViewId/regions/leaf', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getLeafRegions);
 // Write operations require admin
 router.post('/:worldViewId/regions', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, validate(createRegionBodySchema), createRegion);
 
 // =============================================================================
 // World View geometry operations
 // =============================================================================
-router.get('/:worldViewId/regions/root/geometries', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getRootRegionGeometries);
+router.get('/:worldViewId/regions/root/geometries', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getRootRegionGeometries);
 router.post('/:worldViewId/compute-geometries', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, computeWorldViewGeometries);
-router.get('/:worldViewId/compute-geometries/status', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getComputationStatus);
+router.get('/:worldViewId/compute-geometries/status', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getComputationStatus);
 router.post('/:worldViewId/compute-geometries/cancel', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, cancelComputation);
-router.post('/:worldViewId/division-usage', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), validate(divisionUsageBodySchema), optionalAuth, getDivisionUsageCounts);
+router.post('/:worldViewId/division-usage', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), validate(divisionUsageBodySchema), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getDivisionUsageCounts);
 
 // Display geometry operations (for zoom-based rendering)
-router.get('/:worldViewId/display-geometry-status', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, getDisplayGeometryStatus);
+router.get('/:worldViewId/display-geometry-status', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getDisplayGeometryStatus);
 router.post('/:worldViewId/regenerate-display-geometries', validate(worldViewIdParamSchema, 'params'), validate(regenerateDisplayQuerySchema, 'query'), requireAuth, requireAdmin, regenerateDisplayGeometries);
 
 // =============================================================================
 // Individual Region operations
 // =============================================================================
-router.get('/regions/:regionId/ancestors', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getRegionAncestors);
-router.get('/regions/:regionId/subregions', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getSubregions);
+router.get('/regions/:regionId/ancestors', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('regionIdParam'), getRegionAncestors);
+router.get('/regions/:regionId/subregions', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('regionIdParam'), getSubregions);
 router.put('/regions/:regionId', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(updateRegionBodySchema), updateRegion);
 router.delete('/regions/:regionId', validate(regionIdParamSchema, 'params'), validate(deleteRegionQuerySchema, 'query'), requireAuth, requireAdmin, deleteRegion);
 
 // =============================================================================
 // Region members (administrative divisions and subregions)
 // =============================================================================
-router.get('/regions/:regionId/members', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getRegionMembers);
-router.get('/regions/:regionId/members/geometries', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getRegionMemberGeometries);
-router.get('/regions/:regionId/members/descendant-geometries', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getDescendantMemberGeometries);
+router.get('/regions/:regionId/members', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('regionIdParam'), getRegionMembers);
+router.get('/regions/:regionId/members/geometries', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('regionIdParam'), getRegionMemberGeometries);
+router.get('/regions/:regionId/members/descendant-geometries', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('regionIdParam'), getDescendantMemberGeometries);
 router.post('/regions/:regionId/members', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(addDivisionsToRegionBodySchema), addDivisionsToRegion);
 router.delete('/regions/:regionId/members', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(removeDivisionsFromRegionBodySchema), removeDivisionsFromRegion);
 router.post('/regions/:regionId/members/move', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(moveMemberBodySchema), moveMemberToRegion);
@@ -128,16 +129,16 @@ router.post('/regions/:regionId/expand', validate(regionIdParamSchema, 'params')
 // =============================================================================
 // Region geometry
 // =============================================================================
-router.get('/regions/:regionId/geometry', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(regionGeometryDetailQuerySchema, 'query'), optionalAuth, getRegionGeometry);
+router.get('/regions/:regionId/geometry', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(regionGeometryDetailQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdParam'), getRegionGeometry);
 router.put('/regions/:regionId/geometry', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(updateGeometryBodySchema), updateRegionGeometry);
 router.post('/regions/:regionId/geometry/compute', validate(regionIdParamSchema, 'params'), validate(computeGeometryQuerySchema, 'query'), requireAuth, requireAdmin, computeSingleRegionGeometry);
 router.get('/regions/:regionId/geometry/compute-stream', validate(regionIdParamSchema, 'params'), validate(computeSSEQuerySchema, 'query'), requireAuth, requireAdmin, computeSingleRegionGeometrySSE);
 router.post('/regions/:regionId/geometry/reset', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, resetRegionToGADM);
-router.get('/regions/:regionId/subregions/geometries', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(subregionGeometriesQuerySchema, 'query'), optionalAuth, getSubregionGeometries);
+router.get('/regions/:regionId/subregions/geometries', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(subregionGeometriesQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdParam'), getSubregionGeometries);
 
 // Hull preview and save (with custom parameters)
 router.post('/regions/:regionId/hull/preview', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(hullPreviewBodySchema), previewHullGeometry);
 router.post('/regions/:regionId/hull/save', validate(regionIdParamSchema, 'params'), requireAuth, requireAdmin, validate(hullSaveBodySchema), saveHullGeometry);
-router.get('/regions/:regionId/hull/params', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, getSavedHullParams);
+router.get('/regions/:regionId/hull/params', publicReadLimiter, validate(regionIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('regionIdParam'), getSavedHullParams);
 
 export default router;

@@ -26,6 +26,7 @@ import {
   getCurationLog,
 } from '../controllers/experience/index.js';
 import { requireAuth, requireCurator, optionalAuth } from '../middleware/auth.js';
+import { requireVisibleWorldView } from '../middleware/worldViewVisibility.js';
 import { publicReadLimiter, searchLimiter } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/errorHandler.js';
 import {
@@ -58,16 +59,17 @@ router.get('/search', searchLimiter, validate(experienceSearchQuerySchema, 'quer
 router.get('/categories', publicReadLimiter, listCategories);
 
 // Get experience counts per region per category (for Discover page tree)
-router.get('/region-counts', publicReadLimiter, validate(experienceRegionCountsQuerySchema, 'query'), getExperienceRegionCounts);
+router.get('/region-counts', publicReadLimiter, validate(experienceRegionCountsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('worldViewIdQuery'), getExperienceRegionCounts);
 
 // Get experiences by region (optionalAuth to support curator rejection visibility)
-router.get('/by-region/:regionId', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(experiencesByRegionQuerySchema, 'query'), optionalAuth, getExperiencesByRegion);
+router.get('/by-region/:regionId', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(experiencesByRegionQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdParam'), getExperiencesByRegion);
 
 // Get all locations for all experiences in a region (batch, eliminates N+1)
-router.get('/by-region/:regionId/locations', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(regionLocationsQuerySchema, 'query'), getRegionExperienceLocations);
+router.get('/by-region/:regionId/locations', publicReadLimiter, validate(regionIdParamSchema, 'params'), validate(regionLocationsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdParam'), getRegionExperienceLocations);
 
-// List experiences with filtering
-router.get('/', publicReadLimiter, validate(experienceListQuerySchema, 'query'), listExperiences);
+// List experiences with filtering (optionalAuth: admins may filter by regionId
+// on a hidden world view; everyone else 404s on that regionId per requireVisibleWorldView)
+router.get('/', publicReadLimiter, validate(experienceListQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdQuery'), listExperiences);
 
 // =============================================================================
 // Curation Routes (require curator auth)
@@ -98,11 +100,14 @@ router.delete('/:id/assign/:regionId', validate(idAndRegionIdParamSchema, 'param
 // Remove an experience from a region entirely (any assignment type, keeps rejection as guard)
 router.delete('/:id/remove-from-region/:regionId', validate(idAndRegionIdParamSchema, 'params'), requireAuth, requireCurator, removeExperienceFromRegion);
 
-// Get single experience
-router.get('/:id', publicReadLimiter, validate(idParamSchema, 'params'), getExperience);
+// Get single experience (optionalAuth: the experience is public, but its
+// regions[] are filtered by world-view visibility in the controller — admins
+// see every assignment, everyone else only visible ones)
+router.get('/:id', publicReadLimiter, validate(idParamSchema, 'params'), optionalAuth, getExperience);
 
-// Get locations for an experience (multi-location support)
-router.get('/:id/locations', publicReadLimiter, validate(idParamSchema, 'params'), validate(experienceLocationsQuerySchema, 'query'), getExperienceLocations);
+// Get locations for an experience (multi-location support; optionalAuth
+// for the same regionId visibility guard as the list endpoint above)
+router.get('/:id/locations', publicReadLimiter, validate(idParamSchema, 'params'), validate(experienceLocationsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdQuery'), getExperienceLocations);
 
 // Get treasures (artworks, artifacts) for an experience
 router.get('/:id/treasures', publicReadLimiter, validate(idParamSchema, 'params'), getExperienceTreasures);

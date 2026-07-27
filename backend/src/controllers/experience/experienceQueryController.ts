@@ -116,9 +116,16 @@ export async function listExperiences(req: Request, res: Response): Promise<void
 /**
  * Get single experience by ID
  * GET /api/experiences/:id
+ *
+ * optionalAuth: the experience itself is public data and is never 404ed here,
+ * but its region/world-view assignments are filtered by visibility below —
+ * admins see every assignment, everyone else only assignments whose world
+ * view is both active and public. The predicate matches `getWorldViews`
+ * (worldViewCrud.ts) exactly so the two cannot drift apart.
  */
-export async function getExperience(req: Request, res: Response): Promise<void> {
+export async function getExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
   const id = parseInt(String(req.params.id));
+  const isAdmin = req.user?.role === 'admin';
 
   const result = await pool.query(`
     SELECT
@@ -153,15 +160,17 @@ export async function getExperience(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  // Get assigned regions
+  // Get assigned regions, filtered to world views visible to this caller.
   const regionsResult = await pool.query(`
     SELECT r.id, r.name, r.world_view_id, wv.name as world_view_name
     FROM experience_regions er
     JOIN regions r ON er.region_id = r.id
     JOIN world_views wv ON r.world_view_id = wv.id
     WHERE er.experience_id = $1
+      AND wv.is_active = true
+      AND ($2::boolean OR wv.is_public = true)
     ORDER BY wv.name, r.name
-  `, [id]);
+  `, [id, isAdmin]);
 
   res.json({
     ...result.rows[0],
