@@ -1,13 +1,13 @@
 /**
  * WorldView Import Panel
  *
- * Primary: "Fetch from Wikivoyage" button — runs full extraction pipeline
- * Secondary: file upload in collapsed accordion for other sources
- *
- * Multi-phase progress: extraction → enrichment → import → matching
+ * Import sources (Wikivoyage, file upload, base layer) are registered in
+ * importSources/ and started through the shared ImportSourcePanel — this
+ * component owns the rest: the existing-world-views list, match review, and
+ * the multi-phase progress UI (extraction → enrichment → import → matching).
  */
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -19,42 +19,30 @@ import {
   Alert,
   Chip,
   Stack,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   IconButton,
   Tooltip,
   Paper,
 } from '@mui/material';
 import {
-  Upload as UploadIcon,
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
   Cancel as CancelIcon,
-  ExpandMore as ExpandMoreIcon,
-  Language as LanguageIcon,
   Delete as DeleteIcon,
   QuestionAnswer as QuestionIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  startWorldViewImport,
   getImportStatus,
   cancelImport,
 } from '../../api/admin/worldViewImport';
 import {
-  startWikivoyageExtraction,
   getExtractionStatus,
   cancelExtraction,
   answerExtractionQuestion,
-  deleteCacheFile,
 } from '../../api/admin/wikivoyageExtract';
-import type { CacheEntry, PendingQuestion, RegionPreview } from '../../api/admin/wikivoyageExtract';
+import type { PendingQuestion, RegionPreview } from '../../api/admin/wikivoyageExtract';
 import { WorldViewImportReview } from './WorldViewImportReview';
+import { ImportSourcePanel } from './ImportSourcePanel';
 
 type AnswerAction = { questionId: number; action: 'accept' | 'skip' | 'answer' | 'delete_rule'; answer?: string; ruleId?: number };
 
@@ -347,11 +335,6 @@ function QuestionCard({ q, isAnswering, showCustomInputOpen, customAnswer, onSho
 export function WorldViewImportPanel() {
   const queryClient = useQueryClient();
   const [name, setName] = useState('Wikivoyage Regions');
-  const [treeData, setTreeData] = useState<unknown>(null);
-  const [fileName, setFileName] = useState('');
-  const [fileError, setFileError] = useState('');
-  const [matchingPolicy, setMatchingPolicy] = useState<'country-based' | 'none'>('country-based');
-  const [selectedCache, setSelectedCache] = useState<string | undefined>(undefined); // undefined = default, 'none' = clean
   const [showReview, setShowReview] = useState(false);
   const [reviewWorldViewId, setReviewWorldViewId] = useState<number | null>(null);
   const [customAnswers, setCustomAnswers] = useState<Record<number, string>>({});
@@ -394,24 +377,8 @@ export function WorldViewImportPanel() {
 
   // ─── Extraction mutations ───────────────────────────────────────────
 
-  const caches: CacheEntry[] = extractStatus?.caches ?? [];
-
-  const extractMutation = useMutation({
-    mutationFn: () => startWikivoyageExtraction(name, selectedCache),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
-    },
-  });
-
   const cancelExtractMutation = useMutation({
     mutationFn: cancelExtraction,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
-    },
-  });
-
-  const deleteCacheMutation = useMutation({
-    mutationFn: deleteCacheFile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
     },
@@ -438,49 +405,12 @@ export function WorldViewImportPanel() {
 
   // ─── File import mutations ──────────────────────────────────────────
 
-  const importMutation = useMutation({
-    mutationFn: () => startWorldViewImport(name, treeData, matchingPolicy),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'importStatus'] });
-    },
-  });
-
   const cancelImportMutation = useMutation({
     mutationFn: cancelImport,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'importStatus'] });
     },
   });
-
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setFileError('');
-    setFileName(file.name);
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (!parsed.children || !Array.isArray(parsed.children)) {
-          setFileError('Invalid file: expected a tree with "children" array');
-          setTreeData(null);
-          return;
-        }
-        setTreeData(parsed);
-      } catch {
-        setFileError('Invalid JSON file');
-        setTreeData(null);
-      }
-    };
-    reader.readAsText(file);
-  }, []);
-
-  const handleStartImport = useCallback(() => {
-    if (!treeData) return;
-    importMutation.mutate();
-  }, [treeData, importMutation]);
 
   // ─── Combined status ────────────────────────────────────────────────
 
@@ -523,8 +453,9 @@ export function WorldViewImportPanel() {
         WorldView Import
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Fetch the full Wikivoyage region hierarchy and import it as a WorldView,
-        or upload a pre-generated JSON file.
+        Pick a source below — Wikivoyage, a JSON file, or the administrative
+        base layer — and the shared pipeline handles matching and review from
+        there.
       </Typography>
 
       {/* Existing imported world views — persist across sessions */}
@@ -572,6 +503,7 @@ export function WorldViewImportPanel() {
                           const { deleteWorldView } = await import('../../api/worldViews');
                           await deleteWorldView(wv.id);
                           queryClient.invalidateQueries({ queryKey: ['admin', 'wvExtract', 'status'] });
+                          queryClient.invalidateQueries({ queryKey: ['admin', 'wvImport', 'importStatus'] });
                           queryClient.invalidateQueries({ queryKey: ['worldViews'] });
                         }
                       }}
@@ -586,152 +518,9 @@ export function WorldViewImportPanel() {
         </Card>
       )}
 
-      {/* Primary: Fetch from Wikivoyage */}
+      {/* Start an import: source selection + world view name */}
       {!isRunning && (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Stack spacing={2}>
-              <TextField
-                label="WorldView Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                fullWidth
-                size="small"
-              />
-
-              {extractMutation.isError && (
-                <Alert severity="error">{(extractMutation.error as Error).message}</Alert>
-              )}
-
-              <Button
-                variant="contained"
-                startIcon={<LanguageIcon />}
-                onClick={() => extractMutation.mutate()}
-                disabled={!name.trim() || extractMutation.isPending}
-                size="large"
-              >
-                Fetch from Wikivoyage
-              </Button>
-
-              <FormControl size="small" fullWidth>
-                <InputLabel>API Cache</InputLabel>
-                <Select
-                  value={selectedCache ?? (caches.length > 0 ? '' : 'none')}
-                  label="API Cache"
-                  onChange={(e) => setSelectedCache(e.target.value === 'none' ? 'none' : e.target.value || undefined)}
-                  renderValue={(val) => {
-                    if (!val) return `Use latest cache (${caches.length} available)`;
-                    if (val === 'none') return 'Clean fetch (no cache)';
-                    const c = caches.find(c => c.name === val);
-                    if (!c) return val;
-                    return `${new Date(c.modifiedAt).toLocaleDateString()} — ${(c.sizeBytes / 1024 / 1024).toFixed(1)} MB`;
-                  }}
-                >
-                  {caches.length > 0 && (
-                    <MenuItem value="">
-                      <em>Use latest cache</em>
-                    </MenuItem>
-                  )}
-                  <MenuItem value="none">
-                    <em>Clean fetch (no cache)</em>
-                  </MenuItem>
-                  {caches.map(c => (
-                    <MenuItem key={c.name} value={c.name}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 1 }}>
-                        <Typography variant="body2" sx={{ flex: 1 }}>
-                          {c.name === 'wikivoyage-cache.json' ? '(active) ' : ''}
-                          {new Date(c.modifiedAt).toLocaleDateString()} {new Date(c.modifiedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          {' — '}
-                          {(c.sizeBytes / 1024 / 1024).toFixed(1)} MB
-                        </Typography>
-                        {c.name !== 'wikivoyage-cache.json' && (
-                          <Tooltip title="Delete this cache">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteCacheMutation.mutate(c.name);
-                                if (selectedCache === c.name) setSelectedCache(undefined);
-                              }}
-                              sx={{ p: 0.25 }}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <Typography variant="caption" color="text.secondary">
-                Extracts ~5,700 regions from English Wikivoyage, enriches with Wikidata IDs,
-                then imports and matches countries to GADM divisions.
-              </Typography>
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Secondary: File upload in accordion */}
-      {!isRunning && (
-        <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="body2" color="text.secondary">
-              Or upload from file
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Stack spacing={2}>
-              <Box>
-                <Button
-                  variant="outlined"
-                  component="label"
-                  startIcon={<UploadIcon />}
-                >
-                  {fileName || 'Upload JSON File'}
-                  <input
-                    type="file"
-                    accept=".json"
-                    hidden
-                    onChange={handleFileUpload}
-                  />
-                </Button>
-                {fileName && !fileError && (
-                  <Typography variant="caption" sx={{ ml: 1 }} color="text.secondary">
-                    {fileName}
-                  </Typography>
-                )}
-              </Box>
-
-              {fileError && <Alert severity="error">{fileError}</Alert>}
-              {importMutation.isError && (
-                <Alert severity="error">{(importMutation.error as Error).message}</Alert>
-              )}
-
-              <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel>Matching Policy</InputLabel>
-                <Select
-                  value={matchingPolicy}
-                  label="Matching Policy"
-                  onChange={(e) => setMatchingPolicy(e.target.value as 'country-based' | 'none')}
-                >
-                  <MenuItem value="country-based">Country-based (auto-match)</MenuItem>
-                  <MenuItem value="none">None (manual only)</MenuItem>
-                </Select>
-              </FormControl>
-
-              <Button
-                variant="contained"
-                onClick={handleStartImport}
-                disabled={!treeData || !name.trim() || importMutation.isPending}
-              >
-                Start Import
-              </Button>
-            </Stack>
-          </AccordionDetails>
-        </Accordion>
+        <ImportSourcePanel worldViewName={name} onWorldViewNameChange={setName} />
       )}
 
       {/* Progress / Results */}
