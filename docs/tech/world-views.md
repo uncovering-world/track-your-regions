@@ -55,6 +55,24 @@ A named collection of regions representing a custom way of organizing the world:
 - "My Travel Map" - personal organization of visited areas
 - "Sales Territories" - business regions
 
+#### The default World View
+
+GADM is the default World View, seeded with `is_default = true` by
+`db/init/01-schema.sql`. The partial unique index
+`idx_world_views_single_default` (`ON world_views(is_default) WHERE is_default`)
+enforces **at most one** default — zero would satisfy it as well, so the second
+half of the invariant lives in the API: `deleteWorldView` refuses to delete the
+default World View. Together they keep it at exactly one.
+
+The index is also the `ON CONFLICT` arbiter that keeps the seed idempotent when
+the schema file is re-applied to an existing database. Databases created before
+it exists get both the cleanup and the index from
+`db/migrations/006-single-default-world-view.sql`.
+
+The default World View is admin-only — `useNavigation` hides it from everyone
+else — so a duplicate default row is visible only to admins, as a repeated
+"GADM (Default)" entry in the World View picker.
+
 ### Region
 A node in the World View hierarchy that can contain:
 - **Administrative Divisions** - direct references to GADM boundaries
