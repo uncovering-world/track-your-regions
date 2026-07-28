@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import type { WorldView } from '../../../types';
+import { WORLD_VIEW_DESCRIPTION_MAX_LENGTH } from '../../../api/worldViews';
 import { useAppTheme } from '../../../theme';
 
 interface WorldViewHeaderProps {
@@ -143,6 +144,8 @@ export function WorldViewHeader({ worldView, onUpdate, isPending }: WorldViewHea
                 autoFocus
                 fullWidth
                 sx={inlineInputSx}
+                slotProps={{ htmlInput: { maxLength: WORLD_VIEW_DESCRIPTION_MAX_LENGTH } }}
+                helperText={`${descriptionValue.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`}
               />
               <Button size="small" variant="contained" onClick={handleSaveDescription} disabled={isPending} sx={saveBtnSx}>
                 Save

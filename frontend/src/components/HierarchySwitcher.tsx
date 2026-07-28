@@ -31,7 +31,7 @@ import { useNavigation } from '../hooks/useNavigation';
 import { useAuth } from '../hooks/useAuth';
 import { WorldViewEditor } from './WorldViewEditor';
 import { createWorldView, updateWorldView, deleteWorldView } from '../api';
-import { getDeleteImpact } from '../api/worldViews';
+import { getDeleteImpact, WORLD_VIEW_DESCRIPTION_MAX_LENGTH } from '../api/worldViews';
 import type { DeleteImpact } from '../api/worldViews';
 
 export function HierarchySwitcher() {
@@ -236,6 +236,8 @@ export function HierarchySwitcher() {
             multiline
             rows={2}
             placeholder="e.g., Regions grouped by cultural similarities"
+            slotProps={{ htmlInput: { maxLength: WORLD_VIEW_DESCRIPTION_MAX_LENGTH } }}
+            helperText={`${newWorldViewDescription.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`}
           />
         </DialogContent>
         <DialogActions>
@@ -269,6 +271,8 @@ export function HierarchySwitcher() {
             onChange={(e) => setEditDescription(e.target.value)}
             multiline
             rows={3}
+            slotProps={{ htmlInput: { maxLength: WORLD_VIEW_DESCRIPTION_MAX_LENGTH } }}
+            helperText={`${editDescription.length}/${WORLD_VIEW_DESCRIPTION_MAX_LENGTH}`}
           />
           <FormControlLabel
             control={
