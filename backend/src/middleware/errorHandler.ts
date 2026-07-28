@@ -47,6 +47,26 @@ export function errorHandler(
     return;
   }
 
+  // A value that did not fit its column (22001, string_data_right_truncation).
+  // Without this branch the driver error carries no statusCode, so an input a
+  // request schema let through too wide came back as a 500 — masked to
+  // "Internal server error" in production, naming nothing.
+  //
+  // Postgres reports the type and its width here but never the column or the
+  // table (checked against a live server with VERBOSITY verbose), so the answer
+  // states the limit and leaves the field to the bound in types/index.ts that
+  // should have caught it at the boundary. Reaching this branch at all means
+  // one of those bounds has drifted from its column again.
+  if ('code' in err && err.code === '22001') {
+    const width = /character varying\((\d+)\)/.exec(err.message)?.[1];
+    res.status(400).json({
+      error: width
+        ? `A submitted value is longer than the ${width} characters this field allows.`
+        : 'A submitted value is longer than this field allows.',
+    });
+    return;
+  }
+
   const statusCode = 'statusCode' in err ? err.statusCode : 500;
 
   // In production, mask internal error messages on 500s to avoid leaking implementation details
