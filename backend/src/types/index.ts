@@ -401,7 +401,8 @@ export const wvExtractAnswerSchema = z.object({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Zod recursive schemas require z.ZodType<any> annotation; runtime shape is concrete (see z.object below)
 const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
-    name: z.string().min(1).max(500),
+    // Every node becomes a region, so the bound is regions.name.
+    name: z.string().min(1).max(255),
     regionMapUrl: z.string().url().max(2000).optional(),
     mapImageCandidates: z.array(z.string().url().max(2000)).max(20).optional(),
     wikidataId: z.string().regex(/^Q\d+$/).optional(),
@@ -531,7 +532,8 @@ export const wvImportSelectMapImageSchema = z.object({
 
 export const wvImportAddChildSchema = z.object({
   parentRegionId: z.coerce.number().int().positive(),
-  name: z.string().min(1).max(500),
+  // Inserted verbatim as the new child's regions.name.
+  name: z.string().min(1).max(255),
   sourceUrl: z.string().url().max(2000).optional(),
   sourceExternalId: z.string().max(100).optional(),
 });
@@ -544,7 +546,8 @@ export const wvImportRemoveRegionSchema = z.object({
 
 export const wvImportRenameRegionSchema = z.object({
   regionId: z.coerce.number().int().positive(),
-  name: z.string().min(1).max(500),
+  // Written straight into regions.name.
+  name: z.string().min(1).max(255),
   sourceUrl: z.string().url().max(2000).optional(),
   sourceExternalId: z.string().max(100).optional(),
 });
@@ -682,18 +685,20 @@ export const updateWorldViewBodySchema = z.object({
 });
 
 export const createRegionBodySchema = z.object({
-  name: z.string().min(1).max(500),
+  name: z.string().min(1).max(255),
   description: z.string().max(1000).optional(),
   parentRegionId: z.number().int().positive().optional(),
-  color: z.string().max(50).optional(),
+  // `#rrggbb`, the one shape the editor's <input type="color"> produces and
+  // the only one regions.color — VARCHAR(7) — has room for.
+  color: z.string().max(7).optional(),
   customGeometry: z.any().optional(),
 });
 
 export const updateRegionBodySchema = z.object({
-  name: z.string().min(1).max(500).optional(),
+  name: z.string().min(1).max(255).optional(),
   description: z.string().max(1000).optional(),
   parentRegionId: z.number().int().positive().nullable().optional(),
-  color: z.string().max(50).nullable().optional(),
+  color: z.string().max(7).nullable().optional(),
   usesHull: z.boolean().optional(),
 });
 
@@ -712,7 +717,9 @@ export const addDivisionsToRegionBodySchema = z.object({
   includeChildren: z.boolean().optional(),
   inheritColor: z.boolean().default(true),
   childIds: z.array(z.number().int().positive()).optional(),
-  customName: z.string().max(500).optional(),
+  // Names the subregion this call creates (regions.name) and the
+  // region_members.custom_name recorded beside it — both VARCHAR(255).
+  customName: z.string().max(255).optional(),
   customGeometry: z.any().optional(),
 });
 
