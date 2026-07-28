@@ -92,17 +92,21 @@ See `db/init/01-schema.sql` for full table definitions.
 
 ## How to Add a New Import Source
 
-1. **Write an extraction script** that produces a JSON file in the format above. Only `name` and `children` are required; all other fields are optional enhancements.
+A source is a registry entry, not a script that produces a file. Adding one means:
 
-2. **Upload via Admin Panel** → Import WorldView → upload JSON file + enter a name.
+1. **A frontend module** under `frontend/src/components/admin/importSources/` exporting a form component — it receives the shared world view name (`ImportSourceFormProps`) and owns its own inputs, mutation, error surface, and start button — plus one line in `IMPORT_SOURCES` (`frontend/src/components/admin/importSources/index.ts`) giving it a label and, optionally, a suggested world view name. See "Import Sources" in `docs/tech/world-views.md` for the registry shape.
+2. **A backend path** that builds an `ImportTreeNode` tree (the format above) however the source needs to — crawl a site, read from the database, call an API — and gets it into the import pipeline with a `sourceType` of its own, normally by calling `startImport()` (`backend/src/services/worldViewImport/index.ts`) once the tree is ready. A source that has to do async work of its own before the tree exists reserves its own operation slot first instead, so a concurrent request's "is one already running" check can't land in the gap before that reservation exists — see `startBaseLayerImport()` in the same file for the pattern.
+3. **That `sourceType` registered** in `IMPORT_SOURCE_TYPES` (`backend/src/services/worldViewImport/sourceTypes.ts`) — this is what makes the match review, finalize, and rematch endpoints recognise the world view. A `sourceType` missing from that file is invisible to all three.
 
-3. **The review system handles the rest**: automatic GADM matching, manual review UI, coverage checking, and finalization are all source-agnostic.
+Uploading a JSON file needs none of this: it is the existing `imported` source, already wired up. Which path fits depends on where the tree comes from — a one-off tree produced outside the app (a script run by hand, an export from another tool) is a file to upload; a source the app itself can generate or fetch on demand is worth a registry entry, so an admin can run it from the panel the way Wikivoyage and the administrative base layer already do.
 
 ### Existing Sources
 
-| Source | Script | Output |
-|--------|--------|--------|
-| English Wikivoyage | `scripts/wikivoyage-regions.py` | ~2,750 regions with sourceUrl, wikidataId, regionMapUrl, mapImageCandidates |
+| Source | Tree comes from |
+|--------|------------------|
+| Wikivoyage | The `wikivoyageExtract` service crawls the MediaWiki API and enriches with Wikidata IDs — see `docs/tech/world-view-import.md` |
+| JSON file upload | Whatever the admin uploads, validated against the format above |
+| Administrative base layer | `buildBaseLayerTree()` reads `administrative_divisions` down to a chosen depth and emits names and hierarchy only — see "Base Layer Import" in `docs/tech/world-views.md` |
 
 ### Tips for New Sources
 
