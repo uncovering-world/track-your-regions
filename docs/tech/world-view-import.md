@@ -4,18 +4,20 @@ Import a source-agnostic region hierarchy into a WorldView with automatic GADM d
 
 ## Overview
 
-The WorldView import feature lets admins create a WorldView from an external region hierarchy. The primary import source is English Wikivoyage — the admin clicks "Fetch from Wikivoyage" in the admin panel, and a TypeScript backend service (`backend/src/services/wikivoyageExtract/`) crawls the MediaWiki API to build a region hierarchy (~4,500 regions). Alternatively, admins can upload a pre-generated JSON file. The system:
+The WorldView import feature lets admins create a WorldView from a region hierarchy. Every import starts from one panel with a source selector; see "Import Sources" in `docs/tech/world-views.md` for the three sources today (Wikivoyage, JSON file, administrative base layer), and "How to Add a New Import Source" in `docs/tech/world-view-import-format.md` for how a new one gets registered. This doc covers what every source shares once import starts — the matcher and the review UI. Whichever source is picked, the pipeline:
 
 1. Creates a WorldView with all regions (hierarchical)
-2. Matches countries to GADM administrative divisions (with optional subdivision drill-down)
+2. Matches regions to administrative divisions (with optional subdivision drill-down)
 3. Provides a match review interface for manual corrections
+
+Wikivoyage is the only source with an extraction step of its own: a TypeScript backend service (`backend/src/services/wikivoyageExtract/`) crawls the MediaWiki API to build the region hierarchy (~4,500 regions) before handing it to the same import pipeline.
 
 ## Architecture
 
 ### Data Flow
 
-```
-Option A: "Fetch from Wikivoyage" button
+```text
+Option A: Wikivoyage source ("Fetch from Wikivoyage" button)
   → wikivoyageExtract service (TypeScript)
     → Phase 1: Extract tree from Wikivoyage API (status='extracting')
     → Phase 2: Enrich with Wikidata IDs (status='enriching')
@@ -23,8 +25,18 @@ Option A: "Fetch from Wikivoyage" button
     → Phase 4: Match countries to GADM (status='matching') — calls matchCountryLevel() directly
     → Complete → "Review Matches" button
 
-Option B: JSON file upload (for non-Wikivoyage sources)
+Option B: JSON file source (upload)
   → Admin Upload → worldViewImport service
+    → import_runs + WorldView + Regions + region_import_state
+    → Matcher → region_members (auto-assigned)
+             → region_match_suggestions (for review)
+
+Option C: Administrative base layer source
+  → buildBaseLayerTree() reads administrative_divisions down to the chosen depth
+    (backend/src/services/worldViewImport/baseLayerImporter.ts)
+  → Shapes it as an import tree — names and hierarchy only, never the division
+    a node was read from
+  → Same worldViewImport service as Option B from here:
     → import_runs + WorldView + Regions + region_import_state
     → Matcher → region_members (auto-assigned)
              → region_match_suggestions (for review)
@@ -38,7 +50,7 @@ Import state is stored in dedicated relational tables (not JSONB):
 - **`region_import_state`** — 1:1 with region (region_id PK, import_run_id, source_url, source_external_id, match_status, needs_manual_fix, fix_note, region_map_url, map_image_reviewed)
 - **`region_match_suggestions`** — 1:N per region (division_id, name, path, score, geo_similarity, rejected flag, `conflict_type`, `donor_region_id`, `donor_division_id`, `donor_region_name`, `donor_division_name` — the last five are non-null when the suggestion conflicts with a sibling assignment, see ADR-0012)
 - **`region_map_images`** — 1:N per region (image_url candidates)
-- **`world_views.source_type`** (VARCHAR) — `'manual'` (default), `'wikivoyage'`/`'imported'` (import in review), or `'wikivoyage_done'`/`'imported_done'` (review finalized)
+- **`world_views.source_type`** (VARCHAR) — `'manual'` (default), or one of the import source types in `backend/src/services/worldViewImport/sourceTypes.ts` (`'wikivoyage'`, `'imported'`, `'base_layer'`) while its match review is open, with a `_done` suffix once finalized (e.g. `'wikivoyage_done'`, `'base_layer_done'`). The review-status listing, finalize, and rematch endpoints resolve which source types they own through that file instead of an inline allowlist, so a new source type is added in one place
 - **`world_views.dismissed_coverage_ids`** (INTEGER[]) — GADM division IDs that the admin has explicitly dismissed from coverage checks (e.g., Caspian Sea). Reset on re-match
 - **`administrative_divisions.name_normalized`** (TEXT, generated) — `lower(immutable_unaccent(name))`, indexed with GIN trigram for fast fuzzy matching
 - **`immutable_unaccent()`** function — IMMUTABLE wrapper around `unaccent()` for use in generated columns and indexes
@@ -60,7 +72,7 @@ The matching policy determines how imported regions are auto-matched to GADM div
 | `country-based` | Walks the tree looking for country names, matches to GADM, optionally drills into subdivisions | Wikivoyage imports, geographic hierarchies |
 | `none` | Skips auto-matching entirely; all regions start as `no_candidates` | Non-geographic hierarchies, manual curation |
 
-Wikivoyage extractions always use `country-based`. File uploads default to `country-based` but can be changed via a dropdown in the upload UI.
+Wikivoyage extractions and administrative base layer imports always use `country-based`. File uploads default to `country-based` but can be changed via a dropdown in the upload UI.
 
 ## JSON Tree Validation
 
@@ -83,7 +95,7 @@ Additional limits enforced in the controller:
 
 ## Persistent Cache
 
-Wikivoyage API responses are cached to `data/cache/wikivoyage-cache.json` (persistent across server restarts). The UI shows a "Use cached data" checkbox with cache file info (size, last modified). Unchecking triggers a clean fetch that deletes the cache before starting.
+Wikivoyage API responses are cached to `data/cache/wikivoyage-cache.json` (persistent across server restarts); each successful run also saves a timestamped snapshot (`wikivoyage-cache-<timestamp>.json`) so earlier fetches stay available for reuse. The UI (`WikivoyageSource.tsx`) offers an "API Cache" dropdown listing the active cache plus every snapshot with its date and size, a "Clean fetch (no cache)" entry that deletes the active cache file before starting, and a delete button per snapshot.
 
 ## Startup Cleanup
 
@@ -388,7 +400,8 @@ All require admin auth.
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/import` | Start import from JSON body |
-| GET | `/import/status` | Poll progress |
+| POST | `/base-layer` | Start import from the administrative base layer (body: `{ name, providerLabel, maxDepth }`) |
+| GET | `/import/status` | Poll progress (shared by every source, including base layer) |
 | POST | `/import/cancel` | Cancel running import |
 | GET | `/matches/:worldViewId/stats` | Match statistics |
 | GET | `/matches/:worldViewId/tree` | Full hierarchical tree with match statuses |
@@ -440,54 +453,63 @@ backend/src/services/wikivoyageExtract/
 └── index.ts              — Service entry: start/status/cancel + full pipeline
 
 backend/src/services/worldViewImport/
-├── types.ts          — Type definitions (ImportTreeNode, ImportProgress, RegionImportState, etc.)
-├── importer.ts       — JSON tree → WorldView + regions
-├── matcher.ts        — Leaf region → GADM division matching (optimized)
-├── aiMatcher.ts      — AI-assisted re-matching via OpenAI
-├── geoshapeCache.ts  — Wikidata geoshape fetch, cache, IoU scoring, covering-set matching with precision drill-down and composite fallback
-├── pointMatcher.ts   — Wikivoyage marker coord extraction → GADM ST_Contains matching, stores marker_points in region_import_state
-└── index.ts          — Exports, in-memory progress management
+├── types.ts              — Type definitions (ImportTreeNode, ImportProgress, RegionImportState, etc.)
+├── sourceTypes.ts        — Source type registry (open + `_done` finalized name per type); review, finalize and rematch endpoints resolve source types through here instead of an inline allowlist
+├── importer.ts           — JSON tree → WorldView + regions
+├── baseLayerImporter.ts  — administrative_divisions → import tree, names and hierarchy only, for the base layer source
+├── matcher.ts            — Leaf region → GADM division matching (optimized)
+├── aiMatcher.ts          — AI-assisted re-matching via OpenAI
+├── geoshapeCache.ts      — Wikidata geoshape fetch, cache, IoU scoring, covering-set matching with precision drill-down and composite fallback
+├── pointMatcher.ts       — Wikivoyage marker coord extraction → GADM ST_Contains matching, stores marker_points in region_import_state
+└── index.ts              — Exports, in-memory progress management
 
 backend/src/services/wikivoyageExtract/
 ├── markerParser.ts   — Pure parser for {{marker}} and {{geo}} Wikivoyage wikitext templates
 
 backend/src/controllers/admin/wikivoyageExtractController.ts — Extraction endpoints
 backend/src/controllers/admin/worldViewImportController.ts   — Import + match review endpoints
+backend/src/controllers/admin/baseLayerImportController.ts   — Base layer import start endpoint
 ```
 
 ## Frontend
 
 Admin panel section "WorldView Import" (`WorldViewImportPanel.tsx`) with these views:
 
-1. **Primary action** — "Fetch from Wikivoyage" button runs the full extraction → enrichment → import → matching pipeline. Multi-phase progress UI shows extraction counts, API requests/cache hits, import progress, and matching progress. A "Use cached data" checkbox (with cache size/age) lets admins skip re-fetching unchanged pages or force a clean fetch
-2. **Secondary action** — file upload in a collapsed accordion ("Or upload from file") for non-Wikivoyage sources. Includes a matching policy dropdown (country-based or none)
-3. **Existing WorldViews** — if imported world views exist in DB, shows source type badge (`wikivoyage` or `imported`), "Review Matches" button for active reviews, and a "Review complete" badge for finalized ones (persists across sessions/relogins)
+1. **Source selection** (`ImportSourcePanel.tsx`) — one source selector (Wikivoyage, JSON file, administrative base layer) plus a shared WorldView name field; only the selected source's form is mounted. See "Import Sources" in `docs/tech/world-views.md` for the source registry. The Wikivoyage form runs the full extraction → enrichment → import → matching pipeline, with multi-phase progress UI (extraction counts, API requests/cache hits, import progress, matching progress) and an "API Cache" dropdown (active cache plus snapshots with date/size, or a "Clean fetch (no cache)" entry) to reuse a previous fetch or force a clean one. The JSON file form has a matching policy dropdown (country-based or none). The base layer form has a provider label field and a depth selector (1-3, default 2) and always matches country-based
+2. **Existing WorldViews** — if imported world views exist in DB, shows a source type badge (`wikivoyage`, `imported`, or `base_layer` — always the bare form: the chip strips any `_done` suffix via `.replace('_done', '')`, even after finalize, though the stored `world_views.source_type` column itself does gain that suffix, e.g. `wikivoyage_done`), a "Review Matches" button for active reviews, and a separate "Review complete" badge that carries the finalized signal instead (persists across sessions/relogins)
 3. **Match review** (`WorldViewImportReview.tsx`) — two view modes:
    - **Table view** — filterable/paginated table, accept/reject suggestions, map preview per suggestion
    - **Tree view** (`WikivoyageMatchTree.tsx`) — clean hierarchical tree with role-based rendering: containers (continents, sub-regions) show "X/Y matched" summary, countries show status chips with GADM names. Unmatched countries (`no_candidates`) have a per-region AI match button that sends the single region to OpenAI for identification. Matched countries with children have a **"Match children independently"** button (tree icon) that drills down — clears the parent's own match, marks it `children_matched`, and runs country-level matching on each child independently (works for subcontinents, large countries like USA, etc.). `children_matched` regions display as regular "matched" in the UI. Expand/collapse all controls for quick navigation. **"Show N Gaps to Review"** button appears in the toolbar when shadow insertions from the coverage dialog are pending — expands the tree directly to regions that have pending shadow entries and scrolls to the first one, so the admin can quickly find and approve/reject them without manually searching. **Shadow-applied state sync**: when the coverage dialog is closed and shadows are accepted or rejected in the match tree, the coverage dialog's grayed-out (applied) state automatically syncs — accepted gaps disappear from the list, rejected gaps reappear as active
    - **Re-match All** button — opens a confirmation dialog with a matching policy selector (default: country-based), warning that all match assignments, suggestions, and rejections will be lost. On confirm, clears all `region_match_suggestions`, resets `region_import_state.match_status`, deletes `region_members`, then re-runs the matcher with the selected policy. Useful after matcher improvements. Runs in background with progress polling
    - **Check Coverage** button — opens a dedicated `CoverageResolveDialog` (`maxWidth="lg"`, side-by-side layout) for resolving GADM coverage gaps. Runs a deep GADM coverage check using recursive walks both UP (ancestor chain) and DOWN (descendants of assigned divisions). Finds "gap boundaries" at every level — uncovered divisions whose parent has partial coverage. For example, if USA has most states assigned but Texas is missing, Texas appears as a gap under "United States." Available once all `needs_review` and blocking `no_candidates` are resolved. **Layout**: left panel (~55%) shows an interactive gap tree grouped by parent with expand/collapse; right panel (~45%) shows an inline map preview with gap geometry (red), suggestion geometry (blue), distance circles, and suggestion details. **Per-node actions**: every tree node — top-level gaps, intermediate GADM divisions, and leaf divisions — has individual action buttons: map preview (shows geometry in right panel), geo-suggest (find nearest assigned region by geographic proximity), and dismiss (top-level gaps only). Subtree nodes from the `subtree` field are rendered as expandable children with their own preview and geo-suggest buttons, so the admin can drill into abstract entries like "Antarctica → Australia" and suggest at the leaf level (e.g., "Heard Island → Add to Australia"). **Tree-based suggestions**: pre-computed using pure integer joins on the GADM `parent_id` tree — no geometry queries. Step 1 (sibling match): finds gaps whose GADM siblings are directly assigned to regions → suggests "add to existing region." Step 2 (ancestor walk): for remaining gaps without direct siblings, walks UP the GADM tree to find the nearest assigned cousin → suggests "create new region" under the cousin's parent region. Both steps complete in milliseconds. Suggestions appear as inline chips below each node. **Geo-suggest**: triggers a per-gap geographic lookup using boundary-based KNN search. The gap's centroid is compared against assigned divisions using `geom <->` (GiST bounding-box proximity), which correctly finds large regions whose boundary is close but centroid is far (e.g., Antarctica for Heard Island). Returns the nearest assigned region with distance (gap centroid to nearest polygon boundary edge). Also returns a **context tree** — a nested hierarchy from the root down to the suggested region, with the suggested region's children attached. This lets the admin pick not just an ancestor but also a more specific child (e.g., for "Heard Island → Antarctica," the tree shows World → Oceania → **Antarctica** → South Ocean Islands / Antarctic Peninsula). The right panel renders this as a compact mini-tree with indentation; clicking any node selects it as the target region. On first call, lazily populates `anchor_point` for assigned divisions (with triggers disabled to avoid expensive 3857 recomputation). Useful for isolated territories and overseas departments where tree-based suggestions are wrong (e.g., Clipperton Island, BIOT). Updates the suggestion in-place and shows the result on the inline map (gap + suggestion + distance circle). **Manual region search**: a "Choose region manually..." link always appears below the suggestion area in the right panel. Clicking it reveals an Autocomplete that searches all regions in the world view via `searchRegions()`. Selecting a region writes a manual override into `selectedTargets`, which takes highest priority in `getNodeSuggestion` — even when there's no geo-suggest result. The override appears as a "Manual: X" chip with a clear button. This is useful when the geo-suggest is wrong or when there are no suggestions at all. **Per-gap apply**: each gap row (both top-level gaps and subtree nodes) shows a green checkmark button when it has an effective suggestion (from tree-based, geo-suggest, or manual search). Clicking it immediately sends that single gap as a shadow insertion to the match tree — the row then grays out (opacity 0.45), hides its action buttons and suggestion chip, and collapses any subtree children. An undo button (↩) replaces the action buttons to restore the row. Applied gaps are excluded from the global "Apply N to tree" count and bulk action. The global button still works for unapplied gaps. **Shadow insertions**: clicking "Apply to tree" creates ghost entries in the match tree — each gap appears as a semi-transparent dashed-border row under the suggested region. `add_member` shadows appear below the region's assigned divisions; `create_region` shadows appear as synthetic child nodes. Each shadow has approve (green check) and reject (red X) buttons. Approving creates the region_member (or new region + member), auto-dismisses the gap, and removes all shadows for that gap. Dismissed gaps are stored in `world_views.dismissed_coverage_ids`, persist across sessions, and reset on re-match. A collapsible "N dismissed" section below the active gaps allows undismissing. Coverage passes when active gaps = 0 (dismissed don't count). Coverage data resets when match assignments change. **SSE streaming**: the coverage check uses Server-Sent Events to stream real-time progress through three phases — (1) finding coverage gaps via recursive CTE, (2) batch sibling match, and (3) ancestor walk for remaining gaps. The dialog shows step text, elapsed time, and a progress bar
-   - **Close Review** button — finalizes the match review, appending `'_done'` to the current `source_type` (e.g., `'wikivoyage'` → `'wikivoyage_done'`, `'imported'` → `'imported_done'`). Requires both: (1) no blocking match issues and (2) a passing coverage check (0 active uncovered GADM divisions — dismissed don't count). Backend also validates — returns 400 if unmatched regions exist. The world view remains fully editable from the WorldView Editor but no longer appears in the active review list
+   - **Close Review** button — finalizes the match review, appending `'_done'` to the current `source_type` (e.g., `'wikivoyage'` → `'wikivoyage_done'`, `'imported'` → `'imported_done'`, `'base_layer'` → `'base_layer_done'`). Requires both: (1) no blocking match issues and (2) a passing coverage check (0 active uncovered GADM divisions — dismissed don't count). Backend also validates — returns 400 if unmatched regions exist. The world view remains fully editable from the WorldView Editor but no longer appears in the active review list
 
 ## Usage
 
-### Primary: Fetch from Wikivoyage
+### Wikivoyage
 
-1. Open Admin Panel → WorldView Import
-2. Enter a WorldView name (default: "Wikivoyage Regions")
-3. Optionally toggle "Use cached data" (checked by default if a cache file exists; unchecking forces a clean fetch)
+1. Open Admin Panel → WorldView Import — "Wikivoyage" is the default source
+2. Confirm or edit the WorldView name (default: "Wikivoyage Regions")
+3. Optionally choose a cache from the "API Cache" dropdown — defaults to the latest cache when one exists, or select "Clean fetch (no cache)" to force a fresh fetch
 4. Click "Fetch from Wikivoyage" — the extraction pipeline runs automatically (20-40 min). Always uses country-based matching
 5. After all phases complete, click "Review Matches"
 6. Accept auto-matches in bulk, review suggestions individually
 7. Open the WorldView in WorldViewEditor for geometry work
 
-### Alternative: JSON File Upload
+### JSON File Upload
 
-1. Open Admin Panel → WorldView Import → expand "Or upload from file"
-2. Upload a JSON file with the expected tree format (validated against recursive Zod schema, max 50K nodes, 15 levels deep)
+1. Open Admin Panel → WorldView Import, select "JSON file" from the source selector
+2. Enter a WorldView name and upload a JSON file with the expected tree format (validated against recursive Zod schema, max 50K nodes, 15 levels deep)
 3. Select matching policy: "Country-based" (default) or "None" (skip auto-matching)
 4. Click "Start Import"
 5. Continue with match review as above
+
+### Administrative Base Layer
+
+1. Open Admin Panel → WorldView Import, select "Administrative base layer" from the source selector
+2. Enter a WorldView name (default: "Administrative"), a provider label (names the dataset currently loaded), and a depth (1-3, default 2) — see "Base Layer Import" in `docs/tech/world-views.md` for what depth controls and the measured match outcome
+3. Click "Import base layer" — always uses country-based matching
+4. Continue with match review as above
 
 ## AI Review Children
 
