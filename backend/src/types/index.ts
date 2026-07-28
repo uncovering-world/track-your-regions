@@ -662,23 +662,28 @@ export const childrenCoverageQuerySchema = z.object({
 // =============================================================================
 // World View schemas
 // =============================================================================
+// String bounds here are the widths of the columns the values land in —
+// world_views and regions in db/init/01-schema.sql. A bound wider than its
+// column is not a laxer API, only a later failure: Zod passes the value on,
+// Postgres raises 22001 on the write, and the caller gets a 500 where a 400
+// was owed. columnBounds.test.ts holds the two in step.
 
 export const createWorldViewBodySchema = z.object({
   name: z.string().min(1).max(255),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(1000).optional(),
   source: z.string().max(1000).optional(),
 });
 
 export const updateWorldViewBodySchema = z.object({
   name: z.string().min(1).max(255).optional(),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(1000).optional(),
   source: z.string().max(1000).optional(),
   isPublic: z.boolean().optional(),
 });
 
 export const createRegionBodySchema = z.object({
   name: z.string().min(1).max(500),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(1000).optional(),
   parentRegionId: z.number().int().positive().optional(),
   color: z.string().max(50).optional(),
   customGeometry: z.any().optional(),
@@ -686,7 +691,7 @@ export const createRegionBodySchema = z.object({
 
 export const updateRegionBodySchema = z.object({
   name: z.string().min(1).max(500).optional(),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(1000).optional(),
   parentRegionId: z.number().int().positive().nullable().optional(),
   color: z.string().max(50).nullable().optional(),
   usesHull: z.boolean().optional(),
