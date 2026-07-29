@@ -112,7 +112,7 @@ Zoom 9+:   geom_3857
 | Column | Type | Description |
 |--------|------|-------------|
 | `custom_geom` | Geometry | Optional partial geometry override when a division is split across regions. |
-| `custom_name` | text | Optional name override for the member. |
+| `custom_name` | VARCHAR(255) | Optional name override for the member. Same width as `regions.name`, which the request bound behind it has to fit — see "Field limits" in `world-views.md`. |
 
 Effective geometry: `COALESCE(rm.custom_geom, ad.geom)` — centralized in `region_member_effective_geom` view.
 

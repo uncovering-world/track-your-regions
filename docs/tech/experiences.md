@@ -173,7 +173,7 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 | POST | `/api/experiences/:id/assign` | `{ regionId }` |
 | DELETE | `/api/experiences/:id/assign/:regionId` | Manual assignment removal |
 | DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute |
-| PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `category`, `imageUrl`, `tags`, `websiteUrl`). `websiteUrl` is stored in `metadata.website` via JSONB merge |
+| PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `category`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`). The last two are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge |
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions |
 
 ### Geocoding (public + admin)
@@ -204,6 +204,25 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 | POST | `/api/admin/curators` |
 | DELETE | `/api/admin/curators/:assignmentId` |
 | GET | `/api/admin/curators/:userId/activity` |
+
+### Field limits
+
+What a curator edits or creates is bounded by the column it is stored in, not
+by a number chosen at the API — the rule and its reasoning are in
+`world-views.md` § "Field limits":
+
+| Field | Limit | Column |
+|-------|-------|--------|
+| Experience name | 500 | `experiences.name`, and `experience_locations.name` for the location created with it |
+| Category label | 100 | `experiences.category` |
+| Image URL | 1000 | `experiences.image_url` |
+| Country code | 10 | one element of `experiences.country_codes` |
+| Country name | 255 | one element of `experiences.country_names` |
+
+Short description, description, tags, and the website and Wikipedia URLs are
+not on this list: the first three are `TEXT`/`JSONB` columns and the last two
+live inside the `metadata` JSONB, so none of them has a width to align with.
+`backend/src/types/columnBounds.test.ts` holds every entry above to its column.
 
 ## Curation Guarantees
 

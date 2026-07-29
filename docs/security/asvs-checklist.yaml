@@ -60,7 +60,7 @@ chapters:
       desc: "Input validation on all endpoints"
       level: 1
       status: pass
-      notes: "Node side: Zod schemas on all route files. cv-python uses FastAPI's `UploadFile`/`Form` declarations + `decode_image()` validation (raises InvalidImageBytes on null/empty/non-image bytes, returned as 400 by exception handler). The `params: str = Form(...)` + json.loads pattern is documented as a follow-up to migrate to Pydantic models — current behaviour: malformed JSON triggers a generic 500, no info leak (audit 2026-05-10)."
+      notes: "Node side: Zod schemas on all route files; string bounds for the world view, region, experience, account and admin AI request surfaces — eight tables — are pinned to their column widths by backend/src/types/columnBounds.test.ts (a bound tighter than its column, such as a registration email at RFC 5321's 254, carries its reason and is pinned there), and a value that still overruns its column (22001) is answered 400 — quoting the width when the driver message carries one, generic otherwise — rather than falling through as a masked 500 (2026-07-28). cv-python uses FastAPI's `UploadFile`/`Form` declarations + `decode_image()` validation (raises InvalidImageBytes on null/empty/non-image bytes, returned as 400 by exception handler). The `params: str = Form(...)` + json.loads pattern is documented as a follow-up to migrate to Pydantic models — current behaviour: malformed JSON triggers a generic 500, no info leak (audit 2026-05-10)."
 
   V3_web_frontend_security:
     V3.2.1:

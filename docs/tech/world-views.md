@@ -454,6 +454,60 @@ Handle countries spanning multiple continents:
 - `POST /api/world-views/regions/:regionId/hull/preview` - Preview hull geometry
 - `POST /api/world-views/regions/:regionId/hull/save` - Save hull geometry
 
+### Field limits
+
+`VARCHAR`-backed fields are bounded by the column they are stored in, not by a
+number chosen at the API. `TEXT`-backed fields — experience descriptions, an
+import's source URLs — have no width to align with and are not part of this
+contract:
+
+| Field | Limit | Column |
+|-------|-------|--------|
+| World view name | 255 | `world_views.name` |
+| World view description | 1000 | `world_views.description` |
+| World view source | 1000 | `world_views.source` |
+| Region name | 255 | `regions.name` |
+| Region description | 1000 | `regions.description` |
+| Region color | 7 (`#rrggbb`) | `regions.color` |
+| Member name override | 255 | `region_members.custom_name` |
+
+The same widths bound what an import supplies: a tree node, a rename, a child
+added during review, a coverage gap, or a `customName` on an added division all
+land in `regions.name`, and the name given to a base layer mirror or a
+Wikivoyage extraction lands in `world_views.name`. A `customName` is the one
+that has to fit two columns — it names the subregion created for the division
+and is stored beside the member as `region_members.custom_name` — so its bound
+answers to whichever is narrower.
+
+A bound wider than its column is not a laxer API, only a later failure: the
+value passes validation and Postgres refuses it on the write with `22001`,
+which carries no status code and so surfaces as a 500. One thing prevents
+that, and one catches what still gets through:
+
+- `backend/src/types/columnBounds.test.ts` reads the widths out of
+  `db/init/01-schema.sql` and holds each request bound equal to its column, so
+  drift is named whichever way it happens — a column narrowed under its bound,
+  or a column widened while the bound that should have followed stayed put. A
+  bound deliberately tighter than its column carries the reason with it and is
+  pinned at that number instead: the import's `providerLabel` at 949, because
+  51 characters of prefix are added before it reaches
+  `world_views.description`, and a registration email at 254, the longest
+  address RFC 5321 will carry. Wider than the column is never deliberate. The
+  same test covers the experience fields listed in `experiences.md` § "Field
+  limits", the account fields in `authentication.md` § "Account Field Limits",
+  and the two admin AI fields that reach a column — an `ai_settings` key and a
+  learned rule's `feature`.
+- `errorHandler.ts` catches what the test did not prevent: a `22001` that
+  reaches the database is answered 400 instead of 500. Postgres reports the
+  type and width but never the column for this class, so the message quotes
+  the width when the driver message carries one and stays generic when it does
+  not. This prevents nothing — it keeps the failure honest, and reaching it at
+  all means a bound has drifted.
+
+The frontend mirrors the description limit in the field itself
+(`WORLD_VIEW_DESCRIPTION_MAX_LENGTH` in `frontend/src/api/worldViews.ts`),
+so the cap shows up as a counter while typing rather than as a rejected save.
+
 ---
 
 ## Tips and Best Practices
