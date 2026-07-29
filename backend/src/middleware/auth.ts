@@ -181,3 +181,26 @@ export async function checkCuratorScope(
 
   return regionResult.rows.length > 0;
 }
+
+// =============================================================================
+// Helper: Curator-Scoped Regions
+// =============================================================================
+/**
+ * SQL prelude naming `curator_scoped_regions`: every region a curator's
+ * region-scoped assignments cover — each assigned region plus everything
+ * beneath it. Same set as `checkCuratorScope`'s ancestor walk, reached from
+ * the other end, so it can filter a result set rather than answer about one
+ * region. Prepend it to a query and reference the CTE in a predicate.
+ *
+ * The curator's user id must be `$1` in any query that uses this.
+ */
+export const CURATOR_SCOPED_REGIONS_CTE = `
+  WITH RECURSIVE curator_scoped_regions AS (
+    SELECT ca.region_id AS id
+    FROM curator_assignments ca
+    WHERE ca.user_id = $1 AND ca.scope_type = 'region' AND ca.region_id IS NOT NULL
+    UNION
+    SELECT r.id
+    FROM regions r
+    JOIN curator_scoped_regions s ON r.parent_region_id = s.id
+  )`;
