@@ -80,7 +80,7 @@ Uploaded JSON trees are validated with a recursive Zod schema:
 
 ```typescript
 {
-  name: string,          // 1-500 chars
+  name: string,          // 1-255 chars (the width of regions.name)
   regionMapUrl?: string, // valid URL, max 2000 chars
   mapImageCandidates?: string[], // max 20 URLs
   wikidataId?: string,   // Q-ID format (Q\d+)

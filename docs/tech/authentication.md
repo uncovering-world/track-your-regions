@@ -311,6 +311,17 @@ Uses `draft-7` standard headers (`RateLimit-Policy`, `RateLimit`).
 - **Fails open**: If the HIBP API is unavailable, registration/change proceeds without the check (availability over security for a non-critical check).
 - **Password change** (`POST /api/auth/change-password`): Requires the current password, checks the new password against HIBP, then revokes all existing refresh tokens (forcing re-login on all other devices). Returns new tokens for the current session.
 
+## Account Field Limits
+
+Registration is bounded by what the columns hold, alongside the password rules above:
+
+| Field | Limit | Column |
+|-------|-------|--------|
+| Email | 254 | `users.email` is `VARCHAR(255)`, but RFC 5321 § 4.5.3.1.3 caps a deliverable address at 254 — the tighter of the two is the real bound |
+| Display name | 255 | `users.display_name` |
+
+Both are held to their columns by `backend/src/types/columnBounds.test.ts`; the reasoning behind bounding a request field by its column is in `world-views.md` § "Field limits".
+
 ## Frontend Integration
 
 The frontend automatically:
