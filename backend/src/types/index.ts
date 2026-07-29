@@ -207,17 +207,26 @@ export const assignExperienceBodySchema = z.object({
   regionId: z.number().int().positive(),
 });
 
-const safeUrlSchema = z.string().max(2000).optional().refine(
+/**
+ * A URL field that refuses script-bearing schemes, bounded by whatever holds
+ * it. Most of these end up inside the `metadata` JSONB, which has no width, so
+ * they keep the generic 2000; `imageUrl` is stored in `experiences.image_url`
+ * and takes that column's 1000 instead.
+ */
+const safeUrl = (max: number) => z.string().max(max).optional().refine(
   (val) => !val || !/^(javascript|data|vbscript|blob):/i.test(val),
   { message: 'URL uses an unsafe scheme' },
 );
+
+const safeUrlSchema = safeUrl(2000);
+const safeImageUrlSchema = safeUrl(1000);
 
 export const editExperienceBodySchema = z.object({
   name: z.string().min(1).max(500).optional(),
   shortDescription: z.string().max(1000).optional(),
   description: z.string().max(10000).optional(),
-  category: z.string().max(255).optional(),
-  imageUrl: safeUrlSchema,
+  category: z.string().max(100).optional(),
+  imageUrl: safeImageUrlSchema,
   tags: z.array(z.string().max(100)).max(50).optional(),
   websiteUrl: safeUrlSchema,
   wikipediaUrl: safeUrlSchema,
@@ -226,10 +235,10 @@ export const editExperienceBodySchema = z.object({
 export const createManualExperienceBodySchema = z.object({
   name: z.string().min(1).max(500),
   shortDescription: z.string().max(1000).optional(),
-  category: z.string().max(255).optional(),
+  category: z.string().max(100).optional(),
   longitude: z.number().min(-180).max(180),
   latitude: z.number().min(-90).max(90),
-  imageUrl: safeUrlSchema,
+  imageUrl: safeImageUrlSchema,
   tags: z.array(z.string().max(100)).max(50).optional(),
   countryCode: z.string().max(10).optional(),
   countryName: z.string().max(255).optional(),

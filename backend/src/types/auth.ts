@@ -99,7 +99,10 @@ export interface PublicUser {
 // =============================================================================
 
 export const registerSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  // 254 is the longest address SMTP will carry (RFC 5321 § 4.5.3.1.3), and it
+  // is the value stored in users.email — VARCHAR(255) — so the tighter of the
+  // two bounds is the real one.
+  email: z.string().email('Invalid email address').max(254, 'Email must be at most 254 characters'),
   password: z.string()
     .min(8, 'Password must be at least 8 characters')
     .max(128, 'Password must be at most 128 characters'),
