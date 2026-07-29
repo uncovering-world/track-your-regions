@@ -174,7 +174,7 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 | DELETE | `/api/experiences/:id/assign/:regionId` | Manual assignment removal |
 | DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute |
 | PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `category`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`). The last two are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge |
-| GET | `/api/experiences/:id/curation-log` | Latest curation actions |
+| GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) |
 
 ### Geocoding (public + admin)
 
@@ -229,6 +229,23 @@ live inside the `metadata` JSONB, so none of them has a width to align with.
 - `curated_fields` on `experiences` protects edited fields during sync upserts
 - Manual experiences (`is_manual = true`) are not replaced by source sync
 - Manual region assignments are preserved across assignment recompute jobs
+- The curation log is scope-filtered per row, not per experience. `getCurationLog`
+  reaches the log only if something in it is attributable to the caller's scope —
+  a region the experience is assigned to, or a region its log rows already name —
+  and then returns the rows for the regions they cover plus the rows that name no
+  region. The two halves of that gate are deliberate: removing an experience from
+  a region deletes the assignment and logs the removal, so assignments alone would
+  refuse a curator the record of their own last act there. Admins, global curators,
+  and curators of the experience's category see everything. The predicate is
+  `CURATOR_SCOPED_REGIONS_CTE` (`backend/src/middleware/auth.ts`) — the
+  descendant closure of a curator's region assignments, the same set
+  `checkCuratorScope` reaches by walking ancestors, expressed so it can qualify
+  a result set instead of one region. Gate and filter run off that one closure,
+  so the gate never admits a row the filter would drop — it is strictly the
+  stronger of the two. Where they part is deliberate: a row naming no region
+  satisfies neither half of the gate, so an experience whose log holds only
+  those is refused outright rather than handed over. That refusal is the hole
+  #442 names; without the gate, any curator could read such a log
 
 ## Frontend Integration Notes
 
