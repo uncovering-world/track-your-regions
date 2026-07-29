@@ -310,7 +310,7 @@ chapters:
       desc: "Curator scope enforcement"
       level: 1
       status: pass
-      notes: "checkCuratorScope() validates global/source/region scopes with recursive CTE. getCurationLog scope check added. Fixed 2026-02-10"
+      notes: "checkCuratorScope() validates global/category/region scopes with recursive CTE — those three are what curator_assignments.scope_type permits in db/init/01-schema.sql, where 'category' replaced the original 'source' scope. Earlier notes here said 'source': a database provisioned from db/migrations/001-curator-system.sql still carries the older CHECK and may hold scope_type = 'source' rows, since no migration converts them and 01-schema.sql's CREATE TABLE IF NOT EXISTS will not rewrite the constraint (no ledger records which migrations a database has seen — #435). No code path grants access for such a row: resolveCurationLogScope matches only 'global'/'category', CURATOR_SCOPED_REGIONS_CTE only 'region', so a source assignment yields no scope rather than wrong scope. The TypeScript union still spells the stale set — #452. getCurationLog's check was added 2026-02-10 but qualified one arbitrary region of the experience while the response carried rows for all of them (#442); it now resolves scope against everything in the log attributable to the caller — the experience's assigned regions and the regions its log rows already name — and filters the rows themselves through CURATOR_SCOPED_REGIONS_CTE, so a region-scoped curator sees only the entries for regions they cover. Fixed 2026-07-29"
     V8.1.1_cvpy:
       desc: "cv-python authorization model"
       level: 2
