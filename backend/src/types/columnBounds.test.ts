@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   addDivisionsToRegionBodySchema,
+  addLearnedRuleBodySchema,
+  aiSettingKeyParamSchema,
   baseLayerImportBodySchema,
   createManualExperienceBodySchema,
   createRegionBodySchema,
@@ -63,6 +65,8 @@ const WIDTHS = {
   experiences: varcharWidths('experiences'),
   experience_locations: varcharWidths('experience_locations'),
   users: varcharWidths('users'),
+  ai_settings: varcharWidths('ai_settings'),
+  ai_learned_rules: varcharWidths('ai_learned_rules'),
 };
 
 type GuardedTable = keyof typeof WIDTHS;
@@ -375,6 +379,22 @@ const CASES: BoundCase[] = [
     table: 'users',
     column: 'display_name',
     build: (value) => ({ email: 'ada@example.com', password: 'correct horse battery', displayName: value }),
+  },
+
+  // --- Admin AI ---------------------------------------------------------------
+  {
+    field: 'aiSettingKeyParamSchema.key',
+    schema: aiSettingKeyParamSchema,
+    table: 'ai_settings',
+    column: 'key',
+    build: (value) => ({ key: value }),
+  },
+  {
+    field: 'addLearnedRuleBodySchema.feature',
+    schema: addLearnedRuleBodySchema,
+    table: 'ai_learned_rules',
+    column: 'feature',
+    build: (value) => ({ feature: value, ruleText: 'Prefer the shorter name.' }),
   },
 ];
 
