@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 import {
   addDivisionsToRegionBodySchema,
   baseLayerImportBodySchema,
+  createManualExperienceBodySchema,
   createRegionBodySchema,
   createWorldViewBodySchema,
+  editExperienceBodySchema,
   updateRegionBodySchema,
   updateWorldViewBodySchema,
   wvExtractStartSchema,
@@ -14,6 +16,7 @@ import {
   wvImportBodySchema,
   wvImportRenameRegionSchema,
 } from './index.js';
+import { registerSchema } from './auth.js';
 
 /**
  * A request bound wider than the column behind it is invisible until a caller
@@ -33,7 +36,11 @@ const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', impo
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
 const schema = readFileSync(SCHEMA_PATH, 'utf8');
 
-/** Widths of the VARCHAR columns declared in one `CREATE TABLE` block. */
+/**
+ * Widths of the VARCHAR columns declared in one `CREATE TABLE` block. An array
+ * column (`country_codes VARCHAR(10)[]`) yields the width of one element,
+ * which is what a request field is bounded against.
+ */
 function varcharWidths(table: string): Map<string, number> {
   const header = `CREATE TABLE IF NOT EXISTS ${table} (`;
   const start = schema.indexOf(header);
@@ -49,13 +56,18 @@ function varcharWidths(table: string): Map<string, number> {
   return widths;
 }
 
-const WIDTHS: Record<string, Map<string, number>> = {
+const WIDTHS = {
   world_views: varcharWidths('world_views'),
   regions: varcharWidths('regions'),
   region_members: varcharWidths('region_members'),
+  experiences: varcharWidths('experiences'),
+  experience_locations: varcharWidths('experience_locations'),
+  users: varcharWidths('users'),
 };
 
-function columnWidth(table: string, column: string): number {
+type GuardedTable = keyof typeof WIDTHS;
+
+function columnWidth(table: GuardedTable, column: string): number {
   const width = WIDTHS[table]?.get(column);
   if (width === undefined) throw new Error(`${table}.${column} is not a VARCHAR column`);
   return width;
@@ -69,20 +81,43 @@ interface BoundCase {
   /** Where the bound lives, for the test name. */
   field: string;
   schema: RequestSchema;
-  table: 'world_views' | 'regions' | 'region_members';
+  table: GuardedTable;
   column: string;
   /** A payload valid apart from the field under test. */
   build: (value: string) => unknown;
+  /**
+   * A value of the requested length that the field's other rules accept — an
+   * address for an email field, say. Plain filler otherwise.
+   */
+  fill?: (length: number) => string;
+  /**
+   * Set when the bound is deliberately below the column, with the reason it is.
+   * The test then pins that number instead of the width, and still checks it
+   * fits. Wider than the column is never deliberate — that is the bug this
+   * file exists to catch.
+   */
+  tighterThanColumn?: { bound: number; reason: string };
+}
+
+/** A create-experience payload that is valid apart from the given override. */
+function manualExperience(override: Record<string, unknown>): unknown {
+  return {
+    name: 'Sagrada Família',
+    longitude: 2.1744,
+    latitude: 41.4036,
+    regionId: 1,
+    categoryId: 1,
+    ...override,
+  };
 }
 
 /**
- * Every bounded request field that lands in a VARCHAR column of `world_views`,
- * `regions` or `region_members` — a field writing two of them appears once per
- * column. Fields writing TEXT columns (source_url, source_external_id)
- * have nothing to align with and stay out, and so does a field deliberately
- * bounded tighter than its column — `baseLayerImportBodySchema.providerLabel`
- * is sized for the 51-character prefix it gets embedded in, so equality with
- * `world_views.description` is exactly what it must not have.
+ * Every bounded request field that lands in a VARCHAR column of the tables
+ * above — a field writing two of them appears once per column. Fields writing
+ * TEXT or JSONB (source_url, an experience's description, the website and
+ * wikipedia URLs kept in `metadata`) have no width to align with and stay out.
+ * A field bounded tighter than its column on purpose stays in, carrying the
+ * reason with it.
  */
 const CASES: BoundCase[] = [
   {
@@ -242,6 +277,105 @@ const CASES: BoundCase[] = [
     column: 'name',
     build: (value) => ({ divisionId: 1, regionId: 1, action: 'create_region', gapName: value }),
   },
+  {
+    field: 'baseLayerImportBodySchema.providerLabel',
+    schema: baseLayerImportBodySchema,
+    table: 'world_views',
+    column: 'description',
+    build: (value) => ({ name: 'Administrative', providerLabel: value, maxDepth: 2 }),
+    tighterThanColumn: {
+      bound: 949,
+      reason: 'embedded in `Mirror of the administrative base layer (<label>), depth <n>`, 51 fixed characters',
+    },
+  },
+
+  // --- Experiences -----------------------------------------------------------
+  {
+    field: 'editExperienceBodySchema.name',
+    schema: editExperienceBodySchema,
+    table: 'experiences',
+    column: 'name',
+    build: (value) => ({ name: value }),
+  },
+  {
+    field: 'editExperienceBodySchema.category',
+    schema: editExperienceBodySchema,
+    table: 'experiences',
+    column: 'category',
+    build: (value) => ({ category: value }),
+  },
+  {
+    field: 'editExperienceBodySchema.imageUrl',
+    schema: editExperienceBodySchema,
+    table: 'experiences',
+    column: 'image_url',
+    build: (value) => ({ imageUrl: value }),
+  },
+  {
+    field: 'createManualExperienceBodySchema.name',
+    schema: createManualExperienceBodySchema,
+    table: 'experiences',
+    column: 'name',
+    build: (value) => manualExperience({ name: value }),
+  },
+  {
+    // The same name is also written as the experience's first location.
+    field: 'createManualExperienceBodySchema.name',
+    schema: createManualExperienceBodySchema,
+    table: 'experience_locations',
+    column: 'name',
+    build: (value) => manualExperience({ name: value }),
+  },
+  {
+    field: 'createManualExperienceBodySchema.category',
+    schema: createManualExperienceBodySchema,
+    table: 'experiences',
+    column: 'category',
+    build: (value) => manualExperience({ category: value }),
+  },
+  {
+    field: 'createManualExperienceBodySchema.imageUrl',
+    schema: createManualExperienceBodySchema,
+    table: 'experiences',
+    column: 'image_url',
+    build: (value) => manualExperience({ imageUrl: value }),
+  },
+  {
+    // Stored as one element of a VARCHAR(10)[] / VARCHAR(255)[].
+    field: 'createManualExperienceBodySchema.countryCode',
+    schema: createManualExperienceBodySchema,
+    table: 'experiences',
+    column: 'country_codes',
+    build: (value) => manualExperience({ countryCode: value }),
+  },
+  {
+    field: 'createManualExperienceBodySchema.countryName',
+    schema: createManualExperienceBodySchema,
+    table: 'experiences',
+    column: 'country_names',
+    build: (value) => manualExperience({ countryName: value }),
+  },
+
+  // --- Accounts --------------------------------------------------------------
+  {
+    field: 'registerSchema.email',
+    schema: registerSchema,
+    table: 'users',
+    column: 'email',
+    build: (value) => ({ email: value, password: 'correct horse battery', displayName: 'Ada' }),
+    fill: (length) => `${'a'.repeat(length - '@example.com'.length)}@example.com`,
+    tighterThanColumn: {
+      bound: 254,
+      reason: 'RFC 5321 § 4.5.3.1.3 — the longest address SMTP will carry',
+    },
+  },
+  {
+    field: 'registerSchema.displayName',
+    schema: registerSchema,
+    table: 'users',
+    column: 'display_name',
+    build: (value) => ({ email: 'ada@example.com', password: 'correct horse battery', displayName: value }),
+  },
 ];
 
 describe('request bounds against their columns', () => {
@@ -256,17 +390,28 @@ describe('request bounds against their columns', () => {
     expect(unresolved).toEqual([]);
   });
 
-  for (const { field, schema: requestSchema, table, column, build } of CASES) {
-    it(`${field} stops at the width of ${table}.${column}`, () => {
+  for (const { field, schema: requestSchema, table, column, build, fill, tighterThanColumn } of CASES) {
+    const filler = fill ?? ((length: number) => 'x'.repeat(length));
+    const stopsAt = tighterThanColumn
+      ? `${tighterThanColumn.bound}, within ${table}.${column}`
+      : `the width of ${table}.${column}`;
+
+    it(`${field} stops at ${stopsAt}`, () => {
       const width = columnWidth(table, column);
+      const bound = tighterThanColumn?.bound ?? width;
 
       expect(
-        requestSchema.safeParse(build('x'.repeat(width))).success,
-        `${field} must accept a value that fits ${table}.${column}`,
+        bound,
+        `${field} is bounded at ${bound} (${tighterThanColumn?.reason}), which no longer fits ${table}.${column}`,
+      ).toBeLessThanOrEqual(width);
+
+      expect(
+        requestSchema.safeParse(build(filler(bound))).success,
+        `${field} must accept a value of its full ${bound} characters`,
       ).toBe(true);
 
       expect(
-        requestSchema.safeParse(build('x'.repeat(width + 1))).success,
+        requestSchema.safeParse(build(filler(bound + 1))).success,
         `${field} must reject what ${table}.${column} cannot store — Postgres would raise 22001`,
       ).toBe(false);
     });
