@@ -204,3 +204,25 @@ export const CURATOR_SCOPED_REGIONS_CTE = `
     FROM regions r
     JOIN curator_scoped_regions s ON r.parent_region_id = s.id
   )`;
+
+/**
+ * SQL fragment: is this caller's curator scope unrestricted for an experience
+ * of the given category? True for a global assignment, or a category assignment
+ * naming that category — the two scope types that reach past any one region, so
+ * a caller holding either sees the experience whole.
+ *
+ * It matches nothing else `curator_assignments.scope_type` may hold. That is a
+ * property, not an omission: a legacy `source` row (#452) yields *no* scope
+ * rather than wrong scope, which `docs/security/asvs-checklist.yaml` V8.3.2
+ * asserts. Kept here in one piece so the two queries that ask this question
+ * cannot drift apart when the scope set changes.
+ *
+ * Expects `$1` = curator user id and `$3` = the experience's category id — the
+ * same positional convention as `CURATOR_SCOPED_REGIONS_CTE`.
+ */
+export const CURATOR_UNRESTRICTED_SCOPE_EXISTS = `
+    EXISTS (
+      SELECT 1 FROM curator_assignments ca
+      WHERE ca.user_id = $1
+        AND (ca.scope_type = 'global' OR (ca.scope_type = 'category' AND ca.category_id = $3))
+    )`;
