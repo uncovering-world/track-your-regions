@@ -246,6 +246,20 @@ live inside the `metadata` JSONB, so none of them has a width to align with.
   satisfies neither half of the gate, so an experience whose log holds only
   those is refused outright rather than handed over. That refusal is the hole
   #442 names; without the gate, any curator could read such a log
+- An edit is granted on the experience, not on one of its regions.
+  `editExperience` intersects the experience's assignments with
+  `CURATOR_SCOPED_REGIONS_CTE`, so a curator scoped to any one of the regions it
+  sits in may edit it. The previous shape read one region out of an unordered
+  `LIMIT 1` and refused the curator whenever that row named a different region
+  of the same experience (#450). The same query answers what the `edited` log
+  row names: for a region-scoped curator, the lowest-id region of the experience
+  their scope covers — every candidate is a region they genuinely cover, and
+  naming one keeps the entry visible to its own author under the per-row filter
+  above; for admins, global curators, and curators of the experience's category,
+  `NULL`, since no single region is where their authority came from and a row
+  naming none stays visible to every curator who can reach the log. Every other
+  curation handler is told its region by the request — `regionId` in the body or
+  the path — so this is the only place the question arises
 
 ## Frontend Integration Notes
 
