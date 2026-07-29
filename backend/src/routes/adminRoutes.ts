@@ -37,6 +37,9 @@ import {
   wvImportSplitDeeperSchema,
   wvImportVisionMatchSchema,
   wvImportColorMatchSchema,
+  aiSettingKeyParamSchema,
+  aiSettingValueBodySchema,
+  addLearnedRuleBodySchema,
   reviewIdParamSchema,
   wvImportWaterCropParamSchema,
   wvImportClusterHighlightParamSchema,
@@ -620,8 +623,8 @@ router.get('/image-proxy', validate(imageProxyQuerySchema, 'query'), async (req:
 router.get('/ai/settings', getAISettings);
 router.put(
   '/ai/settings/:key',
-  validate(z.object({ key: z.string().trim().min(1) }), 'params'),
-  validate(z.object({ value: z.string().trim().min(1) })),
+  validate(aiSettingKeyParamSchema, 'params'),
+  validate(aiSettingValueBodySchema),
   updateAISetting,
 );
 router.get('/ai/usage', getAIUsage);
@@ -629,11 +632,7 @@ router.post('/ai/update-pricing', updatePricing);
 router.get('/ai/rules', getLearnedRules);
 router.post(
   '/ai/rules',
-  validate(z.object({
-    feature: z.string().trim().min(1),
-    ruleText: z.string().trim().min(1),
-    context: z.string().optional(),
-  })),
+  validate(addLearnedRuleBodySchema),
   addLearnedRule,
 );
 router.delete('/ai/rules/:id', validate(z.object({ id: z.coerce.number().int().positive() }), 'params'), deleteLearnedRule);

@@ -835,6 +835,23 @@ export const setModelBodySchema = z.object({
   modelId: z.string().min(1).max(255),
 });
 
+/** `PUT /api/admin/ai/settings/:key` — the key is the row's primary key. */
+export const aiSettingKeyParamSchema = z.object({
+  key: z.string().trim().min(1).max(255),
+});
+
+export const aiSettingValueBodySchema = z.object({
+  value: z.string().trim().min(1).max(2000),
+});
+
+export const addLearnedRuleBodySchema = z.object({
+  feature: z.string().trim().min(1).max(100),
+  // rule_text and context are TEXT columns, so 2000 is not a width — it is the
+  // same refuse-the-absurd bound every other free-text request field carries.
+  ruleText: z.string().trim().min(1).max(2000),
+  context: z.string().max(2000).optional(),
+});
+
 export const suggestGroupBodySchema = z.object({
   regionPath: z.string().max(1000),
   regionName: z.string().max(500),
