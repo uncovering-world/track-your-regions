@@ -10,7 +10,8 @@ import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { checkCuratorScope } from '../../middleware/auth.js';
+import type { UserRole } from '../../types/auth.js';
+import { checkCuratorScope, CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 
 const UNSAFE_URL_SCHEMES = /^(javascript|data|vbscript|blob):/i;
 
@@ -488,41 +489,91 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
 }
 
 /**
+ * Resolve what a caller may see of one experience's curation log.
+ *
+ * `unrestricted` — admins, global curators, and curators of the experience's
+ * category see every row. `hasScopedRegion` — a region-scoped curator reaches
+ * the log at all only if something in it is attributable to their scope: a
+ * region the experience is assigned to, or a region already named by one of
+ * its log rows. The second half matters because a curator's last act in a
+ * region is often removing the experience from it, which deletes the
+ * assignment and logs that removal — on assignments alone, the gate would
+ * refuse them the record of what they just did.
+ *
+ * It grants nothing extra: the rows that come back are filtered through the
+ * same closure either way, so the gate never admits a row the filter would
+ * drop. It is strictly the stronger of the two, and deliberately so — neither
+ * `EXISTS` can be satisfied by a row naming no region, so an experience whose
+ * log holds only those is refused here even though the filter would have
+ * returned them. That is the hole #442 names: without the gate, any curator
+ * could read the log of an experience in no one's scope.
+ */
+async function resolveCurationLogScope(
+  userId: number,
+  userRole: UserRole,
+  experienceId: number,
+  categoryId: number,
+): Promise<{ unrestricted: boolean; hasScopedRegion: boolean }> {
+  if (userRole === 'admin') return { unrestricted: true, hasScopedRegion: true };
+
+  const result = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+    SELECT
+      EXISTS (
+        SELECT 1 FROM curator_assignments ca
+        WHERE ca.user_id = $1
+          AND (ca.scope_type = 'global' OR (ca.scope_type = 'category' AND ca.category_id = $3))
+      ) AS unrestricted,
+      (EXISTS (
+        SELECT 1 FROM experience_regions er
+        JOIN curator_scoped_regions s ON s.id = er.region_id
+        WHERE er.experience_id = $2
+      ) OR EXISTS (
+        SELECT 1 FROM experience_curation_log cl
+        JOIN curator_scoped_regions s ON s.id = cl.region_id
+        WHERE cl.experience_id = $2
+      )) AS has_scoped_region
+  `, [userId, experienceId, categoryId]);
+
+  const row = result.rows[0];
+  return { unrestricted: row.unrestricted === true, hasScopedRegion: row.has_scoped_region === true };
+}
+
+/**
  * Get curation log for an experience
  * GET /api/experiences/:id/curation-log
  *
- * Returns the curation history: who did what and when.
- * Requires curator auth.
+ * Returns the curation history: who did what and when. Requires curator auth,
+ * and a region-scoped curator gets only the rows for regions they cover — the
+ * scope check qualifies the result set, not one representative region.
  */
 export async function getCurationLog(req: AuthenticatedRequest, res: Response): Promise<void> {
   const experienceId = parseInt(String(req.params.id));
   const userId = req.user!.id;
   const userRole = req.user!.role;
 
-  // Check curator scope — look up experience's first region and source
   const expResult = await pool.query(
-    `SELECT e.category_id, er.region_id
-     FROM experiences e
-     LEFT JOIN experience_regions er ON er.experience_id = e.id
-     WHERE e.id = $1
-     LIMIT 1`,
+    'SELECT category_id FROM experiences WHERE id = $1',
     [experienceId],
   );
   if (expResult.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
     return;
   }
-  const regionId = expResult.rows[0].region_id;
-  const catId = expResult.rows[0].category_id;
-  if (regionId) {
-    const hasScope = await checkCuratorScope(userId, userRole, regionId, catId);
-    if (!hasScope) {
-      res.status(403).json({ error: 'You do not have curator permissions for this experience' });
-      return;
-    }
+
+  const { unrestricted, hasScopedRegion } = await resolveCurationLogScope(
+    userId,
+    userRole,
+    experienceId,
+    expResult.rows[0].category_id as number,
+  );
+  if (!unrestricted && !hasScopedRegion) {
+    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
+    return;
   }
 
-  const result = await pool.query(`
+  // A row survives when the curator is unrestricted, when it names no region
+  // (it identifies no region to leak), or when its region is one they cover.
+  const result = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT
       cl.id,
       cl.action,
@@ -534,10 +585,11 @@ export async function getCurationLog(req: AuthenticatedRequest, res: Response): 
     FROM experience_curation_log cl
     JOIN users u ON cl.curator_id = u.id
     LEFT JOIN regions r ON cl.region_id = r.id
-    WHERE cl.experience_id = $1
+    WHERE cl.experience_id = $2
+      AND ($3::boolean OR cl.region_id IS NULL OR cl.region_id IN (SELECT id FROM curator_scoped_regions))
     ORDER BY cl.created_at DESC
     LIMIT 50
-  `, [experienceId]);
+  `, [userId, experienceId, unrestricted]);
 
   res.json(result.rows);
 }
