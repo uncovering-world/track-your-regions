@@ -33,6 +33,18 @@ export interface MatchSuggestion {
   score: number;
 }
 
+/**
+ * One region's match outcome, as every policy produces it and every writer
+ * consumes it: the status to record, the candidates to offer for review, and the
+ * division to bind if the policy resolved one.
+ */
+export interface MatchUpdate {
+  id: number;
+  matchStatus: MatchStatus;
+  suggestions: MatchSuggestion[];
+  divisionId?: number;
+}
+
 /** Import progress tracked in memory */
 export interface ImportProgress {
   cancel: boolean;
