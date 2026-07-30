@@ -413,7 +413,7 @@ class GADMProcessor:
         Runs as a single pass over all divisions with geometry, computing:
         1. geom_simplified_low/medium (4326 simplification)
         2. geom_3857 (transform to Web Mercator)
-        3. geom_simplified_low_3857/medium_3857 (3857 simplification)
+        3. geom_simplified_low_3857/medium_3857 and geom_overview_3857 (3857 simplification)
 
         Much faster than per-row trigger execution during INSERT.
         """
@@ -472,6 +472,17 @@ class GADMProcessor:
             SET geom_simplified_low_3857 = simplify_for_zoom(geom_3857, 5000, 0, 0),
                 geom_simplified_medium_3857 = simplify_for_zoom(geom_3857, 1000, 0, 0)
             WHERE geom_3857 IS NOT NULL AND geom_simplified_low_3857 IS NULL
+        """)
+        # Separate statement so the overview reads the low rung this step just
+        # wrote, matching how the trigger derives it. It cannot be left to the
+        # trigger: it is disabled for the bulk import, and the UPDATE above
+        # changes neither geom nor geom_simplified_low, so re-enabling it would
+        # not fire either. Without this a freshly imported database serves the
+        # slow pre-computation path on the default world view.
+        self.pg_cursor.execute("""
+            UPDATE administrative_divisions
+            SET geom_overview_3857 = simplify_for_overview(geom_simplified_low_3857)
+            WHERE geom_simplified_low_3857 IS NOT NULL AND geom_overview_3857 IS NULL
         """)
         self.pg_conn.commit()
         print(f"done ({time.perf_counter() - step3_start:.1f}s)")

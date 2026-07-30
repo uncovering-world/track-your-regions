@@ -17,14 +17,21 @@ The tile functions are optimized for fast response times (~0.7s per tile):
 
 1. **Pre-computed SRID 3857 geometries** - No `ST_Transform` at query time
 2. **Pre-simplified geometries** for different zoom levels:
-   - `geom_simplified_low` - Zoom 0-4 (10km tolerance)
+   - `geom_overview` / `geom_overview_3857` - Zoom 0-2 (50km tolerance)
+   - `geom_simplified_low` - Zoom 3-4 (5km tolerance)
    - `geom_simplified_medium` - Zoom 5-8 (1km tolerance)
-3. **Spatial indexes** on all geometry columns
+3. **Spatial indexes** on the geometry columns, with one exception: the overview
+   rung has none. Tile functions filter on `geom_3857 && bounds` and read every
+   LOD rung only inside `ST_AsMVTGeom`, so none of the simplified columns is a
+   spatial-predicate operand — the indexes on the older rungs predate that and
+   are not load-bearing for tiles
 4. **Automatic triggers** keep derived columns in sync
 
-These optimizations are applied by running:
+The columns, indexes and triggers behind them are all defined in
+`db/init/01-schema.sql`, which Postgres applies automatically when the database
+is created empty. To re-apply it to a database that already holds data:
 ```bash
-psql -d track_regions < db/init/03-geom-3857-columns.sql
+npm run db:run-sql -- -v ON_ERROR_STOP=1 < db/init/01-schema.sql
 ```
 
 ## Running Martin
@@ -87,14 +94,20 @@ npm run martin               # Standalone: uses my_test_db automatically
 
 ### Table Sources (auto-discovered)
 
-| Endpoint | Description |
-|----------|-------------|
-| `/administrative_divisions/{z}/{x}/{y}` | Full-resolution GADM boundaries |
-| `/administrative_divisions_low/{z}/{x}/{y}` | Low-detail GADM (zoom 0-4) |
-| `/administrative_divisions_medium/{z}/{x}/{y}` | Medium-detail GADM (zoom 5-8) |
-| `/regions/{z}/{x}/{y}` | Custom world view regions (full geom) |
-| `/regions_hull/{z}/{x}/{y}` | Region TS hull geometries |
-| `/regions_display/{z}/{x}/{y}` | Region display geometries |
+`config.yaml` sets `auto_publish: tables: true`, so Martin publishes one source
+per geometry column it finds — including every LOD rung on `regions` and
+`administrative_divisions`. The set therefore changes whenever a geometry column
+is added, and enumerating it here would go stale on the next one; ask the running
+server instead:
+
+```bash
+curl -s localhost:3000/catalog | jq '.tiles | keys'
+```
+
+**The app uses none of them.** Every tile the frontend requests comes from a
+function source below, because the rung a tile needs depends on its zoom and a
+table source cannot choose. They are published because auto-discovery is on, and
+are useful for ad-hoc inspection.
 
 ### Function Sources (dynamic queries)
 
@@ -136,14 +149,14 @@ const tileUrl = `${MARTIN_URL}/tile_world_view_root_regions/{z}/{x}/{y}?world_vi
 ## Database Functions
 
 The SQL functions for Martin are defined in:
-- `db/init/02-martin-functions.sql`
+- `db/init/01-schema.sql`
 
 These are automatically created when the database is initialized.
 
 To manually add them to an existing database:
 
 ```bash
-psql -h localhost -U postgres -d track_regions -f db/init/02-martin-functions.sql
+npm run db:run-sql -- -v ON_ERROR_STOP=1 < db/init/01-schema.sql
 ```
 
 ## Debugging
@@ -196,11 +209,14 @@ docker compose restart martin
 
 ### Simplification
 
-The SQL functions use zoom-dependent simplification:
-- Zoom 0-2: tolerance 0.1°
-- Zoom 3-4: tolerance 0.05°
-- Zoom 5-6: tolerance 0.01°
-- Zoom 7-8: tolerance 0.005°
-- Zoom 9+: tolerance 0.001°
+The tile functions do not simplify. Each zoom band reads a column simplified
+once, at write time, by the geometry triggers:
 
-Adjust these in `02-martin-functions.sql` if needed.
+- Zoom 0-2: `geom_overview` (50km, Douglas-Peucker)
+- Zoom 3-4: `geom_simplified_low` (5km)
+- Zoom 5-8: `geom_simplified_medium` (1km)
+- Zoom 9+: `geom_3857`, full resolution
+
+Adjust in `db/init/01-schema.sql`, which defines both the tile functions and the
+triggers that fill those columns. See `docs/tech/geometry-columns.md` for why
+zoom 0-2 has a rung of its own.

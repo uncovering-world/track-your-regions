@@ -802,11 +802,22 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_3857 geometry(MultiPolygon, 3857);
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS hull_geom_3857 geometry(MultiPolygon, 3857);
 
--- Add simplified geometry columns for low zoom levels (zoom 0-4)
+-- Add simplified geometry columns for low zoom levels (zoom 3-4; zoom 0-2 reads
+-- geom_overview below)
 -- For uses_hull regions, these derive from hull (correct overview representation)
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_simplified_low geometry(MultiPolygon, 3857);
 -- Add simplified geometry columns for medium zoom levels (zoom 5-8)
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_simplified_medium geometry(MultiPolygon, 3857);
+
+-- Overview zoom levels (0-2), where one tile spans the whole world at roughly
+-- 10 km per MVT unit. `geom_simplified_low` still carries far more detail than
+-- that scale can represent — half a million vertices for eight continents — and
+-- the tile functions used to cut it down per request with
+-- ST_SimplifyPreserveTopology, which cost more than everything else in the query
+-- combined while removing under a third of the vertices. Precomputed here
+-- instead. NULL means "not computed": callers fall through to the low rung, so
+-- an un-backfilled database renders as it always did. See simplify_for_overview().
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_overview geometry(MultiPolygon, 3857);
 
 -- Real-geometry simplified columns (always from geom_3857, never from hull)
 -- Used by island tile source to show real coastlines at overview zoom
@@ -816,7 +827,77 @@ ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_simplified_medium_real geometr
 -- Add 3857 geometry columns to administrative_divisions table
 ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS geom_3857 geometry(MultiPolygon, 3857);
 ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS geom_simplified_low_3857 geometry(MultiPolygon, 3857);
+-- Overview rung, same reasoning as regions.geom_overview above: the low rung
+-- holds 619,254 vertices for the eight root divisions, which a zoom-0 tile
+-- cannot represent and pays for anyway.
+ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS geom_overview_3857 geometry(MultiPolygon, 3857);
 ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS geom_simplified_medium_3857 geometry(MultiPolygon, 3857);
+
+-- Helper function: reduce geometry to what an overview-zoom tile can actually show.
+--
+-- Uses Douglas-Peucker where simplify_for_zoom() uses ST_SimplifyVW, because VW
+-- does not reach overview scale: at this tolerance it left 490,680 of 773,264
+-- vertices and took 107 s to precompute, against 29,863 in under two seconds
+-- here. VW's better coastal character (rule 13) is worth its cost at zoom 3-8,
+-- where the shape is actually legible; at zoom 0 a coastline is a few pixels.
+--
+-- Keeps simplify_for_zoom()'s three-stage shape, because rule 12 applies here
+-- too: never drop a geometry entirely. Douglas-Peucker annihilates anything
+-- narrower than the tolerance, and 50km annihilates 1,324 of the administrative
+-- mirror's 3,594 leaves — a world view made only of small regions would render
+-- an empty map when zoomed out.
+--
+-- Stage 2 scales the tolerance to the widest constituent polygon, not to the
+-- whole MultiPolygon's envelope. The distinction is the difference between
+-- working and not for scattered geography: France's leaf is 845 pieces spread
+-- across 3,385km, none wider than 49km, so an envelope-derived tolerance stays
+-- an order of magnitude above every island and stage 2 collapses too.
+--
+-- Stage 3 then simplifies with the topology-preserving variant rather than
+-- returning the input. It is the slow one this rung exists to avoid, but it
+-- never annihilates, it is what these rows went through before, and only the
+-- handful that survive two Douglas-Peucker passes ever reach it.
+--
+-- NULL in, NULL out — and NULL in the column means "not computed", which is what
+-- lets callers fall through to geom_simplified_low on a database that has not run
+-- the backfill.
+CREATE OR REPLACE FUNCTION simplify_for_overview(
+    geom geometry,
+    tolerance double precision DEFAULT 50000
+) RETURNS geometry AS $$
+DECLARE
+    result geometry;
+    widest_part double precision;
+BEGIN
+    IF geom IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    -- Stage 1: simplify at the overview tolerance
+    result := ST_Multi(ST_CollectionExtract(
+        ST_MakeValid(ST_Simplify(geom, tolerance)), 3));
+
+    -- Stage 2: smaller than the tolerance — scale it to the widest piece
+    IF result IS NULL OR ST_IsEmpty(result) THEN
+        SELECT max(sqrt(ST_Area(ST_Envelope(part.geom))))
+        INTO widest_part
+        FROM (SELECT (ST_Dump(geom)).geom) AS part;
+
+        IF widest_part > 0 THEN
+            result := ST_Multi(ST_CollectionExtract(
+                ST_MakeValid(ST_Simplify(geom, widest_part / 10.0)), 3));
+        END IF;
+    END IF;
+
+    -- Stage 3: nothing survives Douglas-Peucker — use the variant that cannot
+    -- annihilate rather than keeping the input unsimplified (rule 12)
+    IF result IS NULL OR ST_IsEmpty(result) THEN
+        result := ST_SimplifyPreserveTopology(geom, tolerance);
+    END IF;
+
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
 -- Helper function: simplify geometry with fallback for small islands, smooth corners.
 -- Three-stage pipeline:
@@ -1006,11 +1087,22 @@ DECLARE
     effective_geom geometry;
     geom_changed boolean;
     hull_changed boolean;
+    low_changed boolean;
 BEGIN
     geom_changed := (TG_OP = 'INSERT' AND NEW.geom IS NOT NULL)
                     OR (TG_OP = 'UPDATE' AND NEW.geom IS DISTINCT FROM OLD.geom);
     hull_changed := (TG_OP = 'INSERT' AND NEW.hull_geom IS NOT NULL)
                     OR (TG_OP = 'UPDATE' AND NEW.hull_geom IS DISTINCT FROM OLD.hull_geom);
+
+    -- Read before the block below writes it: simplify_coverage_regions() sets
+    -- geom_simplified_low directly, touching neither geom nor hull_geom, so
+    -- nothing else here would notice. The tile functions used to simplify that
+    -- column per request and so always rendered the coverage result; the
+    -- precomputed overview has to follow it. Computed up here rather than after
+    -- the write, or the trigger would see its own assignment and recompute the
+    -- overview a second time on every ordinary geometry change.
+    low_changed := (TG_OP = 'UPDATE'
+                    AND NEW.geom_simplified_low IS DISTINCT FROM OLD.geom_simplified_low);
 
     -- Transform changed geometries to 3857
     IF geom_changed AND NEW.geom IS NOT NULL THEN
@@ -1047,7 +1139,19 @@ BEGIN
         IF effective_geom IS NOT NULL THEN
             NEW.geom_simplified_low := simplify_for_zoom(effective_geom, 5000, 0, 0);
             NEW.geom_simplified_medium := simplify_for_zoom(effective_geom, 1000, 0, 0);
+            -- Derived from the low rung rather than effective_geom: it is the
+            -- input the tile functions simplified before, so the overview keeps
+            -- the same hull-aware shape, and starting from 5 km of detail is
+            -- cheaper than starting from full.
+            NEW.geom_overview := simplify_for_overview(NEW.geom_simplified_low);
         END IF;
+    END IF;
+
+    -- No NULL guard: simplify_for_overview(NULL) returns NULL, which is what a
+    -- cleared low rung has to leave behind. Skipping the write instead would
+    -- keep the previous shape and go on serving it at zoom 0-2.
+    IF low_changed THEN
+        NEW.geom_overview := simplify_for_overview(NEW.geom_simplified_low);
     END IF;
 
     RETURN NEW;
@@ -1084,6 +1188,7 @@ BEGIN
 
     IF (geom_changed OR low_changed) AND NEW.geom_3857 IS NOT NULL THEN
         NEW.geom_simplified_low_3857 := simplify_for_zoom(NEW.geom_3857, 5000, 0, 0);
+        NEW.geom_overview_3857 := simplify_for_overview(NEW.geom_simplified_low_3857);
     END IF;
     IF (geom_changed OR medium_changed) AND NEW.geom_3857 IS NOT NULL THEN
         NEW.geom_simplified_medium_3857 := simplify_for_zoom(NEW.geom_3857, 1000, 0, 0);
@@ -1152,8 +1257,11 @@ BEGIN
             (r.uses_hull AND r.hull_geom IS NOT NULL) as using_hull,
             ST_AsMVTGeom(
                 CASE
-                    WHEN z <= 2 AND r.geom_simplified_low IS NOT NULL
-                        THEN ST_SimplifyPreserveTopology(r.geom_simplified_low, 50000)
+                    -- Precomputed; see simplify_for_overview(). A NULL here
+                    -- means "not computed yet" and falls through to the low rung
+                    -- so an un-backfilled database renders as it always did.
+                    WHEN z <= 2 AND r.geom_overview IS NOT NULL
+                        THEN r.geom_overview
                     WHEN z <= 4 AND r.geom_simplified_low IS NOT NULL THEN r.geom_simplified_low
                     WHEN z <= 8 AND r.geom_simplified_medium IS NOT NULL THEN r.geom_simplified_medium
                     ELSE r.geom_3857
@@ -1216,8 +1324,11 @@ BEGIN
             (r.uses_hull AND r.hull_geom IS NOT NULL) as using_hull,
             ST_AsMVTGeom(
                 CASE
-                    WHEN z <= 2 AND r.geom_simplified_low IS NOT NULL
-                        THEN ST_SimplifyPreserveTopology(r.geom_simplified_low, 50000)
+                    -- Precomputed; see simplify_for_overview(). A NULL here
+                    -- means "not computed yet" and falls through to the low rung
+                    -- so an un-backfilled database renders as it always did.
+                    WHEN z <= 2 AND r.geom_overview IS NOT NULL
+                        THEN r.geom_overview
                     WHEN z <= 4 AND r.geom_simplified_low IS NOT NULL THEN r.geom_simplified_low
                     WHEN z <= 8 AND r.geom_simplified_medium IS NOT NULL THEN r.geom_simplified_medium
                     ELSE r.geom_3857
@@ -1268,6 +1379,9 @@ BEGIN
             d.has_children,
             ST_AsMVTGeom(
                 CASE
+                    -- Precomputed; see simplify_for_overview(). NULL here means
+                    -- "not computed yet" and falls through to the low rung.
+                    WHEN z <= 2 AND d.geom_overview_3857 IS NOT NULL THEN d.geom_overview_3857
                     WHEN z <= 4 AND d.geom_simplified_low_3857 IS NOT NULL THEN d.geom_simplified_low_3857
                     WHEN z <= 8 AND d.geom_simplified_medium_3857 IS NOT NULL THEN d.geom_simplified_medium_3857
                     ELSE d.geom_3857
@@ -1325,6 +1439,9 @@ BEGIN
             d.has_children,
             ST_AsMVTGeom(
                 CASE
+                    -- Precomputed; see simplify_for_overview(). NULL here means
+                    -- "not computed yet" and falls through to the low rung.
+                    WHEN z <= 2 AND d.geom_overview_3857 IS NOT NULL THEN d.geom_overview_3857
                     WHEN z <= 4 AND d.geom_simplified_low_3857 IS NOT NULL THEN d.geom_simplified_low_3857
                     WHEN z <= 8 AND d.geom_simplified_medium_3857 IS NOT NULL THEN d.geom_simplified_medium_3857
                     ELSE d.geom_3857
@@ -1434,8 +1551,11 @@ BEGIN
             (r.uses_hull AND r.hull_geom IS NOT NULL) as using_hull,
             ST_AsMVTGeom(
                 CASE
-                    WHEN z <= 2 AND r.geom_simplified_low IS NOT NULL
-                        THEN ST_SimplifyPreserveTopology(r.geom_simplified_low, 50000)
+                    -- Precomputed; see simplify_for_overview(). A NULL here
+                    -- means "not computed yet" and falls through to the low rung
+                    -- so an un-backfilled database renders as it always did.
+                    WHEN z <= 2 AND r.geom_overview IS NOT NULL
+                        THEN r.geom_overview
                     WHEN z <= 4 AND r.geom_simplified_low IS NOT NULL THEN r.geom_simplified_low
                     WHEN z <= 8 AND r.geom_simplified_medium IS NOT NULL THEN r.geom_simplified_medium
                     ELSE r.geom_3857
