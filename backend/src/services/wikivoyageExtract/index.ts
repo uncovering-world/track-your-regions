@@ -17,7 +17,8 @@ import { buildTree, countNodes, removeChildrenByTitle, CONTINENTS } from './tree
 import { type ClassificationCache } from './aiClassifier.js';
 import { collectPageTitles, fetchWikidataIds, enrichWikidataIds } from './wikidataEnricher.js';
 import { importTree } from '../worldViewImport/importer.js';
-import { matchCountryLevel } from '../worldViewImport/matcher.js';
+import { runMatchingPolicy } from '../worldViewImport/index.js';
+import { defaultMatchingPolicy } from '../worldViewImport/sourceTypes.js';
 import { createInitialProgress as createImportProgress } from '../worldViewImport/types.js';
 import OpenAI from 'openai';
 import { isOpenAIAvailable } from '../ai/openaiService.js';
@@ -431,7 +432,25 @@ async function runMatchPhase(
   progress.statusMessage = 'Matching countries to GADM divisions...';
   console.log(`[WV Extract] ${opId} Phase 4: Matching countries to GADM...`);
 
-  await matchCountryLevel(worldViewId, importProgress);
+  // Through the dispatch, not straight to a matcher: this was the last caller
+  // naming one, and it is the same divergence re-match had — flipping a source's
+  // policy would change every other path and silently not this one.
+  //
+  // The cancel flag has to be bridged, because the matcher reads it on the
+  // ImportProgress it is handed while cancelExtraction sets it on the
+  // ExtractionProgress — two different objects, and nothing ever assigned
+  // importProgress.cancel. Both policies guard on it, so without this link they
+  // would see `false` for the whole run: the walk completes, the write commits,
+  // and only afterwards does the check below notice, leaving a fully matched
+  // world view with import_runs stuck in 'matching' — which the review UI reads
+  // as an import still in flight. A getter rather than a copy because the flag
+  // flips *during* the await.
+  Object.defineProperty(importProgress, 'cancel', {
+    configurable: true,
+    get: () => progress.cancel,
+  });
+
+  await runMatchingPolicy(defaultMatchingPolicy('wikivoyage'), worldViewId, importProgress);
 
   progress.countriesMatched = importProgress.countriesMatched;
   progress.totalCountries = importProgress.totalCountries;

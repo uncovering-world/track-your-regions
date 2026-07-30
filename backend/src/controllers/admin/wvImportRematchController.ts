@@ -11,9 +11,9 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { matchCountryLevel } from '../../services/worldViewImport/index.js';
-import { createInitialProgress, type ImportProgress } from '../../services/worldViewImport/types.js';
-import { IMPORT_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
+import { runMatchingPolicy } from '../../services/worldViewImport/index.js';
+import { createInitialProgress, type ImportProgress, type MatchingPolicy } from '../../services/worldViewImport/types.js';
+import { IMPORT_SOURCE_TYPES_ALL, defaultMatchingPolicy } from '../../services/worldViewImport/sourceTypes.js';
 
 // =============================================================================
 // Rematch (run + status)
@@ -23,17 +23,26 @@ import { IMPORT_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTy
 const runningRematches = new Map<number, { progress: ImportProgress; startTime: number }>();
 
 /**
- * Re-run country-level matching on an existing world view.
+ * Re-run matching on an existing world view.
  * Clears all match metadata and region_members, then re-runs the matcher.
  * POST /api/admin/wv-import/matches/:worldViewId/rematch
+ *
+ * The policy defaults to the one the source type's tree is shaped for, so a
+ * re-match reproduces the import rather than quietly switching algorithms — it
+ * used to call the country matcher unconditionally. `matchingPolicy` in the body
+ * overrides it, which is how one tree gets scored under two policies.
+ *
+ * Destructive by design: every `region_members` row for the world view is
+ * deleted, including manually accepted matches. Hand-resolve *after* a re-match,
+ * never before.
  */
 export async function rematchWorldView(req: AuthenticatedRequest, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
   console.log(`[WV Import] POST /matches/${worldViewId}/rematch`);
 
   // Check world view exists and is import-sourced
-  const wvCheck = await pool.query(
-    `SELECT id FROM world_views WHERE id = $1 AND source_type = ANY($2)`,
+  const wvCheck = await pool.query<{ id: number; source_type: string }>(
+    `SELECT id, source_type FROM world_views WHERE id = $1 AND source_type = ANY($2)`,
     [worldViewId, IMPORT_SOURCE_TYPES_ALL],
   );
   if (wvCheck.rows.length === 0) {
@@ -48,13 +57,16 @@ export async function rematchWorldView(req: AuthenticatedRequest, res: Response)
     return;
   }
 
+  const requested = (req.body as { matchingPolicy?: MatchingPolicy } | undefined)?.matchingPolicy;
+  const policy = requested ?? defaultMatchingPolicy(wvCheck.rows[0].source_type);
+
   const progress = createInitialProgress();
   progress.status = 'matching';
   progress.statusMessage = 'Resetting match data...';
   runningRematches.set(worldViewId, { progress, startTime: Date.now() });
 
   // Run in background
-  runRematch(worldViewId, progress).catch((err) => {
+  runRematch(worldViewId, progress, policy).catch((err) => {
     console.error(`[WV Import] Rematch error for worldView ${worldViewId}:`, err);
     progress.status = 'failed';
     progress.statusMessage = `Re-match failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -67,10 +79,14 @@ export async function rematchWorldView(req: AuthenticatedRequest, res: Response)
     }, 300_000);
   });
 
-  res.json({ started: true });
+  res.json({ started: true, matchingPolicy: policy });
 }
 
-async function runRematch(worldViewId: number, progress: ImportProgress): Promise<void> {
+async function runRematch(
+  worldViewId: number,
+  progress: ImportProgress,
+  policy: MatchingPolicy,
+): Promise<void> {
   const startTime = Date.now();
 
   // Step 1: Reset all match metadata and region_members
@@ -114,13 +130,25 @@ async function runRematch(worldViewId: number, progress: ImportProgress): Promis
   const resetDuration = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`[WV Import Rematch] Reset complete in ${resetDuration}s`);
 
-  // Step 2: Re-run country-level matching
-  progress.statusMessage = 'Re-matching countries to GADM...';
-  await matchCountryLevel(worldViewId, progress);
+  // Step 2: Re-run matching under the world view's policy
+  if (policy === 'none') {
+    progress.status = 'complete';
+    progress.statusMessage = 'Match data reset; matching skipped (policy=none).';
+    return;
+  }
+  progress.statusMessage = `Re-matching to GADM (policy=${policy})...`;
+  await runMatchingPolicy(policy, worldViewId, progress);
 
   const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
   progress.status = 'complete';
-  progress.statusMessage = `Re-match complete: ${progress.countriesMatched} countries matched (${progress.subdivisionsDrilled} with subdivisions), ${progress.noCandidates} unmatched. Took ${totalDuration}s.`;
+  // Only the country policy fills the country-named counters, so only it can be
+  // summarised in their terms. Rebuilding this message for every policy is what
+  // made a 3831-region hierarchical re-match report "0 countries matched" — the
+  // policy's own message is the accurate one, and it is what the review UI
+  // renders verbatim.
+  progress.statusMessage = policy === 'country-based'
+    ? `Re-match complete: ${progress.countriesMatched} countries matched (${progress.subdivisionsDrilled} with subdivisions), ${progress.noCandidates} unmatched. Took ${totalDuration}s.`
+    : `${progress.statusMessage} (total ${totalDuration}s)`;
   console.log(`[WV Import Rematch] Complete in ${totalDuration}s: matched=${progress.countriesMatched}, drilldowns=${progress.subdivisionsDrilled}, none=${progress.noCandidates}`);
 }
 
