@@ -9,10 +9,33 @@
  * (wvImportFinalizeController).
  */
 
+import type { MatchingPolicy } from './types.js';
+
 /** Source types whose review is still open. */
 export const IMPORT_SOURCE_TYPES = ['wikivoyage', 'imported', 'base_layer'] as const;
 
 export type ImportSourceType = typeof IMPORT_SOURCE_TYPES[number];
+
+/**
+ * The matching policy a source type's tree is shaped for.
+ *
+ * A base-layer mirror is one node per division, so descending the division
+ * hierarchy alongside it resolves the tree. Every other source may put a *group*
+ * of divisions under one node — Wikivoyage's "Benelux" — where the descent's
+ * premise does not hold, so those stay on the country-anchored policy. See
+ * ADR-0019.
+ *
+ * Derived from the source type rather than stored on `world_views` so that a
+ * re-match knows the policy without a schema change; callers that want to
+ * measure a different policy against the same tree pass one explicitly.
+ *
+ * Never `'none'`: skipping matching is a choice a caller makes for one run, not
+ * a property of the source, so the return type excludes it and callers need no
+ * narrowing.
+ */
+export function defaultMatchingPolicy(sourceType: string): Exclude<MatchingPolicy, 'none'> {
+  return sourceType.startsWith('base_layer') ? 'hierarchical' : 'country-based';
+}
 
 /** The finalized name for a source type. */
 export function finalizedSourceType(sourceType: string): string {

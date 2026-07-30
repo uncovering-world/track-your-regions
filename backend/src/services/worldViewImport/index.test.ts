@@ -11,6 +11,7 @@ vi.mock('./importer.js', () => ({
 }));
 vi.mock('./matcher.js', () => ({
   matchCountryLevel: vi.fn().mockResolvedValue(undefined),
+  matchHierarchical: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
@@ -19,17 +20,19 @@ vi.mock('../../db/index.js', () => ({
 import { startBaseLayerImport } from './index.js';
 import { buildBaseLayerTree } from './baseLayerImporter.js';
 import { importTree } from './importer.js';
-import { matchCountryLevel } from './matcher.js';
+import { matchCountryLevel, matchHierarchical } from './matcher.js';
 
 const mockedBuild = buildBaseLayerTree as unknown as ReturnType<typeof vi.fn>;
 const mockedImport = importTree as unknown as ReturnType<typeof vi.fn>;
-const mockedMatch = matchCountryLevel as unknown as ReturnType<typeof vi.fn>;
+const mockedCountryMatch = matchCountryLevel as unknown as ReturnType<typeof vi.fn>;
+const mockedHierarchicalMatch = matchHierarchical as unknown as ReturnType<typeof vi.fn>;
 
 describe('startBaseLayerImport', () => {
   beforeEach(() => {
     mockedBuild.mockClear();
     mockedImport.mockClear();
-    mockedMatch.mockClear();
+    mockedCountryMatch.mockClear();
+    mockedHierarchicalMatch.mockClear();
   });
 
   it('builds the tree at the requested depth', async () => {
@@ -48,9 +51,21 @@ describe('startBaseLayerImport', () => {
     expect(options).toMatchObject({ sourceType: 'base_layer', source: 'Dataset 1.0' });
   });
 
-  it('runs the normal matcher rather than resolving divisions itself', async () => {
+  it('runs a matcher over the tree rather than resolving divisions itself', async () => {
+    // ADR-0018's premise: the base layer gets no privileged path. It is still
+    // matched, not handed the answer — the importer never carries the division a
+    // node was read from. ADR-0019 only changed *which* policy does the matching.
     await startBaseLayerImport({ name: 'Administrative', providerLabel: 'Dataset 1.0', maxDepth: 2 });
-    await vi.waitFor(() => expect(mockedMatch).toHaveBeenCalledWith(77, expect.anything()));
+    await vi.waitFor(() => expect(mockedHierarchicalMatch).toHaveBeenCalledWith(77, expect.anything()));
+  });
+
+  it('matches it under the hierarchical policy, not the country-anchored one', async () => {
+    // A mirror is one node per division, so the descent resolves it; the
+    // country-anchored policy left 1459 of 3831 regions unresolved (ADR-0019).
+    await startBaseLayerImport({ name: 'Administrative', providerLabel: 'Dataset 1.0', maxDepth: 2 });
+    await vi.waitFor(() => expect(mockedHierarchicalMatch).toHaveBeenCalled());
+
+    expect(mockedCountryMatch).not.toHaveBeenCalled();
   });
 
   it('returns an operation id the existing status endpoint can poll', async () => {

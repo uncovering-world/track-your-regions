@@ -13,8 +13,20 @@ export interface ImportTreeNode {
   children: ImportTreeNode[];
 }
 
-/** Matching policy determines how regions are auto-matched to GADM divisions */
-export type MatchingPolicy = 'country-based' | 'none';
+/**
+ * Matching policy determines how regions are auto-matched to GADM divisions.
+ *
+ * - `country-based` (default) — anchor on country names found anywhere in the
+ *   tree, then push matched countries down a level. Correct for sources whose
+ *   nodes may group several divisions, e.g. Wikivoyage's "Benelux".
+ * - `hierarchical` — descend the division hierarchy alongside the import tree,
+ *   resolving each node among the divisions under its nearest resolved ancestor.
+ *   Correct for sources that mirror the hierarchy, e.g. a base-layer mirror.
+ * - `none` — import without matching at all.
+ *
+ * See ADR-0019 for why this is a policy choice rather than one algorithm.
+ */
+export type MatchingPolicy = 'country-based' | 'hierarchical' | 'none';
 
 /** Match status for a region */
 export type MatchStatus =

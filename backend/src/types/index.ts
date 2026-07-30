@@ -423,7 +423,7 @@ const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
 export const wvImportBodySchema = z.object({
   name: z.string().min(1).max(255),
   tree: importTreeNodeSchema,
-  matchingPolicy: z.enum(['country-based', 'none']).default('country-based'),
+  matchingPolicy: z.enum(['country-based', 'hierarchical', 'none']).default('country-based'),
 });
 
 export const baseLayerImportBodySchema = z.object({
@@ -455,6 +455,16 @@ export const wvImportAcceptBatchSchema = z.object({
 
 export const wvImportRegionIdSchema = z.object({
   regionId: z.coerce.number().int().positive(),
+});
+
+/**
+ * Re-match body. `matchingPolicy` is optional: omitted, the re-match uses the
+ * policy the world view's source type is shaped for, which is what reproduces
+ * the original import. Passing one explicitly is how the same tree gets scored
+ * under a second policy.
+ */
+export const wvImportRematchBodySchema = z.object({
+  matchingPolicy: z.enum(['country-based', 'hierarchical', 'none']).optional(),
 });
 
 const reviewIdFieldSchema = z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/);
