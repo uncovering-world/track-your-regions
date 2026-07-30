@@ -42,8 +42,23 @@ interface NavigationContextType {
 
 const NavigationContext = createContext<NavigationContextType | null>(null);
 
+
+/**
+ * Which world view to show when the current one is absent from the visible list:
+ * the one named in the URL if it is there, otherwise the default (admins) or the
+ * first available (everyone else).
+ */
+function pickWorldView(worldViews: WorldView[], wvParam: string | null, isAdmin: boolean): WorldView | undefined {
+  if (wvParam) {
+    const fromUrl = worldViews.find((w) => w.id === parseInt(wvParam, 10));
+    if (fromUrl) return fromUrl;
+  }
+  if (isAdmin) return worldViews.find((w) => w.isDefault) ?? worldViews[0];
+  return worldViews[0];
+}
+
 export function NavigationProvider({ children }: { children: ReactNode }) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isLoading: authLoading, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedWorldView, setSelectedWorldView] = useState<WorldView | null>(null);
   const [selectedDivision, setSelectedDivision] = useState<AdministrativeDivision | null>(null);
@@ -73,14 +88,48 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     ? !selectedWorldView.isDefault
     : urlWorldViewId !== null;
 
-  // Fetch world views — public endpoint, no auth required. The server already
-  // filters by visibility (getWorldViews); whatever arrives here is what this
-  // user may see.
-  const { data: worldViews = [], isLoading: worldViewsLoading } = useQuery({
-    queryKey: ['worldViews'],
+  // Fetch world views — deliberately *not* until the session has resolved.
+  //
+  // The server filters this list by visibility (`getWorldViews`), so the answer
+  // depends on who is asking: an admin also sees the unpublished ones. Asking
+  // before `initAuth` has restored the session sends no token and gets the
+  // anonymous list — and gets it as a 200 with fewer rows rather than a 401, so
+  // `authFetchJson`'s 401 retry never runs and `staleTime: Infinity` then holds
+  // that answer for the rest of the session. The symptom was an admin whose
+  // picker offered only the published world view, the hidden base-layer mirror
+  // missing until a manual reload happened to win the race.
+  //
+  // `authLoading` is false for a visitor with no session too — this waits for
+  // auth to be *settled*, not for a user to exist.
+  const {
+    data: worldViews = [],
+    isLoading: worldViewsQueryLoading,
+    isSuccess: worldViewsLoaded,
+    isFetching: worldViewsFetching,
+  } = useQuery({
+    // Keyed by who is asking, because that is what the answer depends on. One
+    // shared key made the anonymous list and the admin list compete for the same
+    // cache entry, which is what turned a startup race into a session-long wrong
+    // answer. Under separate keys they cannot overwrite each other, and a login
+    // or logout stops addressing the old entry rather than having to invalidate
+    // it in time.
+    queryKey: ['worldViews', user?.id ?? 'anon'],
     queryFn: fetchWorldViews,
+    // Correctness comes from the key above; this only avoids spending a request
+    // on an anonymous answer that is about to be replaced.
+    enabled: !authLoading,
     staleTime: Infinity, // World views rarely change
   });
+  // A disabled query reports isLoading false, which would read as "loaded, and
+  // there are none". The wait is part of loading from the UI's point of view.
+  const worldViewsLoading = authLoading || worldViewsQueryLoading;
+
+  // Keyed on the ids rather than the array: the query returns a new array on
+  // every fetch, and length alone would miss a same-size list with different
+  // members. Named rather than inlined into the dependency array so the rule can
+  // check it statically — an expression there is a warning even under the
+  // suppression, which only covers the missing-dependency half.
+  const visibleWorldViewIds = worldViews.map((w: WorldView) => w.id).join(',');
 
   // Fetch root regions for custom world views
   // Uses selectedWorldViewId for eager loading (before full world view object loads)
@@ -97,34 +146,73 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     enabled: isCustomWorldView && !!selectedRegion,
   });
 
-  // Set world view from URL param or default (only once when worldViews are first loaded)
+  // Set the world view from the URL param or the default — and re-check it
+  // whenever the list itself changes, which it does when the identity does.
+  //
+  // Selecting once was not enough: the list is filtered by visibility, so
+  // logging out can remove the world view that is currently selected. Keeping it
+  // would leave an admin's unpublished world view on screen for an anonymous
+  // visitor, with `rootRegions` still fetching by its id. This reconciliation is
+  // what makes the identity-keyed list take effect downstream.
   useEffect(() => {
-    if (worldViews.length > 0 && !selectedWorldView) {
-      const wvParam = searchParams.get('wv');
-      let worldView: WorldView | undefined;
+    // Only ever reconcile against an answer, never against the empty default
+    // that stands in while the query is disabled or in flight.
+    if (!worldViewsLoaded) return;
 
-      if (wvParam) {
-        // Try to find world view by ID from URL
-        worldView = worldViews.find((w: WorldView) => w.id === parseInt(wvParam, 10));
+    // Nor against a settled answer that is already known to be out of date.
+    // invalidateQueries keeps status 'success' and the previous data while it
+    // refetches, and HierarchySwitcher's create flow invalidates and then selects
+    // the new world view in the same batch — an id the stale list cannot contain.
+    // Reconciling there would bounce the admin off the world view they just made.
+    if (worldViewsFetching) return;
+
+    if (worldViews.length === 0) {
+      if (selectedWorldView) {
+        setSelectedWorldView(null);
+        clearWorldViewContext();
       }
+      // Outside the guard above: with nothing ever selected there is no context
+      // to clear, but `?wv` still names a world view this caller cannot see, and
+      // this is the one branch that never gets a second chance — no selection is
+      // made, so nothing re-runs. Left in place it keeps isCustomWorldView true
+      // and selectedWorldViewId pointing at that id, so rootRegions stays enabled
+      // and 404s on every load, and the address bar goes on advertising it.
+      if (urlWorldViewId !== null) syncWorldViewParam(null);
+      return;
+    }
 
-      if (!worldView) {
-        // Fall back to default (GADM for admins, first custom for others)
-        if (isAdmin) {
-          worldView = worldViews.find((w: WorldView) => w.isDefault) || worldViews[0];
-        } else {
-          // Non-admins: pick first available custom world view
-          worldView = worldViews[0];
-        }
-      }
+    if (selectedWorldView && worldViews.some((w: WorldView) => w.id === selectedWorldView.id)) return;
 
-      if (worldView) {
-        setSelectedWorldView(worldView);
-        setTileVersion(worldView.tileVersion ?? 0);
+    const worldView = pickWorldView(worldViews, searchParams.get('wv'), isAdmin);
+    if (!worldView) return;
+
+    if (selectedWorldView) {
+      // Replacing one the caller can no longer see: a full switch, because
+      // leaving its region and breadcrumbs rendered — with `?wv=` still naming
+      // it — is the outcome this effect exists to remove. Dropping it halfway is
+      // worse than not dropping it at all.
+      applyWorldView(worldView);
+    } else {
+      // First pick, not a change: nothing to clear, and clearing would be
+      // destructive. rootRegions is enabled from the URL before any world view
+      // object exists, and the sidebar renders outside MainDisplay's loading
+      // gate, so a region can be chosen before the list lands — a window this
+      // change widened by making the list wait on the session.
+      setSelectedWorldView(worldView);
+      setTileVersion(worldView.tileVersion ?? 0);
+
+      // The region context stays, but the URL must not: `?wv=` still naming the
+      // world view just rejected leaves the picker and the address bar
+      // disagreeing, re-shares a dead link, and keeps selectedWorldViewId
+      // falling back to that id on every load — one 404 root-regions request per
+      // visit before it corrects. Only when the URL named something else, so a
+      // bare `/` stays bare.
+      if (urlWorldViewId !== null && urlWorldViewId !== worldView.id) {
+        syncWorldViewParam(worldView);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only depend on length to avoid re-selecting on every fetch
-  }, [worldViews.length, isAdmin]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- worldViews by id, not identity
+  }, [worldViewsLoaded, worldViewsFetching, visibleWorldViewIds, isAdmin, selectedWorldView]);
 
 
   // Update breadcrumbs when division changes (only for GADM hierarchy)
@@ -178,18 +266,24 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
   }, [regionAncestors, selectedRegion]);
 
-  const handleSetSelectedWorldView = useCallback((worldView: WorldView) => {
-    setSelectedWorldView(worldView);
-    setTileVersion(worldView.tileVersion ?? 0);
+  // What a departing world view leaves behind. Separate from applyWorldView
+  // because it is also needed when there is nothing to arrive: an empty list
+  // still has to drop the old context, and dropping only `selectedWorldView`
+  // makes things worse — both derived values fall back to the URL, so
+  // isCustomWorldView becomes true and selectedWorldViewId becomes the departed
+  // id, leaving rootRegions enabled and requesting it as an anonymous caller.
+  const clearWorldViewContext = useCallback(() => {
     setSelectedDivision(null);
     setSelectedRegion(null);
     setDivisionBreadcrumbs([]);
     setRegionBreadcrumbs([]);
+  }, []);
 
-    // Persist world view selection to URL (for faster reload)
+  /** Keep `?wv` in step; `null` and the default world view both mean "no param". */
+  const syncWorldViewParam = useCallback((worldView: WorldView | null) => {
     setSearchParams(prev => {
       const newParams = new URLSearchParams(prev);
-      if (worldView.isDefault) {
+      if (!worldView || worldView.isDefault) {
         newParams.delete('wv'); // Don't clutter URL for default
       } else {
         newParams.set('wv', worldView.id.toString());
@@ -197,6 +291,17 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       return newParams;
     }, { replace: true });
   }, [setSearchParams]);
+
+  // Everything a world view *change* entails, in one place, so the automatic
+  // reconciliation and the manual switch cannot drift apart.
+  const applyWorldView = useCallback((worldView: WorldView) => {
+    setSelectedWorldView(worldView);
+    setTileVersion(worldView.tileVersion ?? 0);
+    clearWorldViewContext();
+    syncWorldViewParam(worldView);
+  }, [clearWorldViewContext, syncWorldViewParam]);
+
+  const handleSetSelectedWorldView = applyWorldView;
 
   const handleSetSelectedDivision = useCallback((division: AdministrativeDivision | null) => {
     setSelectedDivision(division);

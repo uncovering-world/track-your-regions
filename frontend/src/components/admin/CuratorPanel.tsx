@@ -55,6 +55,7 @@ import {
   getCategories,
 } from '../../api/admin';
 import { fetchWorldViews } from '../../api/worldViews';
+import { useAuth } from '../../hooks/useAuth';
 import { searchRegions, type RegionSearchResult } from '../../api/regions';
 import type { CuratorInfo, CuratorScope, CuratorActivityEntry } from '../../api/admin';
 import { formatDateTime } from '../../utils/dateFormat';
@@ -247,6 +248,7 @@ function ScopeChip({
 // =============================================================================
 
 function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   // User search
@@ -276,7 +278,10 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
   });
 
   const { data: worldViews } = useQuery({
-    queryKey: ['worldViews'],
+    // Same rule as useNavigation: this list is filtered by visibility, so it
+    // is cached per identity. Sharing the key also shares the entry, which is
+    // why this no longer refetches what navigation already has.
+    queryKey: ['worldViews', user?.id ?? 'anon'],
     queryFn: fetchWorldViews,
     enabled: open && scopeType === 'region',
   });
