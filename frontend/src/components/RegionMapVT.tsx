@@ -103,7 +103,7 @@ export function RegionMapVT() {
     selectedRegion?.hasSubregions === true,
   );
 
-  const { tilesReady, rootOverlayEnabled } = useMapFeatureState({
+  const { tilesReady, tilesStalled, rootOverlayEnabled } = useMapFeatureState({
     mapRef,
     mapLoaded,
     isCustomWorldView,
@@ -173,7 +173,9 @@ export function RegionMapVT() {
         );
       })()}
 
-      {/* Tile loading overlay - covers map until tiles are ready */}
+      {/* Tile loading overlay - covers map until tiles are ready, or until the
+          wait has gone on long enough that blocking the map costs more than the
+          half-drawn map it is hiding. See TILE_WAIT_TIMEOUT_MS. */}
       <Box
         sx={{
           position: 'absolute',
@@ -187,8 +189,8 @@ export function RegionMapVT() {
           justifyContent: 'center',
           backgroundColor: 'rgba(248, 250, 252, 0.92)',
           backdropFilter: 'blur(4px)',
-          opacity: tilesReady ? 0 : 1,
-          pointerEvents: tilesReady ? 'none' : 'auto',
+          opacity: tilesReady || tilesStalled ? 0 : 1,
+          pointerEvents: tilesReady || tilesStalled ? 'none' : 'auto',
           transition: 'opacity 0.3s ease-out',
         }}
       >
@@ -206,6 +208,32 @@ export function RegionMapVT() {
           </Typography>
         </Box>
       </Box>
+
+      {/* The wait outlived the overlay. The map is interactive now; say why it
+          may look incomplete rather than leaving the user to guess. */}
+      {tilesStalled && !tilesReady && (
+        <Box
+          sx={{
+            position: 'absolute',
+            // The note says panning and zooming still work; absorbing the events
+            // over its own footprint would make that false where it sits.
+            pointerEvents: 'none',
+            bottom: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 2,
+            px: 2,
+            py: 1,
+            borderRadius: 2,
+            backgroundColor: 'rgba(248, 250, 252, 0.95)',
+            boxShadow: 1,
+          }}
+        >
+          <Typography variant="body2" sx={{ color: '#64748b', fontWeight: 500 }}>
+            Some map areas are still loading — panning and zooming still work.
+          </Typography>
+        </Box>
+      )}
 
       {/* Metadata loading indicator (small, top corner) */}
       {metadataLoading && tilesReady && (

@@ -102,7 +102,7 @@ Regions are the geographic building blocks. The system supports multiple ways of
 
 ### Administrative Divisions (GADM)
 
-The base layer: official country and sub-country boundaries from the GADM database. Pre-simplified at 3 levels of detail for performant map rendering. Forms a strict hierarchy (country → state → district → ...).
+The base layer: official country and sub-country boundaries from the GADM database. Pre-simplified at 4 levels of detail for performant map rendering. Forms a strict hierarchy (country → state → district → ...).
 
 ### World Views
 
@@ -123,6 +123,8 @@ Vector tiles served by Martin (PostGIS-native tile server). The frontend uses Ma
 - Experience markers with clustering (GeoJSON source with circle + symbol layers)
 - Region outline persists during exploration mode as a subtle geographic border, giving spatial context alongside experience markers
 - Antimeridian-aware camera positioning for regions that cross the date line
+- Zoomed all the way out, the map draws a coarser rendering of each region than it does up close — detail no one can see at that scale is not fetched, so the world appears in about a second rather than the twenty to twenty-five it took when every coastline was cut down to size on each request. Every region still appears, however small: a place too little to survive that coarsening is drawn at a coarseness of its own instead of being left out
+- A wait for map data never traps the viewer. If tiles have not arrived after a few seconds, or fail outright, the covering "Loading map…" panel steps aside, the map becomes pannable and zoomable, and a small note says some areas are still loading — rather than an opaque screen with no way forward
 
 ---
 
