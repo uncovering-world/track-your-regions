@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Box,
   IconButton,
@@ -122,18 +122,6 @@ export function HierarchySwitcher() {
 
   // Check if selected world view is custom (not GADM)
   const isCustomWorldView = selectedWorldView && !selectedWorldView.isDefault;
-
-  // Auto-select a valid world view when auth state changes and current selection is invalid
-  useEffect(() => {
-    if (worldViews.length > 0 && selectedWorldView) {
-      const isCurrentValid = worldViews.some(w => w.id === selectedWorldView.id);
-      if (!isCurrentValid) {
-        // Current selection is not visible (e.g., GADM selected but user is not admin)
-        // Select the first available world view
-        setSelectedWorldView(worldViews[0]);
-      }
-    }
-  }, [worldViews, selectedWorldView, setSelectedWorldView]);
 
   // Don't render until we have world views loaded and a valid selection
   // Also ensure the selected value exists in the worldViews array

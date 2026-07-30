@@ -158,10 +158,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const payload = parseToken(data.accessToken as string);
       if (payload) tokenExpiresAt = payload.exp * 1000;
       if (data.user) setUser(data.user as User);
-      // Who is asking changes what this returns, and useNavigation fetches it
-      // with staleTime: Infinity the moment it mounts — which can be before the
-      // session is restored from the refresh cookie. Without this an admin keeps
-      // the anonymous list for the whole session.
+      // The list is now cached per identity, so a login or logout no longer needs
+      // this — the new identity simply addresses a different entry. What it still
+      // covers is the case the key cannot see: a refresh that returns the same
+      // user with a *different role*, where the key is unchanged but the answer
+      // is not. Prefix match, so it reaches the identity-suffixed keys.
       queryClient.invalidateQueries({ queryKey: ['worldViews'] });
     });
     return () => setRefreshSuccessListener(null);

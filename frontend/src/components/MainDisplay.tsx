@@ -16,7 +16,7 @@ export function setExplorationModeListener(listener: (exploring: boolean) => voi
 
 export function MainDisplay() {
   const { selectedRegion, worldViews, isLoading } = useNavigation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [isExploring, setIsExploring] = useState(false);
 
   // Reset exploration mode when region changes
@@ -30,7 +30,7 @@ export function MainDisplay() {
   }, [isExploring]);
 
   // Fresh installation: no custom world views — show setup steps
-  if (!authLoading && !isLoading && worldViews.length === 0) {
+  if (!isLoading && worldViews.length === 0) {
     return <SetupInstructions isAuthenticated={isAuthenticated} />;
   }
 

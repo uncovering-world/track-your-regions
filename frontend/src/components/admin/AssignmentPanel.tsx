@@ -40,8 +40,10 @@ import {
   type AssignmentStatus,
 } from '../../api/admin';
 import { fetchWorldViews } from '../../api/worldViews';
+import { useAuth } from '../../hooks/useAuth';
 
 export function AssignmentPanel() {
+  const { user } = useAuth();
   const [selectedWorldView, setSelectedWorldView] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [isPolling, setIsPolling] = useState(false);
@@ -49,7 +51,10 @@ export function AssignmentPanel() {
 
   // Fetch world views
   const { data: worldViews } = useQuery({
-    queryKey: ['worldViews'],
+    // Same rule as useNavigation: this list is filtered by visibility, so it
+    // is cached per identity. Sharing the key also shares the entry, which is
+    // why this no longer refetches what navigation already has.
+    queryKey: ['worldViews', user?.id ?? 'anon'],
     queryFn: fetchWorldViews,
   });
 

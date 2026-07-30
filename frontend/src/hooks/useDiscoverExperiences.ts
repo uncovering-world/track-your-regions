@@ -171,13 +171,44 @@ export function useDiscoverExperiences() {
     setSelectedExperienceId(null);
   }, []);
 
-  // Reset on world view change
+  // Switching from the Discover picker — the reset lives below, so it covers the
+  // automatic switch too.
   const changeWorldView = useCallback((wv: typeof worldViews[0]) => {
     setSelectedWorldView(wv);
-    setBreadcrumbs([]);
-    setActiveView(null);
-    setSelectedExperienceId(null);
   }, [setSelectedWorldView]);
+
+  // Discover keeps a second world-view context that useNavigation cannot reach —
+  // it lives here, and this hook is the only thing that knows about it. Clearing
+  // it in changeWorldView alone would cover the manual switch and miss the
+  // automatic one: useNavigation replaces a selection the caller can no longer
+  // see, which on /discover would otherwise leave the departed world view's
+  // region names in the breadcrumb trail and its last regionId driving the
+  // counts query. Keyed on the id, so both paths land here.
+  //
+  // Adjusted during render rather than in an effect. Effects run after the
+  // render that observed the new world view, and the counts query is keyed on
+  // [selectedWorldViewId, currentParentId] — so an effect would let one render
+  // through with the new world view and the old parent, firing a request for a
+  // pairing that never existed and briefly drawing the departed trail. React
+  // re-runs this component immediately on a render-phase setState, before
+  // committing anything or running children, so no such render escapes.
+  const worldViewId = selectedWorldView?.id;
+  const [lastWorldViewId, setLastWorldViewId] = useState(worldViewId);
+  if (worldViewId !== lastWorldViewId) {
+    setLastWorldViewId(worldViewId);
+    // A change, not a first arrival. selectedWorldView is null on the first
+    // render, so undefined → id would otherwise read as a switch and wipe
+    // anything chosen before the list landed — and something can be: the counts
+    // query is enabled on selectedWorldViewId, which falls back to `?wv`, so the
+    // root level is populated and clickable while the world view object is still
+    // in flight. Same distinction useNavigation draws between a first pick and a
+    // switch, for the same reason.
+    if (lastWorldViewId !== undefined) {
+      setBreadcrumbs([]);
+      setActiveView(null);
+      setSelectedExperienceId(null);
+    }
+  }
 
   return {
     // World view
