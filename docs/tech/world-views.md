@@ -137,31 +137,81 @@ A world view can be created directly from the administrative base layer itself �
 
 Depth 2 (the default) produces 3831 regions — 8 root-level entries, 237 countries, 3586 subdivisions — matching the division counts at each level exactly. Depth is capped at 3; mirroring the full ~392,112-row table would roughly double the largest table in the database.
 
+### Matching policies
+
+The matcher is a set of interchangeable policies over one shared core
+(`matcherUtils.ts`), selected by `defaultMatchingPolicy(sourceType)`
+(`sourceTypes.ts`) rather than fixed per algorithm. `matcher.ts` is the barrel
+naming them; each lives in its own module. See
+[ADR-0019](../decisions/0019-matching-policy-per-source-shape.md).
+
+| Policy | Module | Used by |
+|---|---|---|
+| `country-based` (default) | `matcherCountryPolicy.ts` | Wikivoyage and file imports, whose nodes may group several divisions |
+| `hierarchical` | `matcherHierarchicalPolicy.ts` | `base_layer` — a mirror is one node per division |
+| `none` | — | no matcher runs; every region starts `no_candidates`. An explicit choice per import (the file-upload form offers it) or per re-match (`matchingPolicy` in the request body), never derived from a source type |
+| legacy leaf | `matcherLeafPolicy.ts` | not reached from the import pipeline |
+
+`defaultMatchingPolicy(sourceType)` returns only the two that match, so `none`
+cannot arrive by inference — it is always an explicit choice for one run.
+
+`hierarchical` descends the import tree alongside the division hierarchy,
+resolving each node among the divisions beneath **the division its nearest
+resolved ancestor matched**. Two details carry the weight:
+
+- **Ancestor context disambiguates.** The base layer shards countries with
+  overseas territories across continents, so seven divisions are named "France";
+  a global name index cannot choose. Exactly one France sits under a resolved
+  Europe.
+- **A node that resolves to nothing is transparent, not fatal.** Resolution is
+  against the nearest *resolved* ancestor, so a Wikivoyage grouping node
+  ("Benelux") costs only itself — Belgium is still found among Europe's
+  descendants. Anchoring on a resolved parent's direct children would strand the
+  subtree instead.
+
+Within a sibling group, exact matches bind before fuzzy ones and each division is
+claimed once; "Osh" and "Osh (city)" are each other's prefix match, so without
+that ordering one could take the other's division. The parenthetical strip
+(`cleanWvName`) is off under `hierarchical`: a base-layer node named "Osh (city)"
+exists only because a division of that exact name does, so stripping it turns an
+available exact match into a wrong one.
+
 ### Measured match outcome
 
-A depth-2 base layer import, run through the `country-based` policy, resolved 2372 of 3831 regions (62%):
+A depth-2 base-layer import of 3831 regions (8 + 237 + 3586, matching the
+division counts exactly), before and after the policy landed:
 
-| `match_status` | Regions |
-|---|---|
-| `auto_matched` | 2372 |
-| `no_candidates` | 1251 |
-| `children_matched` | 157 |
-| `needs_review` | 51 |
+| `match_status` | `country-based` | `hierarchical` |
+|---|---|---|
+| `auto_matched` | 2372 (62%) | **3831 (100%)** |
+| `no_candidates` | 1251 | 0 |
+| `children_matched` | 157 | 0 |
+| `needs_review` | 51 | 0 |
 
-Of the 2372 matched regions, 2371 have a member division whose name equals the region's exactly; the single exception matched "Osh (city)" to the division "Osh" — a variant match, and the clearest evidence that the matcher resolved these rather than being handed the answer.
+The mirror allows a check no other source does, because the correct answer was
+withheld from the importer and is recoverable from the data: every bound
+division's name equals its region's name, and 8 roots bind to root divisions
+while 3823 non-roots bind to a division whose parent is exactly the division
+bound to their parent region — zero exceptions. Two bindings that already existed
+changed, both corrections: "Osh (city)" from the province "Osh" to the
+identically-named city division, and root "Antarctica" from a child division to
+the root one (GADM self-nests that continent).
 
-The 1251 `no_candidates` regions carry **zero** suggestions — unlike the 51 `needs_review` regions, they cannot be resolved by review clicks alone. An admin can still invoke a targeted per-region matcher (geoshape, point, AI, or a database search) from the review UI one region at a time, but at this scale a matching pass is what makes resolving all 1251 tractable. They decompose into four distinct causes — three of them matcher gaps, one of them expected behavior:
+`country-based` is untouched by the consolidation — a fresh run of the pre-change
+code and a fresh run of the current code over the same 4301-region Wikivoyage
+import produce byte-identical per-region outcomes.
 
-1. **Children of country-level nodes that themselves went unmatched (572 regions).** The base layer places Australia at root level beside the continents, but `matchCountryLevel` assumes continent → country → subdivision, so a country-level node the algorithm never recognizes as a country has its children skipped along with it. Australia's six states account for 547 of the 572: New South Wales 153 unmatched children, Western Australia 140, Victoria 80, Queensland 73, South Australia 71, Tasmania 30. The remaining 25 belong to other country-level nodes affected the same way.
-2. **Ambiguous country matches (51 countries, 507 regions).** These countries matched *too many* candidates rather than none — United Kingdom 30, France 20, United States 9, all at score 700 — so they land in `needs_review`, and drill-down never runs for their children. They carry 143 suggestions between them and are resolvable by hand in the review UI.
-3. **All-or-nothing drill-down (9 countries, 166 regions).** `trySubdivisionDrillDown` abandons a country's entire subdivision level when even one child fails to match. Vietnam is the clearest case: the country matched cleanly, and 63 subdivisions got nothing.
-4. **The continent nodes themselves (6 regions).** These are container nodes with no division of their own to match, so a `no_candidates` status here is the expected, correct outcome — not a failure, and not part of the gap the first three causes describe.
+Take a per-region snapshot with `scripts/match-snapshot.sh <world_view_id>`; it
+emits `region_id|match_status|division_ids|name` sorted, so two runs are
+comparable with `diff`. A total alone is too coarse to review a matcher change —
+two different defects can produce the same total.
 
-572 + 507 + 166 + 6 = 1251.
+Re-matching (`POST /wv-import/matches/:id/rematch`) runs the world view's policy,
+so it reproduces the import; pass `matchingPolicy` in the body to score the same
+tree under another. **It is destructive**: every `region_members` row for the
+world view is deleted, manual matches included, so hand-resolve after a re-match,
+never before.
 
-This is a finding about the matcher, not the mirror: a node's name plus its parent's resolved division is already enough information to resolve those subdivisions, and `findBestAmongChildren` already implements the lookup — the matcher simply stops after one level and gives up as a unit. A matching policy that walks the hierarchy recursively is the identified fix, tracked as follow-up work with its own ADR; the base layer import is what makes that fix measurable, since it is the only source where the correct answer is known in advance and was deliberately withheld from the importer. See [ADR-0018](../decisions/0018-base-layer-mirror-world-view.md) for the full analysis, the rejected alternatives, and a related finding (the name-matching core is duplicated and has diverged between `matcher.ts` and `matcherUtils.ts`).
-
----
 
 ## Import Sources
 
