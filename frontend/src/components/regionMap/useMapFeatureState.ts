@@ -9,6 +9,16 @@ import type { Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl';
 const REGIONS_SOURCE_LAYER = 'regions';
 
 /**
+ * How long the blocking "Loading map..." overlay may stay up before the map is
+ * handed to the user anyway. Nothing guarantees the tiles ever arrive: a source
+ * that errors, or one whose request never returns, leaves `isSourceLoaded` false
+ * forever, and the overlay covering the whole canvas has no other way down.
+ * After this the map becomes usable and the wait is reported non-blockingly —
+ * a partly-drawn map the user can pan is better than an opaque one they cannot.
+ */
+const TILE_WAIT_TIMEOUT_MS = 8000;
+
+/**
  * The setFeatureState calls swallow exceptions because the feature may not yet
  * be loaded (initial render) or may have been unloaded (after a tile evict);
  * either case is a no-op for hover painting.
@@ -81,6 +91,8 @@ export function useMapFeatureState({
   contextLayerCount,
 }: UseMapFeatureStateOptions) {
   const [tilesReady, setTilesReady] = useState(false);
+  const [tilesStalled, setTilesStalled] = useState(false);
+  const waitStartedAtRef = useRef(Date.now());
   const [rootOverlayEnabled, setRootOverlayEnabled] = useState(false);
 
   // Track previously visited region IDs to clear their state when unmarked
@@ -176,27 +188,67 @@ export function useMapFeatureState({
   // Track when tiles are ready (for loading overlay)
   useEffect(() => {
     setTilesReady(false);
+    setTilesStalled(false);
+    waitStartedAtRef.current = Date.now();
   }, [tileUrl]);
 
   useEffect(() => {
-    if (!mapLoaded || !mapRef.current || !tileUrl) return;
+    // Armed before anything is checked, deliberately — before the map, and
+    // before there is even a tile URL. The overlay is bound to tilesReady and
+    // tilesStalled alone, so every state that leaves both false has to have
+    // something scheduled to end it. A null tileUrl is not a corner case there:
+    // it is the first paint, and it is permanent if /api/world-views never
+    // answers, since worldViews then stays [] and no world view is ever picked.
+    // The reset above re-stamps the deadline when a URL does arrive, so a slow
+    // one still gets the full wait rather than the remainder of this one.
+    const remaining = Math.max(
+      0, TILE_WAIT_TIMEOUT_MS - (Date.now() - waitStartedAtRef.current));
+    const timer = setTimeout(() => setTilesStalled(true), remaining);
+
+    if (!tileUrl) return () => clearTimeout(timer);
+
+    // Deadline, not duration: this effect re-runs when the map finishes loading,
+    // and restarting a fresh timeout there would silently double the wait.
+    if (!mapLoaded || !mapRef.current) return () => clearTimeout(timer);
 
     const map = mapRef.current.getMap();
+
+    if (map.getSource('regions-vt') && map.isSourceLoaded('regions-vt')) {
+      setTilesReady(true);
+      clearTimeout(timer);
+      return;
+    }
+
+    const stopWaiting = () => {
+      clearTimeout(timer);
+      map.off('sourcedata', handleSourceData);
+      map.off('error', handleError);
+    };
 
     const handleSourceData = (e: MapSourceDataEvent) => {
       if (e.sourceId === 'regions-vt' && e.isSourceLoaded) {
         setTilesReady(true);
-        map.off('sourcedata', handleSourceData);
+        stopWaiting();
       }
     };
 
-    if (map.getSource('regions-vt') && map.isSourceLoaded('regions-vt')) {
-      setTilesReady(true);
-    } else {
-      map.on('sourcedata', handleSourceData);
-    }
+    // A failed tile request never produces an `isSourceLoaded` event, so without
+    // this the overlay would outlive the thing it is waiting for. It lowers the
+    // overlay and nothing more: MapLibre reports one error per failed tile, and
+    // unsubscribing from `sourcedata` here would mean a single transient failure
+    // pins the notice up for good, even once every tile has since arrived.
+    const handleError = (e: { sourceId?: string }) => {
+      if (e.sourceId === 'regions-vt') {
+        setTilesStalled(true);
+        clearTimeout(timer);
+        map.off('error', handleError);
+      }
+    };
 
-    return () => { map.off('sourcedata', handleSourceData); };
+    map.on('sourcedata', handleSourceData);
+    map.on('error', handleError);
+
+    return stopWaiting;
   }, [mapLoaded, tileUrl, mapRef]);
 
   // Apply hover state to features using setFeatureState
@@ -241,5 +293,5 @@ export function useMapFeatureState({
     }
   }, [mapLoaded, isExploring, contextLayerCount, mapRef]);
 
-  return { tilesReady, rootOverlayEnabled };
+  return { tilesReady, tilesStalled, rootOverlayEnabled };
 }
