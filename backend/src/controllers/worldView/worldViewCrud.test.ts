@@ -10,7 +10,7 @@ import { getWorldViews, createWorldView, updateWorldView } from './worldViewCrud
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
 function makeRes() {
-  return { json: vi.fn(), status: vi.fn().mockReturnThis() };
+  return { json: vi.fn(), status: vi.fn().mockReturnThis(), setHeader: vi.fn(), vary: vi.fn() };
 }
 
 describe('getWorldViews visibility', () => {
@@ -35,6 +35,19 @@ describe('getWorldViews visibility', () => {
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/AND\s*\(\$1::boolean OR is_public\)/);
     expect(params).toEqual([true]);
+  });
+
+  it('forbids caching a response whose body depends on the caller', async () => {
+    // Express sends an ETag and `Vary: Origin` by default and says nothing about
+    // who asked. That is enough for a proxy or CDN to serve an admin's list —
+    // including the unpublished world views — to an anonymous visitor.
+    const res = makeRes();
+    await getWorldViews({ user: { role: 'admin' } } as never, res as never);
+
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+    // vary() rather than setHeader('Vary'): CORS has already put Origin there,
+    // and setHeader would replace it instead of adding to it.
+    expect(res.vary).toHaveBeenCalledWith('Authorization');
   });
 
   it('returns isPublic to the client', async () => {
