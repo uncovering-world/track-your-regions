@@ -26,6 +26,7 @@ and mark the old one as `Superseded by ADR-XXXX`.
 | [0015](0015-python-cv-microservice.md) | Python CV microservice for image-processing pipeline | Accepted | 2026-04-26 |
 | [0017](0017-server-bind-address.md) | Server bind address — loopback by default, all interfaces in production | Accepted | 2026-06-03 |
 | [0018](0018-base-layer-mirror-world-view.md) | Experiences reach the administrative base layer through a mirror world view | Accepted | 2026-07-27 |
+| [0019](0019-matching-policy-per-source-shape.md) | The matcher picks a policy from the shape of the source's tree | Accepted | 2026-07-30 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

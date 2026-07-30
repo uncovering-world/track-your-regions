@@ -119,7 +119,7 @@ chapters:
       desc: "Rate limiting on API endpoints"
       level: 1
       status: pass
-      notes: "express-rate-limit on auth (login, register, refresh), geocode search (30/min), and experience search (30/min). Fixed 2026-02-10"
+      notes: "express-rate-limit on auth (login, register, refresh), geocode search (30/min), and experience search (30/min). Fixed 2026-02-10. Admin routes are otherwise unlimited by design — bulk workflows (batch match acceptance, geometry compute) legitimately issue many requests a minute — with one exception: POST /wv-import/matches/:id/rematch carries expensiveAdminLimiter (5/min), because it deletes every region_members row for a world view and then spends 20-130s re-resolving them, so a repeat request costs more than the request and each run destroys the previous one output. The 409 guard stops concurrent runs but not rapid succession. Added 2026-07-30 (#456)."
     V4.1.3:
       desc: "API responses don't leak sensitive data"
       level: 1

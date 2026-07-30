@@ -47,15 +47,29 @@ Per-IP limiting for logged-in user actions (tracking visits, viewed treasures).
 
 Applied via `router.use(authenticatedLimiter)` at the router level since all routes require auth.
 
-### 5. Admin/curator (exempt)
+### 5. Admin/curator (exempt by default, with named exceptions)
 
-Routes behind `requireAuth` + `requireAdmin` or `requireCurator` do **not** have rate limiting. Rationale:
+Routes behind `requireAuth` + `requireAdmin` or `requireCurator` are **not** rate limited by default. Rationale:
 
 - These are inaccessible to unauthenticated users
 - Admin operations include long-running batch tasks (geometry computation, sync) where rate limiting could cause failures
 - The attack surface is negligible (requires compromised admin credentials)
 
-**Exempt files:** `adminRoutes.ts`, `divisionRoutes.ts` (mounted behind admin middleware), `viewRoutes.ts`, `aiRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
+**Exempt by default:** `adminRoutes.ts`, `divisionRoutes.ts` (mounted behind admin middleware), `viewRoutes.ts`, `aiRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
+
+The exemption is about the *attack* surface, and it stops applying when a request
+is expensive to the system regardless of who sends it. One route is limited today:
+
+| Limiter | Window | Max | Applied to |
+|---------|--------|-----|------------|
+| `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch` |
+
+A re-match deletes every `region_members` row for a world view and then spends
+20–130s re-resolving them. The endpoint already answers 409 while one is running,
+which stops concurrent runs but not a rapid succession of them — and each run
+discards the previous one's output. Deliberately its own limiter rather than one
+applied to the whole admin mount, because the bulk workflows above legitimately
+issue many requests a minute and must not inherit a limit sized for this.
 
 ## Adding rate limiting to new endpoints
 
@@ -68,6 +82,12 @@ When adding a new route, choose the appropriate limiter:
 | Authenticated user action | `authenticatedLimiter` | `middleware/rateLimiter.ts` |
 | Auth flow (login, register, etc.) | Create dedicated limiter | `middleware/rateLimiter.ts` |
 | Admin/curator only | None needed | — |
+| Admin/curator, **and** long-running or destructive | `expensiveAdminLimiter` | `middleware/rateLimiter.ts` |
+
+The criterion for that last row is not "is it admin-only" but "does a repeat
+request cost more than the request": long-running, destructive, or discarding the
+previous run's result. Being behind `requireAdmin` does not make a 130-second
+destructive operation safe to fire six times a minute by accident.
 
 **Important:** Always apply rate limiting middleware **before** the route handler in the middleware chain. For per-route application, place it as the first middleware argument:
 
