@@ -18,22 +18,43 @@ const STRIP_SUFFIXES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Whether a single character is whitespace. `trim()` on a one-character string
+ * is the cheapest way to get the full Unicode set — crucially including the
+ * non-breaking space, which GADM names contain.
+ */
+function isWhitespace(ch: string): boolean {
+  return ch.trim() === '';
+}
+
+/**
  * Strip a single trailing geographic suffix from a name.
- * Replaces the previous regex-based strip — the regex form had 21
- * alternations which triggered sonarjs/regex-complexity and
- * sonarjs/slow-regex warnings. This O(n) implementation is exactly
- * equivalent in behavior (case-insensitive, single trailing suffix after
- * whitespace).
+ *
+ * Splits on any whitespace run rather than on a literal space. That matters in
+ * exactly one place with teeth: `buildGadmCountryNameIndex`, where a country
+ * whose name has a non-breaking space before its suffix would get no
+ * suffix-stripped key and so could not be found by name at all. The earlier
+ * `lastIndexOf(' ')` form missed those, the regex form it replaced did not, and
+ * this form is a superset of both.
+ *
+ * Scanned rather than matched with a regex on purpose. Both previous forms drew
+ * sonarjs complaints — the 21-alternation suffix pattern for complexity, and a
+ * `\s+(\S+)\s*$` replacement for super-linear backtracking on an all-whitespace
+ * name. Region names come from admin-supplied import files, so that is a real
+ * input, not a hypothetical one. This scan is O(n) with no backtracking.
  */
 export function stripTrailingSuffix(name: string): string {
-  const lastSpace = name.lastIndexOf(' ');
-  if (lastSpace <= 0) return name;
-  const tail = name.slice(lastSpace + 1);
-  if (tail.length === 0) return name;
-  if (STRIP_SUFFIXES.has(tail.toLowerCase())) {
-    return name.slice(0, lastSpace);
-  }
-  return name;
+  let end = name.length;
+  while (end > 0 && isWhitespace(name[end - 1])) end--;
+
+  let wordStart = end;
+  while (wordStart > 0 && !isWhitespace(name[wordStart - 1])) wordStart--;
+  if (wordStart === 0) return name; // single word — no suffix to strip
+
+  if (!STRIP_SUFFIXES.has(name.slice(wordStart, end).toLowerCase())) return name;
+
+  let cut = wordStart;
+  while (cut > 0 && isWhitespace(name[cut - 1])) cut--;
+  return name.slice(0, cut);
 }
 
 /** Normalize a name for matching: lowercase, strip accents */
@@ -127,7 +148,7 @@ export function getPath(divisionId: number, pathCache: PathCache, divisionsById:
 function findExactMatch(
   variants: readonly string[],
   gadmEntry: DivisionEntry,
-): { entry: DivisionEntry; score: number } | null {
+): ScoredEntry | null {
   for (const variant of variants) {
     if (gadmEntry.nameNormalized === variant) {
       return { entry: gadmEntry, score: 700 };
@@ -140,7 +161,7 @@ function findExactMatch(
 function findVariantMatch(
   variants: readonly string[],
   gadmEntry: DivisionEntry,
-): { entry: DivisionEntry; score: number } | null {
+): ScoredEntry | null {
   const gadmVariants = getNameVariants(gadmEntry.name);
   for (const gv of gadmVariants) {
     if (variants.includes(gv)) {
@@ -154,7 +175,7 @@ function findVariantMatch(
 function findPrefixMatchEntry(
   variants: readonly string[],
   gadmEntry: DivisionEntry,
-): { entry: DivisionEntry; score: number } | null {
+): ScoredEntry | null {
   for (const variant of variants) {
     if (isPrefixMatch(variant, gadmEntry.nameNormalized)) {
       return { entry: gadmEntry, score: 650 };
@@ -163,21 +184,32 @@ function findPrefixMatchEntry(
   return null;
 }
 
+/** A candidate division with the score the match scored it at. */
+export interface ScoredEntry { entry: DivisionEntry; score: number }
+
 /**
- * Try matching a single WV name against a specific set of GADM divisions (in-memory).
- * Returns the best match or null.
+ * Try matching a single import region name against a specific set of GADM
+ * divisions (in-memory). Returns the best match or null.
  *
  * Priority: exact (700) > variant (650) > prefix (650). Within the same tier,
  * the first match wins (scanning gadmChildren in order).
+ *
+ * `cleanName` controls whether parenthetical annotations are stripped from the
+ * import name before matching. Wikivoyage titles carry them as disambiguators
+ * ("Osh (city)" meaning the article, where GADM has plain "Osh"), so the
+ * country-based policy strips them. A base-layer mirror's names *are* division
+ * names, so stripping turns an available exact match into a wrong one — see
+ * ADR-0019.
  */
 export function findBestAmongChildren(
   wvName: string,
   gadmChildren: DivisionEntry[],
-): { entry: DivisionEntry; score: number } | null {
-  const cleaned = cleanWvName(wvName);
+  cleanName = true,
+): ScoredEntry | null {
+  const cleaned = cleanName ? cleanWvName(wvName) : wvName;
   const variants = getNameVariants(cleaned);
 
-  let bestMatch: { entry: DivisionEntry; score: number } | null = null;
+  let bestMatch: ScoredEntry | null = null;
 
   for (const gadmEntry of gadmChildren) {
     const exact = findExactMatch(variants, gadmEntry);
