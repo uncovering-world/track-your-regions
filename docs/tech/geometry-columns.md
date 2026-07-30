@@ -53,13 +53,14 @@ This document describes the geometry pipeline: columns, rules, functions, trigge
 
 ### Derived 3857 geometries (SRID 3857 — Web Mercator)
 
-Auto-maintained by the `trg_regions_geom_3857` trigger whenever source geometries change.
+Auto-maintained by the `trg_regions_geom_3857` trigger whenever source geometries change — or when `geom_simplified_low` is written directly, which `simplify_coverage_regions()` does.
 
 | Column | Type | Derived from | Description |
 |--------|------|-------------|-------------|
 | `geom_3857` | MultiPolygon | `geom` | Full-resolution in Web Mercator for MVT generation. |
 | `hull_geom_3857` | MultiPolygon | `hull_geom` | Full-resolution hull in Web Mercator. |
-| `geom_simplified_low` | MultiPolygon | `COALESCE(hull_geom_3857, geom_3857)` when `uses_hull`, else `geom_3857` | **Zoom 0-4**. Simplified with 5km tolerance. |
+| `geom_overview` | MultiPolygon | `geom_simplified_low` | **Zoom 0-2**. 50km tolerance, Douglas-Peucker, with rule 12's fallbacks. |
+| `geom_simplified_low` | MultiPolygon | `COALESCE(hull_geom_3857, geom_3857)` when `uses_hull`, else `geom_3857` | **Zoom 3-4**. Simplified with 5km tolerance. |
 | `geom_simplified_medium` | MultiPolygon | Same logic | **Zoom 5-8**. Simplified with 1km tolerance. |
 | `geom_simplified_low_real` | MultiPolygon | `geom_3857` (always real, never hull) | **Island tile source zoom 0-4**. Real coastlines simplified. |
 | `geom_simplified_medium_real` | MultiPolygon | `geom_3857` (always real, never hull) | **Island tile source zoom 5-8**. Real coastlines simplified. |
@@ -69,11 +70,54 @@ Auto-maintained by the `trg_regions_geom_3857` trigger whenever source geometrie
 ### Render geometry selection
 
 ```
-Zoom 0-2:  extra-simplified geom_simplified_low (main tile source)
+Zoom 0-2:  geom_overview (main tile source)
 Zoom 3-4:  geom_simplified_low (main tile source)
 Zoom 5-8:  geom_simplified_medium (main tile source)
 Zoom 9+:   geom_3857 (real geometry, all regions)
 ```
+
+#### Why zoom 0-2 has a rung of its own
+
+One tile spans the whole world at zoom 0, at roughly 10km per MVT unit, so a
+geometry finer than that cannot be drawn. `geom_simplified_low` is far finer:
+773,264 vertices across the 3,594 leaves of the administrative mirror, 619,254
+across the eight GADM root divisions. Tile cost is proportional to the vertices
+handed to `ST_AsMVTGeom`, and the tile functions used to cut them down per
+request with `ST_SimplifyPreserveTopology(…, 50000)` — the single most expensive
+thing in the query, and nearly the least effective: 88 s for the eight GADM
+divisions to remove 16% of their vertices. A cold overview tile took 15-25 s.
+
+`geom_overview` holds that result precomputed, and reaches overview scale with
+Douglas-Peucker rather than the topology-preserving variant: 33,474 vertices
+instead of 543,137, computed in seconds for every region in the database.
+
+Measured against what the old code rendered, the average region keeps 101.3% of
+its drawn area. Cold overview tiles now take 0.1-1.4 s.
+
+`NULL` in the column means "not computed", and the tile functions fall through to
+`geom_simplified_low` when they see it. That is what makes
+`db/migrations/008-overview-lod-backfill.sql` optional rather than a hard
+prerequisite: a database that has not run it renders exactly as before, slowly,
+instead of rendering nothing.
+
+Rule 12 applies at this rung too, and getting it wrong is not subtle.
+Douglas-Peucker annihilates any polygon narrower than the tolerance, and 50km
+annihilates 1,324 of the mirror's 3,594 leaves. Dropping them looks defensible —
+the largest covers 3.5 square pixels at zoom 0 — but a world view built only from
+small regions then renders an empty map when zoomed out. The e2e fixture is
+exactly such a world view, one 56 × 87 km region, and it vanished. Hence the
+staged fallbacks in `simplify_for_overview()`, which leave nothing behind.
+
+Two writers keep it current. The geometry triggers maintain it — including on
+`geom_simplified_low` alone, because `simplify_coverage_regions()` writes that
+column directly and nothing else in the trigger would notice. The GADM bulk
+import fills it in `db/init-db.py`, which runs with the triggers disabled and
+hand-computes the derived columns.
+
+Neither reaches rows that were already in the table when the column was added;
+`db/migrations/008-overview-lod-backfill.sql` is the one-shot path for those. It
+is optional rather than a prerequisite — see the NULL contract above — but a
+database that skips it keeps paying the old cost.
 
 For `uses_hull` regions at z0-8, the simplified columns already derive from hull geometry (via trigger), so the transition is automatic.
 
@@ -102,8 +146,23 @@ Zoom 9+:   geom_3857
 | Column | Type | Derived from | Description |
 |--------|------|-------------|-------------|
 | `geom_3857` | MultiPolygon | `geom` | Full-resolution in Web Mercator. |
-| `geom_simplified_low_3857` | MultiPolygon | `geom_3857` | **Zoom 0-4**. 5km tolerance. |
+| `geom_overview_3857` | MultiPolygon | `geom_simplified_low_3857` | **Zoom 0-2**. 50km tolerance, Douglas-Peucker. |
+| `geom_simplified_low_3857` | MultiPolygon | `geom_3857` | **Zoom 3-4**. 5km tolerance. |
 | `geom_simplified_medium_3857` | MultiPolygon | `geom_3857` | **Zoom 5-8**. 1km tolerance. |
+
+### Render geometry selection
+
+```
+Zoom 0-2:  geom_overview_3857
+Zoom 3-4:  geom_simplified_low_3857
+Zoom 5-8:  geom_simplified_medium_3857
+Zoom 9+:   geom_3857
+```
+
+Same contract as `regions`: a NULL overview means "not computed" and falls
+through to `geom_simplified_low_3857`, so a database that has not run the
+backfill renders as it did before. `tile_gadm_root_divisions` and
+`tile_gadm_subdivisions` both follow this ladder.
 
 ---
 
@@ -154,6 +213,30 @@ Three-stage pipeline:
 2. **Stage 2 — Fallback**: If Stage 1 produced NULL (small islands), retry with tolerance scaled to `max_polygon_width / 10`. Minimum vertex floor: >=4 vertices per polygon.
 3. **Stage 3 — Smooth**: `ST_ChaikinSmoothing` if `smooth_iterations > 0`.
 
+### `simplify_for_overview(geom, tolerance)`
+
+Fills `geom_overview` / `geom_overview_3857`. Three stages, mirroring
+`simplify_for_zoom()`:
+
+1. **Simplify** — Douglas-Peucker at 50km, then `ST_MakeValid` (plain
+   simplification self-intersects on coastlines) and `ST_CollectionExtract(…, 3)`
+   to keep the column's MultiPolygon type.
+2. **Fallback** — if nothing survived, retry at one tenth the width of the
+   *widest constituent polygon*, per `ST_Dump`. Not the whole MultiPolygon's
+   envelope: France's leaf is 845 pieces spread over 3,385km with none wider
+   than 49km, so an envelope-derived tolerance stays far above every island and
+   this stage collapses too.
+3. **Keep** — if still nothing, `ST_SimplifyPreserveTopology` at the overview
+   tolerance. Slow, and the reason this rung exists, but it never annihilates
+   and it is what these rows went through before; only what survives two
+   Douglas-Peucker passes reaches it (rule 12).
+
+Douglas-Peucker rather than `simplify_for_zoom()`'s `ST_SimplifyVW`, because VW
+does not reach overview scale: 490,680 of 773,264 vertices survive at this
+tolerance and it takes 107 s to precompute. VW's better coastal character (rule
+13) earns its cost at zoom 3-8, where the shape is legible; at zoom 0 a coastline
+is a few pixels.
+
 ### `simplify_coverage_siblings(parent_division_id, tolerance_low, tolerance_medium)`
 
 Coverage-aware simplification using `ST_CoverageSimplify` (PostGIS 3.6+, GEOS 3.14+). Produces gap-free simplified versions of adjacent GADM divisions. Called from `precalculate-geometries.py` after computing parent geometries.
@@ -178,13 +261,13 @@ Coverage-aware simplification for **sibling regions** (same parent). Uses `ST_Co
 | `update_admin_div_geom_3857` | `administrative_divisions` | `geom` or simplified change | Transforms to 3857, computes 3857 simplified columns. |
 | `update_region_metadata` | `regions` | `geom` change | Computes area, detects `uses_hull` on INSERT. |
 | `update_region_focus_data` | `regions` | `geom` or `hull_geom` change | Computes `anchor_point` and `focus_bbox`. |
-| `trg_regions_geom_3857` | `regions` | `geom` or `hull_geom` change | Transforms to 3857, computes all simplified columns (hull-based and real-geom-based). |
+| `trg_regions_geom_3857` | `regions` | `geom`, `hull_geom`, or `geom_simplified_low` change | Transforms to 3857, computes all simplified columns (hull-based and real-geom-based). The third condition exists for `simplify_coverage_regions()`, which writes `geom_simplified_low` directly — without it `geom_overview` would keep the pre-coverage shape and serve it at zoom 0-2. |
 
 ## Tile cache busting
 
 Martin caches tile responses in memory. When geometry changes, stale tiles must be invalidated.
 
-- **`world_views.tile_version`** — integer column, incremented by the backend when geometry is computed (SSE single-region compute, batch compute).
+- **`world_views.tile_version`** — integer column, incremented by the backend when geometry is computed (SSE single-region compute, batch compute), and by `db/migrations/008-overview-lod-backfill.sql`, which changes the geometry every zoom 0-2 tile is built from without changing any tile URL. The backend's three sites each bump one world view (`WHERE id = $1`); the migration's is unqualified and bumps every row at once, because the backfill rewrites both `regions` and `administrative_divisions`. It is also the only incrementer an operator runs by hand, and it bumps only when it actually filled rows, so a re-run leaves a warm cache alone.
 - **Frontend initialization** — `useNavigation` reads `tileVersion` from the world view API response and initializes the in-memory `tileVersion` state from it. This ensures fresh page loads use the correct version.
 - **Frontend increment** — `invalidateTileCache()` increments `tileVersion` by 1 (called when the WorldView Editor closes). The `_v` query param on Martin tile URLs changes, bypassing Martin's cache.
 - **Why not timestamps?** — Using `Date.now()` would break caching entirely. The version must be a stable integer that only changes when geometry actually changes.
