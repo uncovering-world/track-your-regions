@@ -9,6 +9,7 @@ import { Router, Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { pool } from '../db/index.js';
 import { validate } from '../middleware/errorHandler.js';
+import { expensiveAdminLimiter } from '../middleware/rateLimiter.js';
 import { z } from 'zod';
 import {
   categoryIdParamSchema,
@@ -47,6 +48,7 @@ import {
   wvImportClusterReviewBodySchema,
   wvImportIcpAdjustmentBodySchema,
   wvImportRegionIdSchema,
+  wvImportRematchBodySchema,
   wvImportGeoshapeMatchSchema,
   wvImportAcceptTransferSchema,
   wvImportTransferPreviewSchema,
@@ -568,7 +570,7 @@ router.post('/wv-import/matches/:worldViewId/approve-coverage', validate(worldVi
 router.post('/wv-import/matches/:worldViewId/finalize', validate(worldViewIdParamSchema, 'params'), finalizeReview);
 
 // Re-run matching from scratch
-router.post('/wv-import/matches/:worldViewId/rematch', validate(worldViewIdParamSchema, 'params'), rematchWorldView);
+router.post('/wv-import/matches/:worldViewId/rematch', expensiveAdminLimiter, validate(worldViewIdParamSchema, 'params'), validate(wvImportRematchBodySchema), rematchWorldView);
 router.get('/wv-import/matches/:worldViewId/rematch/status', validate(worldViewIdParamSchema, 'params'), getRematchStatus);
 
 // Geoshape proxy (Wikidata → Wikimedia maps)

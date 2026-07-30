@@ -108,3 +108,31 @@ export const authenticatedLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' },
 });
+
+// =============================================================================
+// Expensive Admin Operation Rate Limiter
+// =============================================================================
+
+/**
+ * Admin operations that are long-running *and* destructive, where a repeat
+ * request costs more than the request itself.
+ *
+ * A re-match deletes every `region_members` row for a world view and then spends
+ * 20–130 seconds re-resolving them, holding a pool client for the write
+ * transaction at the end. The endpoint already answers 409 while one is running,
+ * which stops concurrent runs but not a rapid succession of them — each destroys
+ * the previous one's output. The limit is deliberately small: firing this more
+ * than a few times a minute is a mistake, not a workflow.
+ *
+ * Kept separate from `authenticatedLimiter` rather than applied to the whole
+ * admin mount, because admin bulk workflows (batch match acceptance, geometry
+ * compute) legitimately issue many requests in a minute and must not be caught
+ * by a limit sized for this one.
+ */
+export const expensiveAdminLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests for this operation, please try again later' },
+});

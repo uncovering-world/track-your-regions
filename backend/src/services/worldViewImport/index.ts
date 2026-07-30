@@ -8,10 +8,10 @@
 import { pool } from '../../db/index.js';
 import { importTree } from './importer.js';
 import type { ImportTreeOptions } from './importer.js';
-import { matchCountryLevel } from './matcher.js';
+import { matchCountryLevel, matchHierarchical } from './matcher.js';
 import type { ImportTreeNode, ImportProgress, MatchingPolicy } from './types.js';
 import { createInitialProgress } from './types.js';
-import type { ImportSourceType } from './sourceTypes.js';
+import { defaultMatchingPolicy, type ImportSourceType } from './sourceTypes.js';
 import { buildBaseLayerTree } from './baseLayerImporter.js';
 
 export type { ImportTreeNode, ImportProgress, MatchSuggestion, MatchingPolicy } from './types.js';
@@ -121,7 +121,9 @@ export async function startBaseLayerImport(options: BaseLayerImportOptions): Pro
   // Fire and forget, reusing the slot reserved above — not startImport, which
   // would reserve a second one.
   runImport(opId, tree, options.name, progress, {
-    matchingPolicy: 'country-based',
+    // Derived, not hardcoded: the policy belongs to the shape of the source's
+    // tree, and one place decides that for every entry point (ADR-0019).
+    matchingPolicy: defaultMatchingPolicy('base_layer'),
     sourceType: 'base_layer',
     source: options.providerLabel,
     description: `Mirror of the administrative base layer (${options.providerLabel}), depth ${options.maxDepth}`,
@@ -163,6 +165,27 @@ export function cancelImport(opId?: string): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Dispatch to the policy's matcher. `'none'` never reaches here — the caller
+ * short-circuits it before the matching phase, since it also skips the
+ * bookkeeping this path does afterwards.
+ *
+ * Exported so the re-match path runs the same dispatch as the import path. They
+ * diverged before: re-match called the country matcher directly, so a world view
+ * imported under one policy was silently re-matched under another.
+ */
+export async function runMatchingPolicy(
+  policy: Exclude<MatchingPolicy, 'none'>,
+  worldViewId: number,
+  progress: ImportProgress,
+): Promise<void> {
+  if (policy === 'hierarchical') {
+    await matchHierarchical(worldViewId, progress);
+    return;
+  }
+  await matchCountryLevel(worldViewId, progress);
 }
 
 /** Internal: run the full import + match pipeline */
@@ -207,8 +230,8 @@ async function runImport(
       console.log(`[WV Import] ${opId} Complete (no matching): ${progress.createdRegions} regions`);
     } else {
       const phase2Start = Date.now();
-      console.log(`[WV Import] ${opId} Phase 2: Matching countries to GADM...`);
-      await matchCountryLevel(worldViewId, progress);
+      console.log(`[WV Import] ${opId} Phase 2: Matching to GADM (policy=${matchingPolicy})...`);
+      await runMatchingPolicy(matchingPolicy, worldViewId, progress);
       const phase2Duration = ((Date.now() - phase2Start) / 1000).toFixed(1);
 
       if (!progress.cancel) {
@@ -219,9 +242,18 @@ async function runImport(
           [worldViewId],
         );
         progress.status = 'complete';
-        progress.statusMessage = `Import complete: ${progress.createdRegions} regions, ${progress.countriesMatched} countries matched (${progress.subdivisionsDrilled} with subdivisions), ${progress.noCandidates} unmatched leaves`;
         const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[WV Import] ${opId} Complete in ${totalDuration}s (phase2=${phase2Duration}s): matched=${progress.countriesMatched}, drilldowns=${progress.subdivisionsDrilled}, none=${progress.noCandidates}`);
+        // Same reason as the re-match path: only the country policy fills the
+        // country-named counters, so only it can be summarised in their terms.
+        // Rebuilding this sentence for every policy overwrote a base-layer
+        // import's own accurate summary with "0 countries matched (0 with
+        // subdivisions), 0 unmatched leaves", and this string is the only
+        // completion signal the panel shows — the chips that would contradict it
+        // are gated on `> 0` and stay hidden.
+        progress.statusMessage = matchingPolicy === 'country-based'
+          ? `Import complete: ${progress.createdRegions} regions, ${progress.countriesMatched} countries matched (${progress.subdivisionsDrilled} with subdivisions), ${progress.noCandidates} unmatched leaves`
+          : `Import complete: ${progress.createdRegions} regions. ${progress.statusMessage}`;
+        console.log(`[WV Import] ${opId} Complete in ${totalDuration}s (phase2=${phase2Duration}s): ${progress.statusMessage}`);
       } else {
         console.log(`[WV Import] ${opId} Cancelled during phase 2`);
       }

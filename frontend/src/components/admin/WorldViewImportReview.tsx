@@ -501,6 +501,12 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     },
   });
 
+  // Without this the failure is silent, and silence on a destructive button reads
+  // as "nothing happened" — which invites pressing it again. The endpoint is rate
+  // limited to 5/min, so the 6th press in a window is refused, and the poll keeps
+  // reporting `idle`, so nothing else in this view would ever say so.
+  const rematchError = (rematchMutation.error as Error | null)?.message;
+
   const { data: rematchStatus } = useQuery({
     queryKey: ['admin', 'wvImport', 'rematchStatus', worldViewId],
     queryFn: () => getRematchStatus(worldViewId),
@@ -795,6 +801,11 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       {rematchStatus?.status === 'complete' && rematchStatus.statusMessage && (
         <Alert severity="success" sx={{ mb: 2 }}>
           {rematchStatus.statusMessage}
+        </Alert>
+      )}
+      {rematchError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => rematchMutation.reset()}>
+          Re-match could not start: {rematchError}
         </Alert>
       )}
 
