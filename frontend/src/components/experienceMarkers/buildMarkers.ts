@@ -31,12 +31,16 @@ export function buildExperienceMarkers(
 ): MarkerData[] {
   const result: MarkerData[] = [];
 
-  // No cap. The source these feed clusters natively, which is what makes
-  // thousands of points affordable — while a cap silently breaks the
-  // list-to-map hover for everything past it: the highlight resolves an
-  // experience through this set and returns without a sound when it is absent.
-  // A region with 200 experiences had hover working for the first hundred rows
-  // and doing nothing at all for the rest.
+  // No cap. A cap silently breaks the list-to-map hover for everything past it:
+  // the highlight resolves an experience through this set and returns without a
+  // sound when it is absent. A region with 200 experiences had hover working for
+  // the first hundred rows and doing nothing at all for the rest.
+  //
+  // Clustering is what makes the full set affordable to *render* — it does not
+  // bound the hover path, which walks every leaf of every rendered cluster
+  // (`paintClusterRingForExperience`). That scan used to be capped at a hundred
+  // points and is now proportional to the region. Fine at 200; the thing to
+  // watch if a region grows an order of magnitude.
   for (const exp of experiences) {
     const categoryName = exp.category_name || 'Experiences';
     if (expandedCategoryNames.size > 0 && !expandedCategoryNames.has(categoryName)) continue;

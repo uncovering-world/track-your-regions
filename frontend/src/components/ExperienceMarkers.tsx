@@ -266,11 +266,34 @@ function pickClusterRingRadius(pointCount: number): number {
   return 26;
 }
 
-function paintClusterRingForExperience(
+/**
+ * Ownership token for the hover ring.
+ *
+ * The cluster scan below is asynchronous and, since the marker cap went, walks
+ * every leaf of every rendered cluster — so an answer can arrive long after the
+ * pointer has moved on. Every path that takes over the ring claims a token
+ * first, and a scan paints only while it still holds the current one.
+ *
+ * Bumping it inside the scan is not enough: that would only invalidate a scan
+ * when the *next* hover happened to be another scan. Leaving the list clears the
+ * ring through EMPTY_FC, hovering a location paints directly, hovering an
+ * unclustered marker paints a point — none of which are scans, and each would
+ * otherwise be overpainted by a stale one.
+ */
+let hoverPaintSequence = 0;
+
+export function claimHoverPaint(): number {
+  return ++hoverPaintSequence;
+}
+
+// Exported for its ordering test — the scan is asynchronous while every other
+// path that takes the ring is not, which is where a stale answer used to win.
+export function paintClusterRingForExperience(
   map: maplibregl.Map,
   expId: number,
   fallbackCoords: [number, number],
   setHoverData: (data: GeoJSON.FeatureCollection) => void,
+  sequence: number,
 ): void {
   const mainSource = map.getSource(SOURCE_MARKERS) as maplibregl.GeoJSONSource | undefined;
   if (!mainSource) return;
@@ -280,7 +303,7 @@ function paintClusterRingForExperience(
     : [];
 
   if (clusterFeatures.length === 0) {
-    setHoverData(buildPointHoverData(fallbackCoords));
+    if (sequence === hoverPaintSequence) setHoverData(buildPointHoverData(fallbackCoords));
     return;
   }
 
@@ -290,6 +313,7 @@ function paintClusterRingForExperience(
     const clusterId = cluster.properties.cluster_id;
     const pointCount = cluster.properties.point_count;
     mainSource.getClusterLeaves(clusterId, pointCount, 0).then(leaves => {
+      if (sequence !== hoverPaintSequence) return;  // a newer hover owns the ring
       if (!found && leaves.some(leaf => leaf.properties?.experienceId === expId)) {
         found = true;
         const clusterCoords = (cluster.geometry as GeoJSON.Point).coordinates;
@@ -447,6 +471,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     let mapCurrentHoveredId: number | null = null;
 
     const clearHoverState = () => {
+      claimHoverPaint();
       map.getCanvas().style.cursor = '';
       popup.remove();
       mapCurrentHoveredId = null;
@@ -494,6 +519,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
 
         if (experienceId !== mapCurrentHoveredId) {
+          claimHoverPaint();
           mapCurrentHoveredId = experienceId;
 
           // Update hover ring via state
@@ -550,6 +576,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
         const hoverKey = locationId ?? -1;
         if (hoverKey !== mapCurrentHoveredId) {
+          claimHoverPaint();
           mapCurrentHoveredId = hoverKey;
 
           setHoverData({
@@ -660,6 +687,10 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     const map = mapRef.getMap();
     if (!map) return;
 
+    // Claimed before any branch: whichever of them takes the ring, an older scan
+    // still in flight must not paint over it.
+    const sequence = claimHoverPaint();
+
     if (expId == null) {
       setHoverData(EMPTY_FC);
       setHoverPreview(null);
@@ -695,7 +726,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       return;
     }
 
-    paintClusterRingForExperience(map, expId, coords, setHoverData);
+    paintClusterRingForExperience(map, expId, coords, setHoverData, sequence);
   }, [mapRef, getExperienceById, setHoverPreview]);
 
   // Watch hoveredExperienceId + hoverSource to drive list → map hover
