@@ -17,7 +17,7 @@ A visitor can:
 - **Browse the map** — see the world divided into regions (countries, sub-regions, custom groupings) rendered as interactive vector tiles
 - **Explore experiences** — browse UNESCO World Heritage Sites, top museums, public art & monuments organized by region through the Discover page
 - **See what exists** — understand the breadth of experiences available in any region, with counts, categories, images, and descriptions
-- **Switch world views** — see the world organized in different ways: any custom regional grouping an admin has published. Administrative geography is reachable this way only if an admin publishes a world view built from it (see the base layer import below); the built-in administrative hierarchy itself stays admin-only
+- **Switch world views** — see the world organized in different ways: any custom regional grouping an admin has published. Administrative geography is reachable this way only if an admin publishes a world view built from it (see the base layer import below); the built-in administrative hierarchy itself stays admin-only. The address bar follows the choice and the choice follows the address bar: a link carrying a world view opens on it, and pasting or editing one in a tab that is already open switches to it
 
 On a fresh installation (no custom world views yet), the main content
 area shows a **Getting Started** card with setup steps: create a world
