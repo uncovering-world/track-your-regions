@@ -21,6 +21,7 @@ import { useMap, Source, Layer } from 'react-map-gl/maplibre';
 import { Box } from '@mui/material';
 import maplibregl from 'maplibre-gl';
 import type { LayerProps } from 'react-map-gl/maplibre';
+import { buildExperienceMarkers } from './experienceMarkers/buildMarkers';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { useNavigation } from '../hooks/useNavigation';
 import { useRegionLocations } from '../hooks/useRegionLocations';
@@ -320,19 +321,6 @@ interface ExperienceMarkersProps {
 /**
  * Flattened marker data — supports both single and multi-location experiences
  */
-interface MarkerData {
-  id: string;
-  experienceId: number;
-  locationId: number | null;
-  experience: Experience;
-  longitude: number;
-  latitude: number;
-  locationName: string | null;
-  locationCount: number;
-  isMultiLocation: boolean;
-  locationOrdinal: number;
-  inRegion: boolean;
-}
 
 export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   const { current: mapRef } = useMap();
@@ -376,54 +364,10 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
   // ── One marker per experience (primary in-region location), filtered by expanded groups ──
   // Multi-location experiences show all locations via the highlight layer when selected.
-  const markers = useMemo<MarkerData[]>(() => {
-    const result: MarkerData[] = [];
-
-    for (const exp of experiences.slice(0, 100)) {
-      const categoryName = exp.category_name || 'Experiences';
-      if (expandedCategoryNames.size > 0 && !expandedCategoryNames.has(categoryName)) continue;
-
-      const locations = locationsByExperience[exp.id];
-
-      if (locations && locations.length > 0) {
-        // Use the first in-region location as the representative point
-        const inRegionLocations = locations.filter(loc => loc.in_region !== false);
-        const primaryLoc = inRegionLocations[0];
-        if (primaryLoc) {
-          result.push({
-            id: `${exp.id}-${primaryLoc.id}`,
-            experienceId: exp.id,
-            locationId: primaryLoc.id,
-            experience: exp,
-            longitude: primaryLoc.longitude,
-            latitude: primaryLoc.latitude,
-            locationName: primaryLoc.name,
-            locationCount: inRegionLocations.length,
-            isMultiLocation: locations.length > 1,
-            locationOrdinal: primaryLoc.ordinal,
-            inRegion: true,
-          });
-        }
-      } else if (!locations) {
-        // Locations not yet loaded — use experience's own coordinates
-        result.push({
-          id: String(exp.id),
-          experienceId: exp.id,
-          locationId: null,
-          experience: exp,
-          longitude: exp.longitude,
-          latitude: exp.latitude,
-          locationName: null,
-          locationCount: exp.location_count ?? 1,
-          isMultiLocation: false,
-          locationOrdinal: 0,
-          inRegion: true,
-        });
-      }
-    }
-
-    return result;
-  }, [experiences, locationsByExperience, expandedCategoryNames]);
+  const markers = useMemo(
+    () => buildExperienceMarkers(experiences, locationsByExperience, expandedCategoryNames),
+    [experiences, locationsByExperience, expandedCategoryNames],
+  );
 
   // Keep a ref so map callbacks can access the latest markers
   const markersRef = useRef(markers);
