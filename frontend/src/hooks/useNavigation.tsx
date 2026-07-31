@@ -146,74 +146,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     enabled: isCustomWorldView && !!selectedRegion,
   });
 
-  // Set the world view from the URL param or the default — and re-check it
-  // whenever the list itself changes, which it does when the identity does.
-  //
-  // Selecting once was not enough: the list is filtered by visibility, so
-  // logging out can remove the world view that is currently selected. Keeping it
-  // would leave an admin's unpublished world view on screen for an anonymous
-  // visitor, with `rootRegions` still fetching by its id. This reconciliation is
-  // what makes the identity-keyed list take effect downstream.
-  useEffect(() => {
-    // Only ever reconcile against an answer, never against the empty default
-    // that stands in while the query is disabled or in flight.
-    if (!worldViewsLoaded) return;
-
-    // Nor against a settled answer that is already known to be out of date.
-    // invalidateQueries keeps status 'success' and the previous data while it
-    // refetches, and HierarchySwitcher's create flow invalidates and then selects
-    // the new world view in the same batch — an id the stale list cannot contain.
-    // Reconciling there would bounce the admin off the world view they just made.
-    if (worldViewsFetching) return;
-
-    if (worldViews.length === 0) {
-      if (selectedWorldView) {
-        setSelectedWorldView(null);
-        clearWorldViewContext();
-      }
-      // Outside the guard above: with nothing ever selected there is no context
-      // to clear, but `?wv` still names a world view this caller cannot see, and
-      // this is the one branch that never gets a second chance — no selection is
-      // made, so nothing re-runs. Left in place it keeps isCustomWorldView true
-      // and selectedWorldViewId pointing at that id, so rootRegions stays enabled
-      // and 404s on every load, and the address bar goes on advertising it.
-      if (urlWorldViewId !== null) syncWorldViewParam(null);
-      return;
-    }
-
-    if (selectedWorldView && worldViews.some((w: WorldView) => w.id === selectedWorldView.id)) return;
-
-    const worldView = pickWorldView(worldViews, searchParams.get('wv'), isAdmin);
-    if (!worldView) return;
-
-    if (selectedWorldView) {
-      // Replacing one the caller can no longer see: a full switch, because
-      // leaving its region and breadcrumbs rendered — with `?wv=` still naming
-      // it — is the outcome this effect exists to remove. Dropping it halfway is
-      // worse than not dropping it at all.
-      applyWorldView(worldView);
-    } else {
-      // First pick, not a change: nothing to clear, and clearing would be
-      // destructive. rootRegions is enabled from the URL before any world view
-      // object exists, and the sidebar renders outside MainDisplay's loading
-      // gate, so a region can be chosen before the list lands — a window this
-      // change widened by making the list wait on the session.
-      setSelectedWorldView(worldView);
-      setTileVersion(worldView.tileVersion ?? 0);
-
-      // The region context stays, but the URL must not: `?wv=` still naming the
-      // world view just rejected leaves the picker and the address bar
-      // disagreeing, re-shares a dead link, and keeps selectedWorldViewId
-      // falling back to that id on every load — one 404 root-regions request per
-      // visit before it corrects. Only when the URL named something else, so a
-      // bare `/` stays bare.
-      if (urlWorldViewId !== null && urlWorldViewId !== worldView.id) {
-        syncWorldViewParam(worldView);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- worldViews by id, not identity
-  }, [worldViewsLoaded, worldViewsFetching, visibleWorldViewIds, isAdmin, selectedWorldView]);
-
 
   // Update breadcrumbs when division changes (only for GADM hierarchy)
   const { data: ancestorData } = useQuery({
@@ -300,6 +232,86 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     clearWorldViewContext();
     syncWorldViewParam(worldView);
   }, [clearWorldViewContext, syncWorldViewParam]);
+
+  /** Nothing is visible: drop the selection, its context, and the stale param. */
+  const dropWorldView = useCallback(() => {
+    if (selectedWorldView) {
+      setSelectedWorldView(null);
+      clearWorldViewContext();
+    }
+    // Outside the guard above: with nothing ever selected there is no context to
+    // clear, but `?wv` still names a world view this caller cannot see, and this
+    // is the one branch that never gets a second chance — no selection is made,
+    // so nothing re-runs. Left in place it keeps isCustomWorldView true and
+    // selectedWorldViewId pointing at that id, so rootRegions stays enabled and
+    // 404s on every load, and the address bar goes on advertising it.
+    if (urlWorldViewId !== null) syncWorldViewParam(null);
+  }, [selectedWorldView, urlWorldViewId, clearWorldViewContext, syncWorldViewParam]);
+
+
+  /** First pick, not a change: take the world view without clearing anything. */
+  const adoptWorldView = useCallback((worldView: WorldView) => {
+    setSelectedWorldView(worldView);
+    setTileVersion(worldView.tileVersion ?? 0);
+
+    // The region context stays, but the URL must not: `?wv=` still naming a
+    // world view that was just rejected leaves the picker and the address bar
+    // disagreeing, re-shares a dead link, and keeps selectedWorldViewId falling
+    // back to that id on every load — one 404 root-regions request per visit
+    // before it corrects. Only when the URL named something else, so that a bare
+    // `/` stays bare.
+    if (urlWorldViewId !== null && urlWorldViewId !== worldView.id) {
+      syncWorldViewParam(worldView);
+    }
+  }, [urlWorldViewId, syncWorldViewParam]);
+
+  // Set the world view from the URL param or the default — and re-check it
+  // whenever the list itself changes, which it does when the identity does.
+  //
+  // Selecting once was not enough: the list is filtered by visibility, so
+  // logging out can remove the world view that is currently selected. Keeping it
+  // would leave an admin's unpublished world view on screen for an anonymous
+  // visitor, with `rootRegions` still fetching by its id. This reconciliation is
+  // what makes the identity-keyed list take effect downstream.
+  useEffect(() => {
+    // Only ever reconcile against an answer, never against the empty default
+    // that stands in while the query is disabled or in flight.
+    if (!worldViewsLoaded) return;
+
+    // Nor against a settled answer that is already known to be out of date.
+    // invalidateQueries keeps status 'success' and the previous data while it
+    // refetches, and HierarchySwitcher's create flow invalidates and then selects
+    // the new world view in the same batch — an id the stale list cannot contain.
+    // Reconciling there would bounce the admin off the world view they just made.
+    if (worldViewsFetching) return;
+
+    if (worldViews.length === 0) {
+      dropWorldView();
+      return;
+    }
+
+    if (selectedWorldView && worldViews.some((w: WorldView) => w.id === selectedWorldView.id)) return;
+
+    const worldView = pickWorldView(worldViews, searchParams.get('wv'), isAdmin);
+    if (!worldView) return;
+
+    if (selectedWorldView) {
+      // Replacing one the caller can no longer see: a full switch, because
+      // leaving its region and breadcrumbs rendered — with `?wv=` still naming
+      // it — is the outcome this effect exists to remove. Dropping it halfway is
+      // worse than not dropping it at all.
+      applyWorldView(worldView);
+    } else {
+      // First pick, not a change: nothing to clear, and clearing would be
+      // destructive. rootRegions is enabled from the URL before any world view
+      // object exists, and the sidebar renders outside MainDisplay's loading
+      // gate, so a region can be chosen before the list lands — a window this
+      // change widened by making the list wait on the session.
+      adoptWorldView(worldView);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- worldViews by id, not identity
+  }, [worldViewsLoaded, worldViewsFetching, visibleWorldViewIds, isAdmin, selectedWorldView,
+      dropWorldView, adoptWorldView]);
 
   const handleSetSelectedWorldView = applyWorldView;
 
