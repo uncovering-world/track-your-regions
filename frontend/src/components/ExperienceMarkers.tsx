@@ -18,7 +18,6 @@
 
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { useMap, Source, Layer } from 'react-map-gl/maplibre';
-import { Box } from '@mui/material';
 import maplibregl from 'maplibre-gl';
 import type { LayerProps } from 'react-map-gl/maplibre';
 import { buildExperienceMarkers } from './experienceMarkers/buildMarkers';
@@ -328,7 +327,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   const {
     experiences,
     experiencesLoading,
-    totalExperiences,
     hoveredExperienceId,
     hoveredLocationId,
     hoverSource,
@@ -779,7 +777,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     return null;
   }
 
-  const showLimitIndicator = totalExperiences > 100;
 
   return (
     <>
@@ -811,27 +808,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         <Layer {...hoverRingLayer} />
       </Source>
 
-      {/* Limit indicator */}
-      {showLimitIndicator && (
-        <Box
-          sx={{
-            position: 'absolute',
-            bottom: 8,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            bgcolor: 'rgba(0,0,0,0.6)',
-            color: 'white',
-            px: 1.5,
-            py: 0.5,
-            borderRadius: 1,
-            fontSize: '0.75rem',
-            pointerEvents: 'none',
-            zIndex: 1,
-          }}
-        >
-          Showing 100 of {totalExperiences} sites
-        </Box>
-      )}
 
       {/* Popup styles */}
       <style>{`

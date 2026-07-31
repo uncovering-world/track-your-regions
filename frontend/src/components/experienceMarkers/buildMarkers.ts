@@ -31,7 +31,13 @@ export function buildExperienceMarkers(
 ): MarkerData[] {
   const result: MarkerData[] = [];
 
-  for (const exp of experiences.slice(0, 100)) {
+  // No cap. The source these feed clusters natively, which is what makes
+  // thousands of points affordable — while a cap silently breaks the
+  // list-to-map hover for everything past it: the highlight resolves an
+  // experience through this set and returns without a sound when it is absent.
+  // A region with 200 experiences had hover working for the first hundred rows
+  // and doing nothing at all for the rest.
+  for (const exp of experiences) {
     const categoryName = exp.category_name || 'Experiences';
     if (expandedCategoryNames.size > 0 && !expandedCategoryNames.has(categoryName)) continue;
 
