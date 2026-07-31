@@ -313,32 +313,32 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   }
 
   const renderExperienceItem = (exp: Experience, rejected = false) => (
-      <ExperienceListItem
-        key={exp.id}
-        experience={exp}
-        locations={locationsByExperience[exp.id]}
-        isLocationVisited={isLocationVisited}
-        isHovered={hoveredExperienceId === exp.id}
-        isSelected={selectedExperienceId === exp.id}
-        // Narrowed to this experience's own locations. Passed whole, a hover on
-        // any location anywhere would change this prop for every row and undo
-        // the memo for the entire list.
-        hoveredLocationId={ownedHoveredLocationId(locationsByExperience[exp.id], hoveredLocationId)}
-        locationRefs={locationRefs}
-        itemRefs={itemRefs}
-        showCheckbox={isAuthenticated}
-        isLoading={isMutating}
-        onHover={handleHover}
-        onLeave={handleLeave}
-        onClick={handleClick}
-        onLocationVisitedToggle={handleLocationVisitedToggle}
-        onToggleAllLocations={handleToggleAllLocations}
-        onLocationHover={handleLocationHover}
-        isRejected={rejected}
-        onCurate={hasCuratorScope ? handleCurate : undefined}
-        onUnreject={hasCuratorScope && rejected && regionId ? handleUnreject : undefined}
-        onRemoveFromRegion={hasCuratorScope && rejected && regionId ? handleRemoveFromRegion : undefined}
-      />
+    <ExperienceListItem
+      key={exp.id}
+      experience={exp}
+      locations={locationsByExperience[exp.id]}
+      isLocationVisited={isLocationVisited}
+      isHovered={hoveredExperienceId === exp.id}
+      isSelected={selectedExperienceId === exp.id}
+      // Narrowed to this experience's own locations. Passed whole, a hover on
+      // any location anywhere would change this prop for every row and undo
+      // the memo for the entire list.
+      hoveredLocationId={ownedHoveredLocationId(locationsByExperience[exp.id], hoveredLocationId)}
+      locationRefs={locationRefs}
+      itemRefs={itemRefs}
+      showCheckbox={isAuthenticated}
+      isLoading={isMutating}
+      onHover={handleHover}
+      onLeave={handleLeave}
+      onClick={handleClick}
+      onLocationVisitedToggle={handleLocationVisitedToggle}
+      onToggleAllLocations={handleToggleAllLocations}
+      onLocationHover={handleLocationHover}
+      isRejected={rejected}
+      onCurate={hasCuratorScope ? handleCurate : undefined}
+      onUnreject={hasCuratorScope && rejected && regionId ? handleUnreject : undefined}
+      onRemoveFromRegion={hasCuratorScope && rejected && regionId ? handleRemoveFromRegion : undefined}
+    />
   );
 
   return (

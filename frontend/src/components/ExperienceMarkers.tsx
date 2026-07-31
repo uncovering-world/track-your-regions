@@ -395,7 +395,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const pendingMarkerFitExperienceIdRef = useRef<number | null>(null);
 
-  // ── One marker per experience (primary in-region location), filtered by expanded groups ──
+  // ── One marker per experience (its primary location, in-region when it has one) ──
   // Multi-location experiences show all locations via the highlight layer when selected.
   const markers = useMemo(
     () => buildExperienceMarkers(experiences, locationsByExperience, expandedCategoryNames),
@@ -440,10 +440,15 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     const locations = locationsByExperience[selectedExperienceId];
     if (!locations || locations.length === 0) return EMPTY_FC;
 
+    // Same fallback as the marker builder, and for the same reason: an
+    // experience assigned by hand has no in-region location, and filtering to
+    // none would empty this collection — the row would carry a marker until it
+    // was clicked and then have nothing drawn for it at all.
     const inRegion = locations.filter(loc => loc.in_region !== false);
+    const shown = inRegion.length > 0 ? inRegion : locations;
     return {
       type: 'FeatureCollection',
-      features: inRegion.map((loc) => ({
+      features: shown.map((loc) => ({
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: [loc.longitude, loc.latitude] },
         properties: {
@@ -707,7 +712,14 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
     // Experience-level hover — find the primary marker
     const marker = markersRef.current.find(m => m.experienceId === expId);
-    if (!marker) return;
+    if (!marker) {
+      // Nothing to show. Returning bare would leave the previous row's ring and
+      // card up, where they read as this row's — worse than showing none. Both
+      // go, not just the ring: the card carries the name, image and category.
+      setHoverData(EMPTY_FC);
+      setHoverPreview(null);
+      return;
+    }
     setHoverPreview({
       experienceId: marker.experienceId,
       experienceName: marker.experience.name,
@@ -772,18 +784,25 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
       // Use locationsByExperience for accurate multi-location bounds
       const locations = locationsByExperience[flyToExperienceId];
-      const inRegionLocs = locations?.filter(loc => loc.in_region !== false) ?? [];
+      // Same fallback as the highlight layer and the marker-click fit. Without it
+      // a hand-assigned experience takes the "not loaded yet" branch below and
+      // flies to the experience's own point — which for a serial site can be
+      // nowhere near the locations that are the only thing drawn for it, and
+      // leaves the list click framing it differently from a click on the map.
+      const allLocs = locations ?? [];
+      const inRegion = allLocs.filter(loc => loc.in_region !== false);
+      const flyLocs = inRegion.length > 0 ? inRegion : allLocs;
 
-      if (inRegionLocs.length > 1) {
-        const lngs = inRegionLocs.map(loc => loc.longitude);
-        const lats = inRegionLocs.map(loc => loc.latitude);
+      if (flyLocs.length > 1) {
+        const lngs = flyLocs.map(loc => loc.longitude);
+        const lats = flyLocs.map(loc => loc.latitude);
         map.fitBounds(
           [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
           { padding: 80, duration: 800, maxZoom: 12 }
         );
-      } else if (inRegionLocs.length === 1) {
+      } else if (flyLocs.length === 1) {
         map.flyTo({
-          center: [inRegionLocs[0].longitude, inRegionLocs[0].latitude],
+          center: [flyLocs[0].longitude, flyLocs[0].latitude],
           zoom: Math.max(map.getZoom(), 8),
           duration: 800,
         });
@@ -820,7 +839,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     return null;
   }
 
-
   return (
     <>
       {/* Main clustered markers source */}
@@ -850,7 +868,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         <Layer {...hoverGlowLayer} />
         <Layer {...hoverRingLayer} />
       </Source>
-
 
       {/* Popup styles */}
       <style>{`

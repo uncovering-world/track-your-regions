@@ -84,6 +84,57 @@ describe('buildExperienceMarkers', () => {
     expect(marker.latitude).toBe(30);
   });
 
+  it('still builds a marker when every location is out of region', () => {
+    // What a curator's manual assignment looks like: the experience is in the
+    // region because someone put it there, and none of its locations are, which
+    // is why they had to. Skipped, the row had no marker — so hovering it
+    // painted nothing and left the previously hovered row's ring standing in
+    // for it.
+    const exp = makeExperience(1);
+    const locations = {
+      1: [
+        makeLocation(10, { in_region: false, longitude: 3, latitude: 4 }),
+        makeLocation(11, { in_region: false }),
+      ],
+    };
+
+    const [marker, ...rest] = buildExperienceMarkers([exp], locations, new Set());
+
+    expect(rest).toHaveLength(0);
+    expect(marker.experienceId).toBe(1);
+    expect(marker.locationId).toBe(10);
+    expect(marker.longitude).toBe(3);
+    // Recorded as out of region rather than pretended in.
+    expect(marker.inRegion).toBe(false);
+  });
+
+  it('prefers an in-region location when there is one', () => {
+    const exp = makeExperience(1);
+    const locations = {
+      1: [makeLocation(10, { in_region: false }), makeLocation(11, { longitude: 9 })],
+    };
+
+    const [marker] = buildExperienceMarkers([exp], locations, new Set());
+
+    expect(marker.locationId).toBe(11);
+    expect(marker.inRegion).toBe(true);
+    expect(marker.locationCount).toBe(1);
+  });
+
+  it('falls back to the experience point when the location list is empty', () => {
+    // `[]` is not `undefined`. Guarding on `!locations` alone dropped the row
+    // with no marker and no error — the same silent shape as the out-of-region
+    // skip, reached whenever the batch answers with nothing for an experience.
+    const exp = makeExperience(3, { longitude: 12, latitude: 34 });
+
+    const [marker, ...rest] = buildExperienceMarkers([exp], { 3: [] }, new Set());
+
+    expect(rest).toHaveLength(0);
+    expect(marker.experienceId).toBe(3);
+    expect(marker.locationId).toBeNull();
+    expect(marker.longitude).toBe(12);
+  });
+
   it('honours the expanded category filter', () => {
     const shown = makeExperience(1, { category_name: 'Top Museums' });
     const hidden = makeExperience(2, { category_name: 'Public Art' });

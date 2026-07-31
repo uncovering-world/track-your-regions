@@ -1,6 +1,6 @@
 /**
  * Builds the marker set the clustered source renders — one point per experience,
- * at its primary in-region location.
+ * at its primary location — in-region when it has one.
  *
  * A module of its own so it can be exercised without a map. The marker set is a
  * pure function of the experiences, their locations and which category groups
@@ -48,9 +48,17 @@ export function buildExperienceMarkers(
     const locations = locationsByExperience[exp.id];
 
     if (locations && locations.length > 0) {
-      // Use the first in-region location as the representative point
+      // Prefer an in-region location; fall back to any of them when none is.
+      // Every location being out of region is what a curator's manual assignment
+      // looks like — `assignExperienceToRegion` writes experience_regions and
+      // nothing else, and the reason to assign by hand is that spatial
+      // containment missed the point. Skipping those left the row with no marker
+      // at all, so hovering it painted nothing and left the previous row's ring
+      // lit in its place. `ExperienceMarkers` already falls back this way when
+      // fitting the map to an experience.
       const inRegionLocations = locations.filter(loc => loc.in_region !== false);
-      const primaryLoc = inRegionLocations[0];
+      const representable = inRegionLocations.length > 0 ? inRegionLocations : locations;
+      const primaryLoc = representable[0];
       if (primaryLoc) {
         result.push({
           id: `${exp.id}-${primaryLoc.id}`,
@@ -60,14 +68,17 @@ export function buildExperienceMarkers(
           longitude: primaryLoc.longitude,
           latitude: primaryLoc.latitude,
           locationName: primaryLoc.name,
-          locationCount: inRegionLocations.length,
+          locationCount: representable.length,
           isMultiLocation: locations.length > 1,
           locationOrdinal: primaryLoc.ordinal,
-          inRegion: true,
+          inRegion: inRegionLocations.length > 0,
         });
       }
-    } else if (!locations) {
-      // Locations not yet loaded — use experience's own coordinates
+    } else {
+      // No usable location: either not loaded yet, or loaded and empty. `[]` is
+      // not `undefined`, so an `else if (!locations)` here would drop the row
+      // silently — the same shape as the out-of-region skip above, and with the
+      // same consequence: hover cannot resolve it through markersRef.
       result.push({
         id: String(exp.id),
         experienceId: exp.id,
