@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -34,21 +34,43 @@ export interface ExperienceListItemProps {
   isSelected: boolean;
   hoveredLocationId: number | null;
   locationRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
+  /**
+   * Registered by the row itself. The parent used to wrap each row in a `<Box>`
+   * carrying this ref, which put one unmemoised MUI component per experience
+   * back on the hover path — 148 of them re-rendering on every mouse move, worth
+   * about 400 ms a hover even with this component memoised.
+   */
+  itemRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
   showCheckbox: boolean;
   isLoading: boolean;
-  onHover: () => void;
+  // Every callback takes the experience it concerns rather than closing over it.
+  // A closure would be a new function on each parent render, and this component
+  // is memoised — one unstable prop and the memo does nothing.
+  onHover: (experience: Experience) => void;
   onLeave: () => void;
-  onClick: () => void;
+  onClick: (experience: Experience) => void;
   onLocationVisitedToggle: (locationId: number, isVisited: boolean) => void;
   onToggleAllLocations: (experienceId: number, markAsVisited: boolean) => void;
-  onLocationHover: (locationId: number | null) => void;
-  onCurate?: () => void;
-  onUnreject?: () => void;
-  onRemoveFromRegion?: () => void;
+  onLocationHover: (experienceId: number, locationId: number | null) => void;
+  onCurate?: (experience: Experience) => void;
+  onUnreject?: (experience: Experience) => void;
+  onRemoveFromRegion?: (experience: Experience) => void;
   isRejected?: boolean;
 }
 
-export function ExperienceListItem({
+/**
+ * Memoised, and that is the point rather than a nicety: hovering one row changes
+ * state the whole list reads, so without this every row in the region re-renders
+ * its MUI subtree on every mouse move between rows. Measured at 200 experiences
+ * before this: a single hover cost a 2.5 s frame, with React attributing 1.7 s
+ * to MuiPaperRoot alone.
+ *
+ * The memo only holds while every prop is referentially stable across a parent
+ * render — see the callback signatures above, and `hoveredLocationId`, which the
+ * parent narrows to this experience's own locations so a location hover
+ * elsewhere does not invalidate every row.
+ */
+function ExperienceListItemComponent({
   experience,
   locations,
   isLocationVisited,
@@ -56,6 +78,7 @@ export function ExperienceListItem({
   isSelected,
   hoveredLocationId,
   locationRefs,
+  itemRefs,
   showCheckbox,
   isLoading,
   onHover,
@@ -115,7 +138,15 @@ export function ExperienceListItem({
   };
 
   return (
-    <Box>
+    <Box
+      ref={(el: HTMLDivElement | null) => {
+        if (el) {
+          itemRefs.current.set(experience.id, el);
+        } else {
+          itemRefs.current.delete(experience.id);
+        }
+      }}
+    >
       {/* Main list item */}
       <ListItem
         sx={{
@@ -128,9 +159,9 @@ export function ExperienceListItem({
           borderBottom: isSelected ? 0 : '1px solid',
           borderBottomColor: 'divider',
         }}
-        onMouseEnter={onHover}
+        onMouseEnter={() => onHover(experience)}
         onMouseLeave={onLeave}
-        onClick={onClick}
+        onClick={() => onClick(experience)}
       >
         {/* Checkbox for visited status + batch buttons when partial */}
         {showCheckbox && (
@@ -241,13 +272,15 @@ export function ExperienceListItem({
           showCheckbox={showCheckbox}
           onToggleAllLocations={onToggleAllLocations}
           onLocationVisitedToggle={onLocationVisitedToggle}
-          onLocationHover={onLocationHover}
-          onCurate={onCurate}
-          onUnreject={onUnreject}
-          onRemoveFromRegion={onRemoveFromRegion}
+          onLocationHover={(locationId) => onLocationHover(experience.id, locationId)}
+          onCurate={onCurate && (() => onCurate(experience))}
+          onUnreject={onUnreject && (() => onUnreject(experience))}
+          onRemoveFromRegion={onRemoveFromRegion && (() => onRemoveFromRegion(experience))}
           isRejected={isRejected}
         />
       </Collapse>
     </Box>
   );
 }
+
+export const ExperienceListItem = memo(ExperienceListItemComponent);
