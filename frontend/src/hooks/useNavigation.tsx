@@ -1,5 +1,5 @@
 // @refresh reset - This file exports both a Provider component and a hook
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { AdministrativeDivision, WorldView, Region } from '../types';
@@ -61,6 +61,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const { isAdmin, isLoading: authLoading, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedWorldView, setSelectedWorldView] = useState<WorldView | null>(null);
+  /** What `?wv` held the last time the reconciliation ran; see followUrlWorldView. */
+  const lastSeenUrlWorldViewId = useRef<number | null>(null);
   const [selectedDivision, setSelectedDivision] = useState<AdministrativeDivision | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
   const [divisionBreadcrumbs, setDivisionBreadcrumbs] = useState<AdministrativeDivision[]>([]);
@@ -248,6 +250,53 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     if (urlWorldViewId !== null) syncWorldViewParam(null);
   }, [selectedWorldView, urlWorldViewId, clearWorldViewContext, syncWorldViewParam]);
 
+  /**
+   * Reconcile the selection against `?wv`, reporting whether it handled the
+   * state. Reached by editing the address bar, opening a shared link in a tab
+   * that already has a selection, or going back across a switch (#465).
+   *
+   * Handles two: the param names a visible world view other than the selected
+   * one, which is followed; and it names one this caller cannot see while the
+   * selection is still fine, in which case the param is retired rather than the
+   * selection. Everything else falls through to the reconciliation below.
+   *
+   * Acts only when the param itself moved, which is what `urlChanged` reports.
+   * Without it the branch cannot tell a URL edit from its own write still in
+   * flight: applyWorldView sets the selection urgently and writes the param
+   * through the router's startTransition, so there is a commit carrying the new
+   * selection beside the old param — and following that would send the user back
+   * to the world view they just left.
+   *
+   * Cannot loop: applyWorldView syncs the param to what it selected, so the next
+   * run finds them equal, or finds no param at all when the world view is the
+   * default one.
+   */
+  const followUrlWorldView = useCallback((visible: WorldView[], urlChanged: boolean) => {
+    if (!urlChanged) return false;
+    if (!selectedWorldView || urlWorldViewId === null) return false;
+    if (urlWorldViewId === selectedWorldView.id) return false;
+
+    const fromUrl = visible.find((w: WorldView) => w.id === urlWorldViewId);
+    if (fromUrl) {
+      applyWorldView(fromUrl);
+      return true;
+    }
+
+    // Named something this caller cannot see. Retire the param against the
+    // selection — but only while that selection is itself still visible, which
+    // is the case this branch is for: nothing downstream corrects it, because
+    // the guard below returns precisely because the selection is fine, so the
+    // param would stand until the next full load.
+    //
+    // When neither is visible, say so and fall through. The reconciliation
+    // replaces the selection and rewrites the param in the same pass; retiring
+    // it here would write an id this caller cannot see either, and cost a
+    // second pass to undo.
+    if (!visible.some((w: WorldView) => w.id === selectedWorldView.id)) return false;
+
+    syncWorldViewParam(selectedWorldView);
+    return true;
+  }, [selectedWorldView, urlWorldViewId, applyWorldView, syncWorldViewParam]);
 
   /** First pick, not a change: take the world view without clearing anything. */
   const adoptWorldView = useCallback((worldView: WorldView) => {
@@ -290,6 +339,23 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // The URL names a visible world view other than the one selected, so follow
+    // it. Reached by editing the address bar, opening a shared link in a tab that
+    // already has a selection, or going back across a switch. Placed above the
+    // guard below deliberately: that guard returns whenever the selection is
+    // still visible, which is exactly when this case arises, so it used to
+    // swallow it and leave the picker and the address bar disagreeing (#465).
+    //
+    // Cannot loop. applyWorldView syncs the param to whatever it selected, so the
+    // next run either finds them equal or finds no param at all — a default world
+    // view writes none — and falls through to the guard below.
+    // Read once per run, and only past the guards above, so a param that moves
+    // while the list is still in flight is still pending when it lands.
+    const urlChanged = urlWorldViewId !== lastSeenUrlWorldViewId.current;
+    lastSeenUrlWorldViewId.current = urlWorldViewId;
+
+    if (followUrlWorldView(worldViews, urlChanged)) return;
+
     if (selectedWorldView && worldViews.some((w: WorldView) => w.id === selectedWorldView.id)) return;
 
     const worldView = pickWorldView(worldViews, searchParams.get('wv'), isAdmin);
@@ -311,7 +377,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- worldViews by id, not identity
   }, [worldViewsLoaded, worldViewsFetching, visibleWorldViewIds, isAdmin, selectedWorldView,
-      dropWorldView, adoptWorldView]);
+      urlWorldViewId, dropWorldView, followUrlWorldView, adoptWorldView]);
 
   const handleSetSelectedWorldView = applyWorldView;
 
