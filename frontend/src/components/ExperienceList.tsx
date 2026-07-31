@@ -9,7 +9,8 @@
  * - Multi-location support: shows location count and expandable locations
  */
 
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { ownedHoveredLocationId } from './ExperienceList/utils';
 import {
   Box,
   Typography,
@@ -236,6 +237,52 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     });
   };
 
+  // Declared once, not per row. These are props of a memoised component: a
+  // closure rebuilt on each render would defeat the memo entirely, and the list
+  // re-renders on every hover.
+  const handleHover = useCallback((exp: Experience) => setHoveredFromList(exp.id, null), [setHoveredFromList]);
+  const handleLeave = useCallback(() => setHoveredFromList(null, null), [setHoveredFromList]);
+
+  const handleClick = useCallback((exp: Experience) => {
+    const isClosing = selectedExperienceId === exp.id;
+    toggleSelectedExperience(exp.id);
+    if (isClosing) {
+      triggerFitRegion();
+    } else {
+      triggerFlyTo(exp.id);
+    }
+  }, [selectedExperienceId, toggleSelectedExperience, triggerFitRegion, triggerFlyTo]);
+
+  const handleLocationVisitedToggle = useCallback((locationId: number, isVisited: boolean) => {
+    if (isVisited) {
+      unmarkLocationVisited(locationId);
+    } else {
+      markLocationVisited(locationId);
+    }
+  }, [markLocationVisited, unmarkLocationVisited]);
+
+  const handleToggleAllLocations = useCallback((experienceId: number, markAsVisited: boolean) => {
+    if (markAsVisited) {
+      markAllLocations({ experienceId, regionId: regionId ?? undefined });
+    } else {
+      unmarkAllLocations({ experienceId, regionId: regionId ?? undefined });
+    }
+  }, [markAllLocations, unmarkAllLocations, regionId]);
+
+  const handleLocationHover = useCallback((experienceId: number, locationId: number | null) => {
+    setHoveredFromList(locationId === null ? null : experienceId, locationId);
+  }, [setHoveredFromList]);
+
+  const handleCurate = useCallback((exp: Experience) => setCurationTarget(exp), []);
+  const handleUnreject = useCallback((exp: Experience) => {
+    if (regionId) unrejectMutation.mutate({ experienceId: exp.id, rId: regionId });
+  }, [regionId, unrejectMutation]);
+  const handleRemoveFromRegion = useCallback((exp: Experience) => {
+    if (regionId) removeFromRegionMutation.mutate({ experienceId: exp.id, rId: regionId });
+  }, [regionId, removeFromRegionMutation]);
+
+  const isMutating = isMarking || isUnmarking || isMarkingLocation || isUnmarkingLocation;
+
   if (experiencesLoading) {
     return <LoadingSpinner size={24} />;
   }
@@ -251,68 +298,32 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   }
 
   const renderExperienceItem = (exp: Experience, rejected = false) => (
-    <Box
-      key={exp.id}
-      ref={(el: HTMLDivElement | null) => {
-        if (el) {
-          itemRefs.current.set(exp.id, el);
-        } else {
-          itemRefs.current.delete(exp.id);
-        }
-      }}
-    >
       <ExperienceListItem
+        key={exp.id}
         experience={exp}
         locations={locationsByExperience[exp.id]}
         isLocationVisited={isLocationVisited}
         isHovered={hoveredExperienceId === exp.id}
         isSelected={selectedExperienceId === exp.id}
-        hoveredLocationId={hoveredLocationId}
+        // Narrowed to this experience's own locations. Passed whole, a hover on
+        // any location anywhere would change this prop for every row and undo
+        // the memo for the entire list.
+        hoveredLocationId={ownedHoveredLocationId(locationsByExperience[exp.id], hoveredLocationId)}
         locationRefs={locationRefs}
+        itemRefs={itemRefs}
         showCheckbox={isAuthenticated}
-        isLoading={isMarking || isUnmarking || isMarkingLocation || isUnmarkingLocation}
-        onHover={() => setHoveredFromList(exp.id, null)}
-        onLeave={() => setHoveredFromList(null, null)}
-        onClick={() => {
-          const isClosing = selectedExperienceId === exp.id;
-          toggleSelectedExperience(exp.id);
-          if (isClosing) {
-            triggerFitRegion();
-          } else {
-            triggerFlyTo(exp.id);
-          }
-        }}
-        onLocationVisitedToggle={(locationId, isVisited) => {
-          if (isVisited) {
-            unmarkLocationVisited(locationId);
-          } else {
-            markLocationVisited(locationId);
-          }
-        }}
-        onToggleAllLocations={(experienceId, markAsVisited) => {
-          if (markAsVisited) {
-            markAllLocations({ experienceId, regionId: regionId ?? undefined });
-          } else {
-            unmarkAllLocations({ experienceId, regionId: regionId ?? undefined });
-          }
-        }}
-        onLocationHover={(locationId) => {
-          if (locationId === null) {
-            setHoveredFromList(null, null);
-          } else {
-            setHoveredFromList(exp.id, locationId);
-          }
-        }}
+        isLoading={isMutating}
+        onHover={handleHover}
+        onLeave={handleLeave}
+        onClick={handleClick}
+        onLocationVisitedToggle={handleLocationVisitedToggle}
+        onToggleAllLocations={handleToggleAllLocations}
+        onLocationHover={handleLocationHover}
         isRejected={rejected}
-        onCurate={hasCuratorScope ? () => setCurationTarget(exp) : undefined}
-        onUnreject={hasCuratorScope && rejected && regionId
-          ? () => unrejectMutation.mutate({ experienceId: exp.id, rId: regionId })
-          : undefined}
-        onRemoveFromRegion={hasCuratorScope && rejected && regionId
-          ? () => removeFromRegionMutation.mutate({ experienceId: exp.id, rId: regionId })
-          : undefined}
+        onCurate={hasCuratorScope ? handleCurate : undefined}
+        onUnreject={hasCuratorScope && rejected && regionId ? handleUnreject : undefined}
+        onRemoveFromRegion={hasCuratorScope && rejected && regionId ? handleRemoveFromRegion : undefined}
       />
-    </Box>
   );
 
   return (

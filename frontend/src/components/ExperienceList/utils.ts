@@ -2,7 +2,7 @@
  * Shared constants and helpers for the ExperienceList components.
  */
 
-import type { VisitedStatus } from '../../api/experiences';
+import type { ExperienceLocation, VisitedStatus } from '../../api/experiences';
 
 export const NEW_BADGE_DAYS = 7;
 export const OUT_OF_REGION_INITIAL = 3;
@@ -32,4 +32,21 @@ export function computeVisitedStatus(visitedLocations: number, totalLocations: n
   if (visitedLocations === 0) return 'not_visited';
   if (visitedLocations >= totalLocations) return 'visited';
   return 'partial';
+}
+
+/**
+ * The hovered location id, but only for the row that owns it.
+ *
+ * The list holds one hovered-location id for the whole region, and every row
+ * reads it. Passed through unchanged it would differ on every row whenever any
+ * location anywhere is hovered, which invalidates the memo on all of them at
+ * once — the rows that do not own the location have nothing to draw with it
+ * anyway, so they get null and stay put.
+ */
+export function ownedHoveredLocationId(
+  locations: ExperienceLocation[] | undefined,
+  hoveredLocationId: number | null,
+): number | null {
+  if (hoveredLocationId === null || !locations) return null;
+  return locations.some(loc => loc.id === hoveredLocationId) ? hoveredLocationId : null;
 }
