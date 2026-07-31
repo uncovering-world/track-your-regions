@@ -28,10 +28,10 @@ Visit checkbox state in `ExperienceList` is derived from the global `useVisitedL
 Map Mode uses three GeoJSON sources:
 
 - `exp-markers`: clustered main markers
-- `exp-highlight`: all in-region locations for the selected experience
+- `exp-highlight`: all in-region locations for the selected experience — or all of them when none is in region, matching the marker fallback below, so a hand-assigned experience does not vanish the moment it is selected
 - `exp-hover`: hover ring/glow (for marker or cluster highlight)
 
-For multi-location experiences, the main marker is the first in-region location. A badge shows `locationCount` when more than one location exists. Selected experience markers are removed from `exp-markers` and rendered via `exp-highlight` instead.
+For multi-location experiences, the main marker is the first in-region location — or the first location of any kind when none is in region, flagged `inRegion: false`. That state is what a curator's manual assignment produces: `assignExperienceToRegion` writes `experience_regions` alone, and the reason to assign by hand is that spatial containment missed the point. Skipping those left the row without a marker, so hovering it painted nothing and left the previously hovered row's ring standing in for it — `updateHoverFromList` now clears the ring when it finds no marker rather than returning bare. A badge shows `locationCount` when more than one location exists. Selected experience markers are removed from `exp-markers` and rendered via `exp-highlight` instead.
 
 Map Mode builds a marker for every experience — `buildExperienceMarkers()` in `components/experienceMarkers/buildMarkers.ts`, a pure function of the experiences, their locations and the expanded category set. It used to stop at 100 and show an on-map indicator saying so. The cap was removed because it silently disabled the list→map hover past it: the highlight resolves an experience through the marker set, and returns without a sound when it is absent, so in a 200-experience region half the rows hovered to nothing. The clustered source (`cluster` on `exp-markers`) is what makes the full set affordable to render. It does not bound the hover path: `paintClusterRingForExperience()` walks every leaf of every rendered cluster to find which one holds the hovered experience, so that scan is proportional to the region rather than capped at a hundred as it used to be. Ownership of the ring is a token: every path that takes it — the scan, the direct location and unclustered-marker paints, clearing on leave, and the map's own marker handlers — claims one first, and a scan paints only while it still holds the current one. A token bumped inside the scan alone would invalidate it only when the next hover happened to be another scan.
 
@@ -43,7 +43,7 @@ Discover Mode mirrors the same visual language (cluster circles, count labels, m
 - Hover list card -> cluster-aware hover ring on map (even when marker is clustered). The row is memoised and its props are held stable so this costs one row's render rather than the region's: the handlers are declared once in `ExperienceList` rather than per row, the shared hovered-location id is narrowed by `ownedHoveredLocationId()` to the row that owns it, and each row registers its own scroll ref instead of being wrapped in a `<Box>` the parent rebuilds. Measured at 200 experiences: 2460 ms per hover before, 15 ms after
 - Click marker -> toggle selected experience
 - Click cluster -> zoom to cluster expansion zoom
-- Multi-location selected -> fit bounds to all selected in-region points
+- Multi-location selected -> fit bounds to all selected in-region points, or to all of them when none is in region — the same qualifier the marker and highlight rules carry, so a list click and a map click frame the same experience the same way
 
 ## Hover preview card placement
 
