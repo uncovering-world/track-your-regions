@@ -33,14 +33,14 @@ Map Mode uses three GeoJSON sources:
 
 For multi-location experiences, the main marker is the first in-region location. A badge shows `locationCount` when more than one location exists. Selected experience markers are removed from `exp-markers` and rendered via `exp-highlight` instead.
 
-Map Mode caps marker rendering to 100 experiences (`experiences.slice(0, 100)`) and shows an on-map indicator when total exceeds the cap.
+Map Mode builds a marker for every experience — `buildExperienceMarkers()` in `components/experienceMarkers/buildMarkers.ts`, a pure function of the experiences, their locations and the expanded category set. It used to stop at 100 and show an on-map indicator saying so. The cap was removed because it silently disabled the list→map hover past it: the highlight resolves an experience through the marker set, and returns without a sound when it is absent, so in a 200-experience region half the rows hovered to nothing. The clustered source (`cluster` on `exp-markers`) is what makes the full set affordable.
 
 Discover Mode mirrors the same visual language (cluster circles, count labels, multi-location badge, hover ring, selected-location highlights), but uses a dedicated map instance and imperative MapLibre event wiring.
 
 ## Interaction behavior
 
 - Hover map marker -> popup + hover ring + list highlight
-- Hover list card -> cluster-aware hover ring on map (even when marker is clustered)
+- Hover list card -> cluster-aware hover ring on map (even when marker is clustered). The row is memoised and its props are held stable so this costs one row's render rather than the region's: the handlers are declared once in `ExperienceList` rather than per row, the shared hovered-location id is narrowed by `ownedHoveredLocationId()` to the row that owns it, and each row registers its own scroll ref instead of being wrapped in a `<Box>` the parent rebuilds. Measured at 200 experiences: 2460 ms per hover before, 15 ms after
 - Click marker -> toggle selected experience
 - Click cluster -> zoom to cluster expansion zoom
 - Multi-location selected -> fit bounds to all selected in-region points

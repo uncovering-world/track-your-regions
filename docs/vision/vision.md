@@ -120,7 +120,7 @@ Vector tiles served by Martin (PostGIS-native tile server). The frontend uses Ma
 - Choropleth coloring of regions (visited/unvisited) with clear visual hierarchy — selected, hovered, visited, and default states each have distinct fill and outline intensities
 - Drill-down navigation (click a region to see sub-regions)
 - Ancestor context layers — when drilling into a region hierarchy, all ancestor levels remain faintly visible as dimmed background layers (root siblings, parent siblings, grandparent siblings, etc.), providing full spatial orientation and clickable navigation back to any level
-- Experience markers with clustering (GeoJSON source with circle + symbol layers)
+- Experience markers with clustering (GeoJSON source with circle + symbol layers). Every experience in a region gets a marker, however many there are, and hovering one in the list rings it on the map — including when it is inside a cluster
 - Region outline persists during exploration mode as a subtle geographic border, giving spatial context alongside experience markers
 - Antimeridian-aware camera positioning for regions that cross the date line
 - Zoomed all the way out, the map draws a coarser rendering of each region than it does up close — detail no one can see at that scale is not fetched, so the world appears in about a second rather than the twenty to twenty-five it took when every coastline was cut down to size on each request. Every region still appears, however small: a place too little to survive that coarsening is drawn at a coarseness of its own instead of being left out
