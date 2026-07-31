@@ -325,6 +325,132 @@ describe('useNavigation world view fetching', () => {
     expect(result.current.nav.selectedWorldViewId).toBeNull();
   });
 
+  it('follows ?wv when it changes to another visible world view', async () => {
+    // #465: the guard on "selection still visible" sat above the only line that
+    // reads `?wv`, so a URL naming a different — but perfectly visible — world
+    // view was ignored. Editing the address bar, opening a shared link in a tab
+    // that already has a selection, and going back across a switch all land here.
+    const wrapWith = makeWrapper('/?wv=2');
+    authState.isLoading = false;
+    authState.isAdmin = false;
+    authState.user = null;
+    mockFetchWorldViews.mockResolvedValue([PUBLIC_WV, OTHER_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), params: useSearchParams() }),
+      { wrapper: wrapWith },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
+
+    act(() => {
+      result.current.nav.setSelectedRegion({ id: 55, name: 'A region of world view 2' } as never);
+    });
+
+    // The address bar changes, and nothing calls into the hook.
+    act(() => { result.current.params[1]({ wv: '7' }); });
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
+    // A switch, so the previous world view's context goes with it.
+    expect(result.current.nav.selectedRegion).toBeNull();
+  });
+
+  it('retires ?wv when it names something invisible, keeping the selection', async () => {
+    // The other half of the same branch: following the URL must not mean trusting
+    // it. An id absent from the visible list is not a switch target — but leaving
+    // it in the address bar is the same disagreement in the other direction, and
+    // nothing downstream corrects it, since the guard below returns precisely
+    // because the selection is still visible.
+    const wrapWith = makeWrapper('/?wv=2');
+    authState.isLoading = false;
+    authState.isAdmin = false;
+    authState.user = null;
+    mockFetchWorldViews.mockResolvedValue([PUBLIC_WV, OTHER_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), params: useSearchParams() }),
+      { wrapper: wrapWith },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
+
+    act(() => { result.current.params[1]({ wv: '5' }); });  // hidden world view
+
+    await waitFor(() => expect(result.current.params[0].get('wv')).toBe('2'));
+    expect(result.current.nav.selectedWorldView?.id).toBe(2);
+  });
+
+  it('never parks ?wv on an invisible id when neither it nor the selection survives', async () => {
+    // Back to an entry naming one hidden world view, then a logout — the param
+    // and the selection differ and both vanish at once. Retiring the param
+    // against a selection that is itself about to be replaced writes another id
+    // this caller cannot see, and costs a second pass to undo it.
+    //
+    // The end state is the same either way, so this records what the address bar
+    // held on every render rather than only where it settled.
+    const wrapWith = makeWrapper('/?wv=7');
+    authState.isLoading = false;
+    authState.isAdmin = true;
+    authState.user = { id: 1 };
+    mockFetchWorldViews.mockResolvedValue([HIDDEN_WV, OTHER_WV]);
+
+    const seen: (string | null)[] = [];
+    const { result, rerender } = renderHook(
+      () => {
+        const nav = useNavigation();
+        const params = useSearchParams();
+        seen.push(params[0].get('wv'));
+        return { nav, params };
+      },
+      { wrapper: wrapWith },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
+
+    // The param moves to the other hidden world view and the session ends in the
+    // same pass, so the selection is 7 and the param is 5, neither now visible.
+    act(() => {
+      result.current.params[1]({ wv: '5' });
+      authState.isAdmin = false;
+      authState.user = null;
+      mockFetchWorldViews.mockResolvedValue([PUBLIC_WV]);
+    });
+    rerender();
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
+    await waitFor(() => expect(result.current.params[0].get('wv')).toBe('2'));
+
+    // 7 was legitimate while it was visible; what must never appear is 7 written
+    // back after the list that hid it had already arrived.
+    const afterSwitch = seen.slice(seen.lastIndexOf('5') + 1);
+    expect(afterSwitch).not.toContain('7');
+  });
+
+  it('does not undo a picker switch made from a URL that already names one', async () => {
+    // applyWorldView sets the selection urgently and writes `?wv` through the
+    // router's startTransition, so there is a commit carrying the new selection
+    // beside the old param. Reacting to that as though the URL had moved sends
+    // the user straight back to the world view they just left — and every shared
+    // link, and every switch after the first, arrives with a param already set.
+    const wrapWith = makeWrapper('/?wv=2');
+    authState.isLoading = false;
+    authState.isAdmin = false;
+    authState.user = null;
+    mockFetchWorldViews.mockResolvedValue([PUBLIC_WV, OTHER_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), params: useSearchParams() }),
+      { wrapper: wrapWith },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
+
+    // What the picker does.
+    act(() => { result.current.nav.setSelectedWorldView(OTHER_WV as never); });
+
+    // Long enough for the deferred param write to land and the effect to re-run
+    // on it; the failure this guards against shows up as a revert, not a delay.
+    await new Promise(resolve => setTimeout(resolve, 150));
+    expect(result.current.nav.selectedWorldView?.id).toBe(7);
+    await waitFor(() => expect(result.current.params[0].get('wv')).toBe('7'));
+  });
+
   it('asks for an anonymous visitor too, once auth has settled', async () => {
     // "Session restored" and "logged in" are different things: a visitor with no
     // session must still get the public list rather than an empty picker.
