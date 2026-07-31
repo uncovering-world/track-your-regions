@@ -318,8 +318,19 @@ interface ExperienceMarkersProps {
 }
 
 /**
- * Flattened marker data — supports both single and multi-location experiences
+ * Popup body for a marker: the name as text, never as markup.
+ *
+ * `setHTML` would interpolate it raw, and the name is not ours — sources ship
+ * markup in it (20 rows in a development database carry tags such as
+ * `<em>Stato da Terra</em>`) and curators can edit it, which makes anything
+ * stored there executable. Built as a DOM node so the browser cannot read it as
+ * anything but text.
  */
+function buildPopupContent(name: string): HTMLElement {
+  const strong = document.createElement('strong');
+  strong.textContent = name;
+  return strong;
+}
 
 export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   const { current: mapRef } = useMap();
@@ -498,7 +509,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
           // Show popup
           popup
             .setLngLat(coords)
-            .setHTML(`<strong>${feature.properties?.experienceName || feature.properties?.name || ''}</strong>`)
+            .setDOMContent(buildPopupContent(
+              String(feature.properties?.experienceName || feature.properties?.name || '')))
             .addTo(map);
 
           // Notify React context
@@ -551,7 +563,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
           popup
             .setLngLat(coords)
-            .setHTML(`<strong>${name}</strong>`)
+            .setDOMContent(buildPopupContent(name))
             .addTo(map);
 
           // Notify context — highlight layer is for the selected experience
