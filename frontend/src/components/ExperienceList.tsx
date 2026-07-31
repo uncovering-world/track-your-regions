@@ -243,15 +243,23 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const handleHover = useCallback((exp: Experience) => setHoveredFromList(exp.id, null), [setHoveredFromList]);
   const handleLeave = useCallback(() => setHoveredFromList(null, null), [setHoveredFromList]);
 
+  // Read through a ref, not a dependency. The selection is only consulted, never
+  // rendered from, and depending on it would rebuild this handler on every
+  // selection change — moving the whole-list re-render off the hover path and
+  // onto the click path, where the frame is already busy flying the map.
+  // ExperienceMarkers keeps its own context callbacks stable the same way.
+  const selectedIdRef = useRef(selectedExperienceId);
+  selectedIdRef.current = selectedExperienceId;
+
   const handleClick = useCallback((exp: Experience) => {
-    const isClosing = selectedExperienceId === exp.id;
+    const isClosing = selectedIdRef.current === exp.id;
     toggleSelectedExperience(exp.id);
     if (isClosing) {
       triggerFitRegion();
     } else {
       triggerFlyTo(exp.id);
     }
-  }, [selectedExperienceId, toggleSelectedExperience, triggerFitRegion, triggerFlyTo]);
+  }, [toggleSelectedExperience, triggerFitRegion, triggerFlyTo]);
 
   const handleLocationVisitedToggle = useCallback((locationId: number, isVisited: boolean) => {
     if (isVisited) {
@@ -274,12 +282,19 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   }, [setHoveredFromList]);
 
   const handleCurate = useCallback((exp: Experience) => setCurationTarget(exp), []);
+  // Keyed on `.mutate`, not on the mutation. TanStack Query v5 returns a fresh
+  // result object every render, so depending on the whole thing would rebuild
+  // these on each one and drop the memo for every row in the Rejected section.
+  // `.mutate` is stable across renders.
+  const { mutate: unreject } = unrejectMutation;
+  const { mutate: removeFromRegion } = removeFromRegionMutation;
+
   const handleUnreject = useCallback((exp: Experience) => {
-    if (regionId) unrejectMutation.mutate({ experienceId: exp.id, rId: regionId });
-  }, [regionId, unrejectMutation]);
+    if (regionId) unreject({ experienceId: exp.id, rId: regionId });
+  }, [regionId, unreject]);
   const handleRemoveFromRegion = useCallback((exp: Experience) => {
-    if (regionId) removeFromRegionMutation.mutate({ experienceId: exp.id, rId: regionId });
-  }, [regionId, removeFromRegionMutation]);
+    if (regionId) removeFromRegion({ experienceId: exp.id, rId: regionId });
+  }, [regionId, removeFromRegion]);
 
   const isMutating = isMarking || isUnmarking || isMarkingLocation || isUnmarkingLocation;
 
