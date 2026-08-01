@@ -10,7 +10,7 @@
 
 import { createContext, useContext, useState, useMemo, useCallback, useEffect, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchExperiencesByRegion, type Experience } from '../api/experiences';
+import { fetchExperiencesByRegion, WHOLE_REGION_LIMIT, type Experience } from '../api/experiences';
 
 // Re-export image utilities from their canonical location for backward compatibility
 export { toThumbnailUrl, extractImageUrl } from '../utils/imageUrl';
@@ -143,7 +143,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // Fetch experiences for the selected region
   const { data, isLoading } = useQuery({
     queryKey: ['experiences', 'by-region', regionId],
-    queryFn: () => fetchExperiencesByRegion(regionId!, { includeChildren: false, limit: 200 }),
+    queryFn: () => fetchExperiencesByRegion(regionId!, { includeChildren: false, limit: WHOLE_REGION_LIMIT }),
     enabled: !!regionId,
     staleTime: 300000, // 5 minutes
   });

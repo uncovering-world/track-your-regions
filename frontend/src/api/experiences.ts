@@ -156,6 +156,22 @@ export async function fetchExperience(id: number): Promise<ExperienceDetail> {
 }
 
 /**
+ * Asks for a whole region rather than a page of one.
+ *
+ * Neither surface that reads a region is paginated — there is no "load more" in
+ * the map sidebar and none in Discover — so a `limit` below the region's size is
+ * not a page, it is silent truncation. The backend orders by `e.name`, so the
+ * cut lands mid-alphabet: Europe at 200 ended after "G", which dropped
+ * `Museo del Prado` and `Museumsinsel` along with 456 others, and the map builds
+ * its markers from the same array, so their pins went too. Matches the batch
+ * location endpoint, which already returns a region whole.
+ *
+ * Equal to the backend's own ceiling, so it asks for everything the route will
+ * ever hand over — the largest region today holds 658.
+ */
+export const WHOLE_REGION_LIMIT = 5000;
+
+/**
  * Get experiences by region
  * Uses authFetchJson to send auth headers when available (optionalAuth on backend).
  * This enables curators to see rejected items marked with is_rejected.
