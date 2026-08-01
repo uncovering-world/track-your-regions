@@ -115,13 +115,6 @@ export interface ExperienceDetail extends Experience {
   }[];
 }
 
-export interface ExperiencesResponse {
-  experiences: Experience[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
 export interface ExperiencesByRegionResponse {
   region: {
     id: number;
@@ -148,34 +141,6 @@ export interface ExperienceCategory {
 // =============================================================================
 // API Functions
 // =============================================================================
-
-/**
- * List experiences with filtering
- */
-export async function fetchExperiences(params?: {
-  categoryId?: number;
-  category?: string;
-  country?: string;
-  regionId?: number;
-  search?: string;
-  bbox?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<ExperiencesResponse> {
-  const searchParams = new URLSearchParams();
-  if (params?.categoryId) searchParams.set('categoryId', String(params.categoryId));
-  if (params?.category) searchParams.set('category', params.category);
-  if (params?.country) searchParams.set('country', params.country);
-  if (params?.regionId) searchParams.set('regionId', String(params.regionId));
-  if (params?.search) searchParams.set('search', params.search);
-  if (params?.bbox) searchParams.set('bbox', params.bbox);
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.offset) searchParams.set('offset', String(params.offset));
-
-  const query = searchParams.toString();
-  const querySuffix = query ? `?${query}` : '';
-  return fetchJson<ExperiencesResponse>(`${API_URL}/api/experiences${querySuffix}`);
-}
 
 /**
  * Get single experience by ID
