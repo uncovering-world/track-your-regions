@@ -84,7 +84,7 @@ The Python toolchain must be wired up in CI on par with the Node side:
 - **Tests** — pytest with coverage
 - **SAST** — Bandit (idiom-aware) + Semgrep `p/python` + `p/owasp-top-ten` + `p/secrets`
 - **Dependency vulns** — pip-audit on `cv-python/requirements.txt`
-- **Container CVEs** — Trivy scanning the cv-python Docker image (HIGH/CRITICAL fail)
+- **Container CVEs** — Trivy scanning the cv-python Docker image (fixable HIGH/CRITICAL fail; unfixable ones are reported but do not block, matching CI)
 - **CodeQL** — JS+Python via GitHub default-setup code scanning
 
 ## Report Format
