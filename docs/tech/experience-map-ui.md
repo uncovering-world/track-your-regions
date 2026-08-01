@@ -10,7 +10,7 @@ This document describes how experience markers work in both map surfaces:
 
 `ExperienceProvider` is the source of truth for region exploration state:
 
-- Fetches region experiences with `includeChildren=false` and `limit=200`
+- Fetches region experiences with `includeChildren=false` and `limit=WHOLE_REGION_LIMIT` — a region is read whole, never paged. "Whole" is bounded: `WHOLE_REGION_LIMIT` is 5000, equal to the route's ceiling, so a region holding more than that is returned incompletely and neither surface has a paging path to fetch the rest. The largest today holds 658, and `total` is a real count, so crossing that line is detectable rather than silent — but it is a ceiling, not an absence of one. Neither this list nor Discover has a "load more", and the rows come back `ORDER BY e.name`, so a limit under the region's size truncated alphabetically rather than paging: at 200, Europe's 658 ended after "G". The markers are built from this same array, so the cut removed pins as well as rows
 - Stores hover state (`hoveredExperienceId`, `hoveredLocationId`, `hoverSource`)
 - Stores selection state (`selectedExperienceId`) and map triggers (`flyToExperienceId`, `shouldFitRegion`)
 - Stores hover preview payload (image/title/location/source)
@@ -22,6 +22,8 @@ This lets list and map stay synchronized without prop drilling.
 Both `ExperienceMarkers` and `ExperienceList` consume `useRegionLocations(regionId)` — a shared React Query hook that fetches all locations for all experiences in the region via a single `GET /api/experiences/by-region/:regionId/locations` call (5-min staleTime). This replaces the previous N+1 pattern where each component individually fetched `GET /api/experiences/:id/locations` per experience.
 
 Visit checkbox state in `ExperienceList` is derived from the global `useVisitedLocations().isLocationVisited(locationId)` rather than per-experience `useExperienceVisitedStatus()` calls, further reducing API calls from ~150 to 0 for visited status.
+
+It is derived from the **in-region** locations, which is why the visited controls are disabled until `useRegionLocations` reports `locationsResolved`. With the batch unresolved `inRegionCount` is 0, which short-circuits `inRegionVisitedStatus` to `not_visited` — so every row would render unchecked, indistinguishable from genuinely unvisited, and every toggle would pass "mark", letting a fully-visited experience be re-marked but never unmarked. The gate protects a mutation path, not just a label.
 
 ## Marker model
 
