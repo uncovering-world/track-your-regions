@@ -55,7 +55,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 ### Structure notes (non-obvious contracts; layout itself — see `ls backend/src`, `ls frontend/src`)
 - Startup cleanup in backend `index.ts` marks orphaned `running` sync logs as `failed`
 - All frontend API calls go through `authFetchJson()` (`frontend/src/api/fetchUtils.ts`) with in-memory JWT; refresh token lives in an httpOnly cookie
-- Map: MapLibre GL via react-map-gl; `RegionMapVT.tsx` renders Martin vector tiles; `ExperienceMarkers.tsx` uses declarative `<Source>`/`<Layer>` with native GeoJSON clustering
+- Map: MapLibre GL via react-map-gl; `RegionMapVT.tsx` renders Martin vector tiles; `ExperienceMarkers.tsx` uses declarative `<Source>`/`<Layer>` over one unclustered GeoJSON source — a density heatmap below `HEATMAP_MAX_ZOOM`, individual markers above it. Discover Mode still clusters, on its own map instance
 
 ### Martin Vector Tiles
 - Config: `martin/config.yaml` (auto-discovers PostGIS tables/functions)
