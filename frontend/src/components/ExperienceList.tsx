@@ -89,7 +89,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   } = useVisitedLocations();
 
   // Batch-fetch all locations for all experiences in the region (single request)
-  const { locationsByExperience } = useRegionLocations(regionId);
+  const { locationsByExperience, locationsResolved } = useRegionLocations(regionId);
 
   // Curator state
   const [curationTarget, setCurationTarget] = useState<Experience | null>(null);
@@ -317,6 +317,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       key={exp.id}
       experience={exp}
       locations={locationsByExperience[exp.id]}
+      locationsResolved={locationsResolved}
       isLocationVisited={isLocationVisited}
       isHovered={hoveredExperienceId === exp.id}
       isSelected={selectedExperienceId === exp.id}
