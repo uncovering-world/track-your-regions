@@ -1,18 +1,20 @@
 /**
- * ExperienceMarkers - MapLibre native GeoJSON cluster markers on the shared react-map-gl Map.
+ * ExperienceMarkers - experience density and markers on the shared react-map-gl Map.
  *
  * Uses react-map-gl's declarative <Source> and <Layer> components.
  *
  * 3 GeoJSON sources:
- *   exp-markers   — clustered source for in-region experience locations
- *   exp-highlight  — non-clustered source for ALL locations of the selected experience (red dots)
- *   exp-hover      — non-clustered source for hover ring/glow (orange)
+ *   exp-markers   — every in-region experience location; drives the heatmap
+ *                   below HEATMAP_MAX_ZOOM and individual markers from it
+ *   exp-highlight  — the selected experience's in-region locations, or all of
+ *                   them when none is in region, or its own point when none has
+ *                   loaded at all (red dots)
+ *   exp-hover      — hover ring/glow (orange)
  *
  * Interaction model (imperative via useMap()):
  *   - Hover marker on map  → popup + orange ring + highlight list item
- *   - Hover card in list   → cluster-aware orange ring on map
+ *   - Hover card in list   → orange ring on map
  *   - Click marker         → toggle selected experience in list
- *   - Click cluster        → zoom to expansion zoom
  *   - Click list item      → fly-to marker location(s)
  */
 
@@ -28,15 +30,30 @@ import type { Experience } from '../api/experiences';
 
 // Source IDs
 const SOURCE_MARKERS = 'exp-markers';
+const LAYER_HEAT = 'exp-heatmap';
+/** Below this, density; from it, individual markers. */
+const HEATMAP_MAX_ZOOM = 5;
+
+/**
+ * Where the markers start fading in — the same zoom at which the heat starts
+ * fading out, so the two cross instead of one ending where the other begins.
+ *
+ * `minzoom` alone cannot do this. It is a hard cutoff: MapLibre applies no
+ * cross-fade to circle or symbol layers at a zoom bound, so markers pinned to
+ * HEATMAP_MAX_ZOOM appeared at exactly z5 while the heat had already ramped to
+ * nothing over the half level below it. At z4.9 that left heat at ~0.17 and no
+ * markers at all — a one-sided fade with a dip in it. Both layers now span the
+ * band and ramp their opacity across it in opposite directions.
+ */
+const MARKER_FADE_START = HEATMAP_MAX_ZOOM - 0.5;
+
 const SOURCE_HIGHLIGHT = 'exp-highlight';
 const SOURCE_HOVER = 'exp-hover';
 
 // Layer IDs
-const LAYER_CLUSTERS = 'exp-clusters';
-const LAYER_CLUSTER_COUNT = 'exp-cluster-count';
-const LAYER_UNCLUSTERED = 'exp-unclustered';
-const LAYER_UNCLUSTERED_COUNT_BADGE_BG = 'exp-unclustered-count-badge-bg';
-const LAYER_UNCLUSTERED_COUNT_BADGE_TEXT = 'exp-unclustered-count-badge-text';
+const LAYER_MARKERS = 'exp-markers-points';
+const LAYER_MARKER_COUNT_BADGE_BG = 'exp-marker-count-badge-bg';
+const LAYER_MARKER_COUNT_BADGE_TEXT = 'exp-marker-count-badge-text';
 const LAYER_HOVER_GLOW = 'exp-hover-glow';
 const LAYER_HOVER_RING = 'exp-hover-ring';
 const LAYER_HIGHLIGHT_RING = 'exp-highlight-ring';
@@ -44,44 +61,83 @@ const LAYER_HIGHLIGHT_POINT = 'exp-highlight-point';
 
 // ── Layer style definitions ──
 
-const clusterLayer: LayerProps = {
-  id: LAYER_CLUSTERS,
-  type: 'circle',
+/**
+ * Density instead of counts at overview zoom.
+ *
+ * Replaces clustering rather than sitting beside it: a clustered source cannot
+ * drive a heatmap, because MapLibre substitutes aggregates for the points and
+ * the heat would be computed from cluster centroids. With `cluster` off, the
+ * one source serves both this and the individual markers above the threshold.
+ */
+const heatmapLayer: LayerProps = {
+  id: LAYER_HEAT,
+  type: 'heatmap',
   source: SOURCE_MARKERS,
-  filter: ['has', 'point_count'],
+  maxzoom: HEATMAP_MAX_ZOOM,
   paint: {
-    'circle-color': [
-      'step', ['get', 'point_count'],
-      '#7dd3c8', 10, '#5ab8aa', 30, '#3d9d8f', 100, '#2a7d72',
+    'heatmap-weight': 1,
+    // The radius stays flat on purpose. It is in screen pixels, so zooming in
+    // spreads the points across more of the screen while the blur stays the same
+    // size — which is what makes a blob resolve into the finer structure inside
+    // it. Growing the radius with zoom cancels exactly that, and the map then
+    // shows the same clumps at every level.
+    'heatmap-radius': 16,
+    // Intensity is the one that has to move, and it is the ruler that can: it
+    // scales density before the colour ramp reads it, so it changes what the
+    // ramp sees without touching the spatial scale the radius sets.
+    //
+    // It runs WELL below one on the overview on purpose, and the number is set
+    // by a specific question: what should a single lone point look like?
+    //
+    // At one, the answer was "the same as Rome". A lone marker peaks near the
+    // top of the ramp all by itself, so Kazan with one site and Rome with twenty
+    // both came out the hottest colour — the ramp was saturated before points
+    // ever began to accumulate, and no palette can separate "dense" from
+    // "denser" when every one of those pixels asks it for the same value. That
+    // is also what made Europe read as one blob. Held down here, a lone point
+    // lands in the lower third — visible, clearly cold — and the hot end is left
+    // to places where points genuinely pile up.
+    //
+    // The climb is late for the opposite reason. Each zoom level doubles the
+    // on-screen distance between points, so a fixed radius covers roughly a
+    // quarter as many and density falls about fourfold per level — which is what
+    // used to make the layer fade out on the way in. The gain arrives where that
+    // loss does, past zoom 3, rather than on the overview where it only floods.
+    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'],
+      0, 0.22, 3, 0.4, HEATMAP_MAX_ZOOM, 3],
+    // Inferno, cold to hot. Replaces a single teal at varying alpha, which could
+    // say "something is here" but not "much more here than there" — one hue
+    // separates presence from absence and nothing else. Zero stays fully
+    // transparent; lifting it would tint the ocean.
+    'heatmap-color': [
+      'interpolate', ['linear'], ['heatmap-density'],
+      0, 'rgba(59, 15, 112, 0)',
+      0.15, 'rgba(59, 15, 112, 0.5)',
+      0.35, 'rgba(140, 41, 129, 0.68)',
+      0.55, 'rgba(222, 73, 104, 0.78)',
+      0.75, 'rgba(254, 159, 109, 0.85)',
+      1, 'rgba(254, 207, 146, 0.92)',
     ],
-    'circle-radius': [
-      'step', ['get', 'point_count'],
-      14, 10, 18, 30, 22, 100, 26,
-    ],
-    'circle-stroke-width': 2,
-    'circle-stroke-color': '#ffffff',
-    'circle-opacity': 0.9,
+    // Fades out across the same band the markers fade in over, so the two cross
+    // rather than hand over at a line. Held at full strength until that band
+    // starts: spread across a whole level, the fade itself read as the layer
+    // dying before anything replaced it.
+    'heatmap-opacity': ['interpolate', ['linear'], ['zoom'],
+      0, 0.85, MARKER_FADE_START, 0.85, HEATMAP_MAX_ZOOM, 0],
   },
 };
 
-const clusterCountLayer: LayerProps = {
-  id: LAYER_CLUSTER_COUNT,
-  type: 'symbol',
-  source: SOURCE_MARKERS,
-  filter: ['has', 'point_count'],
-  layout: {
-    'text-field': ['get', 'point_count_abbreviated'],
-    'text-size': 11,
-    'text-font': ['Open Sans Bold'],
-  },
-  paint: { 'text-color': '#ffffff' },
-};
-
-const unclusteredLayer: LayerProps = {
-  id: LAYER_UNCLUSTERED,
+/**
+ * No `point_count` filter on the marker layers. With `cluster` off the source
+ * never produces an aggregate feature, so `['!', ['has', 'point_count']]` held
+ * for every feature it would ever see — a filter that selected nothing and read
+ * as if clustering were still in play.
+ */
+const markerLayer: LayerProps = {
+  id: LAYER_MARKERS,
+  minzoom: MARKER_FADE_START,
   type: 'circle',
   source: SOURCE_MARKERS,
-  filter: ['!', ['has', 'point_count']],
   paint: {
     'circle-color': [
       'match', ['get', 'category'],
@@ -93,14 +149,19 @@ const unclusteredLayer: LayerProps = {
     'circle-radius': 6,
     'circle-stroke-width': 2,
     'circle-stroke-color': '#ffffff',
+    'circle-opacity': ['interpolate', ['linear'], ['zoom'],
+      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
+    'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'],
+      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
   },
 };
 
-const unclusteredCountBadgeBgLayer: LayerProps = {
-  id: LAYER_UNCLUSTERED_COUNT_BADGE_BG,
+const markerCountBadgeBgLayer: LayerProps = {
+  id: LAYER_MARKER_COUNT_BADGE_BG,
+  minzoom: MARKER_FADE_START,
   type: 'circle',
   source: SOURCE_MARKERS,
-  filter: ['all', ['!', ['has', 'point_count']], ['>', ['coalesce', ['get', 'locationCount'], 1], 1]],
+  filter: ['>', ['coalesce', ['get', 'locationCount'], 1], 1],
   paint: {
     'circle-color': '#0f172a',
     'circle-radius': 8,
@@ -108,14 +169,19 @@ const unclusteredCountBadgeBgLayer: LayerProps = {
     'circle-stroke-color': '#ffffff',
     'circle-translate': [8, -8],
     'circle-translate-anchor': 'viewport',
+    'circle-opacity': ['interpolate', ['linear'], ['zoom'],
+      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
+    'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'],
+      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
   },
 };
 
-const unclusteredCountBadgeTextLayer: LayerProps = {
-  id: LAYER_UNCLUSTERED_COUNT_BADGE_TEXT,
+const markerCountBadgeTextLayer: LayerProps = {
+  id: LAYER_MARKER_COUNT_BADGE_TEXT,
+  minzoom: MARKER_FADE_START,
   type: 'symbol',
   source: SOURCE_MARKERS,
-  filter: ['all', ['!', ['has', 'point_count']], ['>', ['coalesce', ['get', 'locationCount'], 1], 1]],
+  filter: ['>', ['coalesce', ['get', 'locationCount'], 1], 1],
   layout: {
     'text-field': ['to-string', ['get', 'locationCount']],
     'text-size': 9,
@@ -125,6 +191,8 @@ const unclusteredCountBadgeTextLayer: LayerProps = {
     'text-allow-overlap': true,
   },
   paint: {
+    'text-opacity': ['interpolate', ['linear'], ['zoom'],
+      MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1],
     'text-color': '#ffffff',
     'text-halo-color': '#0f172a',
     'text-halo-width': 0.2,
@@ -241,98 +309,6 @@ function tryHoverSpecificLocation(
   }
   setHoverData(buildPointHoverData([loc.longitude, loc.latitude]));
   return true;
-}
-
-function isMarkerUnclustered(
-  map: maplibregl.Map,
-  coords: [number, number],
-  expId: number,
-): boolean {
-  const screenPoint = map.project(new maplibregl.LngLat(coords[0], coords[1]));
-  const nearby = map.queryRenderedFeatures(
-    [
-      [screenPoint.x - 5, screenPoint.y - 5],
-      [screenPoint.x + 5, screenPoint.y + 5],
-    ],
-    { layers: map.getLayer(LAYER_UNCLUSTERED) ? [LAYER_UNCLUSTERED] : [] },
-  );
-  return nearby.some(f => f.properties?.experienceId === expId);
-}
-
-function pickClusterRingRadius(pointCount: number): number {
-  if (pointCount < 10) return 14;
-  if (pointCount < 30) return 18;
-  if (pointCount < 100) return 22;
-  return 26;
-}
-
-/**
- * Ownership token for the hover ring.
- *
- * The cluster scan below is asynchronous and, since the marker cap went, walks
- * every leaf of every rendered cluster — so an answer can arrive long after the
- * pointer has moved on. Every path that takes over the ring claims a token
- * first, and a scan paints only while it still holds the current one.
- *
- * Bumping it inside the scan is not enough: that would only invalidate a scan
- * when the *next* hover happened to be another scan. Leaving the list clears the
- * ring through EMPTY_FC, hovering a location paints directly, hovering an
- * unclustered marker paints a point — none of which are scans, and each would
- * otherwise be overpainted by a stale one.
- */
-let hoverPaintSequence = 0;
-
-export function claimHoverPaint(): number {
-  return ++hoverPaintSequence;
-}
-
-// Exported for its ordering test — the scan is asynchronous while every other
-// path that takes the ring is not, which is where a stale answer used to win.
-export function paintClusterRingForExperience(
-  map: maplibregl.Map,
-  expId: number,
-  fallbackCoords: [number, number],
-  setHoverData: (data: GeoJSON.FeatureCollection) => void,
-  sequence: number,
-): void {
-  const mainSource = map.getSource(SOURCE_MARKERS) as maplibregl.GeoJSONSource | undefined;
-  if (!mainSource) return;
-
-  const clusterFeatures = map.getLayer(LAYER_CLUSTERS)
-    ? map.queryRenderedFeatures(undefined, { layers: [LAYER_CLUSTERS] })
-    : [];
-
-  if (clusterFeatures.length === 0) {
-    if (sequence === hoverPaintSequence) setHoverData(buildPointHoverData(fallbackCoords));
-    return;
-  }
-
-  let found = false;
-  let remaining = clusterFeatures.length;
-  for (const cluster of clusterFeatures) {
-    const clusterId = cluster.properties.cluster_id;
-    const pointCount = cluster.properties.point_count;
-    mainSource.getClusterLeaves(clusterId, pointCount, 0).then(leaves => {
-      if (sequence !== hoverPaintSequence) return;  // a newer hover owns the ring
-      if (!found && leaves.some(leaf => leaf.properties?.experienceId === expId)) {
-        found = true;
-        const clusterCoords = (cluster.geometry as GeoJSON.Point).coordinates;
-        const clusterRadius = pickClusterRingRadius(pointCount);
-        setHoverData({
-          type: 'FeatureCollection',
-          features: [{
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: clusterCoords },
-            properties: { hoverRadius: clusterRadius + 10, ringRadius: clusterRadius + 4 },
-          }],
-        });
-      }
-      remaining--;
-      if (remaining === 0 && !found) {
-        setHoverData(buildPointHoverData(fallbackCoords));
-      }
-    });
-  }
 }
 
 interface ExperienceMarkersProps {
@@ -493,7 +469,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     let mapCurrentHoveredId: number | null = null;
 
     const clearHoverState = () => {
-      claimHoverPaint();
       map.getCanvas().style.cursor = '';
       popup.remove();
       mapCurrentHoveredId = null;
@@ -502,22 +477,9 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       setHoverPreview(null);
     };
 
-    const onClusterClick = async (e: maplibregl.MapMouseEvent) => {
-      const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS] });
-      if (!features.length) return;
-      const clusterId = features[0].properties.cluster_id;
-      const source = map.getSource(SOURCE_MARKERS) as maplibregl.GeoJSONSource;
-      if (!source) return;
-      const zoom = await source.getClusterExpansionZoom(clusterId);
-      map.easeTo({
-        center: (features[0].geometry as GeoJSON.Point).coordinates as [number, number],
-        zoom,
-      });
-    };
-
     const onMarkerClick = (e: maplibregl.MapMouseEvent) => {
       const features = map.queryRenderedFeatures(e.point, {
-        layers: [LAYER_UNCLUSTERED, LAYER_UNCLUSTERED_COUNT_BADGE_BG, LAYER_UNCLUSTERED_COUNT_BADGE_TEXT],
+        layers: [LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT],
       });
       if (features.length > 0) {
         const experienceId = features[0].properties?.experienceId;
@@ -532,7 +494,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     const onMarkerMouseMove = (e: maplibregl.MapMouseEvent) => {
       map.getCanvas().style.cursor = 'pointer';
       const features = map.queryRenderedFeatures(e.point, {
-        layers: [LAYER_UNCLUSTERED, LAYER_UNCLUSTERED_COUNT_BADGE_BG, LAYER_UNCLUSTERED_COUNT_BADGE_TEXT],
+        layers: [LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT],
       });
       if (features.length > 0) {
         const feature = features[0];
@@ -541,7 +503,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
 
         if (experienceId !== mapCurrentHoveredId) {
-          claimHoverPaint();
           mapCurrentHoveredId = experienceId;
 
           // Update hover ring via state
@@ -583,9 +544,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
     const onMarkerMouseLeave = () => clearHoverState();
 
-    const onClusterEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
-    const onClusterLeave = () => { map.getCanvas().style.cursor = ''; };
-
     // Highlight layer (red dots) hover — shows popup + orange ring + scrolls list
     const onHighlightMouseMove = (e: maplibregl.MapMouseEvent) => {
       map.getCanvas().style.cursor = 'pointer';
@@ -598,7 +556,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
         const hoverKey = locationId ?? -1;
         if (hoverKey !== mapCurrentHoveredId) {
-          claimHoverPaint();
           mapCurrentHoveredId = hoverKey;
 
           setHoverData({
@@ -643,25 +600,21 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     // Wait for layers to exist before attaching handlers
     const attachHandlers = () => {
       if (
-        !map.getLayer(LAYER_CLUSTERS) ||
-        !map.getLayer(LAYER_UNCLUSTERED) ||
-        !map.getLayer(LAYER_UNCLUSTERED_COUNT_BADGE_BG) ||
-        !map.getLayer(LAYER_UNCLUSTERED_COUNT_BADGE_TEXT)
+        !map.getLayer(LAYER_MARKERS) ||
+        !map.getLayer(LAYER_MARKER_COUNT_BADGE_BG) ||
+        !map.getLayer(LAYER_MARKER_COUNT_BADGE_TEXT)
       ) {
         return false;
       }
-      map.on('click', LAYER_CLUSTERS, onClusterClick);
-      map.on('click', LAYER_UNCLUSTERED, onMarkerClick);
-      map.on('click', LAYER_UNCLUSTERED_COUNT_BADGE_BG, onMarkerClick);
-      map.on('click', LAYER_UNCLUSTERED_COUNT_BADGE_TEXT, onMarkerClick);
-      map.on('mousemove', LAYER_UNCLUSTERED, onMarkerMouseMove);
-      map.on('mousemove', LAYER_UNCLUSTERED_COUNT_BADGE_BG, onMarkerMouseMove);
-      map.on('mousemove', LAYER_UNCLUSTERED_COUNT_BADGE_TEXT, onMarkerMouseMove);
-      map.on('mouseleave', LAYER_UNCLUSTERED, onMarkerMouseLeave);
-      map.on('mouseleave', LAYER_UNCLUSTERED_COUNT_BADGE_BG, onMarkerMouseLeave);
-      map.on('mouseleave', LAYER_UNCLUSTERED_COUNT_BADGE_TEXT, onMarkerMouseLeave);
-      map.on('mouseenter', LAYER_CLUSTERS, onClusterEnter);
-      map.on('mouseleave', LAYER_CLUSTERS, onClusterLeave);
+      map.on('click', LAYER_MARKERS, onMarkerClick);
+      map.on('click', LAYER_MARKER_COUNT_BADGE_BG, onMarkerClick);
+      map.on('click', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerClick);
+      map.on('mousemove', LAYER_MARKERS, onMarkerMouseMove);
+      map.on('mousemove', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseMove);
+      map.on('mousemove', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseMove);
+      map.on('mouseleave', LAYER_MARKERS, onMarkerMouseLeave);
+      map.on('mouseleave', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseLeave);
+      map.on('mouseleave', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseLeave);
       map.on('mousemove', LAYER_HIGHLIGHT_POINT, onHighlightMouseMove);
       map.on('mouseleave', LAYER_HIGHLIGHT_POINT, onHighlightMouseLeave);
       return true;
@@ -683,36 +636,30 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       popup.remove();
       popupRef.current = null;
       setHoverPreview(null);
-      map.off('click', LAYER_CLUSTERS, onClusterClick);
-      map.off('click', LAYER_UNCLUSTERED, onMarkerClick);
-      map.off('click', LAYER_UNCLUSTERED_COUNT_BADGE_BG, onMarkerClick);
-      map.off('click', LAYER_UNCLUSTERED_COUNT_BADGE_TEXT, onMarkerClick);
-      map.off('mousemove', LAYER_UNCLUSTERED, onMarkerMouseMove);
-      map.off('mousemove', LAYER_UNCLUSTERED_COUNT_BADGE_BG, onMarkerMouseMove);
-      map.off('mousemove', LAYER_UNCLUSTERED_COUNT_BADGE_TEXT, onMarkerMouseMove);
-      map.off('mouseleave', LAYER_UNCLUSTERED, onMarkerMouseLeave);
-      map.off('mouseleave', LAYER_UNCLUSTERED_COUNT_BADGE_BG, onMarkerMouseLeave);
-      map.off('mouseleave', LAYER_UNCLUSTERED_COUNT_BADGE_TEXT, onMarkerMouseLeave);
-      map.off('mouseenter', LAYER_CLUSTERS, onClusterEnter);
-      map.off('mouseleave', LAYER_CLUSTERS, onClusterLeave);
+      map.off('click', LAYER_MARKERS, onMarkerClick);
+      map.off('click', LAYER_MARKER_COUNT_BADGE_BG, onMarkerClick);
+      map.off('click', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerClick);
+      map.off('mousemove', LAYER_MARKERS, onMarkerMouseMove);
+      map.off('mousemove', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseMove);
+      map.off('mousemove', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseMove);
+      map.off('mouseleave', LAYER_MARKERS, onMarkerMouseLeave);
+      map.off('mouseleave', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseLeave);
+      map.off('mouseleave', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseLeave);
       map.off('mousemove', LAYER_HIGHLIGHT_POINT, onHighlightMouseMove);
       map.off('mouseleave', LAYER_HIGHLIGHT_POINT, onHighlightMouseLeave);
     };
   }, [mapRef, getExperienceById, setHoverPreview]);
 
-  // ── List hover → cluster-aware hover ring on map ──
+  // ── List hover → hover ring on map ──
   const locationsByExpRef = useRef(locationsByExperience);
   locationsByExpRef.current = locationsByExperience;
 
+  // Takes no map. Every branch below resolves against `markersRef` and the hover
+  // state now that the cluster scan is gone — and the guard that fetched the map
+  // had quietly acquired teeth: bailing out when the map was not ready skipped
+  // the `expId == null` clear too, leaving the previous row's ring lit with
+  // nothing left to take it down.
   const updateHoverFromList = useCallback((expId: number | null, locId: number | null) => {
-    if (!mapRef) return;
-    const map = mapRef.getMap();
-    if (!map) return;
-
-    // Claimed before any branch: whichever of them takes the ring, an older scan
-    // still in flight must not paint over it.
-    const sequence = claimHoverPaint();
-
     if (expId == null) {
       setHoverData(EMPTY_FC);
       setHoverPreview(null);
@@ -720,8 +667,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     }
 
     // Specific location (from an expanded experience): the point lives on the
-    // highlight layer rather than in the clustered markers source, so place
-    // the ring directly without going through the cluster-aware path.
+    // highlight layer rather than in the markers source, so the ring goes on
+    // that location rather than on the experience's primary marker.
     if (locId != null
       && tryHoverSpecificLocation(expId, locId, locationsByExpRef.current, getExperienceById, setHoverPreview, setHoverData)) {
       return;
@@ -748,15 +695,12 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       longitude: marker.longitude,
       latitude: marker.latitude,
     });
-    const coords: [number, number] = [marker.longitude, marker.latitude];
-
-    if (isMarkerUnclustered(map, coords, expId)) {
-      setHoverData(buildPointHoverData(coords));
-      return;
-    }
-
-    paintClusterRingForExperience(map, expId, coords, setHoverData, sequence);
-  }, [mapRef, getExperienceById, setHoverPreview]);
+    // Straight onto the marker's own point. With the source unclustered there is
+    // no aggregate standing in for it and nothing to resolve asynchronously, so
+    // the ring lands where the marker is whether or not it is currently drawn —
+    // below HEATMAP_MAX_ZOOM the heat is what shows there instead.
+    setHoverData(buildPointHoverData([marker.longitude, marker.latitude]));
+  }, [getExperienceById, setHoverPreview]);
 
   // Watch hoveredExperienceId + hoverSource to drive list → map hover
   useEffect(() => {
@@ -858,20 +802,16 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
   return (
     <>
-      {/* Main clustered markers source */}
+      {/* Main markers source — heatmap below the threshold, markers above it */}
       <Source
         id={SOURCE_MARKERS}
         type="geojson"
         data={markersGeoJson}
-        cluster={true}
-        clusterMaxZoom={12}
-        clusterRadius={50}
       >
-        <Layer {...clusterLayer} />
-        <Layer {...clusterCountLayer} />
-        <Layer {...unclusteredLayer} />
-        <Layer {...unclusteredCountBadgeBgLayer} />
-        <Layer {...unclusteredCountBadgeTextLayer} />
+        <Layer {...heatmapLayer} />
+        <Layer {...markerLayer} />
+        <Layer {...markerCountBadgeBgLayer} />
+        <Layer {...markerCountBadgeTextLayer} />
       </Source>
 
       {/* Highlight source — selected experience locations (red dots/rings) */}
@@ -880,7 +820,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         <Layer {...highlightPointLayer} />
       </Source>
 
-      {/* Hover source — orange ring/glow on hovered marker or cluster */}
+      {/* Hover source — orange ring/glow on the hovered marker */}
       <Source id={SOURCE_HOVER} type="geojson" data={hoverData}>
         <Layer {...hoverGlowLayer} />
         <Layer {...hoverRingLayer} />
