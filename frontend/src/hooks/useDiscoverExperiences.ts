@@ -86,7 +86,13 @@ export function useDiscoverExperiences() {
 
   // Fetch experiences for active view (region + source)
   const { data: experiencesData, isLoading: experiencesLoading } = useQuery({
-    queryKey: ['discover-experiences', activeView?.regionId, activeView?.categoryId],
+    // Keyed on the region alone. The response is category-independent — the
+    // filter below runs in `select`, per observer — so carrying `categoryId` in
+    // the key gave each tab its own cache entry and refetched the whole region
+    // on every switch. That was wasteful at 500 rows and is more so now that a
+    // region is fetched whole. The `['discover-experiences']` prefix used for
+    // invalidation is unchanged.
+    queryKey: ['discover-experiences', activeView?.regionId],
     // The category filter runs in `select` below, on what came back — so a
     // truncated response is filtered, not a filtered response truncated. At 500
     // that lost the smaller categories first: Europe holds 76 museums among 658
