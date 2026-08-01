@@ -66,7 +66,7 @@ Level 3 requirements are tracked but optional for now.
 | SAST (Python) | Bandit (`npm run security:py:bandit`) + Semgrep (`npm run security:py:semgrep`) — p/python, p/owasp-top-ten, p/secrets. Ruff `S` (flake8-bandit) ruleset enforced inline at lint time |
 | Dependency scanning (Node) | `npm run security:deps` — npm audit for backend + frontend (production deps only, `--omit=dev`) |
 | Dependency scanning (Python) | `npm run security:py:deps` — pip-audit on `cv-python/requirements.txt` |
-| Container CVE scanning | `npm run security:image` — Trivy scans the cv-python Docker image, fails on HIGH/CRITICAL |
+| Container CVE scanning | `npm run security:image` — Trivy scans the cv-python Docker image, fails on HIGH/CRITICAL **that have a fix available** (`--ignore-unfixed`, matching the CI job). A CVE with no released patch cannot be acted on in a Dockerfile that already runs `apt-get upgrade`, so blocking on one would stop every unrelated PR until the distro catches up; `cv-python/Dockerfile` pulls the newest published packages at build time, which is the actionable half |
 | Static analysis (semantic) | CodeQL (JS+Python) via GitHub default-setup code scanning |
 | Secret detection | GitHub native secret scanning + push protection (server-side); Semgrep `p/secrets` (CI) |
 | Containers | Dockerfiles run as non-root user (`node` for backend/frontend, `appuser` for cv-python) |
@@ -85,7 +85,7 @@ The Python service has a smaller surface than the Node backend but introduces ne
 | Error response sanitization | enforced | NDJSON `{"type":"error","message":...}` carries a generic message; full traces stay in container stdout |
 | Worker-thread bounds | enforced | uvicorn `--limit-concurrency`; no unbounded `threading.Thread` daemons |
 | Logging | partial | `print()` to stdout, collected by Docker. Structured logging is a follow-up |
-| Container | enforced | Non-root user, slim base, no secrets baked in, Trivy fails on HIGH/CRITICAL |
+| Container | enforced | Non-root user, slim base, no secrets baked in, Trivy fails on **fixable** HIGH/CRITICAL (see the scanning row above for why unfixable ones do not block) |
 
 ## Known Gaps
 
