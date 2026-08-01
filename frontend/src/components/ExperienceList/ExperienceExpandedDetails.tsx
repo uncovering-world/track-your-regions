@@ -44,6 +44,8 @@ import {
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
   locations?: ExperienceLocation[];
+  /** The batch settled — an in-region count derived from `locations` is meaningful. */
+  locationsResolved: boolean;
   isLocationVisited: (locationId: number) => boolean;
   isFullyVisited: boolean;
   hoveredLocationId: number | null;
@@ -61,6 +63,7 @@ export interface ExperienceExpandedDetailsProps {
 export function ExperienceExpandedDetails({
   experience,
   locations,
+  locationsResolved,
   isLocationVisited,
   isFullyVisited,
   hoveredLocationId,
@@ -216,7 +219,11 @@ export function ExperienceExpandedDetails({
         {experience.in_danger && (
           <Chip label="In Danger" size="small" color="error" />
         )}
-        {isMultiLocation && (
+        {/* Only once the batch has settled. `inRegionCount` comes from it while
+            `totalLocations` falls back to `experience.location_count`, so before
+            it resolves the two disagree by construction and the chip states a
+            zero it has no evidence for. */}
+        {isMultiLocation && locationsResolved && (
           <Chip
             label={`${inRegionCount}/${totalLocations} in region`}
             size="small"
@@ -413,10 +420,20 @@ export function ExperienceExpandedDetails({
 
       {/* Actions */}
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Disabled until the batch settles, for the same reason as the row
+            checkbox and with the same consequence: `isFullyVisited` comes from
+            `inRegionVisitedStatus`, which an unresolved batch short-circuits to
+            'not_visited'. The button would then read "Mark Visited" for an
+            experience already visited, and pass `!isFullyVisited` — always
+            true — so it could be re-marked and never unmarked, and the click
+            would look inert. This is the single-location path, which is most
+            rows: `totalLocations` falls back to `experience.location_count`, so
+            it renders long before any location has arrived. */}
         {isAuthenticated && showCheckbox && !isMultiLocation && (
           <Button
             variant={isFullyVisited ? 'outlined' : 'contained'}
             size="small"
+            disabled={!locationsResolved}
             onClick={(e) => {
               e.stopPropagation();
               onToggleAllLocations(experience.id, !isFullyVisited);
@@ -427,7 +444,9 @@ export function ExperienceExpandedDetails({
             {isFullyVisited ? 'Visited' : 'Mark Visited'}
           </Button>
         )}
-        {isAuthenticated && showCheckbox && isMultiLocation && (
+        {/* And withheld entirely rather than shown as `0/N Visited`, which is
+            the same confident zero the ratio chip above no longer states. */}
+        {isAuthenticated && showCheckbox && isMultiLocation && locationsResolved && (
           <VisitedStatusButton
             visitedStatus={visitedStatus}
             visitedCount={visitedLocations}

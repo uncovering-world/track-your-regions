@@ -29,6 +29,8 @@ import { isNewExperience, resolveRowBgColor } from './utils';
 export interface ExperienceListItemProps {
   experience: Experience;
   locations?: ExperienceLocation[];
+  /** The batch settled — an in-region count derived from `locations` is meaningful. */
+  locationsResolved: boolean;
   isLocationVisited: (locationId: number) => boolean;
   isHovered: boolean;
   isSelected: boolean;
@@ -73,6 +75,7 @@ export interface ExperienceListItemProps {
 function ExperienceListItemComponent({
   experience,
   locations,
+  locationsResolved,
   isLocationVisited,
   isHovered,
   isSelected,
@@ -163,14 +166,23 @@ function ExperienceListItemComponent({
         onMouseLeave={onLeave}
         onClick={() => onClick(experience)}
       >
-        {/* Checkbox for visited status + batch buttons when partial */}
+        {/* Checkbox for visited status + batch buttons when partial.
+            Disabled until the batch settles, and for a stronger reason than the
+            chip's: the visited state is derived from in-region locations, so an
+            unresolved batch makes `inRegionCount` 0, which short-circuits
+            `inRegionVisitedStatus` to 'not_visited' — every row would render
+            unchecked, indistinguishable from genuinely unvisited, and stay that
+            way rather than flicker. The toggle inherits it: it passes
+            `inRegionVisitedStatus !== 'visited'`, always true while unresolved,
+            so a fully-visited experience could be re-marked but never unmarked
+            and the click would look like it did nothing. */}
         {showCheckbox && (
           <ListItemIcon sx={{ minWidth: isPartiallyVisited ? 72 : 36, display: 'flex', alignItems: 'center' }}>
             <Checkbox
               edge="start"
               checked={isFullyVisited}
               indeterminate={isPartiallyVisited}
-              disabled={isLoading}
+              disabled={isLoading || !locationsResolved}
               onClick={handleRootCheckboxClick}
               sx={{
                 color: color,
@@ -239,9 +251,15 @@ function ExperienceListItemComponent({
                   }}
                 />
               )}
+              {/* While the batch is unresolved the row shows the plain count it
+                  already has from the experience, rather than an in-region
+                  ratio it cannot know yet — `inRegionCount` would be 0 against
+                  a denominator that arrived from somewhere else. */}
               {isMultiLocation && (
                 <Chip
-                  label={inRegionCount === totalLocations ? totalLocations : `${inRegionCount}/${totalLocations}`}
+                  label={!locationsResolved || inRegionCount === totalLocations
+                    ? totalLocations
+                    : `${inRegionCount}/${totalLocations}`}
                   size="small"
                   sx={{
                     height: 18,
@@ -265,6 +283,7 @@ function ExperienceListItemComponent({
         <ExperienceExpandedDetails
           experience={experience}
           locations={locations}
+          locationsResolved={locationsResolved}
           isLocationVisited={isLocationVisited}
           isFullyVisited={isFullyVisited}
           hoveredLocationId={hoveredLocationId}
