@@ -438,7 +438,24 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     if (selectedExperienceId == null) return EMPTY_FC;
 
     const locations = locationsByExperience[selectedExperienceId];
-    if (!locations || locations.length === 0) return EMPTY_FC;
+
+    // No locations loaded for this one — draw its own point rather than nothing.
+    // The batch fetch is per region without descendants, so most experiences in
+    // a continent have none, and the selected experience is removed from the
+    // marker source by the memo above: returning empty here made it disappear
+    // from the map entirely at the moment of being selected.
+    if (!locations || locations.length === 0) {
+      const exp = getExperienceById(selectedExperienceId);
+      if (!exp) return EMPTY_FC;
+      return {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [exp.longitude, exp.latitude] },
+          properties: { locationId: null, name: exp.name },
+        }],
+      };
+    }
 
     // Same fallback as the marker builder, and for the same reason: an
     // experience assigned by hand has no in-region location, and filtering to
@@ -457,7 +474,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         },
       })),
     };
-  }, [selectedExperienceId, locationsByExperience]);
+  }, [selectedExperienceId, locationsByExperience, getExperienceById]);
 
   // ── Imperative event handlers (registered on map via useEffect) ──
   useEffect(() => {
