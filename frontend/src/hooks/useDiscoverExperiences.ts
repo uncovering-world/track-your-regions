@@ -16,6 +16,7 @@ import {
   fetchExperienceCategories,
   fetchExperiencesByRegion,
   fetchExperienceLocations,
+  WHOLE_REGION_LIMIT,
 } from '../api/experiences';
 import { useNavigation } from './useNavigation';
 
@@ -86,9 +87,13 @@ export function useDiscoverExperiences() {
   // Fetch experiences for active view (region + source)
   const { data: experiencesData, isLoading: experiencesLoading } = useQuery({
     queryKey: ['discover-experiences', activeView?.regionId, activeView?.categoryId],
+    // The category filter runs in `select` below, on what came back — so a
+    // truncated response is filtered, not a filtered response truncated. At 500
+    // that lost the smaller categories first: Europe holds 76 museums among 658
+    // experiences, and `Museo del Prado` sorts past the cut.
     queryFn: () => fetchExperiencesByRegion(activeView!.regionId, {
       includeChildren: true,
-      limit: 500,
+      limit: WHOLE_REGION_LIMIT,
     }),
     enabled: !!activeView,
     staleTime: 120000,
