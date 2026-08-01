@@ -27,22 +27,35 @@ Visit checkbox state in `ExperienceList` is derived from the global `useVisitedL
 
 Map Mode uses three GeoJSON sources:
 
-- `exp-markers`: clustered main markers
-- `exp-highlight`: all in-region locations for the selected experience — or all of them when none is in region, matching the marker fallback below, so a hand-assigned experience does not vanish the moment it is selected
-- `exp-hover`: hover ring/glow (for marker or cluster highlight)
+- `exp-markers`: every in-region marker, unclustered. Below `HEATMAP_MAX_ZOOM` (5) it draws as a density heatmap; from that zoom it draws as individual markers
+- `exp-highlight`: all in-region locations for the selected experience — or all of them when none is in region, matching the marker fallback below, so a hand-assigned experience does not vanish the moment it is selected — or the experience's own point when no locations have loaded for it at all, which is the common case in a region fetched without descendants. Selecting removes the marker from `exp-markers`, so without that last case the act of selecting made the experience disappear
+- `exp-hover`: hover ring/glow
 
 For multi-location experiences, the main marker is the first in-region location — or the first location of any kind when none is in region, flagged `inRegion: false`. That state is what a curator's manual assignment produces: `assignExperienceToRegion` writes `experience_regions` alone, and the reason to assign by hand is that spatial containment missed the point. Skipping those left the row without a marker, so hovering it painted nothing and left the previously hovered row's ring standing in for it — `updateHoverFromList` now clears the ring when it finds no marker rather than returning bare. A badge shows `locationCount` when more than one location exists. Selected experience markers are removed from `exp-markers` and rendered via `exp-highlight` instead.
 
-Map Mode builds a marker for every experience — `buildExperienceMarkers()` in `components/experienceMarkers/buildMarkers.ts`, a pure function of the experiences, their locations and the expanded category set. It used to stop at 100 and show an on-map indicator saying so. The cap was removed because it silently disabled the list→map hover past it: the highlight resolves an experience through the marker set, and returns without a sound when it is absent, so in a 200-experience region half the rows hovered to nothing. The clustered source (`cluster` on `exp-markers`) is what makes the full set affordable to render. It does not bound the hover path: `paintClusterRingForExperience()` walks every leaf of every rendered cluster to find which one holds the hovered experience, so that scan is proportional to the region rather than capped at a hundred as it used to be. Ownership of the ring is a token: every path that takes it — the scan, the direct location and unclustered-marker paints, clearing on leave, and the map's own marker handlers — claims one first, and a scan paints only while it still holds the current one. A token bumped inside the scan alone would invalidate it only when the next hover happened to be another scan.
+Map Mode builds a marker for every experience — `buildExperienceMarkers()` in `components/experienceMarkers/buildMarkers.ts`, a pure function of the experiences, their locations and the expanded category set. It used to stop at 100 and show an on-map indicator saying so. The cap was removed because it silently disabled the list→map hover past it: the highlight resolves an experience through the marker set, and returns without a sound when it is absent, so in a 200-experience region half the rows hovered to nothing. The heatmap is what makes the full set affordable to render below its threshold.
 
-Discover Mode mirrors the same visual language (cluster circles, count labels, multi-location badge, hover ring, selected-location highlights), but uses a dedicated map instance and imperative MapLibre event wiring.
+### Density instead of clusters
+
+Overview zoom shows a heatmap rather than clustered counts. It replaces clustering rather than sitting beside it: a clustered source cannot drive a heatmap, because MapLibre substitutes aggregates for the points and the heat would be computed from cluster centroids. With `cluster` off, the one source serves both the heatmap below `HEATMAP_MAX_ZOOM` and the individual markers from it.
+
+Three paint properties carry the design, and each is set against a specific failure:
+
+- `heatmap-radius` is **flat** (16px). It is in screen pixels, so zooming in spreads the points across more of the screen while the blur stays the same size — which is what makes a blob resolve into the structure inside it. Growing it with zoom cancels exactly that.
+- `heatmap-intensity` **rises with zoom, from well below 1**. Because the radius is fixed, each zoom level covers roughly a quarter as many points and density falls about fourfold per level — flat intensity made the layer fade out on the way in. The overview value is held low for the opposite reason: at 1 a single lone point peaked near the top of the ramp on its own, so a one-site town read the same as Rome and the continent came out a single blob. Saturated density cannot be separated by any palette, because every such pixel asks the ramp for the same value.
+- `heatmap-color` is an **inferno ramp**, cold to hot. A single hue at varying alpha can say "something is here" but not "much more here than there".
+
+The handover is a cross-fade, not a threshold. `minzoom` cannot express one — MapLibre applies no fade to circle or symbol layers at a zoom bound, so markers bound to `HEATMAP_MAX_ZOOM` appeared at exactly z5 while the heat had already ramped to nothing just below it, leaving a band around z4.9 with faint heat and no markers. Both now span `MARKER_FADE_START` → `HEATMAP_MAX_ZOOM` and ramp opacity across it in opposite directions.
+
+Removing clustering removed the only asynchronous path in the hover: `getClusterLeaves` was what made an answer arrive after the pointer had moved on, and the ownership-token machinery existed solely to discard those stale answers. A list hover now paints the ring on the marker's own point directly — `updateHoverFromList` takes no map handle at all, which also removed a guard that had started skipping the "clear the ring" branch whenever the map was not ready yet.
+
+Discover Mode still uses clustering (cluster circles, count labels, multi-location badge, hover ring, selected-location highlights) with a dedicated map instance and imperative MapLibre event wiring — the heatmap is Map Mode only.
 
 ## Interaction behavior
 
 - Hover map marker -> popup + hover ring + list highlight
-- Hover list card -> cluster-aware hover ring on map (even when marker is clustered). The row is memoised and its props are held stable so this costs one row's render rather than the region's: the handlers are declared once in `ExperienceList` rather than per row, the shared hovered-location id is narrowed by `ownedHoveredLocationId()` to the row that owns it, and each row registers its own scroll ref instead of being wrapped in a `<Box>` the parent rebuilds. Measured at 200 experiences: 2460 ms per hover before, 15 ms after
+- Hover list card -> hover ring on the marker's own point, whether or not it is currently drawn (below the heatmap threshold the heat is what shows there instead). The row is memoised and its props are held stable so this costs one row's render rather than the region's: the handlers are declared once in `ExperienceList` rather than per row, the shared hovered-location id is narrowed by `ownedHoveredLocationId()` to the row that owns it, and each row registers its own scroll ref instead of being wrapped in a `<Box>` the parent rebuilds. Measured at 200 experiences: 2460 ms per hover before, 15 ms after
 - Click marker -> toggle selected experience
-- Click cluster -> zoom to cluster expansion zoom
 - Multi-location selected -> fit bounds to all selected in-region points, or to all of them when none is in region — the same qualifier the marker and highlight rules carry, so a list click and a map click frame the same experience the same way
 
 ## Hover preview card placement

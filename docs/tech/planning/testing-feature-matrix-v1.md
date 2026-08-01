@@ -48,7 +48,7 @@
 | `NAV-04` | `WF-03` | Breadcrumb navigation (map and discover) | `BreadcrumbNavigation`, `DiscoverPage` |
 | `MAP-01` | `WF-04` | Open/close Region Explore panel | `MainDisplay`, `RegionDescriptionSection` |
 | `MAP-02` | `WF-04` | Experience grouping by source + source expansion state | `ExperienceList`, `useExperienceContext` |
-| `MAP-03` | `WF-04` | Marker clustering, hover ring, selected highlight layer | `ExperienceMarkers` |
+| `MAP-03` | `WF-04` | Density heatmap below the marker threshold, individual markers above it, hover ring, selected highlight layer | `ExperienceMarkers` |
 | `MAP-04` | `WF-04` | Multi-location badge and selected-location expansion | `ExperienceMarkers`, `ExperienceListItem` |
 | `MAP-05` | `WF-04` | Marker/list hover synchronization and auto-scroll | `ExperienceMarkers`, `ExperienceList` |
 | `MAP-06` | `WF-04` | Marker click selection with fit/fly behavior | `ExperienceMarkers`, `useExperienceContext` |
