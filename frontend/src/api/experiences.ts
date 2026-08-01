@@ -146,7 +146,13 @@ export interface ExperienceCategory {
  * Get single experience by ID
  */
 export async function fetchExperience(id: number): Promise<ExperienceDetail> {
-  return fetchJson<ExperienceDetail>(`${API_URL}/api/experiences/${id}`);
+  // The experience itself is public, but the `regions[]` it returns is filtered
+  // by world-view visibility — `getExperience` admits every assignment only for
+  // an admin. Sent anonymously, that branch is unreachable from the app, so an
+  // experience assigned only to hidden world views comes back with an empty
+  // region list rather than an incomplete one, and the documented admin bypass
+  // is nominal.
+  return authFetchJson<ExperienceDetail>(`${API_URL}/api/experiences/${id}`);
 }
 
 /**
@@ -200,7 +206,12 @@ export async function fetchExperienceLocations(
   regionId?: number
 ): Promise<ExperienceLocationsResponse> {
   const params = regionId ? `?regionId=${regionId}` : '';
-  return fetchJson<ExperienceLocationsResponse>(`${API_URL}/api/experiences/${experienceId}/locations${params}`);
+  // Guarded on `regionId` like the batch below, but conditionally: the guard
+  // engages only when one is passed and waves the request through when it is
+  // absent. No call site passes one today — both callers want an experience's
+  // locations, which is the only way to get them — so the header keeps this
+  // route correct if a caller starts rather than covering one that exists.
+  return authFetchJson<ExperienceLocationsResponse>(`${API_URL}/api/experiences/${experienceId}/locations${params}`);
 }
 
 /**
@@ -215,7 +226,13 @@ export async function fetchRegionExperienceLocations(
   if (options?.includeChildren === false) params.set('includeChildren', 'false');
   const query = params.toString();
   const querySuffix = query ? `?${query}` : '';
-  return fetchJson<RegionExperienceLocationsResponse>(
+  // Authenticated for the same reason as fetchExperiencesByRegion, plus a
+  // sharper one: `requireVisibleWorldView` guards this route, and a hidden world
+  // view answers an anonymous caller with 404. Sent unauthenticated, the batch
+  // failed for every experience in the region at once, and each row rendered the
+  // absence as `0/N in region` — the count comes from this response while the
+  // total falls back to `experience.location_count`.
+  return authFetchJson<RegionExperienceLocationsResponse>(
     `${API_URL}/api/experiences/by-region/${regionId}/locations${querySuffix}`
   );
 }
@@ -270,7 +287,10 @@ export async function fetchExperienceRegionCounts(
 ): Promise<RegionExperienceCount[]> {
   const params = new URLSearchParams({ worldViewId: String(worldViewId) });
   if (parentRegionId) params.set('parentRegionId', String(parentRegionId));
-  return fetchJson<RegionExperienceCount[]>(`${API_URL}/api/experiences/region-counts?${params}`);
+  // `worldViewId` is mandatory on this route and the visibility guard reads it,
+  // so on a hidden world view every anonymous call 404s and the Discover tree
+  // renders counts it never received.
+  return authFetchJson<RegionExperienceCount[]>(`${API_URL}/api/experiences/region-counts?${params}`);
 }
 
 // =============================================================================
