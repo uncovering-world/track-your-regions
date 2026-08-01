@@ -176,7 +176,11 @@ export const experienceListQuerySchema = z.object({
 
 export const experiencesByRegionQuerySchema = z.object({
   includeChildren: booleanStringSchema.default('true'),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
+  // 5000 to match `experienceListQuerySchema` above and the controller's own
+  // clamp. Neither surface that reads a region paginates, so a ceiling below the
+  // largest region truncated the list instead of paging it — and because the
+  // rows are ordered by name, the loss was a tail of the alphabet.
+  limit: z.coerce.number().int().min(1).max(5000).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });
 

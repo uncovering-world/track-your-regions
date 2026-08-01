@@ -188,7 +188,13 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
 export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
   const includeChildren = req.query.includeChildren !== 'false';
-  const limit = Math.min(parseInt(String(req.query.limit)) || 100, 500);
+  // Ceiling raised to match `listExperiences` above. At 500 a region's list was
+  // silently truncated rather than paginated: the ordering is `e.name`, so the
+  // cut fell mid-alphabet and simply removed everything after it — 658 in Europe
+  // meant no museum past "G", and the map builds its markers from this same
+  // array, so those pins vanished too. Callers that want a page still get one by
+  // passing `limit`; the default of 100 is unchanged.
+  const limit = Math.min(parseInt(String(req.query.limit)) || 100, 5000);
   const offset = parseInt(String(req.query.offset)) || 0;
 
   // Determine if the user is a curator with scope for this region
@@ -205,6 +211,7 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
   const rejectionFilter = showRejected ? '' : ' AND rej.id IS NULL';
 
   let query: string;
+  let countQuery: string;
   let params: (number | string)[];
 
   if (includeChildren) {
@@ -245,6 +252,21 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
       ORDER BY e.name
       LIMIT $2 OFFSET $3
     `;
+    countQuery = `
+      WITH RECURSIVE descendant_regions AS (
+        SELECT id FROM regions WHERE id = $1
+        UNION ALL
+        SELECT r.id FROM regions r
+        JOIN descendant_regions dr ON r.parent_region_id = dr.id
+      )
+      SELECT COUNT(DISTINCT e.id)::int AS total
+      FROM experiences e
+      JOIN experience_regions er ON e.id = er.experience_id
+      JOIN experience_categories s ON e.category_id = s.id
+      ${descendantRejectionJoin}
+      WHERE er.region_id IN (SELECT id FROM descendant_regions)
+      ${rejectionFilter}
+    `;
     params = [regionId, limit, offset];
   } else {
     const rejectionSelect = showRejected
@@ -277,10 +299,31 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
       ORDER BY e.name
       LIMIT $2 OFFSET $3
     `;
+    countQuery = `
+      SELECT COUNT(DISTINCT e.id)::int AS total
+      FROM experiences e
+      JOIN experience_regions er ON e.id = er.experience_id
+      JOIN experience_categories s ON e.category_id = s.id
+      ${simpleRejectionJoin}
+      WHERE er.region_id = $1
+      ${rejectionFilter}
+    `;
     params = [regionId, limit, offset];
   }
 
   const result = await pool.query(query, params);
+  // Counted rather than measured. `total` used to be `result.rows.length` — the
+  // size of the page, which equals the match count only while nothing is cut
+  // off, and silently agrees with itself the moment something is, so a region
+  // at the ceiling reported a confident, wrong total.
+  //
+  // Against a real count, `offset + experiences.length < total` says one thing:
+  // rows remain beyond this window. What that means is the caller's to decide —
+  // truncation for one that started at offset 0 and asked for the whole region,
+  // which is both callers today, and plain `hasMore` for one that is paging.
+  // The server cannot tell those apart, because the difference is intent rather
+  // than response shape.
+  const countResult = await pool.query(countQuery, [regionId]);
 
   // Get region info
   const regionResult = await pool.query(`
@@ -301,7 +344,7 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
       ...row,
       in_danger: row.in_danger === 'true',
     })),
-    total: result.rows.length,
+    total: countResult.rows[0].total,
     limit,
     offset,
   });
