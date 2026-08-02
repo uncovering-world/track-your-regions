@@ -36,3 +36,12 @@ appeared (#434). `backend/src/db/schemaSeeds.test.ts` guards the rule.
 A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
+
+`009-experience-change-provenance.sql` is the current example of the other kind:
+its DDL is a copy of what `01-schema.sql` already carries and re-applying the
+schema file achieves the same thing. What only exists in the migration is the
+backfill — every source-derived row that predates change provenance is attributed
+to the newest run of its category that wrote anything, which is how it got
+there. Rows a curator created by hand are the exception: they were inserted
+outside any run and keep NULL provenance permanently, since manual creation
+writes none either. `COALESCE` guards each column, so running it twice is inert.

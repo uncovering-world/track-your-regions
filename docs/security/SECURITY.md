@@ -149,6 +149,12 @@ The Python service has a smaller surface than the Node backend but introduces ne
 | Logging | partial | `print()` to stdout, collected by Docker. Structured logging is a follow-up |
 | Container | enforced | Non-root user, slim base, no secrets baked in, Trivy fails on **fixable** HIGH/CRITICAL (see the scanning row above for why unfixable ones do not block) |
 
+## Development-Only Switches
+
+| Switch | Guard | Notes |
+|---|---|---|
+| `SYNC_SOURCE_FIXTURE` | **Refused outright when `NODE_ENV=production`** (`fixtureSource.ts`) — the only guard on the variable itself | Substitutes a local JSON file for the live UNESCO API during sync development; the value is a **directory path**, set by the operator in the environment (`/app/data/sync-fixtures` in the Docker stack) and used as given. It is not validated, and does not need to be: it never comes from a request, and anyone able to set it can already run arbitrary code in the container. The environment gate is the control, because what this switch replaces is the source of truth for a category's data. Separately, the *file name* read from that directory is a module constant (`unesco.json`) checked to be a bare name, so the read cannot walk out of the configured directory |
+
 ## Known Gaps
 
 - **Semgrep reads source files only.** `.semgrepignore` excludes `*.yaml`,
