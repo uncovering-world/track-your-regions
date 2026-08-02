@@ -63,8 +63,14 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   // Get triggering user ID
   const triggeredBy = req.user?.id || null;
 
-  // Check for force mode
+  // Check for force and preview modes
   const force = req.body.force === true;
+  const dryRun = req.body.dryRun === true;
+
+  if (force && dryRun) {
+    res.status(400).json({ error: 'A dry run cannot be combined with force: force deletes before it previews' });
+    return;
+  }
 
   // Start sync based on source type
   const syncFn = syncRegistry[categoryId];
@@ -73,7 +79,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
     return;
   }
 
-  syncFn(triggeredBy, { force }).catch((err) => {
+  syncFn(triggeredBy, { force, dryRun }).catch((err) => {
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- categoryId is a parseInt result, so it cannot carry a format specifier
     console.error(`[Sync Controller] Sync error for category ${categoryId}:`, err);
   });
@@ -83,10 +89,19 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
     categoryId,
     categoryName: source.rows[0].name,
     force,
-    message: force
-      ? 'Force sync started (existing data will be deleted). Poll /status endpoint for progress.'
-      : 'Sync started. Poll /status endpoint for progress.',
+    dryRun,
+    message: buildStartMessage({ force, dryRun }),
   });
+}
+
+function buildStartMessage(mode: { force: boolean; dryRun: boolean }): string {
+  if (mode.dryRun) {
+    return 'Dry run started: the changeset will be recorded, experiences will not be written.';
+  }
+  if (mode.force) {
+    return 'Force sync started (existing data will be deleted). Poll /status endpoint for progress.';
+  }
+  return 'Sync started. Poll /status endpoint for progress.';
 }
 
 /**
@@ -110,9 +125,13 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
       percent: status.total > 0 ? Math.round((status.progress / status.total) * 100) : 0,
       created: status.created,
       updated: status.updated,
+      unchanged: status.unchanged,
+      missing: status.missing,
+      curatedConflicts: status.curatedConflicts,
       errors: status.errors,
       currentItem: status.currentItem,
       logId: status.logId,
+      dryRun: status.dryRun,
     });
     return;
   }
@@ -193,9 +212,19 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
       l.total_fetched,
       l.total_created,
       l.total_updated,
+      l.total_unchanged,
+      l.total_missing,
+      l.total_curated_conflicts,
       l.total_errors,
+      l.is_dry_run,
+      l.detection_skipped_reason,
       l.triggered_by,
-      u.display_name as triggered_by_name
+      u.display_name as triggered_by_name,
+      -- A run from before change provenance: its total_updated counted every
+      -- row the upsert touched, so it is not comparable with later ones. After
+      -- slice 1 any run that changed something also wrote a changeset, so the
+      -- absence of one alongside a non-zero count is the marker.
+      EXISTS (SELECT 1 FROM experience_sync_changes c WHERE c.sync_log_id = l.id) AS has_changeset
     FROM experience_sync_logs l
     JOIN experience_categories s ON l.category_id = s.id
     LEFT JOIN users u ON l.triggered_by = u.id
@@ -242,7 +271,8 @@ export async function getSyncLogDetails(req: Request, res: Response): Promise<vo
     `SELECT
       l.*,
       s.name as category_name,
-      u.display_name as triggered_by_name
+      u.display_name as triggered_by_name,
+      EXISTS (SELECT 1 FROM experience_sync_changes c WHERE c.sync_log_id = l.id) AS has_changeset
      FROM experience_sync_logs l
      JOIN experience_categories s ON l.category_id = s.id
      LEFT JOIN users u ON l.triggered_by = u.id
@@ -256,6 +286,69 @@ export async function getSyncLogDetails(req: Request, res: Response): Promise<vo
   }
 
   res.json(result.rows[0]);
+}
+
+/**
+ * List what a run did, object by object.
+ * GET /api/admin/sync/logs/:logId/changes
+ *
+ * Rows that came through unchanged are not here — they are a count on the log.
+ * Ordering puts the significant ones first, since that is what a reviewer came
+ * for.
+ */
+export async function getSyncLogChanges(req: Request, res: Response): Promise<void> {
+  const logId = parseInt(String(req.params.logId));
+  const { type, significance, significantOnly, limit = 50, offset = 0 } = req.query as {
+    type?: string; significance?: string; significantOnly?: 'true' | 'false';
+    limit?: number; offset?: number;
+  };
+
+  const conditions = ['sync_log_id = $1'];
+  const params: unknown[] = [logId];
+
+  if (type) {
+    params.push(type);
+    conditions.push(`change_type = $${params.length}`);
+  }
+  if (significance) {
+    params.push(significance);
+    conditions.push(`significance = $${params.length}`);
+  }
+  // "Significant" means "worth a reviewer's attention", which is not the same as
+  // significance = 'major': created, missing, returned, conflict and failed rows
+  // carry no significance at all, and hiding them would empty the view of
+  // everything a run is actually reporting. Only minor field edits drop out.
+  if (significantOnly === 'true') {
+    conditions.push(`(significance = 'major' OR change_type <> 'updated')`);
+  }
+  // Assembled from literal fragments only; every value travels as a parameter.
+  const where = conditions.join(' AND ');
+
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM experience_sync_changes WHERE ${where}`,
+    params
+  );
+
+  const rowsResult = await pool.query(
+    `SELECT id, experience_id, external_id, name_snapshot, change_type,
+            changed_fields, significance, error
+     FROM experience_sync_changes
+     WHERE ${where}
+     ORDER BY CASE
+                WHEN significance = 'major' THEN 0
+                WHEN change_type <> 'updated' THEN 1
+                ELSE 2
+              END, change_type, external_id
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+
+  res.json({
+    changes: rowsResult.rows,
+    total: Number(countResult.rows[0]?.total ?? 0),
+    limit: Number(limit),
+    offset: Number(offset),
+  });
 }
 
 /**
