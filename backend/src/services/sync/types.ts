@@ -13,9 +13,17 @@ export interface SyncProgress {
   total: number;
   created: number;
   updated: number;
+  /** Rows the run touched that turned out identical — counted, never stored. */
+  unchanged: number;
+  /** Rows still present that this run did not see. */
+  missing: number;
+  /** Field-level divergences the curated_fields guard refused to apply. */
+  curatedConflicts: number;
   errors: number;
   currentItem: string;
   logId: number | null;  // ID of the sync log entry in DB
+  /** A preview run: the changeset is computed, experiences are not written. */
+  dryRun: boolean;
 }
 
 /**

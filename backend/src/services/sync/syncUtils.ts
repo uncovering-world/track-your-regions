@@ -242,28 +242,43 @@ export async function upsertSingleLocation(
 export async function createSyncLog(
   categoryId: number,
   triggeredBy: number | null,
+  isDryRun: boolean = false,
 ): Promise<number> {
   const result = await pool.query(
-    `INSERT INTO experience_sync_logs (category_id, triggered_by, status)
-     VALUES ($1, $2, 'running')
+    `INSERT INTO experience_sync_logs (category_id, triggered_by, status, is_dry_run)
+     VALUES ($1, $2, 'running', $3)
      RETURNING id`,
-    [categoryId, triggeredBy]
+    [categoryId, triggeredBy, isDryRun]
   );
   return result.rows[0].id;
 }
 
+export interface SyncLogStats {
+  fetched: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  missing: number;
+  curatedConflicts: number;
+  errors: number;
+  detectionSkippedReason?: string | null;
+}
+
 /**
  * Update a sync log entry with final status and stats.
- * Also updates the experience_categories table with last sync info.
+ *
+ * Also updates the experience_categories table with last sync info — except
+ * after a dry run, which synced nothing. Claiming otherwise there would make
+ * the category's own record of its last sync a lie.
  */
 export async function updateSyncLog(
   categoryId: number,
   logId: number,
   status: string,
-  stats: { fetched: number; created: number; updated: number; errors: number },
+  stats: SyncLogStats,
   errorDetails?: unknown[],
 ): Promise<void> {
-  await pool.query(
+  const result = await pool.query(
     `UPDATE experience_sync_logs SET
       completed_at = NOW(),
       status = $2,
@@ -271,11 +286,20 @@ export async function updateSyncLog(
       total_created = $4,
       total_updated = $5,
       total_errors = $6,
-      error_details = $7
-     WHERE id = $1`,
+      error_details = $7,
+      total_unchanged = $8,
+      total_missing = $9,
+      total_curated_conflicts = $10,
+      detection_skipped_reason = $11
+     WHERE id = $1
+     RETURNING is_dry_run`,
     [logId, status, stats.fetched, stats.created, stats.updated, stats.errors,
-     errorDetails ? JSON.stringify(errorDetails) : null]
+     errorDetails ? JSON.stringify(errorDetails) : null,
+     stats.unchanged, stats.missing, stats.curatedConflicts,
+     stats.detectionSkippedReason ?? null]
   );
+
+  if (result.rows[0]?.is_dry_run) return;
 
   await pool.query(
     `UPDATE experience_categories SET
