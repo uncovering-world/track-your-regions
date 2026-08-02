@@ -19,7 +19,7 @@ Backend runs on port 3001, frontend on port 5173, Martin tile server on port 300
 
 **Before every commit**, run all three:
 
-1. `npm run check` — comprehensive gate: lint + typecheck (Node + Python) + fast security (Bandit, pip-audit, npm audit) + knip + lint:extra (madge, shellcheck, hadolint). ~90s. Same script CI runs in its `check` job, so a clean local check means a clean CI check. GitHub native secret scanning + push protection cover the secret-detection layer; Semgrep `p/secrets` runs in CI.
+1. `npm run check` — comprehensive gate: lint + typecheck (Node + Python) + fast security (Bandit, pip-audit, npm audit) + knip + lint:extra (madge, shellcheck, hadolint). ~90s. Same script CI runs in its `check` job, so a clean local check means a clean CI check. Secret detection is split and does not fully compose: GitHub native scanning + push protection read every file type but match known provider patterns only, while Semgrep `p/secrets` (CI) covers source but skips the types `.semgrepignore` drops (`*.yaml`, `*.yml`, `*.json`, `*.sql`, `*.md` — note `*.yml`, which is what `docker-compose.yml` and `.github/workflows/*` are). A generic credential in a config file is seen by neither — see `docs/security/SECURITY.md` § Known Gaps.
 2. `TEST_REPORT_LOCAL=1 npm test` + `npm run test:py` — unit tests for both stacks
 3. `/security-check` — Claude Code security review of changed files
 

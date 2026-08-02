@@ -62,13 +62,13 @@ Level 3 requirements are tracked but optional for now.
 | Rate limiting | express-rate-limit on all endpoint tiers (auth, search, public read, authenticated user), plus one named admin exception — the destructive world-view re-match at 5/min. See [rate-limiting.md](../tech/rate-limiting.md) |
 | Email verification | nodemailer with console fallback; 24h tokens, anti-enumeration |
 | Password breach check | HIBP k-Anonymity API on register + password change |
-| SAST (Node) | Semgrep via Docker (`npm run security:scan`) — p/owasp-top-ten, p/nodejs, p/react, p/secrets rulesets |
-| SAST (Python) | Bandit (`npm run security:py:bandit`) + Semgrep (`npm run security:py:semgrep`) — p/python, p/owasp-top-ten, p/secrets. Ruff `S` (flake8-bandit) ruleset enforced inline at lint time |
+| SAST (Node) | Semgrep via Docker (`npm run security:scan`) — p/owasp-top-ten, p/nodejs, p/react, p/secrets rulesets. CI's Security Scan job runs this same npm script, so local and CI cannot drift; the image is pinned by digest. Ruleset breadth is a known gap — see below and #481 |
+| SAST (Python) | Bandit (`npm run security:py:bandit`) + Semgrep (`npm run security:py:semgrep`) — p/python, p/owasp-top-ten, p/secrets, run by CI through the same npm script and pinned by digest. Ruff `S` (flake8-bandit) ruleset enforced inline at lint time |
 | Dependency scanning (Node) | `npm run security:deps` — npm audit for backend + frontend (production deps only, `--omit=dev`) |
 | Dependency scanning (Python) | `npm run security:py:deps` — pip-audit on `cv-python/requirements.txt` |
 | Container CVE scanning | `npm run security:image` — Trivy scans the cv-python Docker image, fails on HIGH/CRITICAL **that have a fix available** (`--ignore-unfixed`, matching the CI job). A CVE with no released patch cannot be acted on in a Dockerfile that already runs `apt-get upgrade`, so blocking on one would stop every unrelated PR until the distro catches up; `cv-python/Dockerfile` pulls the newest published packages at build time, which is the actionable half |
 | Static analysis (semantic) | CodeQL (JS+Python) via GitHub default-setup code scanning |
-| Secret detection | GitHub native secret scanning + push protection (server-side); Semgrep `p/secrets` (CI) |
+| Secret detection | GitHub native secret scanning + push protection (server-side) — these read every file type, but match **known provider patterns only**; generic-secret detection is opt-in and not enabled. Semgrep `p/secrets` (CI) is the source-code half, **bounded by `.semgrepignore`**, which drops `*.yaml`, `*.yml`, `*.json`, `*.sql` and `*.md` — so `docker-compose.yml`, `martin/config.yaml`, `.github/workflows/*.yml`, every `package.json` and `db/init/01-schema.sql` are never read by it. The two layers therefore do **not** compose into full cover: a generic credential in an excluded config file is seen by neither. See Known Gaps |
 | Containers | Dockerfiles run as non-root user (`node` for backend/frontend, `appuser` for cv-python) |
 | LLM prompt construction | System prompts are static. Operator-supplied text (`world_views.source`, `world_views.description`) is sanitised by `sanitizePromptData()` and quoted inside `<<< >>>` in the **user** message only; every system prompt carries `UNTRUSTED_DATA_RULE`. See `backend/src/services/ai/openaiShared.ts` |
 
@@ -89,6 +89,60 @@ The Python service has a smaller surface than the Node backend but introduces ne
 
 ## Known Gaps
 
+- **Semgrep reads source files only.** `.semgrepignore` excludes `*.yaml`,
+  `*.yml`, `*.json`, `*.sql` and `*.md` on the stated grounds that they are
+  "non-source files (no security-relevant code)". That is true of the SAST
+  rulesets and false of `p/secrets`: config and manifest files are where
+  credentials usually sit. `docker-compose.yml`, `martin/config.yaml`, the
+  workflow files, every `package.json` and `db/init/01-schema.sql` are outside
+  its reach.
+
+  The compensating control is narrower than it first looks. GitHub's native
+  secret scanning and push protection match **known provider patterns** — AWS,
+  Stripe, GitHub tokens. Generic credentials need generic-secret detection,
+  which is opt-in and not enabled here. And generic is the likely shape in
+  precisely these files: `docker-compose.yml` carries `POSTGRES_PASSWORD`,
+  `DB_PASSWORD` and a `DATABASE_URL` connection string, `martin/config.yaml` a
+  `connection_string`. They interpolate env vars today rather than holding
+  literals, so nothing is currently exposed — but no layer is watching that
+  shape, so the protection is a convention rather than a control. Revisit the
+  exclusions alongside #481.
+- **Four files are only partially analysed by Semgrep.** Its parser reports a
+  syntax error and analyses what it can: `martin/warm-tiles.sh:1`,
+  `backend/src/services/wikivoyageExtract/parser.ts:83`,
+  `frontend/src/components/WorldViewEditor.tsx:544`,
+  `scripts/setup-integrations.sh:33`. The code itself is valid — `tsc` and
+  ESLint pass on the two TypeScript files, and shellcheck on the two shell
+  ones — so this is a limitation of Semgrep's own grammars, not a defect to fix
+  in the source. Overall coverage
+  is ~99.9% of lines. Running with `--strict` would turn this into a build
+  failure, which is why the scans do not use it: it would fail every PR for a
+  reason unrelated to security, and the alternative — excluding the files —
+  would trade a warning for a real hole. Re-check when the pinned Semgrep
+  version is bumped; parser coverage is the kind of thing that improves.
+- **Semgrep's ruleset is narrower than assumed.** The four Node packs in force
+  miss things Semgrep's own `p/default` catches — a planted `eval(userInput)`
+  produced zero findings under our configuration and is flagged immediately
+  under `p/default`, which also raises 54 findings on this repo that nothing
+  currently reports (including two string-formatted SQL queries and three
+  path-traversal candidates). Adding the pack means triaging those first, since
+  `--error` would otherwise turn the build red on all 54 at once. Tracked in
+  #481.
+- **CI ran no Semgrep until August 2026 (resolved).** The Security Scan job
+  used the deprecated `semgrep/semgrep-action@v1`, pinned to semgrep 1.36.0,
+  which died on registry rules carrying `severity: MEDIUM` and exited zero
+  anyway — so the required check passed without scanning, in every run whose
+  logs are still retained. Fixed by running the same npm scripts CI-side
+  (#479).
+
+  Scoped deliberately: this was a Semgrep outage, **not** a SAST outage. CodeQL
+  (JS+Python, default setup) ran throughout — see the stack table above and
+  `audit-2026-05-10.md` — so semantic and dataflow analysis was never absent.
+  What went missing in CI was Semgrep's pattern layer, `p/secrets` included.
+  Local `npm run security:*` was unaffected and did scan, so code that went
+  through the documented pre-push tier was covered; the exposure was anything
+  merged on CI-green alone. Recorded because "the check was green" is not
+  evidence for that period.
 - **World view visibility does not reach the tile server.** `requireVisibleWorldView` and `getWorldViews` bound the REST API (see the security stack table above), but Martin (`martin/config.yaml`) auto-publishes every table and function — including a hidden world view's regions — on its own public port (`ports:` in `docker-compose.yml`) with no authentication, so its geometry stays fetchable by tile id regardless of `is_public`. The fix is the pattern already used for cv-python below: drop the `ports:` mapping so Martin is reachable only on the Docker compose network (`expose:` only), plus an authorizing proxy in the backend (e.g. `/api/tiles/:source/:z/:x/:y` against a per-source allowlist) that MapLibre reaches via `transformRequest`. Deferred to the tile-boundary follow-up branch, which will carry its own ADR.
 - **The `Vary`/`no-store` treatment is on the world view listing only.** The sibling `optionalAuth` reads answer an anonymous caller with *less data* rather than 401 — `listExperiences`, `/experiences/by-region/:regionId` (curator rejection visibility), `/experiences/:id` (its `regions[]` filtered by world view visibility), `/experiences/region-counts`, `/experiences/:id/locations`, `/experiences/by-region/:regionId/locations` — and none of them says so in its headers. Same exposure as the listing had: a shared cache in front of the API could serve a curator's or admin's view to an anonymous visitor. Bounded today only by there being no such cache deployed. Tracked in #460 along with the client-side half.
 - cv-python uses `print()` rather than structured `logging`. Acceptable at L2 (no auth/authz events to log), but follow up with a logging adapter once the audit/observability story expands.
