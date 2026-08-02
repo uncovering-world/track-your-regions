@@ -11,6 +11,8 @@
 # Current value of KEY in .env (empty if unset/absent). Sourced in a subshell so
 # quoting matches how setup.sh / db-cli.sh read it.
 env_value() { # $1=key
+  # Reason: $ENV_FILE is resolved at runtime, so there is no fixed file to
+  # follow.
   # shellcheck source=/dev/null
   (set -a; . "$ENV_FILE" 2>/dev/null || true; printf '%s' "${!1:-}")
 }

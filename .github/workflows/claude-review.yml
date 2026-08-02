@@ -112,12 +112,23 @@ jobs:
                  - Python: `# noqa: <CODE>` (Ruff), `# type: ignore[<CODE>]`
                    (mypy), `# nosec <CODE>` (Bandit)
                  - Cross-language: `lgtm[<rule>]` (CodeQL)
+                 - Shell: `# shellcheck disable=<SCnnnn>` /
+                   `# shellcheck source=<path>`
                Same mechanical rules apply to every syntax above:
                  a. **Mechanical** — must be inline (no file-level or
                     block-level `/* eslint-disable rule */ ... /* eslint-enable */`),
                     must name the rule explicitly, and must end with
                     `-- <reason>` explaining what makes the spot safe.
                     Any violation of these → flag as Major.
+                    **shellcheck is the exception, in syntax only.** Its
+                    directives take no trailing `-- reason` — appending one
+                    is a parse error (SC1072) — so the reason goes on its own
+                    comment line immediately above, and that line must not
+                    begin with the tool's name (SC1073). The `source=<path>`
+                    form names no code, because it points at a file rather
+                    than switching a check off; there, require the reason
+                    alone. Judge these by the guide, not by the `-- reason`
+                    shape above.
                  b. **Substantive (the harder question)** — ask whether
                     the suppression is silencing a real issue the PR
                     introduced. If the warning could have been fixed by

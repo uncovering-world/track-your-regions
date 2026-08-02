@@ -40,6 +40,8 @@ set_kv() { # $1=key $2=value : replace-or-append KEY='value' in .env
 }
 
 # Optional-integrations wizard (defines run_integrations_wizard).
+# Reason: the path is fixed, so this directive names it rather than disabling
+# the check — it is what lets the sourced definitions be followed.
 # shellcheck source=scripts/setup-integrations.sh
 . "$SCRIPT_DIR/setup-integrations.sh"
 
@@ -97,8 +99,10 @@ fi
 
 # Read the values back by sourcing .env in a subshell, so quoting (e.g. a
 # two-word display name) is handled the same way db-cli.sh sources it.
+# Reason: $ENV_FILE is resolved at runtime, so there is no fixed file to follow.
 # shellcheck source=/dev/null
 ADMIN_EMAIL_VAL="$(set -a; . "$ENV_FILE"; printf '%s' "${ADMIN_EMAIL:-}")"
+# Reason: $ENV_FILE is resolved at runtime, so there is no fixed file to follow.
 # shellcheck source=/dev/null
 ADMIN_NAME_VAL="$(set -a; . "$ENV_FILE"; printf '%s' "${ADMIN_DISPLAY_NAME:-}")"
 if [ -z "$ADMIN_EMAIL_VAL" ]; then

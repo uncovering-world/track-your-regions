@@ -356,6 +356,23 @@ Suppressions hide real issues over time. Treat each one as a deliberate exceptio
    - **mypy** — `# type: ignore[<CODE>]`
    - **Bandit** — `# nosec <CODE>`
    - **CodeQL** — `// lgtm[<rule>]` / `# lgtm[<rule>]`
+   - **shellcheck** — `# shellcheck disable=<SCnnnn>` / `# shellcheck source=<path>`
+
+   **shellcheck is the one exception to rules 3 and 4, and only to their
+   syntax.** Its directives take no trailing `-- reason`; appending one is a
+   parse error (SC1072), which fails the lint rather than documenting it. Put
+   the reason on its own comment line immediately above instead — and make sure
+   that line does not begin with the word `shellcheck`, because any comment
+   starting that way is itself parsed as a directive (SC1073).
+
+   Rule 4 also lands differently across its two forms. `disable=<SCnnnn>` names
+   a code and is held to rule 4 as written. `source=<path>` names none — it
+   tells the tool where a sourced file lives rather than switching a check off,
+   and `source=/dev/null` is the accepted way to say "there is no fixed file to
+   follow". So for that form the requirement is the stated reason, not a code:
+   see `martin/run-martin.sh:39-44`, which uses exactly that shape — the reason
+   from its opening word through to the sourced line. What never changes is one
+   site at a time and a reason that says why.
 6. **Config-level rule disables need a comment.** If you turn a rule `'off'` in `eslint.config.mjs` (or equivalent), add an inline comment naming why (see `security/detect-object-injection` in `backend/eslint.config.mjs` for the pattern).
 
 ### Examples
