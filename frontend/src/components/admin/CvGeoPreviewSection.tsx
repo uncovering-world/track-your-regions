@@ -25,7 +25,8 @@ import {
   Visibility,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import MapGL, { NavigationControl, Source, Layer } from 'react-map-gl/maplibre';
+import { NavigationControl, Source, Layer } from 'react-map-gl/maplibre';
+import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import * as turf from '@turf/turf';
 import {
   acceptBatchMatches,

@@ -16,7 +16,8 @@ import {
 } from '@mui/material';
 import UndoIcon from '@mui/icons-material/Undo';
 import DeleteIcon from '@mui/icons-material/Delete';
-import MapGL, { Source, Layer, NavigationControl, type MapRef, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
+import { Source, Layer, NavigationControl, type MapRef, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
+import { GuardedMap as MapGL } from './shared/GuardedMap';
 import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../constants/mapStyles';
 import { smartFitBounds } from '../utils/mapUtils';

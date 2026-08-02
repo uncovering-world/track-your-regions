@@ -14,7 +14,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
-import MapGL, { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
+import { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
+import { GuardedMap as MapGL } from '../../../shared/GuardedMap';
 import type maplibregl from 'maplibre-gl';
 import * as turf from '@turf/turf';
 import { fetchGeoshape, getChildrenRegionGeometry } from '../../../../api/admin/worldViewImport';
@@ -121,6 +122,8 @@ function GeoshapeMapContent({ geoshapeLoading, geoshapeData, geoshapeMapRef }: G
   };
   return (
     <MapGL
+      unavailableCompact
+      unavailableDetail="This preview is map-only; the division's other details are on the tabs beside it."
       ref={geoshapeMapRef}
       initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
       style={{ width: '100%', flex: 1 }}
@@ -216,6 +219,8 @@ function DivisionsMapPanel({ mapRef, geometry, aiSuggestedIds, aiRejectedIds, ai
     : rawData;
   return (
     <MapGL
+      unavailableCompact
+      unavailableDetail="This panel shows the divisions on a map only; the counts and lists elsewhere in the dialog are unaffected."
       ref={mapRef}
       initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
       style={{ width: '100%', height: '100%' }}
@@ -302,6 +307,8 @@ function ChildrenMapPanel({ childRegions, loading, geometry }: {
     <>
       <Box sx={{ position: 'relative', flex: 1 }}>
         <MapGL
+          unavailableCompact
+          unavailableDetail="The child regions and their colours are listed below the map."
           ref={mapRef}
           initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
           style={{ width: '100%', height: '100%' }}
@@ -499,6 +506,7 @@ export function DivisionPreviewDialog({
           <Box>
             <Box sx={{ width: '100%', height: 400 }}>
               <MapGL
+                unavailableDetail="The transfer can still be confirmed — this map only previews which divisions move where."
                 initialViewState={{ bounds: transferData.bounds, fitBoundsOptions: { padding: 40 } }}
                 style={{ width: '100%', height: '100%' }}
                 mapStyle={MAP_STYLE}
@@ -603,6 +611,8 @@ export function DivisionPreviewDialog({
           {hasSideBySide && showPoints && markerPoints && markerPoints.length > 0 && (
             <Box sx={{ flex: 1, borderRight: 1, borderColor: 'divider' }}>
               <MapGL
+                unavailableCompact
+                unavailableDetail="Marker points are plotted on a map only; their coordinates remain in the data beside it."
                 initialViewState={{
                   bounds: [
                     Math.min(...markerPoints.map(p => p.lon)) - 0.5,

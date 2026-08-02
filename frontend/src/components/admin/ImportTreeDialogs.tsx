@@ -15,7 +15,8 @@ import {
 } from '@mui/material';
 import LinkIcon from '@mui/icons-material/Link';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
+import { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
+import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import * as turf from '@turf/turf';
 import { type searchDivisions } from '../../api/divisions';
 import type {

@@ -8,7 +8,8 @@ import {
   LinearProgress,
   Typography,
 } from '@mui/material';
-import MapGL, { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
+import { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
+import { GuardedMap as MapGL } from '../../shared/GuardedMap';
 import { useQuery } from '@tanstack/react-query';
 import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../../../constants/mapStyles';

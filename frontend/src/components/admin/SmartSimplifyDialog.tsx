@@ -28,7 +28,8 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
-import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
+import { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
+import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import * as turf from '@turf/turf';
 import {
   detectSmartSimplify,
