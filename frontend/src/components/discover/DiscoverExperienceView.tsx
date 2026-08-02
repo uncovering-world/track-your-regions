@@ -36,6 +36,8 @@ import { CurationDialog } from '../shared/CurationDialog';
 import { AddExperienceDialog } from '../shared/AddExperienceDialog';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { EmptyState } from '../shared/EmptyState';
+import { MapUnavailable } from '../shared/MapUnavailable';
+import { isWebGLAvailable } from '../../utils/webgl';
 
 const SOURCE_ID = 'experience-markers';
 const HIGHLIGHT_SOURCE_ID = 'highlight-markers';
@@ -154,6 +156,12 @@ export function DiscoverExperienceView({
   // ── Map init (once) ──
   useEffect(() => {
     if (!mapContainerRef.current) return;
+    // `new maplibregl.Map` throws without a WebGL context, and this effect is
+    // the one place in Discover where that throw is not caught by anything —
+    // it unwinds through React and takes the whole page with it, list and all.
+    // Every later effect here already guards on a null `mapRef`, so declining
+    // to build the map leaves the rest of the view working.
+    if (!isWebGLAvailable()) return;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
@@ -757,7 +765,11 @@ export function DiscoverExperienceView({
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Map — always visible, takes remaining height */}
       <Box sx={{ flex: activeView ? '0 0 45%' : 1, minHeight: 200, position: 'relative' }}>
-        <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+        {isWebGLAvailable() ? (
+          <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+        ) : (
+          <MapUnavailable detail="The experiences below are the same ones the map would pin, and stay fully browsable." />
+        )}
         {/* Loading overlay */}
         {isLoading && activeView && (
           <Box sx={{ position: 'absolute', top: 8, left: 8, bgcolor: 'background.paper', borderRadius: 1, px: 1.5, py: 0.5, boxShadow: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -765,8 +777,12 @@ export function DiscoverExperienceView({
             <Typography variant="caption">Loading...</Typography>
           </Box>
         )}
-        {/* Default state overlay when no source is selected */}
-        {!activeView && (
+        {/* Default state overlay when no source is selected. Gated on the map
+            existing: it covers the pane edge to edge and is the state Discover
+            opens in, so without it gated the first thing a WebGL-less visitor
+            reads is "…to see experiences on the map" sitting on top of the
+            explanation of why there is no map. */}
+        {!activeView && isWebGLAvailable() && (
           <Box
             sx={{
               position: 'absolute',
