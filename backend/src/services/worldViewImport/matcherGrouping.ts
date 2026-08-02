@@ -492,6 +492,7 @@ async function runGroupingGeoComparison(updates: GroupingUpdate[]): Promise<void
       try {
         await computeGeoSimilarityForRegion(geoClient, update.id, update.suggestions);
       } catch (err) {
+        // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- update.id is a number
         console.warn(`[WV Matcher] Geo similarity failed for region ${update.id}:`, err instanceof Error ? err.message : err);
       }
     }

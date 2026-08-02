@@ -47,7 +47,7 @@ export function listCaches(): CacheEntry[] {
       .filter(f => f.startsWith('wikivoyage-cache') && f.endsWith('.json'))
       .map(f => {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- f comes from readdirSync of CACHE_DIR; joined with the same constant dir
-        const stats = statSync(path.join(CACHE_DIR, f));
+        const stats = statSync(path.join(CACHE_DIR, f)); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- f is a filename readdirSync returned for CACHE_DIR itself, not request data
         return { name: f, sizeBytes: stats.size, modifiedAt: stats.mtime.toISOString() };
       })
       .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
@@ -63,6 +63,7 @@ function safeCachePath(name: string): string | null {
   if (!name.startsWith('wikivoyage-cache') || !name.endsWith('.json') || name.includes('/') || name.includes('\\') || name.includes('..')) {
     return null;
   }
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- name is rejected above unless it matches wikivoyage-cache*.json and contains no separator or '..'; the dirname check below re-verifies containment
   const resolved = path.resolve(CACHE_DIR, name);
   if (path.dirname(resolved) !== path.resolve(CACHE_DIR)) {
     return null;
@@ -161,6 +162,7 @@ export function startExtraction(config: Partial<ExtractionConfig> & { cacheFile?
 
   // Fire and forget
   runExtraction(opId, fullConfig, progress).catch((err) => {
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-extract-<counter>
     console.error(`[WV Extract] Extraction error for ${opId}:`, err);
   });
 
@@ -516,6 +518,7 @@ async function runExtraction(
   } catch (err) {
     progress.status = 'failed';
     progress.statusMessage = `Extraction failed: ${err instanceof Error ? err.message : String(err)}`;
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-extract-<counter> and the elapsed time is a number
     console.error(`[WV Extract] ${opId} failed after ${((Date.now() - startTime) / 1000).toFixed(1)}s:`, err);
   } finally {
     fetcher.save();

@@ -17,7 +17,7 @@ const FIXTURES = path.join(__dirname, 'fixtures');
 
 function loadFixture(name: string): string {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- test fixtures from fixed dir
-  return fs.readFileSync(path.join(FIXTURES, name), 'utf-8');
+  return fs.readFileSync(path.join(FIXTURES, name), 'utf-8'); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- test-only fixture loader; every caller passes a literal filename from this file
 }
 
 // ─── findRegionsSection ─────────────────────────────────────────────────────

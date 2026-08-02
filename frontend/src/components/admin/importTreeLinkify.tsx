@@ -70,7 +70,7 @@ export function linkifyRegionNames(
     let match: RegExpExecArray | null;
     // Use a global-flag clone if the supplied regex isn't sticky/global so exec advances.
     // eslint-disable-next-line security/detect-non-literal-regexp -- regex.source comes from a trusted RegExp passed by the parent component, not user input
-    const r = regex.global || regex.sticky ? regex : new RegExp(regex.source, `${regex.flags}g`);
+    const r = regex.global || regex.sticky ? regex : new RegExp(regex.source, `${regex.flags}g`); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- re-compiles an already-constructed RegExp from its own source to add the g flag; introduces no new pattern text
     while ((match = r.exec(text)) !== null) {
       const name = match[1] ?? match[0];
       const start = match.index + (match[1] != null ? match[0].indexOf(match[1]) : 0);

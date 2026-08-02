@@ -39,6 +39,7 @@ function classifyPipelineError(
       },
     };
   }
+  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- gId is a number
   console.error(`[ComputeSingle] Error computing geometry for region ${gId}:`, errorMessage);
   return { fatal: true };
 }
@@ -454,6 +455,7 @@ export async function computeSingleRegionGeometry(req: Request, res: Response): 
       FROM regions WHERE id = $1
     `, [regionId]);
     const regionStatus = checkResult.rows[0];
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
     console.log(`[ComputeSingle] Region ${regionId} status after compute:`, {
       name: regionStatus?.name,
       usesHull: regionStatus?.usesHull,
@@ -711,6 +713,7 @@ export async function computeRegionGeometryCore(
     } catch { /* ignore */ }
 
     const errorMessage = err instanceof Error ? err.message : String(err);
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number, and logPrefix is either the '[Compute]' default or computationProgress.ts's `[Geometry <n>/<m>]` built from two numbers; neither can hold a specifier
     console.error(`${logPrefix} Error computing region ${regionId}:`, errorMessage);
     return { computed: false, error: errorMessage };
   } finally {

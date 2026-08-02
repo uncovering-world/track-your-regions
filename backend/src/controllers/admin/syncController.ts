@@ -74,6 +74,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   }
 
   syncFn(triggeredBy, force).catch((err) => {
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- categoryId is a parseInt result, so it cannot carry a format specifier
     console.error(`[Sync Controller] Sync error for category ${categoryId}:`, err);
   });
 

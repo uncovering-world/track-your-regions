@@ -487,7 +487,7 @@ export function useImportTreeDialogs(
     if (names.length === 0) return null;
     const escaped = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     // eslint-disable-next-line security/detect-non-literal-regexp -- built from escaped region names, not user input
-    return new RegExp(`\\b(${escaped.join('|')})\\b`, 'g');
+    return new RegExp(`\\b(${escaped.join('|')})\\b`, 'g'); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- an alternation of regex-escaped literals: no quantifier over a group, so no catastrophic backtracking, and escaping blocks pattern injection
   }, [regionNameToId]);
 
   return {
