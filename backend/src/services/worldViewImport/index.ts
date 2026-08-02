@@ -64,6 +64,7 @@ export function startImport(
 
   // Fire and forget — runs in background
   runImport(opId, jsonData, name, progress, options).catch((err) => {
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-import-<counter>
     console.error(`[WV Import] Import error for ${opId}:`, err);
   });
 
@@ -128,6 +129,7 @@ export async function startBaseLayerImport(options: BaseLayerImportOptions): Pro
     source: options.providerLabel,
     description: `Mirror of the administrative base layer (${options.providerLabel}), depth ${options.maxDepth}`,
   }).catch((err) => {
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-import-<counter>
     console.error(`[WV Import] Import error for ${opId}:`, err);
   });
 
@@ -261,6 +263,7 @@ async function runImport(
   } catch (err) {
     progress.status = 'failed';
     progress.statusMessage = `Import failed: ${err instanceof Error ? err.message : String(err)}`;
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-import-<counter> and the elapsed time is a number
     console.error(`[WV Import] Import ${opId} failed after ${((Date.now() - startTime) / 1000).toFixed(1)}s:`, err);
   } finally {
     // Clean up after 5 minutes (keep for polling)

@@ -23,6 +23,7 @@ export async function previewHullGeometry(req: Request, res: Response): Promise<
     simplifyTolerance: simplifyTolerance ?? DEFAULT_HULL_PARAMS.simplifyTolerance,
   };
 
+  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
   console.log(`[Hull] Preview request for region ${regionId} with params:`, params, customGeometry ? '(with custom geometry)' : '');
 
   try {
@@ -68,6 +69,7 @@ export async function saveHullGeometry(req: Request, res: Response): Promise<voi
     simplifyTolerance: simplifyTolerance ?? DEFAULT_HULL_PARAMS.simplifyTolerance,
   };
 
+  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
   console.log(`[Hull] Save request for region ${regionId} with params:`, params);
 
   try {

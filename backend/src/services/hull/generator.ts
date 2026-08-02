@@ -159,6 +159,7 @@ export async function generateSingleHull(
 
   try {
     await saveHullGeometry(regionId, hull, effectiveParams);
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
     console.log(`[Hull TS] Saved hull for region ${regionId} with params:`, effectiveParams);
     return {
       generated: true,
@@ -179,6 +180,7 @@ export async function previewHull(
   regionId: number,
   params: HullParams = DEFAULT_HULL_PARAMS
 ): Promise<PreviewHullResult> {
+  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
   console.log(`[Hull TS] Previewing hull for region ${regionId} with params:`, params);
 
   const regionData = await fetchRegionPoints(regionId);

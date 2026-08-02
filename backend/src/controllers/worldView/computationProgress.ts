@@ -149,6 +149,7 @@ async function processGroups(
     try {
       await computeOneGroup(group, progressState, skipSnapping);
     } catch (e) {
+      // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- group.id is a number
       console.error(`Error computing geometry for group ${group.id}:`, e);
       progressState.errors++;
       progressState.status = `Error: ${group.name}`;
@@ -279,6 +280,7 @@ export async function computeWorldViewGeometries(req: Request, res: Response): P
     // still runs after 30 s for the final poll). Without this, the slot would
     // be stuck on whatever step string was in flight, blocking retries until
     // the cleanup timer fires.
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- worldViewId is a number
     console.error(`[Geometry] Pipeline error for hierarchy ${worldViewId}:`, err);
     progressState.status = `Error: ${err instanceof Error ? err.message : String(err)}`;
   } finally {

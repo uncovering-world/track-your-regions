@@ -132,8 +132,10 @@ async function recordSyncFailure<T>(
   }
 
   if (progress.status === 'cancelled') {
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- logPrefix is a module constant supplied by the sync services
     console.log(`${config.logPrefix} Cancelled:`, errorMsg);
   } else {
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- logPrefix is a module constant supplied by the sync services
     console.error(`${config.logPrefix} Failed:`, errorMsg);
   }
 }

@@ -107,6 +107,7 @@ function logDescriptionsResponse(
   const searchCostStr = webSearchWasUsed
     ? ` (incl. search: $${usage.cost.webSearchCost.toFixed(6)})`
     : '';
+  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- searchBadge is one of two string literals in this file
   console.log(`✅ AI Descriptions Response${searchBadge}:`, preview);
   console.log(
     `   💰 Tokens: ${usage.promptTokens} prompt + ${usage.completionTokens} completion = ${usage.totalTokens} total`,

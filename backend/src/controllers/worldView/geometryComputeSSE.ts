@@ -631,6 +631,7 @@ export async function computeSingleRegionGeometrySSE(req: Request, res: Response
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
     console.error(`[ComputeSingle SSE] Error for region ${regionId}:`, errorMessage);
 
     const isTimeout = errorMessage.includes('statement timeout') || errorMessage.includes('canceling statement');

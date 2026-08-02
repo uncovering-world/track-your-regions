@@ -148,6 +148,7 @@ function logSingleSuggestionResponse(
   const searchCostStr = webSearchWasUsed
     ? ` (incl. search: $${usage.cost.webSearchCost.toFixed(6)})`
     : '';
+  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- escalationLevel is a union of string literals and searchBadge one of two literals
   console.log(`✅ AI Response [${escalationLevel}]${searchBadge}:`, content);
   console.log(
     `   💰 Tokens: ${usage.promptTokens} prompt + ${usage.completionTokens} completion = ${usage.totalTokens} total`,
@@ -416,6 +417,7 @@ function logBatchResponse(
     ? ` (incl. search: $${batchCost.webSearchCost.toFixed(6)})`
     : '';
   const preview = content.substring(0, 200) + '...';
+  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- batchNum is a number and searchBadge one of two string literals
   console.log(`✅ AI Response (batch ${batchNum})${searchBadge}:`, preview);
   console.log(
     `   💰 Tokens: ${raw.promptTokens} prompt + ${raw.completionTokens} completion = ${raw.totalTokens} total`,
@@ -513,6 +515,7 @@ async function processBatch(
     return { success: true, raw, batchCost, modelToUse };
   } catch (error) {
     const message = error instanceof Error ? error.message : error;
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- batchNum is a number
     console.log(`❌ AI Batch Error (batch ${batchNum}):`, message);
     return { success: false };
   }

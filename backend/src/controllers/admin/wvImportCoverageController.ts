@@ -370,6 +370,7 @@ export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): 
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
+    // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- worldViewId is a number
     console.error(`[Coverage SSE] Error for worldView ${worldViewId}:`, errorMessage);
     sendEvent({ type: 'error', message: errorMessage, elapsed: elapsed() });
   }

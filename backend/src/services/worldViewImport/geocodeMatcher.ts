@@ -200,6 +200,7 @@ async function expandingRadiusSearch(
   for (const round of SEARCH_ROUNDS) {
     const rows = await searchOneRound(location, round);
     if (rows.length > 0) {
+      // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- round.label comes from the SEARCH_ROUNDS module constant and rows.length is a number
       console.log(`[Geocode Match] Round "${round.label}": found ${rows.length} division(s):`,
         rows.map(r => `${r.name} (id=${r.id}, depth=${r.depth})`).join(', '));
       return { rows, radiusKm: round.radiusKm };
