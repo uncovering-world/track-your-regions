@@ -108,6 +108,8 @@ data/cv-python-tests/
 data/images/
 data/cv-debug/
 data/matching-dumps/
+# Local sync fixtures (SYNC_SOURCE_FIXTURE) — development-only source substitutes
+data/sync-fixtures/
 
 # Canon sync cache and CV model artifacts, both downloaded/written at runtime.
 # Also catches the cache landing here when the backend runs with cwd=backend/.

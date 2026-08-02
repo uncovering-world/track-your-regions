@@ -50,6 +50,10 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-noreply@localhost}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       BIND_ADDR: 0.0.0.0
+      # Development-only: read a sync source from local JSON instead of the live
+      # API. Point it inside /app/data, which is already mounted. Refused when
+      # NODE_ENV is production — see docs/security/SECURITY.md
+      SYNC_SOURCE_FIXTURE: ${SYNC_SOURCE_FIXTURE:-}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
     volumes:

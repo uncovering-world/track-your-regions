@@ -8,6 +8,8 @@
 import { pool } from '../../db/index.js';
 import { upsertExperienceRecord } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
+import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
+import { readFixtureRecords } from './fixtureSource.js';
 import type {
   SyncProgress,
   UnescoApiRecord,
@@ -278,8 +280,11 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
 /**
  * Upsert a single experience into the database
  */
-async function upsertExperience(exp: ProcessedExperience): Promise<'created' | 'updated'> {
-  const { experienceId, isCreated } = await upsertExperienceRecord({
+async function upsertExperience(
+  exp: ProcessedExperience,
+  context: SyncRunContext,
+): Promise<ProcessItemResult> {
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
     categoryId: exp.categoryId,
     externalId: exp.externalId,
     name: exp.name,
@@ -294,12 +299,23 @@ async function upsertExperience(exp: ProcessedExperience): Promise<'created' | '
     countryNames: exp.countryNames,
     imageUrl: exp.imageUrl,
     metadata: exp.metadata,
-  });
+  }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 
-  // Upsert locations
-  await upsertExperienceLocations(experienceId, exp);
+  // A preview writes nothing downstream either: locations would belong to a row
+  // that was never touched.
+  if (!context.dryRun) {
+    await upsertExperienceLocations(experienceId, exp);
+  }
 
-  return isCreated ? 'created' : 'updated';
+  return {
+    outcome: changeSet.changeType,
+    // 0 is previewUpsert's stand-in for a row that does not exist yet and would
+    // violate the FK; a real id is worth keeping even in a preview.
+    experienceId: experienceId || null,
+    nameSnapshot,
+    changeSet,
+    returnedFromMissing,
+  };
 }
 
 /**
@@ -355,14 +371,27 @@ async function upsertExperienceLocations(experienceId: number, exp: ProcessedExp
  * @param triggeredBy - User ID who triggered the sync
  * @param force - If true, delete all existing data before syncing
  */
-export function syncUnescoSites(triggeredBy: number | null, force: boolean = false): Promise<void> {
+export function syncUnescoSites(
+  triggeredBy: number | null,
+  options: { force?: boolean; dryRun?: boolean } = {},
+): Promise<void> {
   // Shared state between fetchItems and processItem via closure
   let wikipediaUrls: Map<string, string>;
 
   return orchestrateSync<UnescoApiRecord>({
     categoryId: UNESCO_CATEGORY_ID,
     logPrefix: '[UNESCO Sync]',
+    // UNESCO publishes its whole list, so a site absent from a clean run really
+    // is absent from the list.
+    sourceCompleteness: 'authoritative',
     fetchItems: async (progress) => {
+      const fixture = await readFixtureRecords<UnescoApiRecord>('unesco.json');
+      if (fixture !== null) {
+        console.log(`[UNESCO Sync] Using fixture source: ${fixture.length} records`);
+        wikipediaUrls = new Map();
+        return { items: fixture, fetchedCount: fixture.length };
+      }
+
       const records = await fetchAllUnescoRecords(progress);
       console.log(`[UNESCO Sync] Fetched ${records.length} total records`);
 
@@ -372,16 +401,16 @@ export function syncUnescoSites(triggeredBy: number | null, force: boolean = fal
 
       return { items: records, fetchedCount: records.length };
     },
-    processItem: async (record) => {
+    processItem: async (record, _progress, context) => {
       const processed = transformRecord(record, wikipediaUrls.get(String(record.id_no)));
       if (!processed) {
         throw new Error('No valid coordinates');
       }
-      return upsertExperience(processed);
+      return upsertExperience(processed, context);
     },
     getItemName: (record) => record.name_en || `Site ${record.id_no}`,
     getItemId: (record) => String(record.id_no),
-  }, triggeredBy, force);
+  }, triggeredBy, options);
 }
 
 /**

@@ -24,7 +24,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 const MUSEUM_CATEGORY_ID = 2;
 
 /** Registry mapping category IDs to their sync functions */
-const syncRegistry: Record<number, (triggeredBy: number | null, force: boolean) => Promise<void>> = {
+const syncRegistry: Record<number, (triggeredBy: number | null, options: { force?: boolean; dryRun?: boolean }) => Promise<void>> = {
   1: syncUnescoSites,
   2: syncMuseums,
   3: syncLandmarks,
@@ -73,7 +73,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
     return;
   }
 
-  syncFn(triggeredBy, force).catch((err) => {
+  syncFn(triggeredBy, { force }).catch((err) => {
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- categoryId is a parseInt result, so it cannot carry a format specifier
     console.error(`[Sync Controller] Sync error for category ${categoryId}:`, err);
   });
