@@ -436,7 +436,7 @@ function queueAdminQuestion(
       console.log(`[WV Extract] Interview question ready for "${resolved}": ${result.question.text}`);
     })
     .catch(err => {
-      console.warn(`[WV Extract] Failed to formulate interview question for "${resolved}":`, err instanceof Error ? err.message : err);
+      console.warn('[WV Extract] Failed to formulate interview question for "%s":', resolved, err instanceof Error ? err.message : err);
       pendingQ.currentQuestion = {
         text: aiQuestions[0] ?? 'How should this page be handled?',
         options: [
@@ -493,7 +493,7 @@ async function resolveAmbiguousWithAI(
       queueAdminQuestion(resolved, aiQuestions, page, pageExistence, aiContext, progress, fetcher);
     }
   } catch (err) {
-    console.warn(`[WV Extract] AI extraction failed for "${resolved}":`, err instanceof Error ? err.message : err);
+    console.warn('[WV Extract] AI extraction failed for "%s":', resolved, err instanceof Error ? err.message : err);
   }
 }
 

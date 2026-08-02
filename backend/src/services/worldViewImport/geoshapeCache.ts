@@ -107,7 +107,7 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
 
     return true;
   } catch (err) {
-    console.error(`[GeoshapeCache] Failed to fetch geoshape for ${wikidataId}:`, err);
+    console.error('[GeoshapeCache] Failed to fetch geoshape for %s:', wikidataId, err);
     await pool.query(
       `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
        ON CONFLICT (wikidata_id) DO NOTHING`,
@@ -222,7 +222,7 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
 
     return { available: true, title, color };
   } catch (err) {
-    console.error(`[GeoshapeCache] Failed to fetch Commons map ${commonsFile}:`, err);
+    console.error('[GeoshapeCache] Failed to fetch Commons map %s:', commonsFile, err);
     await pool.query(
       `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
        ON CONFLICT (wikidata_id) DO NOTHING`,

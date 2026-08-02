@@ -378,7 +378,7 @@ async function computeMatchGeoSim(match: TrigramMatch): Promise<number | null> {
       return await computeIoU(match.wikidataId, match.divisionId);
     }
   } catch (err) {
-    console.warn(`[AutoResolve] Geo-sim failed for ${match.regionName}:`, err instanceof Error ? err.message : err);
+    console.warn('[AutoResolve] Geo-sim failed for %s:', match.regionName, err instanceof Error ? err.message : err);
   }
   return null;
 }

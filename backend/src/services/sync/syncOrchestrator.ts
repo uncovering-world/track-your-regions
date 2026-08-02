@@ -100,7 +100,7 @@ async function processItemsLoop<T>(
       progress.errors++;
       const errorMsg = err instanceof Error ? err.message : String(err);
       errorDetails.push({ externalId: config.getItemId(item), error: errorMsg });
-      console.error(`${config.logPrefix} Error processing ${config.getItemId(item)}:`, errorMsg);
+      console.error('%s Error processing %s:', config.logPrefix, config.getItemId(item), errorMsg);
     }
     progress.progress = i + 1;
   }

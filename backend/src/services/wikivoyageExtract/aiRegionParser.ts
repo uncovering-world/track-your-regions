@@ -192,7 +192,7 @@ export async function extractRegionsWithAI(
   try {
     model = await getModelForFeature('extraction');
   } catch (err) {
-    console.warn(`[AI Extract] Failed to resolve extraction model for "${pageTitle}":`, err instanceof Error ? err.message : err);
+    console.warn('[AI Extract] Failed to resolve extraction model for "%s":', pageTitle, err instanceof Error ? err.message : err);
     return { regions: [], questions: [] };
   }
 
@@ -210,7 +210,7 @@ export async function extractRegionsWithAI(
       ],
     });
   } catch (err) {
-    console.warn(`[AI Extract] Chat completion failed for "${pageTitle}":`, err instanceof Error ? err.message : err);
+    console.warn('[AI Extract] Chat completion failed for "%s":', pageTitle, err instanceof Error ? err.message : err);
     return { regions: [], questions: [] };
   }
 
