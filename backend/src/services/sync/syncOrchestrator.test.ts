@@ -25,11 +25,12 @@ vi.mock('./missingDetection.js', () => ({
   missingDetectionSkipReason: vi.fn().mockReturnValue(null),
   flagMissingExperiences: vi.fn().mockResolvedValue([]),
   countActiveExperiences: vi.fn().mockResolvedValue(0),
+  countSeenAmongActive: vi.fn().mockResolvedValue(0),
 }));
 
 import { createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
-import { missingDetectionSkipReason, flagMissingExperiences } from './missingDetection.js';
+import { missingDetectionSkipReason, flagMissingExperiences, countSeenAmongActive } from './missingDetection.js';
 
 const TEST_CATEGORY_ID = 999;
 
@@ -44,6 +45,7 @@ function processed(outcome: 'created' | 'updated' | 'unchanged'): ProcessItemRes
     outcome,
     experienceId: 501,
     nameSnapshot: 'Item',
+    returnedFromMissing: false,
     changeSet: {
       changeType: outcome,
       changedFields: outcome === 'updated'
@@ -372,6 +374,150 @@ describe('orchestrateSync changeset recording', () => {
     );
   });
 
+  it('stores the value the source proposed for a curated field', async () => {
+    const conflicted = processed('unchanged');
+    const conflict = { field: 'name', old: 'ours', new: 'theirs', significance: 'major' as const, curatedConflict: true };
+    conflicted.changeSet.curatedConflicts = [conflict];
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValue(conflicted),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(recorded).toHaveLength(2);
+    expect(recorded[0]).toMatchObject({ changeType: 'conflict' });
+    expect(recorded[0].changedFields).toEqual([conflict]);
+  });
+
+  it('records a return even when the row came back byte-identical', async () => {
+    const returned = processed('unchanged');
+    returned.returnedFromMissing = true;
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(returned).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].changeType).toBe('returned');
+  });
+
+  it('reports a row the source produced again as returned', async () => {
+    const returned = processed('updated');
+    returned.returnedFromMissing = true;
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(returned).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(recorded[0].changeType).toBe('returned');
+  });
+
+  it('measures coverage against the rows that were there, not the ids offered', async () => {
+    await orchestrateSync(makeConfig(), 1);
+
+    // Counting the offered ids would fold in rows this run created, which only
+    // ever lifts the ratio past the floor
+    expect(countSeenAmongActive).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1', '2']);
+  });
+
+  it('does not count coverage on a force run, whose cleanup emptied the category', async () => {
+    await orchestrateSync(makeConfig(), 1, { force: true });
+
+    expect(countSeenAmongActive).not.toHaveBeenCalled();
+    expect(missingDetectionSkipReason).toHaveBeenCalledWith(
+      expect.objectContaining({ force: true }),
+    );
+  });
+
+  it('measures coverage before the run writes anything', async () => {
+    const order: string[] = [];
+    (countSeenAmongActive as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      order.push('count');
+      return 2;
+    });
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async () => {
+        order.push('process');
+        return processed('created');
+      }),
+    });
+
+    await orchestrateSync(config, 1);
+
+    // Counted afterwards, a created row and a row whose missing_since the run
+    // just cleared both land in the numerator while the denominator never had
+    // them
+    expect(order[0]).toBe('count');
+  });
+
+  it('decides missing from the ids the run saw, not from the log stamp', async () => {
+    await orchestrateSync(makeConfig(), 1, { dryRun: true });
+
+    expect(flagMissingExperiences).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, true, ['1', '2'],
+    );
+  });
+
+  it('counts an item the source offered but processing dropped as seen', async () => {
+    const config = makeConfig({
+      processItem: vi.fn()
+        .mockResolvedValueOnce(processed('created'))
+        .mockRejectedValueOnce(new Error('No valid coordinates')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    // Both ids reach the detector: the source listed them, so neither is missing
+    expect(flagMissingExperiences).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, false, ['1', '2'],
+    );
+  });
+
+  it('does not insert the changeset twice when closing the log throws', async () => {
+    (updateSyncLog as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('deadlock'));
+
+    await expect(orchestrateSync(makeConfig(), 1)).rejects.toThrow('deadlock');
+
+    // The failure path runs too, but must not write rows the success path
+    // already inserted
+    expect(recordSyncChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks a lost changeset on the failure path too, not only on the success path', async () => {
+    (recordSyncChanges as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('value too long'));
+    const config = makeConfig({
+      fetchItems: vi.fn().mockRejectedValue(new Error('API down')),
+    });
+
+    await expect(orchestrateSync(config, 1)).rejects.toThrow('API down');
+
+    // The run card tells a lost record apart from a pre-provenance run by this
+    // marker; without it on this path, a failed run is labelled as ancient
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'failed', expect.anything(),
+      expect.arrayContaining([expect.objectContaining({ externalId: 'changeset' })]),
+    );
+  });
+
+  it('closes the log even when the changeset insert fails, and does not call it a success', async () => {
+    (recordSyncChanges as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('value too long'));
+
+    await orchestrateSync(makeConfig(), 1);
+
+    // A run whose per-object record never landed is not a clean run
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'partial', expect.objectContaining({ errors: 1 }),
+      expect.arrayContaining([
+        expect.objectContaining({ externalId: 'changeset' }),
+      ]),
+    );
+  });
+
   it('flags missing objects when the guards allow it', async () => {
     (flagMissingExperiences as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       syncLogId: 42, experienceId: 77, externalId: '1234', nameSnapshot: 'Dresden Elbe Valley',
@@ -416,6 +562,18 @@ describe('orchestrateSync changeset recording', () => {
   it('refuses to combine a dry run with force cleanup', async () => {
     await expect(orchestrateSync(makeConfig(), 1, { force: true, dryRun: true }))
       .rejects.toThrow(/dry run/i);
+  });
+
+  it('puts the run into the failed state, not just a failed message', async () => {
+    const config = makeConfig({
+      processItem: vi.fn().mockRejectedValue(new Error('boom')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    // The UI reads `status`; leaving it 'complete' over a failed verdict is the
+    // one case where state and verdict genuinely disagree
+    expect(runningSyncs.get(TEST_CATEGORY_ID)?.status).toBe('failed');
   });
 
   it('calls a run partial, not failed, when everything was already current', async () => {

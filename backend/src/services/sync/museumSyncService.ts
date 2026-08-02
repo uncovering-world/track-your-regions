@@ -13,6 +13,8 @@
 import { pool } from '../../db/index.js';
 import { upsertExperienceRecord, upsertSingleLocation, cleanupCategoryData } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync, type ErrorDetail } from './syncOrchestrator.js';
+import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
+import type { ChangeSetResult } from './changeSet.js';
 import type {
   SyncProgress,
   WikidataArtwork,
@@ -332,7 +334,8 @@ async function resolveDepartments(
  */
 async function upsertMuseumExperience(
   museum: CollectedMuseum,
-): Promise<{ experienceId: number; isCreated: boolean }> {
+  context: SyncRunContext,
+): Promise<{ experienceId: number; changeSet: ChangeSetResult; nameSnapshot: string; returnedFromMissing: boolean }> {
   const details = museum.details!;
 
   // Total sitelinks across all artworks as a ranking metric
@@ -351,7 +354,7 @@ async function upsertMuseumExperience(
   // Store remote Wikimedia URL directly (thumbnailing handled by frontend)
   const imageUrl = details.imageUrl || null;
 
-  const { experienceId, isCreated } = await upsertExperienceRecord({
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
     categoryId: MUSEUM_CATEGORY_ID,
     externalId: museum.qid,
     name: details.museumLabel,
@@ -366,11 +369,13 @@ async function upsertMuseumExperience(
     countryNames: details.countryLabel ? [details.countryLabel] : [],
     imageUrl,
     metadata,
-  });
+  }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 
-  await upsertSingleLocation(experienceId, museum.qid, details.lon!, details.lat!);
+  if (!context.dryRun) {
+    await upsertSingleLocation(experienceId, museum.qid, details.lon!, details.lat!);
+  }
 
-  return { experienceId, isCreated };
+  return { experienceId, changeSet, nameSnapshot, returnedFromMissing };
 }
 
 /**
@@ -560,10 +565,27 @@ async function fetchMuseumItems(
 /**
  * Process a single museum: upsert experience + treasures
  */
-async function processMuseum(museum: CollectedMuseum): Promise<'created' | 'updated'> {
-  const { experienceId, isCreated } = await upsertMuseumExperience(museum);
-  await upsertMuseumTreasures(experienceId, museum.artworks);
-  return isCreated ? 'created' : 'updated';
+async function processMuseum(
+  museum: CollectedMuseum,
+  _progress: SyncProgress,
+  context: SyncRunContext,
+): Promise<ProcessItemResult> {
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertMuseumExperience(museum, context);
+
+  // Treasures hang off a row a preview never wrote.
+  if (!context.dryRun) {
+    await upsertMuseumTreasures(experienceId, museum.artworks);
+  }
+
+  return {
+    outcome: changeSet.changeType,
+    // 0 is previewUpsert's stand-in for a row that does not exist yet and would
+    // violate the FK; a real id is worth keeping even in a preview.
+    experienceId: experienceId || null,
+    nameSnapshot,
+    changeSet,
+    returnedFromMissing,
+  };
 }
 
 // =============================================================================
@@ -573,16 +595,22 @@ async function processMuseum(museum: CollectedMuseum): Promise<'created' | 'upda
 /**
  * Main sync function - fetches top museums from Wikidata and upserts to database
  */
-export function syncMuseums(triggeredBy: number | null, force: boolean = false): Promise<void> {
+export function syncMuseums(
+  triggeredBy: number | null,
+  options: { force?: boolean; dryRun?: boolean } = {},
+): Promise<void> {
   return orchestrateSync<CollectedMuseum>({
     categoryId: MUSEUM_CATEGORY_ID,
     logPrefix: LOG_PREFIX,
+    // A top-100 Wikidata ranking: a museum absent from a run slipped down the
+    // sitelink order, which says nothing about whether it still exists.
+    sourceCompleteness: 'ranked',
     fetchItems: fetchMuseumItems,
     processItem: processMuseum,
     getItemName: (m) => m.details?.museumLabel || m.label,
     getItemId: (m) => m.qid,
     cleanup: cleanupMuseumData,
-  }, triggeredBy, force);
+  }, triggeredBy, options);
 }
 
 /**
@@ -618,9 +646,13 @@ export async function fixMuseumImages(_triggeredBy: number | null): Promise<void
     total: 0,
     created: 0,
     updated: 0,
+    unchanged: 0,
+    missing: 0,
+    curatedConflicts: 0,
     errors: 0,
     currentItem: '',
     logId: null,
+    dryRun: false,
   };
   runningSyncs.set(MUSEUM_CATEGORY_ID, progress);
 

@@ -9,6 +9,7 @@
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
 import { orchestrateSync, getSyncStatus, cancelSync, type ErrorDetail } from './syncOrchestrator.js';
+import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import {
   sparqlQuery,
   extractQid,
@@ -167,8 +168,10 @@ async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[
  * Upsert a landmark as an experience + experience_location
  */
 async function upsertLandmarkExperience(
-  landmark: WikidataLandmark
-): Promise<'created' | 'updated'> {
+  landmark: WikidataLandmark,
+  _progress: SyncProgress,
+  context: SyncRunContext,
+): Promise<ProcessItemResult> {
   const metadata = {
     wikidataQid: landmark.qid,
     creator: landmark.creatorLabel,
@@ -181,7 +184,7 @@ async function upsertLandmarkExperience(
 
   const imageUrl = landmark.imageUrl || null;
 
-  const { experienceId, isCreated } = await upsertExperienceRecord({
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
     categoryId: LANDMARK_CATEGORY_ID,
     externalId: landmark.qid,
     name: landmark.label,
@@ -196,11 +199,21 @@ async function upsertLandmarkExperience(
     countryNames: landmark.countryLabel ? [landmark.countryLabel] : [],
     imageUrl,
     metadata,
-  });
+  }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 
-  await upsertSingleLocation(experienceId, landmark.qid, landmark.lon, landmark.lat);
+  if (!context.dryRun) {
+    await upsertSingleLocation(experienceId, landmark.qid, landmark.lon, landmark.lat);
+  }
 
-  return isCreated ? 'created' : 'updated';
+  return {
+    outcome: changeSet.changeType,
+    // 0 is previewUpsert's stand-in for a row that does not exist yet and would
+    // violate the FK; a real id is worth keeping even in a preview.
+    experienceId: experienceId || null,
+    nameSnapshot,
+    changeSet,
+    returnedFromMissing,
+  };
 }
 
 async function tryFetchSource(
@@ -280,15 +293,21 @@ async function fetchLandmarkItems(
 /**
  * Main sync function — fetches outdoor sculptures and monuments from Wikidata
  */
-export function syncLandmarks(triggeredBy: number | null, force: boolean = false): Promise<void> {
+export function syncLandmarks(
+  triggeredBy: number | null,
+  options: { force?: boolean; dryRun?: boolean } = {},
+): Promise<void> {
   return orchestrateSync<WikidataLandmark>({
     categoryId: LANDMARK_CATEGORY_ID,
     logPrefix: LOG_PREFIX,
+    // Results are sorted by sitelinks and cut at TARGET_COUNT, so absence from a
+    // run means "ranked lower", not "gone".
+    sourceCompleteness: 'ranked',
     fetchItems: fetchLandmarkItems,
     processItem: upsertLandmarkExperience,
     getItemName: (lm) => lm.label,
     getItemId: (lm) => lm.qid,
-  }, triggeredBy, force);
+  }, triggeredBy, options);
 }
 
 /**
