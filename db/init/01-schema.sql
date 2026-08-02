@@ -1615,6 +1615,9 @@ COMMENT ON COLUMN experience_categories.api_config IS 'Category-specific API con
 COMMENT ON COLUMN experience_categories.last_sync_status IS 'Status of last sync: success, partial, or failed';
 COMMENT ON COLUMN experience_categories.display_priority IS 'Display order in experience list (lower = shown first)';
 
+ALTER TABLE experience_categories ADD COLUMN IF NOT EXISTS new_badge_days INTEGER NOT NULL DEFAULT 30;
+COMMENT ON COLUMN experience_categories.new_badge_days IS 'How long an object created by the latest run keeps the "New" chip. Per category, because sources have different cadences.';
+
 -- Seed UNESCO as the first category
 INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority)
 VALUES (
@@ -1750,6 +1753,81 @@ COMMENT ON COLUMN experience_sync_logs.triggered_by IS 'Admin user who triggered
 
 CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_category ON experience_sync_logs(category_id);
 CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_status ON experience_sync_logs(status) WHERE status = 'running';
+
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_unchanged INTEGER DEFAULT 0;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_missing INTEGER DEFAULT 0;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_curated_conflicts INTEGER DEFAULT 0;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS is_dry_run BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS detection_skipped_reason TEXT;
+
+COMMENT ON COLUMN experience_sync_logs.total_updated IS 'Rows whose fields actually changed. Runs before migration 009 counted every row that passed through ON CONFLICT, changed or not — the two are not comparable.';
+COMMENT ON COLUMN experience_sync_logs.total_unchanged IS 'Rows the run touched that turned out identical. Counted here, never stored per object.';
+COMMENT ON COLUMN experience_sync_logs.is_dry_run IS 'TRUE for preview runs: the changeset was computed but experiences were not written. Excluded from every "latest run" query.';
+COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-object detection did not run: ranked source, force run, cancelled, errors, or coverage below the floor. Every value missingDetectionSkipReason() produces lands here.';
+
+-- =============================================================================
+-- Experience Change Provenance (issue #480)
+-- =============================================================================
+-- Which run each experience came from, and what state that leaves it in.
+--
+-- Two independent axes, because they genuinely are: the Bamiyan Buddhas were
+-- destroyed but remain listed, while Dresden Elbe Valley is intact but was
+-- delisted. Axis 1 (membership) is machine-observed via missing_since but
+-- curator-decided; axis 2 (existence) is curator-only. See ADR-0020.
+
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS first_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS source_membership VARCHAR(10) NOT NULL DEFAULT 'present';
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS existence VARCHAR(10) NOT NULL DEFAULT 'extant';
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS state_decided_by INTEGER REFERENCES users(id);
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS state_decided_at TIMESTAMPTZ;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS state_note TEXT;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experiences_source_membership_check') THEN
+        ALTER TABLE experiences ADD CONSTRAINT experiences_source_membership_check
+            CHECK (source_membership IN ('present', 'former'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experiences_existence_check') THEN
+        ALTER TABLE experiences ADD CONSTRAINT experiences_existence_check
+            CHECK (existence IN ('extant', 'lost'));
+    END IF;
+END $$;
+
+COMMENT ON COLUMN experiences.missing_since IS 'When a clean run of an authoritative source first failed to list this object. A machine observation, not a verdict.';
+COMMENT ON COLUMN experiences.source_membership IS 'present or former. Only a curator sets former: a source outage must never change what users see.';
+COMMENT ON COLUMN experiences.existence IS 'extant or lost. Whether the object still physically exists — independent of whether the source lists it.';
+
+CREATE INDEX IF NOT EXISTS idx_experiences_missing ON experiences(category_id) WHERE missing_since IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_experiences_membership ON experiences(source_membership) WHERE source_membership <> 'present';
+CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) WHERE existence <> 'extant';
+CREATE INDEX IF NOT EXISTS idx_experiences_first_seen ON experiences(first_seen_sync_log_id);
+
+-- Per-object record of what a run did. 'unchanged' is deliberately NOT stored;
+-- it is only counted, or every UNESCO run would write 1247 rows of noise.
+CREATE TABLE IF NOT EXISTS experience_sync_changes (
+    id             BIGSERIAL PRIMARY KEY,
+    sync_log_id    INTEGER NOT NULL REFERENCES experience_sync_logs(id) ON DELETE CASCADE,
+    experience_id  INTEGER REFERENCES experiences(id) ON DELETE SET NULL,
+    external_id    VARCHAR(255) NOT NULL,
+    name_snapshot  VARCHAR(500),
+    change_type    VARCHAR(20) NOT NULL CHECK (change_type IN ('created', 'updated', 'conflict', 'missing', 'returned', 'failed')),
+    changed_fields JSONB,
+    significance   VARCHAR(10) CHECK (significance IN ('major', 'minor')),
+    error          TEXT,
+    created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE experience_sync_changes IS 'Per-object provenance for a sync run (issue #480). See ADR-0020.';
+COMMENT ON COLUMN experience_sync_changes.name_snapshot IS 'The name at the time of the run, so the report stays readable if the row is later deleted.';
+COMMENT ON COLUMN experience_sync_changes.changed_fields IS 'Array of {field, old, new, significance, curatedConflict}. Holds the value the source proposed even when curated_fields rejected it, so a curator can accept it later.';
+
+CREATE INDEX IF NOT EXISTS idx_sync_changes_log ON experience_sync_changes(sync_log_id);
+CREATE INDEX IF NOT EXISTS idx_sync_changes_exp ON experience_sync_changes(experience_id);
+CREATE INDEX IF NOT EXISTS idx_sync_changes_review ON experience_sync_changes(sync_log_id, change_type);
 
 -- =============================================================================
 -- Experience Locations (Multi-Location Support)
