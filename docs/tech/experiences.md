@@ -60,7 +60,7 @@ Each source has a dedicated sync service in `backend/src/services/sync/`. All fo
 The generic sync lifecycle (progress init, already-running check, sync log creation, force cleanup, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`. Each service provides a `SyncServiceConfig<T>` with domain-specific callbacks:
 
 - **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount }`. Can append pre-processing errors (e.g., museums without coordinates) to `errorDetails`.
-- **`processItem(item, progress)`** — Process a single item, return `'created'` or `'updated'`. Throw to count as error.
+- **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview. Throw to count as error.
 - **`getItemName(item)`** / **`getItemId(item)`** — Display name and external ID for progress messages and error reporting.
 - **`cleanup?(progress)`** — Optional custom cleanup for force sync (replaces default `cleanupCategoryData`). Museum uses this for treasure pre-cleanup.
 
@@ -68,11 +68,72 @@ Generic `getSyncStatus(categoryId)` and `cancelSync(categoryId)` replace per-ser
 
 ### Shared modules
 
-Common sync logic lives in three shared utility files:
+Common sync logic lives in seven shared utility files:
 
 - **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by category ID.
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
 - **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location upsert (`upsertSingleLocation()`), sync log CRUD (`createSyncLog()`, `updateSyncLog()`), and FK-ordered category data cleanup cascade (`cleanupCategoryData()`). Used by all three services. Museum service calls its own treasure cleanup before invoking the shared cascade.
+- **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence
+- **`changeRecorder.ts`** — Batched persistence of the per-object changeset (`recordSyncChanges()`, 500 rows per statement)
+- **`missingDetection.ts`** — Whether absence may be acted on (`missingDetectionSkipReason()`) and the flagging itself (`flagMissingExperiences()`)
+- **`fixtureSource.ts`** — Development-only source substitution via `SYNC_SOURCE_FIXTURE`; see § Change provenance below
+
+### Change provenance (issue #480, [ADR-0020](../decisions/0020-experience-lifecycle-and-run-changeset.md))
+
+Every run records what it did to each object in `experience_sync_changes`: one row per
+object created, changed, in conflict, missing, returned, or failed, with a per-field diff in
+`changed_fields`. Rows that came through **unchanged are counted on the log, never stored** —
+a UNESCO run would otherwise write 1247 rows of noise around the few dozen that carry
+information. Two kinds of unchanged row are stored anyway, because each carries news the
+counters cannot: `conflict`, where `curated_fields` refused the source's edit and the two now
+disagree, and `returned`, where an object flagged `missing_since` is listed again — typically
+unmodified, after a transient source gap, which is precisely when a field-change requirement
+would have hidden it.
+
+`changed_fields` holds the value the source proposed **even when `curated_fields` rejected
+it**, marked `curatedConflict`. That is what makes a curator's later "accept source" possible;
+without it the proposed value exists nowhere.
+
+**`total_updated` changed meaning.** It used to count every row that passed through
+`ON CONFLICT DO UPDATE`, identical or not. Since migration 009 it counts rows that actually
+changed, and `total_unchanged` absorbs the rest. Logs 1–4 are therefore not comparable with
+later ones.
+
+**Two lifecycle axes** on `experiences`, both curator-set:
+
+- `source_membership` — `present` / `former`: whether the source still lists the object
+- `existence` — `extant` / `lost`: whether the object physically survives
+
+They are independent because reality is: the Bamiyan Buddhas were destroyed but remain
+inscribed; Dresden Elbe Valley is intact but was delisted in 2009. Rows a curator created by
+hand (`is_manual`) are outside all of this — their `curator-<id>-<ts>` key was never in a
+source listing, so they are excluded from detection and from its coverage denominator.
+Absence is judged against the external ids the run actually saw, not against
+`last_seen_sync_log_id` — a dry run stamps
+nothing, and a row that arrived but failed to process is not missing either. The machine only
+ever sets `missing_since`, and only when all four guards pass — the source is `authoritative` (declared
+per service in `SyncServiceConfig`, `ranked` for the two top-N Wikidata sources), the run
+finished clean and uncancelled, it was not a force run (which deletes the category first, leaving
+nothing to go missing), and it saw at least 90 % of the previously present rows.
+When detection is skipped the reason is stored in `experience_sync_logs.detection_skipped_reason`.
+
+**Dry runs** (`POST /sync/categories/:id/start` with `{"dryRun": true}`) walk the same path and
+write the log and changeset with `is_dry_run = true`, but touch no experiences, locations,
+treasures or images. Dry-run logs are excluded from every "latest run" query, so a preview
+cannot disturb provenance. Combining `dryRun` with `force` is refused: force deletes the
+category before there would be anything to preview against.
+
+**Fixture source** — setting `SYNC_SOURCE_FIXTURE` to a directory makes UNESCO sync read
+`unesco.json` from it instead of the live API. Development only — the switch is refused
+outright when `NODE_ENV=production`, which is the guard that matters; the directory itself is
+operator-set and used as given, while the file name it reads is a module constant checked to
+be a bare name so the read cannot leave that directory. In the Docker stack the variable is passed
+through `docker-compose.yml`, and the path is the **container's** — put the fixture under the
+already-mounted data directory (`./data/sync-fixtures` on the host,
+`SYNC_SOURCE_FIXTURE=/app/data/sync-fixtures` in `.env`), since nothing else is mounted
+writable. It exists because the real sources make a poor
+inner loop and cannot be asked for "the same list, minus one object" — the case the delisting
+path needs.
 
 ### UNESCO (`unescoSyncService.ts`)
 
@@ -196,6 +257,7 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 | POST | `/api/admin/sync/categories/:categoryId/fix-images` |
 | GET | `/api/admin/sync/logs` |
 | GET | `/api/admin/sync/logs/:logId` |
+| GET | `/api/admin/sync/logs/:logId/changes` |
 | POST | `/api/admin/experiences/assign-regions` |
 | GET | `/api/admin/experiences/assign-regions/status` |
 | POST | `/api/admin/experiences/assign-regions/cancel` |
