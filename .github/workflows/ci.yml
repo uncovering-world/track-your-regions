@@ -128,22 +128,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Runs the same npm scripts as the local pre-push tier, rather than
+      # restating the rulesets here, so "green locally" and "green in CI" cannot
+      # drift apart. Both pin the semgrep image by digest, as scan-image.sh does
+      # for Trivy.
+      #
+      # These replace `semgrep/semgrep-action@v1`, which is deprecated and
+      # pinned semgrep 1.36.0. Registry rulesets now carry `severity: MEDIUM`,
+      # which that build's `RuleSeverity` enum rejects, so it died with
+      # `ValueError: invalid rule severity value: MEDIUM` while partitioning
+      # rules — before reading a single file — and the action swallowed the
+      # non-zero exit. This job reported success without scanning on every run
+      # whose logs are still retained. See #479.
+      #
+      # Deliberately no `--strict`, and this is the file someone lands in when
+      # they wonder why. It was tried and turned this job red at exit 3 on an
+      # otherwise successful scan (266 rules, 0 findings, ~99.9% of lines
+      # parsed): four files defeat Semgrep's own parser while being valid to
+      # tsc, ESLint and shellcheck, and `--strict` promotes that warning into a
+      # failure. Silencing it would mean excluding those files — trading a
+      # warning for a real hole. It is not needed for the bug above either: the
+      # `severity: MEDIUM` config exits non-zero on its own. The coverage loss
+      # is recorded in docs/security/SECURITY.md under Known Gaps.
       - name: Semgrep SAST (Node)
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: >-
-            p/owasp-top-ten
-            p/nodejs
-            p/react
-            p/secrets
+        run: npm run security:scan
 
       - name: Semgrep SAST (Python)
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: >-
-            p/python
-            p/owasp-top-ten
-            p/secrets
+        run: npm run security:py:semgrep
 
   trivy-image:
     name: Trivy Image Scan (cv-python)
