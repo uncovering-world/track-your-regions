@@ -219,3 +219,89 @@ The ancestor context layer system naturally produces a graduated visual hierarch
 | **Context — ancestor's siblings** | Western Europe, Nordic | 0.03 | 0.5px, 0.2 |
 
 This creates a clear "focus funnel" — the selected region is most prominent, its siblings provide local context, the highlighted ancestor shows "where am I in the hierarchy," and distant ancestors are barely visible background.
+
+## WebGL is a hard requirement, and it throws
+
+### The problem
+
+MapLibre draws **every** map through WebGL. That includes the surfaces whose
+tiles are plain raster PNG — `MAP_STYLE` is an OSM raster source, and Discover
+builds its own raster style inline — so "our tiles are raster" buys nothing.
+When no context can be created, `Map._setupPainter` **throws**:
+
+```js
+const gl = canvas.getContext('webgl2', attrs) || canvas.getContext('webgl', attrs);
+if (!gl) { throw new Error('Failed to initialize WebGL') }   // maplibre-gl 4.7
+```
+
+### The consequence
+
+The throw lands inside whatever effect constructed the map — a `useEffect` for
+the imperative surfaces, react-map-gl's own effect for the declarative ones.
+There is no error boundary in the app, so it does not degrade the map: it
+unmounts the tree containing it. Discover took the entire page down this way,
+list and all.
+
+The main map failed differently and worse. Its tile-state hook never saw a
+`sourcedata` event, so `tilesReady` stayed false, the stall timer elapsed, and
+the UI settled into "Some map areas are still loading — panning and zooming
+still work". Nothing was loading and nothing would pan. A permanent failure that
+renders as a temporary one is the expensive kind: the user waits.
+
+### The fix pattern
+
+Ask before constructing, never after — there is no "after" to catch.
+`isWebGLAvailable()` (`utils/webgl.ts`) probes the same contexts in the same
+order MapLibre does, so it cannot answer yes where the library would fail, and
+caches, since the answer cannot change without a page reload.
+
+Two shapes, and the choice between them is not stylistic:
+
+- **`GuardedMap`** — `react-map-gl`'s `<Map>` with the check already inside.
+  Alias it to whatever local name the file uses
+  (`import { GuardedMap as MapGL } from '…/GuardedMap'`) and nothing else in
+  the file changes. Children (`Source`, `Layer`, `NavigationControl`) still come
+  from `react-map-gl/maplibre` — they only render inside a map, so they go with
+  it. This is the default; it arrives by import rather than by remembering.
+- **An early return** in the component. Use where overlays, hover cards,
+  legends or toolbars are positioned *over* the map — they describe or drive it,
+  so they have to disappear with it rather than float above an explanation.
+  `RegionMapVT`, `CvMatchMap` and `GapContextMap` take this shape, and Discover
+  and `LocationPicker` do the equivalent for their imperative maps.
+
+The same reasoning covers overlays that are *about* the map without driving it.
+Discover's "Click a source tag … to see experiences on the map" and the image
+dialog's "Upload an image to see preview" are both absolutely positioned over
+their pane and are the default state, so ungated they land on top of the
+explanation and advertise a map that is not there. Both are gated on
+`isWebGLAvailable()`.
+
+### Why the guard lives in the component and not at the call sites
+
+The first pass at this wrapped each map by hand, and enumerated the surfaces by
+grepping for `maplibre-gl`. That found 7 files and missed 12, because a
+component importing only from `react-map-gl/maplibre` never contains the string
+`maplibre-gl`. The real count is 19 files. Use
+`grep -rE "<(Map|MapGL)( |$|>)"` if you ever need to audit it again — but the
+point of `GuardedMap` is that you should not have to.
+
+### Testing it
+
+jsdom has no WebGL, so the unavailable branch is the default in unit tests —
+which is exactly why this went unnoticed: the surfaces that would have thrown
+were mocked out of every suite (`App.test.tsx` mocks `MainDisplay` for this
+reason). A guard test asserts *both* that the explanation renders and that
+rendering does not throw, since those were the same bug.
+
+For the opposite direction, Playwright's headless Chromium ships WebGL via
+SwiftShader with **no launch flags** (verified: ANGLE / Vulkan / SwiftShader
+driver), so an e2e spec can assert a real `canvas.maplibregl-canvas` exists at
+non-zero size — and that the fallback text is absent, or it would pass against
+the very state we now render on purpose.
+
+### What this is not
+
+A fallback renderer. Issue #477 tracks that, and it is a larger question than it
+looks: the basemaps are already raster, so what would have to change is the
+painting engine, not the data — and `RegionMapVT`'s data-driven paint, LOD
+levels, heatmap shader and `feature-state` hover have no raster equivalent.
