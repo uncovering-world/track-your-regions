@@ -25,7 +25,6 @@ import ClearIcon from '@mui/icons-material/Clear';
 import ExploreIcon from '@mui/icons-material/Explore';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Experience } from '../../api/experiences';
 import type { ActiveView } from '../../hooks/useDiscoverExperiences';
 import { ExperienceCard } from './ExperienceCard';

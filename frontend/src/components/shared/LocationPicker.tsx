@@ -30,7 +30,6 @@ import SearchIcon from '@mui/icons-material/Search';
 import EditIcon from '@mui/icons-material/Edit';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import { parseCoordinates, formatCoordinates } from '../../utils/coordinateParser';
 import { searchPlaces, aiGeocode, type PlaceResult } from '../../api/geocode';
 import { isWebGLAvailable } from '../../utils/webgl';
