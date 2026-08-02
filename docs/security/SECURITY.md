@@ -62,8 +62,8 @@ Level 3 requirements are tracked but optional for now.
 | Rate limiting | express-rate-limit on all endpoint tiers (auth, search, public read, authenticated user), plus one named admin exception — the destructive world-view re-match at 5/min. See [rate-limiting.md](../tech/rate-limiting.md) |
 | Email verification | nodemailer with console fallback; 24h tokens, anti-enumeration |
 | Password breach check | HIBP k-Anonymity API on register + password change |
-| SAST (Node) | Semgrep via Docker (`npm run security:scan`) — p/owasp-top-ten, p/nodejs, p/react, p/secrets rulesets. CI's Security Scan job runs this same npm script, so local and CI cannot drift; the image is pinned by digest. Ruleset breadth is a known gap — see below and #481 |
-| SAST (Python) | Bandit (`npm run security:py:bandit`) + Semgrep (`npm run security:py:semgrep`) — p/python, p/owasp-top-ten, p/secrets, run by CI through the same npm script and pinned by digest. Ruff `S` (flake8-bandit) ruleset enforced inline at lint time |
+| SAST (Node) | Semgrep via Docker (`npm run security:scan`) — p/default, p/owasp-top-ten, p/nodejs, p/react, p/secrets: **511 rules** over the whole repository. CI's Security Scan job runs this same npm script, so local and CI cannot drift; the image is pinned by digest. Why five packs and not one — see [Semgrep Ruleset Composition](#semgrep-ruleset-composition) |
+| SAST (Python) | Bandit (`npm run security:py:bandit`) + Semgrep (`npm run security:py:semgrep`) — p/default, p/python, p/owasp-top-ten, p/secrets: **330 rules** on `cv-python`. Run by CI through the same npm script and pinned by digest. Ruff `S` (flake8-bandit) ruleset enforced inline at lint time |
 | Dependency scanning (Node) | `npm run security:deps` — npm audit for backend + frontend (production deps only, `--omit=dev`) |
 | Dependency scanning (Python) | `npm run security:py:deps` — pip-audit on `cv-python/requirements.txt` |
 | Container CVE scanning | `npm run security:image` — Trivy scans the cv-python Docker image, fails on HIGH/CRITICAL **that have a fix available** (`--ignore-unfixed`, matching the CI job). A CVE with no released patch cannot be acted on in a Dockerfile that already runs `apt-get upgrade`, so blocking on one would stop every unrelated PR until the distro catches up; `cv-python/Dockerfile` pulls the newest published packages at build time, which is the actionable half |
@@ -71,6 +71,68 @@ Level 3 requirements are tracked but optional for now.
 | Secret detection | GitHub native secret scanning + push protection (server-side) — these read every file type, but match **known provider patterns only**; generic-secret detection is opt-in and not enabled. Semgrep `p/secrets` (CI) is the source-code half, **bounded by `.semgrepignore`**, which drops `*.yaml`, `*.yml`, `*.json`, `*.sql` and `*.md` — so `docker-compose.yml`, `martin/config.yaml`, `.github/workflows/*.yml`, every `package.json` and `db/init/01-schema.sql` are never read by it. The two layers therefore do **not** compose into full cover: a generic credential in an excluded config file is seen by neither. See Known Gaps |
 | Containers | Dockerfiles run as non-root user (`node` for backend/frontend, `appuser` for cv-python) |
 | LLM prompt construction | System prompts are static. Operator-supplied text (`world_views.source`, `world_views.description`) is sanitised by `sanitizePromptData()` and quoted inside `<<< >>>` in the **user** message only; every system prompt carries `UNTRUSTED_DATA_RULE`. See `backend/src/services/ai/openaiShared.ts` |
+
+## Semgrep Ruleset Composition
+
+Both scans run `p/default` — Semgrep's own curated baseline — alongside the
+targeted packs. It was added in #481, after a planted `eval(userInput)` produced
+zero findings under the previous four-pack Node configuration. `p/default` flags
+it as `javascript.browser.security.eval-detected`, and the probe is re-run
+whenever this configuration changes: plant the call in a `.ts` and a `.js` file,
+`git add -N` them (Semgrep only scans git-tracked paths), and confirm
+`npm run security:scan` reports both and exits non-zero.
+
+The other packs are kept rather than folded in, and that is a measurement rather
+than an assumption. The measurement has to be **leave-one-out** — for each pack,
+what is lost if it alone is removed from the configuration — and not pairwise
+against `p/default`. Pairwise is the tempting version and it gives the wrong
+answer: `react-unsanitized-property` is absent from `p/default`, which makes
+`p/react` look load-bearing until you notice `p/owasp-top-ten` carries it too.
+
+Rule ids at the pinned version, via `semgrep show dump-config p/<pack>`:
+
+| Pack | Rule ids | Unique to it in the Node config | Unique in the Python config |
+|---|---|---|---|
+| `p/default` | 947 | **479** | **478** |
+| `p/owasp-top-ten` | 503 | **67** | **38** |
+| `p/secrets` | 50 | **1** — `detected-google-gcm-service-account` | **1** — same |
+| `p/nodejs` | 36 | **0** | not in this config |
+| `p/react` | 4 | **0** | not in this config |
+| `p/python` | 139 | not in this config | **0** |
+
+(Rule *ids* in a pack, not rules *run*: the run counts of 511 and 330 are what
+survives filtering to the languages and files actually present.)
+
+So three packs carry the configuration — `p/default`, `p/owasp-top-ten` and, by
+exactly one rule, `p/secrets`. The language packs `p/nodejs`, `p/react` and
+`p/python` contribute **nothing** at this version; each is fully covered by the
+union of the others. They are kept anyway, and uniformly: dropping them would
+trade a redundancy anyone can see for a silent dependency on Semgrep never
+recomposing its packs, and the failure mode of that dependency is a rule
+quietly ceasing to run. Rules are deduplicated by id, so the redundancy costs no
+scan time. Re-run the leave-one-out when the pinned version is bumped — if a
+language pack ever grows a unique rule again, that is worth knowing.
+
+### Accepted suppressions
+
+Adding `p/default` raised 54 findings on this repository. 17 were fixed and 37
+suppressed. Every suppression is inline (`// nosemgrep: <rule-id> -- <reason>`)
+rather than a rule-level `--exclude-rule`, so each rule stays live for code
+written after this branch:
+
+| Rule | Suppressed | Why it cannot fire there |
+|---|---|---|
+| `unsafe-formatstring` | 28 | The interpolated value is a number or a module constant, so no format specifier can reach `util.format`. The **16** sites where externally-sourced text *did* sit in the format-string position — Wikivoyage page titles, Commons filenames, imported region names, a `req.params` Wikidata id, synced item ids — were fixed instead, by making the format string constant and passing the value as an argument |
+| `path-join-resolve-traversal` | 3 | In `wikivoyageExtract/index.ts`, one path comes from `readdirSync` of the cache dir itself and the other is inside `safeCachePath`, past its own rejection of separators and `..` and ahead of its `dirname` re-check. The third is a test fixture loader |
+| `detect-non-literal-regexp` | 2 | One re-compiles an existing `RegExp` from its own `source` to add the `g` flag; the other is an alternation of regex-escaped literals — no quantifier over a group, so no catastrophic backtracking |
+| `formatted-sql-query` + `sqlalchemy-execute-raw-query` | 4 (2 lines × 2 rules) | `db/init-db.py` uses `sqlite3`, not SQLAlchemy. The interpolated value is a SQL **identifier**, which cannot be bound as a parameter — so it is validated instead: the GeoPackage layer name must match `TABLE_NAME_RE` where it is read out of `sqlite_master`, or the script exits. The suppression rides on that check |
+
+The one remaining fix was `missing-integrity` on `frontend/index.html`, which
+loaded `maplibre-gl.css` from `unpkg.com` with no subresource integrity. Rather
+than add an SRI hash, the tag was removed: `maplibre-gl` is already a frontend
+dependency, so the stylesheet now comes from the package via `main.tsx`. That
+drops a third-party runtime dependency and closes the gap where the hard-pinned
+CDN version could drift from the one in `package.json`.
 
 ## cv-python Hardening (V5/V8/V13/V16)
 
@@ -105,8 +167,11 @@ The Python service has a smaller surface than the Node backend but introduces ne
   `DB_PASSWORD` and a `DATABASE_URL` connection string, `martin/config.yaml` a
   `connection_string`. They interpolate env vars today rather than holding
   literals, so nothing is currently exposed — but no layer is watching that
-  shape, so the protection is a convention rather than a control. Revisit the
-  exclusions alongside #481.
+  shape, so the protection is a convention rather than a control. **Still open
+  after #481**, which widened the *ruleset* and deliberately left the *file*
+  exclusions alone: the two are independent, and lifting the exclusions changes
+  which files `p/secrets` reads rather than which rules it runs. That is its own
+  change, with its own triage.
 - **Four files are only partially analysed by Semgrep.** Its parser reports a
   syntax error and analyses what it can: `martin/warm-tiles.sh:1`,
   `backend/src/services/wikivoyageExtract/parser.ts:83`,
@@ -120,14 +185,13 @@ The Python service has a smaller surface than the Node backend but introduces ne
   reason unrelated to security, and the alternative — excluding the files —
   would trade a warning for a real hole. Re-check when the pinned Semgrep
   version is bumped; parser coverage is the kind of thing that improves.
-- **Semgrep's ruleset is narrower than assumed.** The four Node packs in force
-  miss things Semgrep's own `p/default` catches — a planted `eval(userInput)`
-  produced zero findings under our configuration and is flagged immediately
-  under `p/default`, which also raises 54 findings on this repo that nothing
-  currently reports (including two string-formatted SQL queries and three
-  path-traversal candidates). Adding the pack means triaging those first, since
-  `--error` would otherwise turn the build red on all 54 at once. Tracked in
-  #481.
+- **Semgrep's ruleset was narrower than assumed (resolved).** Until #481 the
+  Node scan ran four targeted packs and not `p/default`, so a planted
+  `eval(userInput)` produced zero findings in either `.ts` or `.js`.
+  `p/default` is now in both scans — Node 266 → **511** rules, Python 199 →
+  **330** — the 54 findings it raised were triaged (17 fixed, 37 suppressed
+  inline with stated reasons), and the eval probe is confirmed to report and to
+  exit non-zero. See [Semgrep Ruleset Composition](#semgrep-ruleset-composition).
 - **CI ran no Semgrep until August 2026 (resolved).** The Security Scan job
   used the deprecated `semgrep/semgrep-action@v1`, pinned to semgrep 1.36.0,
   which died on registry rules carrying `severity: MEDIUM` and exited zero
