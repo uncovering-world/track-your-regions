@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -170,6 +171,10 @@ class GADMProcessor:
     # Commit every N records during bulk import to limit transaction size
     COMMIT_INTERVAL = 10000
 
+    # A GeoPackage layer name is chosen by whoever produced the file, and it is
+    # interpolated into SQL as an identifier. Accept only plain identifiers.
+    TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
     def __init__(self, pg_cursor, sqlite_cursor, pg_conn, gadm_file, include_geometry=True, postprocess=True):
         self.pg_cursor = pg_cursor
         self.sqlite_cursor = sqlite_cursor
@@ -199,10 +204,19 @@ class GADMProcessor:
         if not layers:
             print("Error: No data tables found in GeoPackage")
             sys.exit(1)
-        return layers[0]
+        table_name = layers[0]
+        # The layer name reaches SQL as an identifier, and identifiers cannot be
+        # bound as parameters. Everything downstream that interpolates
+        # self.table_name relies on this check, so a GeoPackage carrying a
+        # crafted layer name is rejected here rather than quoted there.
+        if not self.TABLE_NAME_RE.match(table_name):
+            print(f"Error: GeoPackage layer name is not a plain identifier: {table_name!r}")
+            sys.exit(1)
+        return table_name
 
     def _count_records(self):
         """Count total records in GADM file."""
+        # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; table_name is an identifier (unbindable) validated against TABLE_NAME_RE in _get_gadm_table_name
         self.sqlite_cursor.execute(f'SELECT COUNT(*) FROM "{self.table_name}"')
         return self.sqlite_cursor.fetchone()[0]
 
@@ -254,6 +268,7 @@ class GADMProcessor:
             self.pg_conn.commit()
 
         cols = ", ".join(self.PROPERTIES)
+        # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; cols is the PROPERTIES class constant and table_name is validated against TABLE_NAME_RE in _get_gadm_table_name
         self.sqlite_cursor.execute(f'SELECT {cols} FROM "{self.table_name}"')
 
         progress = ProgressTracker(self.record_count, "records")
