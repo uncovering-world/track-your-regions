@@ -11,6 +11,8 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | `CurationDialog` | Edit + reject/unreject experience | Used in Map and Discover modes |
 | `AddExperienceDialog` | Search+assign or create new experience | Used in Map and Discover modes |
 | `LocationPicker` | Interactive location selector on a map | Used in experience editing |
+| `MapUnavailable` | Explains that this browser cannot draw maps. Props: `detail?`, `compact?` | `<MapUnavailable detail="The list still works." />` |
+| `GuardedMap` | `react-map-gl`'s `<Map>` with the WebGL check built in. Extra props: `unavailableDetail?`, `unavailableCompact?` | `import { GuardedMap as MapGL } from '…/GuardedMap'` — alias it to the local name and nothing else changes |
 
 ## Utility Modules (`frontend/src/utils/`)
 
@@ -23,6 +25,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | `scrollUtils.ts` | `scrollToCenter(container, el)`, `scrollToTop(container, el)` |
 | `coordinateParser.ts` | Coordinate string parsing |
 | `mapUtils.ts` | Map helper functions |
+| `webgl.ts` | `isWebGLAvailable()` — ask before constructing any map; see `maplibre-patterns.md` |
 | `fetchUtils.ts` | `ensureFreshToken()` — proactive JWT refresh before SSE connections |
 
 ## Pattern Table: Use This, Not That
@@ -38,6 +41,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | Scroll element to center | `scrollToCenter(container, el)` | Manual `getBoundingClientRect()` + `scrollTo()` |
 | Scroll element to top | `scrollToTop(container, el)` | Manual scroll math |
 | Format duration | `formatDuration(start, end)` | Inline ms-to-seconds/minutes conversion |
+| Rendering any map | `GuardedMap` (aliased to your local name), or an early return on `isWebGLAvailable()` where overlays sit over the map | Importing `Map` straight from `react-map-gl/maplibre`, or a bare `new maplibregl.Map` — both throw without WebGL, and there is no error boundary to catch it |
 
 ## Maintaining This Doc
 
