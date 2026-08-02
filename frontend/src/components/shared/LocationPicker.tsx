@@ -33,6 +33,8 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { parseCoordinates, formatCoordinates } from '../../utils/coordinateParser';
 import { searchPlaces, aiGeocode, type PlaceResult } from '../../api/geocode';
+import { isWebGLAvailable } from '../../utils/webgl';
+import { MapUnavailable } from './MapUnavailable';
 
 type Mode = 'map' | 'search' | 'coords' | 'ai';
 
@@ -65,7 +67,10 @@ const MAP_STYLE: maplibregl.StyleSpecification = {
 };
 
 export function LocationPicker({ value, onChange, name, onPlaceSelect }: LocationPickerProps) {
-  const [mode, setMode] = useState<Mode>('map');
+  // Map is the natural default and stays it wherever there is a map. Without
+  // WebGL it is the one mode whose input area is empty, so opening on it would
+  // put the user in the only place they cannot type an answer.
+  const [mode, setMode] = useState<Mode>(() => (isWebGLAvailable() ? 'map' : 'search'));
 
   // --- Search state ---
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,6 +94,8 @@ export function LocationPicker({ value, onChange, name, onPlaceSelect }: Locatio
   // --- Map refs ---
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  // Constant per page load, so it needs no state and no effect dependency.
+  const webGLAvailable = isWebGLAvailable();
   const markerRef = useRef<maplibregl.Marker | null>(null);
 
   // --- Pre-populate Search/AI from name when switching to those modes ---
@@ -152,6 +159,10 @@ export function LocationPicker({ value, onChange, name, onPlaceSelect }: Locatio
   // Initialize map
   useEffect(() => {
     if (!mapContainerRef.current) return;
+    // Redundant with the container check while the fallback renders in its
+    // place, and kept anyway: this construction throws without WebGL, and the
+    // ref going away is not the reason we skip it.
+    if (!isWebGLAvailable()) return;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
@@ -272,7 +283,8 @@ export function LocationPicker({ value, onChange, name, onPlaceSelect }: Locatio
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       {/* Mode selector chips */}
       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-        {MODES.map((m) => (
+        {/* Offering Map without a map leaves a chip that selects nothing. */}
+        {MODES.filter((m) => m.key !== 'map' || webGLAvailable).map((m) => (
           <Chip
             key={m.key}
             icon={m.icon as React.ReactElement}
@@ -287,23 +299,41 @@ export function LocationPicker({ value, onChange, name, onPlaceSelect }: Locatio
       </Box>
 
       {/* Map — always visible, fixed height, clips marker overflow */}
-      <Box
-        ref={mapContainerRef}
-        sx={{
-          width: '100%',
-          height: 200,
-          borderRadius: 1,
-          overflow: 'hidden',
-          position: 'relative',
-          border: '1px solid',
-          borderColor: 'divider',
-          // Clip MapLibre markers that extend beyond the map viewport
-          '& .maplibregl-canvas-container': { overflow: 'hidden' },
-        }}
-      />
+      {webGLAvailable ? (
+        <Box
+          ref={mapContainerRef}
+          sx={{
+            width: '100%',
+            height: 200,
+            borderRadius: 1,
+            overflow: 'hidden',
+            position: 'relative',
+            border: '1px solid',
+            borderColor: 'divider',
+            // Clip MapLibre markers that extend beyond the map viewport
+            '& .maplibregl-canvas-container': { overflow: 'hidden' },
+          }}
+        />
+      ) : (
+        <Box
+          sx={{
+            width: '100%',
+            height: 200,
+            borderRadius: 1,
+            overflow: 'hidden',
+            border: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <MapUnavailable
+            compact
+            detail="Use Search, Coordinates or AI below to set a location — only click-to-place needs the map."
+          />
+        </Box>
+      )}
 
       {/* Mode-specific input below map — stable layout */}
-      {mode === 'map' && (
+      {mode === 'map' && webGLAvailable && (
         <Typography variant="caption" color="text.secondary">
           Click on the map to place a marker. Drag to adjust.
         </Typography>
