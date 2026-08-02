@@ -323,6 +323,16 @@ export const userIdParamSchema = z.object({
 
 export const startSyncBodySchema = z.object({
   force: z.boolean().optional(),
+  dryRun: z.boolean().optional(),
+});
+
+export const syncChangesQuerySchema = z.object({
+  type: z.enum(['created', 'updated', 'conflict', 'missing', 'returned', 'failed']).optional(),
+  significance: z.enum(['major', 'minor']).optional(),
+  // Not z.coerce.boolean(): that is Boolean(input), so 'false' would enable it
+  significantOnly: z.enum(['true', 'false']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const reorderCategoriesBodySchema = z.object({

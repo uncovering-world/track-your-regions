@@ -22,6 +22,7 @@ import {
   regionAssignmentStatusQuerySchema,
   experienceCountsQuerySchema,
   syncLogsQuerySchema,
+  syncChangesQuerySchema,
   createCuratorAssignmentBodySchema,
   curatorActivityQuerySchema,
   adminUserSearchQuerySchema,
@@ -76,6 +77,7 @@ import {
   fixImages,
   getSyncLogs,
   getSyncLogDetails,
+  getSyncLogChanges,
   getCategories,
   reorderCategories,
   startRegionAssignment,
@@ -164,6 +166,9 @@ router.get('/sync/logs', validate(syncLogsQuerySchema, 'query'), getSyncLogs);
 
 // Get single sync log with error details
 router.get('/sync/logs/:logId', validate(logIdParamSchema, 'params'), getSyncLogDetails);
+
+// Per-object breakdown of what a run did
+router.get('/sync/logs/:logId/changes', validate(logIdParamSchema, 'params'), validate(syncChangesQuerySchema, 'query'), getSyncLogChanges);
 
 // =============================================================================
 // Experience Region Assignment Routes
