@@ -26,6 +26,8 @@ import { useVisitedRegions } from '../hooks/useVisitedRegions';
 import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { ExperienceMarkers } from './ExperienceMarkers';
+import { MapUnavailable } from './shared/MapUnavailable';
+import { isWebGLAvailable } from '../utils/webgl';
 import { MAP_STYLE } from '../constants/mapStyles';
 import { useRegionMetadata } from './regionMap/useRegionMetadata';
 import { useTileUrls } from './regionMap/useTileUrls';
@@ -138,6 +140,19 @@ export function RegionMapVT() {
   const handleMapLoad = useCallback(() => {
     setMapLoaded(true);
   }, []);
+
+  // Asked before `<Map>` is mounted, not after it fails. react-map-gl builds
+  // the map inside its own effect, where MapLibre's `Failed to initialize
+  // WebGL` throw would unwind past this component instead of arriving as an
+  // error state we could render — there is no error boundary above us to stop
+  // it. Every hook above still runs, so this early return does not reorder any.
+  if (!isWebGLAvailable()) {
+    return (
+      <Paper sx={{ height: 500, position: 'relative', overflow: 'hidden' }}>
+        <MapUnavailable detail="Choosing regions and browsing their experiences still work — the map is the only part that needs WebGL." />
+      </Paper>
+    );
+  }
 
   return (
     <Paper sx={{ height: 500, position: 'relative', overflow: 'hidden' }}>
