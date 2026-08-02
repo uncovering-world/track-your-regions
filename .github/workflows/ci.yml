@@ -143,9 +143,11 @@ jobs:
       #
       # Deliberately no `--strict`, and this is the file someone lands in when
       # they wonder why. It was tried and turned this job red at exit 3 on an
-      # otherwise successful scan (266 rules, 0 findings, ~99.9% of lines
-      # parsed): four files defeat Semgrep's own parser while being valid to
-      # tsc, ESLint and shellcheck, and `--strict` promotes that warning into a
+      # otherwise successful scan (266 rules then, 511 since #481 added
+      # p/default; 0 findings and ~99.9% of lines parsed either way, so
+      # widening the ruleset changed nothing here): four files defeat Semgrep's
+      # own parser while being valid to tsc, ESLint and shellcheck, and
+      # `--strict` promotes that warning into a
       # failure. Silencing it would mean excluding those files — trading a
       # warning for a real hole. It is not needed for the bug above either: the
       # `severity: MEDIUM` config exits non-zero on its own. The coverage loss
