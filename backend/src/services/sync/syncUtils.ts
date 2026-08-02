@@ -5,6 +5,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { computeChangeSet, type ChangeSetResult, type ExperienceSnapshot } from './changeSet.js';
 import type { SyncProgress } from './types.js';
 
 // =============================================================================
@@ -28,39 +29,150 @@ export interface ExperienceUpsertParams {
   metadata: Record<string, unknown>;
 }
 
+export interface UpsertOutcome {
+  experienceId: number;
+  changeSet: ChangeSetResult;
+  nameSnapshot: string;
+  /** The row carried `missing_since` and the source has produced it again. */
+  returnedFromMissing: boolean;
+}
+
+/** Columns the diff reads. Declared once; the SQL below is built from them. */
+const SNAPSHOT_COLUMNS = [
+  'name', 'name_local', 'description', 'short_description', 'category', 'tags',
+  'country_codes', 'country_names', 'image_url', 'metadata',
+] as const;
+
+function snapshotFromRow(row: Record<string, unknown>, prefix: '' | 'old_'): ExperienceSnapshot {
+  const get = (column: string) => row[`${prefix}${column}`];
+  return {
+    name: (get('name') as string) ?? '',
+    nameLocal: (get('name_local') as Record<string, string> | null) ?? null,
+    description: (get('description') as string | null) ?? null,
+    shortDescription: (get('short_description') as string | null) ?? null,
+    category: (get('category') as string | null) ?? null,
+    tags: (get('tags') as string[] | null) ?? null,
+    lon: Number(get('lon')),
+    lat: Number(get('lat')),
+    countryCodes: (get('country_codes') as string[] | null) ?? null,
+    countryNames: (get('country_names') as string[] | null) ?? null,
+    imageUrl: (get('image_url') as string | null) ?? null,
+    metadata: (get('metadata') as Record<string, unknown> | null) ?? null,
+  };
+}
+
+function snapshotFromParams(params: ExperienceUpsertParams): ExperienceSnapshot {
+  return {
+    name: params.name,
+    nameLocal: params.nameLocal,
+    description: params.description,
+    shortDescription: params.shortDescription,
+    category: params.category,
+    tags: params.tags,
+    lon: params.lon,
+    lat: params.lat,
+    countryCodes: params.countryCodes,
+    countryNames: params.countryNames,
+    imageUrl: params.imageUrl,
+    metadata: params.metadata,
+  };
+}
+
 /**
- * Upsert an experience record with curated_fields-aware conflict handling.
+ * Read the stored row and diff it against the incoming record without writing.
  *
- * All sync services share the same INSERT...ON CONFLICT pattern that preserves
- * curator-edited fields while updating the rest from source data.
+ * Backs dry runs: a preview has to be able to say what would change without
+ * spending the change.
+ */
+async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutcome> {
+  const result = await pool.query(
+    `SELECT id, curated_fields, missing_since, ${SNAPSHOT_COLUMNS.join(', ')},
+            ST_X(location) AS lon, ST_Y(location) AS lat
+     FROM experiences
+     WHERE category_id = $1 AND external_id = $2`,
+    [params.categoryId, params.externalId]
+  );
+
+  const incoming = snapshotFromParams(params);
+
+  if (result.rows.length === 0) {
+    return {
+      experienceId: 0,
+      changeSet: computeChangeSet(null, incoming, []),
+      nameSnapshot: params.name,
+      returnedFromMissing: false,
+    };
+  }
+
+  const row = result.rows[0];
+  const curatedFields: string[] = row.curated_fields ?? [];
+
+  return {
+    experienceId: row.id,
+    changeSet: computeChangeSet(snapshotFromRow(row, ''), incoming, curatedFields),
+    // Emulates the upsert's own CASE guard rather than picking a side: a
+    // curated name stays as the curator wrote it, an ordinary rename shows the
+    // new name. Reading the stored name unconditionally would make a preview
+    // label a renamed row differently from the run it stands in for.
+    nameSnapshot: curatedFields.includes('name') ? (row.name as string) : params.name,
+    returnedFromMissing: row.missing_since !== null,
+  };
+}
+
+/**
+ * Upsert an experience record with curated_fields-aware conflict handling,
+ * returning both the prior and resulting state.
+ *
+ * The `before` CTE is what makes provenance possible: RETURNING can only hand
+ * back the row as it now stands, so the previous values are captured in the
+ * same statement or they are gone.
  */
 export async function upsertExperienceRecord(
   params: ExperienceUpsertParams,
-): Promise<{ experienceId: number; isCreated: boolean }> {
+  options: { dryRun?: boolean; syncLogId?: number | null } = {},
+): Promise<UpsertOutcome> {
+  if (options.dryRun) return previewUpsert(params);
+
   const result = await pool.query(
-    `INSERT INTO experiences (
-      category_id, external_id, name, name_local, description, short_description,
-      category, tags, location, country_codes, country_names, image_url, metadata,
-      created_at, updated_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8,
-      ST_SetSRID(ST_MakePoint($9, $10), 4326),
-      $11, $12, $13, $14, NOW(), NOW()
+    `WITH before AS (
+      SELECT id, curated_fields, missing_since, ${SNAPSHOT_COLUMNS.join(', ')},
+             ST_X(location) AS lon, ST_Y(location) AS lat
+      FROM experiences
+      WHERE category_id = $1 AND external_id = $2
+    ), ins AS (
+      INSERT INTO experiences (
+        category_id, external_id, name, name_local, description, short_description,
+        category, tags, location, country_codes, country_names, image_url, metadata,
+        first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        ST_SetSRID(ST_MakePoint($9, $10), 4326),
+        $11, $12, $13, $14, $15, $15, NOW(), NOW(), NOW()
+      )
+      ON CONFLICT (category_id, external_id) DO UPDATE SET
+        name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
+        name_local = CASE WHEN experiences.curated_fields ? 'name_local' THEN experiences.name_local ELSE EXCLUDED.name_local END,
+        description = CASE WHEN experiences.curated_fields ? 'description' THEN experiences.description ELSE EXCLUDED.description END,
+        short_description = CASE WHEN experiences.curated_fields ? 'short_description' THEN experiences.short_description ELSE EXCLUDED.short_description END,
+        category = CASE WHEN experiences.curated_fields ? 'category' THEN experiences.category ELSE EXCLUDED.category END,
+        tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
+        location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location ELSE EXCLUDED.location END,
+        country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
+        country_names = CASE WHEN experiences.curated_fields ? 'country_names' THEN experiences.country_names ELSE EXCLUDED.country_names END,
+        image_url = CASE WHEN experiences.curated_fields ? 'image_url' THEN experiences.image_url ELSE EXCLUDED.image_url END,
+        metadata = CASE WHEN experiences.curated_fields ? 'metadata' THEN experiences.metadata ELSE EXCLUDED.metadata END,
+        last_seen_sync_log_id = COALESCE(EXCLUDED.last_seen_sync_log_id, experiences.last_seen_sync_log_id),
+        last_seen_at = NOW(),
+        missing_since = NULL,
+        updated_at = NOW()
+      RETURNING id, (xmax = 0) AS inserted, curated_fields, ${SNAPSHOT_COLUMNS.join(', ')},
+                ST_X(location) AS lon, ST_Y(location) AS lat
     )
-    ON CONFLICT (category_id, external_id) DO UPDATE SET
-      name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
-      name_local = CASE WHEN experiences.curated_fields ? 'name_local' THEN experiences.name_local ELSE EXCLUDED.name_local END,
-      description = CASE WHEN experiences.curated_fields ? 'description' THEN experiences.description ELSE EXCLUDED.description END,
-      short_description = CASE WHEN experiences.curated_fields ? 'short_description' THEN experiences.short_description ELSE EXCLUDED.short_description END,
-      category = CASE WHEN experiences.curated_fields ? 'category' THEN experiences.category ELSE EXCLUDED.category END,
-      tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
-      location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location ELSE EXCLUDED.location END,
-      country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
-      country_names = CASE WHEN experiences.curated_fields ? 'country_names' THEN experiences.country_names ELSE EXCLUDED.country_names END,
-      image_url = CASE WHEN experiences.curated_fields ? 'image_url' THEN experiences.image_url ELSE EXCLUDED.image_url END,
-      metadata = CASE WHEN experiences.curated_fields ? 'metadata' THEN experiences.metadata ELSE EXCLUDED.metadata END,
-      updated_at = NOW()
-    RETURNING id, (xmax = 0) AS inserted`,
+    SELECT ins.*,
+           ${SNAPSHOT_COLUMNS.map(column => `before.${column} AS old_${column}`).join(', ')},
+           before.lon AS old_lon, before.lat AS old_lat,
+           before.missing_since AS old_missing_since
+    FROM ins LEFT JOIN before ON before.id = ins.id`,
     [
       params.categoryId,
       params.externalId,
@@ -76,12 +188,20 @@ export async function upsertExperienceRecord(
       params.countryNames,
       params.imageUrl,
       JSON.stringify(params.metadata),
+      options.syncLogId ?? null,
     ]
   );
 
+  const row = result.rows[0];
+  const before = row.inserted ? null : snapshotFromRow(row, 'old_');
+
   return {
-    experienceId: result.rows[0].id,
-    isCreated: result.rows[0].inserted,
+    experienceId: row.id,
+    changeSet: computeChangeSet(before, snapshotFromParams(params), row.curated_fields ?? []),
+    // RETURNING carries the name after the curated_fields guards, so a
+    // protected name labels the changeset row with what is actually stored.
+    nameSnapshot: (row.name as string) ?? params.name,
+    returnedFromMissing: row.old_missing_since != null,
   };
 }
 
