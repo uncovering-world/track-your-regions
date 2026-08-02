@@ -270,7 +270,17 @@ function parseVitestReport(filePath) {
     );
     const failed = asNumber(data.numFailedTests, 0);
     const skipped = asNumber(data.numPendingTests, 0) + asNumber(data.numTodoTests, 0);
-    const ok = Boolean(data.success) && failed === 0;
+    // `passed > 0`, not `total > 0`: `numTotalTests` counts pending and todo,
+    // so a suite where everything is skipped — a `describe.skip` left behind,
+    // a guard on a missing fixture — would satisfy a total-based check while
+    // having executed nothing. The verdict has to rest on tests that actually
+    // ran and passed.
+    //
+    // Belt to the runner's braces rather than a live fix: Vitest already exits
+    // non-zero on an empty run and `ok` is combined with that exit code. This
+    // is the lock for the day someone reaches for `passWithNoTests`, which
+    // reads like a convenience flag rather than a hole in the gate.
+    const ok = Boolean(data.success) && failed === 0 && passed > 0;
 
     return {
       ok,
@@ -336,7 +346,19 @@ function parsePlaywrightReport(filePath) {
     const skipped = asNumber(stats.skipped, 0);
     const total = expected + unexpected + flaky + skipped;
     const failed = unexpected + flaky;
-    const ok = failed === 0;
+    // `expected > 0` — Playwright's count of specs that ran and passed.
+    //
+    // Unlike the Vitest twin this closes a reachable hole, not a theoretical
+    // one. Measured: a suite whose specs are all skipped reports
+    // `expected: 0, skipped: 2` and Playwright exits **0**, so both of the
+    // other locks pass — the exit code is clean and `total` (which counts
+    // skipped) is non-zero. The verdict has to rest on specs that actually
+    // ran.
+    //
+    // The route in is ordinary: the smoke suite selects by the `@smoke` tag,
+    // and a `test.skip()` guard on a missing fixture or environment skips
+    // rather than fails by design.
+    const ok = failed === 0 && expected > 0;
 
     return {
       ok,
