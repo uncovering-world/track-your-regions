@@ -24,6 +24,8 @@ import {
   Button,
   CircularProgress,
   TablePagination,
+  Alert,
+  Tooltip,
 } from '@mui/material';
 import {
   CheckCircle as SuccessIcon,
@@ -36,6 +38,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getSyncLogs, getSyncLogDetails, type SyncLog } from '../../api/admin';
 import { formatDateTime, formatDuration } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { SyncChangeList } from './SyncChangeList';
 
 export function SyncHistoryPanel() {
   const [page, setPage] = useState(0);
@@ -148,12 +151,24 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
   return (
     <TableRow hover>
       <TableCell>{getStatusChip()}</TableCell>
-      <TableCell>{log.category_name}</TableCell>
+      <TableCell>
+        {log.category_name}
+        {log.is_dry_run && (
+          <Chip label="Preview" size="small" color="info" variant="outlined" sx={{ ml: 1 }} />
+        )}
+      </TableCell>
       <TableCell>{formatDateTime(log.started_at)}</TableCell>
       <TableCell>{formatDuration(log.started_at, log.completed_at)}</TableCell>
-      <TableCell align="right">{log.total_fetched.toLocaleString()}</TableCell>
-      <TableCell align="right">{log.total_created.toLocaleString()}</TableCell>
-      <TableCell align="right">{log.total_updated.toLocaleString()}</TableCell>
+      <TableCell align="right">{(log.total_fetched ?? 0).toLocaleString()}</TableCell>
+      <TableCell align="right">{(log.total_created ?? 0).toLocaleString()}</TableCell>
+      <TableCell align="right">
+        {(log.total_updated ?? 0).toLocaleString()}
+        {!log.has_changeset && log.total_updated > 0 && (
+          <Tooltip title="Counted every row touched, not only those that changed — not comparable with later runs">
+            <Typography component="span" color="text.secondary" sx={{ ml: 0.5 }}>*</Typography>
+          </Tooltip>
+        )}
+      </TableCell>
       <TableCell align="right">
         {log.total_errors > 0 ? (
           <Chip label={log.total_errors} color="error" size="small" />
@@ -174,6 +189,57 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
 interface SyncLogDialogProps {
   logId: number | null;
   onClose: () => void;
+}
+
+/**
+ * Why a run has no per-object record, which is not one question but three.
+ *
+ * A missing changeset means "no record kept", and that has separate causes with
+ * separate consequences: a run from before this slice existed, a run whose
+ * changeset write failed minutes ago, and a run that legitimately had nothing
+ * to record. Only the first says anything about what `Changed` means.
+ */
+export function changesetNote(log: SyncLog & { error_details?: unknown[] }) {
+  if (log.has_changeset) return null;
+
+  const touched = log.total_created + log.total_updated + log.total_missing;
+  if (touched === 0) return null; // nothing happened; "no changes" is accurate
+
+  const writeFailed = (log.error_details ?? []).some(
+    (e) => typeof e === 'object' && e !== null
+      && (e as { externalId?: string }).externalId === 'changeset',
+  );
+
+  if (writeFailed) {
+    return (
+      <Alert severity="warning" sx={{ mb: 2 }}>
+        This run&apos;s per-object record could not be written, so the breakdown below is missing
+        even though the counters above are real. See the error details.
+      </Alert>
+    );
+  }
+
+  return (
+    <Alert severity="info" sx={{ mb: 2 }}>
+      Run predates change provenance, so it kept no per-object record.
+      {log.total_updated > 0 && (
+        <> Its <strong>Changed</strong> figure also counts every row the sync touched, whether or
+          not a field differed — later runs count only rows that actually changed, so the two are
+          not comparable.</>
+      )}
+    </Alert>
+  );
+}
+
+function Tile({ value, label, bg }: { value: number | null; label: string; bg: string }) {
+  return (
+    <Box sx={{ p: 2, bgcolor: bg, borderRadius: 1 }}>
+      {/* Counters are nullable in the database; a run that failed before it
+          could write them should show a zero, not take the card down. */}
+      <Typography variant="h4">{(value ?? 0).toLocaleString()}</Typography>
+      <Typography variant="body2" color="text.secondary">{label}</Typography>
+    </Box>
+  );
 }
 
 function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
@@ -209,24 +275,29 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
               </Box>
             </Box>
 
+            {log.is_dry_run && (
+              <Chip label="Preview — nothing was written" color="info" sx={{ mb: 2 }} />
+            )}
+
+            {changesetNote(log)}
+
             <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(4, 1fr)', mb: 3 }}>
-              <Box sx={{ p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-                <Typography variant="h4">{log.total_fetched.toLocaleString()}</Typography>
-                <Typography variant="body2" color="text.secondary">Fetched</Typography>
-              </Box>
-              <Box sx={{ p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
-                <Typography variant="h4">{log.total_created.toLocaleString()}</Typography>
-                <Typography variant="body2" color="text.secondary">Created</Typography>
-              </Box>
-              <Box sx={{ p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-                <Typography variant="h4">{log.total_updated.toLocaleString()}</Typography>
-                <Typography variant="body2" color="text.secondary">Updated</Typography>
-              </Box>
-              <Box sx={{ p: 2, bgcolor: log.total_errors > 0 ? 'error.light' : 'grey.100', borderRadius: 1 }}>
-                <Typography variant="h4">{log.total_errors.toLocaleString()}</Typography>
-                <Typography variant="body2" color="text.secondary">Errors</Typography>
-              </Box>
+              <Tile value={log.total_fetched} label="Fetched" bg="grey.100" />
+              <Tile value={log.total_created} label="Created" bg="success.light" />
+              <Tile value={log.total_updated} label="Changed" bg="info.light" />
+              <Tile value={log.total_unchanged} label="Unchanged" bg="grey.100" />
+              <Tile value={log.total_missing} label="Missing" bg={log.total_missing > 0 ? 'warning.light' : 'grey.100'} />
+              <Tile value={log.total_curated_conflicts} label="Conflicts" bg={log.total_curated_conflicts > 0 ? 'warning.light' : 'grey.100'} />
+              <Tile value={log.total_errors} label="Errors" bg={log.total_errors > 0 ? 'error.light' : 'grey.100'} />
             </Box>
+
+            {log.detection_skipped_reason && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Missing detection skipped: {log.detection_skipped_reason}
+              </Typography>
+            )}
+
+            {log.has_changeset && <SyncChangeList logId={log.id} />}
 
             {log.error_details && log.error_details.length > 0 && (
               <Box>

@@ -34,9 +34,14 @@ export interface SyncStatus {
   percent?: number;
   created?: number;
   updated?: number;
+  unchanged?: number;
+  missing?: number;
+  curatedConflicts?: number;
   errors?: number;
   currentItem?: string;
   logId?: number | null;
+  /** A preview run: no experiences were written, so no assignment is due. */
+  dryRun?: boolean;
 }
 
 export interface SyncLog {
@@ -48,10 +53,44 @@ export interface SyncLog {
   status: string;
   total_fetched: number;
   total_created: number;
+  /** Rows whose fields actually changed. Runs before migration 009 counted every row that passed through the upsert, so old logs are not comparable. */
   total_updated: number;
+  total_unchanged: number;
+  total_missing: number;
+  total_curated_conflicts: number;
   total_errors: number;
+  is_dry_run: boolean;
+  detection_skipped_reason: string | null;
+  /** False on runs that predate change provenance, whose counters mean something else. */
+  has_changeset: boolean;
   triggered_by: number | null;
   triggered_by_name: string | null;
+}
+
+export interface SyncFieldChange {
+  field: string;
+  old: unknown;
+  new: unknown;
+  significance: 'major' | 'minor';
+  curatedConflict: boolean;
+}
+
+export interface SyncChange {
+  id: number;
+  experience_id: number | null;
+  external_id: string;
+  name_snapshot: string | null;
+  change_type: 'created' | 'updated' | 'conflict' | 'missing' | 'returned' | 'failed';
+  changed_fields: SyncFieldChange[] | null;
+  significance: 'major' | 'minor' | null;
+  error: string | null;
+}
+
+export interface SyncChangesResponse {
+  changes: SyncChange[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface SyncLogsResponse {
@@ -85,13 +124,17 @@ export async function getCategories(): Promise<ExperienceCategory[]> {
 /**
  * Start sync for a category
  * @param categoryId - The category to sync
- * @param force - If true, delete all existing data before syncing
+ * @param options - `force` deletes existing data first; `dryRun` records the
+ *   changeset without writing any experiences. The two cannot be combined.
  */
-export async function startSync(categoryId: number, force: boolean = false): Promise<{ started: boolean; message: string; force?: boolean }> {
+export async function startSync(
+  categoryId: number,
+  options: { force?: boolean; dryRun?: boolean } = {},
+): Promise<{ started: boolean; message: string; force?: boolean; dryRun?: boolean }> {
   return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force }),
+    body: JSON.stringify({ force: options.force ?? false, dryRun: options.dryRun ?? false }),
   });
 }
 
@@ -143,6 +186,31 @@ export async function getSyncLogs(
  */
 export async function getSyncLogDetails(logId: number): Promise<SyncLog & { error_details?: unknown[] }> {
   return authFetchJson(`${API_URL}/api/admin/sync/logs/${logId}`);
+}
+
+/**
+ * Get what a run did, object by object.
+ *
+ * Rows that came through unchanged are not returned — they are a count on the
+ * log itself.
+ */
+export async function getSyncLogChanges(
+  logId: number,
+  params: {
+    type?: string; significance?: string; significantOnly?: boolean;
+    limit?: number; offset?: number;
+  } = {},
+): Promise<SyncChangesResponse> {
+  const search = new URLSearchParams();
+  if (params.type) search.set('type', params.type);
+  if (params.significance) search.set('significance', params.significance);
+  if (params.significantOnly) search.set('significantOnly', 'true');
+  if (params.limit !== undefined) search.set('limit', String(params.limit));
+  if (params.offset !== undefined) search.set('offset', String(params.offset));
+
+  return authFetchJson<SyncChangesResponse>(
+    `${API_URL}/api/admin/sync/logs/${logId}/changes?${search}`
+  );
 }
 
 // =============================================================================
