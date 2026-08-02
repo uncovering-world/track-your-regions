@@ -159,12 +159,22 @@ function SourceCard({ source }: SourceCardProps) {
 
   // Start sync mutation
   const startMutation = useMutation({
-    mutationFn: () => startSync(source.id, forceSync),
+    mutationFn: () => startSync(source.id, { force: forceSync }),
     onSuccess: () => {
       setIsPolling(true);
       setForceSync(false); // Reset force checkbox after starting
     },
   });
+
+  // Preview mutation: same run, no writes to experiences
+  const dryRunMutation = useMutation({
+    mutationFn: () => startSync(source.id, { dryRun: true }),
+    onSuccess: () => setIsPolling(true),
+  });
+
+  // A preview is a run: while one is starting the panel must look busy, or the
+  // gap between the click and the first poll reads as nothing having happened.
+  const isStarting = startMutation.isPending || dryRunMutation.isPending;
 
   // Cancel sync mutation
   const cancelMutation = useMutation({
@@ -188,8 +198,9 @@ function SourceCard({ source }: SourceCardProps) {
 
       if (!newStatus.running) {
         setIsPolling(false);
-        // If sync just completed successfully, show hint
-        if (wasRunningRef.current && newStatus.status === 'complete') {
+        // Only a real sync earns the hint: a dry run creates no experiences, so
+        // telling the admin to go and assign them would be nonsense.
+        if (wasRunningRef.current && newStatus.status === 'complete' && !newStatus.dryRun) {
           setJustCompleted(true);
         }
         // Refresh sources list to get updated last_sync info
@@ -216,12 +227,19 @@ function SourceCard({ source }: SourceCardProps) {
     return () => clearInterval(interval);
   }, [isPolling, pollStatus]);
 
-  const isRunning = status?.running || startMutation.isPending;
+  const isRunning = status?.running || isStarting;
   const progress = status?.percent || 0;
 
   const getStatusChip = () => {
     if (isRunning) {
-      return <Chip icon={<SyncIcon />} label="Syncing..." color="primary" size="small" />;
+      return (
+        <Chip
+          icon={<SyncIcon />}
+          label={status?.dryRun ? 'Previewing...' : 'Syncing...'}
+          color="primary"
+          size="small"
+        />
+      );
     }
     if (source.last_sync_status === 'success') {
       return <Chip icon={<CheckIcon />} label="Success" color="success" size="small" />;
@@ -284,6 +302,11 @@ function SourceCard({ source }: SourceCardProps) {
             Failed to start sync: {(startMutation.error as Error)?.message}
           </Alert>
         )}
+        {dryRunMutation.isError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Failed to start dry run: {(dryRunMutation.error as Error)?.message}
+          </Alert>
+        )}
 
         {justCompleted && (
           <Alert
@@ -308,6 +331,15 @@ function SourceCard({ source }: SourceCardProps) {
                 color={forceSync ? 'error' : 'primary'}
               >
                 {forceSync ? 'Force Sync' : 'Start Sync'}
+              </Button>
+              {/* Disabled under force because the backend refuses that pairing:
+                  force deletes the category before there is anything to preview. */}
+              <Button
+                variant="outlined"
+                onClick={() => dryRunMutation.mutate()}
+                disabled={!source.is_active || forceSync || isStarting}
+              >
+                Dry run
               </Button>
               <FormControlLabel
                 control={
