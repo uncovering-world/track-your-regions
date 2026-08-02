@@ -37,7 +37,8 @@ async function collectChildQidsFromSparql(
     }
   } catch (err) {
     console.warn(
-      `[GeoshapeComposite] SPARQL failed for ${wikidataId}:`,
+      '[GeoshapeComposite] SPARQL failed for %s:',
+      wikidataId,
       err instanceof Error ? err.message : err,
     );
   }
@@ -121,7 +122,8 @@ async function collectChildQidsFromWikivoyage(
     }
   } catch (err) {
     console.warn(
-      `[GeoshapeComposite] Wikivoyage parse failed for ${wikidataId}:`,
+      '[GeoshapeComposite] Wikivoyage parse failed for %s:',
+      wikidataId,
       err instanceof Error ? err.message : err,
     );
   }
@@ -167,7 +169,7 @@ async function storeCompositeUnion(wikidataId: string, availableQids: string[]):
     }
     return false;
   } catch (err) {
-    console.error(`[GeoshapeComposite] Union failed for ${wikidataId}:`, err);
+    console.error('[GeoshapeComposite] Union failed for %s:', wikidataId, err);
     return false;
   }
 }

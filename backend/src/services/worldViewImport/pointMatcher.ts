@@ -171,7 +171,8 @@ async function fetchWikitextForPage(pageTitle: string): Promise<string> {
     return data.parse?.wikitext?.['*'] ?? '';
   } catch (err) {
     console.warn(
-      `[PointMatcher] Failed to fetch wikitext for "${pageTitle}":`,
+      '[PointMatcher] Failed to fetch wikitext for "%s":',
+      pageTitle,
       err instanceof Error ? err.message : err,
     );
     return '';

@@ -153,7 +153,7 @@ export async function classifyEntity(
 
     return parsed;
   } catch (err) {
-    console.warn(`[WV Extract] Classification failed for "${title}":`, err instanceof Error ? err.message : err);
+    console.warn('[WV Extract] Classification failed for "%s":', title, err instanceof Error ? err.message : err);
     return null;
   }
 }

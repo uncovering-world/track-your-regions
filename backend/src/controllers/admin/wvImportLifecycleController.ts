@@ -62,7 +62,7 @@ export async function getGeoshape(req: AuthenticatedRequest, res: Response): Pro
     const geojson = await response.json();
     res.json(geojson);
   } catch (err) {
-    console.error(`[WV Import] Geoshape fetch error for ${wikidataId}:`, err);
+    console.error('[WV Import] Geoshape fetch error for %s:', wikidataId, err);
     res.status(502).json({ error: 'Failed to fetch geoshape from Wikimedia' });
   }
 }

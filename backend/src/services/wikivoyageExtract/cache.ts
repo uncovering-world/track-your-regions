@@ -32,7 +32,7 @@ export class FileCache {
         console.log(`[WV Cache] Loaded ${Object.keys(this.store).length} cached responses from ${this.filePath}`);
       }
     } catch (err) {
-      console.warn(`[WV Cache] Failed to load cache from ${this.filePath}:`, err);
+      console.warn('[WV Cache] Failed to load cache from %s:', this.filePath, err);
     }
   }
 
@@ -79,7 +79,7 @@ export class FileCache {
       fs.renameSync(tmpPath, this.filePath);
       this.dirty = false;
     } catch (err) {
-      console.error(`[WV Cache] Failed to save cache to ${this.filePath}:`, err);
+      console.error('[WV Cache] Failed to save cache to %s:', this.filePath, err);
     }
   }
 
