@@ -36,11 +36,19 @@ NC='\033[0m' # No Color
 load_env() {
     if [[ -f "$ENV_FILE" ]]; then
         set -a
+        # Reason: the path is chosen at runtime, so there is no fixed file to
+        # follow. Note the directive below takes no trailing "-- reason" the way
+        # ESLint does; appending one is a parse error (SC1072), and any comment
+        # line starting with the tool's name is read as a directive too.
+        # shellcheck source=/dev/null
         source "$ENV_FILE"
         set +a
     elif [[ -f "$ENV_EXAMPLE" ]]; then
         echo -e "${YELLOW}Warning: .env not found, using .env.example defaults${NC}"
         set -a
+        # Reason: $ENV_EXAMPLE is likewise resolved at runtime, so there is no
+        # fixed file to follow here either.
+        # shellcheck source=/dev/null
         source "$ENV_EXAMPLE"
         set +a
     fi

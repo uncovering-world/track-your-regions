@@ -48,7 +48,7 @@ if [ -z "$WORLD_VIEWS" ]; then
   exit 0
 fi
 
-echo "Found custom world views: $(echo $WORLD_VIEWS | tr '\n' ' ')"
+echo "Found custom world views: $(echo "$WORLD_VIEWS" | tr '\n' ' ')"
 
 # Pre-warm z=0-2 tiles for each custom world view
 # These are the zoom levels visible on initial page load

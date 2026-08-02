@@ -45,12 +45,15 @@ GADM_DOWNLOAD_URL="https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-gpkg.zip"
 load_env() {
     if [[ -f "$ENV_FILE" ]]; then
         set -a
+        # Reason: $ENV_FILE is resolved at runtime, so there is no fixed file
+        # to follow.
         # shellcheck source=/dev/null
         source "$ENV_FILE"
         set +a
     elif [[ -f "$ENV_EXAMPLE" ]]; then
         echo -e "${YELLOW}Warning: .env not found, using .env.example defaults${NC}"
         set -a
+        # Reason: $ENV_EXAMPLE is likewise resolved at runtime.
         # shellcheck source=/dev/null
         source "$ENV_EXAMPLE"
         set +a
