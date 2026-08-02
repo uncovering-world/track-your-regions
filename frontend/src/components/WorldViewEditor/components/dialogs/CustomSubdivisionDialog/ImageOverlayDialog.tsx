@@ -25,7 +25,9 @@ import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import TuneIcon from '@mui/icons-material/Tune';
-import Map, { Source, Layer, NavigationControl, type MapRef, useMap } from 'react-map-gl/maplibre';
+import { Source, Layer, NavigationControl, type MapRef, useMap } from 'react-map-gl/maplibre';
+import { GuardedMap as Map } from '../../../../shared/GuardedMap';
+import { isWebGLAvailable } from '../../../../../utils/webgl';
 import type maplibregl from 'maplibre-gl';
 import { MAP_STYLE } from '../../../../../constants/mapStyles';
 import { CalibrationView } from './CalibrationView';
@@ -810,6 +812,7 @@ export function ImageOverlayDialog({
             else if (shiftPressed && imageUrl && imageSize) mapCursor = 'grab';
             return (
             <Map
+              unavailableDetail="Placing an overlay means dragging it across the map, so this dialog needs WebGL to be usable."
               ref={mapRef}
               initialViewState={{
                 longitude: initialCenter[0],
@@ -838,7 +841,11 @@ export function ImageOverlayDialog({
             );
             })()}
 
-            {!imageUrl && (
+            {/* Absolutely centred over the map pane, so it would sit on top of
+                the no-WebGL explanation and invite an upload that leads
+                nowhere. "No image yet" only means anything once there is a map
+                to put one on. */}
+            {!imageUrl && isWebGLAvailable() && (
               <Box
                 sx={{
                   position: 'absolute',
@@ -856,7 +863,11 @@ export function ImageOverlayDialog({
               </Box>
             )}
 
-            {imageUrl && !imageSize && (
+            {/* Gated for the same reason as its sibling above: the upload
+                control keeps working without WebGL, so a curator who reads the
+                fallback and uploads anyway would get this centred on top of it
+                until the image resolves. */}
+            {imageUrl && !imageSize && isWebGLAvailable() && (
               <Box
                 sx={{
                   position: 'absolute',

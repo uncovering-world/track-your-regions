@@ -17,7 +17,8 @@ import {
   TextField,
 } from '@mui/material';
 import Close from '@mui/icons-material/Close';
-import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
+import { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
+import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import type { GeoSuggestResult } from '../../api/admin/worldViewImport';
 import type { RegionSearchResult } from '../../api/regions';
 import type { TreeNodeInfo } from './coverageResolveUtils';

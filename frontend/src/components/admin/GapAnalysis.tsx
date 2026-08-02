@@ -25,6 +25,8 @@ import {
 } from '../../api/admin/worldViewImport';
 import { searchRegions } from '../../api/regions';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
+import { MapUnavailable } from '../shared/MapUnavailable';
+import { isWebGLAvailable } from '../../utils/webgl';
 
 // Inlined here instead of importing from ImportTreeDialogs — that module
 // re-imports GapDivisionTree + GapContextMap from this file, so sharing the
@@ -365,6 +367,20 @@ export function GapContextMap({ gapDivisions, siblingRegions, worldViewId, highl
       onHighlight(id === highlightedGapId ? null : id);
     }
   }, [highlightedGapId, onHighlight, handleRegionClick]);
+
+  // Early return rather than a wrapper: the breadcrumb, legend and loading
+  // overlay below are positioned over the map and describe it, so none of them
+  // means anything once it is gone.
+  if (!isWebGLAvailable()) {
+    return (
+      <Box sx={{ height: 300, borderRadius: 1, overflow: 'hidden', position: 'relative' }}>
+        <MapUnavailable
+          compact
+          detail="Gaps stay listed and assignable below; only the map preview of where they fall needs WebGL."
+        />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ height: 300, borderRadius: 1, overflow: 'hidden', position: 'relative' }}>

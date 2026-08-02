@@ -12,7 +12,8 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
-import MapGL, { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
+import { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
+import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import * as turf from '@turf/turf';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';

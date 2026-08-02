@@ -11,6 +11,8 @@ import maplibregl from 'maplibre-gl';
 import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';
 import type { ClusterGeoInfo, SiblingRegionGeometry } from '../../api/admin/worldViewImport';
+import { MapUnavailable } from '../shared/MapUnavailable';
+import { isWebGLAvailable } from '../../utils/webgl';
 
 /** Merge multiple geometries into one using turf.union. Returns null if no valid geometries. */
 export function mergeGeometries(geoms: GeoJSON.Geometry[]): GeoJSON.Geometry | null {
@@ -310,6 +312,17 @@ export function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, 
   const outlineStyle = paintClusterId != null
     ? `3px solid ${geoPreview.clusterInfos.find(c => c.clusterId === paintClusterId)?.color ?? '#000'}`
     : undefined;
+
+  // An early return rather than a wrapper around the map: the paint palette,
+  // hover tooltip and action panel below all drive the map by clicking it, so
+  // they have to go with it instead of floating over the explanation.
+  if (!isWebGLAvailable()) {
+    return (
+      <Box sx={{ position: 'relative', height: '100%', minHeight: 350 }}>
+        <MapUnavailable detail="Reviewing this match needs the map — the cluster assignments it shows cannot be made from the list alone." />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ position: 'relative', height: '100%', minHeight: 350 }}>

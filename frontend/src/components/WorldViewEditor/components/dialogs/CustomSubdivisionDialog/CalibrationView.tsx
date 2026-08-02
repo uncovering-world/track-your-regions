@@ -14,7 +14,8 @@ import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import Map, { Marker, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
+import { Marker, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
+import { GuardedMap as Map } from '../../../../shared/GuardedMap';
 import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../../../../../constants/mapStyles';
 
