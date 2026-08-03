@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Container, Box, CssBaseline, ThemeProvider, IconButton, Tooltip } from '@mui/material';
+import { Container, Box, CssBaseline, ThemeProvider, IconButton, Tooltip, Alert } from '@mui/material';
 import { ChevronLeft as CollapseIcon, ChevronRight as ExpandIcon } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router';
@@ -9,8 +9,9 @@ import { MainDisplay, setExplorationModeListener } from './components/MainDispla
 import { DiscoverPage } from './components/discover/DiscoverPage';
 import { AuthCallbackHandler, VerifyEmailPage } from './components/auth';
 import { AdminDashboard } from './components/admin';
+import { ReviewQueue } from './components/curation/ReviewQueue';
 import { NavigationProvider } from './hooks/useNavigation';
-import { AuthProvider } from './hooks/useAuth';
+import { AuthProvider, useAuth } from './hooks/useAuth';
 import { AppThemeProvider, useAppTheme, createAppTheme } from './theme';
 
 const queryClient = new QueryClient({
@@ -97,6 +98,35 @@ function MainContent() {
   );
 }
 
+/**
+ * The curator's queue, behind the same role check the API enforces.
+ *
+ * The gate here is convenience, not security: every action the page offers is
+ * refused server-side for anyone without scope over the experience.
+ */
+function CurationReview() {
+  const { isCurator, isLoading } = useAuth();
+
+  if (isLoading) return null;
+  if (!isCurator) {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+        <Header />
+        <Alert severity="info" sx={{ m: 3 }}>
+          The review queue is for curators. Ask an admin for curator access if you need it.
+        </Alert>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'auto' }}>
+      <Header />
+      <ReviewQueue />
+    </Box>
+  );
+}
+
 function DiscoverContent() {
   return (
     <Box
@@ -128,6 +158,7 @@ function ThemedApp() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/admin/*" element={<AdminDashboard />} />
             <Route path="/discover" element={<DiscoverContent />} />
+            <Route path="/review" element={<CurationReview />} />
             <Route path="/*" element={<MainContent />} />
           </Routes>
         </NavigationProvider>

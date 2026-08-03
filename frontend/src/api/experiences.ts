@@ -328,6 +328,90 @@ export async function rejectExperience(
 }
 
 /**
+ * An experience waiting on a curator's decision.
+ *
+ * `missing` means a run stopped finding it at the source; `conflict` means the
+ * source wants a field the curator has claimed. Until someone answers, users
+ * see the experience exactly as before.
+ */
+export interface ReviewQueueItem {
+  id: number;
+  external_id: string;
+  name: string;
+  category_id: number;
+  category_name: string;
+  missing_since: string | null;
+  source_membership: 'present' | 'former';
+  existence: 'extant' | 'lost';
+  kind: 'missing' | 'conflict';
+  /** `acceptable` false means accepting releases the claim and the next run writes it. */
+  proposed: Array<{ field: string; old: unknown; new: unknown; acceptable: boolean }> | null;
+  /** The run whose proposal this card shows; sent back so a newer one cannot substitute itself. */
+  sync_log_id?: number;
+}
+
+export interface ReviewQueue {
+  missing: ReviewQueueItem[];
+  conflicts: ReviewQueueItem[];
+  limit: number;
+  offset: number;
+}
+
+/**
+ * What needs a curator's judgement, within their scope.
+ */
+export async function fetchReviewQueue(params: {
+  categoryId?: number; limit?: number; offset?: number;
+} = {}): Promise<ReviewQueue> {
+  const search = new URLSearchParams();
+  if (params.categoryId) search.set('categoryId', String(params.categoryId));
+  if (params.limit !== undefined) search.set('limit', String(params.limit));
+  if (params.offset !== undefined) search.set('offset', String(params.offset));
+  return authFetchJson<ReviewQueue>(`${API_URL}/api/experiences/review/queue?${search}`);
+}
+
+/**
+ * Record what a curator decided about an object's lifecycle.
+ *
+ * Sending `membership: 'present'` on a row a run flagged is the "false alarm"
+ * answer: the source hiccupped and nothing moved.
+ */
+export async function setExperienceState(
+  experienceId: number,
+  decision: {
+    membership?: 'present' | 'former';
+    existence?: 'extant' | 'lost';
+    note?: string;
+    /**
+     * The row as the card showed it, flag included. Compared under the write
+     * lock: a run that re-lists the object clears the flag without touching
+     * either axis, so the axes alone cannot tell a live question from a
+     * withdrawn one.
+     */
+    expected: { membership: 'present' | 'former'; existence: 'extant' | 'lost'; flagged: boolean };
+  },
+): Promise<{ experienceId: number; sourceMembership: 'present' | 'former'; existence: 'extant' | 'lost' }> {
+  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/state`, {
+    method: 'POST',
+    body: JSON.stringify(decision),
+  });
+}
+
+/**
+ * Apply the value a sync proposed for a field the curator had claimed.
+ */
+export async function acceptSourceValue(
+  experienceId: number,
+  fields: string[],
+  expectedSyncLogId: number,
+): Promise<{ experienceId: number; applied: string[]; released: string[]; fromSyncLogId: number }> {
+  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/accept-source`, {
+    method: 'POST',
+    body: JSON.stringify({ fields, expectedSyncLogId }),
+  });
+}
+
+/**
  * Unreject an experience from a region
  */
 export async function unrejectExperience(

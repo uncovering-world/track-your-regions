@@ -2,6 +2,8 @@ import { AppBar, Toolbar, Typography, Box, IconButton, Tooltip, Button } from '@
 import PublicIcon from '@mui/icons-material/Public';
 import MapIcon from '@mui/icons-material/Map';
 import ExploreIcon from '@mui/icons-material/Explore';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
+import { useAuth } from '../hooks/useAuth';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useNavigate, useLocation } from 'react-router';
@@ -13,6 +15,8 @@ export function Header() {
   const navigate = useNavigate();
   const location = useLocation();
   const isDiscover = location.pathname === '/discover';
+  const isReview = location.pathname === '/review';
+  const { isCurator } = useAuth();
 
   return (
     <AppBar position="static" color="primary" elevation={1}>
@@ -53,6 +57,25 @@ export function Header() {
           >
             Discover
           </Button>
+          {/* Only curators can act on the queue, so only they are offered it —
+              the API refuses everyone else regardless. */}
+          {isCurator && (
+            <Button
+              color="inherit"
+              size="small"
+              startIcon={<FactCheckIcon />}
+              onClick={() => navigate('/review')}
+              sx={{
+                opacity: isReview ? 1 : 0.7,
+                borderBottom: isReview ? '2px solid currentColor' : 'none',
+                borderRadius: 0,
+                px: 1.5,
+                pb: 0.5,
+              }}
+            >
+              Review
+            </Button>
+          )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
