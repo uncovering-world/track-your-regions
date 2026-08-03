@@ -8,7 +8,7 @@
 
 import { Response } from 'express';
 import type { PoolClient } from 'pg';
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import type { UserRole } from '../../types/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -461,31 +461,48 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     return;
   }
 
-  const { sql, values, newCurated } = buildUpdateQuery(
-    payload,
-    (existing.curated_fields as string[]) || [],
-    experienceId,
-  );
-
   // `pool.query('BEGIN')` does NOT pin a connection — each call checks out
   // an arbitrary idle client from pg.Pool, so BEGIN, the UPDATE, the audit
   // INSERT, and COMMIT/ROLLBACK can run on different clients (no real
   // transaction). Use pool.connect() to bind everything to one client.
   const client = await pool.connect();
+  let unusable: Error | undefined;
+  let newCurated: string[];
   try {
     await client.query('BEGIN');
-    await client.query(sql, values);
-    const details = buildEditAuditDetails(payload, existing);
+
+    // Re-read under the lock everything this transaction depends on. The read
+    // above answers 404 and scope and is outside any transaction, so by now it
+    // may be stale in two ways: an accept-source releasing a claim between the
+    // two would be undone here, the union putting back a key it had just
+    // removed; and the `old` values in the audit row would name a version that
+    // was already gone when the edit was written.
+    const locked = await client.query(
+      `SELECT curated_fields, name, short_description, description, category, image_url, tags, metadata
+       FROM experiences WHERE id = $1 FOR UPDATE`,
+      [experienceId],
+    );
+    const before = locked.rows[0] ?? existing;
+    const built = buildUpdateQuery(
+      payload,
+      (before.curated_fields as string[]) || [],
+      experienceId,
+    );
+    newCurated = built.newCurated;
+    await client.query(built.sql, built.values);
+    const details = buildEditAuditDetails(payload, before);
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
       VALUES ($1, $2, 'edited', $3, $4)
     `, [experienceId, userId, logRegionId, JSON.stringify(details)]);
     await client.query('COMMIT');
   } catch (error) {
-    await client.query('ROLLBACK');
+    // A client whose ROLLBACK also failed must be destroyed, not pooled: it
+    // would otherwise carry an open transaction into the next request.
+    unusable = await rollbackQuietly(client);
     throw error;
   } finally {
-    client.release();
+    client.release(unusable);
   }
 
   res.json({ success: true, experienceId, curatedFields: newCurated });
