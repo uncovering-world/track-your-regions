@@ -131,3 +131,42 @@ describe('experience reads whose response depends on world-view visibility', () 
     expect(authHeaderOf(fetchSpy.mock.calls[0])).toBe(`Bearer ${token}`);
   });
 });
+
+describe('the locations batch follows what the list is showing', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    // `makeToken()`, not an opaque string: an undecodable token sends
+    // `authFetchJson` down the refresh path, the shared mock answers the
+    // refresh with this same body, and the request under test then goes out
+    // with no Authorization header at all — inside the one file whose subject
+    // is that header.
+    setAccessToken(makeToken());
+    fetchSpy = vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ locationsByExperience: {} }),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setAccessToken(null);
+  });
+
+  it('asks for lost rows when the list is revealing them', async () => {
+    await fetchRegionExperienceLocations(6737, { includeChildren: false, includeLost: true });
+
+    // Without it the revealed row arrives with no markers and a confident
+    // "0/N in region": the denominator comes from the experience, the
+    // numerator from this batch
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('includeLost=true');
+  });
+
+  it('does not ask by default', async () => {
+    await fetchRegionExperienceLocations(6737, { includeChildren: false });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0][0])).not.toContain('includeLost');
+  });
+});

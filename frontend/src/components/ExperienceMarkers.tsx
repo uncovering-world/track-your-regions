@@ -351,10 +351,11 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     getExperienceById,
     expandedCategoryNames,
     setHoverPreview,
+    showLost,
   } = useExperienceContext();
 
   // Batch-fetch all locations for all experiences in the region (single request)
-  const { locationsByExperience } = useRegionLocations(regionId);
+  const { locationsByExperience } = useRegionLocations(regionId, showLost);
 
   // Hover source data (updated by event handlers and list hover)
   const [hoverData, setHoverData] = useState<GeoJSON.FeatureCollection>(EMPTY_FC);

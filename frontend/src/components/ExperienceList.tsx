@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { ownedHoveredLocationId } from './ExperienceList/utils';
+import { ownedHoveredLocationId, lostHiddenLabel } from './ExperienceList/utils';
 import {
   Box,
   Typography,
@@ -22,6 +22,7 @@ import {
   IconButton,
   Button,
   Tooltip,
+  Link,
 } from '@mui/material';
 import {
   ExpandLess,
@@ -63,6 +64,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const {
     experiences,
     experiencesLoading,
+    lostHidden,
+    showLost,
+    setShowLost,
     regionId,
     hoveredExperienceId,
     hoveredLocationId,
@@ -89,7 +93,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   } = useVisitedLocations();
 
   // Batch-fetch all locations for all experiences in the region (single request)
-  const { locationsByExperience, locationsResolved } = useRegionLocations(regionId);
+  const { locationsByExperience, locationsResolved } = useRegionLocations(regionId, showLost);
 
   // Curator state
   const [curationTarget, setCurationTarget] = useState<Experience | null>(null);
@@ -302,12 +306,33 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     return <LoadingSpinner size={24} />;
   }
 
+  // Offered only where there is something behind it. Almost no region holds a
+  // lost object, and a permanent control for a rare state is noise; a line that
+  // appears when the region has one explains itself.
+  const lostNoticeLabel = showLost
+    ? 'Hide places that no longer exist'
+    : lostHiddenLabel(lostHidden);
+  const lostNotice = lostHidden > 0 || showLost ? (
+    <Box sx={{ px: 2, pb: 1 }}>
+      <Link
+        component="button"
+        variant="caption"
+        underline="hover"
+        onClick={() => setShowLost(!showLost)}
+        sx={{ color: 'text.secondary' }}
+      >
+        {lostNoticeLabel}
+      </Link>
+    </Box>
+  ) : null;
+
   if (activeExperiences.length === 0 && rejectedExperiences.length === 0) {
     return (
       <Box sx={{ p: 2 }}>
         <Typography variant="body2" color="text.secondary">
           No experiences found in this region.
         </Typography>
+        {lostNotice}
       </Box>
     );
   }
@@ -459,6 +484,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
           defaultTab={addDialogState.defaultTab}
         />
       )}
+      {/* Last, not first: it answers "what else was here", which is a
+          question you ask after reading what is here. */}
+      {lostNotice}
     </Box>
   );
 }

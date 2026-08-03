@@ -45,6 +45,10 @@ interface ExperienceContextType {
   // Experiences for current region
   experiences: Experience[];
   experiencesLoading: boolean;
+  /** How many the region holds that no longer exist and are not being shown. */
+  lostHidden: number;
+  showLost: boolean;
+  setShowLost: (show: boolean) => void;
   totalExperiences: number;
 
   // Current region ID (for filtering locations)
@@ -140,15 +144,33 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     latitude: number;
   } | null>(null);
 
+  // Objects that no longer exist are off by default and come back only when
+  // the reader asks. The ask belongs to the region — it answers "what else was
+  // here", a question about this place, not a standing preference — so it is
+  // stored as *which* region it was made for rather than as a flag reset by an
+  // effect. An effect runs after render, which leaves a window where the first
+  // query for the new region goes out still asking for the old one's lost
+  // rows; deriving it cannot have that window.
+  const [lostShownFor, setLostShownFor] = useState<number | null>(null);
+  const showLost = lostShownFor !== null && lostShownFor === regionId;
+  const setShowLost = useCallback(
+    (show: boolean) => setLostShownFor(show ? regionId ?? null : null),
+    [regionId],
+  );
+
   // Fetch experiences for the selected region
   const { data, isLoading } = useQuery({
-    queryKey: ['experiences', 'by-region', regionId],
-    queryFn: () => fetchExperiencesByRegion(regionId!, { includeChildren: false, limit: WHOLE_REGION_LIMIT }),
+    queryKey: ['experiences', 'by-region', regionId, showLost],
+    queryFn: () => fetchExperiencesByRegion(regionId!, {
+      includeChildren: false, limit: WHOLE_REGION_LIMIT, includeLost: showLost,
+    }),
     enabled: !!regionId,
     staleTime: 300000, // 5 minutes
   });
 
   const experiences = useMemo(() => data?.experiences || [], [data?.experiences]);
+  // Zero for almost every region; the list offers the toggle only above zero.
+  const lostHidden = data?.lostHidden ?? 0;
 
   // Preload images only when exploring - cancel on region change or exploration close
   useEffect(() => {
@@ -207,6 +229,9 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   const value = useMemo<ExperienceContextType>(() => ({
     experiences,
     experiencesLoading: isLoading,
+    lostHidden,
+    showLost,
+    setShowLost,
     totalExperiences: data?.total || 0,
     regionId,
     isExploring,
@@ -231,7 +256,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     setPreviewImageUrl,
     hoverPreview,
     setHoverPreview,
-  }), [data, isLoading, experiences, regionId, isExploring, hoveredExperienceId, hoveredLocationId, hoverSource, setHoveredFromMarker, setHoveredFromList, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, previewImageUrl, hoverPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, hoveredExperienceId, hoveredLocationId, hoverSource, setHoveredFromMarker, setHoveredFromList, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, previewImageUrl, hoverPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>

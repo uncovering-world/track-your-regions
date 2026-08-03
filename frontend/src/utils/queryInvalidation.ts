@@ -18,6 +18,12 @@ export function invalidateExperiences(
 ) {
   if (opts?.regionId) {
     queryClient.invalidateQueries({ queryKey: ['experiences', 'by-region', opts.regionId] });
+    // The location batch answers for the rows the list is showing, so anything
+    // that changes which rows those are — a rejection, a lifecycle verdict or
+    // its correction — leaves it stale. Keyed by region *and* by whether lost
+    // rows were asked for, and a prefix match reaches both entries: dropping
+    // one would leave the other to answer the next question with the old set.
+    queryClient.invalidateQueries({ queryKey: ['region-locations', opts.regionId] });
   }
   queryClient.invalidateQueries({ queryKey: ['discover-experiences'] });
   queryClient.invalidateQueries({ queryKey: ['discover-region-counts'] });

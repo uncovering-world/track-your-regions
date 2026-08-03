@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ownedHoveredLocationId } from './utils';
+import { ownedHoveredLocationId, lostHiddenLabel } from './utils';
 import { ExperienceListItem } from './ExperienceListItem';
 import type { ExperienceLocation } from '../../api/experiences';
 
@@ -36,5 +36,12 @@ describe('hover isolation in the experience list', () => {
       expect((ExperienceListItem as unknown as { $$typeof: symbol }).$$typeof)
         .toBe(Symbol.for('react.memo'));
     });
+  });
+});
+
+describe('lostHiddenLabel', () => {
+  it('uses the singular English actually wants', () => {
+    expect(lostHiddenLabel(1)).toBe('1 here no longer exists — show it');
+    expect(lostHiddenLabel(3)).toBe('3 here no longer exist — show them');
   });
 });

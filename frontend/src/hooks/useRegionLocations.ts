@@ -24,10 +24,13 @@ import {
  * aborted navigation — produces the same misleading chip unless the caller can
  * tell "no locations here" from "no answer yet".
  */
-export function useRegionLocations(regionId: number | null) {
+export function useRegionLocations(regionId: number | null, includeLost = false) {
   const { data } = useQuery({
-    queryKey: ['region-locations', regionId],
-    queryFn: () => fetchRegionExperienceLocations(regionId!, { includeChildren: false }),
+    // `includeLost` is part of the key: the two answers are different sets, and
+    // sharing a cache entry would leave a revealed row without its markers
+    // until the batch happened to be refetched.
+    queryKey: ['region-locations', regionId, includeLost],
+    queryFn: () => fetchRegionExperienceLocations(regionId!, { includeChildren: false, includeLost }),
     enabled: regionId != null,
     staleTime: 300_000, // 5 min — locations don't change often
   });

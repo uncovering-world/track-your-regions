@@ -44,12 +44,14 @@ import {
   removeExperienceFromRegion,
   fetchCurationLog,
   fetchExperience,
+  setExperienceState,
   type Experience,
   type CurationLogEntry,
 } from '../../api/experiences';
 import { formatRelativeTime } from '../../utils/dateFormat';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';
+import { verdictOf } from './LifecycleChip';
 
 interface CurationDialogProps {
   /** The experience to curate — null means dialog is closed */
@@ -167,6 +169,26 @@ export function CurationDialog({ experience, regionId, onClose }: CurationDialog
     },
   });
 
+  const lifecycleVerdict = verdictOf(experience);
+
+  const lifecycleMutation = useMutation({
+    mutationFn: () => setExperienceState(experience!.id, {
+      ...(lifecycleVerdict === 'lost' ? { existence: 'extant' as const } : { membership: 'present' as const }),
+      // The row as this dialog is showing it. The server compares it under the
+      // write lock and refuses if someone answered in between, so a stale
+      // dialog cannot undo an answer it never saw.
+      expected: {
+        membership: experience!.source_membership ?? 'present',
+        existence: experience!.existence ?? 'extant',
+        flagged: experience!.missing_since != null,
+      },
+    }),
+    onSuccess: () => {
+      invalidateCaches();
+      onClose();
+    },
+  });
+
   // Reject mutation
   const rejectMutation = useMutation({
     mutationFn: ({ experienceId, rId, reason }: { experienceId: number; rId: number; reason?: string }) =>
@@ -243,7 +265,11 @@ export function CurationDialog({ experience, regionId, onClose }: CurationDialog
     editWikipediaUrl !== currentWikipedia;
 
   const isRejected = experience.is_rejected;
-  const isPending = editMutation.isPending || rejectMutation.isPending || unrejectMutation.isPending || removeMutation.isPending;
+  // Every write from this dialog, including the lifecycle correction: they all
+  // act on the same row, and one left enabled while another is in flight is an
+  // invitation to send two verdicts about the same object.
+  const isPending = editMutation.isPending || rejectMutation.isPending
+    || unrejectMutation.isPending || removeMutation.isPending || lifecycleMutation.isPending;
 
   return (
     <Dialog
@@ -439,6 +465,39 @@ export function CurationDialog({ experience, regionId, onClose }: CurationDialog
                 )}
               </Box>
             )}
+          </>
+        )}
+
+        {/* Taking a verdict back.
+            The review queue lists only rows a run flagged, so it lets go of an
+            object the moment it is answered — and a `lost` verdict then hides
+            it from every list, the map, search and the counts. This is the one
+            surface a curator can still reach it from, and without a control
+            here a mis-click has no remedy short of SQL. */}
+        {lifecycleVerdict && (
+          <>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+              {lifecycleVerdict === 'lost' ? 'Recorded as no longer existing' : 'Recorded as delisted'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              {lifecycleVerdict === 'lost'
+                ? 'It is hidden from lists, the map and search. Visits to it still count.'
+                : 'It stays in lists and on the map, marked as no longer officially listed.'}
+            </Typography>
+            {lifecycleMutation.isError && (
+              <Alert severity="error" sx={{ mb: 1 }}>
+                Could not change it: {(lifecycleMutation.error as Error)?.message}
+              </Alert>
+            )}
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={isPending}
+              onClick={() => lifecycleMutation.mutate()}
+            >
+              {lifecycleVerdict === 'lost' ? 'It does still exist' : 'It is still listed'}
+            </Button>
           </>
         )}
 
