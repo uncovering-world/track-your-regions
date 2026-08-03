@@ -1774,8 +1774,10 @@ COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-
 --
 -- Two independent axes, because they genuinely are: the Bamiyan Buddhas were
 -- destroyed but remain listed, while Dresden Elbe Valley is intact but was
--- delisted. Axis 1 (membership) is machine-observed via missing_since but
--- curator-decided; axis 2 (existence) is curator-only. See ADR-0020.
+-- delisted. Axis 2 (existence) is the one no machine ever writes. Axis 1 the
+-- machine both observes, via missing_since, and writes in one direction: a sync
+-- that lists a 'former' row again restores 'present'. Only that direction, so
+-- an outage still cannot hide anything; 'former' itself stays curator-only. See ADR-0020.
 
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
@@ -1800,7 +1802,7 @@ BEGIN
 END $$;
 
 COMMENT ON COLUMN experiences.missing_since IS 'When a clean run of an authoritative source first failed to list this object. A machine observation, not a verdict.';
-COMMENT ON COLUMN experiences.source_membership IS 'present or former. Only a curator sets former: a source outage must never change what users see.';
+COMMENT ON COLUMN experiences.source_membership IS 'present or former. Only a curator sets former: a source outage must never change what users see. A sync that lists the row again sets it back to present, which only ever restores visibility.';
 COMMENT ON COLUMN experiences.existence IS 'extant or lost. Whether the object still physically exists — independent of whether the source lists it.';
 
 CREATE INDEX IF NOT EXISTS idx_experiences_missing ON experiences(category_id) WHERE missing_since IS NOT NULL;

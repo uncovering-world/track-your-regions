@@ -259,4 +259,48 @@ describe('upsertExperienceRecord', () => {
 
     expect(result.returnedFromMissing).toBe(false);
   });
+
+  it('lets a preview see the return it is previewing', async () => {
+    // A dry run answers from its own SELECT, so a column it reads but never
+    // asks for comes back undefined — and here that column decides the one
+    // case this behaviour exists for
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, curated_fields: [], missing_since: null, source_membership: 'former', name: PARAMS.name }],
+    });
+
+    const result = await upsertExperienceRecord(PARAMS, { dryRun: true });
+
+    expect(String(mockedQuery.mock.calls[0][0])).toContain('source_membership');
+    expect(result.returnedFromMissing).toBe(true);
+  });
+
+  it('reports a return for a row a curator had already called former', async () => {
+    // The verdict is what cleared `missing_since`, so the flag alone would
+    // miss the one event that contradicts it — and nothing else would say so
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({ old_missing_since: null, old_source_membership: 'former' })],
+    });
+
+    const result = await upsertExperienceRecord(PARAMS, { syncLogId: 9 });
+
+    expect(result.returnedFromMissing).toBe(true);
+  });
+
+  it('puts a former row back to present, since the source now lists it', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({ old_missing_since: null, old_source_membership: 'former' })],
+    });
+
+    const result = await upsertExperienceRecord(PARAMS, { syncLogId: 9 });
+
+    expect(result.returnedFromMissing).toBe(true);
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).toContain("source_membership = 'present'");
+    // Existence is deliberately untouched: a listing says nothing about
+    // whether the thing still stands. Asserting the absence of one particular
+    // assignment would pass on any other — reject the column outright.
+    // Split rather than matched: `\s*` beside `\n` is a backtracking hazard
+    // the linter rejects, and the assignment list is one clause per line anyway
+    expect(sql.split('\n').some(line => /^\s*existence =/.test(line))).toBe(false);
+  });
 });

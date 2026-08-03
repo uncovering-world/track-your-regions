@@ -33,7 +33,11 @@ export interface UpsertOutcome {
   experienceId: number;
   changeSet: ChangeSetResult;
   nameSnapshot: string;
-  /** The row carried `missing_since` and the source has produced it again. */
+  /**
+   * The source has produced a row it had stopped offering — either one still
+   * carrying `missing_since`, or one a curator had already called `former`,
+   * whose verdict is what cleared the flag.
+   */
   returnedFromMissing: boolean;
 }
 
@@ -86,7 +90,7 @@ function snapshotFromParams(params: ExperienceUpsertParams): ExperienceSnapshot 
  */
 async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutcome> {
   const result = await pool.query(
-    `SELECT id, curated_fields, missing_since, ${SNAPSHOT_COLUMNS.join(', ')},
+    `SELECT id, curated_fields, missing_since, source_membership, ${SNAPSHOT_COLUMNS.join(', ')},
             ST_X(location) AS lon, ST_Y(location) AS lat
      FROM experiences
      WHERE category_id = $1 AND external_id = $2`,
@@ -115,7 +119,7 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
     // new name. Reading the stored name unconditionally would make a preview
     // label a renamed row differently from the run it stands in for.
     nameSnapshot: curatedFields.includes('name') ? (row.name as string) : params.name,
-    returnedFromMissing: row.missing_since !== null,
+    returnedFromMissing: row.missing_since !== null || row.source_membership === 'former',
   };
 }
 
@@ -135,7 +139,7 @@ export async function upsertExperienceRecord(
 
   const result = await pool.query(
     `WITH before AS (
-      SELECT id, curated_fields, missing_since, ${SNAPSHOT_COLUMNS.join(', ')},
+      SELECT id, curated_fields, missing_since, source_membership, ${SNAPSHOT_COLUMNS.join(', ')},
              ST_X(location) AS lon, ST_Y(location) AS lat
       FROM experiences
       WHERE category_id = $1 AND external_id = $2
@@ -164,6 +168,14 @@ export async function upsertExperienceRecord(
         last_seen_sync_log_id = COALESCE(EXCLUDED.last_seen_sync_log_id, experiences.last_seen_sync_log_id),
         last_seen_at = NOW(),
         missing_since = NULL,
+        -- The source listing a row is evidence about membership, exactly as
+        -- its absence was. A curator's 'former' was a claim about the source's
+        -- collection, and the source has just contradicted it; leaving it
+        -- would mark as delisted an object the source currently offers, with
+        -- nothing anywhere to say so. Existence is untouched: a listing says
+        -- nothing about whether the thing still stands. Only ever toward more
+        -- visibility, so a source outage still cannot hide anything (ADR-0020).
+        source_membership = 'present',
         updated_at = NOW()
       RETURNING id, (xmax = 0) AS inserted, curated_fields, ${SNAPSHOT_COLUMNS.join(', ')},
                 ST_X(location) AS lon, ST_Y(location) AS lat
@@ -171,7 +183,8 @@ export async function upsertExperienceRecord(
     SELECT ins.*,
            ${SNAPSHOT_COLUMNS.map(column => `before.${column} AS old_${column}`).join(', ')},
            before.lon AS old_lon, before.lat AS old_lat,
-           before.missing_since AS old_missing_since
+           before.missing_since AS old_missing_since,
+           before.source_membership AS old_source_membership
     FROM ins LEFT JOIN before ON before.id = ins.id`,
     [
       params.categoryId,
@@ -201,7 +214,10 @@ export async function upsertExperienceRecord(
     // RETURNING carries the name after the curated_fields guards, so a
     // protected name labels the changeset row with what is actually stored.
     nameSnapshot: (row.name as string) ?? params.name,
-    returnedFromMissing: row.old_missing_since != null,
+    // A curator's verdict takes the row out of `missing_since`, so the flag
+    // alone would miss the return of an object someone had already called
+    // former — which is the only reason it stopped being flagged.
+    returnedFromMissing: row.old_missing_since != null || row.old_source_membership === 'former',
   };
 }
 
