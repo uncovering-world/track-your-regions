@@ -37,6 +37,14 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`011-curation-lifecycle-actions.sql` widens the curation log's action check to
+admit the five verdicts a curator can now record — `marked_former`,
+`marked_lost`, `state_restored`, `missing_dismissed`, `accepted_source`. Widening a CHECK cannot fail
+on rows already there, so unlike the ordering rule above it may run before or
+after the next re-application of `01-schema.sql`; it exists because
+`CREATE TABLE IF NOT EXISTS` leaves the old constraint alone on a database that
+already holds the table.
+
 `010-sync-filtered-entities.sql` separates filtering from failing: the museum
 query answers with collections as well as museums, and dropping the ones with no
 address is the filter working rather than the run breaking. It adds a counter and
