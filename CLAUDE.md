@@ -80,7 +80,7 @@ UNESCO/landmarks: download locally to `/data/images`. Museums/artworks: remote W
 Reusable UI components live in `frontend/src/components/shared/`, shared utilities in `frontend/src/utils/`. Always check these before writing inline equivalents. See `docs/tech/shared-frontend-patterns.md` for the full inventory with usage guidance.
 
 ### Curation System
-- **Shared dialogs**: `CurationDialog` (edit + reject/unreject) and `AddExperienceDialog` (search+assign / create new) in `frontend/src/components/shared/`
+- **Shared dialogs**: `CurationDialog` (edit, reject/unreject, and take a lifecycle verdict back) and `AddExperienceDialog` (search+assign / create new) in `frontend/src/components/shared/`
 - Used from both Map mode (`ExperienceList.tsx`) and Discover mode (`DiscoverExperienceView.tsx`, `DiscoverPage.tsx`)
 - Rejection filtering: `getExperiencesByRegion` excludes rejected items (descendant-aware for `includeChildren`), `getExperienceRegionCounts` excludes from tree counts
 - `requireCurator` middleware checks role; admins have implicit curator powers
