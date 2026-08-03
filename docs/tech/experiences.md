@@ -68,7 +68,7 @@ Generic `getSyncStatus(categoryId)` and `cancelSync(categoryId)` replace per-ser
 
 ### Shared modules
 
-Common sync logic lives in seven shared utility files:
+Common sync logic lives in eight shared utility files:
 
 - **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by category ID.
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
@@ -76,6 +76,7 @@ Common sync logic lives in seven shared utility files:
 - **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence
 - **`changeRecorder.ts`** — Batched persistence of the per-object changeset (`recordSyncChanges()`, 500 rows per statement)
 - **`missingDetection.ts`** — Whether absence may be acted on (`missingDetectionSkipReason()`) and the flagging itself (`flagMissingExperiences()`)
+- **`syncLogMarkers.ts`** — The entries a run leaves in `error_details` that other code reads as facts (`CHANGESET_LOST_MARKER`, `ORPHANED_RUN_MARKER`) and the predicate that reads them (`CHANGESET_LANDED_SQL`). Written by the orchestrator and the startup sweep, read by the review queue and `accept-source` — one definition, because a run's status cannot answer whether its changeset landed
 - **`fixtureSource.ts`** — Development-only source substitution via `SYNC_SOURCE_FIXTURE`; see § Change provenance below
 
 ### Change provenance (issue #480, [ADR-0020](../decisions/0020-experience-lifecycle-and-run-changeset.md))
@@ -99,13 +100,38 @@ without it the proposed value exists nowhere.
 changed, and `total_unchanged` absorbs the rest. Logs 1–4 are therefore not comparable with
 later ones.
 
-**Two lifecycle axes** on `experiences`, both curator-set:
+**Two lifecycle axes** on `experiences`. `existence` is curator-only. So is `former` — a
+source outage must never change what users see — but `present` can also be restored by the
+source itself, which is the one thing the machine may write here and is spelled out below:
 
 - `source_membership` — `present` / `former`: whether the source still lists the object
 - `existence` — `extant` / `lost`: whether the object physically survives
 
 They are independent because reality is: the Bamiyan Buddhas were destroyed but remain
-inscribed; Dresden Elbe Valley is intact but was delisted in 2009. Rows a curator created by
+inscribed; Dresden Elbe Valley is intact but was delisted in 2009.
+
+`former` is a claim about the source's collection, so the source can contradict it: when a
+run produces a row that is `former`, the upsert puts `source_membership` back to `present`
+and the changeset records `returned`. That is the same evidence that justified `former` in
+the first place, read the other way, and it only ever moves toward more visibility — a source
+outage still cannot hide anything, which is what ADR-0020 reserves `former` to a curator for.
+`existence` is untouched by that correction: being listed says nothing about whether the
+thing still stands. One consequence to read carefully: `state_decided_by`, `state_decided_at` and `state_note`
+record the last decision a curator made, not necessarily the state now stored. After the
+source takes back a `former`, those fields still name whoever recorded it. They are not
+cleared, because they cover both axes at once and an `existence` verdict may still stand —
+`experience_curation_log` is where the sequence is, and the changeset row marks the
+correction. This narrows ADR-0020 in two places, and
+[ADR-0021](../decisions/0021-source-may-restore-membership.md) records it. Decision 1 defines
+`returned` as "an object previously flagged `missing_since` is listed again", and a curator's
+verdict is exactly what takes a row out of that description, so the trigger is now broader
+than the sentence stating it. Decision 2 said of the two axes that "both are set by curators
+only. The machine records `missing_since` and nothing more", which the upsert no longer
+honours. The reason that sentence existed still holds and is what makes the correction safe:
+it was there so a source outage could not hide anything, and a write that only ever restores
+visibility cannot. Without it a curator's correct `former` would become permanent the moment
+the source recovered, with nothing anywhere to say so — the row leaves `missing_since`, so
+neither detection nor the queue nor a `returned` row would ever raise it again. Rows a curator created by
 hand (`is_manual`) are outside all of this — their `curator-<id>-<ts>` key was never in a
 source listing, so they are excluded from detection and from its coverage denominator.
 Absence is judged against the external ids the run actually saw, not against
@@ -252,6 +278,9 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 | DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute |
 | PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `category`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`). The last two are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge |
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) |
+| GET | `/api/experiences/review/queue` | What a run could not decide: missing objects awaiting a verdict, and fields where the source and a curator disagree. Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
+| POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
+| POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted |
 
 ### Geocoding (public + admin)
 
@@ -301,6 +330,180 @@ Short description, description, tags, and the website and Wikipedia URLs are
 not on this list: the first three are `TEXT`/`JSONB` columns and the last two
 live inside the `metadata` JSONB, so none of them has a width to align with.
 `backend/src/types/columnBounds.test.ts` holds every entry above to its column.
+
+## Review Queue
+
+`GET /api/experiences/review/queue` is the other half of change provenance: the run
+records what it could not decide, and this is where a curator decides it. Two kinds of
+question, kept apart because they are answered differently.
+
+**Missing objects** — rows the machine flagged `missing_since` and nobody has judged yet
+(`source_membership = 'present'`). Three answers, and only two of them change anything:
+*former* (the source delisted it, it is still there), *lost* (it no longer exists), or a
+false alarm. All three clear `missing_since`, including the false alarm — leaving it set
+would put the object back in the queue after every run, which is how a queue stops being
+read. Clearing the flag is necessary but not sufficient for *lost*: the source will go on
+not listing the object, so detection would stamp it again on the next clean run and the only
+exit would be answering a different question. Detection therefore skips `existence = 'lost'`
+rows — a judged object is not asked about again — and drops them from the coverage ratio on
+both sides, since a row that can never be seen would otherwise drag the category toward the
+90 % floor that switches detection off. That the two axes stay independent is the point: a
+*lost* verdict says nothing about whether the source still lists it, and coupling them would
+undo what ADR-0020 separated. The two axes are set independently, so a call may carry either or both, and each one
+decided writes its own `experience_curation_log` row: `marked_former`, `marked_lost`,
+`state_restored` for an axis moving back, and `missing_dismissed` for the verdict that
+moves nothing — calling *that* a restoration would record one that restored nothing.
+**Every call must say what the curator was looking at.** `expected` carries the two axes and
+the flag as the card rendered them, and the handler compares all three with the locked row
+before deciding anything; a mismatch is 409. Nothing else can tell a card drawn before the
+question was answered from a deliberate correction, and the difference matters most where it
+is least visible: "false alarm" over a recorded `former` is a real transition, so no check on
+the verdict alone catches it — it would undo an answer its author never saw and leave the row
+in exactly the shape `flagMissingExperiences` re-stamps, reopening the entry they had closed.
+
+The flag belongs in that comparison rather than beside it. A run that finds the object again
+clears `missing_since` and touches neither axis (`syncUtils.ts`), so a queue card still
+matches on both while the question it asks has been withdrawn — and answering `former` there
+records as delisted an object the source currently lists, which drops it out of all three
+detection predicates and leaves the correction path as the only way back.
+
+Comparing state rather than refusing every decided row is what keeps a verdict correctable.
+Refusing them wholesale would make `former` and `lost` terminal: `missing_since = NOW()` has
+one writer, and its predicate wants `present` and `existence <> 'lost'`, so detection
+re-flags neither. One mis-click would remove an object from the product with no remedy short
+of SQL — and `state_restored` would be an action nothing could emit, with the schema, the
+migration and this document all claiming otherwise.
+
+A call that moves nothing, on the state the curator saw, is the false alarm — the one verdict
+with no transition to name, which is what makes `missing_dismissed` unambiguous. If the flag
+is already cleared it is instead a second answer to a closed question, and 409s: taking it
+would write a duplicate row and move `state_decided_by` to whoever clicked last.
+
+The page refetches on a refusal as well as on success, so a card someone else answered goes
+away instead of repeating the refusal on every click. Reaching a *decided* row needs a view
+the queue does not provide — it lists open questions only — so correcting a verdict is an
+API affordance today and gets its entry point with the user-facing half of this work.
+Migration 011 widened the action CHECK to admit all four. A decision is one transaction over
+a `pool.connect()` client — `pool.query('BEGIN')` does not pin a connection, so the UPDATE
+and its log rows could otherwise land on different ones — and it re-reads both axes under
+`FOR UPDATE` first. Every verdict writes both columns, the axis the curator did not decide
+defaulting to what is already stored, so reading that from outside the transaction would let
+one curator's verdict silently revert another's. Two curators on one item is the ordinary
+case: every region-scoped curator covering any of its regions sees it, as do its category
+curator and every admin.
+
+**Conflicts** — fields where `curated_fields` refused the source's value and the two now
+disagree. The queue reads them out of `changed_fields` (`curatedConflict: true`) on the
+latest **non-dry** run, because a preview proposes values that were never applied and never
+will be. Accepting the source writes the proposed value **and removes the field from
+`curated_fields`**: leaving the claim in place would make the next run refuse the very value
+the curator just accepted, and the conflict would reappear. The request names the run it was drawn
+from (`expectedSyncLogId`), and a newer proposal is 409 rather than silently substituted:
+the handler re-resolves the newest proposal at click time, so without it a run landing
+between render and click would replace the curator's edit with a value they never saw — the
+same exposure `expected` closes on the verdict path. The response names `fromSyncLogId` back,
+along with `applied` and `released`, and the page states both: the refetch takes the card
+away, so nothing else could say which half landed or where it came from.
+
+That released claim is one of two things that take the item out of the queue. The changeset
+row is a record of what a run did and is never rewritten, so the query asks a second question
+of every proposed field — is the curator still claiming it? — and drops the row when nothing
+is left.
+
+The other is the source withdrawing the proposal. A run that finds the source agreeing again
+writes **no changeset row at all** (`worthRecording` in `syncOrchestrator.ts`), so a missing
+newer conflict is not evidence that the old one stands. What such a run does leave is
+`last_seen_sync_log_id`, and a value newer than the conflict's run means a later run saw the
+object and had nothing to propose — **once that run has finished**. `last_seen` is stamped
+per item inside the loop while the changeset is written in one batch after it, so mid-run the
+newer value exists and the rows it would be read against do not; without the completion check
+every conflict in a category would vanish for the length of the run, and a curator clicking a
+card fetched beforehand would be told there is no proposal on record. The batch lands before
+the log is closed, which is what makes a completed log the point to read from — but not on
+its own. Two paths close a log that recorded nothing: a failed changeset insert is caught
+deliberately so a run cannot stick at `running`, and a crashed process is closed by the
+startup sweep. Both are excluded, or the inference would silence a standing disagreement for
+a whole sync cycle instead of the length of one run.
+
+Status cannot make that distinction — a run that throws after the item loop records its
+changes and *then* marks itself `failed`, so keying on `failed` would suppress the inference
+for a run whose changeset is entirely on record. What separates them is the marker each path
+leaves in `error_details`, and both the marker and the predicate that reads it live in
+`syncLogMarkers.ts`, written by the startup sweep and the orchestrator and read by the queue
+and `accept-source` — one definition rather than four copies of a string. Both the queue and `accept-source` carry that check, or
+the endpoint would refuse a *newer* proposal while writing a *retracted* one — a value
+nothing currently proposes, and an item whose only exit would be giving up a claim the
+curator has no reason to give up.
+It follows that keeping the edit needs no call and leaves the item in place: refusing *is*
+the current state, and the run will go on proposing until someone accepts.
+
+Answering that question needs a translation, because the two vocabularies differ:
+`changed_fields` says `shortDescription` where `curated_fields` holds `short_description`,
+and both `metadata.inDanger` and `metadata.dateInscribed` are claimed as plain `metadata`.
+`CURATED_KEY_BY_FIELD` in `changeSet.ts` — the map the upsert itself honours — is passed in
+as a parameter rather than restated. A `curated_fields` entry is **not** reliably a column
+name: `editExperience` claims `metadata.website` and `metadata.wikipediaUrl` per key, which
+no column matches, so the query falls back to the field's own name for keys the map does not
+carry. (Those two keys are also a pre-existing hole in metadata protection — the upsert
+guards metadata with `curated_fields ? 'metadata'`, which neither of them satisfies. Out of
+scope here, but it is why the invariant cannot be assumed.)
+
+Accepting is always a claim release; whether the value is *also* written on the spot is what
+`ACCEPTABLE_FIELDS` (`lifecycleController.ts`) decides — `name`, `shortDescription`,
+`description`, `category`, `imageUrl`. Their **claim keys** are `name`, `short_description`,
+`description`, `category`, `image_url`, and each of those is a real column, which is what
+lets `CURATED_KEY_BY_FIELD` answer both questions for them: the field name itself is
+camelCase and matches no column, so the map is doing work in every case, not only for the
+exceptions. (`category` is the varchar subtype — `cultural`, `monument` — not the
+`category_id` foreign key, which no source proposes and this endpoint never touches.) `location` and the country arrays need
+more than an assignment, and `metadata` is claimed per key, so writing it wholesale would
+discard the keys the curator did not touch. Those fields come back marked
+`acceptable: false`, and accepting them releases the claim without writing: the **next run**
+then applies the source's value through the ordinary upsert, and the response reports them
+under `released` rather than `applied`.
+
+That is the only way such an item leaves the queue, and it is why the endpoint does the
+release rather than pointing the curator at the edit dialog. `applyProposedFields` is the
+only code anywhere that removes a key from `curated_fields` — `editExperience` unions into
+it (`curationController.ts:383`) and never subtracts — so a curator told to "settle it by
+editing" would find the card exactly where it was, forever. Nor could they: the edit dialog
+does not offer location at all.
+
+The accept path reads `curated_fields` **inside** the transaction that rewrites it, under
+`FOR UPDATE`. The whole column is rewritten, not one element of it, so a value read before
+the lock would discard whatever a concurrent edit or a second curator claimed in between.
+`editExperience` now reads it the same way, for the mirror image of the same reason: it
+unions into the column, and a claim released by an accept between its old unlocked read and
+its write would have been put straight back — resurrecting a claim over the value the
+curator had just accepted.
+The lock is also what makes "is this field still claimed?" a decision rather than a guess: a
+field released while the request was in flight is no longer an open conflict, and writing it
+would overwrite an answer someone already gave. That case is a 409, as is a field the source
+never proposed — never a 200 reporting that nothing happened.
+
+All three write paths — the two here and `editExperience` — read what they modify under the
+lock that writes it, and all three roll back through `rollbackQuietly` (`db/index.ts`),
+which swallows a failing ROLLBACK: a rollback on an already-broken
+connection rejects in its own right, and an unguarded `await` in a `catch` would throw that
+instead of the error the caller needs to see. It returns that failure rather than dropping
+it, and each caller hands it to `client.release()` — `pg-pool` keeps a released client
+unless the argument is truthy or its connection has already gone unqueryable, so a client
+whose ROLLBACK failed while the socket still works would otherwise rejoin the idle pool
+carrying an open transaction. The other curation handlers still roll back
+unguarded — pre-existing, and not touched here.
+
+`editExperience` re-reads under its lock everything the transaction depends on, not only
+`curated_fields`: the `old` values in the audit row come from the locked snapshot too, since
+values read before the lock can name a version that was already gone when the edit landed.
+
+The queue pages (`limit` default 25). The page labels a full first page "first N" rather than
+printing its length as a total, and carries Previous / Show more so the items behind it are
+reachable — otherwise the label would name a backlog the curator could only reach by
+answering everything in front of it.
+
+The page lives at `/review` (`frontend/src/components/curation/ReviewQueue.tsx`), reachable
+from the header for curators. That gate is convenience: every action it offers is checked
+server-side against the caller's scope.
 
 ## Curation Guarantees
 
