@@ -8,6 +8,7 @@
 
 import { createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
 import { recordSyncChanges, type ChangeRecord } from './changeRecorder.js';
+import { CHANGESET_LOST_MARKER } from './syncLogMarkers.js';
 import {
   missingDetectionSkipReason,
   flagMissingExperiences,
@@ -332,7 +333,7 @@ async function recordSyncFailure<T>(
       // Same marker the success path leaves: the run card reads it to tell a
       // lost record apart from a run that predates the changeset entirely.
       const msg = recordErr instanceof Error ? recordErr.message : String(recordErr);
-      errorDetails.push({ externalId: 'changeset', error: `Failed to record changeset: ${msg}` });
+      errorDetails.push({ ...CHANGESET_LOST_MARKER, error: `Failed to record changeset: ${msg}` });
       console.error('%s Failed to record changeset:', config.logPrefix, msg);
     }
     await updateSyncLog(config.categoryId, progress.logId, progress.status, {
@@ -434,7 +435,7 @@ export async function orchestrateSync<T>(
       changesRecorded = true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      errorDetails.push({ externalId: 'changeset', error: `Failed to record changeset: ${msg}` });
+      errorDetails.push({ ...CHANGESET_LOST_MARKER, error: `Failed to record changeset: ${msg}` });
       progress.errors++;
       console.error('%s Failed to record changeset:', logPrefix, msg);
     }

@@ -326,6 +326,49 @@ export const startSyncBodySchema = z.object({
   dryRun: z.boolean().optional(),
 });
 
+export const reviewQueueQuerySchema = z.object({
+  // Bounded to int4: `experience_categories.id` is SERIAL, and a larger value
+  // would reach Postgres and error there rather than answering 400 here.
+  categoryId: z.coerce.number().int().positive().max(2147483647).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export const experienceStateBodySchema = z.object({
+  membership: z.enum(['present', 'former']).optional(),
+  existence: z.enum(['extant', 'lost']).optional(),
+  note: z.string().max(1000).optional(),
+  /**
+   * The row as the curator was looking at it: both axes and whether it was
+   * flagged. Required, and compared under the write lock — it is the only
+   * thing that distinguishes a card drawn before the question was answered
+   * from a deliberate correction made with the current state in view.
+   *
+   * `flagged` is not redundant with the axes. A run that finds the object
+   * again clears `missing_since` and touches neither axis, so a queue card
+   * still matches on both while the question it was asking has been withdrawn
+   * — and answering "former" then records as delisted an object the source
+   * currently lists.
+   */
+  expected: z.object({
+    membership: z.enum(['present', 'former']),
+    existence: z.enum(['extant', 'lost']),
+    flagged: z.boolean(),
+  }),
+}).refine(b => b.membership !== undefined || b.existence !== undefined, {
+  message: 'Pass membership, existence, or both',
+});
+
+export const acceptSourceBodySchema = z.object({
+  fields: z.array(z.string().min(1)).min(1).max(20),
+  /**
+   * The run whose proposal the caller was looking at. Required: the handler
+   * re-resolves the newest proposal at click time, so without this a run
+   * landing in between would substitute values the curator never saw.
+   */
+  expectedSyncLogId: z.number().int().positive().max(2147483647),
+});
+
 export const syncChangesQuerySchema = z.object({
   type: z.enum(['created', 'updated', 'conflict', 'missing', 'returned', 'failed', 'filtered']).optional(),
   significance: z.enum(['major', 'minor']).optional(),
