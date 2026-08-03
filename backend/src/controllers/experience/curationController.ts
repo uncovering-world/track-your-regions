@@ -11,6 +11,7 @@ import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import type { UserRole } from '../../types/auth.js';
+import { resolveExperienceScope } from './experienceScope.js';
 import {
   checkCuratorScope,
   CURATOR_SCOPED_REGIONS_CTE,
@@ -418,51 +419,6 @@ function buildEditAuditDetails(
 }
 
 /**
- * Resolve whether a caller may edit this experience, and which region the
- * `edited` audit row should name.
- *
- * An edit changes the experience itself, not its place in one region, so the
- * grant is "any region the experience sits in falls within the caller's
- * scope" — not "the first row Postgres happened to return does" (#450).
- * `CURATOR_SCOPED_REGIONS_CTE` answers that in one query, by intersecting the
- * experience's assignments with the caller's closure.
- *
- * The region it hands back is the audit row's, and deliberately not just some
- * region the experience sits in. `unrestricted` callers — admins, global
- * curators, curators of the experience's category — get `null`: no single
- * region is where their authority came from, and since #442 the log is
- * filtered per row, so naming one arbitrarily would hide the edit from every
- * curator except whoever happens to cover that region. A row naming no region
- * stays visible to all of them. A region-scoped curator gets the lowest-id
- * region of the experience their scope covers — every candidate is a region
- * they genuinely cover, so a fixed choice among them is truthful and keeps the
- * row reproducible.
- */
-async function resolveEditScope(
-  userId: number,
-  userRole: UserRole,
-  experienceId: number,
-  categoryId: number,
-): Promise<{ permitted: boolean; logRegionId: number | null }> {
-  if (userRole === 'admin') return { permitted: true, logRegionId: null };
-
-  const result = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT
-      ${CURATOR_UNRESTRICTED_SCOPE_EXISTS} AS unrestricted,
-      (
-        SELECT MIN(er.region_id)
-        FROM experience_regions er
-        JOIN curator_scoped_regions s ON s.id = er.region_id
-        WHERE er.experience_id = $2
-      ) AS scoped_region_id
-  `, [userId, experienceId, categoryId]);
-
-  const row = result.rows[0] as { unrestricted: boolean; scoped_region_id: number | null };
-  if (row.unrestricted === true) return { permitted: true, logRegionId: null };
-  return { permitted: row.scoped_region_id !== null, logRegionId: row.scoped_region_id };
-}
-
-/**
  * Edit an experience's fields
  * PATCH /api/experiences/:id/edit
  * Body: { name?, shortDescription?, description?, category?, imageUrl?, tags? }
@@ -494,7 +450,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
   }
   const existing = expResult.rows[0];
 
-  const { permitted, logRegionId } = await resolveEditScope(
+  const { permitted, logRegionId } = await resolveExperienceScope(
     userId,
     userRole,
     experienceId,
