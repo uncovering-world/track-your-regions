@@ -173,9 +173,9 @@ Supplementary import methods: smart manual input (tap regions on a map), Google 
 
 ## Curation
 
-Curators are the quality layer — local experts or subject-matter specialists who keep content accurate and relevant. They can reject bad assignments, edit metadata, add missing treasures, create new experiences, and remove permanently wrong entries.
+Curators are the quality layer — local experts or subject-matter specialists who keep content accurate and relevant. They can reject bad assignments, edit metadata, add missing treasures, create new experiences, and remove permanently wrong entries. They also answer what a sync run could not decide for itself: whether an object the source stopped listing was delisted, destroyed, or never gone, and which version wins where the source disagrees with a curator's edit.
 
-The system trusts curators: no approval queue, no drafts. Actions are logged for accountability, and curator edits are protected from being overwritten by automated syncs. Curation is scoped — a curator might be responsible for a specific region, a specific category, or have global access.
+The system trusts curators: nobody approves their work and there are no drafts. The review page runs the other way round — the machine asking a curator, not a curator waiting on anyone. Actions are logged for accountability, and curator edits are protected from being overwritten by automated syncs. Curation is scoped — a curator might be responsible for a specific region, a specific category, or have global access.
 
 See [`curator-system.md`](../tech/planning/curator-system.md) for what's implemented and remaining improvements.
 
