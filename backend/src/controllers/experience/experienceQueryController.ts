@@ -7,6 +7,7 @@
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 import { hideLostSql, lifecycleSelectSql, includeLost } from './experienceLifecycle.js';
+import { buildRegionQueries } from './experienceRegionQuery.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 interface ListExperiencesFilters {
@@ -210,127 +211,9 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
     ? await import('../../middleware/auth.js').then(m => m.checkCuratorScope(userId, userRole, regionId))
     : false;
 
-  // Rejection fields: include for curators, filter for others
-  // For includeChildren, check rejections against all descendant regions (not just $1)
-  const simpleRejectionJoin = `LEFT JOIN experience_rejections rej ON rej.experience_id = e.id AND rej.region_id = $1`;
-  const descendantRejectionJoin = `LEFT JOIN experience_rejections rej ON rej.experience_id = e.id AND rej.region_id IN (SELECT id FROM descendant_regions)`;
-  const rejectionFilter = showRejected ? '' : ' AND rej.id IS NULL';
-  // `former` is deliberately absent here: it stays in the list, and the card
-  // labels it from the columns selected above.
-  const lifecycleFilter = includeLost(req.query) ? '' : ` AND ${hideLostSql()}`;
-  // The same rule as an expression, for the count: one aggregate answers how
-  // many the list is showing and another how many it is holding back, so the
-  // page can offer the toggle only where there is something behind it.
-  const lifecyclePredicate = includeLost(req.query) ? 'TRUE' : hideLostSql();
-
-  let query: string;
-  let countQuery: string;
-  let params: (number | string)[];
-
-  if (includeChildren) {
-    const rejectionSelect = showRejected
-      ? `, bool_or(rej.id IS NOT NULL) as is_rejected, MAX(rej.reason) as rejection_reason`
-      : '';
-    query = `
-      WITH RECURSIVE descendant_regions AS (
-        SELECT id FROM regions WHERE id = $1
-        UNION ALL
-        SELECT r.id FROM regions r
-        JOIN descendant_regions dr ON r.parent_region_id = dr.id
-      )
-      SELECT
-        e.id,
-        e.external_id,
-        e.name,
-        e.short_description,
-        e.category,
-        e.country_codes,
-        e.country_names,
-        e.image_url,
-        e.created_at,
-        ST_X(e.location) as longitude,
-        ST_Y(e.location) as latitude,
-        e.metadata->>'inDanger' as in_danger,
-        (SELECT COUNT(*)::int FROM experience_locations el WHERE el.experience_id = e.id) as location_count,
-        s.name as category_name,
-        s.display_priority as category_priority,
-        ${lifecycleSelectSql()}
-        ${rejectionSelect}
-      FROM experiences e
-      JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_categories s ON e.category_id = s.id
-      ${descendantRejectionJoin}
-      WHERE er.region_id IN (SELECT id FROM descendant_regions)
-      ${rejectionFilter}
-      ${lifecycleFilter}
-      GROUP BY e.id, s.name, s.display_priority
-      ORDER BY e.name
-      LIMIT $2 OFFSET $3
-    `;
-    countQuery = `
-      WITH RECURSIVE descendant_regions AS (
-        SELECT id FROM regions WHERE id = $1
-        UNION ALL
-        SELECT r.id FROM regions r
-        JOIN descendant_regions dr ON r.parent_region_id = dr.id
-      )
-      SELECT
-        COUNT(DISTINCT e.id) FILTER (WHERE ${lifecyclePredicate})::int AS total,
-        COUNT(DISTINCT e.id) FILTER (WHERE e.existence = 'lost')::int AS lost_hidden
-      FROM experiences e
-      JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_categories s ON e.category_id = s.id
-      ${descendantRejectionJoin}
-      WHERE er.region_id IN (SELECT id FROM descendant_regions)
-      ${rejectionFilter}
-    `;
-    params = [regionId, limit, offset];
-  } else {
-    const rejectionSelect = showRejected
-      ? `, rej.id IS NOT NULL as is_rejected, rej.reason as rejection_reason`
-      : '';
-    query = `
-      SELECT
-        e.id,
-        e.external_id,
-        e.name,
-        e.short_description,
-        e.category,
-        e.country_codes,
-        e.country_names,
-        e.image_url,
-        e.created_at,
-        ST_X(e.location) as longitude,
-        ST_Y(e.location) as latitude,
-        e.metadata->>'inDanger' as in_danger,
-        (SELECT COUNT(*)::int FROM experience_locations el WHERE el.experience_id = e.id) as location_count,
-        s.name as category_name,
-        s.display_priority as category_priority,
-        ${lifecycleSelectSql()}
-        ${rejectionSelect}
-      FROM experiences e
-      JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_categories s ON e.category_id = s.id
-      ${simpleRejectionJoin}
-      WHERE er.region_id = $1
-      ${rejectionFilter}
-      ${lifecycleFilter}
-      ORDER BY e.name
-      LIMIT $2 OFFSET $3
-    `;
-    countQuery = `
-      SELECT
-        COUNT(DISTINCT e.id) FILTER (WHERE ${lifecyclePredicate})::int AS total,
-        COUNT(DISTINCT e.id) FILTER (WHERE e.existence = 'lost')::int AS lost_hidden
-      FROM experiences e
-      JOIN experience_regions er ON e.id = er.experience_id
-      JOIN experience_categories s ON e.category_id = s.id
-      ${simpleRejectionJoin}
-      WHERE er.region_id = $1
-      ${rejectionFilter}
-    `;
-    params = [regionId, limit, offset];
-  }
+  const { query, countQuery, params } = buildRegionQueries({
+    regionId, includeChildren, showRejected, includeLostRows: includeLost(req.query), limit, offset, userId,
+  });
 
   const result = await pool.query(query, params);
   // Counted rather than measured. `total` used to be `result.rows.length` — the

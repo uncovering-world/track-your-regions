@@ -27,10 +27,11 @@ import {
   getReviewQueue,
   setExperienceState,
   acceptSourceValue,
+  markNewBadgesSeen,
 } from '../controllers/experience/index.js';
 import { requireAuth, requireCurator, optionalAuth } from '../middleware/auth.js';
 import { requireVisibleWorldView } from '../middleware/worldViewVisibility.js';
-import { publicReadLimiter, searchLimiter } from '../middleware/rateLimiter.js';
+import { publicReadLimiter, searchLimiter, authenticatedLimiter } from '../middleware/rateLimiter.js';
 import { validate } from '../middleware/errorHandler.js';
 import {
   experienceSearchQuerySchema,
@@ -41,6 +42,7 @@ import {
   regionLocationsQuerySchema,
   idParamSchema,
   reviewQueueQuerySchema,
+  newBadgesSeenBodySchema,
   experienceStateBodySchema,
   acceptSourceBodySchema,
   regionIdParamSchema,
@@ -99,6 +101,18 @@ router.patch('/:id/edit', validate(idParamSchema, 'params'), requireAuth, requir
 
 // Get curation log for an experience
 router.get('/:id/curation-log', validate(idParamSchema, 'params'), requireAuth, requireCurator, getCurationLog);
+
+// Records that the reader has now seen these chips. A POST because it writes:
+// the read that produced the chips stays idempotent, and an impression set by
+// a prefetch or a crawler is not one. Above `/:id` for the same reason as the
+// review routes below — a two-segment literal path must not be read as an id.
+//
+// Rate-limited, unlike the curation routes below it. Those are exempt because
+// they are behind `requireCurator` (docs/tech/rate-limiting.md § 5); this one
+// is an ordinary authenticated user action, which that same table says takes
+// `authenticatedLimiter`. It is also the one endpoint here a client calls on
+// its own initiative rather than in response to a click.
+router.post('/new-badges/seen', authenticatedLimiter, requireAuth, validate(newBadgesSeenBodySchema), markNewBadgesSeen);
 
 // Decisions a sync run cannot make for itself: whether an object the source
 // stopped listing is delisted, destroyed, or was never gone, and whether a

@@ -367,6 +367,12 @@ export const experienceStateBodySchema = z.object({
   message: 'Pass membership, existence, or both',
 });
 
+export const newBadgesSeenBodySchema = z.object({
+  // Bounded because a page is bounded: the region read caps at 5000 rows, and
+  // an unbounded array here would be an invitation to send something else.
+  experienceIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(5000),
+});
+
 export const acceptSourceBodySchema = z.object({
   fields: z.array(z.string().min(1)).min(1).max(20),
   /**

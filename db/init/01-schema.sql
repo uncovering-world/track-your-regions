@@ -1767,6 +1767,14 @@ COMMENT ON COLUMN experience_sync_logs.is_dry_run IS 'TRUE for preview runs: the
 COMMENT ON COLUMN experience_sync_logs.total_filtered IS 'Entities the source offered that are not of the kind this category holds — e.g. a Wikidata collection with no physical address answering a museum query. Not errors: nothing failed, and the run stays successful.';
 COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-object detection did not run: ranked source, force run, cancelled, errors, or coverage below the floor. Every value missingDetectionSkipReason() produces lands here.';
 
+-- Serves the "New" chip's per-row lookup of the latest completed non-dry run
+-- of a category: without it each row scans and sorts every run in its category.
+-- Declared here rather than beside the other sync-log indexes above because it
+-- reads is_dry_run, which the ALTER just above adds.
+CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_latest
+    ON experience_sync_logs(category_id, completed_at DESC, id DESC)
+    WHERE is_dry_run = FALSE AND completed_at IS NOT NULL;
+
 -- =============================================================================
 -- Experience Change Provenance (issue #480)
 -- =============================================================================
@@ -2048,6 +2056,17 @@ CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(c
 CREATE INDEX IF NOT EXISTS idx_curation_log_created ON experience_curation_log(created_at DESC);
 
 COMMENT ON TABLE experience_curation_log IS 'Audit trail of all curator actions on experiences';
+
+-- When a user was first shown the "New" chip (issue #480). The chip lives for
+-- max(category window, a week from this timestamp), so only the first
+-- impression matters — a later view must not restart the week. No index beyond
+-- the primary key: that is what the chip's lookup uses, and there is no sweep.
+CREATE TABLE IF NOT EXISTS user_new_badge_views (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    first_shown_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, experience_id)
+);
 
 -- Experience rejections (per region)
 CREATE TABLE IF NOT EXISTS experience_rejections (
