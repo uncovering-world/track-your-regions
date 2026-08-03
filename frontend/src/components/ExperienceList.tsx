@@ -34,6 +34,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { useAuth } from '../hooks/useAuth';
+import { useNewBadgeImpressions } from '../hooks/useNewBadgeImpressions';
 import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import {
@@ -78,7 +79,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     triggerFitRegion,
     setExpandedCategoryNames,
   } = useExperienceContext();
-  const { isAuthenticated, isCurator } = useAuth();
+  const { isAuthenticated, isCurator, user } = useAuth();
   const { selectedRegion } = useNavigation();
   const queryClient = useQueryClient();
   const { isMarking, isUnmarking } = useVisitedExperiences();
@@ -165,14 +166,39 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       .sort((a, b) => a.categoryPriority - b.categoryPriority);
   }, [activeExperiences]);
 
-  // Reset when region changes
+  // Reset when the region changes, during render rather than in an effect:
+  // `shownExperiences` below pairs `expandedGroups` with `groups`, and an
+  // effect-based reset leaves one render where they belong to different
+  // regions. With the new region already in the React Query cache there is no
+  // loading render to hide it — `groups` is region B's while `expandedGroups`
+  // is still A's, so the impressions effect of that commit reports whichever of
+  // B's groups happens to share a name with one A had open, before auto-expand
+  // opens the first group instead. That stamp is not recoverable: the server
+  // keeps the first impression, so those rows spend the reader's week unseen.
+  //
+  // The tracker is state, not a ref, which is what makes this restart-safe.
+  // `regionId` arrives through navigation, and React Router pushes that in a
+  // transition — a render React may discard and replay. A ref is shared with
+  // the committed fiber, so it would keep the new id across a discard while the
+  // queued reset went with the discarded tree, and the replayed render would
+  // find the condition already false and skip the reset entirely. State is
+  // queued on the same work-in-progress tree as the reset, so the two are
+  // discarded and replayed together.
+  const [trackedRegionId, setTrackedRegionId] = useState(regionId);
   const hasAutoExpanded = useRef(false);
-  const prevRegionId = useRef(regionId);
+  if (regionId !== trackedRegionId) {
+    setTrackedRegionId(regionId);
+    hasAutoExpanded.current = false;
+    setExpandedGroups(new Set());
+  }
+
+  // The parent's copy stays in an effect — setting another component's state
+  // during render is what React forbids — with its own tracker, since the one
+  // above belongs to the render-phase reset.
+  const parentResetRegionId = useRef(regionId);
   useEffect(() => {
-    if (regionId !== prevRegionId.current) {
-      prevRegionId.current = regionId;
-      hasAutoExpanded.current = false;
-      setExpandedGroups(new Set());
+    if (regionId !== parentResetRegionId.current) {
+      parentResetRegionId.current = regionId;
       setExpandedCategoryNames(new Set());
     }
   }, [regionId, setExpandedCategoryNames]);
@@ -299,6 +325,18 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const handleRemoveFromRegion = useCallback((exp: Experience) => {
     if (regionId) removeFromRegion({ experienceId: exp.id, rId: regionId });
   }, [regionId, removeFromRegion]);
+
+  // Only the groups the reader has open. The list is grouped by category and
+  // each group renders inside `unmountOnExit`, so a collapsed one's chips are
+  // never on screen — and reporting them would be unrecoverable, since the
+  // server keeps only the first impression. A reader who opens a region once
+  // and never expands Museums would spend their week on rows they never saw,
+  // which is precisely what the personal window exists to prevent.
+  const shownExperiences = useMemo(
+    () => groups.filter(g => expandedGroups.has(g.categoryName)).flatMap(g => g.experiences),
+    [groups, expandedGroups],
+  );
+  useNewBadgeImpressions(shownExperiences, isAuthenticated, user?.id);
 
   const isMutating = isMarking || isUnmarking || isMarkingLocation || isUnmarkingLocation;
 

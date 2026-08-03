@@ -190,6 +190,20 @@ export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
             >
               {experience.name}
             </Typography>
+            {experience.is_new && (
+              <Chip
+                label="New"
+                size="small"
+                color="success"
+                sx={{
+                  height: 16,
+                  fontSize: '0.55rem',
+                  fontWeight: 700,
+                  '& .MuiChip-label': { px: 0.5 },
+                  flexShrink: 0,
+                }}
+              />
+            )}
             <LifecycleChip state={experience} />
             {(experience.location_count ?? 0) > 1 && (
               <Chip
