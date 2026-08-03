@@ -37,6 +37,7 @@ export interface SyncStatus {
   unchanged?: number;
   missing?: number;
   curatedConflicts?: number;
+  filtered?: number;
   errors?: number;
   currentItem?: string;
   logId?: number | null;
@@ -58,6 +59,7 @@ export interface SyncLog {
   total_unchanged: number;
   total_missing: number;
   total_curated_conflicts: number;
+  total_filtered: number;
   total_errors: number;
   is_dry_run: boolean;
   detection_skipped_reason: string | null;
@@ -80,7 +82,7 @@ export interface SyncChange {
   experience_id: number | null;
   external_id: string;
   name_snapshot: string | null;
-  change_type: 'created' | 'updated' | 'conflict' | 'missing' | 'returned' | 'failed';
+  change_type: 'created' | 'updated' | 'conflict' | 'missing' | 'returned' | 'failed' | 'filtered';
   changed_fields: SyncFieldChange[] | null;
   significance: 'major' | 'minor' | null;
   error: string | null;

@@ -19,6 +19,8 @@ export interface SyncProgress {
   missing: number;
   /** Field-level divergences the curated_fields guard refused to apply. */
   curatedConflicts: number;
+  /** Entities the source offered that this category does not hold. Not errors. */
+  filtered: number;
   errors: number;
   currentItem: string;
   logId: number | null;  // ID of the sync log entry in DB

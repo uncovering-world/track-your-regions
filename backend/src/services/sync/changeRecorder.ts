@@ -20,7 +20,7 @@ export interface ChangeRecord {
    * refused — nothing changed, but the two now disagree, which is a fact a
    * curator has to see.
    */
-  changeType: 'created' | 'updated' | 'conflict' | 'missing' | 'returned' | 'failed';
+  changeType: 'created' | 'updated' | 'conflict' | 'missing' | 'returned' | 'failed' | 'filtered';
   changedFields: FieldChange[] | null;
   significance: FieldSignificance | null;
   error: string | null;

@@ -260,6 +260,7 @@ export interface SyncLogStats {
   unchanged: number;
   missing: number;
   curatedConflicts: number;
+  filtered: number;
   errors: number;
   detectionSkippedReason?: string | null;
 }
@@ -290,13 +291,14 @@ export async function updateSyncLog(
       total_unchanged = $8,
       total_missing = $9,
       total_curated_conflicts = $10,
-      detection_skipped_reason = $11
+      detection_skipped_reason = $11,
+      total_filtered = $12
      WHERE id = $1
      RETURNING is_dry_run`,
     [logId, status, stats.fetched, stats.created, stats.updated, stats.errors,
      errorDetails ? JSON.stringify(errorDetails) : null,
      stats.unchanged, stats.missing, stats.curatedConflicts,
-     stats.detectionSkippedReason ?? null]
+     stats.detectionSkippedReason ?? null, stats.filtered]
   );
 
   if (result.rows[0]?.is_dry_run) return;
