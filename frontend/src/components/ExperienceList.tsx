@@ -466,7 +466,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
         </Box>
       )}
 
-      {/* Curation Dialog (shared: edit + reject/unreject) */}
+      {/* Curation Dialog (shared: edit, reject/unreject, take a verdict back) */}
       <CurationDialog
         experience={curationTarget}
         regionId={regionId}

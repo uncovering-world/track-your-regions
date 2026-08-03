@@ -139,7 +139,7 @@ Reusable UI components live in `frontend/src/components/shared/`. Check shared c
 
 ### Curation System
 
-- Shared dialogs: `CurationDialog` (edit + reject/unreject) and `AddExperienceDialog` (search/assign or create new) in `frontend/src/components/shared/`
+- Shared dialogs: `CurationDialog` (edit, reject/unreject, and take a lifecycle verdict back) and `AddExperienceDialog` (search/assign or create new) in `frontend/src/components/shared/`
 - Used from map mode (`ExperienceList.tsx`) and discover mode (`DiscoverExperienceView.tsx`, `DiscoverPage.tsx`)
 - Rejection filtering:
   - `getExperiencesByRegion` excludes rejected items (descendant-aware for `includeChildren`)

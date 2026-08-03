@@ -19,11 +19,24 @@ This lets list and map stay synchronized without prop drilling.
 
 ## Batch location data
 
-Both `ExperienceMarkers` and `ExperienceList` consume `useRegionLocations(regionId)` — a shared React Query hook that fetches all locations for all experiences in the region via a single `GET /api/experiences/by-region/:regionId/locations` call (5-min staleTime). This replaces the previous N+1 pattern where each component individually fetched `GET /api/experiences/:id/locations` per experience.
+Both `ExperienceMarkers` and `ExperienceList` consume `useRegionLocations(regionId, includeLost)` — a shared React Query hook that fetches all locations for all experiences in the region via a single `GET /api/experiences/by-region/:regionId/locations` call (5-min staleTime). This replaces the previous N+1 pattern where each component individually fetched `GET /api/experiences/:id/locations` per experience.
 
 Visit checkbox state in `ExperienceList` is derived from the global `useVisitedLocations().isLocationVisited(locationId)` rather than per-experience `useExperienceVisitedStatus()` calls, further reducing API calls from ~150 to 0 for visited status.
 
 It is derived from the **in-region** locations, which is why the visited controls are disabled until `useRegionLocations` reports `locationsResolved`. With the batch unresolved `inRegionCount` is 0, which short-circuits `inRegionVisitedStatus` to `not_visited` — so every row would render unchecked, indistinguishable from genuinely unvisited, and every toggle would pass "mark", letting a fully-visited experience be re-marked but never unmarked. The gate protects a mutation path, not just a label.
+
+### Lifecycle and what the map draws
+
+Experiences a curator recorded as `lost` are absent from the markers, because the batch above
+filters them exactly as the list does — offering somewhere demolished as somewhere to go is
+the one thing this data can get actively wrong. `former` is untouched: the place still stands,
+so it keeps its pins and its card carries the chip instead.
+
+`includeLost` travels from the list's reveal through the hook to the batch, and is part of the
+query key. Both have to agree: a row the list shows but the batch omits renders with no pins
+and a confident `0/N in region`, since the denominator comes from the experience and the
+numerator from this response. See `docs/tech/experiences.md` § Lifecycle filtering for the
+rule itself.
 
 ## Marker model
 

@@ -231,16 +231,75 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 - Curators with scope see rejected items with `is_rejected`/`rejection_reason`
 - `includeChildren=true` in region queries applies descendant-aware rejection checks
 
+### Lifecycle filtering
+
+The two axes ([ADR-0020](../decisions/0020-experience-lifecycle-and-run-changeset.md), narrowed
+by [ADR-0021](../decisions/0021-source-may-restore-membership.md)) are read by every user-facing
+query, and the rule is deliberately asymmetric because the reasons are:
+
+| State | Lists, map, search, counts | Visit history | Card |
+|---|---|---|---|
+| ordinary | shown | shown | nothing |
+| flagged `missing_since` only | shown | shown | **nothing** |
+| `former` | shown | shown | `Former` chip |
+| `lost` | hidden | **shown** | `Lost` chip |
+
+`former` is a claim about the source's catalogue, not about the world: the place still stands
+and you can still go, so nothing about who sees it changes. `lost` is a claim about the world,
+and offering somewhere demolished as somewhere to go is the one thing this data can get
+actively wrong — so it leaves everything that offers a destination. It does **not** leave a
+visit: someone who saw Palmyra before 2015 saw it, and that record cannot depend on the thing
+still standing. Visit history is the one read left unfiltered, which is what lets the counts
+elsewhere shrink without erasing anything.
+
+An object a run merely flagged looks completely ordinary. That is the point of leaving both
+verdicts to a curator: a source outage must not change what anyone sees.
+
+`hideLostSql()` / `lifecycleSelectSql()` / `includeLost()` live in
+`controllers/experience/experienceLifecycle.ts` rather than inline, because the predicate goes
+into a dozen queries built by string concatenation and the one that forgets it is the one that
+lies. Two traps it has already caught: `searchExperiences` needs brackets round its two name
+alternatives (unbracketed, `OR` binds looser than the lifecycle `AND` and every lost object
+matching by trigram comes straight back), and the by-region **count** has to carry the same
+rule as the list or the page says one number and shows another.
+
+`?includeLost=true` puts them back — named in the **query schemas** as well as read in the
+controllers, because `validate()` replaces `req.query` with the parsed object and Zod strips
+what it does not name. A parameter the controller reads but the schema omits never arrives,
+while every test calling the controller directly keeps passing; `types/experienceQuerySchemas.test.ts`
+guards that. The location batch carries the same flag, or a revealed row would arrive with no
+markers and a zero location count. The by-region response carries `lostHidden` — computed by
+the count query that was already running — so the list can offer "3 here no longer exist —
+show them" only where there is something behind it, instead of a permanent control for a state
+almost no region has.
+
+**Taking a verdict back.** The review queue lists only flagged rows, so it lets go of an object
+the moment it is answered, and a `lost` verdict then hides it from lists, map, search and
+counts. `CurationDialog` is therefore the one surface a curator can still reach it from, and it
+carries the control, sending `POST /:id/state` with the row as the dialog is showing it. The
+two halves are not reached the same way: **"It does still exist"** needs the reveal first,
+since a `lost` row is not otherwise on screen, while **"It is still listed"** sits on a
+`former` row wherever it already is — which is both card surfaces, Discover included, because
+`former` is never hidden. Without that, a mis-clicked verdict
+had no remedy short of SQL, which is why `missing_since` travels in `lifecycleSelectSql()`:
+the correction has to send the flag as seen rather than infer it from the verdict.
+
+`LifecycleChip` (`components/shared/LifecycleChip.tsx`) is on both card surfaces — Map mode's
+`ExperienceListItem` and Discover's `ExperienceCard` — since both read the same by-region
+response and a labelled row in one is an unexplained one in the other. The reveal affordance
+is Map mode only for now: Discover's list is filtered the same way, but has no place to put
+the control that would not compete with its category filters.
+
 ## API Endpoints
 
 ### Public browse
 
 | Method | Endpoint | Notes |
 |--------|----------|-------|
-| GET | `/api/experiences` | Filters: `categoryId`, `category`, `country`, `regionId`, `search`, `bbox`, `limit`, `offset` |
+| GET | `/api/experiences` | Filters: `categoryId`, `category`, `country`, `regionId`, `search`, `bbox`, `includeLost`, `limit`, `offset` |
 | GET | `/api/experiences/:id` | Full detail |
-| GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility. Rows come back `ORDER BY e.name`, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id)` over the same predicate, not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience |
-| GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren`. Eliminates N+1 per-experience location fetches |
+| GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `includeLost`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility. Rows come back `ORDER BY e.name`, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id) FILTER (…)` over the same predicate the list uses — which includes the lifecycle rule, so it follows `includeLost` — and not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience. `lostHidden` reports how many the region holds that no longer exist and are **not** being shown — zero once `includeLost` is on, since nothing is hidden then |
+| GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren` and `includeLost`, the latter because this batch has to follow the list: a row the list shows but this omits arrives with no markers and a confident `0/N in region`. Eliminates N+1 per-experience location fetches |
 | GET | `/api/experiences/search` | `q`, `limit` |
 | GET | `/api/experiences/categories` | Active categories ordered by priority |
 | GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId` |
@@ -381,8 +440,9 @@ would write a duplicate row and move `state_decided_by` to whoever clicked last.
 
 The page refetches on a refusal as well as on success, so a card someone else answered goes
 away instead of repeating the refusal on every click. Reaching a *decided* row needs a view
-the queue does not provide — it lists open questions only — so correcting a verdict is an
-API affordance today and gets its entry point with the user-facing half of this work.
+the queue does not provide — it lists open questions only — so the entry point for correcting
+a verdict lives in `CurationDialog` instead; see § Lifecycle filtering above for which half is
+reached how.
 Migration 011 widened the action CHECK to admit all four. A decision is one transaction over
 a `pool.connect()` client — `pool.query('BEGIN')` does not pin a connection, so the UPDATE
 and its log rows could otherwise land on different ones — and it re-reads both axes under
@@ -550,12 +610,12 @@ server-side against the caller's scope.
 - External links are unified across all sources — no source-specific rendering logic. Every experience shows up to two links based solely on metadata: a **Wikipedia** button (`MenuBook` icon, from `metadata.wikipediaUrl`) and a **Website** button (`Language` icon, from `metadata.website`). UNESCO page URLs are stored in `metadata.website` during sync, so they appear as "Website" alongside any Wikipedia link. Both Map mode (icon buttons) and Discover mode (text buttons in detail panel) use the same unified logic
 - In Map mode (`ExperienceList.tsx`), each category group header has a "+" button that opens AddExperienceDialog with `defaultCategoryId` pre-set for that category. An "Add experience of a new category" button at the top opens Create New with no category pre-selected. Category name → ID mapping is resolved via the `experience-categories` query
 - In Discover mode, add buttons appear in two places: (1) the list header "Add" button when viewing a specific category for a region — opens with `defaultCategoryId` pre-set from `activeView.categoryId`; (2) a "+" icon button in each region row's category pills area (in `DiscoverRegionList`) — opens with no category pre-selected so the curator can pick any category. The tree-level "+" is scope-aware: `DiscoverPage` fetches curator assignments from `/api/users/me` and passes a `canAddToRegion` predicate to the list. Admins and global/category-scoped curators see "+" on all regions. Region-scoped curators see "+" only on their assigned regions and descendants (detected via breadcrumb ancestry match)
-- Cache invalidation after mutations must include both `['experiences', 'by-region', regionId]` (Map mode) and `['discover-experiences']` (Discover mode) query key prefixes. Both `AddExperienceDialog` and `CurationDialog` invalidate both
+- Cache invalidation after mutations must include `['experiences', 'by-region', regionId]` (Map mode), `['discover-experiences']` (Discover mode) and `['region-locations', regionId]` — the last because the location batch answers for the rows the list is showing, so anything changing that set leaves its markers stale. The key stops at the region on purpose: it also carries `includeLost`, and a longer key would clear one variant and leave its sibling answering from the old set. `invalidateExperiences` (`utils/queryInvalidation.ts`) does all of it; both `AddExperienceDialog` and `CurationDialog` go through it
 - Discover's experiences query is keyed `['discover-experiences', regionId]` — **not** by category. The response is category-independent; the category filter runs in `select`, per observer. Keying by category would give each tab its own cache entry and refetch the whole region on every switch
 - Creating a manual experience inserts into 4 tables within a transaction: `experiences`, `experience_locations`, `experience_regions`, and `experience_location_regions`. The last one matters — without it the location's `in_region` flag is false. The marker still appears (`buildExperienceMarkers` falls back to a location of any kind, flagged `inRegion: false`, so a hand-assigned experience is not invisible), but everything that counts in-region locations reads zero: the `0/N` chip on the row, the visited counts, and the mark-all-locations checkbox, which marks in-region locations and so marks nothing
 - `LocationPicker` lives in `frontend/src/components/shared/` with coordinate parsing in `frontend/src/utils/coordinateParser.ts`. Accepts `name` prop to pre-populate search/AI fields; coordinates sync across all modes (e.g. map click shows in Coordinates tab). Exposes `onPlaceSelect` callback that passes Wikidata ID from Nominatim search results
 - Visited tracking uses location-level system (`user_visited_locations`) for both the root checkbox and the "Mark Visited" button. The experience-level table (`user_visited_experiences`) is maintained for backward compatibility but the UI is driven entirely by location visits. The `markAllLocations` batch endpoint handles both single- and multi-location experiences consistently
-- **Batch location fetching**: `useRegionLocations(regionId)` hook (`frontend/src/hooks/useRegionLocations.ts`) fetches all locations for all experiences in a region via a single `GET /api/experiences/by-region/:regionId/locations` call. Both `ExperienceMarkers` and `ExperienceList` consume this shared hook, eliminating ~300 individual API calls for a 150-experience region. Visit checkbox state is derived from the global `useVisitedLocations().isLocationVisited()` rather than per-experience `useExperienceVisitedStatus()` calls. The batch endpoint also returns `region_path` (full ancestor path from root to leaf region, e.g. "Europe > Germany > Bavaria") for each location via a recursive `LEFT JOIN LATERAL` on `experience_location_regions` + `regions`
+- **Batch location fetching**: `useRegionLocations(regionId, includeLost)` hook (`frontend/src/hooks/useRegionLocations.ts`) fetches all locations for all experiences in a region via a single `GET /api/experiences/by-region/:regionId/locations` call. `includeLost` follows the list and is part of the query key, since a row the list shows and the batch omits renders with no markers and a confident `0/N`. Both `ExperienceMarkers` and `ExperienceList` consume this shared hook, eliminating ~300 individual API calls for a 150-experience region. Visit checkbox state is derived from the global `useVisitedLocations().isLocationVisited()` rather than per-experience `useExperienceVisitedStatus()` calls. The batch endpoint also returns `region_path` (full ancestor path from root to leaf region, e.g. "Europe > Germany > Bavaria") for each location via a recursive `LEFT JOIN LATERAL` on `experience_location_regions` + `regions`
 - **Reads whose response depends on world-view visibility must be authenticated**: they go through `authFetchJson`, not `fetchJson` — `by-region/:regionId`, `by-region/:regionId/locations`, `:id/locations`, `region-counts`, and `GET /api/experiences/:id`. The first four carry `requireVisibleWorldView`, which answers **404, not 401**, when a world view has `is_public = false` and the caller is not an admin, so an unauthenticated read is indistinguishable from a missing region: react-query stores the rejection as `data: undefined` and nothing surfaces. `:id` is different in mechanism and identical in consequence — it is public by design and instead filters the `regions[]` it returns, admitting every assignment only for an admin, so without a token that documented bypass is unreachable and an experience assigned only to hidden world views returns an empty region list rather than an incomplete one. All five are covered by `frontend/src/api/experiences.auth.test.ts`. One membership is prospective rather than active: `:id/locations` is guarded on `regionIdQuery`, which passes the request through when no `regionId` is supplied, and neither caller supplies one — so as called today that response has no visibility dependence and cannot 404. The header is what keeps the route correct if a caller starts passing one. `GET /api/experiences` carries the same guard on its `regionId` query param and is listed in `SECURITY.md`, but has no frontend client — which is why it is absent here and from the test
 - **An in-region count is only meaningful once the batch has settled**: `useRegionLocations` reports `locationsResolved`, and three consumers gate on it — the expanded card's ratio, the row's count chip, and the visited controls. The last is not a display concern and must not be dropped as one: visited state is derived from in-region locations, so an unresolved batch makes `inRegionCount` 0, which short-circuits `inRegionVisitedStatus` to `not_visited`; every toggle then passes "mark", always, and a fully-visited experience can be re-marked but never unmarked. The numerator is derived by filtering the batch while the denominator falls back to `experience.location_count`, which arrives with the experience — so an absent batch does not read as "no locations here", it reads as a confident `0/N`. The 404 above was one way to reach that state; a 500, an offline reload or an aborted navigation are others, which is why the fix is the gate rather than the 404
 - **Out-of-region location display**: In the expanded sidebar details, locations are split into in-region (shown first, fully interactive) and out-of-region (collapsible section). Out-of-region locations show the first 3 with a "Show N more" toggle. Each displays its region path with the common prefix stripped — e.g. if all out-of-region locations are in Europe, "Europe > " is removed so you see "Germany > Bavaria", "France > Paris", etc.
