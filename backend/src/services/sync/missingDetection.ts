@@ -76,7 +76,8 @@ export async function countActiveExperiences(categoryId: number): Promise<number
      WHERE category_id = $1
        AND source_membership = 'present'
        AND missing_since IS NULL
-       AND is_manual = FALSE`,
+       AND is_manual = FALSE
+       AND existence <> 'lost'`,
     [categoryId]
   );
   return Number(result.rows[0]?.count ?? 0);
@@ -103,6 +104,7 @@ export async function countSeenAmongActive(
        AND source_membership = 'present'
        AND missing_since IS NULL
        AND is_manual = FALSE
+       AND existence <> 'lost'
        AND external_id = ANY($2::text[])`,
     [categoryId, seenExternalIds]
   );
@@ -132,10 +134,16 @@ export async function flagMissingExperiences(
   // straight into any category, UNESCO included; its `curator-<id>-<ts>` key
   // can never appear in a source listing, so measuring it against one would
   // report every clean run as having delisted the curator's own work.
+  // A row judged `lost` is answered, whatever the source still says. Asking
+  // again every run would put it back in the review queue for good — the only
+  // way out would be to answer a different question — and leaving it in the
+  // denominator counts a row that can never be seen against the coverage
+  // guard, dragging the category toward the 90 % floor that disables detection.
   const predicate = `category_id = $1
       AND source_membership = 'present'
       AND missing_since IS NULL
       AND is_manual = FALSE
+      AND existence <> 'lost'
       AND external_id <> ALL($2::text[])`;
 
   const result = dryRun

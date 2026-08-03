@@ -101,13 +101,43 @@ describe('countSeenAmongActive', () => {
     expect(sql).toContain("source_membership = 'present'");
     expect(sql).toContain('missing_since IS NULL');
     expect(sql).toContain('is_manual = FALSE');
+    expect(sql).toContain("existence <> 'lost'");
     expect(sql).toContain('external_id = ANY');
+  });
+
+  it('keeps the denominator and the numerator on identical terms', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ count: '1' }] });
+    await countActiveExperiences(1);
+    const denominator = String(mockedQuery.mock.calls[0][0]);
+
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValueOnce({ rows: [{ count: '1' }] });
+    await countSeenAmongActive(1, ['200']);
+    const numerator = String(mockedQuery.mock.calls[0][0]);
+
+    // A term on one side only makes the ratio something other than coverage
+    for (const term of ["source_membership = 'present'", 'missing_since IS NULL',
+                        'is_manual = FALSE', "existence <> 'lost'"]) {
+      expect(denominator).toContain(term);
+      expect(numerator).toContain(term);
+    }
   });
 });
 
 describe('flagMissingExperiences', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
+  });
+
+  it('does not ask again about an object already judged lost', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    await flagMissingExperiences(1, 9, false, ['200']);
+
+    // Re-stamping missing_since would return it to the review queue after every
+    // run, and the only way out would be answering a different question
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).toContain("existence <> 'lost'");
   });
 
   it('stamps missing_since and returns one record per row', async () => {
