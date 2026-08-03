@@ -6,6 +6,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
+import { hideLostSql, lifecycleSelectSql, includeLost } from './experienceLifecycle.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 interface ListExperiencesFilters {
@@ -17,6 +18,10 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
   const conditions: string[] = [];
   const params: (string | number)[] = [];
   let paramIndex = 1;
+
+  // Unconditional unless asked: a caller that forgets a filter should get less
+  // than it wanted, never a demolished building offered as somewhere to go.
+  if (!includeLost(query)) conditions.push(hideLostSql());
 
   if (query.categoryId) {
     conditions.push(`e.category_id = $${paramIndex++}`);
@@ -144,6 +149,7 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
       e.metadata,
       e.created_at,
       e.updated_at,
+      ${lifecycleSelectSql()},
       ST_X(e.location) as longitude,
       ST_Y(e.location) as latitude,
       ST_AsGeoJSON(e.boundary)::json as boundary_geojson,
@@ -209,6 +215,13 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
   const simpleRejectionJoin = `LEFT JOIN experience_rejections rej ON rej.experience_id = e.id AND rej.region_id = $1`;
   const descendantRejectionJoin = `LEFT JOIN experience_rejections rej ON rej.experience_id = e.id AND rej.region_id IN (SELECT id FROM descendant_regions)`;
   const rejectionFilter = showRejected ? '' : ' AND rej.id IS NULL';
+  // `former` is deliberately absent here: it stays in the list, and the card
+  // labels it from the columns selected above.
+  const lifecycleFilter = includeLost(req.query) ? '' : ` AND ${hideLostSql()}`;
+  // The same rule as an expression, for the count: one aggregate answers how
+  // many the list is showing and another how many it is holding back, so the
+  // page can offer the toggle only where there is something behind it.
+  const lifecyclePredicate = includeLost(req.query) ? 'TRUE' : hideLostSql();
 
   let query: string;
   let countQuery: string;
@@ -240,7 +253,8 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
         e.metadata->>'inDanger' as in_danger,
         (SELECT COUNT(*)::int FROM experience_locations el WHERE el.experience_id = e.id) as location_count,
         s.name as category_name,
-        s.display_priority as category_priority
+        s.display_priority as category_priority,
+        ${lifecycleSelectSql()}
         ${rejectionSelect}
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
@@ -248,6 +262,7 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
       ${descendantRejectionJoin}
       WHERE er.region_id IN (SELECT id FROM descendant_regions)
       ${rejectionFilter}
+      ${lifecycleFilter}
       GROUP BY e.id, s.name, s.display_priority
       ORDER BY e.name
       LIMIT $2 OFFSET $3
@@ -259,7 +274,9 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
         SELECT r.id FROM regions r
         JOIN descendant_regions dr ON r.parent_region_id = dr.id
       )
-      SELECT COUNT(DISTINCT e.id)::int AS total
+      SELECT
+        COUNT(DISTINCT e.id) FILTER (WHERE ${lifecyclePredicate})::int AS total,
+        COUNT(DISTINCT e.id) FILTER (WHERE e.existence = 'lost')::int AS lost_hidden
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
       JOIN experience_categories s ON e.category_id = s.id
@@ -288,7 +305,8 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
         e.metadata->>'inDanger' as in_danger,
         (SELECT COUNT(*)::int FROM experience_locations el WHERE el.experience_id = e.id) as location_count,
         s.name as category_name,
-        s.display_priority as category_priority
+        s.display_priority as category_priority,
+        ${lifecycleSelectSql()}
         ${rejectionSelect}
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
@@ -296,11 +314,14 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
       ${simpleRejectionJoin}
       WHERE er.region_id = $1
       ${rejectionFilter}
+      ${lifecycleFilter}
       ORDER BY e.name
       LIMIT $2 OFFSET $3
     `;
     countQuery = `
-      SELECT COUNT(DISTINCT e.id)::int AS total
+      SELECT
+        COUNT(DISTINCT e.id) FILTER (WHERE ${lifecyclePredicate})::int AS total,
+        COUNT(DISTINCT e.id) FILTER (WHERE e.existence = 'lost')::int AS lost_hidden
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
       JOIN experience_categories s ON e.category_id = s.id
@@ -345,6 +366,13 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
       in_danger: row.in_danger === 'true',
     })),
     total: countResult.rows[0].total,
+    // How many this region holds that no longer exist *and is not showing*.
+    // Zero for almost every region, which is the point: the page offers the
+    // "show them" affordance only where there is something behind it, rather
+    // than a permanent control for a rare state. Zero also once they are being
+    // shown — nothing is hidden then, and a field that still counted them
+    // would have the page offering to reveal what is already on screen.
+    lostHidden: includeLost(req.query) ? 0 : countResult.rows[0].lost_hidden,
     limit,
     offset,
   });
@@ -398,8 +426,11 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
       ST_Y(e.location) as latitude,
       similarity(e.name, $1) as relevance
     FROM experiences e
-    WHERE e.name ILIKE $2
-       OR e.name % $1
+    -- The two name matches are alternatives to each other, not to the
+    -- lifecycle filter: without the brackets, OR would re-admit every lost
+    -- object whose name happens to match by trigram.
+    WHERE (e.name ILIKE $2 OR e.name % $1)
+      AND ${hideLostSql()}
     ORDER BY
       CASE WHEN e.name ILIKE $2 THEN 0 ELSE 1 END,
       similarity(e.name, $1) DESC
@@ -433,8 +464,11 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     return;
   }
 
-  // Get counts broken down by source for regions at the requested level
-  // Exclude rejected experiences from counts
+  // Get counts broken down by source for regions at the requested level.
+  // Rejected and lost are both excluded: these counts say how much there is to
+  // go and see in a region, and neither is. A `lost` object someone already
+  // visited is not lost to them — that lives in their visit history, which
+  // does not filter, so the count shrinking cannot erase a visit.
   const result = await pool.query(`
     SELECT
       r.id as region_id,
@@ -450,6 +484,7 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
     WHERE r.world_view_id = $1
       AND ${parentRegionId ? 'r.parent_region_id = $2' : 'r.parent_region_id IS NULL'}
       AND rej.id IS NULL
+      AND ${hideLostSql()}
     GROUP BY r.id, r.name, r.color, e.category_id
     ORDER BY r.name
   `, parentRegionId ? [worldViewId, parentRegionId] : [worldViewId]);

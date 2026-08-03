@@ -170,12 +170,18 @@ export const experienceListQuerySchema = z.object({
   regionId: z.coerce.number().int().positive().optional(),
   search: z.string().max(255).optional(),
   bbox: z.string().max(100).optional(),
+  includeLost: booleanStringSchema,
   limit: z.coerce.number().int().min(1).max(5000).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const experiencesByRegionQuerySchema = z.object({
   includeChildren: booleanStringSchema.default('true'),
+  // Without this the parameter never reaches the controller: `validate()`
+  // replaces req.query with the parsed object, and Zod strips what it does not
+  // name — so the whole "show what no longer exists" path would be dead over
+  // HTTP while passing every test that calls the controller directly.
+  includeLost: booleanStringSchema,
   // 5000 to match `experienceListQuerySchema` above and the controller's own
   // clamp. Neither surface that reads a region paginates, so a ceiling below the
   // largest region truncated the list instead of paging it — and because the
@@ -195,6 +201,8 @@ export const experienceLocationsQuerySchema = z.object({
 
 export const regionLocationsQuerySchema = z.object({
   includeChildren: booleanStringSchema.default('true'),
+  // Follows the list: markers for the rows it is showing.
+  includeLost: booleanStringSchema,
 });
 
 // Curation schemas
