@@ -29,6 +29,7 @@ import type { Experience } from '../../api/experiences';
 import type { ActiveView } from '../../hooks/useDiscoverExperiences';
 import { ExperienceCard } from './ExperienceCard';
 import { useAuth } from '../../hooks/useAuth';
+import { useNewBadgeImpressions } from '../../hooks/useNewBadgeImpressions';
 import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { CurationDialog } from '../shared/CurationDialog';
@@ -37,6 +38,10 @@ import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { EmptyState } from '../shared/EmptyState';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
+
+// Stable identity: an inline [] would be a new array every render, and the
+// impression effect keys off the array it is given.
+const EMPTY_EXPERIENCES: Experience[] = [];
 
 const SOURCE_ID = 'experience-markers';
 const HIGHLIGHT_SOURCE_ID = 'highlight-markers';
@@ -70,7 +75,7 @@ export function DiscoverExperienceView({
 }: DiscoverExperienceViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const { isAuthenticated, isCurator } = useAuth();
+  const { isAuthenticated, isCurator, user } = useAuth();
   const { visitedIds, markVisited, unmarkVisited } = useVisitedExperiences();
   const [search, setSearch] = useState('');
 
@@ -146,6 +151,22 @@ export function DiscoverExperienceView({
         exp.country_names?.some((c) => c.toLowerCase().includes(lower)),
     );
   }, [experiences, search]);
+
+  // Discover renders the same cards from the same response, so a chip shown
+  // here is an impression exactly as one in Map mode is. Reporting from only
+  // one surface would make a reader's week start whenever they happened to use
+  // that one.
+  //
+  // Reported from the filtered set and behind the loading gate — the same two
+  // conditions the card list renders under (below), rather than from the whole
+  // response. Today the two coincide: the query is `enabled` only with an
+  // active view, `isLoading` is false whenever there is data to render, and
+  // search only ever narrows a set already reported. But that is three separate
+  // facts staying true, and the cost of getting it wrong is not recoverable —
+  // the server keeps the first impression, so a row stamped while unrendered
+  // spends the reader's week without them.
+  useNewBadgeImpressions(
+    isLoading ? EMPTY_EXPERIENCES : filteredExperiences, isAuthenticated, user?.id);
 
   // Reset search when active view changes
   useEffect(() => {

@@ -40,6 +40,13 @@ export interface Experience {
   existence?: 'extant' | 'lost';
   /** Set by a run, cleared by any verdict. Sent back when correcting one. */
   missing_since?: string | null;
+  /**
+   * Decided by the server: observed arriving in the latest completed non-dry
+   * run of its category, and still inside the category window or this reader's
+   * own week.
+   * Not "recently created" — see `experienceNewBadge.ts`.
+   */
+  is_new?: boolean;
 }
 
 /**
@@ -545,5 +552,19 @@ export async function removeExperienceFromRegion(
 ): Promise<{ success: boolean }> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/remove-from-region/${regionId}`, {
     method: 'DELETE',
+  });
+}
+
+/**
+ * Record that these chips have now been shown to the reader.
+ *
+ * Its own call rather than a side effect of the read that produced them: the
+ * read stays repeatable, and a timestamp set by a prefetch is not an
+ * impression. Only the first is kept server-side.
+ */
+export async function markNewBadgesSeen(experienceIds: number[]): Promise<{ recorded: number[] }> {
+  return authFetchJson(`${API_URL}/api/experiences/new-badges/seen`, {
+    method: 'POST',
+    body: JSON.stringify({ experienceIds }),
   });
 }
