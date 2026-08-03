@@ -288,6 +288,7 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
               <Tile value={log.total_unchanged} label="Unchanged" bg="grey.100" />
               <Tile value={log.total_missing} label="Missing" bg={log.total_missing > 0 ? 'warning.light' : 'grey.100'} />
               <Tile value={log.total_curated_conflicts} label="Conflicts" bg={log.total_curated_conflicts > 0 ? 'warning.light' : 'grey.100'} />
+              <Tile value={log.total_filtered} label="Filtered" bg="grey.100" />
               <Tile value={log.total_errors} label="Errors" bg={log.total_errors > 0 ? 'error.light' : 'grey.100'} />
             </Box>
 

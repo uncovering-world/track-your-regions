@@ -37,6 +37,12 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`010-sync-filtered-entities.sql` separates filtering from failing: the museum
+query answers with collections as well as museums, and dropping the ones with no
+address is the filter working rather than the run breaking. It adds a counter and
+widens the changeset's type check; there is nothing to backfill, because no run
+before it distinguished the two.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the

@@ -1759,10 +1759,12 @@ ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_missing INTEGER 
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_curated_conflicts INTEGER DEFAULT 0;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS is_dry_run BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS detection_skipped_reason TEXT;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_filtered INTEGER DEFAULT 0;
 
 COMMENT ON COLUMN experience_sync_logs.total_updated IS 'Rows whose fields actually changed. Runs before migration 009 counted every row that passed through ON CONFLICT, changed or not — the two are not comparable.';
 COMMENT ON COLUMN experience_sync_logs.total_unchanged IS 'Rows the run touched that turned out identical. Counted here, never stored per object.';
 COMMENT ON COLUMN experience_sync_logs.is_dry_run IS 'TRUE for preview runs: the changeset was computed but experiences were not written. Excluded from every "latest run" query.';
+COMMENT ON COLUMN experience_sync_logs.total_filtered IS 'Entities the source offered that are not of the kind this category holds — e.g. a Wikidata collection with no physical address answering a museum query. Not errors: nothing failed, and the run stays successful.';
 COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-object detection did not run: ranked source, force run, cancelled, errors, or coverage below the floor. Every value missingDetectionSkipReason() produces lands here.';
 
 -- =============================================================================
@@ -1814,7 +1816,7 @@ CREATE TABLE IF NOT EXISTS experience_sync_changes (
     experience_id  INTEGER REFERENCES experiences(id) ON DELETE SET NULL,
     external_id    VARCHAR(255) NOT NULL,
     name_snapshot  VARCHAR(500),
-    change_type    VARCHAR(20) NOT NULL CHECK (change_type IN ('created', 'updated', 'conflict', 'missing', 'returned', 'failed')),
+    change_type    VARCHAR(20) NOT NULL CHECK (change_type IN ('created', 'updated', 'conflict', 'missing', 'returned', 'failed', 'filtered')),
     changed_fields JSONB,
     significance   VARCHAR(10) CHECK (significance IN ('major', 'minor')),
     error          TEXT,
@@ -1824,6 +1826,13 @@ CREATE TABLE IF NOT EXISTS experience_sync_changes (
 COMMENT ON TABLE experience_sync_changes IS 'Per-object provenance for a sync run (issue #480). See ADR-0020.';
 COMMENT ON COLUMN experience_sync_changes.name_snapshot IS 'The name at the time of the run, so the report stays readable if the row is later deleted.';
 COMMENT ON COLUMN experience_sync_changes.changed_fields IS 'Array of {field, old, new, significance, curatedConflict}. Holds the value the source proposed even when curated_fields rejected it, so a curator can accept it later.';
+
+-- CREATE TABLE IF NOT EXISTS is a no-op where the table already exists, so a
+-- widened CHECK has to be applied on its own or re-applying this file would
+-- leave an older database rejecting the newer change types.
+ALTER TABLE experience_sync_changes DROP CONSTRAINT IF EXISTS experience_sync_changes_change_type_check;
+ALTER TABLE experience_sync_changes ADD CONSTRAINT experience_sync_changes_change_type_check
+    CHECK (change_type IN ('created', 'updated', 'conflict', 'missing', 'returned', 'failed', 'filtered'));
 
 CREATE INDEX IF NOT EXISTS idx_sync_changes_log ON experience_sync_changes(sync_log_id);
 CREATE INDEX IF NOT EXISTS idx_sync_changes_exp ON experience_sync_changes(experience_id);

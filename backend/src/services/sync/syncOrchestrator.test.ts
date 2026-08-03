@@ -69,6 +69,7 @@ function makeProgress(overrides: Partial<SyncProgress> = {}): SyncProgress {
     unchanged: 0,
     missing: 0,
     curatedConflicts: 0,
+    filtered: 0,
     errors: 0,
     currentItem: '',
     logId: null,
@@ -339,6 +340,46 @@ describe('orchestrateSync changeset recording', () => {
     const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(recorded).toHaveLength(1);
     expect(recorded[0].changeType).toBe('created');
+  });
+
+  it('counts a filtered entity apart from errors, leaving the run successful', async () => {
+    const config = makeConfig({
+      fetchItems: vi.fn().mockResolvedValue({
+        items: [{ id: '1', name: 'Item 1' }],
+        fetchedCount: 2,
+        filtered: [{ externalId: 'Q1459037', name: 'Royal Collection', reason: 'not a place' }],
+      }),
+    });
+
+    await orchestrateSync(config, 1);
+
+    // A collection answering a museum query is the filter working, not the run
+    // breaking — status stays clean and the count lands in its own column
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success',
+      expect.objectContaining({ filtered: 1, errors: 0 }),
+      undefined,
+    );
+  });
+
+  it('keeps filtered entities visible in the changeset', async () => {
+    const config = makeConfig({
+      fetchItems: vi.fn().mockResolvedValue({
+        items: [],
+        fetchedCount: 1,
+        filtered: [{ externalId: 'Q1459037', name: 'Royal Collection', reason: 'not a place' }],
+      }),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(recorded[0]).toMatchObject({
+      changeType: 'filtered',
+      externalId: 'Q1459037',
+      nameSnapshot: 'Royal Collection',
+      experienceId: null,
+    });
   });
 
   it('records a failed item with its error and no experience id', async () => {

@@ -23,6 +23,7 @@ const CHANGE_TYPE_COLOR: Record<SyncChange['change_type'], 'success' | 'info' | 
   created: 'success',
   updated: 'info',
   conflict: 'warning',
+  filtered: 'default',
   missing: 'warning',
   returned: 'info',
   failed: 'error',
@@ -67,7 +68,14 @@ function ChangeRow({ change }: { change: SyncChange }) {
       </Stack>
       {change.changed_fields?.map((field, i) => <FieldRow key={i} change={field} />)}
       {change.error && (
-        <Typography variant="body2" color="error" sx={{ pl: 2, fontFamily: 'monospace', fontSize: '0.8rem' }}>
+        <Typography
+          variant="body2"
+          // A filtered row carries its reason in the same field, but nothing
+          // went wrong with it — painting "a collection rather than a museum"
+          // in red would report the filter working as a failure.
+          color={change.change_type === 'filtered' ? 'text.secondary' : 'error'}
+          sx={{ pl: 2, fontFamily: 'monospace', fontSize: '0.8rem' }}
+        >
           {change.error}
         </Typography>
       )}

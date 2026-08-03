@@ -12,7 +12,7 @@
 
 import { pool } from '../../db/index.js';
 import { upsertExperienceRecord, upsertSingleLocation, cleanupCategoryData } from './syncUtils.js';
-import { orchestrateSync, getSyncStatus, cancelSync, type ErrorDetail } from './syncOrchestrator.js';
+import { orchestrateSync, getSyncStatus, cancelSync, type FilteredEntity } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import type { ChangeSetResult } from './changeSet.js';
 import type {
@@ -504,13 +504,23 @@ async function resolveMissingCoordinates(
 
 function pickValidMuseums(
   museumMap: Map<string, CollectedMuseum>,
-  errorDetails: ErrorDetail[],
+  filtered: FilteredEntity[],
 ): CollectedMuseum[] {
   return Array.from(museumMap.values())
     .filter(m => {
-      if (m.details?.lat && m.details?.lon) return true;
-      console.log(`[Museum Sync] Skipping ${m.qid} (${m.label}) - no coordinates`);
-      errorDetails.push({ externalId: m.qid, error: 'No valid coordinates after resolution' });
+      // Number.isFinite, not truthiness: a museum on the equator or the prime
+      // meridian has a coordinate of 0, which is a position, not an absence.
+      if (Number.isFinite(m.details?.lat) && Number.isFinite(m.details?.lon)) return true;
+      // Not a failure: the artwork query matches on `wdt:P195`, so collections
+      // as entities (the Royal Collection, Collection Crozat) come back beside
+      // museums. A collection has no address because a collection is not a
+      // place — dropping it is the filter working, not the run breaking.
+      console.log(`[Museum Sync] Filtered ${m.qid} (${m.label}) - not a place, no coordinates`);
+      filtered.push({
+        externalId: m.qid,
+        name: m.details?.museumLabel || m.label,
+        reason: 'No coordinates after resolution — a collection rather than a museum',
+      });
       return false;
     })
     .slice(0, 100);
@@ -522,8 +532,7 @@ function pickValidMuseums(
  */
 async function fetchMuseumItems(
   progress: SyncProgress,
-  errorDetails: ErrorDetail[],
-): Promise<{ items: CollectedMuseum[]; fetchedCount: number }> {
+): Promise<{ items: CollectedMuseum[]; fetchedCount: number; filtered: FilteredEntity[] }> {
   // Phase 1: Fetch artworks
   if (progress.cancel) throw new Error('Sync cancelled');
   const paintings = await fetchArtworks('Q3305213', 'painting', progress);
@@ -556,10 +565,9 @@ async function fetchMuseumItems(
   await resolveMissingCoordinates(museumMap, museumDetails, progress);
 
   // Phase 6: Filter to museums with valid coordinates, cap at 100
-  return {
-    items: pickValidMuseums(museumMap, errorDetails),
-    fetchedCount: allArtworks.length,
-  };
+  const filtered: FilteredEntity[] = [];
+  const items = pickValidMuseums(museumMap, filtered);
+  return { items, fetchedCount: allArtworks.length, filtered };
 }
 
 /**
@@ -649,6 +657,7 @@ export async function fixMuseumImages(_triggeredBy: number | null): Promise<void
     unchanged: 0,
     missing: 0,
     curatedConflicts: 0,
+    filtered: 0,
     errors: 0,
     currentItem: '',
     logId: null,

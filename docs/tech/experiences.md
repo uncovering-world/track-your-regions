@@ -59,7 +59,7 @@ Each source has a dedicated sync service in `backend/src/services/sync/`. All fo
 
 The generic sync lifecycle (progress init, already-running check, sync log creation, force cleanup, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`. Each service provides a `SyncServiceConfig<T>` with domain-specific callbacks:
 
-- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount }`. Can append pre-processing errors (e.g., museums without coordinates) to `errorDetails`.
+- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered? }`, where `filtered` names entities the source offered that this category cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`.
 - **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview. Throw to count as error.
 - **`getItemName(item)`** / **`getItemId(item)`** — Display name and external ID for progress messages and error reporting.
 - **`cleanup?(progress)`** — Optional custom cleanup for force sync (replaces default `cleanupCategoryData`). Museum uses this for treasure pre-cleanup.
@@ -81,8 +81,8 @@ Common sync logic lives in seven shared utility files:
 ### Change provenance (issue #480, [ADR-0020](../decisions/0020-experience-lifecycle-and-run-changeset.md))
 
 Every run records what it did to each object in `experience_sync_changes`: one row per
-object created, changed, in conflict, missing, returned, or failed, with a per-field diff in
-`changed_fields`. Rows that came through **unchanged are counted on the log, never stored** —
+object created, changed, in conflict, missing, returned, failed, or filtered, with a
+per-field diff in `changed_fields`. Rows that came through **unchanged are counted on the log, never stored** —
 a UNESCO run would otherwise write 1247 rows of noise around the few dozen that carry
 information. Two kinds of unchanged row are stored anyway, because each carries news the
 counters cannot: `conflict`, where `curated_fields` refused the source's edit and the two now
@@ -122,6 +122,22 @@ write the log and changeset with `is_dry_run = true`, but touch no experiences, 
 treasures or images. Dry-run logs are excluded from every "latest run" query, so a preview
 cannot disturb provenance. Combining `dryRun` with `force` is refused: force deletes the
 category before there would be anything to preview against.
+
+**Filtered is not failed.** The museum query matches artworks on `wdt:P195`, so Wikidata
+answers with collections as entities — the Royal Collection, Collection Crozat — alongside
+museums. They carry no coordinates because a collection is not a place, and the coordinate
+check drops them. That is the filter working, so it is counted in `total_filtered` and
+recorded as `change_type = 'filtered'`, not as an error: before this, eight such entities made
+every museum run `partial` with failures nobody could fix, and on an authoritative source they
+would have blocked missing detection outright.
+
+**Serial nominations carry their coordinates in their parts.** UNESCO leaves `coordinates`
+null on many serial sites and fills `components_list` instead; `resolveMainPoint()` falls back
+to the component nearest the components' centroid. Not the first component (it sat 301 km from
+Getbol's former point, far enough to change its region) and not the centroid itself (for parts
+scattered like the Roças of São Tomé it can fall in open water). The dry run of 3 August found
+28 records of this shape, 25 of them new inscriptions that would never have entered the
+catalogue.
 
 **Fixture source** — setting `SYNC_SOURCE_FIXTURE` to a directory makes UNESCO sync read
 `unesco.json` from it instead of the live API. Development only — the switch is refused

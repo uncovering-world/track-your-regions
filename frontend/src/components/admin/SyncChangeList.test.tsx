@@ -122,6 +122,25 @@ describe('SyncChangeList', () => {
     expect(await screen.findByText(/curated/i)).toBeInTheDocument();
   });
 
+  it('does not paint a filtered reason red, since nothing failed', async () => {
+    mockedGet.mockResolvedValue({
+      changes: [{
+        ...MAJOR_CHANGE,
+        change_type: 'filtered' as const,
+        significance: null,
+        changed_fields: null,
+        name_snapshot: 'Royal Collection',
+        error: 'No coordinates after resolution — a collection rather than a museum',
+      }],
+      total: 1, limit: 50, offset: 0,
+    });
+    renderList();
+
+    const reason = await screen.findByText(/a collection rather than a museum/i);
+    // MUI maps color="error" to this class; a filter working is not a failure
+    expect(reason.className).not.toMatch(/colorError/);
+  });
+
   it('says the filter emptied the list, not that the run recorded nothing', async () => {
     // The panel only mounts this component for runs that have changeset rows,
     // so "no changes recorded" would be false here

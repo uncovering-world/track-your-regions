@@ -28,9 +28,21 @@ export interface ErrorDetail {
   error: string;
 }
 
+/**
+ * An entity the source offered that is not of the kind this category holds —
+ * a Wikidata collection answering a museum query, say. Nothing failed, so it is
+ * counted apart from errors and leaves the run's status alone.
+ */
+export interface FilteredEntity {
+  externalId: string;
+  name: string;
+  reason: string;
+}
+
 export interface FetchResult<T> {
   items: T[];
   fetchedCount: number;
+  filtered?: FilteredEntity[];
 }
 
 /** What a run is doing, handed to every processItem call. */
@@ -92,6 +104,7 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
     unchanged: 0,
     missing: 0,
     curatedConflicts: 0,
+    filtered: 0,
     errors: 0,
     currentItem: '',
     logId: null,
@@ -206,6 +219,32 @@ function recordItemFailure<T>(
   console.error('%s Error processing %s:', config.logPrefix, config.getItemId(item), errorMsg);
 }
 
+/**
+ * Fold entities the fetch rejected into the run — as their own count, not as
+ * errors. A collection answering a museum query did not fail; it was never a
+ * museum.
+ */
+function recordFilteredEntities(
+  filtered: FilteredEntity[],
+  progress: SyncProgress,
+  changes: ChangeRecord[],
+): void {
+  for (const entity of filtered) {
+    progress.filtered++;
+    if (progress.logId === null) continue;
+    changes.push({
+      syncLogId: progress.logId,
+      experienceId: null,
+      externalId: entity.externalId,
+      nameSnapshot: entity.name,
+      changeType: 'filtered',
+      changedFields: null,
+      significance: null,
+      error: entity.reason,
+    });
+  }
+}
+
 async function processItemsLoop<T>(
   config: SyncServiceConfig<T>,
   items: T[],
@@ -303,6 +342,7 @@ async function recordSyncFailure<T>(
       unchanged: progress.unchanged,
       missing: progress.missing,
       curatedConflicts: progress.curatedConflicts,
+      filtered: progress.filtered,
       errors: progress.errors,
     }, errorDetails);
   }
@@ -361,9 +401,11 @@ export async function orchestrateSync<T>(
 
     if (force) await runForceCleanup(config, progress);
 
-    const { items, fetchedCount } = await config.fetchItems(progress, errorDetails);
+    const { items, fetchedCount, filtered } = await config.fetchItems(progress, errorDetails);
     // fetchItems may append pre-processing errors before the loop counts errors itself
     progress.errors = errorDetails.length;
+
+    recordFilteredEntities(filtered ?? [], progress, changes);
 
     // Both sides of the coverage ratio are measured against the table as it
     // stood before this run touched it. Counting afterwards would fold in the
@@ -417,6 +459,7 @@ export async function orchestrateSync<T>(
       unchanged: progress.unchanged,
       missing: progress.missing,
       curatedConflicts: progress.curatedConflicts,
+      filtered: progress.filtered,
       errors: progress.errors,
       detectionSkippedReason,
     }, errorDetails.length > 0 ? errorDetails : undefined);
