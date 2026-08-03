@@ -11,6 +11,12 @@ const { mockPoolQuery, mockClientQuery, mockPoolConnect } = vi.hoisted(() => {
 
 vi.mock('../../db/index.js', () => ({
   pool: { query: mockPoolQuery, connect: mockPoolConnect },
+  // Mirrors the real one, returning the rollback's own failure — which is
+  // what `client.release()` needs to destroy a client carrying an open
+  // transaction. A stub that swallowed it would make that untestable.
+  rollbackQuietly: async (c: { query: (s: string) => unknown }) => {
+    try { await c.query('ROLLBACK'); return undefined; } catch (e) { return e as Error; }
+  },
 }));
 
 import { editExperience } from './curationController.js';
@@ -36,11 +42,18 @@ function makeRes() {
 function queueQueries(opts: {
   experienceRows?: unknown[];
   scope?: { unrestricted: boolean; scoped_region_id: number | null };
+  lockedCurated?: string[];
+  lockedName?: string;
 }) {
   mockPoolQuery.mockReset();
   mockClientQuery.mockReset();
   mockPoolConnect.mockClear();
-  mockClientQuery.mockResolvedValue({ rows: [] });
+  // The claim the transaction re-reads under its lock, which is what the
+  // union is built from — not the unlocked read that answers 404 and scope.
+  mockClientQuery.mockImplementation(async (sql: string) =>
+    (typeof sql === 'string' && sql.includes('FOR UPDATE'))
+      ? { rows: [{ curated_fields: opts.lockedCurated ?? [], name: opts.lockedName ?? 'Old name' }] }
+      : { rows: [] });
   mockPoolQuery.mockResolvedValueOnce({
     rows: opts.experienceRows ?? [{ id: EXPERIENCE_ID, category_id: CATEGORY_ID, name: 'Old name', curated_fields: [] }],
   });
@@ -168,5 +181,55 @@ describe('editExperience scope', () => {
     expect(res.status).toHaveBeenCalledWith(404);
     expect(mockPoolQuery).toHaveBeenCalledTimes(1);
     expect(mockPoolConnect).not.toHaveBeenCalled();
+  });
+});
+
+describe('editExperience claim locking', () => {
+  it('builds the claim union from the locked row, not the earlier read', async () => {
+    // accept-source released 'name' between the two reads. Unioning the stale
+    // value would put the claim back over a value the curator just accepted,
+    // and the conflict would return at the next run.
+    queueQueries({
+      experienceRows: [{ id: EXPERIENCE_ID, category_id: CATEGORY_ID, name: 'Old name', curated_fields: ['name', 'description'] }],
+      lockedCurated: [],
+    });
+
+    const { res, done } = callEditExperience(ADMIN);
+    await done;
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ curatedFields: ['name'] }));
+  });
+
+  it('audits the values the lock guarantees, not the ones read before it', async () => {
+    queueQueries({
+      experienceRows: [{ id: EXPERIENCE_ID, category_id: CATEGORY_ID, name: 'Stale name', curated_fields: [] }],
+      lockedName: 'Name at lock time',
+    });
+
+    const { done } = callEditExperience(ADMIN);
+    await done;
+
+    const insert = mockClientQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('experience_curation_log'),
+    ) as [string, unknown[]] | undefined;
+    // An `old` value read before the lock names a version that was already
+    // gone by the time the edit was written. `details` is the last parameter:
+    // (experience_id, curator_id, 'edited', region_id, details)
+    const details = String(insert![1].at(-1));
+    expect(details).toContain('Name at lock time');
+    expect(details).not.toContain('Stale name');
+  });
+
+  it('takes the lock before writing anything', async () => {
+    queueQueries({ lockedCurated: [] });
+
+    const { done } = callEditExperience(ADMIN);
+    await done;
+
+    const order = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    const lock = order.findIndex(sql => sql.includes('FOR UPDATE'));
+    const update = order.findIndex(sql => sql.includes('UPDATE experiences'));
+    expect(lock).toBeGreaterThan(-1);
+    expect(update).toBeGreaterThan(lock);
   });
 });
