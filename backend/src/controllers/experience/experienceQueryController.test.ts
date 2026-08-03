@@ -212,6 +212,50 @@ describe('lifecycle visibility across the read paths', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ lostHidden: 0 }));
   });
 
+  it('binds the reader on $4, which is where both branches leave room', async () => {
+    await getExperiencesByRegion(
+      { params: { regionId: '1' }, query: {}, user: { id: 9, role: 'user' } } as never,
+      makeRes() as never);
+
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('v.user_id = $4');
+    expect(params[3]).toBe(9);
+  });
+
+  it('binds the reader on $4 in the other branch too', async () => {
+    await getExperiencesByRegion(
+      { params: { regionId: '1' }, query: { includeChildren: 'false' }, user: { id: 9, role: 'user' } } as never,
+      makeRes() as never);
+
+    // Two branches build the statements; one being right proves nothing about
+    // the other, and they bind independently
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('v.user_id = $4');
+    expect(params[3]).toBe(9);
+  });
+
+  it('keeps the reader out of the count, which is executed with the region alone', async () => {
+    await getExperiencesByRegion(
+      { params: { regionId: '1' }, query: {}, user: { id: 9, role: 'user' } } as never,
+      makeRes() as never);
+
+    // The count runs with `[regionId]`, so a `$4` leaking into it would fail
+    // the whole read with "bind message supplies 1 parameters"
+    const count = String(mockedQuery.mock.calls[1][0]);
+    expect(count).not.toContain('$4');
+  });
+
+  it('leaves an anonymous reader the category window alone', async () => {
+    await getExperiencesByRegion(
+      { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
+
+    // `v.user_id = NULL` is never true, so the personal clause drops out
+    // rather than needing its own query for logged-out readers
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('v.user_id = NULL');
+    expect(params).toHaveLength(3);
+  });
+
   it('labels every row with both axes, so a card can say which it is', async () => {
     await getExperiencesByRegion(
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
