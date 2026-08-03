@@ -147,7 +147,7 @@ When working on this codebase, keep docs in sync:
 
 ### Architecture Decision Records (ADRs)
 
-ADRs live in `docs/decisions/`. They are **immutable** — only `Status` can change. Never delete an ADR; mark it `Superseded by ADR-XXXX` and create a new one.
+ADRs live in `docs/decisions/`. They are **immutable** — only `Status` can change. Never delete an ADR; mark it `Superseded by ADR-XXXX` and create a new one. When the new ADR narrows only part of an older one and the rest stands, mark it `Accepted — decision N narrowed by ADR-XXXX` instead: superseding a multi-decision ADR to revise one of them retires the decisions that still hold.
 
 **When to create an ADR** — before implementing any change that involves:
 - Choosing a library, framework, or external service
