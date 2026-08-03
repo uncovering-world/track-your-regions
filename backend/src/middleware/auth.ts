@@ -217,12 +217,22 @@ export const CURATOR_SCOPED_REGIONS_CTE = `
  * asserts. Kept here in one piece so the two queries that ask this question
  * cannot drift apart when the scope set changes.
  *
- * Expects `$1` = curator user id and `$3` = the experience's category id — the
- * same positional convention as `CURATOR_SCOPED_REGIONS_CTE`.
+ * Expects `$1` = curator user id. Where the category comes from is the caller's
+ * choice, and it is not a free-form string: a query about one experience knows
+ * the category up front and binds it as `$3`, while a query returning many rows
+ * has a different category per row and must correlate on the column instead.
+ * Passing `$3` there would compare every row against one request parameter, and
+ * a category curator who did not happen to filter by their own category would
+ * silently lose the scope they hold.
  */
-export const CURATOR_UNRESTRICTED_SCOPE_EXISTS = `
+export function curatorUnrestrictedScopeExists(category: '$3' | 'e.category_id' = '$3'): string {
+  return `
     EXISTS (
       SELECT 1 FROM curator_assignments ca
       WHERE ca.user_id = $1
-        AND (ca.scope_type = 'global' OR (ca.scope_type = 'category' AND ca.category_id = $3))
+        AND (ca.scope_type = 'global' OR (ca.scope_type = 'category' AND ca.category_id = ${category}))
     )`;
+}
+
+/** The single-experience form, which binds the category as `$3`. */
+export const CURATOR_UNRESTRICTED_SCOPE_EXISTS = curatorUnrestrictedScopeExists();

@@ -83,11 +83,16 @@ const startServer = async () => {
 
   // Mark any orphaned 'running' sync logs as failed (e.g., from a previous server crash)
   const { pool } = await import('./db/index.js');
+  // The review queue reads this marker to tell a run that recorded nothing
+  // from one whose changeset landed, and matches it by containment — so the
+  // whole object comes from the constant, not just its message.
+  const { ORPHANED_RUN_MARKER } = await import('./services/sync/syncLogMarkers.js');
   const staleResult = await pool.query(
     `UPDATE experience_sync_logs
      SET status = 'failed', completed_at = NOW(),
-         error_details = jsonb_build_array(jsonb_build_object('externalId', 'system', 'error', 'Server restarted while sync was running'))
-     WHERE status = 'running'`
+         error_details = jsonb_build_array($1::jsonb)
+     WHERE status = 'running'`,
+    [JSON.stringify(ORPHANED_RUN_MARKER)]
   );
   if (staleResult.rowCount && staleResult.rowCount > 0) {
     console.log(`🧹 Marked ${staleResult.rowCount} stale sync log(s) as failed`);

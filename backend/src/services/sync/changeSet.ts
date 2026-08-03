@@ -57,7 +57,7 @@ const MAJOR_FIELDS = new Set(['name', 'location', 'countryCodes']);
  * The `curated_fields` entry that protects a given change. Column names, because
  * that is what `experiences.curated_fields` holds.
  */
-const CURATED_KEY_BY_FIELD: Record<string, string> = {
+export const CURATED_KEY_BY_FIELD: Record<string, string> = {
   name: 'name',
   nameLocal: 'name_local',
   description: 'description',

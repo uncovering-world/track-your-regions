@@ -7,3 +7,4 @@ export * from './experienceVisitController.js';
 export * from './experienceLocationController.js';
 export * from './experienceTreasureController.js';
 export * from './curationController.js';
+export * from './lifecycleController.js';

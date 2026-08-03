@@ -24,6 +24,9 @@ import {
   createManualExperience,
   editExperience,
   getCurationLog,
+  getReviewQueue,
+  setExperienceState,
+  acceptSourceValue,
 } from '../controllers/experience/index.js';
 import { requireAuth, requireCurator, optionalAuth } from '../middleware/auth.js';
 import { requireVisibleWorldView } from '../middleware/worldViewVisibility.js';
@@ -37,6 +40,9 @@ import {
   experienceLocationsQuerySchema,
   regionLocationsQuerySchema,
   idParamSchema,
+  reviewQueueQuerySchema,
+  experienceStateBodySchema,
+  acceptSourceBodySchema,
   regionIdParamSchema,
   idAndRegionIdParamSchema,
   rejectExperienceBodySchema,
@@ -93,6 +99,13 @@ router.patch('/:id/edit', validate(idParamSchema, 'params'), requireAuth, requir
 
 // Get curation log for an experience
 router.get('/:id/curation-log', validate(idParamSchema, 'params'), requireAuth, requireCurator, getCurationLog);
+
+// Decisions a sync run cannot make for itself: whether an object the source
+// stopped listing is delisted, destroyed, or was never gone, and whether a
+// value the source proposed should displace a curator's edit.
+router.get('/review/queue', requireAuth, requireCurator, validate(reviewQueueQuerySchema, 'query'), getReviewQueue);
+router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceStateBodySchema), setExperienceState);
+router.post('/:id/accept-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(acceptSourceBodySchema), acceptSourceValue);
 
 // Unassign an experience from a region (manual only)
 router.delete('/:id/assign/:regionId', validate(idAndRegionIdParamSchema, 'params'), requireAuth, requireCurator, unassignExperienceFromRegion);
