@@ -32,6 +32,14 @@ export interface Experience {
   // Curator rejection fields (only present when curator has scope)
   is_rejected?: boolean;
   rejection_reason?: string | null;
+  // Lifecycle (ADR-0020, narrowed by ADR-0021). `lost` rows are filtered out
+  // of everything that offers somewhere to go, so `existence` is only ever
+  // 'lost' where they survive on purpose: a visit history, or a list the
+  // reader unfiltered.
+  source_membership?: 'present' | 'former';
+  existence?: 'extant' | 'lost';
+  /** Set by a run, cleared by any verdict. Sent back when correcting one. */
+  missing_since?: string | null;
 }
 
 /**
@@ -123,6 +131,8 @@ export interface ExperiencesByRegionResponse {
   };
   experiences: Experience[];
   total: number;
+  /** How many this region holds that no longer exist and are not being shown. */
+  lostHidden?: number;
   limit: number;
   offset: number;
 }
@@ -182,12 +192,15 @@ export async function fetchExperiencesByRegion(
     includeChildren?: boolean;
     limit?: number;
     offset?: number;
+    /** Objects that no longer exist. Off unless the reader asked. */
+    includeLost?: boolean;
   }
 ): Promise<ExperiencesByRegionResponse> {
   const params = new URLSearchParams();
   if (options?.includeChildren === false) params.set('includeChildren', 'false');
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.offset) params.set('offset', String(options.offset));
+  if (options?.includeLost) params.set('includeLost', 'true');
 
   const query = params.toString();
   const querySuffix = query ? `?${query}` : '';
@@ -236,10 +249,14 @@ export async function fetchExperienceLocations(
  */
 export async function fetchRegionExperienceLocations(
   regionId: number,
-  options?: { includeChildren?: boolean }
+  options?: { includeChildren?: boolean; includeLost?: boolean }
 ): Promise<RegionExperienceLocationsResponse> {
   const params = new URLSearchParams();
   if (options?.includeChildren === false) params.set('includeChildren', 'false');
+  // Has to follow the list. A row the list is showing but this batch is not
+  // arrives with no markers and a confident "0/N in region" — the denominator
+  // comes from the experience, the numerator from here.
+  if (options?.includeLost) params.set('includeLost', 'true');
   const query = params.toString();
   const querySuffix = query ? `?${query}` : '';
   // Authenticated for the same reason as fetchExperiencesByRegion, plus a

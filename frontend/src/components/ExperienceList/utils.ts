@@ -50,3 +50,10 @@ export function ownedHoveredLocationId(
   if (hoveredLocationId === null || !locations) return null;
   return locations.some(loc => loc.id === hoveredLocationId) ? hoveredLocationId : null;
 }
+
+/** "3 here no longer exist — show them", with the singular English wants. */
+export function lostHiddenLabel(count: number): string {
+  const verb = count === 1 ? 'exists' : 'exist';
+  const them = count === 1 ? 'it' : 'them';
+  return `${count} here no longer ${verb} — show ${them}`;
+}

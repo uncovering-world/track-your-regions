@@ -22,6 +22,7 @@ import type {
   Experience,
   ExperienceLocation,
 } from '../../api/experiences';
+import { LifecycleChip } from '../shared/LifecycleChip';
 import { getCategoryPrimaryColor, VISITED_GREEN, PARTIAL_AMBER } from '../../utils/categoryColors';
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
 import { isNewExperience, resolveRowBgColor } from './utils';
@@ -238,6 +239,7 @@ function ExperienceListItemComponent({
               >
                 {experience.name}
               </Typography>
+              <LifecycleChip state={experience} />
               {isNewExperience(experience.created_at) && (
                 <Chip
                   label="New"

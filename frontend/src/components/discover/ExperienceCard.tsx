@@ -13,6 +13,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
 import type { Experience } from '../../api/experiences';
+import { LifecycleChip } from '../shared/LifecycleChip';
 
 interface CardSurfaceInputs {
   isRejected: boolean | undefined;
@@ -189,6 +190,7 @@ export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
             >
               {experience.name}
             </Typography>
+            <LifecycleChip state={experience} />
             {(experience.location_count ?? 0) > 1 && (
               <Chip
                 icon={<PlaceIcon sx={{ fontSize: '0.6rem !important' }} />}
