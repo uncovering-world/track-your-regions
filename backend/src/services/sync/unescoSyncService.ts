@@ -238,10 +238,74 @@ function extractRemoteImageUrl(value: unknown): string | null {
 }
 
 /**
+ * The site's own point, falling back to its most central component.
+ *
+ * UNESCO leaves `coordinates` null on serial nominations and carries the real
+ * positions in `components_list` — 28 of the 29 records that failed the dry run
+ * of 3 August were of this shape, including sites already in the catalogue
+ * (Garamba, Berlin Modernism) whose main field the source has since emptied.
+ *
+ * Neither the centroid nor the first component will do. A centroid of scattered
+ * parts (the Roças of São Tomé, the D-Day beaches) can land in open water; the
+ * first component is wherever the source happened to list it, which for Getbol
+ * sat 301 km from the site's former point — far enough to land in a different
+ * region and take the experience's assignment with it. The component nearest
+ * the centroid is both a real place at the site and a central one.
+ */
+export function resolveMainPoint(
+  record: UnescoApiRecord,
+  locations: ParsedLocation[],
+): { lat: number; lon: number } | null {
+  // Number.isFinite, not truthiness: a site on the equator or the prime
+  // meridian has a coordinate of 0, which is a position, not a missing value.
+  const { lat, lon } = record.coordinates ?? {};
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    return { lat: lat as number, lon: lon as number };
+  }
+  if (locations.length === 0) return null;
+
+  const centroidLat = locations.reduce((sum, l) => sum + l.lat, 0) / locations.length;
+  const centroidLon = meanLongitude(locations);
+  // Comparing squared offsets is enough to rank candidates; longitude is scaled
+  // by cos(lat) so the comparison stays sane away from the equator, and the
+  // difference is taken the short way round so a site spanning the
+  // antimeridian is not judged against a point on the far side of the planet.
+  const lonScale = Math.cos((centroidLat * Math.PI) / 180);
+  const offset = (l: ParsedLocation) =>
+    (l.lat - centroidLat) ** 2 + (longitudeDelta(l.lon, centroidLon) * lonScale) ** 2;
+
+  const medoid = locations.reduce((best, l) => (offset(l) < offset(best) ? l : best));
+  return { lat: medoid.lat, lon: medoid.lon };
+}
+
+/**
+ * Mean of longitudes, taken as directions rather than numbers.
+ *
+ * An arithmetic mean puts parts at 179.5 and -179.5 — half a degree apart
+ * across the antimeridian — at longitude 0, on the opposite side of the world.
+ * Averaging the unit vectors and reading the angle back gives 180, which is
+ * where the site actually is. See CLAUDE.md § Antimeridian Handling.
+ */
+function meanLongitude(locations: ParsedLocation[]): number {
+  const toRad = Math.PI / 180;
+  const x = locations.reduce((sum, l) => sum + Math.cos(l.lon * toRad), 0);
+  const y = locations.reduce((sum, l) => sum + Math.sin(l.lon * toRad), 0);
+  return (Math.atan2(y, x) * 180) / Math.PI;
+}
+
+/** Separation between two longitudes, never more than half a turn. */
+function longitudeDelta(a: number, b: number): number {
+  const diff = Math.abs(a - b) % 360;
+  return diff > 180 ? 360 - diff : diff;
+}
+
+/**
  * Transform UNESCO API record to our internal format
  */
 function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): ProcessedExperience | null {
-  if (!record.coordinates || !record.coordinates.lat || !record.coordinates.lon) {
+  const locations = parseComponentsList(record.components_list);
+  const point = resolveMainPoint(record, locations);
+  if (!point) {
     console.log(`[UNESCO Sync] Skipping ${record.id_no} - no coordinates`);
     return null;
   }
@@ -267,13 +331,13 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
     shortDescription: record.short_description_en || null,
     category: normalizeCategory(record.category),
     tags: buildUnescoTags(record),
-    lat: record.coordinates.lat,
-    lon: record.coordinates.lon,
+    lat: point.lat,
+    lon: point.lon,
     countryCodes: parseDelimitedField(record.iso_codes),
     countryNames: parseDelimitedField(record.states_names),
     imageUrl: extractRemoteImageUrl(record.main_image_url),
     metadata,
-    locations: parseComponentsList(record.components_list),
+    locations,
   };
 }
 
