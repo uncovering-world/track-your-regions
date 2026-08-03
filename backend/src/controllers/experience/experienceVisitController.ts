@@ -6,6 +6,7 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
+import { lifecycleSelectSql } from './experienceLifecycle.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -37,12 +38,17 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
       e.image_url,
       ST_X(e.location) as longitude,
       ST_Y(e.location) as latitude,
-      s.name as category_name
+      s.name as category_name,
+      ${lifecycleSelectSql()}
     FROM user_visited_experiences uve
     JOIN experiences e ON uve.experience_id = e.id
     JOIN experience_categories s ON e.category_id = s.id
     WHERE uve.user_id = $1
   `;
+  // Deliberately unfiltered. Someone who saw Palmyra before 2015 saw it, and
+  // a record of that cannot depend on the thing still standing — this is the
+  // one read where `lost` must survive, and it is why the counts elsewhere can
+  // safely shrink.
 
   const params: (number | string)[] = [userId];
   let paramIndex = 2;

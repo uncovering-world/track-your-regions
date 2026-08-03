@@ -6,6 +6,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
+import { hideLostSql, includeLost } from './experienceLifecycle.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 // =============================================================================
@@ -22,6 +23,12 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 export async function getRegionExperienceLocations(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
   const includeChildren = req.query.includeChildren !== 'false';
+
+  // Follows the list. These are the markers for exactly the rows the list is
+  // showing, so a reader who asked to see what no longer exists would
+  // otherwise get the rows without their locations — no pins, and a
+  // "0 locations" count on every one of them.
+  const lifecycleFilter = includeLost(req.query) ? '' : `AND ${hideLostSql()}`;
 
   let query: string;
   const params: number[] = [regionId];
@@ -75,6 +82,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
         SELECT DISTINCT er.experience_id FROM experience_regions er
         WHERE er.region_id IN (SELECT id FROM descendant_regions)
       )
+        ${lifecycleFilter}
       ORDER BY el.experience_id, el.ordinal
     `;
   } else {
@@ -118,6 +126,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
       ) leaf_r ON true
       JOIN experience_regions er ON er.experience_id = e.id
       WHERE er.region_id = $1
+        ${lifecycleFilter}
       ORDER BY el.experience_id, el.ordinal
     `;
   }
