@@ -5,7 +5,11 @@
  * API docs: https://data.unesco.org/api/explore/v2.1/console
  */
 
-import { pool } from '../../db/index.js';
+import {
+  writeExperienceLocations,
+  type IncomingLocation,
+  type LocationWriteResult,
+} from './locationWriter.js';
 import { upsertExperienceRecord } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
@@ -392,38 +396,23 @@ async function upsertExperience(
  * For single-location experiences (no components_list):
  *   - Create one location (ordinal 1) from the experience's main coordinates
  */
-async function upsertExperienceLocations(experienceId: number, exp: ProcessedExperience): Promise<void> {
-  // Delete all existing locations for this experience (we'll recreate them)
-  await pool.query(
-    `DELETE FROM experience_locations WHERE experience_id = $1`,
-    [experienceId]
-  );
+async function upsertExperienceLocations(
+  experienceId: number,
+  exp: ProcessedExperience,
+): Promise<LocationWriteResult> {
+  // Components when the site has them, the main point otherwise. The write
+  // itself keeps every point that is still offered on its existing row — see
+  // `locationWriter.ts` for why deleting first destroyed region assignments.
+  const incoming: IncomingLocation[] = exp.locations.length > 0
+    ? exp.locations.map(loc => ({
+        name: loc.name,
+        externalRef: loc.externalRef,
+        lon: loc.lon,
+        lat: loc.lat,
+      }))
+    : [{ name: null, externalRef: null, lon: exp.lon, lat: exp.lat }];
 
-  if (exp.locations.length > 0) {
-    // Multi-location experience: create locations from components_list only
-    for (let i = 0; i < exp.locations.length; i++) {
-      const loc = exp.locations[i];
-      await pool.query(
-        `INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location)
-         VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
-        [
-          experienceId,
-          loc.name,
-          loc.externalRef,
-          i + 1, // ordinal starts at 1
-          loc.lon,
-          loc.lat,
-        ]
-      );
-    }
-  } else {
-    // Single-location experience: create one location from main coordinates
-    await pool.query(
-      `INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location)
-       VALUES ($1, NULL, NULL, 1, ST_SetSRID(ST_MakePoint($2, $3), 4326))`,
-      [experienceId, exp.lon, exp.lat]
-    );
-  }
+  return writeExperienceLocations(experienceId, incoming);
 }
 
 // =============================================================================
