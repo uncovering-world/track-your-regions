@@ -9,6 +9,7 @@
 import { createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
 import { recordSyncChanges, type ChangeRecord } from './changeRecorder.js';
 import { CHANGESET_LOST_MARKER } from './syncLogMarkers.js';
+import { finishPlacement, enterAssigningPhase, terminalStatus } from './placement.js';
 import {
   missingDetectionSkipReason,
   flagMissingExperiences,
@@ -18,16 +19,13 @@ import {
 } from './missingDetection.js';
 import type { ChangeSetResult } from './changeSet.js';
 import type { SyncProgress } from './types.js';
-import { runningSyncs } from './types.js';
+import { runningSyncs, isTerminalSyncStatus } from './types.js';
+import type { RunVerdict, ErrorDetail } from './types.js';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export interface ErrorDetail {
-  externalId: string;
-  error: string;
-}
 
 /**
  * An entity the source offered that is not of the kind this category holds —
@@ -46,10 +44,22 @@ export interface FetchResult<T> {
   filtered?: FilteredEntity[];
 }
 
+
 /** What a run is doing, handed to every processItem call. */
 export interface SyncRunContext {
   dryRun: boolean;
   syncLogId: number | null;
+  /**
+   * Register that an experience's locations were just written, so the run can
+   * place it before it ends.
+   *
+   * Called at the write, not carried back on the result. A service can throw
+   * *after* moving a point — the museum one does, since treasures are upserted
+   * afterwards — and a returned field is lost when it does. The point has
+   * already moved on disk by then, so the object would keep a stale assignment
+   * naming the region it left, with nothing to signal it.
+   */
+  onLocationsChanged: (experienceId: number) => void;
 }
 
 export interface ProcessItemResult {
@@ -88,9 +98,7 @@ export interface SyncServiceConfig<T> {
 
 function isSyncStillRunning(progress: SyncProgress | undefined): boolean {
   return !!progress
-    && progress.status !== 'complete'
-    && progress.status !== 'failed'
-    && progress.status !== 'cancelled';
+    && !isTerminalSyncStatus(progress.status);
 }
 
 function initSyncProgress(dryRun: boolean): SyncProgress {
@@ -246,6 +254,30 @@ function recordFilteredEntities(
   }
 }
 
+/**
+ * Persist the per-object changeset, or leave a marker saying it was lost.
+ *
+ * Recorded before the log is closed, but never at the cost of closing it: a
+ * failed insert here used to leave the run stuck at 'running' forever.
+ */
+async function recordChangesetOrMark(
+  changes: ChangeRecord[],
+  errorDetails: ErrorDetail[],
+  progress: SyncProgress,
+  logPrefix: string,
+): Promise<boolean> {
+  try {
+    await recordSyncChanges(changes);
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errorDetails.push({ ...CHANGESET_LOST_MARKER, error: `Failed to record changeset: ${msg}` });
+    progress.errors++;
+    console.error('%s Failed to record changeset:', logPrefix, msg);
+    return false;
+  }
+}
+
 async function processItemsLoop<T>(
   config: SyncServiceConfig<T>,
   items: T[],
@@ -319,10 +351,13 @@ async function recordSyncFailure<T>(
   err: unknown,
   errorDetails: ErrorDetail[],
   changes: ChangeRecord[],
-  alreadyRecorded: boolean = false,
+  alreadyRecorded: boolean,
+  // Decided by the caller, before this is called: everything below awaits, and
+  // the database outage that lands a run here would reject `updateSyncLog`, so
+  // a verdict produced in here could never be relied on to come back.
+  verdict: Exclude<RunVerdict, 'complete'>,
 ): Promise<void> {
   const errorMsg = err instanceof Error ? err.message : String(err);
-  progress.status = progress.cancel ? 'cancelled' : 'failed';
   progress.statusMessage = errorMsg;
 
   if (progress.logId) {
@@ -336,7 +371,7 @@ async function recordSyncFailure<T>(
       errorDetails.push({ ...CHANGESET_LOST_MARKER, error: `Failed to record changeset: ${msg}` });
       console.error('%s Failed to record changeset:', config.logPrefix, msg);
     }
-    await updateSyncLog(config.categoryId, progress.logId, progress.status, {
+    await updateSyncLog(config.categoryId, progress.logId, verdict, {
       fetched: progress.total,
       created: progress.created,
       updated: progress.updated,
@@ -348,7 +383,7 @@ async function recordSyncFailure<T>(
     }, errorDetails);
   }
 
-  if (progress.status === 'cancelled') {
+  if (verdict === 'cancelled') {
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- logPrefix is a module constant supplied by the sync services
     console.log(`${config.logPrefix} Cancelled:`, errorMsg);
   } else {
@@ -389,6 +424,10 @@ export async function orchestrateSync<T>(
   runningSyncs.set(categoryId, progress);
   const errorDetails: ErrorDetail[] = [];
   const changes: ChangeRecord[] = [];
+  // Experiences whose geometry moved, so their region assignment is stale.
+  const movedExperiences = new Set<number>();
+  // The verdict the run reached, applied once placement has also finished.
+  let finishedStatus: RunVerdict | undefined;
   // The failure path also records the changeset, so it has to know whether the
   // success path already did — a throw from updateSyncLog would otherwise
   // insert every row twice.
@@ -421,34 +460,45 @@ export async function orchestrateSync<T>(
       ? await countSeenAmongActive(categoryId, seenExternalIds)
       : 0;
 
-    const context: SyncRunContext = { dryRun, syncLogId: progress.logId };
+    const context: SyncRunContext = {
+      dryRun,
+      syncLogId: progress.logId,
+      onLocationsChanged: (experienceId) => movedExperiences.add(experienceId),
+    };
     await processItemsLoop(config, items, progress, errorDetails, changes, context);
+    // The loop reads the flag before each item, so a press during the last one
+    // would otherwise go unread. Later windows are closed at the other end:
+    // `cancelSync` refuses once there is no item left to interrupt.
+    if (progress.cancel) throw new Error('Sync cancelled');
 
     const detectionSkippedReason = await detectMissing(
       config, progress, previousActiveCount, seenCount, force, changes, seenExternalIds,
     );
 
-    // Recorded before the log is closed, but never at the cost of closing it:
-    // a failed insert here used to leave the run stuck at 'running' forever.
-    try {
-      await recordSyncChanges(changes);
-      changesRecorded = true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errorDetails.push({ ...CHANGESET_LOST_MARKER, error: `Failed to record changeset: ${msg}` });
-      progress.errors++;
-      console.error('%s Failed to record changeset:', logPrefix, msg);
-    }
+    changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
 
     // Computed after that attempt: a run whose per-object record never landed is
     // not a clean run, whatever the items themselves did, and an operator
     // reading `success` over a missing changeset would be misled.
     const finalStatus = computeFinalStatus(progress);
-    // A failed run says so in the state itself, not only in the message: the
-    // UI reads `status` to decide what happened, and 'complete' over a failed
-    // verdict is the one case where the two genuinely disagree. 'partial' has
-    // no state of its own — the message carries it.
-    progress.status = finalStatus === 'failed' ? 'failed' : 'complete';
+    // Two different things are called `partial`, and only one of them is a
+    // progress state:
+    //
+    // - `computeFinalStatus`'s — some items errored. It goes to the log row and
+    //   stops there; the run itself still reached `complete`, which is why this
+    //   line maps everything that is not `failed` onto it.
+    // - placement's — the run finished but placing what it moved did not. That
+    //   one *is* a progress state, assigned later by `terminalStatus`.
+    //
+    // Both surface as `last_sync_status = 'partial'` and the same chip, so the
+    // distinction lives only here. Worth keeping straight: a reader who assumes
+    // one meaning finds the other's code inexplicable.
+    //
+    // Not 'complete' yet either way: placement runs in the `finally` below and
+    // is part of finishing the run, so declaring the run over here would let a
+    // poller see `running: false` while it is still going — and read a status
+    // the placement may be about to downgrade.
+    finishedStatus = finalStatus === 'failed' ? 'failed' : 'complete';
     const verdict = finalStatus === 'success' ? 'Complete' : `Complete (${finalStatus})`;
     progress.statusMessage = `${verdict}: ${progress.created} created, ${progress.updated} updated, `
       + `${progress.unchanged} unchanged, ${progress.missing} missing, ${progress.errors} errors`;
@@ -466,10 +516,46 @@ export async function orchestrateSync<T>(
     }, errorDetails.length > 0 ? errorDetails : undefined);
 
     console.log(`${logPrefix} Complete: created=${progress.created}, updated=${progress.updated}, unchanged=${progress.unchanged}, missing=${progress.missing}, errors=${progress.errors}`);
+
   } catch (err) {
-    await recordSyncFailure(config, progress, err, errorDetails, changes, changesRecorded);
+    // Decided here, before the call: `recordSyncFailure` awaits `updateSyncLog`,
+    // and a database outage — the very thing that lands a run here — would
+    // reject it. A verdict produced inside would then never come back, leaving
+    // the run non-terminal: `isSyncStillRunning` true forever, a spinner over a
+    // finished run, and retries answered 409 until the cleanup timer fires.
+    finishedStatus = progress.cancel ? 'cancelled' : 'failed';
+    await recordSyncFailure(
+      config, progress, err, errorDetails, changes, changesRecorded, finishedStatus);
     throw err;
   } finally {
+    // The run is not over, but it is no longer processing items: placement is
+    // its own phase and can take minutes on a force run, where the whole
+    // category lands in `movedExperiences` and every world view gets its own
+    // transaction. Naming the phase keeps `isSyncStillRunning` true — the
+    // poller must keep polling — while giving `cancelSync` something to refuse
+    // and the panel something truthful to show. Without it the panel offers a
+    // Cancel that nothing reads, beside a completion message and a full bar.
+    enterAssigningPhase(progress, movedExperiences, dryRun, finishedStatus);
+
+    // Placed on the way out, not on the success path. A cancel is a button, and
+    // a run stopped halfway has already moved the points it got to — leaving
+    // those unplaced would put real objects in the wrong region, or nowhere,
+    // until someone noticed. The set holds what was actually written, so
+    // placing it is right however the run ended. It reports rather than throws,
+    // so it cannot displace the failure that brought us here.
+    const placed = await finishPlacement(config, progress, errorDetails, movedExperiences, {
+      dryRun, finishedStatus, logPrefix,
+    });
+
+    // Only now is the run over, so only now may a poller see it that way. Both
+    // paths set `finishedStatus` before anything that can reject — the success
+    // path at the end of the try, the failure path as the catch's first
+    // statement — so it is always one of the three terminal values here. The
+    // default is `failed` rather than the run's own status: if a path is ever
+    // added that forgets, a run reported as failed is recoverable, while one
+    // left non-terminal spins a poller forever and answers retries with 409.
+    progress.status = terminalStatus(placed, finishedStatus);
+
     // Clean up after delay, but only if this sync's progress is still current.
     const thisProgress = progress;
     setTimeout(() => {
@@ -492,11 +578,32 @@ export function getSyncStatus(categoryId: number): SyncProgress | null {
 }
 
 /**
+ * Can a cancel still be acted on?
+ *
+ * Only while there is an item loop left to interrupt: fetching, or processing
+ * with items remaining. Past the last item nothing reads the flag — detection,
+ * changeset recording, log closure and placement never look at it — so
+ * accepting there would report a cancellation that does not happen and let the
+ * run finish as a success.
+ *
+ * Exported because the admin panel disables its button on exactly this rule.
+ * Derived twice, the two would drift, and the drift shows up as a button
+ * promising something the server refuses.
+ */
+export function isCancellable(progress: SyncProgress): boolean {
+  return progress.status === 'fetching'
+    || (progress.status === 'processing' && progress.progress < progress.total);
+}
+
+/**
  * Cancel a running sync for any category by ID.
+ *
+ * Answers whether the press was acted on, not whether the run stopped: it sets
+ * a flag the item loop reads, and refuses outright once there is no loop left.
  */
 export function cancelSync(categoryId: number): boolean {
   const progress = runningSyncs.get(categoryId);
-  if (progress && progress.status !== 'complete' && progress.status !== 'failed' && progress.status !== 'cancelled') {
+  if (progress && isCancellable(progress)) {
     progress.cancel = true;
     progress.statusMessage = 'Cancelling...';
     return true;

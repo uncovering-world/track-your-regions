@@ -163,6 +163,19 @@ describe('dedupeByIdentity', () => {
     expect(dedupeByIdentity(repeated)[0].name).toBe('A');
   });
 
+  it('does not treat a null reference as an empty one', () => {
+    // `IS NOT DISTINCT FROM` calls these two different references, so a key
+    // that flattened them would drop one of a pair the SQL keeps apart — and
+    // the delete would then take the survivor's row, cascading its region
+    // assignments away.
+    const nullAndEmpty = [
+      { name: 'A', externalRef: null, lon: 5, lat: 5 },
+      { name: 'B', externalRef: '', lon: 5, lat: 5 },
+    ];
+
+    expect(dedupeByIdentity(nullAndEmpty)).toHaveLength(2);
+  });
+
   it('does not treat a null reference as matching a present one', () => {
     const mixed = [
       { name: 'A', externalRef: null, lon: 5, lat: 5 },

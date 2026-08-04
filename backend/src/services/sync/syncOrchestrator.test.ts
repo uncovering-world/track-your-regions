@@ -7,18 +7,24 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { orchestrateSync, getSyncStatus, cancelSync, type SyncServiceConfig, type ProcessItemResult } from './syncOrchestrator.js';
+import { orchestrateSync, getSyncStatus, cancelSync, isCancellable, type SyncServiceConfig, type ProcessItemResult } from './syncOrchestrator.js';
 import { runningSyncs, type SyncProgress } from './types.js';
 
 // Mock sync log utilities — these hit the database
 vi.mock('./syncUtils.js', () => ({
   createSyncLog: vi.fn().mockResolvedValue(42),
   updateSyncLog: vi.fn().mockResolvedValue(undefined),
+  annotateClosedSyncLog: vi.fn().mockResolvedValue(undefined),
   cleanupCategoryData: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('./changeRecorder.js', () => ({
   recordSyncChanges: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('./regionAssignmentService.js', () => ({
+  assignRegionsForExperiences: vi.fn().mockResolvedValue(3),
+  worldViewsWithGeometry: vi.fn().mockResolvedValue([5]),
 }));
 
 vi.mock('./missingDetection.js', () => ({
@@ -28,9 +34,10 @@ vi.mock('./missingDetection.js', () => ({
   countSeenAmongActive: vi.fn().mockResolvedValue(0),
 }));
 
-import { createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
+import { createSyncLog, updateSyncLog, annotateClosedSyncLog, cleanupCategoryData } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
 import { missingDetectionSkipReason, flagMissingExperiences, countSeenAmongActive } from './missingDetection.js';
+import { assignRegionsForExperiences, worldViewsWithGeometry } from './regionAssignmentService.js';
 
 const TEST_CATEGORY_ID = 999;
 
@@ -678,5 +685,198 @@ describe('cancelSync', () => {
     runningSyncs.set(TEST_CATEGORY_ID, makeProgress({ status: 'failed', statusMessage: 'Error', total: 0, errors: 1, logId: 42 }));
 
     expect(cancelSync(TEST_CATEGORY_ID)).toBe(false);
+  });
+});
+
+describe('placing what moved', () => {
+  beforeEach(() => {
+    // Reset, not clear. `mockClear` keeps the implementation, so a
+    // `mockRejectedValue` installed by one test survives into every later one —
+    // and a test asserting only call arguments then passes against a mock that
+    // never resolves, which is how a failing placement can look like a working
+    // one.
+    (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(3);
+    (worldViewsWithGeometry as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([5]);
+    (annotateClosedSyncLog as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(undefined);
+    runningSyncs.delete(TEST_CATEGORY_ID);
+  });
+
+  it('places the experiences whose locations moved, once per world view', async () => {
+    const config = makeConfig({
+      processItem: vi.fn()
+        .mockImplementationOnce(async (_i, _p, ctx) => {
+          ctx.onLocationsChanged(11);
+          return { ...processed('created'), experienceId: 11 };
+        })
+        .mockResolvedValueOnce({ ...processed('unchanged'), experienceId: 12 }),
+    });
+
+    await orchestrateSync(config, null);
+
+    // Only the one that moved. The other's assignments are still correct, and
+    // recomputing them is the churn this whole change removes.
+    expect(assignRegionsForExperiences).toHaveBeenCalledWith([11], 5);
+  });
+
+  it('leaves assignments alone when nothing moved', async () => {
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValue(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, null);
+
+    // Not merely "assigned nothing" — it must not even ask which world views
+    // exist, since an ordinary run is expected to reach this with an empty set.
+    expect(worldViewsWithGeometry).not.toHaveBeenCalled();
+    expect(assignRegionsForExperiences).not.toHaveBeenCalled();
+  });
+
+  it('places nothing on a preview', async () => {
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async (_i, _p, ctx) => {
+        ctx.onLocationsChanged(11);
+        return { ...processed('created'), experienceId: 11 };
+      }),
+    });
+
+    await orchestrateSync(config, null, { dryRun: true });
+
+    // A dry run writes no locations, so there is nothing placed either — and
+    // placing would be a write, which is the one thing a preview promises not
+    // to do.
+    expect(assignRegionsForExperiences).not.toHaveBeenCalled();
+  });
+
+  it('places what a cancelled run already moved', async () => {
+    // A cancel is a button, not a rare fault, and a run stopped halfway has
+    // already written the points it got to. Leaving those unplaced puts real
+    // objects in the wrong region, or nowhere, until someone notices.
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async (_item, progress, ctx) => {
+        ctx.onLocationsChanged(11);
+        progress.cancel = true;
+        return { ...processed('updated'), experienceId: 11 };
+      }),
+    });
+
+    await expect(orchestrateSync(config, null)).rejects.toThrow();
+
+    expect(assignRegionsForExperiences).toHaveBeenCalledWith([11], 5);
+  });
+
+  it('records a placement failure in the log, so an operator can see it', async () => {
+    (assignRegionsForExperiences as ReturnType<typeof vi.fn>)
+      .mockRejectedValue(new Error('geometry exploded'));
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async (_i, _p, ctx) => {
+        ctx.onLocationsChanged(11);
+        return { ...processed('created'), experienceId: 11 };
+      }),
+    });
+
+    await orchestrateSync(config, null);
+
+    // The log is already closed as a success by this point. Left on the console
+    // only, an operator would have no way to know that experience_regions is
+    // stale for what this run moved, or that a full re-assignment fixes it.
+    const note = (annotateClosedSyncLog as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    expect(note?.[2]).toBe('partial');
+    expect(JSON.stringify(note?.[3])).toContain('region-assignment');
+  });
+
+  it('keeps a cancelled run cancelled, even when placement then fails', async () => {
+    // `recordSyncFailure` writes `cancelled` for a stopped run, and that is a
+    // fact of its own: the history panel renders it as its own chip, and it
+    // survives nowhere else in the row. Overwriting it with `partial` would
+    // lose that an operator stopped this run.
+    (assignRegionsForExperiences as ReturnType<typeof vi.fn>)
+      .mockRejectedValue(new Error('geometry exploded'));
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async (_item, progress, ctx) => {
+        ctx.onLocationsChanged(11);
+        progress.cancel = true;
+        return { ...processed('updated'), experienceId: 11 };
+      }),
+    });
+
+    await expect(orchestrateSync(config, null)).rejects.toThrow();
+
+    const note = (annotateClosedSyncLog as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    expect(note?.[2]).toBe('cancelled');
+    expect(JSON.stringify(note?.[3])).toContain('region-assignment');
+  });
+
+  it('does not let a failed assignment fail the run', async () => {
+    (assignRegionsForExperiences as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error('geometry exploded'));
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async (_i, _p, ctx) => {
+        ctx.onLocationsChanged(11);
+        return { ...processed('created'), experienceId: 11 };
+      }),
+    });
+
+    await expect(orchestrateSync(config, null)).resolves.toBeUndefined();
+
+    // The log is already closed by this point. Throwing here would leave the
+    // run reported as still running, which is the failure mode recording the
+    // changeset was hardened against for the same reason.
+    expect(updateSyncLog).toHaveBeenCalled();
+  });
+});
+
+describe('registering a location write', () => {
+  beforeEach(() => {
+    (assignRegionsForExperiences as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(3);
+    (annotateClosedSyncLog as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(undefined);
+    runningSyncs.delete(TEST_CATEGORY_ID);
+  });
+
+  it('keeps what an item wrote even when that item then throws', async () => {
+    // The museum service upserts treasures *after* moving the point, and that
+    // can throw. Carried back on the result, the id would be lost with the
+    // throw while the point had already moved on disk — leaving a stale `auto`
+    // row naming the region it left, and nothing to signal it.
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async (_item, _progress, ctx) => {
+        ctx.onLocationsChanged(11);
+        throw new Error('treasures blew up');
+      }),
+    });
+
+    await orchestrateSync(config, null);
+
+    expect(assignRegionsForExperiences).toHaveBeenCalledWith([11], 5);
+  });
+});
+
+describe('isCancellable', () => {
+  const at = (status: SyncProgress['status'], progress: number, total: number) =>
+    makeProgress({ status, progress, total });
+
+  it('accepts while items are still being fetched', () => {
+    expect(isCancellable(at('fetching', 0, 0))).toBe(true);
+  });
+
+  it('accepts while items remain to process', () => {
+    expect(isCancellable(at('processing', 3, 10))).toBe(true);
+  });
+
+  it('refuses once the last item is done', () => {
+    // Nothing reads `progress.cancel` past this point — detection, changeset
+    // recording, log closure and placement all ignore it — so accepting would
+    // report a cancellation that does not happen and let the run finish as a
+    // success.
+    expect(isCancellable(at('processing', 10, 10))).toBe(false);
+  });
+
+  it('refuses while regions are being assigned', () => {
+    expect(isCancellable(at('assigning', 10, 10))).toBe(false);
+  });
+
+  it('refuses a run that has already ended', () => {
+    for (const status of ['complete', 'partial', 'failed', 'cancelled'] as const) {
+      expect(isCancellable(at(status, 10, 10))).toBe(false);
+    }
   });
 });

@@ -102,7 +102,11 @@ function incomingCte(count: number): string {
 export function dedupeByIdentity(incoming: IncomingLocation[]): IncomingLocation[] {
   const seen = new Set<string>();
   return incoming.filter(loc => {
-    const key = `${loc.lon},${loc.lat}\u0000${loc.externalRef ?? ''}`;
+    // JSON rather than a joined string: `null` and `''` are different
+    // references to `IS NOT DISTINCT FROM`, and a key that flattened them would
+    // drop one of a pair the SQL then treats as two — the delete would take the
+    // survivor's stored row and cascade its region assignments away.
+    const key = JSON.stringify([loc.lon, loc.lat, loc.externalRef]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

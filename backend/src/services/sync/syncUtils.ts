@@ -4,7 +4,9 @@
  * Common database operations used by UNESCO, museum, and landmark sync services.
  */
 
-import { pool } from '../../db/index.js';
+import { eq } from 'drizzle-orm';
+import { pool, db } from '../../db/index.js';
+import { experienceSyncLogs, experienceCategories } from '../../db/schema.js';
 import { writeExperienceLocations, type LocationWriteResult } from './locationWriter.js';
 import { computeChangeSet, type ChangeSetResult, type ExperienceSnapshot } from './changeSet.js';
 import type { SyncProgress } from './types.js';
@@ -324,6 +326,55 @@ export async function updateSyncLog(
      WHERE id = $1`,
     [categoryId, status, status === 'failed' ? 'See sync log for details' : null]
   );
+}
+
+/**
+ * Note on an already-closed run that a follow-up step failed.
+ *
+ * Deliberately narrow. `updateSyncLog` is a full rewrite — it sets every stat
+ * column and `detection_skipped_reason` unconditionally — so calling it again
+ * to change two fields would clobber the ten it is not being asked about. Two
+ * of those genuinely differ between the caller's view and what the run wrote:
+ * `total_fetched` is the source's item count rather than the processed one, and
+ * `detection_skipped_reason` is produced by `detectMissing`, which a later
+ * caller has no reason to recompute.
+ *
+ * Touches only `status` and `error_details`, and mirrors the status onto the
+ * category the same way `updateSyncLog` does, since that is what both admin
+ * surfaces read.
+ */
+export async function annotateClosedSyncLog(
+  categoryId: number,
+  logId: number,
+  status: string,
+  errorDetails: unknown[],
+): Promise<void> {
+  // ADR-0004: Drizzle over raw SQL. These are ordinary relational updates with
+  // no PostGIS in them, which is where the raw `pool` is reserved for.
+  //
+  // One transaction, because the two rows are one statement of fact: the log
+  // marked and the category not would leave the admin surfaces disagreeing
+  // about the run they both read.
+  await db.transaction(async (tx) => {
+    const [log] = await tx
+      .update(experienceSyncLogs)
+      .set({ status, errorDetails })
+      .where(eq(experienceSyncLogs.id, logId))
+      .returning({ isDryRun: experienceSyncLogs.isDryRun });
+
+    if (log?.isDryRun) return;
+
+    // `last_sync_error` carries the same mapping `updateSyncLog` applies, or a
+    // downgrade would leave a stale message from an earlier failed run standing
+    // next to this run's new status.
+    await tx
+      .update(experienceCategories)
+      .set({
+        lastSyncStatus: status,
+        lastSyncError: status === 'failed' ? 'See sync log for details' : null,
+      })
+      .where(eq(experienceCategories.id, categoryId));
+  });
 }
 
 // =============================================================================

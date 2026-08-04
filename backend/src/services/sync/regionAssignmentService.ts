@@ -280,3 +280,115 @@ export async function getExperienceCountsByRegion(
     count: parseInt(row.count),
   }));
 }
+
+// =============================================================================
+// Incremental Assignment
+// =============================================================================
+
+/**
+ * Assign regions for a handful of experiences whose locations just changed.
+ *
+ * The full rebuild above answers "every location has moved" — the case where
+ * region *geometry* changed. After a sync almost nothing has moved, and since
+ * `locationWriter` keeps the row of a point that stayed put, the work left is
+ * only the experiences whose geometry actually differs. Doing the full rebuild
+ * for that would be wrong twice over: it costs a CROSS JOIN over every region
+ * and every location, and its clear-then-insert leaves a window in which the
+ * world view has no assignments at all and users see empty regions.
+ *
+ * Scoped by experience rather than by location on purpose. A point that moved
+ * out of a region can leave a stale row at the *experience* level, which is a
+ * union over that experience's locations — so the experience is the smallest
+ * unit that can be recomputed correctly.
+ *
+ * Runs in one transaction, so the brief absence between clearing and
+ * reinserting is never observable.
+ */
+export async function assignRegionsForExperiences(
+  experienceIds: number[],
+  worldViewId: number,
+): Promise<number> {
+  if (experienceIds.length === 0) return 0;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const params = [worldViewId, experienceIds];
+
+    // Only `auto` rows, at both levels: a curator's manual assignment is not
+    // this function's to recompute.
+    await client.query(`
+      DELETE FROM experience_location_regions elr
+      USING experience_locations el, regions r
+      WHERE elr.location_id = el.id AND elr.region_id = r.id
+        AND r.world_view_id = $1 AND elr.assignment_type = 'auto'
+        AND el.experience_id = ANY($2::int[])
+    `, params);
+
+    await client.query(`
+      DELETE FROM experience_regions er
+      USING regions r
+      WHERE er.region_id = r.id AND r.world_view_id = $1
+        AND er.assignment_type = 'auto' AND er.experience_id = ANY($2::int[])
+    `, params);
+
+    await client.query(`
+      INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
+      SELECT DISTINCT el.id, r.id, 'auto'
+      FROM experience_locations el
+      CROSS JOIN regions r
+      WHERE r.world_view_id = $1 AND r.geom IS NOT NULL
+        AND el.experience_id = ANY($2::int[])
+        AND r.geom && el.location AND ST_Contains(r.geom, el.location)
+      ON CONFLICT (location_id, region_id) DO NOTHING
+    `, params);
+
+    await client.query(`
+      WITH RECURSIVE ancestors AS (
+        SELECT elr.location_id, r.parent_region_id AS region_id
+        FROM experience_location_regions elr
+        JOIN regions r ON elr.region_id = r.id
+        JOIN experience_locations el ON el.id = elr.location_id
+        WHERE r.world_view_id = $1 AND r.parent_region_id IS NOT NULL
+          AND elr.assignment_type = 'auto'
+          AND el.experience_id = ANY($2::int[])
+        UNION
+        SELECT a.location_id, r.parent_region_id
+        FROM ancestors a JOIN regions r ON a.region_id = r.id
+        WHERE r.parent_region_id IS NOT NULL
+      )
+      INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
+      SELECT DISTINCT location_id, region_id, 'auto' FROM ancestors
+      WHERE region_id IS NOT NULL
+      ON CONFLICT (location_id, region_id) DO NOTHING
+    `, params);
+
+    const denorm = await client.query(`
+      INSERT INTO experience_regions (experience_id, region_id, assignment_type)
+      SELECT DISTINCT el.experience_id, elr.region_id, 'auto'
+      FROM experience_location_regions elr
+      JOIN experience_locations el ON elr.location_id = el.id
+      JOIN regions r ON elr.region_id = r.id
+      WHERE r.world_view_id = $1 AND el.experience_id = ANY($2::int[])
+      ON CONFLICT (experience_id, region_id) DO NOTHING
+    `, params);
+
+    await client.query('COMMIT');
+    return denorm.rowCount ?? 0;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** World views assignment can actually place anything in. */
+export async function worldViewsWithGeometry(): Promise<number[]> {
+  // Wikivoyage has no geometry, so running assignment there would clear rows
+  // and rebuild nothing. Asking the data rather than naming ids keeps that
+  // true as world views come and go.
+  const result = await pool.query(
+    `SELECT DISTINCT world_view_id FROM regions WHERE geom IS NOT NULL ORDER BY 1`);
+  return result.rows.map(r => r.world_view_id as number);
+}

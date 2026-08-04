@@ -5,6 +5,8 @@
  */
 
 import { Request, Response } from 'express';
+import { isTerminalSyncStatus } from '../../services/sync/types.js';
+import { isCancellable } from '../../services/sync/syncOrchestrator.js';
 import { pool } from '../../db/index.js';
 import {
   syncUnescoSites,
@@ -55,7 +57,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
 
   // Check if already running
   const existing = runningSyncs.get(categoryId);
-  if (existing && !['complete', 'failed', 'cancelled'].includes(existing.status)) {
+  if (existing && !isTerminalSyncStatus(existing.status)) {
     res.status(409).json({ error: 'Sync already in progress for this source' });
     return;
   }
@@ -115,9 +117,15 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
   const status = getServiceSyncStatus(categoryId);
 
   if (status) {
-    const isRunning = !['complete', 'failed', 'cancelled'].includes(status.status);
+    const isRunning = !isTerminalSyncStatus(status.status);
+    // Whether a Cancel press would actually be acted on. Sent rather than
+    // re-derived in the panel: the rule has moved twice in this change alone,
+    // and a copy that lags shows up as a button promising what the server
+    // refuses.
+    const cancellable = isCancellable(status);
     res.json({
       running: isRunning,
+      cancellable,
       status: status.status,
       statusMessage: status.statusMessage,
       progress: status.progress,
@@ -374,26 +382,19 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
     ORDER BY display_priority, id
   `);
 
-  // Get the latest last_assignment_at from any world view (except GADM)
-  const assignmentResult = await pool.query(`
-    SELECT MAX(last_assignment_at) as last_assignment_at
-    FROM world_views
-    WHERE is_default = false AND is_active = true
-  `);
-
-  const lastAssignmentAt = assignmentResult.rows[0]?.last_assignment_at;
-
-  // Add assignment_needed flag to each source
-  const sources = sourcesResult.rows.map(source => ({
-    ...source,
-    // Assignment is needed if sync happened after the last assignment
-    assignment_needed: source.last_sync_at && (
-      !lastAssignmentAt || new Date(source.last_sync_at) > new Date(lastAssignmentAt)
-    ),
-    last_assignment_at: lastAssignmentAt,
-  }));
-
-  res.json(sources);
+  // No `assignment_needed` flag any more, and no `last_assignment_at` either.
+  //
+  // The flag meant "a sync happened after the last full re-assignment", which
+  // stopped being a question a sync can leave open: the run places what moved
+  // before it finishes. Kept as a computed field it would have been permanently
+  // true — a full rebuild is now only for changed region geometry, so nothing a
+  // sync does could ever satisfy it.
+  //
+  // `last_assignment_at` went with it rather than being ported to Drizzle: it
+  // existed to feed that comparison and no client ever read it on its own. The
+  // column is still written by `assignExperiencesToRegions` and still available
+  // to whatever wants it later.
+  res.json(sourcesResult.rows);
 }
 
 // =============================================================================
@@ -456,7 +457,7 @@ export async function getRegionAssignmentStatus(req: Request, res: Response): Pr
     return;
   }
 
-  const isRunning = !['complete', 'failed', 'cancelled'].includes(status.status);
+  const isRunning = !isTerminalSyncStatus(status.status);
 
   res.json({
     running: isRunning,
