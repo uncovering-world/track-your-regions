@@ -340,6 +340,7 @@ the control that would not compete with its category filters.
 | GET | `/api/experiences/review/queue` | What a run could not decide: missing objects awaiting a verdict, and fields where the source and a curator disagree. Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
 | POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
 | POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted |
+| POST | `/api/experiences/new-badges/seen` | `{ experienceIds: number[] }` — records that these chips were shown to the caller. Rate-limited (`authenticatedLimiter`), unlike the curator routes beside it: this is an ordinary authenticated action and the only one here a client sends on its own initiative. Only the first impression per experience is kept; a stale id is ignored rather than failing the call, and the response names what was actually recorded |
 
 ### Geocoding (public + admin)
 
@@ -389,6 +390,80 @@ Short description, description, tags, and the website and Wikipedia URLs are
 not on this list: the first three are `TEXT`/`JSONB` columns and the last two
 live inside the `metadata` JSONB, so none of them has a width to align with.
 `backend/src/types/columnBounds.test.ts` holds every entry above to its column.
+
+## The "New" chip
+
+`is_new` is decided server-side and means **was observed arriving in the latest completed
+non-dry run of its category**, not "recently created". The distinction is the whole point. Both dates mark a first
+appearance, but of different things: `created_at` is when the row entered *this database*,
+which for a bulk-loaded category is the same instant for thousands of rows that entered the
+source years apart. The client-side `isNewExperience(created_at)` this replaces measured that
+while the chip claimed to mean arrival.
+
+The run has to have been **observed** creating the row, not merely credited with it. Migration
+009 backfilled `first_seen_sync_log_id` to the newest run of each category for every
+pre-existing row — a reasonable guess about where they came from, but not a sighting. Taking
+it at face value puts the chip on the whole catalogue the day this ships and keeps it there
+until each category next runs; measured against the current database, that is 1547 rows of
+1547. So `isNewSql` also requires a changeset row of type `created` for that run and
+experience, which only a run that actually inserted it leaves behind. An admin force run has
+the same shape — it deletes the category and re-inserts it under one run — and is handled by
+the same clause only in that its rows *are* genuinely created; there the chip is telling the
+truth about the run and the wrong thing to a reader, which is one more reason force is
+documented as destructive.
+
+`first_seen_sync_log_id` is written on INSERT and never on update, so `is_new` means genuinely
+first seen: a row that went missing and came back keeps the run it originally arrived in and
+does not wear the chip a second time. That is the right answer — it is not new to anyone who
+was here before — and the return is recorded as a `returned` changeset row instead.
+
+```text
+is_new = a run was observed creating the row (a `created` changeset row for it)
+         AND first_seen_sync_log_id = the latest completed non-dry run of the category
+         AND ( that run finished inside category.new_badge_days
+               OR this reader first saw the chip < 7 days ago )
+```
+
+The two clauses are a **maximum, not a choice**. The category window is the floor everyone
+gets — sources have different cadences, so it is per category — and a reader who happens to
+arrive near its end keeps the chip a week from their own first sighting rather than losing it
+the next day. Anonymous readers get the first clause alone; there is nobody to have shown it
+to, and `v.user_id = NULL` is never true, so the personal clause drops out without needing a
+second query.
+
+The bound on all of it is the **next completed non-dry run**: once the category runs again for
+real, `first_seen_sync_log_id` no longer names the latest run and the chip goes, whatever
+either window says. A preview finishes without moving it — dry runs are excluded from the
+lookup, which is the same reason they cannot disturb provenance. That is what stops a batch accumulating chips indefinitely, and it is why no
+retention job is needed for `user_new_badge_views`.
+
+The lookup is a correlated scalar subquery, so it runs once per output row — 5000 of them on a
+whole-region read. `idx_experience_sync_logs_latest` (`category_id, completed_at DESC, id DESC`,
+partial on the same predicate) turns each into an index-only scan; `id` is in the key because
+it is the tiebreak in the same `ORDER BY`, and without it the scan is presorted only on
+`completed_at` and still pays an incremental sort.
+
+"Latest" is by `completed_at`, **not** by id (`isNewSql` in `experienceNewBadge.ts`). A run
+that starts earlier can finish later, and id order is creation order — so ordering by id can
+name a run from months ago as the latest and switch every chip in the category off at once.
+This was found by running the predicate against real rows; the shape tests passed either way.
+
+**Impressions** arrive by `POST /api/experiences/new-badges/seen` rather than as a side effect
+of the read that produced the chips: a GET that writes is a GET that lies about being
+repeatable, and a timestamp set by a prefetch, a crawler or a warmed cache is not an
+impression. `ON CONFLICT DO NOTHING`, so only the first counts — restarting the week on every
+later view would let the chip follow a returning reader around indefinitely. The insert selects
+through `experiences` rather than binding the ids directly, because the foreign key would
+otherwise reject the whole statement for one stale id, and a client a moment out of date is the
+normal case.
+
+The client reports from an effect after the list commits — the closest thing to "on screen"
+without observing each row — and never on fetch, which would stamp rows the reader never
+reached. Both card surfaces render the chip and both report, or a reader's week would start
+whenever they happened to use one of them.
+
+`experience_categories.new_badge_days` (default 30) arrived with ADR-0020's schema and has a
+consumer as of this slice.
 
 ## Review Queue
 
