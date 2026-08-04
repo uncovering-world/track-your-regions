@@ -13,7 +13,7 @@ to get the project running locally and the conventions we follow.
 
 ## Local Setup
 
-**Prerequisites:** Docker + Docker Compose, Node.js 22+
+**Prerequisites:** Docker + Docker Compose, Node.js 22+, and — for the Python tooling below — Python **3.12** specifically, not a floor like Node's
 
 ```shell
 npm run setup   # interactive: writes .env, generates JWT secret,
@@ -34,6 +34,13 @@ once:
 ```shell
 npm run setup:py:dev
 ```
+
+This needs a `python3.12` binary by that name. The pin is deliberate: CI pins 3.12 and
+cv-python ships on `python:3.12-slim`, so a venv built on another minor version would make a
+green local gate stop meaning a green CI job. Without it the setup stops and says so. An
+existing `cv-python/.venv` keeps working — the pin binds *building* a new one, not using one
+you already have — and if you have no venv either, each `*:py` gate prints a container
+command that runs it against 3.12 instead.
 
 ### Coding Style
 
