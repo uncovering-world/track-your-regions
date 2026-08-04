@@ -223,7 +223,13 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 - `experience_regions` and `experience_location_regions` reference `regions(id)` only — there is no direct experience-to-division relation. Experiences reach the administrative base layer through a mirror world view imported from it (`source_type = 'base_layer'`, one region per division), never directly; assignment always targets a region, whether it belongs to a hand-built world view or to the base layer mirror. See [ADR-0018](../decisions/0018-base-layer-mirror-world-view.md)
 - Spatial assignment writes `auto` rows to `experience_regions`
 - Manual curator assignment writes/overwrites `manual`
-- Re-assignment and sync flows only clear/recompute `auto`, preserving manual curation
+- Re-assignment and sync flows only clear/recompute `auto`, preserving manual curation.
+  This holds at the location level only because a sync now *keeps* the row of a point that
+  has not moved (`locationWriter.ts`). It did not before: the write deleted every location
+  of every object it touched, and `experience_location_regions.location_id` is
+  `ON DELETE CASCADE`, so the cascade took `manual` rows along with `auto` ones — it does
+  not read `assignment_type`. A location the source stops offering still loses its
+  assignments, which is correct: the place is no longer there
 
 ### Rejection filtering
 

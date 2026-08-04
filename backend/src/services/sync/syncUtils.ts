@@ -5,6 +5,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { writeExperienceLocations, type LocationWriteResult } from './locationWriter.js';
 import { computeChangeSet, type ChangeSetResult, type ExperienceSnapshot } from './changeSet.js';
 import type { SyncProgress } from './types.js';
 
@@ -226,26 +227,22 @@ export async function upsertExperienceRecord(
 // =============================================================================
 
 /**
- * Upsert a single location for an experience (DELETE + INSERT pattern).
+ * Write the one location a venue has.
  *
- * Used by museum and landmark syncs for venues with one location.
- * UNESCO uses its own multi-location upsert logic.
+ * Used by museum and landmark syncs; UNESCO has its own multi-location path.
+ * Both go through `writeExperienceLocations`, which keeps the row — and so the
+ * region assignments — of a point that has not moved. This used to delete and
+ * re-insert, which is why every run needed a full re-assignment afterwards.
  */
 export async function upsertSingleLocation(
   experienceId: number,
   externalRef: string,
   lon: number,
   lat: number,
-): Promise<void> {
-  await pool.query(
-    `DELETE FROM experience_locations WHERE experience_id = $1`,
-    [experienceId]
-  );
-  await pool.query(
-    `INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location)
-     VALUES ($1, NULL, $2, 1, ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
-    [experienceId, externalRef, lon, lat]
-  );
+): Promise<LocationWriteResult> {
+  return writeExperienceLocations(experienceId, [
+    { name: null, externalRef, lon, lat },
+  ]);
 }
 
 // =============================================================================
