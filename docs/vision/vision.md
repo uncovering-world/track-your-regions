@@ -18,6 +18,7 @@ A visitor can:
 - **Explore experiences** — browse UNESCO World Heritage Sites, top museums, public art & monuments organized by region through the Discover page
 - **See what exists** — understand the breadth of experiences available in any region, with counts, categories, images, and descriptions. A region is shown whole rather than as a first page of it: the list and the map markers both cover everything assigned there, so a category is never represented only by its alphabetically-early members
 - **Switch world views** — see the world organized in different ways: any custom regional grouping an admin has published. Administrative geography is reachable this way only if an admin publishes a world view built from it (see the base layer import below); the built-in administrative hierarchy itself stays admin-only. The address bar follows the choice and the choice follows the address bar: a link carrying a world view opens on it, and pasting or editing one in a tab that is already open switches to it
+- **What just arrived** — a **New** mark on things that came in with the latest update of their source, not on things that happen to be recent rows in a database. It stays for a while — how long depends on the source, since some publish monthly and some rarely. It goes when the next update replaces the batch, not on a timer
 - **Places that changed** — some sites leave the official lists without going anywhere. Those stay exactly where they were, on the map and in the lists, with a small **Former** mark and the reason: no longer listed, still there to visit. Places that genuinely no longer exist are a different matter — offering somewhere demolished as somewhere to go would be a lie, so they leave the lists, the map and the counts. On the map, a region that holds any says so at the end of its list, and one click brings them back for anyone curious what used to be there; Discover filters them the same way but has no way back yet
 
 On a fresh installation (no custom world views yet), the main content
@@ -44,6 +45,7 @@ Everything a visitor can do, plus:
 - **See progress** — visual feedback on how much of a region you've explored (experience completion counts). A place that no longer exists drops out of what a region counts as there to see, but never out of what you have seen: your visit to it stays, because you did go
 - **Manage world views** — create and edit custom regional hierarchies with drag-and-drop region building, custom subdivision drawing, and AI-assisted boundary creation
 - **Personal travel map** — a world map colored by your visited regions, visible at a glance
+- **A New mark that waits for you** — the **New** window is the same for everyone, but signed in it is a floor rather than a deadline: arrive at the tail of it and the mark stays a week longer, counted from the first time it was actually shown to *you*. A batch is not something you can miss by visiting on the wrong day. It still goes when the next update replaces the batch
 
 The authenticated experience is about reflection and tracking — turning scattered travel memories into a coherent, browsable record.
 

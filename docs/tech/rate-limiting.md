@@ -43,9 +43,13 @@ Per-IP limiting for logged-in user actions (tracking visits, viewed treasures).
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
-| `authenticatedLimiter` | 1 min | 60 | All `userRoutes.ts` endpoints (visited regions/experiences/locations, viewed treasures) |
+| `authenticatedLimiter` | 1 min | 60 | All `userRoutes.ts` endpoints (visited regions/experiences/locations, viewed treasures), plus `POST /api/experiences/new-badges/seen` |
 
-Applied via `router.use(authenticatedLimiter)` at the router level since all routes require auth.
+Applied via `router.use(authenticatedLimiter)` at the router level in `userRoutes.ts`, since all
+its routes require auth. The badge-impression endpoint takes it per route instead: it lives in
+`experienceRoutes.ts` among the curation routes the section below exempts, and it is not one of
+them — it is an ordinary authenticated action, and the only endpoint there a client calls on its
+own initiative rather than in response to a click.
 
 ### 5. Admin/curator (exempt by default, with named exceptions)
 

@@ -37,6 +37,19 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`012-new-badge-views.sql` adds `user_new_badge_views`, which records when a reader was
+first shown the "New" chip. Nothing to backfill: an absent row means "not yet shown", which
+is the correct starting state for every existing reader and experience. No retention job
+either — the chip is bounded by the next completed non-dry run of its category, not by the age of
+these rows.
+
+Nothing to backfill *here*, but 009's backfill decides what the chip shows on day one, and
+the answer would have been "everything": it credited every pre-existing row to the newest run
+of its category, which is the value the chip compares against. `isNewSql` therefore also
+requires a changeset row of type `created`, which only a run that actually inserted the row
+leaves behind — 1547 of 1547 rows in the current database are credited without being observed,
+and none of them wears the chip.
+
 `011-curation-lifecycle-actions.sql` widens the curation log's action check to
 admit the five verdicts a curator can now record — `marked_former`,
 `marked_lost`, `state_restored`, `missing_dismissed`, `accepted_source`. Widening a CHECK cannot fail
