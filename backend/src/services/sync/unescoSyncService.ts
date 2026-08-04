@@ -372,7 +372,10 @@ async function upsertExperience(
   // A preview writes nothing downstream either: locations would belong to a row
   // that was never touched.
   if (!context.dryRun) {
-    await upsertExperienceLocations(experienceId, exp);
+    const written = await upsertExperienceLocations(experienceId, exp);
+    if (written.needsAssignment.length > 0 || written.removed > 0) {
+      context.onLocationsChanged(experienceId);
+    }
   }
 
   return {

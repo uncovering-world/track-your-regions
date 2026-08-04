@@ -7,8 +7,8 @@
  */
 
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
-import type { SyncProgress, WikidataLandmark } from './types.js';
-import { orchestrateSync, getSyncStatus, cancelSync, type ErrorDetail } from './syncOrchestrator.js';
+import type { SyncProgress, WikidataLandmark, ErrorDetail } from './types.js';
+import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import {
   sparqlQuery,
@@ -202,7 +202,10 @@ async function upsertLandmarkExperience(
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 
   if (!context.dryRun) {
-    await upsertSingleLocation(experienceId, landmark.qid, landmark.lon, landmark.lat);
+    const written = await upsertSingleLocation(experienceId, landmark.qid, landmark.lon, landmark.lat);
+    if (written.needsAssignment.length > 0 || written.removed > 0) {
+      context.onLocationsChanged(experienceId);
+    }
   }
 
   return {

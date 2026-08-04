@@ -229,7 +229,11 @@ export const experienceSyncLogs = pgTable('experience_sync_logs', {
   totalCreated: integer('total_created').default(0),
   totalUpdated: integer('total_updated').default(0),
   totalErrors: integer('total_errors').default(0),
-  // errorDetails stored as JSONB in DB
+  errorDetails: jsonb('error_details').$type<unknown[]>(),
+  // A preview: the changeset was computed but no experience was written. Every
+  // "latest run" query excludes it, which is why anything reading this table
+  // for provenance has to see the column rather than infer it.
+  isDryRun: boolean('is_dry_run').notNull().default(false),
   triggeredBy: integer('triggered_by'),  // References users(id) - handled at DB level
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

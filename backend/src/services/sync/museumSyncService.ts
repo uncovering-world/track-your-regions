@@ -22,7 +22,7 @@ import type {
   ProcessedContent,
   CollectedMuseum,
 } from './types.js';
-import { runningSyncs } from './types.js';
+import { isTerminalSyncStatus, runningSyncs } from './types.js';
 import {
   sparqlQuery,
   extractQid,
@@ -335,7 +335,8 @@ async function resolveDepartments(
 async function upsertMuseumExperience(
   museum: CollectedMuseum,
   context: SyncRunContext,
-): Promise<{ experienceId: number; changeSet: ChangeSetResult; nameSnapshot: string; returnedFromMissing: boolean }> {
+): Promise<{ experienceId: number; changeSet: ChangeSetResult; nameSnapshot: string;
+             returnedFromMissing: boolean }> {
   const details = museum.details!;
 
   // Total sitelinks across all artworks as a ranking metric
@@ -372,7 +373,13 @@ async function upsertMuseumExperience(
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 
   if (!context.dryRun) {
-    await upsertSingleLocation(experienceId, museum.qid, details.lon!, details.lat!);
+    const written = await upsertSingleLocation(experienceId, museum.qid, details.lon!, details.lat!);
+    // Registered here rather than returned: `upsertMuseumTreasures` runs after
+    // this and can throw, and a returned field would be lost with it while the
+    // point had already moved on disk.
+    if (written.needsAssignment.length > 0 || written.removed > 0) {
+      context.onLocationsChanged(experienceId);
+    }
   }
 
   return { experienceId, changeSet, nameSnapshot, returnedFromMissing };
@@ -578,7 +585,8 @@ async function processMuseum(
   _progress: SyncProgress,
   context: SyncRunContext,
 ): Promise<ProcessItemResult> {
-  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertMuseumExperience(museum, context);
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } =
+    await upsertMuseumExperience(museum, context);
 
   // Treasures hang off a row a preview never wrote.
   if (!context.dryRun) {
@@ -642,7 +650,7 @@ export function cancelMuseumSync() {
 export async function fixMuseumImages(_triggeredBy: number | null): Promise<void> {
   // Check if already running
   const existing = runningSyncs.get(MUSEUM_CATEGORY_ID);
-  if (existing && existing.status !== 'complete' && existing.status !== 'failed' && existing.status !== 'cancelled') {
+  if (existing && !isTerminalSyncStatus(existing.status)) {
     throw new Error('Museum sync already in progress');
   }
 

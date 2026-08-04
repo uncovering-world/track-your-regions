@@ -19,8 +19,6 @@ export interface ExperienceCategory {
   is_active: boolean;
   last_sync_at: string | null;
   last_sync_status: string | null;
-  last_assignment_at: string | null;
-  assignment_needed: boolean;
   display_priority: number;
   created_at: string;
 }
@@ -43,6 +41,8 @@ export interface SyncStatus {
   logId?: number | null;
   /** A preview run: no experiences were written, so no assignment is due. */
   dryRun?: boolean;
+  /** Whether a Cancel press would be acted on — the server's rule, not a copy. */
+  cancellable?: boolean;
 }
 
 export interface SyncLog {

@@ -60,7 +60,7 @@ Each source has a dedicated sync service in `backend/src/services/sync/`. All fo
 The generic sync lifecycle (progress init, already-running check, sync log creation, force cleanup, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`. Each service provides a `SyncServiceConfig<T>` with domain-specific callbacks:
 
 - **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered? }`, where `filtered` names entities the source offered that this category cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`.
-- **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview. Throw to count as error.
+- **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview, and `onLocationsChanged(experienceId)`, which a service calls **at the location write** to have the run place that experience before it ends. Called there rather than returned on the result on purpose: a service can throw after moving a point — the museum one upserts treasures afterwards — and a returned field would be lost with the throw while the point had already moved on disk. Throw to count as error.
 - **`getItemName(item)`** / **`getItemId(item)`** — Display name and external ID for progress messages and error reporting.
 - **`cleanup?(progress)`** — Optional custom cleanup for force sync (replaces default `cleanupCategoryData`). Museum uses this for treasure pre-cleanup.
 
@@ -68,15 +68,17 @@ Generic `getSyncStatus(categoryId)` and `cancelSync(categoryId)` replace per-ser
 
 ### Shared modules
 
-Common sync logic lives in eight shared utility files:
+Common sync logic lives in ten shared utility files:
 
-- **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by category ID.
+- **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by category ID, and `isCancellable()` — the single rule for whether a cancel would be acted on, which `cancelSync` enforces, the status endpoint reports as `cancellable`, and the admin panel disables its button on rather than re-deriving.
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
-- **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location upsert (`upsertSingleLocation()`), sync log CRUD (`createSyncLog()`, `updateSyncLog()`), and FK-ordered category data cleanup cascade (`cleanupCategoryData()`). Used by all three services. Museum service calls its own treasure cleanup before invoking the shared cascade.
+- **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs), and FK-ordered category data cleanup cascade (`cleanupCategoryData()`). Used by all three services. Museum service calls its own treasure cleanup before invoking the shared cascade.
+- **`locationWriter.ts`** — Writes an experience's locations so a point that has not moved keeps its row, and therefore its region assignments (`writeExperienceLocations()`). Identity is `(point, external_ref)`: the reference alone repeats across a transboundary component's per-country entries, and the point alone repeats across the sub-units of one named locality. Returns the rows that were inserted or moved, which is what the run then assigns
+- **`placement.ts`** — Placing what a run moved, and reporting when that fails (`finishPlacement()`, `placeMovedExperiences()`, `recordPlacementFailure()`, `enterAssigningPhase()`, `terminalStatus()`). Split from the orchestrator because it is a separate responsibility: the loop runs a source's items, this decides where the objects that moved now belong, and it reaches for `regionAssignmentService`, `syncLogMarkers` and `annotateClosedSyncLog` — none of which the loop touches
 - **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence
 - **`changeRecorder.ts`** — Batched persistence of the per-object changeset (`recordSyncChanges()`, 500 rows per statement)
 - **`missingDetection.ts`** — Whether absence may be acted on (`missingDetectionSkipReason()`) and the flagging itself (`flagMissingExperiences()`)
-- **`syncLogMarkers.ts`** — The entries a run leaves in `error_details` that other code reads as facts (`CHANGESET_LOST_MARKER`, `ORPHANED_RUN_MARKER`) and the predicate that reads them (`CHANGESET_LANDED_SQL`). Written by the orchestrator and the startup sweep, read by the review queue and `accept-source` — one definition, because a run's status cannot answer whether its changeset landed
+- **`syncLogMarkers.ts`** — The entries a run leaves in `error_details` that other code reads as facts (`CHANGESET_LOST_MARKER`, `ORPHANED_RUN_MARKER`, `PLACEMENT_FAILED_MARKER`) and the predicate that reads them (`CHANGESET_LANDED_SQL`). Written by the orchestrator and the startup sweep, read by the review queue and `accept-source` — one definition, because a run's status cannot answer whether its changeset landed
 - **`fixtureSource.ts`** — Development-only source substitution via `SYNC_SOURCE_FIXTURE`; see § Change provenance below
 
 ### Change provenance (issue #480, [ADR-0020](../decisions/0020-experience-lifecycle-and-run-changeset.md))
@@ -230,6 +232,45 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
   `ON DELETE CASCADE`, so the cascade took `manual` rows along with `auto` ones — it does
   not read `assignment_type`. A location the source stops offering still loses its
   assignments, which is correct: the place is no longer there
+
+**Two ways in, for two different questions.** A sync places what moved, by itself, at the end
+of the run — `placeMovedExperiences` in `placement.ts` calls
+`assignRegionsForExperiences(ids, worldViewId)` for every world view that has geometry, over
+the experiences whose locations were inserted, moved or dropped. Because `locationWriter`
+keeps the row of a point that stayed put, an ordinary run reaches this with an empty set and
+does nothing at all. Through it the run stays open on purpose: `progress.status` becomes `'assigning'` rather than
+a terminal value, so `isSyncStillRunning` keeps a poller polling for what can be minutes on a
+force run. `cancelSync` refuses it — placement is past the point `progress.cancel` is read, so
+accepting would report a cancellation that never happens. The refusal actually starts a phase
+earlier: `isCancellable` accepts only while there is an item loop left to interrupt, so the
+post-loop window — missing detection, changeset recording, log closure — is refused too. The
+status endpoint reports that answer as `cancellable`, and the admin panel disables its button
+on it rather than re-deriving the rule.
+
+It runs after the sync log is closed and never throws, for the same
+reason recording the changeset does not: a follow-up step going wrong must not leave a
+finished run reported as still running.
+
+It does not stay silent either, and it says so in two places. The run's own reported status
+becomes `partial` rather than `complete`, so a poller reading `runningSyncs` in the thirty
+seconds before that entry is swept agrees with the row rather than reporting success over
+it. And the row itself: a failure reopens the closed log through
+`annotateClosedSyncLog`, appending `PLACEMENT_FAILED_MARKER` and downgrading a successful run
+to `partial`, so an operator learns that `experience_regions` is stale for what the run moved
+and that a full re-assignment is the remedy — nothing else in the product prompts for one. A
+run that already reached `failed` or `cancelled` keeps that status, since both are facts of
+their own and survive nowhere else in the row. The write is narrow, `status` and
+`error_details` only: `updateSyncLog` rewrites every stat column, and this caller has correct
+values for none of them — `total_fetched` is the source's item count rather than the processed
+one, and `detection_skipped_reason` is `detectMissing`'s answer, which nothing here
+recomputes.
+
+The full rebuild (`assignExperiencesToRegions`, `POST /api/admin/experiences/assign-regions`)
+stays an admin action, for the case that genuinely needs it: **region geometry changed**, so
+every location has to be re-tested against it. That one clears the world view's `auto` rows
+first, which is why it is not what a sync uses — the clear and the rebuild are separate
+statements, so while it runs the world view has no assignments and a browsing user sees empty
+regions.
 
 ### Rejection filtering
 

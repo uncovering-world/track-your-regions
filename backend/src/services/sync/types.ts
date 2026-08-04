@@ -7,7 +7,10 @@
  */
 export interface SyncProgress {
   cancel: boolean;
-  status: 'fetching' | 'processing' | 'assigning' | 'complete' | 'failed' | 'cancelled';
+  // 'partial' is terminal like 'complete': the run finished, but placing what
+  // it moved did not, so the log row says partial and this must agree — a
+  // poller reading 'complete' here would report success over it.
+  status: 'fetching' | 'processing' | 'assigning' | 'complete' | 'partial' | 'failed' | 'cancelled';
   statusMessage: string;
   progress: number;
   total: number;
@@ -183,4 +186,31 @@ export interface ProcessedExperience {
   metadata: Record<string, unknown>;
   // Multi-location support
   locations: ParsedLocation[];
+}
+
+/**
+ * Has this run stopped?
+ *
+ * One predicate rather than a list repeated at each call site. The list had
+ * four copies when `'partial'` was added, and only the one beside the change
+ * learned about it — the others would have read a finished run as still
+ * running, blocking a retry with 409 and spinning a poller against nothing.
+ */
+export function isTerminalSyncStatus(status: string): boolean {
+  return status === 'complete' || status === 'partial'
+    || status === 'failed' || status === 'cancelled';
+}
+
+/**
+ * How a run ended. Lives here rather than in the orchestrator so the modules
+ * that report a verdict do not have to import the module that runs the loop —
+ * that direction is a cycle.
+ */
+export type RunVerdict = 'complete' | 'failed' | 'cancelled';
+
+/** One entry in a run's `error_details`. */
+export interface ErrorDetail {
+  externalId: string;
+  error?: string;
+  [key: string]: unknown;
 }

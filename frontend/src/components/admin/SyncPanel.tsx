@@ -24,7 +24,6 @@ import {
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
   Schedule as ScheduleIcon,
-  Warning as WarningIcon,
   DragIndicator as DragIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -94,9 +93,6 @@ export function SyncPanel() {
     return <LoadingSpinner padding={4} />;
   }
 
-  // Check if any source needs region assignment
-  const needsAssignment = orderedSources.some(s => s.assignment_needed);
-
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
@@ -105,30 +101,6 @@ export function SyncPanel() {
       <Typography color="text.secondary" sx={{ mb: 3 }}>
         Drag to reorder how sources appear in the experience list.
       </Typography>
-
-      {needsAssignment && (
-        <Alert
-          severity="warning"
-          icon={<WarningIcon />}
-          sx={{ mb: 3 }}
-          action={
-            <Button
-              color="warning"
-              size="small"
-              href="/admin"
-              onClick={(e) => {
-                e.preventDefault();
-                window.dispatchEvent(new CustomEvent('navigate-admin', { detail: 'assignment' }));
-              }}
-            >
-              Run Assignment
-            </Button>
-          }
-        >
-          <strong>Region assignment needed.</strong> New experiences were synced since the last region assignment.
-          Run region assignment to properly assign experiences to regions.
-        </Alert>
-      )}
 
       <Box sx={{ display: 'grid', gap: 3 }}>
         {orderedSources.map((source, index) => (
@@ -149,6 +121,14 @@ export function SyncPanel() {
 
 interface SourceCardProps {
   source: ExperienceCategory;
+}
+
+/** What the Cancel button should say for the phase the run is in. */
+function cancelLabel(status: SyncStatus | null): string {
+  if (status?.status === 'assigning') return 'Assigning regions…';
+  // Refused but still running: the item loop is over and the run is closing up.
+  if (status?.cancellable === false) return 'Finishing…';
+  return 'Cancel';
 }
 
 function SourceCard({ source }: SourceCardProps) {
@@ -314,7 +294,12 @@ function SourceCard({ source }: SourceCardProps) {
             sx={{ mb: 2 }}
             onClose={() => setJustCompleted(false)}
           >
-            Sync completed! <strong>Remember to run Region Assignment</strong> to assign new experiences to regions.
+            {/* Says nothing about how region assignment turned out. The run
+                only reports itself finished once placement has run, so by the
+                time this shows, the source's status chip already carries the
+                verdict — and a placement failure shows there as Partial. */}
+            Sync completed. Region assignment runs as part of the run, so there is normally
+            nothing further to do — check the status chip if it reports Partial.
           </Alert>
         )}
       </CardContent>
@@ -366,10 +351,18 @@ function SourceCard({ source }: SourceCardProps) {
             <Button
               startIcon={<StopIcon />}
               onClick={() => cancelMutation.mutate()}
-              disabled={cancelMutation.isPending}
+              // Disabled through the assigning phase: the server refuses a
+              // cancel there, because placement is already past the point the
+              // flag is read. Left enabled, the press would be a silent no-op —
+              // the run finishes as it was always going to.
+              // The server's own answer, not a copy of its rule: past the last
+              // item a press is refused and `onSuccess` would discard the
+              // refusal under "status will update via polling", which is
+              // exactly what does not happen for a cancel that never took.
+              disabled={cancelMutation.isPending || status?.cancellable === false}
               color="warning"
             >
-              Cancel
+              {cancelLabel(status)}
             </Button>
           )}
         </Box>

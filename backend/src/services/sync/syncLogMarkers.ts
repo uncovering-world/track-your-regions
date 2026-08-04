@@ -21,6 +21,17 @@ export const ORPHANED_RUN_ERROR = 'Server restarted while sync was running';
 export const ORPHANED_RUN_MARKER = { externalId: 'system', error: ORPHANED_RUN_ERROR } as const;
 
 /**
+ * Placing the experiences whose points moved failed after the run had closed.
+ *
+ * A separate marker rather than a plain error string, for the same reason as
+ * the two above: what an operator has to do about it is specific. The catalogue
+ * is correct and the changeset landed — what is stale is `experience_regions`
+ * for the objects this run moved, and the remedy is a full re-assignment of
+ * that world view, which nothing else in the product will prompt for.
+ */
+export const PLACEMENT_FAILED_MARKER = { externalId: 'region-assignment' } as const;
+
+/**
  * SQL predicate: did this run's changeset reach the table?
  *
  * `prev` must name an `experience_sync_logs` row. Both markers are matched by

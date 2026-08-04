@@ -58,14 +58,11 @@ export function AssignmentPanel() {
     queryFn: fetchWorldViews,
   });
 
-  // Fetch categories (to check if assignment is needed)
-  const { data: categories, refetch: refetchCategories } = useQuery({
+  // Fetch categories — they populate the optional category filter below.
+  const { data: categories } = useQuery({
     queryKey: ['admin', 'categories'],
     queryFn: getCategories,
   });
-
-  // Check if any category needs assignment
-  const needsAssignment = categories?.some(s => s.assignment_needed);
 
   // Fetch experience counts when world view is selected
   const { data: counts, refetch: refetchCounts } = useQuery({
@@ -98,14 +95,12 @@ export function AssignmentPanel() {
       if (!newStatus.running) {
         setIsPolling(false);
         refetchCounts();
-        // Refresh sources to update assignment_needed flag
-        refetchCategories();
       }
     } catch (error) {
       console.error('Error polling status:', error);
       setIsPolling(false);
     }
-  }, [selectedWorldView, refetchCounts, refetchCategories]);
+  }, [selectedWorldView, refetchCounts]);
 
   // Check initial status when world view changes
   useEffect(() => {
@@ -135,14 +130,13 @@ export function AssignmentPanel() {
       <Typography color="text.secondary" sx={{ mb: 3 }}>
         Assign experiences to regions based on spatial containment. Experiences are assigned to
         regions that contain their location point, and the assignment is propagated to ancestor regions.
+        A sync already places whatever moved during the run, so this is for the two cases it cannot
+        settle by itself. The ordinary one is that region boundaries themselves changed, and every
+        location has to be tested against them again. The other is that the placement at the end of a
+        run failed — the run then reports itself Partial and says so, and this is what it is asking
+        for. Either way it clears this world view's automatic assignments before rebuilding, so
+        regions look empty while it runs.
       </Typography>
-
-      {needsAssignment && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          <strong>Assignment needed!</strong> Experiences were synced since the last region assignment.
-          Select a world view and run assignment to update region assignments.
-        </Alert>
-      )}
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
