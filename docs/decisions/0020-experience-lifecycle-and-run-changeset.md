@@ -1,7 +1,7 @@
 # ADR-0020: Record a changeset per sync run, and split an experience's lifecycle into two axes
 
 **Date:** 2026-08-02
-**Status:** Accepted — decisions 1 and 2 narrowed by [ADR-0021](0021-source-may-restore-membership.md)
+**Status:** Accepted — decisions 1 and 2 narrowed by [ADR-0021](0021-source-may-restore-membership.md), decision 3 narrowed by [ADR-0022](0022-locations-are-marked-not-deleted.md)
 
 ---
 

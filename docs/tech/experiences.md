@@ -37,6 +37,40 @@ An experience can have zero, one, or many locations. Location-bound experiences 
 - `experience_location_regions`: region assignment per location
 - `user_visited_locations`: per-user location visits
 
+**A location is marked, never deleted.** When a run offers an experience without one of its
+stored points, `locationWriter` sets `experience_locations.missing_since` and nulls the row's
+`ordinal` instead of removing it. Deleting it would take the row's `user_visited_locations`
+record and every `experience_location_regions` row with it — both are `ON DELETE CASCADE`,
+manual assignments included — and a person's record of having stood somewhere is the one thing
+no later run can rebuild. A source that offers the point again finds the same row by its
+`(point, external_ref)` identity, clears `missing_since`, restores its ordinal, and sends it
+for placement; the visit and any manual assignment were never touched.
+
+`missing_since` here is a machine observation, exactly as it is on an experience. What a reader
+sees does not change, because a withdrawn point used to be deleted and so left every list the
+moment a run stopped seeing it: the predicate `missing_since IS NULL` keeps it out
+of the marker batch, the experience's own location list, `location_count`, the per-user visited
+status, "mark all locations visited", the visit a viewed treasure records for its venue, and
+region placement. The controllers take it from one fragment, `offeredLocationSql()`
+(`experienceLifecycle.ts`); `regionAssignmentService.ts` writes it out, since a service
+importing a controller module would be the first such import in the codebase. The rule is not "visits are exempt" but a line between two kinds of
+statement. **What a reader asked for, exactly as they asked** — recording a visit, removing
+one, and the lookup of which experience it belonged to — is unfiltered: the first because they
+are acting on what they were just shown, the second because a record on an invisible point
+could otherwise never be cleared. **What the system decides on their behalf** carries the
+filter: every read that puts a point on screen, the per-experience progress view included, and
+equally the count that infers from what remains whether the experience-level visit record
+should go with the last visible tick. So both unmark handlers hold an unfiltered DELETE beside
+a filtered count, which is that one line drawn through a single handler.
+That view counts offered points only because identity is the point together with the source's
+reference: an edit to either — a corrected coordinate, a renumbered component — is a withdrawal
+plus an insert, and the reader would otherwise meet the same place twice.
+`getVisitedLocationIds` is the third unfiltered read and stays that way: every consumer uses it
+as a set-membership test over a list that is already filtered, so it draws no pin and inflates
+no count. The visit
+row is untouched either way; what a withdrawn point means is a curator's verdict, and until
+there is one it is simply not shown.
+
 ### Treasures (artworks/artifacts)
 
 Treasures are independently trackable things inside venue experiences. Currently implemented for museum artworks. Treasures have a many-to-many relationship with venues via `experience_treasures` junction table; iconic treasures are called **highlights** (`is_iconic` flag). See [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full concept.
@@ -57,12 +91,11 @@ Each source has a dedicated sync service in `backend/src/services/sync/`. All fo
 
 ### Sync orchestrator
 
-The generic sync lifecycle (progress init, already-running check, sync log creation, force cleanup, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`. Each service provides a `SyncServiceConfig<T>` with domain-specific callbacks:
+The generic sync lifecycle (progress init, already-running check, sync log creation, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`. Each service provides a `SyncServiceConfig<T>` with domain-specific callbacks:
 
 - **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered? }`, where `filtered` names entities the source offered that this category cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`.
 - **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview, and `onLocationsChanged(experienceId)`, which a service calls **at the location write** to have the run place that experience before it ends. Called there rather than returned on the result on purpose: a service can throw after moving a point — the museum one upserts treasures afterwards — and a returned field would be lost with the throw while the point had already moved on disk. Throw to count as error.
 - **`getItemName(item)`** / **`getItemId(item)`** — Display name and external ID for progress messages and error reporting.
-- **`cleanup?(progress)`** — Optional custom cleanup for force sync (replaces default `cleanupCategoryData`). Museum uses this for treasure pre-cleanup.
 
 Generic `getSyncStatus(categoryId)` and `cancelSync(categoryId)` replace per-service status/cancel functions. The controller dispatches via a registry map instead of if-else chains.
 
@@ -72,8 +105,8 @@ Common sync logic lives in ten shared utility files:
 
 - **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`), plus `getSyncStatus()` and `cancelSync()` parameterized by category ID, and `isCancellable()` — the single rule for whether a cancel would be acted on, which `cancelSync` enforces, the status endpoint reports as `cancellable`, and the admin panel disables its button on rather than re-deriving.
 - **`wikidataUtils.ts`** — SPARQL query execution with retry/backoff (`sparqlQuery()`), QID extraction, WKT point parsing, delay helper, and constants (endpoint URL, user agent, timeouts). Used by museum and landmark services.
-- **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs), and FK-ordered category data cleanup cascade (`cleanupCategoryData()`). Used by all three services. Museum service calls its own treasure cleanup before invoking the shared cascade.
-- **`locationWriter.ts`** — Writes an experience's locations so a point that has not moved keeps its row, and therefore its region assignments (`writeExperienceLocations()`). Identity is `(point, external_ref)`: the reference alone repeats across a transboundary component's per-country entries, and the point alone repeats across the sub-units of one named locality. Returns the rows that were inserted or moved, which is what the run then assigns
+- **`syncUtils.ts`** — Experience upsert with curated_fields-aware conflict handling (`upsertExperienceRecord()`), single-location write, delegating to `locationWriter.ts` (`upsertSingleLocation()`), and sync log CRUD (`createSyncLog()`, `updateSyncLog()`, and `annotateClosedSyncLog()` for the narrow status/`error_details` write a follow-up step needs). Used by all three services. It deletes nothing: the FK-ordered category cleanup that force sync used lived here and is gone with it.
+- **`locationWriter.ts`** — Writes an experience's locations so a point that has not moved keeps its row, and therefore its region assignments (`writeExperienceLocations()`). Identity is `(point, external_ref)`: the reference alone repeats across a transboundary component's per-country entries, and the point alone repeats across the sub-units of one named locality. A point the source stops offering is marked (`missing_since`, `ordinal` NULL) rather than deleted, and one offered again is found by the same identity and given its place back. Returns the rows inserted, moved or offered again — what the run then assigns — and how many it was the first to find missing
 - **`placement.ts`** — Placing what a run moved, and reporting when that fails (`finishPlacement()`, `placeMovedExperiences()`, `recordPlacementFailure()`, `enterAssigningPhase()`, `terminalStatus()`). Split from the orchestrator because it is a separate responsibility: the loop runs a source's items, this decides where the objects that moved now belong, and it reaches for `regionAssignmentService`, `syncLogMarkers` and `annotateClosedSyncLog` — none of which the loop touches
 - **`changeSet.ts`** — Pure diff between the stored row and the incoming record (`computeChangeSet()`). No database, no network. Normalises before comparing: JSONB by value rather than key order, country and tag arrays as sets, coordinates by distance (below 10 m is jitter, above 1 km is `major`), and `null`/`''`/absent as one absence
 - **`changeRecorder.ts`** — Batched persistence of the per-object changeset (`recordSyncChanges()`, 500 rows per statement)
@@ -139,17 +172,15 @@ source listing, so they are excluded from detection and from its coverage denomi
 Absence is judged against the external ids the run actually saw, not against
 `last_seen_sync_log_id` — a dry run stamps
 nothing, and a row that arrived but failed to process is not missing either. The machine only
-ever sets `missing_since`, and only when all four guards pass — the source is `authoritative` (declared
+ever sets `missing_since`, and only when all three guards pass — the source is `authoritative` (declared
 per service in `SyncServiceConfig`, `ranked` for the two top-N Wikidata sources), the run
-finished clean and uncancelled, it was not a force run (which deletes the category first, leaving
-nothing to go missing), and it saw at least 90 % of the previously present rows.
+finished clean and uncancelled, and it saw at least 90 % of the previously present rows.
 When detection is skipped the reason is stored in `experience_sync_logs.detection_skipped_reason`.
 
 **Dry runs** (`POST /sync/categories/:id/start` with `{"dryRun": true}`) walk the same path and
 write the log and changeset with `is_dry_run = true`, but touch no experiences, locations,
 treasures or images. Dry-run logs are excluded from every "latest run" query, so a preview
-cannot disturb provenance. Combining `dryRun` with `force` is refused: force deletes the
-category before there would be anything to preview against.
+cannot disturb provenance.
 
 **Filtered is not failed.** The museum query matches artworks on `wdt:P195`, so Wikidata
 answers with collections as entities — the Royal Collection, Collection Crozat — alongside
@@ -215,7 +246,6 @@ Results are merged, deduplicated by QID, sorted by sitelinks descending, and cap
 - 1.5s delay between image downloads
 - `curated_fields` JSONB on `experiences` protects curator edits during sync upserts — each field is checked individually in the `ON CONFLICT` clause (implemented in `upsertExperienceRecord()`)
 - Sync log lifecycle: `createSyncLog()` → processing → `updateSyncLog()` (also updates `experience_categories.last_sync_*`)
-- Force-sync cleanup via `cleanupCategoryData()`: deletes in FK order (visited locations → visited experiences → auto-assigned location regions → auto-assigned experience regions → locations → experiences), preserving manual curator assignments
 - Startup cleanup in `index.ts` marks orphaned `running` sync logs as `failed`
 
 ## Assignment Model
@@ -240,7 +270,7 @@ the experiences whose locations were inserted, moved or dropped. Because `locati
 keeps the row of a point that stayed put, an ordinary run reaches this with an empty set and
 does nothing at all. Through it the run stays open on purpose: `progress.status` becomes `'assigning'` rather than
 a terminal value, so `isSyncStillRunning` keeps a poller polling for what can be minutes on a
-force run. `cancelSync` refuses it — placement is past the point `progress.cancel` is read, so
+category's first run. `cancelSync` refuses it — placement is past the point `progress.cancel` is read, so
 accepting would report a cancellation that never happens. The refusal actually starts a phase
 earlier: `isCancellable` accepts only while there is an item loop left to interrupt, so the
 post-loop window — missing detection, changeset recording, log closure — is refused too. The
@@ -453,11 +483,9 @@ pre-existing row — a reasonable guess about where they came from, but not a si
 it at face value puts the chip on the whole catalogue the day this ships and keeps it there
 until each category next runs; measured against the current database, that is 1547 rows of
 1547. So `isNewSql` also requires a changeset row of type `created` for that run and
-experience, which only a run that actually inserted it leaves behind. An admin force run has
-the same shape — it deletes the category and re-inserts it under one run — and is handled by
-the same clause only in that its rows *are* genuinely created; there the chip is telling the
-truth about the run and the wrong thing to a reader, which is one more reason force is
-documented as destructive.
+experience, which only a run that actually inserted it leaves behind. Nothing re-inserts a
+whole category any more — force sync, which did, is gone — so that clause now only ever sees
+rows a run genuinely brought in for the first time.
 
 `first_seen_sync_log_id` is written on INSERT and never on update, so `is_new` means genuinely
 first seen: a row that went missing and came back keeps the run it originally arrived in and

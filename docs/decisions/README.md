@@ -26,11 +26,13 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0013](0013-manual-paint-editor.md) | Manual cluster-paint editor for CV match recovery | Accepted | 2026-04-26 |
 | [0014](0014-vector-border-editing.md) | Vector border editing for cluster paint editor | Accepted | 2026-04-26 |
 | [0015](0015-python-cv-microservice.md) | Python CV microservice for image-processing pipeline | Accepted | 2026-04-26 |
+| [0016](0016-ai-management-layer.md) | Centralized AI management layer | Accepted | 2026-04-25 |
 | [0017](0017-server-bind-address.md) | Server bind address — loopback by default, all interfaces in production | Accepted | 2026-06-03 |
 | [0018](0018-base-layer-mirror-world-view.md) | Experiences reach the administrative base layer through a mirror world view | Accepted | 2026-07-27 |
 | [0019](0019-matching-policy-per-source-shape.md) | The matcher picks a policy from the shape of the source's tree | Accepted | 2026-07-30 |
-| [0020](0020-experience-lifecycle-and-run-changeset.md) | Record a changeset per sync run, and split an experience's lifecycle into two axes | Accepted — decisions 1 and 2 narrowed by 0021 | 2026-08-02 |
+| [0020](0020-experience-lifecycle-and-run-changeset.md) | Record a changeset per sync run, and split an experience's lifecycle into two axes | Accepted — decisions 1 and 2 narrowed by 0021, decision 3 by 0022 | 2026-08-02 |
 | [0021](0021-source-may-restore-membership.md) | A sync may restore `source_membership`, in one direction only | Accepted | 2026-08-03 |
+| [0022](0022-locations-are-marked-not-deleted.md) | A location is marked, not deleted, and no run may empty a category | Accepted | 2026-08-05 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
