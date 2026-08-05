@@ -6,7 +6,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { hideLostSql, includeLost } from './experienceLifecycle.js';
+import { hideLostSql, includeLost, offeredLocationSql } from './experienceLifecycle.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 // =============================================================================
@@ -82,6 +82,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
         SELECT DISTINCT er.experience_id FROM experience_regions er
         WHERE er.region_id IN (SELECT id FROM descendant_regions)
       )
+        AND ${offeredLocationSql()}
         ${lifecycleFilter}
       ORDER BY el.experience_id, el.ordinal
     `;
@@ -126,6 +127,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
       ) leaf_r ON true
       JOIN experience_regions er ON er.experience_id = e.id
       WHERE er.region_id = $1
+        AND ${offeredLocationSql()}
         ${lifecycleFilter}
       ORDER BY el.experience_id, el.ordinal
     `;
@@ -207,6 +209,7 @@ export async function getExperienceLocations(req: Request, res: Response): Promi
       ) as in_region` : 'true as in_region'}
     FROM experience_locations el
     WHERE el.experience_id = $1
+      AND ${offeredLocationSql()}
     ORDER BY el.ordinal
   `, regionId ? [experienceId, regionId] : [experienceId]);
 
@@ -357,13 +360,21 @@ export async function unmarkLocationVisited(req: AuthenticatedRequest, res: Resp
     return;
   }
 
-  // Check if user still has any visited locations for this experience
-  // If not, remove the experience from user_visited_experiences too
+  // Does the reader still hold a visit to a point this experience offers? If
+  // not, the experience-level record goes with the last one.
+  //
+  // Offered points only, or unticking the last visible point leaves a record
+  // nothing can reach: a surviving visit on a withdrawn point would keep the
+  // count at one, the list would keep its check, and the progress view — which
+  // shows offered points only — would report none visited with no tick on
+  // screen to remove. Before locations were kept, the withdrawn row and its
+  // visit were deleted together and this count reached zero on its own.
   const remainingResult = await pool.query(`
     SELECT COUNT(*) as count
     FROM user_visited_locations uvl
     JOIN experience_locations el ON uvl.location_id = el.id
     WHERE uvl.user_id = $1 AND el.experience_id = $2
+      AND ${offeredLocationSql()}
   `, [userId, experienceId]);
 
   if (parseInt(remainingResult.rows[0].count) === 0) {
@@ -396,6 +407,9 @@ export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Re
   let locationsQuery: string;
   let locationsParams: number[];
 
+  // "All of them" means the ones on offer. A point the source withdrew is on
+  // no list this reader can see, so recording a visit to it would be a claim
+  // they never made.
   if (regionId) {
     // Only locations that are in the specified region
     locationsQuery = `
@@ -403,11 +417,13 @@ export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Re
       FROM experience_locations el
       JOIN experience_location_regions elr ON elr.location_id = el.id
       WHERE el.experience_id = $1 AND elr.region_id = $2
+        AND ${offeredLocationSql()}
     `;
     locationsParams = [experienceId, regionId];
   } else {
     // All locations
-    locationsQuery = `SELECT id FROM experience_locations WHERE experience_id = $1`;
+    locationsQuery = `SELECT id FROM experience_locations el
+       WHERE el.experience_id = $1 AND ${offeredLocationSql()}`;
     locationsParams = [experienceId];
   }
 
@@ -491,13 +507,16 @@ export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: 
       `, [userId, experienceId]);
     }
 
-    // Check if user still has any visited locations for this experience
-    // If not, remove the experience from user_visited_experiences too
+    // The same question as in `unmarkLocationVisited`, asked the same way — see
+    // the note there. It matters on the region-scoped branch above, which
+    // clears one region's visits and can leave a withdrawn point's visit
+    // standing somewhere else.
     const remainingResult = await pool.query(`
       SELECT COUNT(*) as count
       FROM user_visited_locations uvl
       JOIN experience_locations el ON uvl.location_id = el.id
       WHERE uvl.user_id = $1 AND el.experience_id = $2
+        AND ${offeredLocationSql()}
     `, [userId, experienceId]);
 
     if (parseInt(remainingResult.rows[0].count) === 0) {
@@ -548,6 +567,19 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
     FROM experience_locations el
     LEFT JOIN user_visited_locations uvl ON uvl.location_id = el.id AND uvl.user_id = $2
     WHERE el.experience_id = $1
+      -- Offered points only, like every other read that shows a place.
+      --
+      -- An earlier version also returned a withdrawn point this reader had
+      -- visited, to keep their record of it in view. That is wrong here, and a
+      -- replaced point shows why: identity is the point together with the
+      -- source's reference, so an edit to either — a corrected coordinate, a
+      -- renumbered component — is a withdrawal plus an insert, and the reader
+      -- would meet the same place twice, once ticked and once not, with this
+      -- denominator
+      -- disagreeing with the location_count every list shows. The visit row is
+      -- untouched, which is what this slice protects; giving it a place on
+      -- screen needs the curator verdict on whether the place is gone at all.
+      AND ${offeredLocationSql()}
     ORDER BY el.ordinal
   `, [experienceId, userId]);
 

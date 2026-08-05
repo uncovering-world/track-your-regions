@@ -70,6 +70,9 @@ async function assignDirect(
   progress.statusMessage = 'Computing direct spatial containment for locations...';
   const params = categoryId ? [worldViewId, categoryId] : [worldViewId];
 
+  // Offered points only — see the note in `assignRegionsForExperiences`. The
+  // predicate is written out rather than taken from `offeredLocationSql()`:
+  // that fragment is a controller module, and no service imports one.
   const directResult = await pool.query(`
     INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
     SELECT DISTINCT el.id, r.id, 'auto'
@@ -78,6 +81,7 @@ async function assignDirect(
     CROSS JOIN regions r
     WHERE r.world_view_id = $1
       AND r.geom IS NOT NULL
+      AND el.missing_since IS NULL
       AND r.geom && el.location
       AND ST_Contains(r.geom, el.location)
       ${categoryId ? 'AND e.category_id = $2' : ''}
@@ -332,6 +336,17 @@ export async function assignRegionsForExperiences(
         AND er.assignment_type = 'auto' AND er.experience_id = ANY($2::int[])
     `, params);
 
+    // Offered points only. A point the source withdrew keeps its row and its
+    // coordinate, and placing it would keep the experience in a region on the
+    // strength of somewhere the reader is no longer shown. The clear above is
+    // unfiltered for the same reason, from the other side: a point withdrawn
+    // since the last placement has to lose the rows it left behind.
+    //
+    // Same predicate as `offeredLocationSql()` in the controller layer, spelled
+    // out here on purpose: importing that fragment would be the first
+    // service-imports-controller edge in the codebase, which is a worse trade
+    // than one repeated line. Both sites say so, so neither reads as an
+    // oversight.
     await client.query(`
       INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
       SELECT DISTINCT el.id, r.id, 'auto'
@@ -339,6 +354,7 @@ export async function assignRegionsForExperiences(
       CROSS JOIN regions r
       WHERE r.world_view_id = $1 AND r.geom IS NOT NULL
         AND el.experience_id = ANY($2::int[])
+        AND el.missing_since IS NULL
         AND r.geom && el.location AND ST_Contains(r.geom, el.location)
       ON CONFLICT (location_id, region_id) DO NOTHING
     `, params);

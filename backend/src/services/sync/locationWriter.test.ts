@@ -25,18 +25,30 @@ const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
 const A = { name: 'A', externalRef: 'r1', lon: 10, lat: 20 };
 const B = { name: 'B', externalRef: 'r2', lon: 11, lat: 21 };
 
-/** A client whose every statement is recorded, so the write path can be read back. */
-function fakeClient() {
+/**
+ * A client whose every statement is recorded, so the write path can be read
+ * back. `answers` lets one statement return rows: the arms are told apart by
+ * what they say, which is also how a reader tells them apart.
+ */
+function fakeClient(answers: Array<[RegExp, { rows?: unknown[]; rowCount?: number }]> = []) {
   const statements: string[] = [];
   const client = {
     query: vi.fn(async (sql: string) => {
       statements.push(sql);
-      return { rows: [], rowCount: 0 };
+      const hit = answers.find(([pattern]) => pattern.test(sql));
+      return { rows: hit?.[1].rows ?? [], rowCount: hit?.[1].rowCount ?? 0 };
     }),
     release: vi.fn(),
   };
   return { client, statements };
 }
+
+/** The arm that gives a point back its place in the source's list. */
+const RESURRECT = /missing_since = NULL/;
+/** The arm that renumbers a point the source has offered all along. */
+const KEEP = /SET ordinal = i\.ordinal/;
+/** The arm that records that the source stopped offering a point. */
+const MARK = /missing_since = NOW\(\)/;
 
 describe('writeExperienceLocations', () => {
   beforeEach(() => {
@@ -52,21 +64,110 @@ describe('writeExperienceLocations', () => {
     // No transaction at all: the common case must not cost writes, or the
     // churn this exists to remove returns in another form.
     expect(mockedConnect).not.toHaveBeenCalled();
-    expect(result).toEqual({ unchanged: [7, 8], needsAssignment: [], removed: 0 });
+    expect(result).toEqual({ unchanged: [7, 8], needsAssignment: [], unoffered: 0 });
   });
 
-  it('never deletes a location the source still offers', async () => {
+  it('deletes no location at all, whether or not the source still offers it', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
     const { client, statements } = fakeClient();
     mockedConnect.mockResolvedValue(client);
 
     await writeExperienceLocations(1, [A, B]);
 
-    // The whole bug in one assertion: a delete keyed on the experience alone
-    // takes every location, and the cascade takes their assignments with it.
-    const deletes = statements.filter(s => /DELETE FROM experience_locations/i.test(s));
-    expect(deletes).toHaveLength(1);
-    expect(deletes[0]).toMatch(/NOT EXISTS/);
+    // `user_visited_locations.location_id` and
+    // `experience_location_regions.location_id` both cascade, so any delete
+    // here destroys a user's record of having been somewhere. There is no
+    // longer a delete of any shape to get wrong.
+    expect(statements.filter(s => /DELETE FROM experience_locations/i.test(s))).toEqual([]);
+  });
+
+  it('marks the point the source stopped offering, and only that point', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '2', matched: '1', ids: [7, 8] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    const mark = statements.filter(s => MARK.test(s));
+    expect(mark).toHaveLength(1);
+    // Keyed the same way the old delete was: everything the source did not
+    // offer this time, and nothing it did.
+    expect(mark[0]).toMatch(/NOT EXISTS/);
+    expect(mark[0]).toMatch(/external_ref IS NOT DISTINCT FROM i\.external_ref/);
+    // A row with no position in the source's list has no ordinal either.
+    expect(mark[0]).toMatch(/ordinal = NULL/);
+  });
+
+  it('does not restamp a point that was already missing', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    // `missing_since` answers "when did this first go missing". A run that
+    // finds it missing again is not a new observation, and rewriting the row
+    // every run would churn the table for nothing.
+    expect(statements.find(s => MARK.test(s))).toMatch(/el\.missing_since IS NULL/);
+  });
+
+  it('gives a point that came back its place, and sends it for reassignment', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '0', matched: '0', ids: null }] });
+    const { client, statements } = fakeClient([[RESURRECT, { rows: [{ id: 7 }] }]]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [A]);
+
+    // Same row, same id, so the visit record and any manual region assignment
+    // on it are still the right ones. Its *auto* assignments are not: they were
+    // dropped while it was missing, so placement has to run for it.
+    expect(statements.filter(s => RESURRECT.test(s))).toHaveLength(1);
+    expect(result.needsAssignment).toContain(7);
+    expect(result.unchanged).not.toContain(7);
+  });
+
+  it('separates the point that came back from the point that never left', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [8] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A, B]);
+
+    // Two arms over disjoint sets. Merged into one, a returning point would be
+    // reported as unchanged and never placed.
+    expect(statements.find(s => RESURRECT.test(s))).toMatch(/el\.missing_since IS NOT NULL/);
+    const keep = statements.find(s => KEEP.test(s) && !RESURRECT.test(s));
+    expect(keep).toMatch(/el\.missing_since IS NULL/);
+  });
+
+  it('renumbers the survivors before it resurrects, or the sets overlap', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [8] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A, B]);
+
+    // Predicates alone do not make the two arms disjoint: resurrecting first
+    // clears `missing_since`, and the survivors' arm would then match the row
+    // it had just brought back — reporting it as unchanged as well as needing
+    // assignment. The order is the guarantee, so it is asserted rather than
+    // left to whoever edits this next.
+    const keep = statements.findIndex(s => KEEP.test(s) && !RESURRECT.test(s));
+    const resurrect = statements.findIndex(s => RESURRECT.test(s));
+    expect(keep).toBeGreaterThanOrEqual(0);
+    expect(keep).toBeLessThan(resurrect);
+  });
+
+  it('asks the fast path about offered points only', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '1', ids: [7] }] });
+
+    await writeExperienceLocations(1, [A]);
+
+    // Counting marked rows as stored would fail the comparison on every later
+    // run for any experience that ever lost a point — the slow path forever,
+    // for an object nothing is changing.
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql.match(/missing_since IS NULL/g) ?? []).toHaveLength(3);
   });
 
   it('renumbers out of the way before renumbering into place', async () => {
@@ -88,7 +189,7 @@ describe('writeExperienceLocations', () => {
     mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
     const { client } = fakeClient();
     client.query.mockImplementation(async (sql: string) => {
-      if (/DELETE FROM experience_locations/i.test(sql)) throw new Error('boom');
+      if (MARK.test(sql)) throw new Error('boom');
       return { rows: [], rowCount: 0 };
     });
     mockedConnect.mockResolvedValue(client);
@@ -166,8 +267,8 @@ describe('dedupeByIdentity', () => {
   it('does not treat a null reference as an empty one', () => {
     // `IS NOT DISTINCT FROM` calls these two different references, so a key
     // that flattened them would drop one of a pair the SQL keeps apart — and
-    // the delete would then take the survivor's row, cascading its region
-    // assignments away.
+    // the mark would then take the survivor's row, hiding a point the source
+    // still offers.
     const nullAndEmpty = [
       { name: 'A', externalRef: null, lon: 5, lat: 5 },
       { name: 'B', externalRef: '', lon: 5, lat: 5 },
@@ -193,9 +294,9 @@ describe('the match predicate', () => {
     mockedConnect.mockResolvedValue(client);
 
     return writeExperienceLocations(1, [A, B]).then(() => {
-      // Point alone would make the delete drop a component that shares a
+      // Point alone would make the mark hide a component that shares a
       // coordinate with a survivor, and the update match two stored rows to
-      // one incoming entry. Both queries have to carry the reference.
+      // one incoming entry. Every query has to carry the reference.
       const spatial = statements.filter(s => /ST_MakePoint/.test(s));
       expect(spatial.length).toBeGreaterThan(0);
       for (const sql of spatial) {

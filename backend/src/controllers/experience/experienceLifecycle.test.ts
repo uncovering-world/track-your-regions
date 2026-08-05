@@ -7,7 +7,27 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { hideLostSql, lifecycleSelectSql, includeLost } from './experienceLifecycle.js';
+import {
+  hideLostSql,
+  lifecycleSelectSql,
+  includeLost,
+  offeredLocationSql,
+} from './experienceLifecycle.js';
+
+describe('offeredLocationSql', () => {
+  it('hides a point the source stopped offering', () => {
+    expect(offeredLocationSql()).toContain('missing_since IS NULL');
+  });
+
+  it('defaults to the alias the location queries use', () => {
+    expect(offeredLocationSql()).toContain('el.missing_since');
+    expect(offeredLocationSql('loc')).toContain('loc.missing_since');
+  });
+
+  it('comes bare, like its neighbour, since callers append it either way', () => {
+    expect(offeredLocationSql().trimStart()).not.toMatch(/^AND/);
+  });
+});
 
 describe('hideLostSql', () => {
   it('hides only what no longer exists', () => {

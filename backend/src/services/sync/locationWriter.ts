@@ -1,5 +1,5 @@
 /**
- * Writing an experience's locations without destroying their region assignments.
+ * Writing an experience's locations without destroying anything hanging off them.
  *
  * The obvious implementation — delete every location for the experience and
  * insert the incoming ones — is what the sync used to do, and it is why a full
@@ -12,6 +12,20 @@
  * that day.
  *
  * So a location that has not moved must keep its row, and therefore its id.
+ *
+ * **And a location the source stopped offering keeps its row too.** The same
+ * cascade runs from `user_visited_locations.location_id`, so deleting the row
+ * of a withdrawn point takes a person's record of having stood there — a fact
+ * no later run can put back, unlike anything else here. Instead the row is
+ * marked: `missing_since` records when a run first offered the experience
+ * without it, `ordinal` goes to NULL because it has no place in a list it is
+ * no longer in, and every reader-facing query passes it over. A source that
+ * offers the point again finds the same row and gives it its place back.
+ *
+ * That is a machine observation, not a verdict — the same split
+ * `experiences.missing_since` already makes. Whether the point is gone or the
+ * source merely blinked is a question for a curator, and until it is answered
+ * nothing about the row is irreversible.
  *
  * **Identity is the point together with the reference.** Neither alone works,
  * and the data says so in both directions:
@@ -56,10 +70,10 @@ export interface IncomingLocation {
 export interface LocationWriteResult {
   /** Rows that already held this point. Their assignments are still valid. */
   unchanged: number[];
-  /** Rows inserted or moved. These, and only these, need region assignment. */
+  /** Rows inserted, moved, or offered again. These need region assignment. */
   needsAssignment: number[];
-  /** How many stored rows the source no longer offers. */
-  removed: number;
+  /** How many stored points this run was the first to find missing. */
+  unoffered: number;
 }
 
 /**
@@ -104,8 +118,8 @@ export function dedupeByIdentity(incoming: IncomingLocation[]): IncomingLocation
   return incoming.filter(loc => {
     // JSON rather than a joined string: `null` and `''` are different
     // references to `IS NOT DISTINCT FROM`, and a key that flattened them would
-    // drop one of a pair the SQL then treats as two — the delete would take the
-    // survivor's stored row and cascade its region assignments away.
+    // drop one of a pair the SQL then treats as two — the mark would take the
+    // survivor's stored row and hide a point the source still offers.
     const key = JSON.stringify([loc.lon, loc.lat, loc.externalRef]);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -139,36 +153,49 @@ export async function writeExperienceLocations(
   // this. Most objects in most runs are unchanged — 1235 of 1272 UNESCO rows
   // in the acceptance round — and those must cost no writes at all, or the
   // churn this function exists to remove comes back in another form.
+  //
+  // All three subqueries ask about the *offered* rows only. Counting marked
+  // ones as stored would fail this comparison on every later run for any
+  // experience that ever lost a point, which is the slow path forever over an
+  // object nothing is changing.
   const same = await pool.query(
     `WITH ${cte}
-     SELECT (SELECT count(*) FROM experience_locations WHERE experience_id = $1) AS stored,
+     SELECT (SELECT count(*) FROM experience_locations
+               WHERE experience_id = $1 AND missing_since IS NULL) AS stored,
             (SELECT count(*) FROM incoming i
                JOIN experience_locations el
                  ON el.experience_id = $1
+                AND el.missing_since IS NULL
                 AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
                 AND el.external_ref IS NOT DISTINCT FROM i.external_ref
                 AND el.ordinal = i.ordinal
                 AND el.name IS NOT DISTINCT FROM i.name) AS matched,
-            (SELECT array_agg(id) FROM experience_locations WHERE experience_id = $1) AS ids`,
+            (SELECT array_agg(id) FROM experience_locations
+               WHERE experience_id = $1 AND missing_since IS NULL) AS ids`,
     params,
   );
   const { stored, matched, ids } = same.rows[0] as
     { stored: string; matched: string; ids: number[] | null };
 
   if (Number(stored) === incoming.length && Number(matched) === incoming.length) {
-    return { unchanged: ids ?? [], needsAssignment: [], removed: 0 };
+    return { unchanged: ids ?? [], needsAssignment: [], unoffered: 0 };
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Rows the source no longer offers. Their assignments go with them through
-    // the cascade, which is right — the place is not there any more.
-    const removed = await client.query(
+    // Rows the source no longer offers. Marked, not deleted: the row is what a
+    // person's visit record points at. `missing_since IS NULL` restricts this
+    // to points going missing *now* — a row unoffered for the fifth run running
+    // was first observed missing once, and rewriting it every run would churn
+    // the table to say nothing new.
+    const marked = await client.query(
       `WITH ${cte}
-       DELETE FROM experience_locations el
+       UPDATE experience_locations el
+       SET ordinal = NULL, missing_since = NOW()
        WHERE el.experience_id = $1
+         AND el.missing_since IS NULL
          AND NOT EXISTS (
            SELECT 1 FROM incoming i
            WHERE el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
@@ -180,7 +207,8 @@ export async function writeExperienceLocations(
     // `ordinal` is unique per experience, so renumbering in place would collide
     // with a row that has not been renumbered yet. Park the survivors on the
     // negative side first — only reached when the set really changed, since the
-    // fast path returned otherwise.
+    // fast path returned otherwise. Marked rows sit at NULL and are already out
+    // of the way.
     await client.query(
       `UPDATE experience_locations SET ordinal = -ordinal
        WHERE experience_id = $1 AND ordinal > 0`,
@@ -189,18 +217,47 @@ export async function writeExperienceLocations(
 
     // Survivors keep their id. At most one incoming entry can match, since the
     // incoming list is deduped by identity above.
+    //
+    // Runs *before* the arm below, and the order is what keeps the two over
+    // disjoint sets: that one clears `missing_since`, so a row it had already
+    // resurrected would satisfy this predicate too and be reported as both
+    // unchanged and needing assignment.
     const kept = await client.query(
       `WITH ${cte}
        UPDATE experience_locations el
        SET ordinal = i.ordinal, external_ref = i.external_ref, name = i.name
        FROM incoming i
        WHERE el.experience_id = $1
+         AND el.missing_since IS NULL
          AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
            AND el.external_ref IS NOT DISTINCT FROM i.external_ref
        RETURNING el.id`,
       params,
     );
 
+    // A point the source is offering again. Same row, same id, so the visit
+    // record and any manual region assignment on it are still the right ones —
+    // but its *auto* assignments were dropped while it was missing, so it goes
+    // back for placement rather than being reported as unchanged.
+    const returned = await client.query(
+      `WITH ${cte}
+       UPDATE experience_locations el
+       SET ordinal = i.ordinal, external_ref = i.external_ref, name = i.name,
+           missing_since = NULL
+       FROM incoming i
+       WHERE el.experience_id = $1
+         AND el.missing_since IS NOT NULL
+         AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+           AND el.external_ref IS NOT DISTINCT FROM i.external_ref
+       RETURNING el.id`,
+      params,
+    );
+
+    // Deliberately no `missing_since` predicate in this NOT EXISTS: it asks
+    // whether the row exists at all, and a point that just came back was
+    // resurrected two statements ago. Restricting it to offered rows would let
+    // that row be inserted a second time — two rows for one place, and the
+    // visit record pointing at whichever of them the reader is not shown.
     const inserted = await client.query(
       `WITH ${cte}
        INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location)
@@ -221,8 +278,11 @@ export async function writeExperienceLocations(
 
     return {
       unchanged: kept.rows.map(r => r.id as number),
-      needsAssignment: inserted.rows.map(r => r.id as number),
-      removed: removed.rowCount ?? 0,
+      needsAssignment: [
+        ...inserted.rows.map(r => r.id as number),
+        ...returned.rows.map(r => r.id as number),
+      ],
+      unoffered: marked.rowCount ?? 0,
     };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
