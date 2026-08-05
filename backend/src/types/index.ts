@@ -330,7 +330,6 @@ export const userIdParamSchema = z.object({
 });
 
 export const startSyncBodySchema = z.object({
-  force: z.boolean().optional(),
   dryRun: z.boolean().optional(),
 });
 

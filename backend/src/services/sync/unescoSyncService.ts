@@ -425,11 +425,10 @@ async function upsertExperienceLocations(
 /**
  * Main sync function - fetches UNESCO data and upserts to database
  * @param triggeredBy - User ID who triggered the sync
- * @param force - If true, delete all existing data before syncing
  */
 export function syncUnescoSites(
   triggeredBy: number | null,
-  options: { force?: boolean; dryRun?: boolean } = {},
+  options: { dryRun?: boolean } = {},
 ): Promise<void> {
   // Shared state between fetchItems and processItem via closure
   let wikipediaUrls: Map<string, string>;

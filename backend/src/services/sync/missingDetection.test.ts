@@ -30,7 +30,6 @@ function input(overrides: Partial<MissingDetectionInput> = {}): MissingDetection
     sourceCompleteness: 'authoritative',
     errors: 0,
     cancelled: false,
-    force: false,
     seenCount: 1247,
     previousActiveCount: 1247,
     ...overrides,
@@ -52,15 +51,6 @@ describe('missingDetectionSkipReason', () => {
     const reason = missingDetectionSkipReason(input({ errors: 1 }));
 
     expect(reason).toContain('error');
-  });
-
-  it('refuses on a force run, naming the wipe rather than blaming coverage', () => {
-    // The cleanup empties the category first, so a coverage figure taken after
-    // it describes nothing that happened
-    const reason = missingDetectionSkipReason(input({ force: true, seenCount: 0 }));
-
-    expect(reason).toContain('force run');
-    expect(reason).not.toContain('coverage');
   });
 
   it('refuses when the run was cancelled', () => {

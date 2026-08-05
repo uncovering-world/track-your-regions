@@ -74,8 +74,9 @@ export function isNewSql(alias = 'e', userIdParam: NewBadgeReaderParam = 'NULL')
     -- for every pre-existing row — a reasonable guess about where they came
     -- from, but not a sighting. Without this clause the whole catalogue wears
     -- the chip on the day this ships, and keeps it until each category next
-    -- runs: 1547 of 1547 rows, measured. A force run has the same shape, since
-    -- it deletes the category and re-inserts it under one run.
+    -- runs: 1547 of 1547 rows, measured. Nothing re-inserts a whole category
+    -- any more — force sync, which did, is gone — so this clause only ever
+    -- sees rows a run genuinely brought in for the first time.
     AND EXISTS (
       SELECT 1 FROM experience_sync_changes ch
       WHERE ch.experience_id = ${alias}.id

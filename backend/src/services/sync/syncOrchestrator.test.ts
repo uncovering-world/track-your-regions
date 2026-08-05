@@ -15,7 +15,6 @@ vi.mock('./syncUtils.js', () => ({
   createSyncLog: vi.fn().mockResolvedValue(42),
   updateSyncLog: vi.fn().mockResolvedValue(undefined),
   annotateClosedSyncLog: vi.fn().mockResolvedValue(undefined),
-  cleanupCategoryData: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('./changeRecorder.js', () => ({
@@ -34,7 +33,7 @@ vi.mock('./missingDetection.js', () => ({
   countSeenAmongActive: vi.fn().mockResolvedValue(0),
 }));
 
-import { createSyncLog, updateSyncLog, annotateClosedSyncLog, cleanupCategoryData } from './syncUtils.js';
+import { createSyncLog, updateSyncLog, annotateClosedSyncLog } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
 import { missingDetectionSkipReason, flagMissingExperiences, countSeenAmongActive } from './missingDetection.js';
 import { assignRegionsForExperiences, worldViewsWithGeometry } from './regionAssignmentService.js';
@@ -210,35 +209,17 @@ describe('orchestrateSync', () => {
     expect(config.fetchItems).toHaveBeenCalledOnce();
   });
 
-  it('should call cleanup on force sync', async () => {
+  it('empties nothing before it starts, whatever it was asked for', async () => {
+    // A run refreshes what the source offers and marks what it withdrew. There
+    // is no mode that empties the category first: the visit records and manual
+    // region assignments that went with it are the one thing no later run can
+    // rebuild. The config no longer has a cleanup hook to call, and this holds
+    // the line against one coming back.
     const config = makeConfig();
-    await orchestrateSync(config, null, { force: true });
+    await orchestrateSync(config, null, { force: true } as never);
 
-    expect(cleanupCategoryData).toHaveBeenCalledWith(
-      TEST_CATEGORY_ID,
-      '[Test Sync]',
-      expect.objectContaining({ status: 'complete' }),
-    );
-  });
-
-  it('should use custom cleanup when provided', async () => {
-    const customCleanup = vi.fn().mockResolvedValue(undefined);
-    const config = makeConfig({ cleanup: customCleanup });
-
-    await orchestrateSync(config, null, { force: true });
-
-    expect(customCleanup).toHaveBeenCalledOnce();
-    expect(cleanupCategoryData).not.toHaveBeenCalled();
-  });
-
-  it('should not call cleanup when force is false', async () => {
-    const customCleanup = vi.fn();
-    const config = makeConfig({ cleanup: customCleanup });
-
-    await orchestrateSync(config, null);
-
-    expect(customCleanup).not.toHaveBeenCalled();
-    expect(cleanupCategoryData).not.toHaveBeenCalled();
+    expect(Object.keys(config)).not.toContain('cleanup');
+    expect(config.fetchItems).toHaveBeenCalledOnce();
   });
 
   it('should handle cancellation during processing', async () => {
@@ -473,13 +454,14 @@ describe('orchestrateSync changeset recording', () => {
     expect(countSeenAmongActive).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1', '2']);
   });
 
-  it('does not count coverage on a force run, whose cleanup emptied the category', async () => {
-    await orchestrateSync(makeConfig(), 1, { force: true });
+  it('measures coverage on every run, since none of them empties the category', async () => {
+    // The exemption existed because a force run deleted the category first, so
+    // the count would be zero against a pre-deletion denominator. Nothing
+    // deletes now, and a run that skipped the floor could conclude that
+    // everything it failed to fetch had been delisted.
+    await orchestrateSync(makeConfig(), 1, { force: true } as never);
 
-    expect(countSeenAmongActive).not.toHaveBeenCalled();
-    expect(missingDetectionSkipReason).toHaveBeenCalledWith(
-      expect.objectContaining({ force: true }),
-    );
+    expect(countSeenAmongActive).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1', '2']);
   });
 
   it('measures coverage before the run writes anything', async () => {
@@ -607,9 +589,12 @@ describe('orchestrateSync changeset recording', () => {
     );
   });
 
-  it('refuses to combine a dry run with force cleanup', async () => {
-    await expect(orchestrateSync(makeConfig(), 1, { force: true, dryRun: true }))
-      .rejects.toThrow(/dry run/i);
+  it('previews anything it can run, now that no mode deletes first', async () => {
+    // The refusal was about force deleting the category before there was
+    // anything to preview. With nothing deleted there is nothing to refuse.
+    await orchestrateSync(makeConfig(), 1, { force: true, dryRun: true } as never);
+
+    expect(createSyncLog).toHaveBeenCalledWith(TEST_CATEGORY_ID, 1, true);
   });
 
   it('puts the run into the failed state, not just a failed message', async () => {

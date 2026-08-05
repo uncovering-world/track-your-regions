@@ -126,17 +126,17 @@ export async function getCategories(): Promise<ExperienceCategory[]> {
 /**
  * Start sync for a category
  * @param categoryId - The category to sync
- * @param options - `force` deletes existing data first; `dryRun` records the
- *   changeset without writing any experiences. The two cannot be combined.
+ * @param options - `dryRun` records the changeset without writing any
+ *   experiences. A sync deletes nothing either way.
  */
 export async function startSync(
   categoryId: number,
-  options: { force?: boolean; dryRun?: boolean } = {},
-): Promise<{ started: boolean; message: string; force?: boolean; dryRun?: boolean }> {
+  options: { dryRun?: boolean } = {},
+): Promise<{ started: boolean; message: string; dryRun?: boolean }> {
   return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force: options.force ?? false, dryRun: options.dryRun ?? false }),
+    body: JSON.stringify({ dryRun: options.dryRun ?? false }),
   });
 }
 

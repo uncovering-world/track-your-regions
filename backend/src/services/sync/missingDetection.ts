@@ -3,15 +3,13 @@
  *
  * An upsert never deletes, so a delisted site would otherwise sit in the
  * database forever, indistinguishable from a current one. Flagging it is only
- * safe under four conditions, because the alternative reading of "not in this
+ * safe under three conditions, because the alternative reading of "not in this
  * run" is "this run did not see everything":
  *
  *   1. the source hands over its whole collection (UNESCO does; a top-200
  *      Wikidata query does not — falling out of a ranking is not a delisting)
  *   2. the run completed without errors and was not cancelled
- *   3. it was not a force run, which deletes the category before it starts, so
- *      nothing was left to go missing
- *   4. it saw at least 90% of what was there before
+ *   3. it saw at least 90% of what was there before
  *
  * The flag is a machine observation. Turning it into `former` or `lost` is a
  * curator's decision, made elsewhere.
@@ -26,8 +24,6 @@ export interface MissingDetectionInput {
   sourceCompleteness: SourceCompleteness;
   errors: number;
   cancelled: boolean;
-  /** A force run deletes the category first, so nothing can be judged absent. */
-  force: boolean;
   /**
    * Of the rows that were active before this run, how many the source offered
    * again — measured against the pre-run table, so it excludes rows this run
@@ -46,9 +42,6 @@ export const MISSING_DETECTION_MIN_COVERAGE = 0.9;
 export function missingDetectionSkipReason(input: MissingDetectionInput): string | null {
   if (input.sourceCompleteness !== 'authoritative') {
     return 'source is ranked, not authoritative: absence means a lower rank, not a delisting';
-  }
-  if (input.force) {
-    return 'force run replaced the category wholesale, so nothing was left to go missing';
   }
   if (input.cancelled) {
     return 'run was cancelled before it could see the whole collection';

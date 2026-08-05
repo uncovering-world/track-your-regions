@@ -6,7 +6,7 @@
  * Each sync service provides domain-specific callbacks via SyncServiceConfig.
  */
 
-import { createSyncLog, updateSyncLog, cleanupCategoryData } from './syncUtils.js';
+import { createSyncLog, updateSyncLog } from './syncUtils.js';
 import { recordSyncChanges, type ChangeRecord } from './changeRecorder.js';
 import { CHANGESET_LOST_MARKER } from './syncLogMarkers.js';
 import { finishPlacement, enterAssigningPhase, terminalStatus } from './placement.js';
@@ -88,8 +88,6 @@ export interface SyncServiceConfig<T> {
   getItemName: (item: T) => string;
   /** External ID for error reporting. */
   getItemId: (item: T) => string;
-  /** Custom cleanup for force sync (replaces default cleanupCategoryData). */
-  cleanup?: (progress: SyncProgress) => Promise<void>;
 }
 
 // =============================================================================
@@ -119,18 +117,6 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
     logId: null,
     dryRun,
   };
-}
-
-async function runForceCleanup<T>(
-  config: SyncServiceConfig<T>,
-  progress: SyncProgress,
-): Promise<void> {
-  if (config.cleanup) {
-    await config.cleanup(progress);
-    return;
-  }
-  progress.statusMessage = 'Cleaning up existing data...';
-  await cleanupCategoryData(config.categoryId, config.logPrefix, progress);
 }
 
 /**
@@ -322,7 +308,6 @@ async function detectMissing<T>(
   progress: SyncProgress,
   previousActiveCount: number,
   seenCount: number,
-  force: boolean,
   changes: ChangeRecord[],
   seenExternalIds: string[],
 ): Promise<string | null> {
@@ -330,7 +315,6 @@ async function detectMissing<T>(
     sourceCompleteness: config.sourceCompleteness,
     errors: progress.errors,
     cancelled: progress.cancel,
-    force,
     seenCount,
     previousActiveCount,
   });
@@ -395,9 +379,9 @@ async function recordSyncFailure<T>(
 /**
  * Run a sync operation with full lifecycle management.
  *
- * Handles: already-running check, progress init, sync log, force cleanup,
- * fetch, processing loop with cancellation, changeset recording, missing
- * detection, final status, error handling, and delayed runningSyncs cleanup.
+ * Handles: already-running check, progress init, sync log, fetch, processing
+ * loop with cancellation, changeset recording, missing detection, final status,
+ * error handling, and delayed runningSyncs cleanup.
  *
  * A dry run walks the same path — same fetch, same diff, same changeset — and
  * writes everything except the experiences themselves. That makes a real source
@@ -406,15 +390,10 @@ async function recordSyncFailure<T>(
 export async function orchestrateSync<T>(
   config: SyncServiceConfig<T>,
   triggeredBy: number | null,
-  options: { force?: boolean; dryRun?: boolean } = {},
+  options: { dryRun?: boolean } = {},
 ): Promise<void> {
   const { categoryId, logPrefix } = config;
-  const force = options.force ?? false;
   const dryRun = options.dryRun ?? false;
-
-  if (force && dryRun) {
-    throw new Error(`${logPrefix} cannot run a dry run in force mode: force deletes before it previews`);
-  }
 
   if (isSyncStillRunning(runningSyncs.get(categoryId))) {
     throw new Error(`${logPrefix} sync already in progress`);
@@ -435,11 +414,9 @@ export async function orchestrateSync<T>(
 
   try {
     progress.logId = await createSyncLog(categoryId, triggeredBy, dryRun);
-    console.log(`${logPrefix} Started sync (log ID: ${progress.logId})${force ? ' [FORCE MODE]' : ''}${dryRun ? ' [DRY RUN]' : ''}`);
+    console.log(`${logPrefix} Started sync (log ID: ${progress.logId})${dryRun ? ' [DRY RUN]' : ''}`);
 
     const previousActiveCount = await countActiveExperiences(categoryId);
-
-    if (force) await runForceCleanup(config, progress);
 
     const { items, fetchedCount, filtered } = await config.fetchItems(progress, errorDetails);
     // fetchItems may append pre-processing errors before the loop counts errors itself
@@ -453,10 +430,7 @@ export async function orchestrateSync<T>(
     // neither was in previousActiveCount, and both only lift the ratio past the
     // floor the guard exists to enforce.
     const seenExternalIds = items.map(config.getItemId);
-    // Skipped under force as well: the cleanup above emptied the category, so
-    // the count would be 0 against a pre-cleanup denominator and would report a
-    // coverage failure that never happened.
-    const seenCount = config.sourceCompleteness === 'authoritative' && !force
+    const seenCount = config.sourceCompleteness === 'authoritative'
       ? await countSeenAmongActive(categoryId, seenExternalIds)
       : 0;
 
@@ -472,7 +446,7 @@ export async function orchestrateSync<T>(
     if (progress.cancel) throw new Error('Sync cancelled');
 
     const detectionSkippedReason = await detectMissing(
-      config, progress, previousActiveCount, seenCount, force, changes, seenExternalIds,
+      config, progress, previousActiveCount, seenCount, changes, seenExternalIds,
     );
 
     changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
@@ -529,7 +503,7 @@ export async function orchestrateSync<T>(
     throw err;
   } finally {
     // The run is not over, but it is no longer processing items: placement is
-    // its own phase and can take minutes on a force run, where the whole
+    // its own phase and can take minutes on a first run, where the whole
     // category lands in `movedExperiences` and every world view gets its own
     // transaction. Naming the phase keeps `isSyncStillRunning` true — the
     // poller must keep polling — while giving `cancelSync` something to refuse
