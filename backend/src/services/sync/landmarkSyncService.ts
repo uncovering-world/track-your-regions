@@ -298,7 +298,7 @@ async function fetchLandmarkItems(
  */
 export function syncLandmarks(
   triggeredBy: number | null,
-  options: { force?: boolean; dryRun?: boolean } = {},
+  options: { dryRun?: boolean } = {},
 ): Promise<void> {
   return orchestrateSync<WikidataLandmark>({
     categoryId: LANDMARK_CATEGORY_ID,

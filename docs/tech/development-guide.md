@@ -8,7 +8,7 @@ Conventions and patterns for writing code in this project. Follow these to keep 
 
 Before implementing anything new, **search the codebase for similar patterns**:
 
-- **Backend utilities:** Check `backend/src/services/sync/syncUtils.ts` (upsert, sync log, cleanup), `wikidataUtils.ts` (SPARQL, QID parsing), and service-level shared code before writing new helpers.
+- **Backend utilities:** Check `backend/src/services/sync/syncUtils.ts` (upsert, single-location write, sync log), `wikidataUtils.ts` (SPARQL, QID parsing), and service-level shared code before writing new helpers.
 - **Frontend utilities:** Check `frontend/src/utils/` (categoryColors, dateFormat, imageUrl, coordinateParser, mapUtils) before creating inline helpers.
 - **Frontend hooks:** Check `frontend/src/hooks/` for app-level hooks and component directories for co-located hooks.
 - **Frontend components:** Check `frontend/src/components/shared/` (CurationDialog, AddExperienceDialog, LocationPicker) before building new dialogs or UI patterns.
@@ -112,7 +112,7 @@ services/
 ├── sync/
 │   ├── index.ts               ← barrel with orchestrator + status
 │   ├── syncOrchestrator.ts    ← generic orchestration framework
-│   ├── syncUtils.ts           ← shared: upsert, sync log, cleanup
+│   ├── syncUtils.ts           ← shared: upsert, single-location write, sync log
 │   ├── wikidataUtils.ts       ← shared: SPARQL queries, QID parsing
 │   ├── unescoSyncService.ts   ← category-specific sync
 │   ├── museumSyncService.ts

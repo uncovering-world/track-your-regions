@@ -9,7 +9,6 @@ import { pool, db } from '../../db/index.js';
 import { experienceSyncLogs, experienceCategories } from '../../db/schema.js';
 import { writeExperienceLocations, type LocationWriteResult } from './locationWriter.js';
 import { computeChangeSet, type ChangeSetResult, type ExperienceSnapshot } from './changeSet.js';
-import type { SyncProgress } from './types.js';
 
 // =============================================================================
 // Experience Upsert
@@ -377,68 +376,3 @@ export async function annotateClosedSyncLog(
   });
 }
 
-// =============================================================================
-// Category Data Cleanup
-// =============================================================================
-
-/**
- * Delete all data for a category in correct foreign-key order.
- *
- * Region assignment links (experience_regions, experience_location_regions) are
- * deleted with an auto-only filter first to avoid FK violations, but all
- * assignments — including manual curator assignments — are ultimately removed
- * via ON DELETE CASCADE when experiences and locations are deleted.
- *
- * Museums should call their treasure cleanup before this function.
- *
- * @returns Number of deleted experiences
- */
-export async function cleanupCategoryData(
-  categoryId: number,
-  logPrefix: string,
-  progress: SyncProgress,
-): Promise<number> {
-  await pool.query(`
-    DELETE FROM user_visited_locations
-    WHERE location_id IN (
-      SELECT el.id FROM experience_locations el
-      JOIN experiences e ON el.experience_id = e.id
-      WHERE e.category_id = $1
-    )
-  `, [categoryId]);
-
-  await pool.query(`
-    DELETE FROM user_visited_experiences
-    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [categoryId]);
-
-  await pool.query(`
-    DELETE FROM experience_location_regions
-    WHERE assignment_type = 'auto'
-      AND location_id IN (
-        SELECT el.id FROM experience_locations el
-        JOIN experiences e ON el.experience_id = e.id
-        WHERE e.category_id = $1
-      )
-  `, [categoryId]);
-
-  await pool.query(`
-    DELETE FROM experience_regions
-    WHERE assignment_type = 'auto'
-      AND experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [categoryId]);
-
-  await pool.query(`
-    DELETE FROM experience_locations
-    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [categoryId]);
-
-  const result = await pool.query(`
-    DELETE FROM experiences WHERE category_id = $1
-  `, [categoryId]);
-
-  const count = result.rowCount ?? 0;
-  console.log(`${logPrefix} Cleaned up ${count} existing experiences`);
-  progress.statusMessage = `Cleaned up ${count} existing experiences`;
-  return count;
-}

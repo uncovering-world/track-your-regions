@@ -15,8 +15,6 @@ import {
   LinearProgress,
   Chip,
   Alert,
-  FormControlLabel,
-  Checkbox,
 } from '@mui/material';
 import {
   Sync as SyncIcon,
@@ -135,15 +133,11 @@ function SourceCard({ source }: SourceCardProps) {
   const queryClient = useQueryClient();
   const [isPolling, setIsPolling] = useState(false);
   const [status, setStatus] = useState<SyncStatus | null>(null);
-  const [forceSync, setForceSync] = useState(false);
 
   // Start sync mutation
   const startMutation = useMutation({
-    mutationFn: () => startSync(source.id, { force: forceSync }),
-    onSuccess: () => {
-      setIsPolling(true);
-      setForceSync(false); // Reset force checkbox after starting
-    },
+    mutationFn: () => startSync(source.id),
+    onSuccess: () => setIsPolling(true),
   });
 
   // Preview mutation: same run, no writes to experiences
@@ -312,40 +306,22 @@ function SourceCard({ source }: SourceCardProps) {
                 startIcon={<SyncIcon />}
                 onClick={() => startMutation.mutate()}
                 disabled={!source.is_active || startMutation.isPending}
-                variant={forceSync ? 'contained' : 'outlined'}
-                color={forceSync ? 'error' : 'primary'}
+                variant="outlined"
+                color="primary"
               >
-                {forceSync ? 'Force Sync' : 'Start Sync'}
+                Start Sync
               </Button>
-              {/* Disabled under force because the backend refuses that pairing:
-                  force deletes the category before there is anything to preview. */}
               <Button
                 variant="outlined"
                 onClick={() => dryRunMutation.mutate()}
-                disabled={!source.is_active || forceSync || isStarting}
+                disabled={!source.is_active || isStarting}
               >
                 Dry run
               </Button>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={forceSync}
-                    onChange={(e) => setForceSync(e.target.checked)}
-                    size="small"
-                    color="error"
-                  />
-                }
-                label={
-                  <Typography variant="body2" color="text.secondary">
-                    Force (delete all data first)
-                  </Typography>
-                }
-              />
-              {!forceSync && (
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                  Normal sync preserves: curator edits, visit history, manual region assignments, and rejections
-                </Typography>
-              )}
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                A sync preserves curator edits, visit history, manual region assignments and
+                rejections. A point the source stops offering is marked, not deleted.
+              </Typography>
             </>
           ) : (
             <Button
@@ -366,11 +342,6 @@ function SourceCard({ source }: SourceCardProps) {
             </Button>
           )}
         </Box>
-        {forceSync && !isRunning && (
-          <Alert severity="warning" sx={{ py: 0, width: '100%' }}>
-            Force sync will delete all existing experiences, visited records, and region assignments for this source.
-          </Alert>
-        )}
       </CardActions>
     </Card>
   );

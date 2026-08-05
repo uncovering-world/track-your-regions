@@ -154,8 +154,8 @@ export async function finishPlacement(
 /**
  * Name the placement phase, when there is a window worth naming.
  *
- * Placement can take minutes on a force run — the whole category lands in the
- * moved set and every world view gets its own transaction — and through it the
+ * Placement can take minutes on a category's first run — the whole of it lands
+ * in the moved set and every world view gets its own transaction — and through it the
  * run is deliberately still open. Left as `processing`, the panel offers a
  * Cancel that nothing reads any more, beside a completion message and a full
  * bar. `isSyncStillRunning` treats `assigning` as running, so the poller

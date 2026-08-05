@@ -26,7 +26,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 const MUSEUM_CATEGORY_ID = 2;
 
 /** Registry mapping category IDs to their sync functions */
-const syncRegistry: Record<number, (triggeredBy: number | null, options: { force?: boolean; dryRun?: boolean }) => Promise<void>> = {
+const syncRegistry: Record<number, (triggeredBy: number | null, options: { dryRun?: boolean }) => Promise<void>> = {
   1: syncUnescoSites,
   2: syncMuseums,
   3: syncLandmarks,
@@ -65,14 +65,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   // Get triggering user ID
   const triggeredBy = req.user?.id || null;
 
-  // Check for force and preview modes
-  const force = req.body.force === true;
   const dryRun = req.body.dryRun === true;
-
-  if (force && dryRun) {
-    res.status(400).json({ error: 'A dry run cannot be combined with force: force deletes before it previews' });
-    return;
-  }
 
   // Start sync based on source type
   const syncFn = syncRegistry[categoryId];
@@ -81,7 +74,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
     return;
   }
 
-  syncFn(triggeredBy, { force, dryRun }).catch((err) => {
+  syncFn(triggeredBy, { dryRun }).catch((err) => {
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- categoryId is a parseInt result, so it cannot carry a format specifier
     console.error(`[Sync Controller] Sync error for category ${categoryId}:`, err);
   });
@@ -90,18 +83,14 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
     started: true,
     categoryId,
     categoryName: source.rows[0].name,
-    force,
     dryRun,
-    message: buildStartMessage({ force, dryRun }),
+    message: buildStartMessage({ dryRun }),
   });
 }
 
-function buildStartMessage(mode: { force: boolean; dryRun: boolean }): string {
+function buildStartMessage(mode: { dryRun: boolean }): string {
   if (mode.dryRun) {
     return 'Dry run started: the changeset will be recorded, experiences will not be written.';
-  }
-  if (mode.force) {
-    return 'Force sync started (existing data will be deleted). Poll /status endpoint for progress.';
   }
   return 'Sync started. Poll /status endpoint for progress.';
 }

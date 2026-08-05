@@ -11,7 +11,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { upsertExperienceRecord, upsertSingleLocation, cleanupCategoryData } from './syncUtils.js';
+import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync, type FilteredEntity } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import type { ChangeSetResult } from './changeSet.js';
@@ -433,27 +433,6 @@ async function upsertMuseumTreasures(
   }
 }
 
-/**
- * Delete all museum data (for force sync).
- * Museums need extra treasure cleanup before the standard cascade.
- */
-async function cleanupMuseumData(progress: SyncProgress): Promise<void> {
-  progress.statusMessage = 'Cleaning up existing museum data...';
-
-  // Museum-specific: delete treasure links and orphaned treasures first
-  await pool.query(`
-    DELETE FROM experience_treasures
-    WHERE experience_id IN (SELECT id FROM experiences WHERE category_id = $1)
-  `, [MUSEUM_CATEGORY_ID]);
-  await pool.query(`
-    DELETE FROM treasures
-    WHERE id NOT IN (SELECT DISTINCT treasure_id FROM experience_treasures)
-  `);
-
-  // Standard cascade for the rest
-  await cleanupCategoryData(MUSEUM_CATEGORY_ID, LOG_PREFIX, progress);
-}
-
 function groupArtworksByMuseum(artworks: WikidataArtwork[]): Map<string, CollectedMuseum> {
   const museumMap = new Map<string, CollectedMuseum>();
   for (const artwork of artworks) {
@@ -613,7 +592,7 @@ async function processMuseum(
  */
 export function syncMuseums(
   triggeredBy: number | null,
-  options: { force?: boolean; dryRun?: boolean } = {},
+  options: { dryRun?: boolean } = {},
 ): Promise<void> {
   return orchestrateSync<CollectedMuseum>({
     categoryId: MUSEUM_CATEGORY_ID,
@@ -625,7 +604,6 @@ export function syncMuseums(
     processItem: processMuseum,
     getItemName: (m) => m.details?.museumLabel || m.label,
     getItemId: (m) => m.qid,
-    cleanup: cleanupMuseumData,
   }, triggeredBy, options);
 }
 
