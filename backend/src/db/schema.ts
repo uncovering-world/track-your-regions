@@ -356,7 +356,9 @@ export const experienceLocations = pgTable('experience_locations', {
   experienceId: integer('experience_id').notNull().references(() => experiences.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 500 }),
   externalRef: varchar('external_ref', { length: 255 }),
-  ordinal: integer('ordinal').notNull().default(0),
+  // Nullable: a point the source stopped offering keeps its row and loses its
+  // position in the source's list (db/migrations/013).
+  ordinal: integer('ordinal').default(0),
   // location geometry handled via raw SQL
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

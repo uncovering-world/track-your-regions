@@ -37,6 +37,14 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`013-locations-mark-not-delete.sql` adds `experience_locations.missing_since` and drops
+`ordinal`'s NOT NULL, so a point a source stops offering can be marked instead of deleted —
+deleting it cascaded away the visit record and every region assignment on it. There is nothing
+to backfill: until this file, anything missing was removed rather than recorded, so no existing
+row has ever been observed missing. Adding a nullable column and dropping a NOT NULL cannot
+fail on rows already there, so unlike the ordering rule above it may run before or after the
+next re-application of `01-schema.sql`.
+
 `012-new-badge-views.sql` adds `user_new_badge_views`, which records when a reader was
 first shown the "New" chip. Nothing to backfill: an absent row means "not yet shown", which
 is the correct starting state for every existing reader and experience. No retention job

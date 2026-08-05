@@ -1861,19 +1861,43 @@ CREATE TABLE IF NOT EXISTS experience_locations (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     name VARCHAR(500),                    -- Component name (e.g., "Raigad Fort")
     external_ref VARCHAR(255),            -- Source reference (e.g., "1739-005")
-    ordinal INTEGER NOT NULL DEFAULT 0,   -- Display order
+    ordinal INTEGER DEFAULT 0,            -- Display order; NULL once unoffered
     location GEOMETRY(Point, 4326) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
+    missing_since TIMESTAMPTZ,            -- NULL = the source still offers this point
     UNIQUE(experience_id, ordinal)
 );
 
 COMMENT ON TABLE experience_locations IS 'Individual locations for multi-location experiences (UNESCO serial nominations, etc.)';
 COMMENT ON COLUMN experience_locations.name IS 'Component name (e.g., individual fort name within a serial nomination)';
 COMMENT ON COLUMN experience_locations.external_ref IS 'Source-specific reference (e.g., "1739-005" for UNESCO)';
-COMMENT ON COLUMN experience_locations.ordinal IS 'Display order within the experience (0-indexed)';
+
+-- A location the source stopped offering is marked, not deleted: both
+-- `user_visited_locations.location_id` and
+-- `experience_location_regions.location_id` cascade on delete, so removing the
+-- row destroys the user's record of having been there and every region
+-- assignment on it, manual ones included. `ordinal` goes with it — a row the
+-- source no longer lists has no position in that list, and NULL sorts last.
+-- Repeated as ALTERs so a database created before this picks them up when this
+-- file is re-applied; both are no-ops on a fresh one. See db/migrations/013.
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;
+ALTER TABLE experience_locations ALTER COLUMN ordinal DROP NOT NULL;
+
+-- After the ALTER, not before it: on a database that predates the column,
+-- `CREATE TABLE IF NOT EXISTS` above is a no-op, so commenting the column
+-- first aborts the whole re-application with "column does not exist" — which
+-- is exactly the workflow the ALTERs exist to serve.
+COMMENT ON COLUMN experience_locations.ordinal IS 'Display order within the experience. A sync numbers from 1; a curator-created first location is 0. NULL when the source no longer lists this point — see missing_since.';
+COMMENT ON COLUMN experience_locations.missing_since IS 'When a run first offered this experience without this point. A machine observation, not a verdict. NULL = currently offered.';
 
 CREATE INDEX IF NOT EXISTS idx_experience_locations_experience ON experience_locations(experience_id);
 CREATE INDEX IF NOT EXISTS idx_experience_locations_location ON experience_locations USING GIST(location);
+
+-- Every read of an experience's current points carries `missing_since IS NULL`,
+-- and the sync's fast path counts them per experience on every object of every
+-- run. Partial, because no read ever asks for the marked rows alone.
+CREATE INDEX IF NOT EXISTS idx_experience_locations_offered
+    ON experience_locations(experience_id) WHERE missing_since IS NULL;
 
 -- User visited locations (tracks visits to individual locations)
 CREATE TABLE IF NOT EXISTS user_visited_locations (
