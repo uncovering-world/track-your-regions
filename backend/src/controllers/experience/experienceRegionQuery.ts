@@ -9,7 +9,7 @@
  * measuring the same thing.
  */
 
-import { hideLostSql, lifecycleSelectSql } from './experienceLifecycle.js';
+import { hideLostSql, lifecycleSelectSql, offeredLocationSql } from './experienceLifecycle.js';
 import { isNewSql } from './experienceNewBadge.js';
 
 /**
@@ -85,7 +85,8 @@ export function buildRegionQueries(opts: {
         ST_X(e.location) as longitude,
         ST_Y(e.location) as latitude,
         e.metadata->>'inDanger' as in_danger,
-        (SELECT COUNT(*)::int FROM experience_locations el WHERE el.experience_id = e.id) as location_count,
+        (SELECT COUNT(*)::int FROM experience_locations el
+           WHERE el.experience_id = e.id AND ${offeredLocationSql()}) as location_count,
         s.name as category_name,
         s.display_priority as category_priority,
         ${lifecycleSelectSql()},
@@ -137,7 +138,8 @@ export function buildRegionQueries(opts: {
         ST_X(e.location) as longitude,
         ST_Y(e.location) as latitude,
         e.metadata->>'inDanger' as in_danger,
-        (SELECT COUNT(*)::int FROM experience_locations el WHERE el.experience_id = e.id) as location_count,
+        (SELECT COUNT(*)::int FROM experience_locations el
+           WHERE el.experience_id = e.id AND ${offeredLocationSql()}) as location_count,
         s.name as category_name,
         s.display_priority as category_priority,
         ${lifecycleSelectSql()},

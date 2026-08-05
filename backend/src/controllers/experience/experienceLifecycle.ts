@@ -15,6 +15,9 @@
  * An object carrying only `missing_since` — flagged by a run, not yet judged —
  * looks completely ordinary here. That is the point of leaving both verdicts to
  * a curator: a source outage must not change what anyone sees.
+ *
+ * One of an experience's *locations* is filtered on `missing_since` even so —
+ * `offeredLocationSql` below says why the two are not the same question.
  */
 
 /**
@@ -29,6 +32,48 @@
  */
 export function hideLostSql(alias = 'e'): string {
   return `${alias}.existence <> 'lost'`;
+}
+
+/**
+ * Hides a point the source has stopped offering. `alias` is the
+ * `experience_locations` alias.
+ *
+ * A location's `missing_since` is read here where an experience's is not, and
+ * the reason is what the alternative used to be: a withdrawn point was
+ * *deleted*, so it left every list and every map the moment a run stopped
+ * seeing it. The row survives now — deleting it took the visit record with it
+ * through the cascade — and this fragment keeps what a reader sees exactly as
+ * it was. Nothing here is a verdict on the place; that question is still a
+ * curator's, and the row is waiting for it.
+ *
+ * The line is not "visits are exempt", which would be the obvious reading and
+ * is wrong. It runs between two kinds of statement:
+ *
+ * - **what a reader asked for, exactly as they asked** — recording a visit,
+ *   and removing one — is unfiltered. The first because they are acting on
+ *   what they were just shown; the second because a record on an invisible
+ *   point could otherwise never be cleared. The lookup that resolves which
+ *   experience a visit belonged to goes with them.
+ * - **what the system decides on their behalf** carries the filter: every read
+ *   that puts a point on screen, the per-user visited status included, and
+ *   equally the count that infers from what remains whether the
+ *   experience-level record should go. Both unmark handlers therefore hold an
+ *   unfiltered DELETE and a filtered count, which is not an inconsistency but
+ *   this line drawn through one handler.
+ *
+ * The per-user visited status is the case that shows why: a corrected
+ * coordinate is a withdrawal plus an insert, so leaving withdrawn rows in
+ * would put the same place on screen twice and disagree with every other count
+ * of it.
+ *
+ * Region placement applies the same predicate as a literal
+ * (`regionAssignmentService.ts`) rather than calling this. It is in the service
+ * layer, and importing a controller module there would be the first such import
+ * in the codebase — a worse trade than one repeated predicate, which is why the
+ * duplication is deliberate and noted at both sites.
+ */
+export function offeredLocationSql(alias = 'el'): string {
+  return `${alias}.missing_since IS NULL`;
 }
 
 /**

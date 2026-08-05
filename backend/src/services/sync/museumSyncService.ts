@@ -377,7 +377,7 @@ async function upsertMuseumExperience(
     // Registered here rather than returned: `upsertMuseumTreasures` runs after
     // this and can throw, and a returned field would be lost with it while the
     // point had already moved on disk.
-    if (written.needsAssignment.length > 0 || written.removed > 0) {
+    if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
   }

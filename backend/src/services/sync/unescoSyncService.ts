@@ -373,7 +373,7 @@ async function upsertExperience(
   // that was never touched.
   if (!context.dryRun) {
     const written = await upsertExperienceLocations(experienceId, exp);
-    if (written.needsAssignment.length > 0 || written.removed > 0) {
+    if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
   }

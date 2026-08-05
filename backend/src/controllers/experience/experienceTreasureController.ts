@@ -6,6 +6,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
+import { offeredLocationSql } from './experienceLifecycle.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -121,12 +122,14 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
         ON CONFLICT (user_id, experience_id) DO NOTHING
       `, [userId, experienceId]);
 
-      // Auto-mark all locations of the experience as visited
+      // Auto-mark all locations of the experience as visited — the ones on
+      // offer. A point the source withdrew is on no list this reader saw, so
+      // recording a visit to it would be a claim they never made.
       await pool.query(`
         INSERT INTO user_visited_locations (user_id, location_id, visited_at)
         SELECT $1, el.id, NOW()
         FROM experience_locations el
-        WHERE el.experience_id = $2
+        WHERE el.experience_id = $2 AND ${offeredLocationSql()}
         ON CONFLICT (user_id, location_id) DO NOTHING
       `, [userId, experienceId]);
 
