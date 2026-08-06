@@ -506,6 +506,7 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
                   <MenuItem value="cultural">Cultural</MenuItem>
                   <MenuItem value="natural">Natural</MenuItem>
                   <MenuItem value="mixed">Mixed</MenuItem>
+                  <MenuItem value="art">Art</MenuItem>
                 </Select>
               </FormControl>
             </Box>

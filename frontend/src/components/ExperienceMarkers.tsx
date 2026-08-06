@@ -142,6 +142,9 @@ const markerLayer: LayerProps = {
     'circle-color': [
       'match', ['get', 'category'],
       'cultural', '#8B5CF6',
+      // Museums, named rather than left to the fallback below — which is also
+      // what public art takes, and the two must not share a pin colour.
+      'art', '#2563EB',
       'natural', '#10B981',
       'mixed', '#F59E0B',
       '#0d9488',

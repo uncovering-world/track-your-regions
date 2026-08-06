@@ -31,7 +31,7 @@ test.describe('Explore Workflows @smoke', () => {
     await expect(page.getByText('Select a category in the tree')).toBeVisible();
 
     const sourceTag = page
-      .locator('[aria-label*="UNESCO World Heritage Sites in"], [aria-label*="Top Museums in"], [aria-label*="Public Art & Monuments in"]')
+      .locator('[aria-label*="UNESCO World Heritage Sites in"], [aria-label*="Top Art Museums in"], [aria-label*="Public Art & Monuments in"]')
       .first();
 
     await expect(sourceTag).toBeVisible();

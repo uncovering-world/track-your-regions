@@ -20,11 +20,23 @@ export interface CategoryColorSet {
 const CULTURAL: CategoryColorSet = { primary: '#8B5CF6', bg: '#EDE9FE', text: '#7C3AED' };
 const NATURAL: CategoryColorSet = { primary: '#10B981', bg: '#D1FAE5', text: '#059669' };
 const MIXED: CategoryColorSet = { primary: '#F59E0B', bg: '#FEF3C7', text: '#D97706' };
+/**
+ * The museum venue type, blue from `SOURCE_PALETTE` rather than a new colour.
+ *
+ * `category` is the venue type *within* a category, not one shared enum — art
+ * museums write `art` where a UNESCO site writes `cultural`. Without an entry
+ * here a museum takes the cultural purple on one surface and the map's teal
+ * fallback on another, so the same building is two colours depending on where
+ * you look at it; teal is also what public art already falls through to, which
+ * would put museums and monuments in one colour.
+ */
+const ART: CategoryColorSet = { primary: '#2563EB', bg: '#DBEAFE', text: '#1D4ED8' };
 
 export const CATEGORY_COLORS: Record<string, CategoryColorSet> = {
   cultural: CULTURAL,
   natural: NATURAL,
   mixed: MIXED,
+  art: ART,
 };
 
 /** Get the primary color for a category (fallback to cultural purple) */
@@ -67,10 +79,16 @@ export function getSourceColor(categoryId: number): string {
   return SOURCE_PALETTE[categoryId % SOURCE_PALETTE.length];
 }
 
-/** Shorten category display names for compact UI (chips, badges) */
+/**
+ * Shorten category display names for compact UI (chips, badges).
+ *
+ * "Art Museums" rather than "Museums": archaeology, natural-history and
+ * military museums are a separate category, so the short form has to keep the
+ * word that tells them apart or two chips will read the same.
+ */
 export function shortSourceName(name: string): string {
   return name
     .replace('UNESCO World Heritage Sites', 'UNESCO')
-    .replace('Top Museums', 'Museums')
+    .replace('Top Art Museums', 'Art Museums')
     .replace('Public Art & Monuments', 'Art');
 }

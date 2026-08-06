@@ -324,6 +324,7 @@ export function CurationDialog({ experience, regionId, onClose }: CurationDialog
               <MenuItem value="cultural">Cultural</MenuItem>
               <MenuItem value="natural">Natural</MenuItem>
               <MenuItem value="mixed">Mixed</MenuItem>
+              <MenuItem value="art">Art</MenuItem>
             </Select>
           </FormControl>
           <TextField
