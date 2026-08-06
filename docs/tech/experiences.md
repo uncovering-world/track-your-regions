@@ -17,7 +17,7 @@ Experiences are location-based entities linked to regions. The system supports:
 `experience_categories` is ordered by `display_priority` (lower first).
 
 - `UNESCO World Heritage Sites` (priority `1`)
-- `Top Museums` (priority `2`)
+- `Top Art Museums` (priority `2`)
 - `Public Art & Monuments` (priority `3`)
 
 ## Core Data Model
@@ -217,16 +217,46 @@ path needs.
 - Multi-location support: serial nominations create multiple `experience_locations`
 - Images downloaded locally to `/data/images/`
 
-### Top Museums (`museumSyncService.ts`)
+### Top Art Museums (`museumSyncService.ts`, `museum/*.ts`)
 
-- SPARQL queries to Wikidata for entities that are instances of museum (Q33506) with notable collections
-- Fetches per-type artwork content (paintings, sculptures, etc.) with SPARQL limits per type (2000 for paintings, 500 for others)
-- Sitelinks filter: `> 10` ensures only notable museums
-- Museum validation: artwork queries rely on `wdt:P195` (collection) to find artworks in institutions, then downstream filtering (coordinate check, department resolution, cap at 100) naturally excludes non-museum collections. The old `FILTER EXISTS { ?collection wdt:P31/wdt:P279* wd:Q33506 }` subclass traversal was removed because it caused Wikidata 504 timeouts
-- Images use remote Wikimedia `Special:FilePath` URLs (not downloaded locally)
-- Fetches English Wikipedia article URL via `schema:about` + `schema:isPartOf` SPARQL pattern, stored as `metadata.wikipediaUrl`
+Works-first: the sync decides what belongs in the catalogue by which artworks the world knows,
+then admits the museums holding them — not by which Wikidata entity happens to own a famous
+painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 
-**SPARQL reliability**: Requests include a 120s server-side timeout parameter (Blazegraph `timeout`) plus a 130s client-side AbortController safety net. Exponential backoff retries (up to 5 attempts, 5s→10s→20s→30s), honors `Retry-After` header from 429 responses. If the full artwork query (e.g. paintings) times out, falls back to two range queries with different sitelink thresholds (high-fame first, then wider net), merging and deduplicating results
+- Collects artworks via SPARQL: the three broad classes (painting, sculpture, statue) anchored by
+  both `wdt:P195` (owner) and `wdt:P276` (location) — so an unowned work such as *Sunflowers* is
+  not missed — plus every narrower artwork class found by a bounded `wdt:P279*` closure below
+  those three roots. A hop that would multiply the class set (e.g. under `sculpture` or `print`)
+  is refused rather than followed
+- Resolves where a work actually hangs from its current `P195`/`P276` statements, dropping any
+  statement carrying a `pq:P582` end-time qualifier: a venue the two properties agree on wins;
+  failing that, a `preferred`-ranked statement that resolves to a venue wins; failing that,
+  ownership, then location
+- An entity counts as a venue only if it passes a test: a museum-like class under `wdt:P279*` of
+  `museum` (Q33506), coordinates of its own (`P625`), not dissolved (`P576`), and not on a
+  kill-list of curatorial departments, art/private collections, museum networks and never-built
+  structures. An entity that fails is resolved by walking `wdt:P361` (part of) to the nearest
+  ancestor that passes — how the Louvre's four curatorial departments become the Louvre, and a
+  dead collector's collection re-homes to where the works actually hang
+- Folds duplicate pins for one physical institution (a gallery inside its own palace, one building
+  recorded under two QIDs) into the venue that holds the ticket
+- One threshold decides both which works are Iconic and which museums are admitted: 22
+  Wikipedia-language sitelinks (`ICONIC_SITELINKS`). A museum is in the catalogue only because it
+  holds a work that clears the threshold, and a work held by more than 2 venues (`MAX_HOLDERS`)
+  admits none of them — Hokusai's *Great Wave* survives in on the order of a hundred impressions,
+  and holding one is not what makes a top art museum
+- Prints a diff (moved / gained / lost / dropped) of this run's placements against what
+  `experience_treasures` currently holds, before writing anything — during design this caught
+  second-order regressions (a corroboration fix that silently routed a work to the wrong museum,
+  and the next fix that silently dropped a work's true venue) that no test did
+- Writes an admitted museum as an experience with `category = 'art'` and `is_iconic = true`, and
+  each work it holds as a treasure whose own `is_iconic` joins at the same 22-sitelink threshold
+  and releases only below 18 (`ICONIC_RELEASE`), so the badge does not flicker as Wikipedia's
+  coverage grows
+- Departures are marked, not deleted (ADR-0022); a treasure-to-experience link is only ever added,
+  never removed — see ADR-0023 for what that means for a work whose venue changes
+- Images use remote Wikimedia `Special:FilePath` URLs (not downloaded locally); Wikipedia article
+  URL fetched via the same `schema:about` + `schema:isPartOf` SPARQL pattern UNESCO uses
 
 ### Public Art & Monuments (`landmarkSyncService.ts`)
 
@@ -755,7 +785,7 @@ server-side against the caller's scope.
 ## Frontend Integration Notes
 
 - Discover and Map UIs share `CurationDialog` and `AddExperienceDialog`
-- `AddExperienceDialog` has Create New as the first (default) tab, Search & Add as the second. Props: `defaultCategoryId` pre-selects the category dropdown, `defaultTab` controls which tab opens (0=Create, 1=Search). Dialog closes automatically on successful creation and invalidates experience queries so map markers and lists refresh immediately. Category selector filters out "Curator Picks" — curators must assign new experiences to an existing category (UNESCO, Top Museums, or Public Art & Monuments). Category is required for creation. When the curator types a name (3+ chars, debounced 800ms), the system auto-fills coordinates (Nominatim), image URL, description, and link URL (Wikidata 3-layer lookup: direct QID → spatial SPARQL → name search). The link is auto-filled from the English Wikipedia sitelink in the Wikidata entity. The Nominatim query appends the current region name for geo-disambiguation. Auto-fill fires only once — after the first successful lookup, name edits don't re-trigger. After auto-fill, a suggestion info box appears below the name field showing the matched Wikidata entity (label + QID) with a prominent "Re-lookup" link. Clicking Re-lookup re-runs the full auto-fill pipeline (Nominatim + Wikidata), overwriting all previously auto-filled fields. Auto-filled fields use `useRef` flags (including `linkAutoFilled`) so Re-lookup overwrites them but manual edits are preserved. Thumbnail preview shown when image URL is set. Uses `LocationPicker` for coordinate input — supports 4 modes: click-on-map, Nominatim search, multi-format coordinate paste, and AI geocoding. Accepts `regionName` prop from both call sites (Map mode via `useNavigation().selectedRegion.name`, Discover mode via `activeView.regionName`)
+- `AddExperienceDialog` has Create New as the first (default) tab, Search & Add as the second. Props: `defaultCategoryId` pre-selects the category dropdown, `defaultTab` controls which tab opens (0=Create, 1=Search). Dialog closes automatically on successful creation and invalidates experience queries so map markers and lists refresh immediately. Category selector filters out "Curator Picks" — curators must assign new experiences to an existing category (UNESCO, Top Art Museums, or Public Art & Monuments). Category is required for creation. When the curator types a name (3+ chars, debounced 800ms), the system auto-fills coordinates (Nominatim), image URL, description, and link URL (Wikidata 3-layer lookup: direct QID → spatial SPARQL → name search). The link is auto-filled from the English Wikipedia sitelink in the Wikidata entity. The Nominatim query appends the current region name for geo-disambiguation. Auto-fill fires only once — after the first successful lookup, name edits don't re-trigger. After auto-fill, a suggestion info box appears below the name field showing the matched Wikidata entity (label + QID) with a prominent "Re-lookup" link. Clicking Re-lookup re-runs the full auto-fill pipeline (Nominatim + Wikidata), overwriting all previously auto-filled fields. Auto-filled fields use `useRef` flags (including `linkAutoFilled`) so Re-lookup overwrites them but manual edits are preserved. Thumbnail preview shown when image URL is set. Uses `LocationPicker` for coordinate input — supports 4 modes: click-on-map, Nominatim search, multi-format coordinate paste, and AI geocoding. Accepts `regionName` prop from both call sites (Map mode via `useNavigation().selectedRegion.name`, Discover mode via `activeView.regionName`)
 - `CurationDialog` fetches full experience detail to populate two link fields: Wikipedia URL (from `metadata.wikipediaUrl`) and Website URL (from `metadata.website`). Both fields are editable and saved via JSONB merge. `AddExperienceDialog` auto-fills the Wikipedia URL from Wikidata lookup and provides a separate Website URL field. The backend edit/create endpoints accept both `wikipediaUrl` and `websiteUrl`
 - External links are unified across all sources — no source-specific rendering logic. Every experience shows up to two links based solely on metadata: a **Wikipedia** button (`MenuBook` icon, from `metadata.wikipediaUrl`) and a **Website** button (`Language` icon, from `metadata.website`). UNESCO page URLs are stored in `metadata.website` during sync, so they appear as "Website" alongside any Wikipedia link. Both Map mode (icon buttons) and Discover mode (text buttons in detail panel) use the same unified logic
 - In Map mode (`ExperienceList.tsx`), each category group header has a "+" button that opens AddExperienceDialog with `defaultCategoryId` pre-set for that category. An "Add experience of a new category" button at the top opens Create New with no category pre-selected. Category name → ID mapping is resolved via the `experience-categories` query

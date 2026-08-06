@@ -33,6 +33,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0020](0020-experience-lifecycle-and-run-changeset.md) | Record a changeset per sync run, and split an experience's lifecycle into two axes | Accepted — decisions 1 and 2 narrowed by 0021, decision 3 by 0022 | 2026-08-02 |
 | [0021](0021-source-may-restore-membership.md) | A sync may restore `source_membership`, in one direction only | Accepted | 2026-08-03 |
 | [0022](0022-locations-are-marked-not-deleted.md) | A location is marked, not deleted, and no run may empty a category | Accepted | 2026-08-05 |
+| [0023](0023-works-first-museum-selection.md) | Museum selection is works-first, with no institutional term and no cap | Accepted | 2026-08-07 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
