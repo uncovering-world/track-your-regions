@@ -134,10 +134,13 @@ export function DiscoverExperienceView({
     onHoverHighlightLocation?.(locationId);
   };
 
+  // Not `utils/categoryColors.shortSourceName`: this heading has room for
+  // "Public Art" where a chip does not, and the shared one shortens that to
+  // "Art". The museum name is kept in step with it by hand.
   const shortSourceName = activeView
     ? activeView.categoryName
         .replace('UNESCO World Heritage Sites', 'UNESCO')
-        .replace('Top Museums', 'Museums')
+        .replace('Top Art Museums', 'Art Museums')
         .replace('Public Art & Monuments', 'Public Art')
     : '';
 
