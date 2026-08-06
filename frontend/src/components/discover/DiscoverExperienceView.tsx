@@ -134,10 +134,13 @@ export function DiscoverExperienceView({
     onHoverHighlightLocation?.(locationId);
   };
 
+  // Not `utils/categoryColors.shortSourceName`: this heading has room for
+  // "Public Art" where a chip does not, and the shared one shortens that to
+  // "Art". The museum name is kept in step with it by hand.
   const shortSourceName = activeView
     ? activeView.categoryName
         .replace('UNESCO World Heritage Sites', 'UNESCO')
-        .replace('Top Museums', 'Museums')
+        .replace('Top Art Museums', 'Art Museums')
         .replace('Public Art & Monuments', 'Public Art')
     : '';
 
@@ -277,6 +280,9 @@ export function DiscoverExperienceView({
           'circle-color': [
             'match', ['get', 'category'],
             'cultural', '#8B5CF6',
+            // Museums, named rather than left to the fallback below — which is also
+            // what public art takes, and the two must not share a pin colour.
+            'art', '#2563EB',
             'natural', '#10B981',
             'mixed', '#F59E0B',
             '#0d9488',
