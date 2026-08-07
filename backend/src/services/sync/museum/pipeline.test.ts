@@ -47,6 +47,8 @@ interface FixtureWork {
 }
 
 const PAINTING = 'Q3305213';
+/** A pinned edition class: a work printed from one block exists in many true impressions. */
+const WOODBLOCK_PRINT = 'Q28913685';
 const FRESCO = 'Q1476300';
 /** A real class whose label is 68 characters — longer than `treasures.treasure_type`. */
 const LONG_CLASS = 'Q574422';
@@ -65,6 +67,10 @@ const ENTITIES: Record<string, FixtureEntity> = {
   Q10292830: {
     label: 'Salle des États', classes: ['Q180516'], lat: 48.8601, lon: 2.3352, parents: ['Q19675'],
   },
+  // Three art museums, each holding one impression of the same print.
+  Q900401: { label: 'Print Museum A', classes: [ART_MUSEUM], lat: 35.7, lon: 139.7, parents: [] },
+  Q900402: { label: 'Print Museum B', classes: [ART_MUSEUM], lat: 21.3, lon: -157.8, parents: [] },
+  Q900403: { label: 'Print Museum C', classes: [ART_MUSEUM], lat: 48.2, lon: 16.3, parents: [] },
   // A church: a place a work hangs that no walk can turn into a museum.
   Q1876: { label: 'Santa Maria delle Grazie', classes: ['Q16970'], lat: 45.4659, lon: 9.1709, parents: [] },
 
@@ -129,6 +135,17 @@ const WORKS: Record<string, FixtureWork> = {
     label: 'Cult Figurine in the Palazzo', sitelinks: 24, cls: LONG_CLASS, clsLabel: LONG_LABEL,
     anchors: [], statements: [{ property: 'P276', venue: 'Q900011' }],
   },
+  // An edition: three museums each hold a true impression. Under the blanket cap this admitted
+  // nobody, which is what removed printmaking from the catalogue as a class.
+  Q900250: {
+    label: 'The Great Print', sitelinks: 63, cls: WOODBLOCK_PRINT, clsLabel: 'woodblock print',
+    anchors: [],
+    statements: [
+      { property: 'P195', venue: 'Q900401' },
+      { property: 'P195', venue: 'Q900402' },
+      { property: 'P195', venue: 'Q900403' },
+    ],
+  },
   Q900205: {
     label: 'Unlabelled Class in the Palazzo', sitelinks: 23, cls: UNLABELLED_CLASS,
     clsLabel: UNLABELLED_CLASS, broadRoot: PAINTING, anchors: ['P276'],
@@ -170,7 +187,13 @@ function poolRow(qid: string, work: FixtureWork, clsLabel?: string): SparqlBindi
     wLabel: { value: work.label },
     sl: { value: String(work.sitelinks) },
   };
-  if (clsLabel) row.clsLabel = { value: clsLabel };
+  // The class comes back as an entity URI beside its label, because the medium test is asked
+  // of the tree and a label cannot be asked that. A batch answers with the class it matched;
+  // an anchored query names its root literally and binds nothing.
+  if (clsLabel) {
+    row.clsLabel = { value: clsLabel };
+    row.cls = uri(work.cls);
+  }
   if (work.artist) row.creatorLabel = { value: work.artist };
   if (work.year) row.year = { value: String(work.year) };
   return row;
@@ -328,6 +351,44 @@ describe('collectTier1Museums', () => {
     const unlabelled = palazzo.artworks.find((a) => a.externalId === 'Q900205');
     // The bare QID must neither reach the reader nor beat the broad root it was also fetched by.
     expect(unlabelled?.treasureType).toBe('painting');
+  });
+
+  it('admits every museum holding an impression of the same print', async () => {
+    const out = await run();
+
+    // Three holders of one edition, all admitted. The cap asks which of these is the one to
+    // travel for, and an edition has no such answer — each impression is the thing itself.
+    const holders = ['Q900401', 'Q900402', 'Q900403'];
+    for (const qid of holders) {
+      const museum = out.items.find((i) => i.qid === qid);
+      expect(museum, `${qid} should be admitted`).toBeDefined();
+      expect(museum!.admittedFor).toEqual({ qid: 'Q900250', label: 'The Great Print' });
+    }
+  });
+
+  it('asks Wikidata for the four roots no closure reaches from a painting', async () => {
+    const sparql = stubSparql();
+    await collectTier1Museums({ sparql, previousPlacements: {}, museumClasses: MUSEUM_CLASSES });
+
+    // Drawing, print, mosaic and tapestry are not kinds of painting, sculpture or statue, so
+    // nothing under those three reaches them. They were measured in the dry run and lost on the
+    // way into the pipeline, and the catalogue held zero prints until they came back.
+    const asked = sparql.mock.calls.map((c) => String(c[0])).join('\n');
+    for (const root of ['Q93184', 'Q11060274', 'Q133067', 'Q184296']) {
+      expect(asked, `root ${root} was never fetched`).toContain(root);
+    }
+  });
+
+  it('asks for the collection classes that are not kinds of work at all', async () => {
+    const sparql = stubSparql();
+    await collectTier1Museums({ sparql, previousPlacements: {}, museumClasses: MUSEUM_CLASSES });
+
+    // A painting series and a group of casts hold works rather than being one, so they sit
+    // outside every subclass tree — which is where Monet's Water Lilies, Van Gogh's Sunflowers
+    // and Rodin's Thinker live.
+    const asked = sparql.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(asked).toContain('Q15727816');
+    expect(asked).toContain('Q28890616');
   });
 
   it('admits nobody for a work below the threshold, or for one held too widely', async () => {

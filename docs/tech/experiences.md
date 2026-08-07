@@ -235,11 +235,29 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 - An entity counts as a venue only if it passes a test: a museum-like class under `wdt:P279*` of
   `museum` (Q33506), coordinates of its own (`P625`), not dissolved (`P576`), and not on a
   kill-list of curatorial departments, art/private collections, museum networks and never-built
-  structures. An entity that fails is resolved by walking `wdt:P361` (part of) to the nearest
-  ancestor that passes — how the Louvre's four curatorial departments become the Louvre, and a
-  dead collector's collection re-homes to where the works actually hang
+  structures. A class that describes a place rather than an institution (a church building or
+  cathedral, an archaeological park or Roman ruins, a villa — `SITE_CLASSES` in `venueTest.ts`)
+  is vetoed the same way, unless the entity also carries an art class: the Uffizi is typed
+  `palace, art museum`, and the palace must not disqualify it. An entity that fails either check
+  is resolved by walking `wdt:P361` (part of) to the nearest ancestor that passes — how the
+  Louvre's four curatorial departments become the Louvre, and a dead collector's collection
+  re-homes to where the works actually hang
 - Folds duplicate pins for one physical institution (a gallery inside its own palace, one building
   recorded under two QIDs) into the venue that holds the ticket
+- Once folding settles, each surviving venue must also be an *art* museum (`artTest.ts`) — the
+  category holds art museums by product decision (2026-08-05); archaeology, egyptology,
+  natural-history and military museums are a separate import with their own category. Thirteen
+  Wikidata classes (art museum, national gallery, kunsthalle, pinacotheca, glyptotheque, sculpture
+  museum and others — `ART_CLASSES`) admit a venue outright, whatever else it is typed or holds.
+  Without one, the venue's own held works decide by painting-to-sculpture share — a work counts as
+  sculptural by the shape of its class label (`isSculptural`: statue, bust, relief, cast, figurine,
+  torso, stele, monument) — which is what keeps the Hermitage (typed bare `museum`, mostly
+  paintings) while dropping a museum whose famous holding is a figurine or a sculpture, and drops a
+  museum with no famous holding at all. Four entities no class rule reaches (the British Museum,
+  East Side Gallery, MuseumsQuartier, the National Library of Australia — each typed `art museum`
+  on Wikidata) are excluded by name (`EDITORIAL_OUT`), with the reason for each in code. A
+  rejection at this stage is recorded as a `FilteredEntity` exactly like a venue-test rejection, so
+  the run's own log says why
 - One threshold decides both which works are Iconic and which museums are admitted: 22
   Wikipedia-language sitelinks (`ICONIC_SITELINKS`). A museum is in the catalogue only because it
   holds a work that clears the threshold, and a work held by more than 2 venues (`MAX_HOLDERS`)

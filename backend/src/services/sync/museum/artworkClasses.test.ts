@@ -79,6 +79,41 @@ describe('boundedClosure', () => {
     expect(refused).toEqual([{ root: 'QrootB', hop: 1, offered: 12 }]);
   });
 
+  it('says which root each class was reached from', async () => {
+    // The medium question — one original, or an edition — is answered against this and
+    // nothing else. A label cannot answer it: "engraving" names a printmaking technique and
+    // a kind of object with two different entities, and matching on the word picks whichever
+    // the label service happened to return.
+    const children = (qids: string[]) => {
+      if (qids[0] === 'Qpainting') return Promise.resolve(['Qfresco']);
+      if (qids[0] === 'Qprint') return Promise.resolve(['Qetching', 'Qlithograph']);
+      return Promise.resolve([]);
+    };
+
+    const { byRoot } = await boundedClosure(['Qpainting', 'Qprint'], children);
+
+    expect(byRoot.Qprint.sort()).toEqual(['Qetching', 'Qlithograph', 'Qprint']);
+    expect(byRoot.Qpainting.sort()).toEqual(['Qfresco', 'Qpainting']);
+    // Nothing under painting may answer yes to the edition question.
+    expect(byRoot.Qprint).not.toContain('Qfresco');
+  });
+
+  it('records a class reached from two roots under both', async () => {
+    // A shared descendant is not a tie to break here: the caller asks "is this an edition?",
+    // and a class that is reachable from print is one whichever else also reaches it.
+    const children = (qids: string[]) => (
+      qids[0] === 'Qpainting' || qids[0] === 'Qprint'
+        ? Promise.resolve(['Qshared'])
+        : Promise.resolve([])
+    );
+
+    const { byRoot, classes } = await boundedClosure(['Qpainting', 'Qprint'], children);
+
+    expect(byRoot.Qpainting).toContain('Qshared');
+    expect(byRoot.Qprint).toContain('Qshared');
+    expect(classes.filter((c) => c === 'Qshared')).toHaveLength(1);
+  });
+
   it('scopes seen and frontier per root in multi-root closure', async () => {
     // painting grows sanely, sculpture explodes at hop 2.
     // Verifies per-root scoping of seen/frontier: if they were hoisted, the painting's
