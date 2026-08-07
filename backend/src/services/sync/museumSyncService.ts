@@ -271,6 +271,13 @@ export function syncMuseums(
     // is still a fame ranking: a museum absent from a run lost the work that admitted it, which
     // says nothing about whether it still exists.
     sourceCompleteness: 'ranked',
+    // It does, however, say that the museum is not one of ours. Every run
+    // recomputes the whole membership from the whole pool rather than fetching a
+    // published list, so absence from the admitted set is this category's own
+    // decision and belongs on the admission axis (ADR-0024) — which is a
+    // different question from whether the place still exists, and is why both
+    // lines stand together.
+    recomputesMembership: true,
     fetchItems: fetchMuseumItems,
     processItem: processMuseum,
     getItemName: (m) => m.details?.museumLabel || m.label,
