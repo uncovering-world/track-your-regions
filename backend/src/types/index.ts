@@ -366,6 +366,20 @@ export const experienceStateBodySchema = z.object({
   message: 'Pass membership, existence, or both',
 });
 
+export const experienceAdmissionBodySchema = z.object({
+  /**
+   * `confirm` keeps the refusal, `override` undoes it.
+   *
+   * No `expected` block, because only one of the two needs a stale-view check.
+   * `confirm` hides, so it collides with the `curated_fields` pin a first
+   * answer left. `override` reveals and is idempotent across curators, so it
+   * stays open on a pinned row — that is the only way back from a refusal, and
+   * a way back an earlier click can close is not one.
+   */
+  decision: z.enum(['confirm', 'override']),
+  note: z.string().max(1000).optional(),
+});
+
 export const newBadgesSeenBodySchema = z.object({
   // Bounded because a page is bounded: the region read caps at 5000 rows, and
   // an unbounded array here would be an invitation to send something else.
