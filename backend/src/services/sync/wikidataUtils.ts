@@ -85,11 +85,53 @@ async function fetchSparqlResponse(query: string, signal: AbortSignal): Promise<
   });
 }
 
+/**
+ * A body that arrived but did not parse.
+ *
+ * Its own class because the retry logic has to tell it from a query this
+ * endpoint will never accept. Run 51 died on "Bad control character in string
+ * literal at position 835402" seven minutes in, having written nothing — a
+ * single stray byte 800 kB into one response ended a run that takes a quarter
+ * of an hour, and `SyntaxError` is neither an abort nor a `TypeError`, so the
+ * retry that exists for exactly this never fired.
+ */
+class MalformedSparqlBody extends Error {}
+
+/**
+ * How much of the body to quote when it will not parse — enough to see what
+ * arrived, bounded so a megabyte of HTML never reaches a log.
+ */
+const MALFORMED_BODY_CONTEXT = 200;
+
 async function readSparqlBindings(response: Response): Promise<SparqlBinding[]> {
-  const data = await response.json() as {
-    results: { bindings: Record<string, { type: string; value: string }>[] };
-  };
+  // Read as text and parse here, rather than `response.json()`, so a bad body
+  // can be quoted. Without the snippet the failure names a position in
+  // something nobody kept.
+  const body = await response.text();
+  let data: { results: { bindings: Record<string, { type: string; value: string }>[] } };
+  try {
+    data = JSON.parse(body);
+  } catch (error) {
+    const at = positionFromParseError(error);
+    const from = Math.max(0, at - MALFORMED_BODY_CONTEXT / 2);
+    throw new MalformedSparqlBody(
+      `${error instanceof Error ? error.message : String(error)} — `
+      + `${Buffer.byteLength(body, 'utf8')} bytes, near: ${JSON.stringify(body.slice(from, from + MALFORMED_BODY_CONTEXT))}`,
+    );
+  }
   return data.results.bindings;
+}
+
+/**
+ * The position a JSON parse error names, or 0 when it names none.
+ *
+ * A code-unit index into the string, not a byte offset — which is why the
+ * snippet is sliced with it and the size beside it is measured separately. A
+ * SPARQL answer is mostly non-ASCII labels, so the two differ by a lot.
+ */
+function positionFromParseError(error: unknown): number {
+  const match = /position (\d+)/.exec(error instanceof Error ? error.message : '');
+  return match ? Number(match[1]) : 0;
 }
 
 async function handleSparqlHttpError(
@@ -114,11 +156,17 @@ function classifySparqlException(
 ): RetrySignal | Error {
   if (error instanceof RetrySignal) return error;
   const isAbort = error instanceof Error && error.name === 'AbortError';
-  if (attempt < retries && (isAbort || error instanceof TypeError)) {
-    return new RetrySignal(
-      exponentialBackoff(attempt),
-      isAbort ? 'SPARQL timeout' : 'SPARQL network error',
-    );
+  // A body that will not parse is retried like a 502, and for the same reason:
+  // the endpoint answered, so the query is acceptable to it, and what arrived
+  // was damaged in transit or serialised wrong once. Retried rather than
+  // repaired — a run that quietly patched up bytes it did not understand would
+  // be worse than one that stopped and said so.
+  const isMalformed = error instanceof MalformedSparqlBody;
+  if (attempt < retries && (isAbort || isMalformed || error instanceof TypeError)) {
+    let label = 'SPARQL network error';
+    if (isAbort) label = 'SPARQL timeout';
+    else if (isMalformed) label = 'SPARQL malformed body';
+    return new RetrySignal(exponentialBackoff(attempt), label);
   }
   const message = error instanceof Error ? error.message : String(error);
   return new Error(`Wikidata SPARQL request failed: ${message}`);
