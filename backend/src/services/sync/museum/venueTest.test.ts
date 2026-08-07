@@ -65,4 +65,26 @@ describe('venueVerdict', () => {
     expect(v.pass).toBe(false);
     expect((v as { reason: string }).reason).toContain('coordinates');
   });
+
+  it('rejects a site class with no art class present', () => {
+    // The Villa Farnesina: typed villa plus several non-art museum classes, no art class.
+    const v = venueVerdict(facts({ classes: ['Q33506', 'Q3950'] }), MUSEUM_CLASSES);
+    expect(v.pass).toBe(false);
+    expect((v as { reason: string }).reason).toContain('villa');
+  });
+
+  it('does not veto a site class when an art class is also present', () => {
+    // Mutation target: the site veto must not fire regardless of art class. The Uffizi is typed
+    // palace + art museum; Q3950 (villa) stands in for the shape of the problem, since the
+    // Uffizi's own place class (palace) is deliberately not on the site-class list.
+    expect(venueVerdict(facts({ classes: ['Q3950', 'Q207694'] }), MUSEUM_CLASSES)).toEqual({
+      pass: true,
+    });
+  });
+
+  it('does not veto a non-art museum class that is not a site class either', () => {
+    // An archaeological museum is a real institution — just not art and not a place — so the
+    // site veto must leave it alone (the art test, not this one, is what excludes it).
+    expect(venueVerdict(facts({ classes: ['Q33506'] }), MUSEUM_CLASSES)).toEqual({ pass: true });
+  });
 });

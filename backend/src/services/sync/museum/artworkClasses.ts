@@ -14,6 +14,18 @@ export interface ClosureOptions {
 export interface ClosureResult {
   classes: string[];
   refused: { root: string; hop: number; offered: number }[];
+  /**
+   * Which root each class was reached from, root included.
+   *
+   * Free — the walk already tracks it per root — and it is the only honest way
+   * to ask what medium a work is in. A class name cannot answer it: "engraving"
+   * is both a printmaking technique and a kind of object, and matching on the
+   * word would classify by whichever entity the label service happened to
+   * return. Reached-from-`print` is a fact about the tree.
+   *
+   * A class reached from two roots appears under both.
+   */
+  byRoot: Record<string, string[]>;
 }
 
 export async function boundedClosure(
@@ -29,6 +41,7 @@ export async function boundedClosure(
 
   const all = new Set<string>();
   const refused: ClosureResult['refused'] = [];
+  const byRoot: ClosureResult['byRoot'] = {};
 
   for (const root of roots) {
     const seen = new Set<string>([root]);
@@ -46,6 +59,7 @@ export async function boundedClosure(
       frontier = found;
     }
     for (const q of seen) all.add(q);
+    byRoot[root] = [...seen];
   }
-  return { classes: [...all], refused };
+  return { classes: [...all], refused, byRoot };
 }
