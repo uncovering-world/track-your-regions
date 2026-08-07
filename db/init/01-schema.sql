@@ -1822,6 +1822,43 @@ CREATE INDEX IF NOT EXISTS idx_experiences_membership ON experiences(source_memb
 CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) WHERE existence <> 'extant';
 CREATE INDEX IF NOT EXISTS idx_experiences_first_seen ON experiences(first_seen_sync_log_id);
 
+-- =============================================================================
+-- Admission (ADR-0024)
+-- =============================================================================
+-- A third axis, independent of the two above, and the only one the machine
+-- decides. The two above are statements about the world — the source stopped
+-- listing it; it no longer exists — and neither is true of a venue our own rule
+-- turned down. Wikidata goes on listing the British Museum, which stands open;
+-- what changed is that *Top Art Museums* holds art museums and that one is an
+-- archaeological collection. Folding that into `former` would reproduce exactly
+-- the conflation ADR-0020 removed.
+--
+-- The machine may write this one because a refusal is not an observation: it is
+-- a deterministic rule applied to data we hold, naming the object before it
+-- says no, and re-running it gives the same answer. A curator who disagrees
+-- pins 'admission' in curated_fields, and every write below skips the row.
+
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS admission VARCHAR(10) NOT NULL DEFAULT 'admitted';
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS admission_reason TEXT;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experiences_admission_check') THEN
+        ALTER TABLE experiences ADD CONSTRAINT experiences_admission_check
+            CHECK (admission IN ('admitted', 'refused'));
+    END IF;
+END $$;
+
+COMMENT ON COLUMN experiences.admission IS
+    'admitted or refused. Whether this category accepts the row, independent of whether the source still lists it. '
+    'The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. '
+    'A refused row is hidden from every read that offers somewhere to go, and from none that records a visit.';
+COMMENT ON COLUMN experiences.admission_reason IS
+    'Why the category refused it, stated verbatim to the curator. On the row rather than in '
+    'experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
+
+CREATE INDEX IF NOT EXISTS idx_experiences_admission ON experiences(admission) WHERE admission <> 'admitted';
+
 -- Per-object record of what a run did. 'unchanged' is deliberately NOT stored;
 -- it is only counted, or every UNESCO run would write 1247 rows of noise.
 CREATE TABLE IF NOT EXISTS experience_sync_changes (
