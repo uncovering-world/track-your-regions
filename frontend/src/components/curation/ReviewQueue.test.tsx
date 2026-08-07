@@ -14,15 +14,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('../../api/experiences', () => ({
   fetchReviewQueue: vi.fn(),
   setExperienceState: vi.fn(),
+  setExperienceAdmission: vi.fn(),
   acceptSourceValue: vi.fn(),
 }));
 
-import { fetchReviewQueue, setExperienceState, acceptSourceValue } from '../../api/experiences';
+import {
+  fetchReviewQueue, setExperienceState, setExperienceAdmission, acceptSourceValue,
+} from '../../api/experiences';
 import { ReviewQueue } from './ReviewQueue';
 
 const mockedFetch = fetchReviewQueue as unknown as ReturnType<typeof vi.fn>;
 const mockedState = setExperienceState as unknown as ReturnType<typeof vi.fn>;
 const mockedAccept = acceptSourceValue as unknown as ReturnType<typeof vi.fn>;
+const mockedAdmission = setExperienceAdmission as unknown as ReturnType<typeof vi.fn>;
 
 const MISSING = {
   id: 77,
@@ -35,6 +39,25 @@ const MISSING = {
   existence: 'extant' as const,
   kind: 'missing' as const,
   proposed: null,
+};
+
+const REFUSED = {
+  ...MISSING,
+  id: 99,
+  external_id: 'Q6373',
+  name: 'British Museum',
+  category_id: 2,
+  category_name: 'Top Art Museums',
+  kind: 'refused' as const,
+  missing_since: null,
+  admission_reason: 'not an art museum \u2014 archaeology',
+};
+
+const KEPT_OUT = {
+  ...REFUSED,
+  kind: 'kept-out' as const,
+  state_decided_at: '2026-08-08T09:00:00Z',
+  state_note: 'archaeology, comes back with that import',
 };
 
 const CONFLICT = {
@@ -61,7 +84,10 @@ describe('ReviewQueue', () => {
     mockedFetch.mockReset();
     mockedState.mockReset().mockResolvedValue({ experienceId: 77 });
     mockedAccept.mockReset().mockResolvedValue({ experienceId: 88, applied: ['name'], released: [], fromSyncLogId: 9 });
-    mockedFetch.mockResolvedValue({ missing: [MISSING], conflicts: [CONFLICT], limit: 25, offset: 0 });
+    mockedAdmission.mockReset().mockResolvedValue({ experienceId: 99, admission: 'refused' });
+    mockedFetch.mockResolvedValue({
+      missing: [MISSING], refused: [], conflicts: [CONFLICT], limit: 25, offset: 0,
+    });
   });
 
   it('offers the three answers a missing object can have', async () => {
@@ -246,6 +272,133 @@ describe('ReviewQueue', () => {
     expect(await screen.findByText(/name applied now/)).toBeInTheDocument();
     expect(screen.getByText(/location at the next sync/)).toBeInTheDocument();
     expect(screen.getByText(/from run 41/)).toBeInTheDocument();
+  });
+
+  describe('a row this category refused', () => {
+    beforeEach(() => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [REFUSED], conflicts: [], limit: 25, offset: 0,
+      });
+    });
+
+    it('shows the rule\'s own words, which is the whole point of the card', async () => {
+      renderQueue();
+
+      // "Refused" alone leaves a curator guessing; the reason is what lets them
+      // confirm a rule or spot a bad one.
+      expect(await screen.findByText(/not an art museum/i)).toBeInTheDocument();
+    });
+
+    it('offers the two answers a refusal has, and none of the three a disappearance has', async () => {
+      renderQueue();
+
+      expect(await screen.findByRole('button', { name: /the rule was right/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /the rule was wrong/i })).toBeInTheDocument();
+      // An open museum that was never a legitimate member is none of these.
+      expect(screen.queryByRole('button', { name: /former/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /lost/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /false alarm/i })).not.toBeInTheDocument();
+    });
+
+    it('sends confirm when the curator agrees with the rule', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole('button', { name: /the rule was right/i }));
+
+      await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(
+        99, expect.objectContaining({ decision: 'confirm' })));
+    });
+
+    it('sends override when the curator does not', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole('button', { name: /the rule was wrong/i }));
+
+      await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(
+        99, expect.objectContaining({ decision: 'override' })));
+    });
+
+    it('withdraws the page\'s promise for this section only', async () => {
+      renderQueue();
+
+      // The standing line — nothing here has changed what visitors see — is
+      // false of a refusal, which is hidden already.
+      expect(await screen.findByText(/hidden already/i)).toBeInTheDocument();
+    });
+
+    it('keeps the promise intact when nothing was refused', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], conflicts: [], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      await screen.findByRole('button', { name: /former/i });
+      expect(screen.queryByText(/hidden already/i)).not.toBeInTheDocument();
+    });
+
+    it('can reach refusals behind a full page', async () => {
+      const page = Array.from({ length: 25 }, (_, i) => ({ ...REFUSED, id: 200 + i }));
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: page, conflicts: [], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      await screen.findByRole('button', { name: /show more/i });
+      expect(screen.getByRole('button', { name: /show more/i })).toBeEnabled();
+    });
+  });
+
+  describe('a refusal the curator confirmed', () => {
+    beforeEach(() => {
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [KEPT_OUT], conflicts: [], limit: 25, offset: 0,
+      });
+    });
+
+    it('stays out of the way until asked for', async () => {
+      renderQueue();
+
+      // These are answered. A curator opening the page is here for what is not.
+      await screen.findByRole('button', { name: /former/i });
+      expect(screen.queryByRole('button', { name: /put it back/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /show what you have kept out/i })).toBeInTheDocument();
+    });
+
+    it('offers the way back, because no other surface shows the row at all', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole('button', { name: /show what you have kept out/i }));
+
+      expect(await screen.findByRole('button', { name: /put it back/i })).toBeInTheDocument();
+      // The rule's objection is still what a curator needs to judge by.
+      expect(screen.getByText(/not an art museum/i)).toBeInTheDocument();
+    });
+
+    it('does not re-ask the settled question', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole('button', { name: /show what you have kept out/i }));
+
+      await screen.findByRole('button', { name: /put it back/i });
+      // Answered means answered: offering "the rule was right" again invites a
+      // second answer to a question that has one.
+      expect(screen.queryByRole('button', { name: /the rule was right/i })).not.toBeInTheDocument();
+    });
+
+    it('sends override when the curator takes it back', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole('button', { name: /show what you have kept out/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /put it back/i }));
+
+      await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(
+        99, expect.objectContaining({ decision: 'override' })));
+    });
+
+    it('shows nothing at all when nothing has been kept out', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      await screen.findByRole('button', { name: /former/i });
+      expect(screen.queryByRole('button', { name: /kept out/i })).not.toBeInTheDocument();
+    });
   });
 
   it('says plainly when there is nothing to answer', async () => {

@@ -56,7 +56,7 @@ type Existence = 'extant' | 'lost';
  * The decisions waiting for a curator, scoped to what they cover.
  * GET /api/experiences/review/queue?categoryId=&limit=&offset=
  *
- * Two kinds of item, and they are answered differently:
+ * Three kinds of item, and they are answered differently:
  *
  * - **gone from the source** — a run stamped `missing_since` and stopped there.
  *   Users still see the object exactly as before; nothing about it changes
@@ -64,6 +64,13 @@ type Existence = 'extant' | 'lost';
  * - **the source disagrees with an edit** — `curated_fields` refused a change
  *   and the divergence has been accumulating since. The value the source
  *   proposed is carried in the changeset, so it can still be applied.
+ * - **this category turned it down** — a rule refused the row and it is already
+ *   hidden (ADR-0024). The one kind of item here that a run has *already* acted
+ *   on, and the exception to the page's usual promise that nothing has changed
+ *   what visitors see. It sits apart from the first kind because none of those
+ *   three verdicts is true of it: the British Museum is open, so not `lost`; it
+ *   was never a legitimate member of *Top Art Museums*, so not `former`; and the
+ *   refusal was right, so not a false alarm. Its two answers are its own.
  */
 export async function getReviewQueue(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
@@ -92,6 +99,10 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     categoryFilter = `AND e.category_id = $${params.length}`;
   }
 
+  // A refused row is excluded here even when it also carries `missing_since`.
+  // The same row under two headings would ask two contradictory questions —
+  // "did this disappear?" beside "was refusing it right?" — and only the second
+  // has a true answer.
   const missing = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            e.missing_since, e.source_membership, e.existence,
@@ -100,9 +111,59 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     JOIN experience_categories c ON c.id = e.category_id
     WHERE e.missing_since IS NOT NULL
       AND e.source_membership = 'present'
+      AND e.admission <> 'refused'
       ${categoryFilter}
       AND ${scopeFilter}
     ORDER BY e.missing_since DESC, e.id
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+  `, [...params, limit, offset]);
+
+  // Ordered by id rather than by time: admission carries no date of its own,
+  // and `updated_at` moves for every unrelated edit, so ordering by it would
+  // shuffle the queue under a curator working through it. Stable beats fresh
+  // here — the page is a list someone is walking down.
+  //
+  // An answered row is gone from this query, because both answers pin
+  // `admission` in `curated_fields`. That pin is also what stops a later run
+  // reversing either answer.
+  const refused = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+           e.admission_reason,
+           'refused' AS kind
+    FROM experiences e
+    JOIN experience_categories c ON c.id = e.category_id
+    WHERE e.admission = 'refused'
+      AND NOT COALESCE(e.curated_fields ? 'admission', false)
+      ${categoryFilter}
+      AND ${scopeFilter}
+    ORDER BY e.id
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+  `, [...params, limit, offset]);
+
+  // The rows a curator confirmed, and the only place they can be seen.
+  //
+  // Every other verdict is taken back where the object is: `former` never
+  // hides it, and `lost` has a reader toggle that reveals it. A confirmed
+  // refusal has neither — `hideRefusedSql` is on every read and rides on no
+  // toggle, so the row answers 404 by id and appears in no list. Without this
+  // query one mis-click would put an object out of the product for good, which
+  // is the shape `setExperienceState` reasoned itself out of a few hundred
+  // lines down and the one "Take a verdict back" promises against.
+  //
+  // Deliberately not "open questions": these are answered, and the queue is a
+  // list of things waiting. They are returned separately so the page can keep
+  // them out of the way of the work.
+  const keptOut = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+           e.admission_reason, e.state_decided_at, e.state_note,
+           'kept-out' AS kind
+    FROM experiences e
+    JOIN experience_categories c ON c.id = e.category_id
+    WHERE e.admission = 'refused'
+      AND COALESCE(e.curated_fields ? 'admission', false)
+      ${categoryFilter}
+      AND ${scopeFilter}
+    ORDER BY e.state_decided_at DESC NULLS LAST, e.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
   `, [...params, limit, offset]);
 
@@ -172,6 +233,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
 
   res.json({
     missing: missing.rows,
+    refused: refused.rows,
+    keptOut: keptOut.rows,
     conflicts: conflicts.rows,
     limit: Number(limit),
     offset: Number(offset),
@@ -339,6 +402,141 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
     sourceMembership: nextMembership,
     existence: nextExistence,
   });
+}
+
+/**
+ * Answer a refusal.
+ * POST /api/experiences/:id/admission
+ * Body: { decision: 'confirm' | 'override', note?: string }
+ *
+ * Two answers, because a refusal has two and neither of them is a verdict about
+ * the world (ADR-0024):
+ *
+ * - **confirm** — the rule was right. The row stays refused and hidden.
+ * - **override** — the rule was wrong. The row is admitted again.
+ *
+ * Both pin `admission` in `curated_fields`, and that pin is what takes the item
+ * out of the queue. It is also what makes the answer durable against *runs*, in
+ * both directions: a curator who has looked at the thing outranks the rule, so
+ * no later run re-refuses an overridden row or re-admits a confirmed one. The
+ * sync's three admission writes all skip a pinned row for that reason.
+ *
+ * Durable against runs is not the same as final. `override` stays available on
+ * a confirmed row, because confirming hides an object from everyone and a way
+ * back that an earlier click can close is not a way back — the one thing this
+ * endpoint must never become is the one-way door `setExperienceState` reasoned
+ * itself out of. Confirmed rows are reachable in the queue's own kept-out list,
+ * since `hideRefusedSql` leaves them visible nowhere else.
+ *
+ * No `expected` block here, unlike `setExperienceState`. `confirm` uses the pin
+ * as its concurrency check — it hides, so a second curator on a stale card must
+ * not silently re-hide a row the first one just put back — while `override`
+ * needs none: it reveals, and two curators clicking it reach the same state.
+ */
+export async function setExperienceAdmission(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const experienceId = parseInt(String(req.params.id));
+  const userId = req.user!.id;
+  const userRole = req.user!.role;
+  const { decision, note } = req.body as { decision: 'confirm' | 'override'; note?: string };
+
+  const expResult = await pool.query(
+    `SELECT id, category_id FROM experiences WHERE id = $1`,
+    [experienceId],
+  );
+  if (expResult.rows.length === 0) {
+    res.status(404).json({ error: 'Experience not found' });
+    return;
+  }
+
+  const { permitted, logRegionId } = await resolveExperienceScope(
+    userId, userRole, experienceId, expResult.rows[0].category_id as number,
+  );
+  if (!permitted) {
+    res.status(403).json({ error: 'You do not have curator permissions for this experience' });
+    return;
+  }
+
+  const admitted = decision === 'override';
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+
+    // Locked, for the same reason `setExperienceState` locks: every curator
+    // covering any of the row's regions sees this card, and two answers racing
+    // would leave the log asserting one verdict beside a column holding the
+    // other.
+    const locked = await client.query(
+      `SELECT admission, admission_reason, curated_fields
+         FROM experiences WHERE id = $1 FOR UPDATE`,
+      [experienceId],
+    );
+    const before = locked.rows[0];
+    const alreadyAnswered = ((before.curated_fields as string[]) ?? []).includes('admission');
+
+    // Putting a row back is allowed whatever the pin says, and confirming is
+    // not. The asymmetry is the point: `override` is the way back, and a way
+    // back that a previous answer can close is not one. It is also the safe
+    // direction — it reveals rather than hides, and two curators both clicking
+    // it reach the same state, so nothing is lost to a race.
+    //
+    // `confirm` keeps the pin as its concurrency check, because it hides: a
+    // second curator arriving at a stale card must not silently re-hide a row
+    // the first one just put back. That row is no longer `refused` anyway, so
+    // it is caught by the same condition.
+    const confirmBlocked = !admitted && alreadyAnswered;
+    if (before.admission !== 'refused' || confirmBlocked) {
+      unusable = await rollbackQuietly(client);
+      res.status(409).json({
+        error: alreadyAnswered
+          ? 'Someone else answered this first — reload to see where it stands'
+          : 'Already answered: this row is not waiting on a refusal decision',
+        admission: before.admission,
+      });
+      return;
+    }
+
+    const curated = [...new Set([...((before.curated_fields as string[]) ?? []), 'admission'])];
+    // The reason is resolved here rather than in a CASE over $2. Postgres has to
+    // deduce one type per placeholder, and a parameter used both as the value of
+    // a varchar column and as the left side of a text comparison gives it two —
+    // "inconsistent types deduced for parameter $2", which no mocked-pool test
+    // can see and the first real click found immediately.
+    //
+    // Kept on a confirmed row: it is the record of what the rule objected to,
+    // and the archaeology category will be built by reading exactly these.
+    // Cleared on an override, where it has stopped being true.
+    const nextReason = admitted ? null : before.admission_reason;
+    await client.query(`
+      UPDATE experiences
+      SET admission = $2,
+          admission_reason = $3,
+          curated_fields = $4,
+          state_decided_by = $5,
+          state_decided_at = NOW(),
+          state_note = $6,
+          updated_at = NOW()
+      WHERE id = $1
+    `, [
+      experienceId, admitted ? 'admitted' : 'refused', nextReason,
+      JSON.stringify(curated), userId, note ?? null,
+    ]);
+
+    await client.query(`
+      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [experienceId, userId, admitted ? 'admission_overridden' : 'admission_confirmed', logRegionId,
+      JSON.stringify({ reason: before.admission_reason, note: note ?? null })]);
+
+    await client.query('COMMIT');
+  } catch (error) {
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
+
+  res.json({ experienceId, admission: admitted ? 'admitted' : 'refused' });
 }
 
 /**

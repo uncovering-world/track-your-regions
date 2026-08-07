@@ -1,12 +1,22 @@
 /**
- * What a sync run could not decide for itself.
+ * What a sync run could not decide for itself, and the one thing it could.
  *
- * Two kinds of question, and the page keeps them apart because they are
- * answered differently. A site the source stopped listing needs a verdict on
- * what that means — delisted, destroyed, or never gone. A field the source
- * wants to change but a curator has claimed needs a choice between two
- * versions. Neither has changed anything for users yet; that is the point of
- * asking.
+ * Three kinds of question, kept apart because they are answered differently. A
+ * site the source stopped listing needs a verdict on what that means —
+ * delisted, destroyed, or never gone. A field the source wants to change but a
+ * curator has claimed needs a choice between two versions. Neither has changed
+ * anything for users yet; that is the point of asking.
+ *
+ * A row this category refused is the exception, and the page says so rather
+ * than hiding it. The run did not fail to see it — it named it and applied our
+ * own rule, so the row is already hidden (ADR-0024). None of the three verdicts
+ * above is true of it, which is exactly why it needs a section and two answers
+ * of its own: the rule was right, or the rule was wrong.
+ *
+ * The confirmed ones come back at the foot of the page, collapsed. They are not
+ * work — they are answered — but a row kept out is hidden from every list and
+ * unreachable by its own address, so this page is the only place a mis-click
+ * can be undone. Leaving them off it would make one button permanent.
  */
 
 import { useState } from 'react';
@@ -18,6 +28,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchReviewQueue,
   setExperienceState,
+  setExperienceAdmission,
   acceptSourceValue,
   type ReviewQueueItem,
 } from '../../api/experiences';
@@ -32,6 +43,10 @@ export function ReviewQueue() {
   // in front were answered — which is the queue-that-cannot-be-emptied shape
   // this page exists to avoid.
   const [offset, setOffset] = useState(0);
+  // Collapsed by default. These are answered, and a curator opening this page
+  // is here to work through what is not — but they must still be one click
+  // from reach, because no other surface shows them.
+  const [showKeptOut, setShowKeptOut] = useState(false);
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['curation', 'reviewQueue', offset],
     queryFn: () => fetchReviewQueue({ offset }),
@@ -65,19 +80,27 @@ export function ReviewQueue() {
   }
 
   const missing = data?.missing ?? [];
+  const refused = data?.refused ?? [];
+  const keptOut = data?.keptOut ?? [];
   const conflicts = data?.conflicts ?? [];
   // The API pages; a full page means there are more behind it, and printing
   // its length as a total would understate the backlog.
   const pageSize = data?.limit ?? 0;
-  const fullPage = missing.length === pageSize || conflicts.length === pageSize;
+  const fullPage = missing.length === pageSize
+    || refused.length === pageSize
+    || keptOut.length === pageSize
+    || conflicts.length === pageSize;
   const countLabel = (n: number) => (n === pageSize && offset === 0 ? `first ${n}` : `${n}`);
 
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>Review</Typography>
       <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Decisions a sync run cannot make on its own. Nothing here has changed what visitors see —
-        it waits for you.
+        Decisions a sync run cannot make on its own. Nothing here has changed what visitors see and
+        it waits for you
+        {refused.length > 0
+          ? ' — except what this category refused, which is hidden already and says why below.'
+          : '.'}
       </Typography>
 
       {notice && (
@@ -86,7 +109,7 @@ export function ReviewQueue() {
         </Alert>
       )}
 
-      {missing.length === 0 && conflicts.length === 0 && (
+      {missing.length === 0 && refused.length === 0 && conflicts.length === 0 && (
         <Alert severity="success">
           {offset === 0
             ? 'Nothing waiting. Every flagged object has been answered.'
@@ -112,6 +135,25 @@ export function ReviewQueue() {
         </>
       )}
 
+      {refused.length > 0 && (
+        <>
+          <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
+            This category turned these down ({countLabel(refused.length)})
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            A rule named each of these and refused it, so they are hidden from visitors already —
+            a candidate that fails the same rule is never added in the first place, and a row that
+            predates the rule has to end up in the same place. Your answer is durable either way:
+            no later run will reverse it.
+          </Typography>
+          <Stack spacing={2}>
+            {refused.map(item => (
+              <RefusedCard key={item.id} item={item} onDone={refresh} />
+            ))}
+          </Stack>
+        </>
+      )}
+
       {conflicts.length > 0 && (
         <>
           <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
@@ -128,6 +170,29 @@ export function ReviewQueue() {
           </Stack>
         </>
       )}
+      {keptOut.length > 0 && (
+        <>
+          <Divider sx={{ mt: 4 }} />
+          <Button size="small" sx={{ mt: 2 }} onClick={() => setShowKeptOut(v => !v)}>
+            {showKeptOut ? 'Hide' : 'Show'} what you have kept out ({countLabel(keptOut.length)})
+          </Button>
+          {showKeptOut && (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+                Answered, so not waiting on you — listed because this page is the only place they
+                appear at all. A kept-out row is hidden from every list and gives nothing back at
+                its own address, so if one of these was a mis-click, this is where it comes back.
+              </Typography>
+              <Stack spacing={2}>
+                {keptOut.map(item => (
+                  <KeptOutCard key={item.id} item={item} onDone={refresh} />
+                ))}
+              </Stack>
+            </>
+          )}
+        </>
+      )}
+
       {(offset > 0 || fullPage) && (
         <Stack direction="row" spacing={1} sx={{ mt: 4 }} alignItems="center">
           <Button size="small" disabled={offset === 0} onClick={goBack}>Previous</Button>
@@ -215,6 +280,99 @@ function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
             False alarm
           </Button>
         </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * A row this category refused, with the rule's own words on it.
+ *
+ * The reason is the whole point of the card. "Refused" alone leaves a curator
+ * guessing; "not a museum class — named by Column of Phocas (36 sitelinks)"
+ * lets them confirm a rule or spot a bad one, and a bad rule shows up here as a
+ * run of near-identical reasons rather than as a mystery.
+ */
+function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string) => void }) {
+  const [note, setNote] = useState('');
+  const decide = useMutation({
+    mutationFn: (decision: 'confirm' | 'override') =>
+      setExperienceAdmission(item.id, { decision, note: note || undefined }),
+    onSettled: (_data, error) => onDone(error ? messageFor(item, error) : undefined),
+  });
+
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <ItemHeader item={item} />
+        <Typography variant="body2" sx={{ mb: 2 }}>
+          {item.admission_reason || 'No reason was recorded.'}
+        </Typography>
+
+        <TextField
+          size="small"
+          fullWidth
+          label="Note (optional)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          sx={{ mb: 2 }}
+        />
+
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Button
+            variant="outlined"
+            disabled={decide.isPending}
+            onClick={() => decide.mutate('confirm')}
+          >
+            The rule was right — keep it out
+          </Button>
+          <Button
+            variant="outlined"
+            color="warning"
+            disabled={decide.isPending}
+            onClick={() => decide.mutate('override')}
+          >
+            The rule was wrong — put it back
+          </Button>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * A refusal a curator confirmed, and the one way back from it.
+ *
+ * Deliberately not the two-button card above: the question has been answered,
+ * and re-asking it would invite a second answer to a settled thing. What this
+ * offers is a correction — one button, in the direction that reveals.
+ */
+function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string) => void }) {
+  const putBack = useMutation({
+    mutationFn: () => setExperienceAdmission(item.id, { decision: 'override' }),
+    onSettled: (_data, error) => onDone(error ? messageFor(item, error) : undefined),
+  });
+
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <ItemHeader item={item} />
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          {item.admission_reason || 'No reason was recorded.'}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+          Kept out{item.state_decided_at ? ` on ${formatDateTime(item.state_decided_at)}` : ''}
+          {item.state_note ? ` — “${item.state_note}”` : ''}
+        </Typography>
+        <Button
+          size="small"
+          variant="outlined"
+          color="warning"
+          disabled={putBack.isPending}
+          onClick={() => putBack.mutate()}
+        >
+          Put it back
+        </Button>
       </CardContent>
     </Card>
   );
