@@ -9,7 +9,7 @@
  * measuring the same thing.
  */
 
-import { hideLostSql, lifecycleSelectSql, offeredLocationSql } from './experienceLifecycle.js';
+import { hideLostSql, hideRefusedSql, lifecycleSelectSql, offeredLocationSql } from './experienceLifecycle.js';
 import { isNewSql } from './experienceNewBadge.js';
 
 /**
@@ -41,11 +41,23 @@ export function buildRegionQueries(opts: {
   const rejectionFilter = showRejected ? '' : ' AND rej.id IS NULL';
   // `former` is deliberately absent here: it stays in the list, and the card
   // labels it from the columns selected above.
-  const lifecycleFilter = includeLostRows ? '' : ` AND ${hideLostSql()}`;
+  //
+  // A refusal has no toggle and never gets one. `includeLostRows` exists so a
+  // reader can ask to see what no longer exists; a row this category's rule
+  // turned down is not something the reader is missing, it is something that
+  // should never have been offered (ADR-0024). The curation queue reads it
+  // through its own query.
+  const lifecycleFilter = ` AND ${hideRefusedSql()}`
+    + (includeLostRows ? '' : ` AND ${hideLostSql()}`);
   // The same rule as an expression, for the count: one aggregate answers how
   // many the list is showing and another how many it is holding back, so the
   // page can offer the toggle only where there is something behind it.
-  const lifecyclePredicate = includeLostRows ? 'TRUE' : hideLostSql();
+  const lifecyclePredicate = includeLostRows
+    ? hideRefusedSql()
+    : `${hideRefusedSql()} AND ${hideLostSql()}`;
+  // Refused rows are excluded here too. This number is an offer to reveal, and
+  // revealing would not bring back a row the other predicate still hides.
+  const lostHiddenPredicate = `e.existence = 'lost' AND ${hideRefusedSql()}`;
   // The chip's personal half needs to know who is asking. Anonymous readers
   // bind nothing and fall back to the category window, which is the whole rule
   // for them — there is nobody to have shown it to. Both branches bind
@@ -112,7 +124,7 @@ export function buildRegionQueries(opts: {
       )
       SELECT
         COUNT(DISTINCT e.id) FILTER (WHERE ${lifecyclePredicate})::int AS total,
-        COUNT(DISTINCT e.id) FILTER (WHERE e.existence = 'lost')::int AS lost_hidden
+        COUNT(DISTINCT e.id) FILTER (WHERE ${lostHiddenPredicate})::int AS lost_hidden
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
       JOIN experience_categories s ON e.category_id = s.id
@@ -158,7 +170,7 @@ export function buildRegionQueries(opts: {
     countQuery = `
       SELECT
         COUNT(DISTINCT e.id) FILTER (WHERE ${lifecyclePredicate})::int AS total,
-        COUNT(DISTINCT e.id) FILTER (WHERE e.existence = 'lost')::int AS lost_hidden
+        COUNT(DISTINCT e.id) FILTER (WHERE ${lostHiddenPredicate})::int AS lost_hidden
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
       JOIN experience_categories s ON e.category_id = s.id

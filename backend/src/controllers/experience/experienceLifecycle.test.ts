@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   hideLostSql,
+  hideRefusedSql,
   lifecycleSelectSql,
   includeLost,
   offeredLocationSql,
@@ -48,6 +49,35 @@ describe('hideLostSql', () => {
 
   it('comes bare, since some callers push it into a conditions array', () => {
     expect(hideLostSql().trimStart()).not.toMatch(/^AND/);
+  });
+});
+
+describe('hideRefusedSql', () => {
+  it('hides only what this category turned down', () => {
+    const sql = hideRefusedSql();
+
+    expect(sql).toContain("admission <> 'refused'");
+    // Not a claim about the world. The British Museum stands open and Wikidata
+    // still lists it; what changed is which of our categories claims it.
+    expect(sql).not.toContain('existence');
+    expect(sql).not.toContain('source_membership');
+    // A refusal is a decision with a reason, and the reason is for the curator
+    // to read — the predicate must not depend on the run's flag (ADR-0024).
+    expect(sql).not.toContain('missing_since');
+  });
+
+  it('qualifies the column, so it can join a query with more than one table', () => {
+    expect(hideRefusedSql('ex')).toContain("ex.admission <> 'refused'");
+  });
+
+  it('comes bare, since some callers push it into a conditions array', () => {
+    expect(hideRefusedSql().trimStart()).not.toMatch(/^AND/);
+  });
+
+  it('is a separate predicate from the lost one, not the same rule renamed', () => {
+    // The two are toggled independently: the curation queue asks for refused
+    // rows and the "show what is gone" affordance asks for lost ones.
+    expect(hideRefusedSql()).not.toEqual(hideLostSql());
   });
 });
 
