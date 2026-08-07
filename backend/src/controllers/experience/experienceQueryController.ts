@@ -6,7 +6,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { hideLostSql, lifecycleSelectSql, includeLost } from './experienceLifecycle.js';
+import { hideLostSql, hideRefusedSql, lifecycleSelectSql, includeLost } from './experienceLifecycle.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
@@ -23,6 +23,10 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
   // Unconditional unless asked: a caller that forgets a filter should get less
   // than it wanted, never a demolished building offered as somewhere to go.
   if (!includeLost(query)) conditions.push(hideLostSql());
+  // Unconditional full stop: `includeLost` is a reader asking to see what is
+  // gone, and a row the category's own rule turned down was never theirs to
+  // miss (ADR-0024).
+  conditions.push(hideRefusedSql());
 
   if (query.categoryId) {
     conditions.push(`e.category_id = $${paramIndex++}`);
@@ -160,6 +164,12 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
     FROM experiences e
     JOIN experience_categories s ON e.category_id = s.id
     WHERE e.id = $1
+      -- A by-id read is still a read that offers somewhere to go (ADR-0024), so
+      -- a refused row answers 404 rather than handing back a card for something
+      -- this category has turned down. An object judged lost is deliberately not
+      -- filtered here and never was: that gap predates this axis, and closing it
+      -- would be a separate decision about a different question.
+      AND ${hideRefusedSql()}
   `, [id]);
 
   if (result.rows.length === 0) {
@@ -314,6 +324,7 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
     -- object whose name happens to match by trigram.
     WHERE (e.name ILIKE $2 OR e.name % $1)
       AND ${hideLostSql()}
+      AND ${hideRefusedSql()}
     ORDER BY
       CASE WHEN e.name ILIKE $2 THEN 0 ELSE 1 END,
       similarity(e.name, $1) DESC
@@ -368,6 +379,7 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
       AND ${parentRegionId ? 'r.parent_region_id = $2' : 'r.parent_region_id IS NULL'}
       AND rej.id IS NULL
       AND ${hideLostSql()}
+      AND ${hideRefusedSql()}
     GROUP BY r.id, r.name, r.color, e.category_id
     ORDER BY r.name
   `, parentRegionId ? [worldViewId, parentRegionId] : [worldViewId]);
