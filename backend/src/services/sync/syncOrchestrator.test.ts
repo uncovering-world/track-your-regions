@@ -26,6 +26,14 @@ vi.mock('./regionAssignmentService.js', () => ({
   worldViewsWithGeometry: vi.fn().mockResolvedValue([5]),
 }));
 
+vi.mock('./admission.js', () => ({
+  admissionSweepSkipReason: vi.fn().mockReturnValue(null),
+  countAdmitted: vi.fn().mockResolvedValue(0),
+  markRefused: vi.fn().mockResolvedValue([]),
+  restoreAdmission: vi.fn().mockResolvedValue([]),
+  markNotAdmitted: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock('./missingDetection.js', () => ({
   missingDetectionSkipReason: vi.fn().mockReturnValue(null),
   flagMissingExperiences: vi.fn().mockResolvedValue([]),
@@ -36,6 +44,9 @@ vi.mock('./missingDetection.js', () => ({
 import { createSyncLog, updateSyncLog, annotateClosedSyncLog } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
 import { missingDetectionSkipReason, flagMissingExperiences, countSeenAmongActive } from './missingDetection.js';
+import {
+  admissionSweepSkipReason, countAdmitted, markRefused, restoreAdmission, markNotAdmitted,
+} from './admission.js';
 import { assignRegionsForExperiences, worldViewsWithGeometry } from './regionAssignmentService.js';
 
 const TEST_CATEGORY_ID = 999;
@@ -103,6 +114,11 @@ describe('orchestrateSync', () => {
     vi.clearAllMocks();
     (missingDetectionSkipReason as ReturnType<typeof vi.fn>).mockReturnValue(null);
     (flagMissingExperiences as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (admissionSweepSkipReason as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    (countAdmitted as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    (markRefused as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (restoreAdmission as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (markNotAdmitted as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     vi.useFakeTimers();
   });
 
@@ -289,6 +305,14 @@ describe('orchestrateSync changeset recording', () => {
     vi.clearAllMocks();
     (missingDetectionSkipReason as ReturnType<typeof vi.fn>).mockReturnValue(null);
     (flagMissingExperiences as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    // Return values, not just call records: `clearAllMocks` leaves an
+    // implementation a previous test installed in place, and a stale skip
+    // reason silently disables the sweep for every test after it.
+    (admissionSweepSkipReason as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    (countAdmitted as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    (markRefused as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (restoreAdmission as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (markNotAdmitted as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     vi.useFakeTimers();
   });
 
@@ -368,6 +392,115 @@ describe('orchestrateSync changeset recording', () => {
       nameSnapshot: 'Royal Collection',
       experienceId: null,
     });
+  });
+
+  it('refuses the rows a rule turned down, whatever the run\'s coverage was', async () => {
+    // Unconditional by design: a coverage floor governs what silence means and
+    // has nothing to say about an object the run named (ADR-0024).
+    const config = makeConfig({
+      fetchItems: vi.fn().mockResolvedValue({
+        items: [],
+        fetchedCount: 1,
+        filtered: [{ externalId: 'Q6373', name: 'British Museum', reason: 'not an art museum' }],
+      }),
+    });
+
+    await orchestrateSync(config, 1);
+
+    expect(markRefused).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID,
+      [{ externalId: 'Q6373', name: 'British Museum', reason: 'not an art museum' }],
+      false,
+    );
+  });
+
+  it('keys the changeset entry to the row the refusal actually moved', async () => {
+    (markRefused as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 6205, externalId: 'Q6373', name: 'British Museum' },
+    ]);
+    const config = makeConfig({
+      fetchItems: vi.fn().mockResolvedValue({
+        items: [],
+        fetchedCount: 1,
+        filtered: [{ externalId: 'Q6373', name: 'British Museum', reason: 'not an art museum' }],
+      }),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(recorded[0]).toMatchObject({ changeType: 'filtered', experienceId: 6205 });
+  });
+
+  it('does not sweep for a source that fetches a published list', async () => {
+    await orchestrateSync(makeConfig(), 1);
+
+    expect(countAdmitted).not.toHaveBeenCalled();
+    expect(restoreAdmission).not.toHaveBeenCalled();
+    expect(markNotAdmitted).not.toHaveBeenCalled();
+  });
+
+  it('lets a run that both filters and admits a venue end with it admitted', async () => {
+    // The one ordering that carries weight. A venue can be named in the filtered
+    // list and still be one the run admits — a fold cycle used to produce
+    // exactly that — and the run's own admission has to be the answer that
+    // stands, or the row ends the run hidden until the next one.
+    const order: string[] = [];
+    (markRefused as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      order.push('refuse');
+      return [];
+    });
+    (restoreAdmission as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      order.push('restore');
+      return [];
+    });
+
+    await orchestrateSync(makeConfig({
+      recomputesMembership: true,
+      fetchItems: vi.fn().mockResolvedValue({
+        items: [{ id: '1', name: 'Item 1' }],
+        fetchedCount: 1,
+        filtered: [{ externalId: '1', name: 'Item 1', reason: 'folded' }],
+      }),
+    }), 1);
+
+    expect(order).toEqual(['refuse', 'restore']);
+    // And restore is asked about the very id that was refused.
+    expect(restoreAdmission).toHaveBeenCalledWith(TEST_CATEGORY_ID, ['1'], false);
+  });
+
+  it('sweeps against the ids the run actually saw', async () => {
+    await orchestrateSync(makeConfig({ recomputesMembership: true }), 1);
+
+    expect(markNotAdmitted).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, ['1', '2'], expect.any(String), false,
+    );
+  });
+
+  it('still restores, but does not sweep, when a guard refuses', async () => {
+    (admissionSweepSkipReason as ReturnType<typeof vi.fn>).mockReturnValue('run had 3 errors');
+
+    await orchestrateSync(makeConfig({ recomputesMembership: true }), 1);
+
+    // Restoring is safe on any run: it can only widen what a reader sees.
+    // Sweeping on a broken run empties a catalogue.
+    expect(restoreAdmission).toHaveBeenCalled();
+    expect(markNotAdmitted).not.toHaveBeenCalled();
+  });
+
+  it('counts a swept row as filtered and records it against the row', async () => {
+    (markNotAdmitted as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 6288, externalId: 'Q55685908', name: 'Roman Forum and the Palatine' },
+    ]);
+
+    await orchestrateSync(makeConfig({ recomputesMembership: true }), 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const swept = recorded.find((c: { externalId: string }) => c.externalId === 'Q55685908');
+    expect(swept).toMatchObject({ changeType: 'filtered', experienceId: 6288 });
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success', expect.objectContaining({ filtered: 1 }), undefined,
+    );
   });
 
   it('records a failed item with its error and no experience id', async () => {
