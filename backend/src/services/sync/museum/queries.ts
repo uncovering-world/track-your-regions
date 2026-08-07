@@ -132,11 +132,17 @@ export interface PoolWork {
   year: number | null;
   /** The class the work was collected under, as a reader sees it: `painting`, `fresco`, `icon`. */
   type: string;
+  /**
+   * That class as a QID. Carried because the medium question — is this a thing
+   * that exists in one original, or in an edition — is answered against the
+   * subclass tree, and a label cannot be asked that.
+   */
+  typeQid: string | null;
 }
 
 function poolQuery(head: string, limit: number): string {
   return `
-    SELECT ?w ?wLabel ?sl ?img ?creatorLabel (YEAR(?inception) AS ?year) ?clsLabel WHERE {
+    SELECT ?w ?wLabel ?sl ?img ?creatorLabel (YEAR(?inception) AS ?year) ?cls ?clsLabel WHERE {
       ${head}
       FILTER(?sl >= ${POOL_MIN_SITELINKS})
       OPTIONAL { ?w wdt:P18 ?img }
@@ -160,7 +166,20 @@ function typeOf(row: SparqlBinding, fallbackType: string): string {
   return label && !isQid(label) ? label : fallbackType;
 }
 
-function parsePool(rows: SparqlBinding[], fallbackType: string): PoolWork[] {
+/**
+ * The QID of the class a work was collected under.
+ *
+ * Unbound for the three anchored roots, whose head names the class literally
+ * rather than binding it — the caller passes the root it asked for.
+ */
+function typeQidOf(row: SparqlBinding, fallbackQid: string | null): string | null {
+  const uri = row.cls?.value;
+  if (!uri) return fallbackQid;
+  const qid = extractQid(uri);
+  return isQid(qid) ? qid : fallbackQid;
+}
+
+function parsePool(rows: SparqlBinding[], fallbackType: string, fallbackQid: string | null = null): PoolWork[] {
   const works = new Map<string, PoolWork>();
   for (const row of rows) {
     const uri = row.w?.value;
@@ -175,6 +194,7 @@ function parsePool(rows: SparqlBinding[], fallbackType: string): PoolWork[] {
       creator: row.creatorLabel?.value || null,
       year: row.year?.value ? parseInt(row.year.value, 10) : null,
       type: typeOf(row, fallbackType),
+      typeQid: typeQidOf(row, fallbackQid),
     });
   }
   return [...works.values()];
@@ -198,7 +218,7 @@ export async function fetchAnchoredPool(
     limit,
   ));
   warnIfTruncated(rows, limit, `${root.type} anchored by ${anchor}`);
-  return parsePool(rows, root.type);
+  return parsePool(rows, root.type, root.qid);
 }
 
 /**
@@ -217,7 +237,7 @@ export async function fetchClassPool(
     limit,
   ));
   warnIfTruncated(rows, limit, `${classQids.length} narrow classes`);
-  return parsePool(rows, 'artwork');
+  return parsePool(rows, 'artwork', null);
 }
 
 // =============================================================================
