@@ -25,6 +25,7 @@ import {
   editExperience,
   getCurationLog,
   getReviewQueue,
+  setExperienceAdmission,
   setExperienceState,
   acceptSourceValue,
   markNewBadgesSeen,
@@ -42,6 +43,7 @@ import {
   regionLocationsQuerySchema,
   idParamSchema,
   reviewQueueQuerySchema,
+  experienceAdmissionBodySchema,
   newBadgesSeenBodySchema,
   experienceStateBodySchema,
   acceptSourceBodySchema,
@@ -119,6 +121,7 @@ router.post('/new-badges/seen', authenticatedLimiter, requireAuth, validate(newB
 // value the source proposed should displace a curator's edit.
 router.get('/review/queue', requireAuth, requireCurator, validate(reviewQueueQuerySchema, 'query'), getReviewQueue);
 router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceStateBodySchema), setExperienceState);
+router.post('/:id/admission', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceAdmissionBodySchema), setExperienceAdmission);
 router.post('/:id/accept-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(acceptSourceBodySchema), acceptSourceValue);
 
 // Unassign an experience from a region (manual only)

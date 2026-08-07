@@ -21,7 +21,9 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getReviewQueue, setExperienceState, acceptSourceValue } from './lifecycleController.js';
+import {
+  getReviewQueue, setExperienceState, setExperienceAdmission, acceptSourceValue,
+} from './lifecycleController.js';
 import { CHANGESET_LANDED_SQL, ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -72,6 +74,69 @@ describe('getReviewQueue', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedQuery.mockResolvedValue({ rows: [] });
+  });
+
+  it('asks separately for the rows this category refused', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // An answered refusal is pinned, and the pin is what takes it out of the
+    // open list — in both directions, so a confirmed row does not reappear
+    // here either. It reappears in the kept-out list below, which is a
+    // different thing: not a question, just the only way back.
+    const [refusedSql] = callMatching("NOT COALESCE(e.curated_fields ? 'admission', false)");
+    expect(refusedSql).toContain("e.admission = 'refused'");
+  });
+
+  it('asks for the confirmed refusals too, since nothing else can show them', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // Every read hides a refused row and none of them takes a toggle, so a
+    // confirmed refusal is invisible everywhere else. Without this query the
+    // "put it back" button has nowhere to live and one click is permanent.
+    const [keptOutSql] = callMatching("'kept-out' AS kind");
+    expect(keptOutSql).toContain("e.admission = 'refused'");
+    expect(keptOutSql).toContain("COALESCE(e.curated_fields ? 'admission', false)");
+    expect(keptOutSql).not.toContain("NOT COALESCE(e.curated_fields ? 'admission', false)");
+  });
+
+  it('returns the confirmed refusals under their own key', async () => {
+    const res = makeRes();
+    mockedQuery.mockImplementation(async (sql: string) => (
+      String(sql).includes("'kept-out' AS kind")
+        ? { rows: [{ id: 6205, name: 'British Museum', admission_reason: 'not an art museum' }] }
+        : { rows: [] }
+    ));
+
+    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      keptOut: [expect.objectContaining({ name: 'British Museum' })],
+      refused: [],
+    }));
+  });
+
+  it('keeps a refused row out of the gone-from-the-source list', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // The same row under both headings would ask two contradictory questions,
+    // and only one of them has a true answer.
+    const [missingSql] = callMatching('missing_since IS NOT NULL');
+    expect(missingSql).toContain("e.admission <> 'refused'");
+  });
+
+  it('returns the refusals as their own group, with the reason on them', async () => {
+    const res = makeRes();
+    mockedQuery.mockImplementation(async (sql: string) => (
+      String(sql).includes("e.admission = 'refused'")
+        ? { rows: [{ id: 6205, name: 'British Museum', admission_reason: 'not an art museum' }] }
+        : { rows: [] }
+    ));
+
+    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      refused: [expect.objectContaining({ admission_reason: 'not an art museum' })],
+    }));
   });
 
   it('limits a curator to experiences their scope reaches', async () => {
@@ -129,12 +194,25 @@ describe('getReviewQueue', () => {
     }
   });
 
+  /**
+   * The call that ran a given statement, found by a fragment unique to it.
+   *
+   * Positional indexing broke the moment a third query joined the two: the
+   * conflicts read moved from calls[1] to calls[2] and six tests failed for a
+   * reason unrelated to what any of them was checking.
+   */
+  function callMatching(fragment: string): [string, unknown[]] {
+    const found = mockedQuery.mock.calls.find(c => String(c[0]).includes(fragment));
+    if (!found) throw new Error(`no query contained ${fragment}`);
+    return [String(found[0]), found[1] as unknown[]];
+  }
+
   it('drops a conflict once the field is no longer claimed', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
     // Accepting the source releases the claim but leaves the changeset row as
     // the record of what the run did — the claim is what makes it a question
-    const conflictSql = String(mockedQuery.mock.calls[1][0]);
+    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
     expect(conflictSql).toContain('e.curated_fields ?');
     expect(conflictSql).toContain('q.proposed IS NOT NULL');
   });
@@ -144,7 +222,8 @@ describe('getReviewQueue', () => {
 
     // 'shortDescription' is claimed as 'short_description', and
     // 'metadata.inDanger' as plain 'metadata' — not a mechanical case change
-    const map = JSON.parse(String(mockedQuery.mock.calls[1][1].at(-4)));
+    const [, conflictParams] = callMatching('q.proposed IS NOT NULL');
+    const map = JSON.parse(String(conflictParams.at(-4)));
     expect(map.shortDescription).toBe('short_description');
     expect(map['metadata.inDanger']).toBe('metadata');
   });
@@ -155,7 +234,7 @@ describe('getReviewQueue', () => {
     // A run that finds the source agreeing writes no changeset row at all, so
     // the absence of a newer conflict proves nothing. last_seen_sync_log_id is
     // what such a run does leave behind.
-    const conflictSql = String(mockedQuery.mock.calls[1][0]);
+    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
     expect(conflictSql).toContain('last_seen_sync_log_id');
   });
 
@@ -165,7 +244,7 @@ describe('getReviewQueue', () => {
     // last_seen is stamped per item inside the loop; the changeset lands in one
     // batch after it. Mid-run the newer value exists and the rows it would be
     // read against do not, so every conflict would vanish for the whole run.
-    const conflictSql = String(mockedQuery.mock.calls[1][0]);
+    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
     expect(conflictSql).toContain('prev.completed_at IS NOT NULL');
   });
 
@@ -174,7 +253,7 @@ describe('getReviewQueue', () => {
 
     // Status cannot answer this: a run that throws after the item loop records
     // its changes and only then marks itself failed. The markers can.
-    const conflictSql = String(mockedQuery.mock.calls[1][0]);
+    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
     expect(conflictSql).toContain('"externalId":"changeset"');
     expect(conflictSql).toContain(ORPHANED_RUN_ERROR);
     expect(conflictSql).not.toContain("prev.status <> 'failed'");
@@ -186,14 +265,14 @@ describe('getReviewQueue', () => {
     // recordSyncFailure writes the changes and *then* marks the log failed, so
     // keying on status would suppress the inference for a run whose changeset
     // is entirely on record — resurfacing a conflict the source withdrew
-    const conflictSql = String(mockedQuery.mock.calls[1][0]);
+    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
     expect(conflictSql).not.toMatch(/prev\.status/);
   });
 
   it('ignores conflicts that only a preview proposed', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
-    const conflictSql = String(mockedQuery.mock.calls[1][0]);
+    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
     expect(conflictSql).toContain('l.is_dry_run = FALSE');
   });
 });
@@ -747,5 +826,230 @@ describe('acceptSourceValue', () => {
     );
 
     expect(res.status).toHaveBeenCalledWith(409);
+  });
+});
+
+describe('setExperienceAdmission', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedConnect.mockReset();
+  });
+
+  /** The row lookup and the scope check both run on the pool before the lock. */
+  function poolAnswers(categoryId = 2) {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 5, category_id: categoryId }] })
+      .mockResolvedValueOnce({ rows: [{ unrestricted: true, scoped_region_id: null }] });
+  }
+
+  /** A locked row, refused and unanswered unless the test says otherwise. */
+  function refusedClient(overrides: Record<string, unknown> = {}) {
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    return {
+      queries,
+      client: {
+        query: vi.fn(async (sql: string, params?: unknown[]) => {
+          queries.push({ sql, params: params ?? [] });
+          if (sql.includes('FOR UPDATE')) {
+            return { rows: [{
+              admission: 'refused',
+              admission_reason: 'not an art museum',
+              curated_fields: [],
+              ...overrides,
+            }] };
+          }
+          return { rows: [] };
+        }),
+        release: vi.fn(),
+      },
+    };
+  }
+
+  it('puts an overridden row back and pins it against the next run', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.params[1]).toBe('admitted');
+    expect(JSON.parse(String(update.params[3]))).toContain('admission');
+    expect(res.json).toHaveBeenCalledWith({ experienceId: 5, admission: 'admitted' });
+  });
+
+  it('leaves a confirmed row refused, and pins that too', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
+      makeRes() as never);
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.params[1]).toBe('refused');
+    // Pinned either way: a curator who looked at the thing outranks the rule in
+    // both directions, so a later run must not re-admit a confirmed row.
+    expect(JSON.parse(String(update.params[3]))).toContain('admission');
+  });
+
+  it('keeps the reason on a confirmed row and drops it from an overridden one', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
+      makeRes() as never);
+
+    // The refused set is the list the archaeology category gets built from, so
+    // the rule's objection has to survive being agreed with.
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.params[2]).toBe('not an art museum');
+  });
+
+  it('drops the reason from a row put back, where it has stopped being true', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
+      makeRes() as never);
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.params[2]).toBeNull();
+  });
+
+  it('logs which way the curator went', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
+      makeRes() as never);
+
+    const log = queries.find(q => q.sql.includes('experience_curation_log'))!;
+    expect(log.params[2]).toBe('admission_overridden');
+  });
+
+  it('refuses a second answer to the same card', async () => {
+    poolAnswers();
+    const { client } = refusedClient({ curated_fields: ['admission'] });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+  });
+
+  it('still puts back a row a curator already confirmed', async () => {
+    // The one asymmetry in this endpoint, and the reason it is not a one-way
+    // door: confirming hides the object from everyone and no read reveals it,
+    // so if the pin closed this direction too, a mis-click would be permanent.
+    poolAnswers();
+    const { queries, client } = refusedClient({ curated_fields: ['admission'] });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.params[1]).toBe('admitted');
+    expect(res.json).toHaveBeenCalledWith({ experienceId: 5, admission: 'admitted' });
+    expect(res.status).not.toHaveBeenCalledWith(409);
+  });
+
+  it('404s a row deleted between the existence check and the lock', async () => {
+    // The two reads are on different connections and a moment apart. Reading
+    // curated_fields off nothing would answer 500 to a question whose true
+    // answer is 404.
+    poolAnswers();
+    // Every read on this connection answers empty, the locked one included:
+    // the row is gone.
+    const client = { query: vi.fn(async () => ({ rows: [] })), release: vi.fn() };
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+  });
+
+  it('refuses to put back a row that is already admitted', async () => {
+    // Nothing to correct, and answering anyway would let a stale card overwrite
+    // whatever the row's state actually is.
+    poolAnswers();
+    const { client } = refusedClient({ admission: 'admitted', curated_fields: ['admission'] });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+  });
+
+  it('refuses to answer a row that was never refused', async () => {
+    poolAnswers();
+    const { client } = refusedClient({ admission: 'admitted' });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
+  it('404s an experience that does not exist', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockedConnect).not.toHaveBeenCalled();
+  });
+
+  it('403s a curator whose scope does not reach the row', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 5, category_id: 2 }] })
+      .mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: CURATOR, body: { decision: 'override' } } as never, res as never);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(mockedConnect).not.toHaveBeenCalled();
+  });
+
+  it('reads the row under the write lock, not before it', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
+      makeRes() as never);
+
+    // Every curator covering any of the row's regions sees this card. An
+    // unlocked read lets two answers race and leaves the log asserting one
+    // verdict beside a column holding the other.
+    expect(queries[0].sql).toBe('BEGIN');
+    expect(queries[1].sql).toContain('FOR UPDATE');
   });
 });

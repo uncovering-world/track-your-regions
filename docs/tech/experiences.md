@@ -368,6 +368,7 @@ query, and the rule is deliberately asymmetric because the reasons are:
 | flagged `missing_since` only | shown | shown | **nothing** |
 | `former` | shown | shown | `Former` chip |
 | `lost` | hidden | **shown** | `Lost` chip |
+| `admission = 'refused'` | hidden | **shown** | not reachable |
 
 `former` is a claim about the source's catalogue, not about the world: the place still stands
 and you can still go, so nothing about who sees it changes. `lost` is a claim about the world,
@@ -376,6 +377,40 @@ actively wrong — so it leaves everything that offers a destination. It does **
 visit: someone who saw Palmyra before 2015 saw it, and that record cannot depend on the thing
 still standing. Visit history is the one read left unfiltered, which is what lets the counts
 elsewhere shrink without erasing anything.
+
+A third axis, `admission` ([ADR-0024](../decisions/0024-a-category-may-refuse-what-the-source-still-lists.md)),
+answers a different question again: not whether the source still lists the object, and not
+whether it still exists, but whether *this category* accepts it. The works-first museum
+importer refuses an archaeological collection, a natural history museum, a church or a painted
+wall — and Wikidata goes on listing every one of them, so neither of the other two axes can
+say it without asserting something false. `hideRefusedSql()` is a separate fragment from
+`hideLostSql()` for the same reason they are separate columns, and because the two are toggled
+independently: `includeLost` is a reader asking to see what is gone, and it must leave
+admission alone.
+
+Unlike the other two, the machine writes this one. A refusal is not an ambiguous observation:
+the run matched the object in the source's own answer and applied a deterministic rule to it,
+and a candidate that fails the same rule is never created at all — so a row that predates the
+rule has to end up where a new one would. Three writes, all skipping a row whose
+`curated_fields` holds `admission` and all skipping `is_manual` rows
+(`services/sync/admission.ts`):
+
+- `markRefused` — unconditional, for the entities the fetch named and a rule turned down. The
+  rule's own words go into `admission_reason` on the row, because a changeset entry is keyed by
+  the external id the run named and that is not always the row's.
+- `restoreAdmission` — a row this run admits comes back. Without it the axis is a one-way door.
+- `markNotAdmitted` — the sweep, only for a source whose `SyncServiceConfig` declares
+  `recomputesMembership`. It reaches the case matching by external id cannot: `Roman Forum and
+  the Palatine` (Q55685908) was placed by one run and refused by the next under a *different*
+  Wikidata item for the same ground. Guarded by the run finishing clean and uncancelled and by
+  the admitted set holding at least half the previous one — looser than missing detection's
+  90 %, because that floor guards a listing and this one guards a rule, and a rule is meant to
+  move the set.
+
+Restore and the sweep are order-independent — restore only sees refused rows the run admits,
+the sweep only admitted rows it does not — but both must run after `markRefused`, so a venue a
+run both names as filtered and admits ends that run admitted rather than hidden until the next
+one.
 
 An object a run merely flagged looks completely ordinary. That is the point of leaving both
 verdicts to a curator: a source outage must not change what anyone sees.
@@ -462,8 +497,9 @@ the control that would not compete with its category filters.
 | DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute |
 | PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `category`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`). The last two are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge |
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) |
-| GET | `/api/experiences/review/queue` | What a run could not decide: missing objects awaiting a verdict, and fields where the source and a curator disagree. Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
+| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, and `conflicts` where the source and a curator disagree — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
 | POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
+| POST | `/api/experiences/:id/admission` | `{ decision: 'confirm' \| 'override', note? }` — answer a refusal. `confirm` keeps the row refused and hidden, `override` admits it again. Both pin `admission` in `curated_fields`, which is what takes the card out of the queue and what stops a later run reversing either answer; no `expected` block is needed, because a second curator collides with that pin and gets 409 |
 | POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted |
 | POST | `/api/experiences/new-badges/seen` | `{ experienceIds: number[] }` — records that these chips were shown to the caller. Rate-limited (`authenticatedLimiter`), unlike the curator routes beside it: this is an ordinary authenticated action and the only one here a client sends on its own initiative. Only the first impression per experience is kept; a stale id is ignored rather than failing the call, and the response names what was actually recorded |
 
@@ -591,11 +627,35 @@ consumer as of this slice.
 ## Review Queue
 
 `GET /api/experiences/review/queue` is the other half of change provenance: the run
-records what it could not decide, and this is where a curator decides it. Two kinds of
-question, kept apart because they are answered differently.
+records what it could not decide, and this is where a curator decides it. Three kinds of
+question, kept apart because they are answered differently — and one list that is not a
+question at all, carried here because nowhere else can carry it.
+
+**Refused rows** — the one kind of item here a run has *already* acted on, and the exception
+to the page's standing promise that nothing on it has changed what visitors see. None of the
+three answers below is true of one: the British Museum is open, so not `lost`; it was never a
+legitimate member of *Top Art Museums*, so not `former`; and the refusal was right, so not a
+false alarm. Its two answers are its own — the rule was right, or the rule was wrong — and the
+card carries `admission_reason` verbatim, because "refused" alone leaves a curator guessing
+while *"not a museum class — named by Column of Phocas (36 sitelinks)"* lets them confirm a
+rule or spot a bad one. A confirmed row is not deleted: the refused set is the list the
+archaeology category will be built from. Refused rows are excluded from the missing group, or
+the same row would appear twice under two contradictory framings.
+
+**Kept out** — the refusals a curator confirmed, returned as `keptOut` and collapsed at the
+foot of the page. They are answered, so they are not work; they are here because this is the
+only surface they appear on at all. Every other verdict is taken back where the object is —
+`former` never hides it, `lost` has a reader toggle that reveals it — but `hideRefusedSql`
+rides on no toggle, so a confirmed refusal answers 404 by id and shows up in no list. Without
+this list, one mis-click would put an object out of the product for good. `override` is
+therefore allowed on a confirmed row while `confirm` is not: the way back must not be
+closeable by an earlier click, and it is the safe direction, since it reveals rather than
+hides and two curators clicking it reach the same state. `confirm` keeps the curated-fields
+pin as its concurrency check, so a stale card cannot silently re-hide a row someone just put
+back.
 
 **Missing objects** — rows the machine flagged `missing_since` and nobody has judged yet
-(`source_membership = 'present'`). Three answers, and only two of them change anything:
+(`source_membership = 'present'`, and not refused). Three answers, and only two of them change anything:
 *former* (the source delisted it, it is still there), *lost* (it no longer exists), or a
 false alarm. All three clear `missing_since`, including the false alarm — leaving it set
 would put the object back in the queue after every run, which is how a queue stops being
