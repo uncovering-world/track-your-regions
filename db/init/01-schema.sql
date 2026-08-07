@@ -2108,7 +2108,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     curator_id INTEGER NOT NULL REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -2119,7 +2119,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- experience_sync_changes above.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden'));
 
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);
