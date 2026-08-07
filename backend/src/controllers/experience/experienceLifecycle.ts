@@ -35,6 +35,33 @@ export function hideLostSql(alias = 'e'): string {
 }
 
 /**
+ * Hides a row this category's own rule turned down (ADR-0024). `alias` is the
+ * `experiences` alias in the query.
+ *
+ * A separate fragment from `hideLostSql` rather than one combined predicate,
+ * because the two hide for unrelated reasons and are asked for separately: the
+ * "show what is gone" affordance wants lost rows back, the curation queue wants
+ * refused ones, and neither wants the other.
+ *
+ * It applies where `missing_since` deliberately does not, and the difference is
+ * the difference between silence and a sentence. A run that stops seeing an
+ * object may simply not have looked everywhere, so the note above leaves that
+ * to a curator. A refusal is our own rule naming the object and turning it
+ * down; re-running it gives the same answer, and a candidate that fails the
+ * same rule is never created at all. A row that predates the rule has to end up
+ * where a new one would, or the catalogue becomes the union of every rule the
+ * importer has ever had — which is how a collection nobody calls the "Egyptian
+ * Museum of Berlin" survived into a list of top art museums.
+ *
+ * Visits are untouched, as under ADR-0022. Someone who stood in the British
+ * Museum stood in it, and that record cannot depend on which of our categories
+ * currently claims the building.
+ */
+export function hideRefusedSql(alias = 'e'): string {
+  return `${alias}.admission <> 'refused'`;
+}
+
+/**
  * Hides a point the source has stopped offering. `alias` is the
  * `experience_locations` alias.
  *
