@@ -1644,7 +1644,7 @@ CREATE TABLE IF NOT EXISTS experiences (
     short_description TEXT,
 
     -- Classification
-    category VARCHAR(100),  -- 'cultural', 'natural', 'mixed'
+    category VARCHAR(100),
     tags JSONB,  -- ["architecture", "religious", "ancient"]
 
     -- Location (required point - every experience must have a location)
@@ -1680,6 +1680,10 @@ CREATE TABLE IF NOT EXISTS experiences (
 COMMENT ON TABLE experiences IS 'Location-based experiences from various categories (UNESCO sites, museums, etc.)';
 COMMENT ON COLUMN experiences.external_id IS 'ID from the category system (e.g., UNESCO id_no)';
 COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "fr": "...", ...}';
+COMMENT ON COLUMN experiences.category IS
+  'Venue type within the category, per docs/vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md: '
+  '''art''/''history''/''archaeology''… for museums, ''cultural''/''natural''/''mixed'' for '
+  'UNESCO, ''monument''/''sculpture'' for public art. Not one shared enum.';
 COMMENT ON COLUMN experiences.location IS 'Required point location for the experience';
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
@@ -1818,6 +1822,43 @@ CREATE INDEX IF NOT EXISTS idx_experiences_membership ON experiences(source_memb
 CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) WHERE existence <> 'extant';
 CREATE INDEX IF NOT EXISTS idx_experiences_first_seen ON experiences(first_seen_sync_log_id);
 
+-- =============================================================================
+-- Admission (ADR-0024)
+-- =============================================================================
+-- A third axis, independent of the two above, and the only one the machine
+-- decides. The two above are statements about the world — the source stopped
+-- listing it; it no longer exists — and neither is true of a venue our own rule
+-- turned down. Wikidata goes on listing the British Museum, which stands open;
+-- what changed is that *Top Art Museums* holds art museums and that one is an
+-- archaeological collection. Folding that into `former` would reproduce exactly
+-- the conflation ADR-0020 removed.
+--
+-- The machine may write this one because a refusal is not an observation: it is
+-- a deterministic rule applied to data we hold, naming the object before it
+-- says no, and re-running it gives the same answer. A curator who disagrees
+-- pins 'admission' in curated_fields, and every write below skips the row.
+
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS admission VARCHAR(10) NOT NULL DEFAULT 'admitted';
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS admission_reason TEXT;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experiences_admission_check') THEN
+        ALTER TABLE experiences ADD CONSTRAINT experiences_admission_check
+            CHECK (admission IN ('admitted', 'refused'));
+    END IF;
+END $$;
+
+COMMENT ON COLUMN experiences.admission IS
+    'admitted or refused. Whether this category accepts the row, independent of whether the source still lists it. '
+    'The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. '
+    'A refused row is hidden from every read that offers somewhere to go, and from none that records a visit.';
+COMMENT ON COLUMN experiences.admission_reason IS
+    'Why the category refused it, stated verbatim to the curator. On the row rather than in '
+    'experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
+
+CREATE INDEX IF NOT EXISTS idx_experiences_admission ON experiences(admission) WHERE admission <> 'admitted';
+
 -- Per-object record of what a run did. 'unchanged' is deliberately NOT stored;
 -- it is only counted, or every UNESCO run would write 1247 rows of noise.
 CREATE TABLE IF NOT EXISTS experience_sync_changes (
@@ -1936,10 +1977,10 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region ON experience_
 -- Stores notable items within experiences like museums (e.g., paintings,
 -- sculptures). Used for ranking museums by artwork fame.
 
--- Seed "Top Museums" as experience category
+-- Seed "Top Art Museums" as experience category
 INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority)
 VALUES (
-    'Top Museums',
+    'Top Art Museums',
     'World''s most notable museums ranked by artwork fame, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
     '{"userAgent": "TrackYourRegions/1.0"}'::jsonb,
@@ -1968,7 +2009,12 @@ CREATE TABLE IF NOT EXISTS treasures (
     id SERIAL PRIMARY KEY,
     external_id VARCHAR(255) NOT NULL UNIQUE, -- Wikidata QID (e.g., "Q12418") — globally unique
     name VARCHAR(500) NOT NULL,               -- "Mona Lisa"
-    treasure_type VARCHAR(50) NOT NULL,       -- 'painting', 'sculpture'
+    -- The Wikidata class the work was collected under, as a label: 'painting',
+    -- 'fresco', 'woodblock print', 'painting series'. Not an enum — the museum
+    -- pipeline clips to this width because a class label can be longer than it
+    -- (Q574422 is 68 characters), and a clipped display string is a cheaper
+    -- failure than an insert that takes the whole museum down with it.
+    treasure_type VARCHAR(50) NOT NULL,
     artist VARCHAR(500),                       -- "Leonardo da Vinci"
     year INTEGER,                              -- 1503
     image_url VARCHAR(1000),                   -- Wikimedia Commons URL (not downloaded)
@@ -2062,7 +2108,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     curator_id INTEGER NOT NULL REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -2073,7 +2119,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- experience_sync_changes above.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden'));
 
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);

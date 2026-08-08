@@ -61,6 +61,11 @@ export function missingDetectionSkipReason(input: MissingDetectionInput): string
 
 /**
  * Count the rows a run is expected to see again.
+ *
+ * A refused row is not among them (ADR-0024). The category has already turned
+ * it down, so it is neither something the source owes us nor something whose
+ * absence says anything; counting it would drag every category that refuses
+ * anything toward the 90 % floor that disables detection.
  */
 export async function countActiveExperiences(categoryId: number): Promise<number> {
   const result = await pool.query(
@@ -70,7 +75,8 @@ export async function countActiveExperiences(categoryId: number): Promise<number
        AND source_membership = 'present'
        AND missing_since IS NULL
        AND is_manual = FALSE
-       AND existence <> 'lost'`,
+       AND existence <> 'lost'
+       AND admission <> 'refused'`,
     [categoryId]
   );
   return Number(result.rows[0]?.count ?? 0);
@@ -98,6 +104,7 @@ export async function countSeenAmongActive(
        AND missing_since IS NULL
        AND is_manual = FALSE
        AND existence <> 'lost'
+       AND admission <> 'refused'
        AND external_id = ANY($2::text[])`,
     [categoryId, seenExternalIds]
   );
@@ -137,6 +144,7 @@ export async function flagMissingExperiences(
       AND missing_since IS NULL
       AND is_manual = FALSE
       AND existence <> 'lost'
+      AND admission <> 'refused'
       AND external_id <> ALL($2::text[])`;
 
   const result = dryRun

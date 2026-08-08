@@ -366,6 +366,16 @@ export const experienceStateBodySchema = z.object({
   message: 'Pass membership, existence, or both',
 });
 
+export const experienceAdmissionBodySchema = z.object({
+  /**
+   * `confirm` keeps the refusal, `override` undoes it. There is no `expected`
+   * block: both answers pin `admission` in `curated_fields`, and the pin is
+   * what a second curator's request collides with.
+   */
+  decision: z.enum(['confirm', 'override']),
+  note: z.string().max(1000).optional(),
+});
+
 export const newBadgesSeenBodySchema = z.object({
   // Bounded because a page is bounded: the region read caps at 5000 rows, and
   // an unbounded array here would be an invitation to send something else.

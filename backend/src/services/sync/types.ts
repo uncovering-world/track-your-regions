@@ -91,21 +91,6 @@ export interface ParsedLocation {
 // =============================================================================
 
 /**
- * Raw artwork record from Wikidata SPARQL query
- */
-export interface WikidataArtwork {
-  artworkQid: string;       // e.g., "Q12418" (Mona Lisa)
-  artworkLabel: string;
-  collectionQid: string;    // e.g., "Q19675" (Louvre)
-  collectionLabel: string;
-  imageUrl: string | null;  // Wikimedia Commons URL
-  creatorLabel: string | null;
-  year: number | null;
-  sitelinks: number;
-  artworkType: 'painting' | 'sculpture';
-}
-
-/**
  * Raw museum details from Wikidata SPARQL query
  */
 export interface WikidataMuseum {
@@ -126,7 +111,11 @@ export interface WikidataMuseum {
 export interface ProcessedContent {
   externalId: string;       // Wikidata QID
   name: string;
-  treasureType: 'painting' | 'sculpture';
+  /**
+   * The class the work was collected under, as a reader sees it: `painting`, `fresco`, `icon`.
+   * Open rather than an enum since the bounded class closure replaced the hand-picked type list.
+   */
+  treasureType: string;
   artist: string | null;
   year: number | null;
   imageUrl: string | null;
@@ -141,6 +130,11 @@ export interface CollectedMuseum {
   label: string;
   artworks: ProcessedContent[];
   details?: WikidataMuseum;
+  /**
+   * The most famous iconic work this museum holds — the reason it is in the catalogue at all,
+   * and what makes that reason nameable on the curation screen.
+   */
+  admittedFor?: { qid: string; label: string };
 }
 
 // =============================================================================

@@ -6,7 +6,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { offeredLocationSql } from './experienceLifecycle.js';
+import { hideRefusedSql, offeredLocationSql } from './experienceLifecycle.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -22,7 +22,12 @@ export async function getExperienceTreasures(req: Request, res: Response): Promi
       t.image_url, t.sitelinks_count, t.is_iconic
     FROM treasures t
     JOIN experience_treasures et ON t.id = et.treasure_id
+    JOIN experiences e ON e.id = et.experience_id
     WHERE et.experience_id = $1
+      -- The contents follow the container: a refused museum's works are not on
+      -- offer either, and answering with them would put back on screen exactly
+      -- what hiding the museum took off it (ADR-0024).
+      AND ${hideRefusedSql()}
     ORDER BY t.sitelinks_count DESC
   `, [experienceId]);
 

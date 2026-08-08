@@ -67,10 +67,16 @@ export function getSourceColor(categoryId: number): string {
   return SOURCE_PALETTE[categoryId % SOURCE_PALETTE.length];
 }
 
-/** Shorten category display names for compact UI (chips, badges) */
+/**
+ * Shorten category display names for compact UI (chips, badges).
+ *
+ * "Art Museums" rather than "Museums": archaeology, natural-history and
+ * military museums are a separate category, so the short form has to keep the
+ * word that tells them apart or two chips will read the same.
+ */
 export function shortSourceName(name: string): string {
   return name
     .replace('UNESCO World Heritage Sites', 'UNESCO')
-    .replace('Top Museums', 'Museums')
+    .replace('Top Art Museums', 'Art Museums')
     .replace('Public Art & Monuments', 'Art');
 }

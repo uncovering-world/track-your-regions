@@ -367,7 +367,13 @@ export interface ReviewQueueItem {
   missing_since: string | null;
   source_membership: 'present' | 'former';
   existence: 'extant' | 'lost';
-  kind: 'missing' | 'conflict';
+  kind: 'missing' | 'conflict' | 'refused' | 'kept-out';
+  /** Why this category turned the row down, in the rule's own words. Refused items only. */
+  admission_reason?: string | null;
+  /** When a curator answered. Kept-out items only. */
+  state_decided_at?: string | null;
+  /** What the curator wrote when they answered. Kept-out items only. */
+  state_note?: string | null;
   /** `acceptable` false means accepting releases the claim and the next run writes it. */
   proposed: Array<{ field: string; old: unknown; new: unknown; acceptable: boolean }> | null;
   /** The run whose proposal this card shows; sent back so a newer one cannot substitute itself. */
@@ -376,6 +382,14 @@ export interface ReviewQueueItem {
 
 export interface ReviewQueue {
   missing: ReviewQueueItem[];
+  /** Rows a rule turned down and nobody has answered yet. Already hidden from readers (ADR-0024). */
+  refused: ReviewQueueItem[];
+  /**
+   * Refusals a curator confirmed. Answered, not waiting — carried here because
+   * this is the only surface they appear on at all: every read hides them, so
+   * without this list a confirmed refusal could never be taken back.
+   */
+  keptOut: ReviewQueueItem[];
   conflicts: ReviewQueueItem[];
   limit: number;
   offset: number;
@@ -416,6 +430,24 @@ export async function setExperienceState(
   },
 ): Promise<{ experienceId: number; sourceMembership: 'present' | 'former'; existence: 'extant' | 'lost' }> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/state`, {
+    method: 'POST',
+    body: JSON.stringify(decision),
+  });
+}
+
+/**
+ * Answer a refusal: `confirm` keeps it, `override` puts the row back.
+ *
+ * No `expected` block, unlike `setExperienceState`. Both answers pin
+ * `admission` in the row's curated fields, so a second curator answering the
+ * same card collides with the pin and gets a 409 whichever way the first one
+ * answered.
+ */
+export async function setExperienceAdmission(
+  experienceId: number,
+  decision: { decision: 'confirm' | 'override'; note?: string },
+): Promise<{ experienceId: number; admission: 'admitted' | 'refused' }> {
+  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/admission`, {
     method: 'POST',
     body: JSON.stringify(decision),
   });

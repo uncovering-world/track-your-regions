@@ -11,6 +11,14 @@ import { recordSyncChanges, type ChangeRecord } from './changeRecorder.js';
 import { CHANGESET_LOST_MARKER } from './syncLogMarkers.js';
 import { finishPlacement, enterAssigningPhase, terminalStatus } from './placement.js';
 import {
+  admissionSweepSkipReason,
+  countAdmitted,
+  markNotAdmitted,
+  markRefused,
+  restoreAdmission,
+  type AdmissionRow,
+} from './admission.js';
+import {
   missingDetectionSkipReason,
   flagMissingExperiences,
   countActiveExperiences,
@@ -80,6 +88,13 @@ export interface SyncServiceConfig<T> {
    * objects for reasons that have nothing to do with them existing.
    */
   sourceCompleteness: SourceCompleteness;
+  /**
+   * Whether every run recomputes the whole membership from the whole pool,
+   * rather than fetching a published list. Only such a source may sweep: for it
+   * "absent from the admitted set" is a decision, and for the others it is the
+   * ambiguous silence ADR-0020 was written about (ADR-0024).
+   */
+  recomputesMembership?: boolean;
   /** Fetch and prepare items for processing. Can append to errorDetails for pre-processing errors. */
   fetchItems: (progress: SyncProgress, errorDetails: ErrorDetail[]) => Promise<FetchResult<T>>;
   /** Process a single item and describe what happened to it. Throw to count as error. */
@@ -218,18 +233,24 @@ function recordItemFailure<T>(
  * Fold entities the fetch rejected into the run — as their own count, not as
  * errors. A collection answering a museum query did not fail; it was never a
  * museum.
+ *
+ * `refused` are the rows the category already held under one of those ids, now
+ * marked (ADR-0024). Keying the changeset entry to the row is what lets a
+ * curator get from "the run turned this down" to the thing it turned down.
  */
 function recordFilteredEntities(
   filtered: FilteredEntity[],
   progress: SyncProgress,
   changes: ChangeRecord[],
+  refused: AdmissionRow[] = [],
 ): void {
+  const rowByExternalId = new Map(refused.map((row) => [row.externalId, row.id]));
   for (const entity of filtered) {
     progress.filtered++;
     if (progress.logId === null) continue;
     changes.push({
       syncLogId: progress.logId,
-      experienceId: null,
+      experienceId: rowByExternalId.get(entity.externalId) ?? null,
       externalId: entity.externalId,
       nameSnapshot: entity.name,
       changeType: 'filtered',
@@ -238,6 +259,64 @@ function recordFilteredEntities(
       error: entity.reason,
     });
   }
+}
+
+/**
+ * The reason recorded against a row the run simply did not admit, as opposed to
+ * one it named and turned down. There is no rule to quote, because no rule ran
+ * on it: nothing this run selected placed anything here.
+ */
+export const NOT_ADMITTED_REASON =
+  'this run selected nothing that belongs to it';
+
+/**
+ * Restore, then sweep — the second half of admission, for a source that
+ * recomputes its whole membership rather than publishing a list (ADR-0024).
+ *
+ * The two are order-independent: restore only touches rows that are refused and
+ * present in the admitted set, the sweep only rows that are admitted and absent
+ * from it. What matters is that both run after `markRefused`, so a row this run
+ * named as filtered *and* admitted ends the run admitted rather than hidden.
+ */
+async function applyAdmissionSweep<T>(
+  config: SyncServiceConfig<T>,
+  progress: SyncProgress,
+  admittedExternalIds: string[],
+  previousAdmittedCount: number,
+  changes: ChangeRecord[],
+): Promise<string | null> {
+  if (!config.recomputesMembership || progress.logId === null) return null;
+
+  const restored = await restoreAdmission(config.categoryId, admittedExternalIds, progress.dryRun);
+  for (const row of restored) {
+    console.log(`${config.logPrefix} Re-admitted ${row.name} (${row.externalId})`);
+  }
+
+  const skipReason = admissionSweepSkipReason({
+    errors: progress.errors,
+    cancelled: progress.cancel,
+    admittedCount: admittedExternalIds.length,
+    previousAdmittedCount,
+  });
+  if (skipReason !== null) return skipReason;
+
+  const swept = await markNotAdmitted(
+    config.categoryId, admittedExternalIds, NOT_ADMITTED_REASON, progress.dryRun,
+  );
+  for (const row of swept) {
+    progress.filtered++;
+    changes.push({
+      syncLogId: progress.logId,
+      experienceId: row.id,
+      externalId: row.externalId,
+      nameSnapshot: row.name,
+      changeType: 'filtered',
+      changedFields: null,
+      significance: null,
+      error: NOT_ADMITTED_REASON,
+    });
+  }
+  return null;
 }
 
 /**
@@ -417,12 +496,18 @@ export async function orchestrateSync<T>(
     console.log(`${logPrefix} Started sync (log ID: ${progress.logId})${dryRun ? ' [DRY RUN]' : ''}`);
 
     const previousActiveCount = await countActiveExperiences(categoryId);
+    // Read before the run writes, so the sweep's floor compares like with like.
+    const previousAdmittedCount = config.recomputesMembership ? await countAdmitted(categoryId) : 0;
 
     const { items, fetchedCount, filtered } = await config.fetchItems(progress, errorDetails);
     // fetchItems may append pre-processing errors before the loop counts errors itself
     progress.errors = errorDetails.length;
 
-    recordFilteredEntities(filtered ?? [], progress, changes);
+    // Unconditional, and before anything else touches admission: the run named
+    // these and a rule turned them down, which no coverage floor or error count
+    // can make less true (ADR-0024).
+    const refusedRows = await markRefused(categoryId, filtered ?? [], dryRun);
+    recordFilteredEntities(filtered ?? [], progress, changes, refusedRows);
 
     // Both sides of the coverage ratio are measured against the table as it
     // stood before this run touched it. Counting afterwards would fold in the
@@ -448,6 +533,13 @@ export async function orchestrateSync<T>(
     const detectionSkippedReason = await detectMissing(
       config, progress, previousActiveCount, seenCount, changes, seenExternalIds,
     );
+
+    const sweepSkippedReason = await applyAdmissionSweep(
+      config, progress, seenExternalIds, previousAdmittedCount, changes,
+    );
+    if (sweepSkippedReason !== null) {
+      console.log(`${logPrefix} Admission sweep skipped: ${sweepSkippedReason}`);
+    }
 
     changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
 

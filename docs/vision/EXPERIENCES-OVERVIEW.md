@@ -107,9 +107,9 @@ Three experience categories are implemented, each populated from external data s
 | Museums | ~100 | art | iconic | Wikidata SPARQL |
 | Public Art & Monuments | ~200 | sculpture, monument | — | Wikidata SPARQL |
 
-Category-level typing is already live (cultural/natural/mixed for UNESCO, monument/sculpture for landmarks). Museums are the first category to implement the Type & Significance model: the current sync fetches only art museums marked as iconic.
+Category-level typing is already live (cultural/natural/mixed for UNESCO, monument/sculpture for landmarks). Museums are the first category to implement the Type & Significance model: the current sync collects works above a fame threshold, then admits the museums holding them.
 
-**Numbers**: 466 multi-location experiences with 6,519 individual locations (mostly UNESCO serial nominations). ~1000 treasures (artworks) across 100 museums, currently used for significance computation — the global highlights list and region-scoped highlight browsing are planned.
+**Numbers**: 466 multi-location experiences with 6,519 individual locations (mostly UNESCO serial nominations). The same fame threshold decides both halves of the museum significance model: 326 works clear it, and the 100 museums holding at least one make up the category — the global highlights list and region-scoped highlight browsing are planned.
 
 **Browsing**: two complementary views:
 - **Map mode** — select a region, see experiences grouped by category below. Hover a marker for a preview card

@@ -154,6 +154,25 @@ describe('lifecycle visibility across the read paths', () => {
     });
   }
 
+  for (const { name, run } of paths) {
+    it(`hides what this category refused from ${name}`, async () => {
+      await run();
+
+      const all = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
+      expect(all).toContain("admission <> 'refused'");
+    });
+  }
+
+  it('keeps a refused row hidden from a caller who asked to see what is gone', async () => {
+    // The discriminating case for two predicates rather than one: `includeLost`
+    // drops the existence filter and must leave admission alone (ADR-0024).
+    await listExperiences({ query: { includeLost: 'true' } } as never, makeRes() as never);
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).not.toContain("existence <> 'lost'");
+    expect(sql).toContain("admission <> 'refused'");
+  });
+
   it('counts the same rows it lists, or the tree would disagree with itself', async () => {
     await getExperiencesByRegion(
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
@@ -188,8 +207,11 @@ describe('lifecycle visibility across the read paths', () => {
     // Answered by the count that was already running: a permanent "show lost"
     // control for a state almost no region has is worse than none
     const count = String(mockedQuery.mock.calls[1][0]);
-    expect(count).toContain("FILTER (WHERE e.existence = 'lost')");
+    expect(count).toContain("FILTER (WHERE e.existence = 'lost' AND e.admission <> 'refused')");
     expect(count).toContain('lost_hidden');
+    // A refused row is not something the reader is being offered a look at:
+    // revealing the lost would not bring it back (ADR-0024).
+    expect(count).toContain("FILTER (WHERE e.admission <> 'refused' AND e.existence <> 'lost')");
   });
 
   it('counts everything as shown once the caller asked for them', async () => {
@@ -197,8 +219,11 @@ describe('lifecycle visibility across the read paths', () => {
       { params: { regionId: '1' }, query: { includeLost: 'true' }, user: undefined } as never,
       makeRes() as never);
 
-    // The total has to follow the list, or the page would say 40 and show 41
-    expect(String(mockedQuery.mock.calls[1][0])).toContain('FILTER (WHERE TRUE)');
+    // The total has to follow the list, or the page would say 40 and show 41.
+    // `includeLost` drops the lost predicate and only that one: admission has no
+    // toggle, so it survives into a count the caller asked to widen.
+    expect(String(mockedQuery.mock.calls[1][0])).toContain(
+      "FILTER (WHERE e.admission <> 'refused')");
   });
 
   it('reports nothing hidden once it is showing them', async () => {
