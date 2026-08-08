@@ -22,7 +22,7 @@ import type {
 } from './types.js';
 import { isTerminalSyncStatus, runningSyncs } from './types.js';
 import { collectTier1Museums } from './museum/pipeline.js';
-import { fetchEntityDetails } from './museum/queries.js';
+import { fetchEntityDetails, isQid } from './museum/queries.js';
 import { ICONIC_SITELINKS, ICONIC_RELEASE } from './museum/tier1.js';
 import {
   sparqlQuery,
@@ -363,8 +363,15 @@ export async function fixMuseumImages(_triggeredBy: number | null): Promise<void
       return;
     }
 
-    // Re-fetch image URLs from Wikidata for these museums
-    const qids = museums.map((m: { external_id: string }) => m.external_id);
+    // Re-fetch image URLs from Wikidata for these museums.
+    //
+    // Filtered to real QIDs: a curator can create a museum by hand, and its key
+    // is `curator-<id>-<ts>`, which interpolates into the VALUES clause as
+    // `wd:curator-5-1754…` and makes Wikidata reject the whole batch — so one
+    // hand-made row would cost every other museum on the page its image.
+    const qids = museums
+      .map((m: { external_id: string }) => m.external_id)
+      .filter(isQid);
     progress.statusMessage = 'Fetching image URLs from Wikidata...';
     const images = await fetchMuseumImages(qids);
 
