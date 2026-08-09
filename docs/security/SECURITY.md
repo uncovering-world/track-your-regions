@@ -214,7 +214,35 @@ The Python service has a smaller surface than the Node backend but introduces ne
   through the documented pre-push tier was covered; the exposure was anything
   merged on CI-green alone. Recorded because "the check was green" is not
   evidence for that period.
-- **World view visibility does not reach the tile server.** `requireVisibleWorldView` and `getWorldViews` bound the REST API (see the security stack table above), but Martin (`martin/config.yaml`) auto-publishes every table and function — including a hidden world view's regions — on its own public port (`ports:` in `docker-compose.yml`) with no authentication, so its geometry stays fetchable by tile id regardless of `is_public`. The fix is the pattern already used for cv-python below: drop the `ports:` mapping so Martin is reachable only on the Docker compose network (`expose:` only), plus an authorizing proxy in the backend (e.g. `/api/tiles/:source/:z/:x/:y` against a per-source allowlist) that MapLibre reaches via `transformRequest`. Deferred to the tile-boundary follow-up branch, which will carry its own ADR.
+- **World view visibility does not reach the tile server.** `requireVisibleWorldView` and
+  `getWorldViews` bound the REST API (see the security stack table above). Martin no longer
+  auto-publishes tables — `martin/config.yaml` carries `auto_publish: { tables: false }`, which
+  removed 27 table sources including every column of `experiences` — but `functions: true` still
+  auto-discovers and publishes every compatible **function** in the database on its own public
+  port (`ports:` in `docker-compose.yml`) with no authentication, so a hidden world view's
+  geometry stays fetchable by tile id regardless of `is_public`. That set is discovered, not
+  enumerated: it currently resolves to the six `tile_*` functions in `martin/README.md` § Function
+  Sources, and a newly added compatible function would be published the same way, with no edit to
+  `martin/config.yaml`. A Martin-level `postgres.functions` allowlist could pin those six
+  explicitly, but building one now would be work the fix below throws away: once Martin sits
+  behind an authorizing proxy, the proxy decides access per request and a function-name allowlist
+  is redundant. The fix is the pattern already used for cv-python below: drop the `ports:` mapping
+  so Martin is reachable only on the Docker compose network (`expose:` only), plus an authorizing
+  proxy in the backend (e.g.
+  `/api/tiles/:source/:z/:x/:y` against a per-source allowlist) that MapLibre reaches via
+  `transformRequest`. Deferred to the tile-boundary follow-up branch, which will carry its own ADR.
+
+  The `auto_publish: { tables: false }` change above is not live merely because it is committed.
+  `docker-compose.yml` bind-mounts `martin/config.yaml` read-only and starts Martin with
+  `--config /config.yaml`, so a running container keeps its old catalog — the 27 retired table
+  sources keep being served — until it is recycled. On a deployed instance, restart Martin and
+  confirm with the same two checks used to verify this fix:
+
+  ```bash
+  docker compose restart martin
+  curl -s localhost:3000/catalog | jq '.tiles | keys'      # function sources only
+  curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/experiences.1/14/8186/5447   # 404
+  ```
 - **The `Vary`/`no-store` treatment is on the world view listing only.** The sibling `optionalAuth` reads answer an anonymous caller with *less data* rather than 401 — `listExperiences`, `/experiences/by-region/:regionId` (curator rejection visibility, **and `is_new`, which varies per user rather than per role**), `/experiences/:id` (its `regions[]` filtered by world view visibility), `/experiences/region-counts`, `/experiences/:id/locations`, `/experiences/by-region/:regionId/locations` — and none of them says so in its headers. Same exposure as the listing had: a shared cache in front of the API could serve a curator's or admin's view to an anonymous visitor. The `is_new` flag widens that from three role-shaped variants to one per reader, so a cache keyed on the URL alone would leak one reader's badge state to another — still only their chips, not their data, but it is the first response here whose variance is per identity. Bounded today only by there being no such cache deployed. Tracked in #460 along with the client-side half.
 - cv-python uses `print()` rather than structured `logging`. Acceptable at L2 (no auth/authz events to log), but follow up with a logging adapter once the audit/observability story expands.
 - Python dev tooling (`mypy`, `pytest`, `bandit`) lives in `cv-python/requirements-dev.txt` and requires a venv at `cv-python/.venv` for the local gates — not tools on PATH, which the npm scripts never reach: each one invokes `.venv/bin/<tool>` by path, and `scripts/require-py-tools.sh` now fails the gate outright when they are absent rather than letting it read as environment noise. CI covers both shapes across two jobs: the checks job builds the same venv with `npm run setup:py:dev`, and the Python test job installs into the runner's own interpreter with `actions/setup-python` + pip.
