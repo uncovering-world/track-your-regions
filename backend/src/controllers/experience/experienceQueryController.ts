@@ -127,11 +127,12 @@ export async function listExperiences(req: Request, res: Response): Promise<void
  * Get single experience by ID
  * GET /api/experiences/:id
  *
- * optionalAuth: the experience itself is public data and is never 404ed here,
- * but its region/world-view assignments are filtered by visibility below —
- * admins see every assignment, everyone else only assignments whose world
- * view is both active and public. The predicate matches `getWorldViews`
- * (worldViewCrud.ts) exactly so the two cannot drift apart.
+ * optionalAuth: the experience itself is public data and can never 404 on
+ * visibility here, but its region/world-view assignments are filtered by
+ * visibility below — admins see every assignment, everyone else only
+ * assignments whose world view is both active and public. The predicate
+ * matches `getWorldViews` (worldViewCrud.ts) exactly so the two cannot
+ * drift apart.
  */
 export async function getExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
   const id = parseInt(String(req.params.id));
@@ -164,11 +165,13 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
     FROM experiences e
     JOIN experience_categories s ON e.category_id = s.id
     WHERE e.id = $1
-      -- A by-id read is still a read that offers somewhere to go (ADR-0024), so
-      -- a refused row answers 404 rather than handing back a card for something
-      -- this category has turned down. An object judged lost is deliberately not
-      -- filtered here and never was: that gap predates this axis, and closing it
-      -- would be a separate decision about a different question.
+      -- A by-id read does not offer a *set* to go through, which is what the
+      -- lost predicate protects, but it does still offer somewhere to go
+      -- (ADR-0024) — so a refused row answers 404 rather than handing back a card
+      -- for something this category has turned down. An object judged lost is
+      -- deliberately not filtered here and never was: that gap predates this
+      -- axis, and closing it would be a separate decision about a different
+      -- question.
       AND ${hideRefusedSql()}
   `, [id]);
 

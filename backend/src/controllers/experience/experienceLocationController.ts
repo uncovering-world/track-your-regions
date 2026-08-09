@@ -552,7 +552,7 @@ export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: 
 
 /**
  * Get experience visited status with location details
- * GET /api/experiences/:id/visited-status
+ * GET /api/users/me/experiences/:id/visited-status
  */
 export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user?.id;
@@ -575,6 +575,13 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
       uvl.visited_at,
       uvl.notes
     FROM experience_locations el
+    -- The row this reader is asking about has to be one the catalogue offers.
+    -- Without this join no admission predicate reached here at all, so any
+    -- authenticated account got a refused museum's points back -- coordinates,
+    -- ordinals and a confident totalLocations -- at the very moment the two
+    -- reads under /:id, the row itself and its locations, both answered 404
+    -- (ADR-0024, #503). Admission and not existence, matching those two.
+    JOIN experiences e ON e.id = el.experience_id AND ${hideRefusedSql()}
     LEFT JOIN user_visited_locations uvl ON uvl.location_id = el.id AND uvl.user_id = $2
     WHERE el.experience_id = $1
       -- Offered points only, like every other read that shows a place.
@@ -589,6 +596,15 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
       -- disagreeing with the location_count every list shows. The visit row is
       -- untouched, which is what this slice protects; giving it a place on
       -- screen needs the curator verdict on whether the place is gone at all.
+      --
+      -- The admission join above is untouched by all of that, and follows the
+      -- same line from the other side. The rule: the catalogue's reads refuse a
+      -- kept-out row; a record of what a person did is theirs and stays. This
+      -- read is the catalogue describing an experience — a denominator and a
+      -- list of its points — so it closes. getVisitedExperiences, the person's
+      -- own list of what they visited, does not, and neither does the write
+      -- path: if a traveller stood in the British Museum, that is true whether
+      -- or not this category calls it an art museum.
       AND ${offeredLocationSql()}
     ORDER BY el.ordinal
   `, [experienceId, userId]);

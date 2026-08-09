@@ -32,10 +32,13 @@ export interface Experience {
   // Curator rejection fields (only present when curator has scope)
   is_rejected?: boolean;
   rejection_reason?: string | null;
-  // Lifecycle (ADR-0020, narrowed by ADR-0021). `lost` rows are filtered out
-  // of everything that offers somewhere to go, so `existence` is only ever
-  // 'lost' where they survive on purpose: a visit history, or a list the
-  // reader unfiltered.
+  // Lifecycle (ADR-0020, narrowed by ADR-0021). `lost` rows are filtered out of
+  // every read that offers a *set* to go through — the lists, the map, search
+  // and the counts — so `existence` is 'lost' only where they survive on
+  // purpose: a visit history, a list the reader unfiltered, or a by-id answer.
+  // `ExperienceDetail` extends this interface, so `fetchExperience` is the third
+  // case: a by-id read hides a row the category refused and leaves a `lost` one
+  // reachable (`getExperience`'s own comment says why).
   source_membership?: 'present' | 'former';
   existence?: 'extant' | 'lost';
   /** Set by a run, cleared by any verdict. Sent back when correcting one. */

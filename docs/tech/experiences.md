@@ -373,10 +373,18 @@ query, and the rule is deliberately asymmetric because the reasons are:
 `former` is a claim about the source's catalogue, not about the world: the place still stands
 and you can still go, so nothing about who sees it changes. `lost` is a claim about the world,
 and offering somewhere demolished as somewhere to go is the one thing this data can get
-actively wrong — so it leaves everything that offers a destination. It does **not** leave a
-visit: someone who saw Palmyra before 2015 saw it, and that record cannot depend on the thing
-still standing. Visit history is the one read left unfiltered, which is what lets the counts
-elsewhere shrink without erasing anything.
+actively wrong — so it leaves every read that offers a *set* to go through: the lists, the map,
+search and the counts. It does **not** leave a visit: someone who saw Palmyra before 2015 saw
+it, and that record cannot depend on the thing still standing. Visit history is the one read
+left unfiltered, which is what lets the counts elsewhere shrink without erasing anything.
+
+**A by-id read is the documented exception, and it is `lost` only.** `getExperience` and its
+siblings hide a row the category refused but leave a `lost` one reachable, so an object judged
+lost still answers at its own address rather than 404ing there. That gap predates the admission
+axis and closing it is a separate decision about a different question — recorded here because
+the code says so in three comments and this file is where a reader looks first. (The `Lost` chip
+is a list-surface control, rendered by `ExperienceListItem` and Discover's `ExperienceCard`, so
+the by-id answer carries the row without carrying the mark.)
 
 A third axis, `admission` ([ADR-0024](../decisions/0024-a-category-may-refuse-what-the-source-still-lists.md)),
 answers a different question again: not whether the source still lists the object, and not
@@ -387,6 +395,24 @@ say it without asserting something false. `hideRefusedSql()` is a separate fragm
 `hideLostSql()` for the same reason they are separate columns, and because the two are toggled
 independently: `includeLost` is a reader asking to see what is gone, and it must leave
 admission alone.
+
+Its row in the table above reads "Visit history: shown" beside "Card: not reachable", and those two
+cells are not a contradiction — reading them as one is what let another by-id read stay open for a
+whole slice. The line they fall either side of: **the catalogue's reads refuse a kept-out row; a
+record of what a person did is theirs and stays.** A read that describes an experience — its detail,
+where it is, a reader's denominator of points visited there — is the catalogue talking, so it
+refuses a kept-out row. A read that lists what *this person* did (`getVisitedExperiences`) is not,
+so it does not filter, and neither does the write path: if a traveller stood in the British Museum,
+that is true whether or not this category calls it an art museum.
+
+**The shape of the refusal follows what the answer is**, which is why the rule is not "it 404s":
+404 where the answer is the row, and an empty list where the answer is other objects that merely
+live in it. So the reads whose answer *is* the row 404 together — `getExperience` and
+`getExperienceLocations` under `/api/experiences/:id`, and `getExperienceVisitedStatus` under
+`/api/users/me/experiences/:id`, which reached `experience_locations` without joining `experiences`
+at all until #503 closed it — while `/:id/treasures` answers 200 with an empty list, because its
+subject is the works and the same predicate withholds them (see its row in § API Endpoints). Both
+are the same refusal.
 
 Unlike the other two, the machine writes this one. A refusal is not an ambiguous observation:
 the run matched the object in the source's own answer and applied a deterministic rule to it,
@@ -423,9 +449,15 @@ alternatives (unbracketed, `OR` binds looser than the lifecycle `AND` and every 
 matching by trigram comes straight back), and the by-region **count** has to carry the same
 rule as the list or the page says one number and shows another. `listCategories` carries both
 predicates in its per-category `experience_count` for the same reason — without them it
-reported 128 *Top Art Museums* where the catalogue offers 101, the 27 rows the category's own rule
-turned down (#503). The rule that makes this checkable holds everywhere a count appears:
-**every count carries the same predicate as the list it describes.**
+reported 128 experiences in *Top Art Museums* where the catalogue offers 101 — the 27 rows that
+category's own rule turned down (#503). Both, though the `hideLostSql()` half changes nothing
+today: measured 2026-08-09, all three categories hold zero `lost` rows, so the whole 128→101 gap
+is refusals. It is still the half to have, because the vision promises that what no longer exists
+leaves "the lists, the map and the counts" (`docs/vision/vision.md`, *Places that changed*), and
+without the predicate that promise would only be accidentally true. The rule that makes this
+checkable holds everywhere a count appears: **no count advertises more than its list shows by
+default, and a count that labels a category rather than a page does not move when a caller widens
+the list.**
 
 `?includeLost=true` puts them back — named in the **query schemas** as well as read in the
 controllers, because `validate()` replaces `req.query` with the parsed object and Zod strips
@@ -461,14 +493,14 @@ the control that would not compete with its category filters.
 | Method | Endpoint | Notes |
 |--------|----------|-------|
 | GET | `/api/experiences` | Filters: `categoryId`, `category`, `country`, `regionId`, `search`, `bbox`, `includeLost`, `limit`, `offset` |
-| GET | `/api/experiences/:id` | Full detail |
+| GET | `/api/experiences/:id` | Full detail. 404s for a refused row — the class rule, not this row's exception: every read that describes an experience refuses one the category kept out, and every by-id read whose answer *is* the row answers 404 (see § Lifecycle filtering, which also says what shape the refusal takes where the answer is not the row) |
 | GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `includeLost`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility. Rows come back `ORDER BY e.name`, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id) FILTER (…)` over the same predicate the list uses — which includes the lifecycle rule, so it follows `includeLost` — and not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience. `lostHidden` reports how many the region holds that no longer exist and are **not** being shown — zero once `includeLost` is on, since nothing is hidden then |
 | GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren` and `includeLost`, the latter because this batch has to follow the list: a row the list shows but this omits arrives with no markers and a confident `0/N in region`. Eliminates N+1 per-experience location fetches |
 | GET | `/api/experiences/search` | `q`, `limit` |
 | GET | `/api/experiences/categories` | Active categories ordered by priority. `experience_count` excludes `lost` and `admission = 'refused'` rows, unconditionally — it labels the category, not a page, and no caller passes `includeLost` here |
 | GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId` |
 | GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region`. 404s for a refused row, like `/:id` |
-| GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts) |
+| GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts). Carries `hideRefusedSql()` on the container, so a refused museum's works come back empty: the contents follow the container, and answering with them would put back on screen exactly what hiding the museum took off it |
 
 ### User visits (`requireAuth`)
 
@@ -488,6 +520,14 @@ the control that would not compete with its category filters.
 | GET | `/api/users/me/viewed-treasures/ids` |
 | POST | `/api/users/me/viewed-treasures/:treasureId` |
 | DELETE | `/api/users/me/viewed-treasures/:treasureId` |
+
+One of these filters `admission` and the rest do not, and the split is the line in § Lifecycle
+filtering rather than an oversight. `visited-status` describes an experience to a reader — its
+points and how many of them they have reached — so it 404s for a refused row, like every by-id read
+whose answer is the row. It is `requireAuth` only, no curator role and no scope, so before #503 any
+authenticated account could read a refused row's points there. Everything else in this table is the
+person's own record — what they visited, marking and unmarking it — and stays unfiltered whatever a
+category later decides about the building.
 
 ### Curator (`requireAuth + requireCurator`)
 

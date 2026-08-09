@@ -8,9 +8,12 @@
  *   Nothing else about it changes: it stays in lists and on the map, because
  *   you can still go. The chip exists so a curious visitor is not left
  *   wondering why it is missing from the official catalogue.
- * - **Lost** — it no longer exists. These are filtered out of everything that
- *   offers somewhere to go, so this chip is reached only where they survive on
- *   purpose: a visit history, or a list the reader deliberately unfiltered.
+ * - **Lost** — it no longer exists. These are filtered out of every read that
+ *   offers a *set* to go through — the lists, the map, search and the counts —
+ *   so this chip is reached only where they survive on purpose: a visit history,
+ *   or a list the reader deliberately unfiltered. A by-id read leaves a `lost`
+ *   row reachable too, but no detail surface renders this chip, so that third
+ *   case does not reach it.
  *
  * An object a sync run merely flagged as absent renders nothing at all. That is
  * deliberate — a source outage must not change what anyone sees.
