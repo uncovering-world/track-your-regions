@@ -92,28 +92,36 @@ npm run martin               # Standalone: uses my_test_db automatically
 
 ## Tile Endpoints
 
-### Table Sources (auto-discovered)
+### Table Sources (auto-publish is off)
 
-`config.yaml` sets `auto_publish: tables: true`, so Martin publishes one source
-per geometry column it finds — including every LOD rung on `regions` and
-`administrative_divisions`. The set therefore changes whenever a geometry column
-is added, and enumerating it here would go stale on the next one; ask the running
-server instead:
+`config.yaml` sets `auto_publish: { tables: false, functions: true }`, so Martin
+publishes no source for any table. It used to publish one per geometry column
+it found — including every LOD rung on `regions` and `administrative_divisions`,
+27 sources in total — until #504 turned table auto-publication off.
+
+**The app never used them.** Every tile the frontend requests comes from a
+function source below, because the rung a tile needs depends on its zoom and a
+table source cannot choose — that observation is exactly why table
+auto-publication was turned off: those 27 sources were serving every column of
+`experiences` (including `created_by` and `status`), unauthenticated, on a
+public port, to nobody.
+
+Check what Martin actually serves against the running server rather than trust
+this doc — `functions: true` auto-discovers every compatible function in the
+database, so the catalog isn't a fixed list. It currently holds the six
+function sources below; a new compatible function added to the schema is
+published the same way, with no edit to `config.yaml`:
 
 ```bash
 curl -s localhost:3000/catalog | jq '.tiles | keys'
 ```
-
-**The app uses none of them.** Every tile the frontend requests comes from a
-function source below, because the rung a tile needs depends on its zoom and a
-table source cannot choose. They are published because auto-discovery is on, and
-are useful for ad-hoc inspection.
 
 ### Function Sources (dynamic queries)
 
 | Endpoint | Parameters | Description |
 |----------|------------|-------------|
 | `/tile_world_view_root_regions/{z}/{x}/{y}` | `world_view_id` | Root regions for a world view |
+| `/tile_world_view_all_leaf_regions/{z}/{x}/{y}` | `world_view_id` | All leaf regions (no subregions) for a world view |
 | `/tile_region_subregions/{z}/{x}/{y}` | `parent_id` | Subregions of a parent |
 | `/tile_gadm_root_divisions/{z}/{x}/{y}` | - | Root GADM divisions |
 | `/tile_gadm_subdivisions/{z}/{x}/{y}` | `parent_id` | GADM subdivisions of a parent |

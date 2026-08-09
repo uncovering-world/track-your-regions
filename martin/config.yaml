@@ -1,8 +1,9 @@
 # Martin Vector Tile Server Configuration
 # https://maplibre.org/martin/
 #
-# This configuration auto-discovers tables and functions from PostGIS.
-# Functions use the `query_params json` pattern for parameters.
+# This configuration auto-discovers functions from PostGIS; table
+# auto-publish is off (see auto_publish below). Functions use the
+# `query_params json` pattern for parameters.
 #
 # Example tile requests:
 #   /tile_gadm_root_divisions/3/4/2
@@ -17,9 +18,25 @@ postgres:
   # Connection string from environment variable
   connection_string: ${DATABASE_URL}
 
-  # Auto-discover tables and functions
+  # `functions: true` auto-discovers every compatible function in the
+  # database and publishes a tile source for it — this is not a curated
+  # list. Today that resolves to the six `tile_*` functions the map draws
+  # from (see martin/README.md § Function Sources for the current list, and
+  # db/init/01-schema.sql for their definitions); a new compatible function
+  # added later is published the same way, with no edit to this config.
+  #
+  # Table auto-publication served 27 sources nobody reads — every column of
+  # `experiences` (including `created_by` and `status`), `experience_locations`,
+  # every geometry column of `regions`, `region_members` and
+  # `administrative_divisions` — unauthenticated on a public port. The frontend
+  # has only ever used those functions (`useTileUrls.ts` is the sole
+  # `MARTIN_URL` consumer), so nothing is lost by not serving tables.
+  #
+  # This does not make the tile server authorized: the functions remain public,
+  # so a hidden world view's regions are still fetchable by id. See
+  # docs/security/SECURITY.md § Known Gaps.
   auto_publish:
-    tables: true
+    tables: false
     functions: true
 
   # Default pool settings

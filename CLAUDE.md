@@ -58,7 +58,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 - Map: MapLibre GL via react-map-gl; `RegionMapVT.tsx` renders Martin vector tiles; `ExperienceMarkers.tsx` uses declarative `<Source>`/`<Layer>` over one unclustered GeoJSON source — a density heatmap below `HEATMAP_MAX_ZOOM`, individual markers above it. Discover Mode still clusters, on its own map instance
 
 ### Martin Vector Tiles
-- Config: `martin/config.yaml` (auto-discovers PostGIS tables/functions)
+- Config: `martin/config.yaml` (auto-discovers PostGIS functions; table auto-publish is off)
 - Tile endpoints: `tile_gadm_root_divisions`, `tile_world_view_root_regions`, `tile_region_subregions`
 - Frontend: `MARTIN_URL` from `VITE_MARTIN_URL` env var, source layers: `regions`, `divisions`, `islands`
 

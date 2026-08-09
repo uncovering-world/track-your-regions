@@ -108,7 +108,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 
 ### Martin Vector Tiles
 
-- Config: `martin/config.yaml` (auto-discovers PostGIS tables/functions)
+- Config: `martin/config.yaml` (auto-discovers PostGIS functions; table auto-publish is off)
 - Tile endpoints: `tile_gadm_root_divisions`, `tile_world_view_root_regions`, `tile_region_subregions`
 - Frontend config: `MARTIN_URL` from `VITE_MARTIN_URL`; source layers `regions`, `divisions`, `islands`
 
