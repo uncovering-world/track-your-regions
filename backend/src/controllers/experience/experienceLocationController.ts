@@ -186,8 +186,17 @@ export async function getExperienceLocations(req: Request, res: Response): Promi
   const experienceId = parseInt(String(req.params.id));
   const regionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
 
-  // Verify experience exists
-  const expResult = await pool.query('SELECT id, name FROM experiences WHERE id = $1', [experienceId]);
+  // Verify the experience exists *and* is one this catalogue still offers.
+  //
+  // Without the second half this read answered 200 with a refused museum's name
+  // and coordinates while `GET /:id` answered 404 for the same row — measured
+  // live on the British Museum (id 6205). `existence` is deliberately not
+  // filtered, matching `getExperience`: that gap predates the admission axis and
+  // closing it is a separate decision about a different question.
+  const expResult = await pool.query(
+    `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${hideRefusedSql()}`,
+    [experienceId],
+  );
   if (expResult.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
     return;
