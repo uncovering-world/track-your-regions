@@ -11,6 +11,7 @@ import {
   listExperiences,
   searchExperiences,
   getExperienceRegionCounts,
+  listCategories,
 } from './experienceQueryController.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -123,33 +124,78 @@ describe('lifecycle visibility across the read paths', () => {
     mockedQuery.mockResolvedValue({ rows: [{ count: '0', total: 0 }] });
   });
 
-  const paths: Array<{ name: string; run: () => Promise<unknown> }> = [
+  const paths: Array<{ name: string; run: () => Promise<unknown>; filtersLost: boolean }> = [
     {
       name: 'a region list',
+      filtersLost: true,
       run: () => getExperiencesByRegion(
         { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never),
     },
     {
       name: 'the flat list',
+      filtersLost: true,
       run: () => listExperiences({ query: {} } as never, makeRes() as never),
     },
     {
       name: 'search',
+      filtersLost: true,
       run: () => searchExperiences({ query: { q: 'abbey' } } as never, makeRes() as never),
     },
     {
       name: 'the region counts',
+      filtersLost: true,
       run: () => getExperienceRegionCounts({ query: { worldViewId: '1' } } as never, makeRes() as never),
+    },
+    {
+      // The count that reported 128 art museums where the catalogue offers 101 —
+      // the 27 rows the category's own rule turned down (#503). It reads nothing
+      // off the request, because the number labels a category rather than a
+      // page: there is no `includeLost` here to widen it.
+      name: 'the category counts',
+      filtersLost: true,
+      run: () => listCategories({} as never, makeRes() as never),
+    },
+    {
+      // The by-id read the other five are siblings of (ADR-0024) — the one this
+      // whole rule started from, and the one this array had left unpinned.
+      // `filtersLost: false` matches the handler's own comment: `lost` predates
+      // the admission axis, and closing it here is a separate decision about a
+      // different question.
+      name: 'a single experience by id',
+      filtersLost: false,
+      run: () => getExperience({ params: { id: '281' } } as never, makeRes() as never),
     },
   ];
 
-  for (const { name, run } of paths) {
-    it(`hides what no longer exists from ${name}`, async () => {
+  for (const { name, run, filtersLost } of paths) {
+    // A skip would prove nothing for the one path that doesn't filter `lost`:
+    // it would pass with no assertion behind it. Assert the negative instead,
+    // under a name that says which case this is.
+    const label = filtersLost
+      ? `hides what no longer exists from ${name}`
+      : `leaves what no longer exists reachable from ${name}, which is today's choice and not a permanent rule`;
+
+    it(label, async () => {
       await run();
 
       const all = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
-      expect(all).toContain("existence <> 'lost'");
-      // `former` is a claim about the source's catalogue, not about the world
+      // Alias-anchored: every path above reads `experiences` as `e`, and an
+      // unanchored match would pass for a predicate on the wrong table. What it
+      // still cannot see is *where* the predicate landed — that a `listCategories`
+      // filter sits inside the `experience_count` subquery and not in the outer
+      // WHERE is Postgres's answer, not a mock's.
+      if (filtersLost) {
+        expect(all).toMatch(/e\.existence <> 'lost'/);
+      } else {
+        // Pinned so this path stays in step with the sibling by-id reads in
+        // experienceLocationController.test.ts, not because leaving `lost`
+        // reachable here is settled — the handler's own comment flags closing
+        // it as a separate decision about a different question.
+        expect(all).not.toMatch(/e\.existence <> 'lost'/);
+      }
+      // `former` is a claim about the source's catalogue, not about the world.
+      // Left unanchored on purpose: a negative is strongest when it names no
+      // alias, so this fails whichever table grew the predicate.
       expect(all).not.toContain("source_membership <> 'former'");
     });
   }
@@ -159,7 +205,7 @@ describe('lifecycle visibility across the read paths', () => {
       await run();
 
       const all = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
-      expect(all).toContain("admission <> 'refused'");
+      expect(all).toMatch(/e\.admission <> 'refused'/);
     });
   }
 

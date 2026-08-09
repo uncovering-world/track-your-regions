@@ -285,7 +285,16 @@ export async function listCategories(_req: Request, res: Response): Promise<void
       s.last_sync_at,
       s.last_sync_status,
       s.display_priority,
-      (SELECT COUNT(*) FROM experiences WHERE category_id = s.id) as experience_count
+      -- The same predicates every list under this heading carries. Without them
+      -- the API reported 128 art museums where the catalogue offers 101 — the
+      -- 27 rows this category's own rule turned down (#503).
+      --
+      -- Unconditional rather than includeLost-aware: this number labels a
+      -- category, not a page, and no caller passes that parameter here.
+      (SELECT COUNT(*) FROM experiences e
+        WHERE e.category_id = s.id
+          AND ${hideLostSql()}
+          AND ${hideRefusedSql()}) as experience_count
     FROM experience_categories s
     WHERE s.is_active = true
     ORDER BY s.display_priority, s.name

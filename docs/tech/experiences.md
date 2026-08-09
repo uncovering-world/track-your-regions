@@ -421,7 +421,11 @@ into a dozen queries built by string concatenation and the one that forgets it i
 lies. Two traps it has already caught: `searchExperiences` needs brackets round its two name
 alternatives (unbracketed, `OR` binds looser than the lifecycle `AND` and every lost object
 matching by trigram comes straight back), and the by-region **count** has to carry the same
-rule as the list or the page says one number and shows another.
+rule as the list or the page says one number and shows another. `listCategories` carries both
+predicates in its per-category `experience_count` for the same reason — without them it
+reported 128 *Top Art Museums* where the catalogue offers 101, the 27 rows the category's own rule
+turned down (#503). The rule that makes this checkable holds everywhere a count appears:
+**every count carries the same predicate as the list it describes.**
 
 `?includeLost=true` puts them back — named in the **query schemas** as well as read in the
 controllers, because `validate()` replaces `req.query` with the parsed object and Zod strips
@@ -461,7 +465,7 @@ the control that would not compete with its category filters.
 | GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `includeLost`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility. Rows come back `ORDER BY e.name`, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id) FILTER (…)` over the same predicate the list uses — which includes the lifecycle rule, so it follows `includeLost` — and not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience. `lostHidden` reports how many the region holds that no longer exist and are **not** being shown — zero once `includeLost` is on, since nothing is hidden then |
 | GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren` and `includeLost`, the latter because this batch has to follow the list: a row the list shows but this omits arrives with no markers and a confident `0/N in region`. Eliminates N+1 per-experience location fetches |
 | GET | `/api/experiences/search` | `q`, `limit` |
-| GET | `/api/experiences/categories` | Active categories ordered by priority |
+| GET | `/api/experiences/categories` | Active categories ordered by priority. `experience_count` excludes `lost` and `admission = 'refused'` rows, unconditionally — it labels the category, not a page, and no caller passes `includeLost` here |
 | GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId` |
 | GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region`. 404s for a refused row, like `/:id` |
 | GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts) |
