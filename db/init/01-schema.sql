@@ -1876,7 +1876,7 @@ CREATE TABLE IF NOT EXISTS experience_sync_changes (
 
 COMMENT ON TABLE experience_sync_changes IS 'Per-object provenance for a sync run (issue #480). See ADR-0020.';
 COMMENT ON COLUMN experience_sync_changes.name_snapshot IS 'The name at the time of the run, so the report stays readable if the row is later deleted.';
-COMMENT ON COLUMN experience_sync_changes.changed_fields IS 'Array of {field, old, new, significance, curatedConflict}. Holds the value the source proposed even when curated_fields rejected it, so a curator can accept it later.';
+COMMENT ON COLUMN experience_sync_changes.changed_fields IS 'Array of {field, old, new, significance, curatedConflict}. Each entry holds the value the source proposed for that field even when curated_fields rejected it, so a curator can accept it later.';
 
 -- CREATE TABLE IF NOT EXISTS is a no-op where the table already exists, so a
 -- widened CHECK has to be applied on its own or re-applying this file would

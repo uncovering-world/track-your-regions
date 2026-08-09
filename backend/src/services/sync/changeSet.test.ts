@@ -7,7 +7,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeChangeSet, type ExperienceSnapshot } from './changeSet.js';
+import {
+  computeChangeSet, CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, type ExperienceSnapshot,
+} from './changeSet.js';
 
 function snapshot(overrides: Partial<ExperienceSnapshot> = {}): ExperienceSnapshot {
   return {
@@ -119,6 +121,14 @@ describe('computeChangeSet', () => {
 
     expect(result.significance).toBe('minor');
     expect(result.changedFields.map(f => f.field)).toEqual(['metadata']);
+
+    // The catch-all's payload is stripped of the major keys too, not only a
+    // claimed one: `inDanger`/`dateInscribed` get their own entry whenever
+    // they change, so carrying them here as well -- unchanged, in this
+    // fixture -- would put the same value in two rows, one of them
+    // mislabelled as something this run "applied" alongside areaHectares.
+    expect(result.changedFields[0].old).toEqual({ areaHectares: 1476300 });
+    expect(result.changedFields[0].new).toEqual({ areaHectares: 1476999 });
   });
 
   it('records a curated field as a conflict and not as an applied change', () => {
@@ -166,5 +176,77 @@ describe('computeChangeSet', () => {
     const result = computeChangeSet(snapshot(), incoming, []);
 
     expect(result.significance).toBe('major');
+  });
+});
+
+describe('a metadata key claimed per key', () => {
+  const before = snapshot({ metadata: { website: 'https://curator.example', artworkCount: 5 } });
+  const incoming = snapshot({ metadata: { website: 'https://source.example', artworkCount: 9 } });
+
+  it('reports the claimed key as a conflict, not as an applied change', () => {
+    const result = computeChangeSet(before, incoming, ['metadata.website']);
+
+    const conflictFields = result.curatedConflicts.map(c => c.field);
+    expect(conflictFields).toContain('metadata.website');
+    expect(result.changedFields.map(c => c.field)).not.toContain('metadata.website');
+  });
+
+  it('still reports the unclaimed keys as applied, because the run applied them', () => {
+    const result = computeChangeSet(before, incoming, ['metadata.website']);
+
+    // Exactly one applied field, named 'metadata', and exactly one conflict —
+    // not just "changedFields contains 'metadata' somewhere", which would
+    // hold even if the claimed key leaked into the same catch-all entry.
+    expect(result.changedFields.map(c => c.field)).toEqual(['metadata']);
+    expect(result.curatedConflicts).toHaveLength(1);
+    expect(result.changeType).toBe('updated');
+
+    // The applied row's own payload must not carry the value that was not
+    // applied — only what this run actually wrote lives in the row labelled
+    // applied (#488, one layer in).
+    const applied = result.changedFields[0];
+    expect(applied.old).not.toHaveProperty('website');
+    expect(applied.new).not.toHaveProperty('website');
+    expect(applied.new).toMatchObject({ artworkCount: 9 });
+  });
+
+  it('keeps a whole-column claim as a conflict, with nothing else applied', () => {
+    const result = computeChangeSet(before, incoming, ['metadata']);
+
+    expect(result.curatedConflicts.map(c => c.field)).toContain('metadata');
+    expect(result.changedFields).toHaveLength(0);
+    expect(result.changeType).toBe('unchanged');
+  });
+
+  it('lets an orphaned claim fall through as applied, because the guard would too', () => {
+    // The claim survives in curated_fields, but the key itself is gone from
+    // the stored row — e.g. wiped by a run that predates this guard. The SQL
+    // guard only re-applies a claimed key that `experiences.metadata ?
+    // claimed.k`, so a missing key gets no protection and the source's value
+    // is written; the report must agree, not raise a conflict over a write
+    // that already happened.
+    const orphanedBefore = snapshot({ metadata: { artworkCount: 5 } });
+    const result = computeChangeSet(orphanedBefore, incoming, ['metadata.website']);
+
+    expect(result.curatedConflicts).toHaveLength(0);
+    expect(result.changedFields.map(c => c.field)).toEqual(['metadata']);
+    expect(result.changedFields[0].new).toMatchObject({ website: 'https://source.example' });
+  });
+});
+
+describe('CURATED_KEY_BY_FIELD', () => {
+  it('keeps every dotted key spelled with the shared claim prefix', () => {
+    const dottedKeys = Object.keys(CURATED_KEY_BY_FIELD).filter(key => key.includes('.'));
+
+    // Not a computed key -- the map stays a readable literal on purpose --
+    // but every dotted entry still has to start with the same prefix the
+    // major-key loop composes a diff's field name from. If the prefix ever
+    // changed here and not there, a diff for `metadata.inDanger` would stop
+    // matching this map's key of the same literal spelling, the `?? diff.field`
+    // fallback would take over, and a whole-column claim on 'metadata' would
+    // stop protecting the major keys -- with no behavioural test catching it,
+    // since none combines a whole-column claim with a major-key change.
+    expect(dottedKeys.length).toBeGreaterThan(0);
+    dottedKeys.forEach(key => expect(key.startsWith(METADATA_CLAIM_PREFIX)).toBe(true));
   });
 });

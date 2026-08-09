@@ -126,9 +126,9 @@ disagree, and `returned`, where an object flagged `missing_since` is listed agai
 unmodified, after a transient source gap, which is precisely when a field-change requirement
 would have hidden it.
 
-`changed_fields` holds the value the source proposed **even when `curated_fields` rejected
-it**, marked `curatedConflict`. That is what makes a curator's later "accept source" possible;
-without it the proposed value exists nowhere.
+`changed_fields` holds the value the source proposed for a field **even when `curated_fields`
+rejected it**, marked `curatedConflict`. That is what makes a curator's later "accept source"
+possible; without it the proposed value exists nowhere.
 
 **`total_updated` changed meaning.** It used to count every row that passed through
 `ON CONFLICT DO UPDATE`, identical or not. Since migration 009 it counts rows that actually
@@ -811,6 +811,38 @@ the upsert guarded metadata only with `curated_fields ? 'metadata'`, which neith
 satisfies. That guard now also honours a per-key claim on each of them directly (#488),
 re-applying just that key over the source's value. `CURATED_KEY_BY_FIELD` still does
 not carry either key, though, so that fallback is still what represents them here.)
+
+`computeChangeSet` now carries that same fallback (#488) for the metadata keys
+`CURATED_KEY_BY_FIELD` does not carry: such a key, claimed individually and still present on
+the stored row, is diffed on its own, under `metadata.<key>`, and checked against that
+identical name, so a curator's claim on it reports as its own conflict rather than
+disappearing inside the catch-all `metadata` diff. (A claim whose key the row no longer
+carries gets none of that: the guard would not re-apply it either, so it falls through and is
+diffed as part of the catch-all instead, exactly like a key nobody claimed.)
+Before this, `metadataChanges` never produced a diff a per-key claim could match against — the
+claimed key and whatever else changed were one `metadata` diff, which `CURATED_KEY_BY_FIELD`
+protects only as a whole-column claim — so a run that correctly kept the curator's value (the
+per-key guard above) still filed `changed_fields: metadata, curatedConflict: false`: a write
+that never happened, reported as one that did, with no conflict for a queue card to raise. The
+keys nobody claimed individually — other than `inDanger`/`dateInscribed`, which the catch-all
+never carries, claimed or not — still fall into the catch-all and still report as applied,
+because the run did apply them; a claim on `metadata` itself is unaffected and still protects
+the whole column.
+
+A claim on a key the map *does* carry — `metadata.inDanger` or `metadata.dateInscribed` — is
+not this fallback's case, and would still be reported as applied, not as a conflict:
+`CURATED_KEY_BY_FIELD` already has an entry for it, so the `?? diff.field` fallback never
+fires, and the diff is checked against a whole-column claim instead of its own name. The
+upsert's SQL guard does not draw that distinction — it re-applies any claimed `metadata.%` key
+still present in the stored row the same way, major or not — so a per-key claim on one of
+these two, provided the row still carries that key, would be honoured in storage and still
+misreported here, #488's exact shape, unfixed for those two keys. No writer
+produces such a claim today: `editExperience` (`curationController.ts`) only ever adds
+`metadata.website` and `metadata.wikipediaUrl` per key, never the two major ones, so this is a
+doc-truth gap rather than a live one. The rule holds for the keys the map does not carry: there,
+the claim key the queue reads and the claim key the upsert honours are the same string, and
+`computeChangeSet` — producing the very `changed_fields` and `curatedConflicts` the queue
+reads — uses that same string too.
 
 Accepting is always a claim release; whether the value is *also* written on the spot is what
 `ACCEPTABLE_FIELDS` (`lifecycleController.ts`) decides — `name`, `shortDescription`,
