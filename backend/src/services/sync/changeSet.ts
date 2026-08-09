@@ -144,14 +144,25 @@ function fieldSignificance(field: string): FieldSignificance {
   return MAJOR_FIELDS.has(field) ? 'major' : 'minor';
 }
 
+/** Keys a curator claimed individually, as bare key names. */
+function claimedMetadataKeys(curatedFields: string[]): string[] {
+  return curatedFields
+    .filter(key => key.startsWith(METADATA_CLAIM_PREFIX))
+    .map(key => key.slice(METADATA_CLAIM_PREFIX.length))
+    .filter(key => !(MAJOR_METADATA_KEYS as readonly string[]).includes(key));
+}
+
 /**
- * Metadata is diffed in two parts: the keys a product decision hangs on
+ * Metadata is diffed in three parts: the keys a product decision hangs on
  * (a site entering the danger list) are reported individually and count as
- * major, and everything else collapses into one minor entry.
+ * major, a key a curator claimed individually is also reported on its own so
+ * a claim on it can be told apart from the catch-all, and everything else
+ * collapses into one minor entry.
  */
 function metadataChanges(
   before: Record<string, unknown> | null,
   incoming: Record<string, unknown> | null,
+  curatedFields: string[],
 ): RawDiff[] {
   const changes: RawDiff[] = [];
   const left = before ?? {};
@@ -163,20 +174,57 @@ function metadataChanges(
     }
   }
 
-  const withoutMajorKeys = (source: Record<string, unknown>) => {
+  // A key the curator claimed is reported on its own, so the queue can name it
+  // and the upsert's per-key guard (#488) has something to correspond to. Left
+  // inside the catch-all it would be invisible: one 'metadata' diff carrying
+  // both the key the run kept and the keys it applied.
+  //
+  // The filter mirrors the guard's own condition, not just its key: the SQL
+  // only re-applies a claimed key when the stored row still carries it
+  // (`experiences.metadata ? claimed.k` in syncUtils.ts). That is key presence,
+  // not value truth — `'{"a":null}'::jsonb ? 'a'` is true — so a curator who
+  // deliberately cleared a value and still claims it stays protected. `hasOwn`
+  // is presence too, which is what makes the two sides agree; a truthiness test
+  // would not (`!!null` is false). A claim whose key the row no longer has falls
+  // straight through in the upsert and the source's value gets written, so
+  // treating it as a conflict here would offer a curator "accept" on a value
+  // that is already applied. Unreachable today — nothing writes such an
+  // orphaned claim — but the two sides should agree by construction.
+  const claimed = claimedMetadataKeys(curatedFields).filter(key => Object.hasOwn(left, key));
+  for (const key of claimed) {
+    if (!jsonEquals(left[key], right[key])) {
+      changes.push({ field: `${METADATA_CLAIM_PREFIX}${key}`, old: left[key], new: right[key], significance: 'minor' });
+    }
+  }
+
+  const ignoredKeys = [...MAJOR_METADATA_KEYS, ...claimed];
+  const withoutReportedKeys = (source: Record<string, unknown>) => {
     const copy = { ...source };
-    for (const key of MAJOR_METADATA_KEYS) delete copy[key];
+    for (const key of ignoredKeys) delete copy[key];
     return copy;
   };
 
-  if (!jsonEquals(withoutMajorKeys(left), withoutMajorKeys(right))) {
-    changes.push({ field: 'metadata', old: before, new: incoming, significance: 'minor' });
+  // Both sides stripped of what was already reported on its own — major or
+  // individually claimed — so the payload matches the label: a key claimed
+  // and kept has already had its say in a conflict row above, and carrying
+  // its value here too would show a curator that value inside a row marked
+  // applied, right next to the row saying it was refused (#488, one layer in:
+  // the field was already reported in the right bucket; this is what that
+  // bucket's own row says happened).
+  const strippedLeft = withoutReportedKeys(left);
+  const strippedRight = withoutReportedKeys(right);
+  if (!jsonEquals(strippedLeft, strippedRight)) {
+    changes.push({ field: 'metadata', old: strippedLeft, new: strippedRight, significance: 'minor' });
   }
 
   return changes;
 }
 
-function collectDifferences(before: ExperienceSnapshot, incoming: ExperienceSnapshot): RawDiff[] {
+function collectDifferences(
+  before: ExperienceSnapshot,
+  incoming: ExperienceSnapshot,
+  curatedFields: string[],
+): RawDiff[] {
   const diffs: RawDiff[] = [];
 
   const textFields = ['name', 'description', 'shortDescription', 'category', 'imageUrl'] as const;
@@ -210,7 +258,7 @@ function collectDifferences(before: ExperienceSnapshot, incoming: ExperienceSnap
     });
   }
 
-  diffs.push(...metadataChanges(before.metadata, incoming.metadata));
+  diffs.push(...metadataChanges(before.metadata, incoming.metadata, curatedFields));
 
   return diffs;
 }
@@ -236,9 +284,12 @@ export function computeChangeSet(
   const changedFields: FieldChange[] = [];
   const curatedConflicts: FieldChange[] = [];
 
-  for (const diff of collectDifferences(before, incoming)) {
-    const protectedBy = CURATED_KEY_BY_FIELD[diff.field];
-    const isProtected = protectedBy !== undefined && curated.has(protectedBy);
+  for (const diff of collectDifferences(before, incoming, curatedFields)) {
+    // Fall back to the field's own name, exactly as `claimKeyFor` does in
+    // lifecycleController: a claim key is not always a column, and
+    // 'metadata.website' is claimed under that literal name (#488).
+    const protectedBy = CURATED_KEY_BY_FIELD[diff.field] ?? diff.field;
+    const isProtected = curated.has(protectedBy);
     const change: FieldChange = { ...diff, curatedConflict: isProtected };
     if (isProtected) curatedConflicts.push(change);
     else changedFields.push(change);
