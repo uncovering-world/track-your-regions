@@ -112,8 +112,16 @@ describe('getExperience visibility', () => {
 /**
  * The lifecycle rule is asymmetric, and the asymmetry is the whole design: a
  * delisted place is still somewhere you can go, a demolished one is not. Every
- * read that offers somewhere to go has to hide the second and keep the first,
- * and the one query that forgets is the one that offers a demolished building.
+ * read that offers a *set* to go through — a list, the map, a search, a count —
+ * hides the second and keeps the first, and the one query that forgets is the
+ * one that offers a demolished building.
+ *
+ * A by-id read is a different question and is answered differently: it hides a
+ * row the category refused, and today leaves a `lost` one reachable, because
+ * that gap predates the admission axis and closing it is a separate decision
+ * (`getExperience`'s own comment says so). Which case a path is belongs in the
+ * array rather than in this paragraph, so `filtersLost` states it per path and
+ * both loops below assert what that path actually promises.
  */
 describe('lifecycle visibility across the read paths', () => {
   beforeEach(() => {

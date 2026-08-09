@@ -9,9 +9,14 @@
  *   deleted, but a visit to it survives, because a person who stood there stood
  *   there. That is the same asymmetry `lost` already has one level up.
  * - `admission` on the *experience* — a row this category turned down gives
- *   nothing back at its own address, so the reads under `/:id` answer 404
- *   together instead of one of them handing out the name the others withhold
- *   (ADR-0024). `existence` is deliberately left alone here, matching
+ *   nothing back at its own address, so every by-id read whose answer *is* the
+ *   row answers 404, instead of one of them describing a row the others withhold
+ *   (ADR-0024). The shape of the refusal follows what the answer is: where the
+ *   answer is other objects that merely live in the row, it is an empty list
+ *   instead — `/:id/treasures`, which is not covered here. Two of the 404 reads
+ *   live under `/api/experiences/:id`; the per-user visited status lives under
+ *   `/api/users/me/experiences/:id` and is covered here too, since it reads the
+ *   same table. `existence` is deliberately left alone on all of them, matching
  *   `getExperience`.
  *
  * Asserted on the SQL each handler sends, which is where the predicate either
@@ -155,7 +160,7 @@ describe('a visit outlives the point', () => {
   });
 });
 
-describe('getExperienceLocations and a refused row', () => {
+describe('the by-id reads and a refused row', () => {
   beforeEach(() => mockedQuery.mockReset());
 
   it('stops before reading locations when the check rejects the row', async () => {
@@ -199,10 +204,56 @@ describe('getExperienceLocations and a refused row', () => {
       makeRes() as never,
     );
 
-    // Pinned so the two by-id reads stay in step, not because leaving `lost`
-    // reachable here is settled — the handler's own comment flags closing it as
-    // a separate decision about a different question.
+    // Pinned so this read stays in step with `getExperience`, not because
+    // leaving `lost` reachable here is settled — the handler's own comment flags
+    // closing it as a separate decision about a different question.
     const existenceRead = sentSql().find(sql => /FROM experiences\b/i.test(sql));
     expect(existenceRead).not.toMatch(/existence <> 'lost'/);
+  });
+
+  it('answers 404 when the admission-filtered read returns nothing', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    const res = makeRes();
+
+    await getExperienceVisitedStatus(
+      { params: { id: '6205' }, user: { id: 5 } } as never, res as never);
+
+    // The one query here carries the admission predicate ANDed with the
+    // offered-location filter, so an empty result does not distinguish a
+    // refused row from one with no offered locations — the handler's own
+    // message says "not found or has no locations" rather than picking one.
+    // This only pins that the empty case answers 404 at all, the same gap
+    // `/:id` and `/:id/locations` closed for the same row (#503).
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('reaches the visited status through the catalogue, not past it', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ location_id: 1, visit_id: null }] });
+
+    await getExperienceVisitedStatus(
+      { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);
+
+    // This read never joined `experiences` at all, so no admission predicate
+    // could reach it: any authenticated account got a refused row's points back
+    // — coordinates, ordinals, a `totalLocations` — while `/:id` and
+    // `/:id/locations` both answered 404. Anchored on the alias, as the
+    // query-controller table is.
+    expect(locationRead()).toMatch(/e\.admission <> 'refused'/);
+    // Inner, and that word is load-bearing: a LEFT JOIN carrying the same
+    // predicate parses, runs, and hands back every row — it would only null out
+    // columns nothing here selects.
+    expect(locationRead()).toMatch(/JOIN experiences e ON e\.id = el\.experience_id/);
+    expect(locationRead()).not.toMatch(/LEFT JOIN experiences/);
+  });
+
+  it('filters admission only here too, as the read one segment up does', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ location_id: 1, visit_id: null }] });
+
+    await getExperienceVisitedStatus(
+      { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);
+
+    // Same choice as the read one segment up, for the same reason: `existence`
+    // predates the admission axis and closing it is a separate decision.
+    expect(locationRead()).not.toMatch(/existence <> 'lost'/);
   });
 });
