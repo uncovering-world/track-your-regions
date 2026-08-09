@@ -806,9 +806,11 @@ and both `metadata.inDanger` and `metadata.dateInscribed` are claimed as plain `
 as a parameter rather than restated. A `curated_fields` entry is **not** reliably a column
 name: `editExperience` claims `metadata.website` and `metadata.wikipediaUrl` per key, which
 no column matches, so the query falls back to the field's own name for keys the map does not
-carry. (Those two keys are also a pre-existing hole in metadata protection — the upsert
-guards metadata with `curated_fields ? 'metadata'`, which neither of them satisfies. Out of
-scope here, but it is why the invariant cannot be assumed.)
+carry. (Those two keys used to be a pre-existing hole in metadata protection too —
+the upsert guarded metadata only with `curated_fields ? 'metadata'`, which neither
+satisfies. That guard now also honours a per-key claim on each of them directly (#488),
+re-applying just that key over the source's value. `CURATED_KEY_BY_FIELD` still does
+not carry either key, though, so that fallback is still what represents them here.)
 
 Accepting is always a claim release; whether the value is *also* written on the spot is what
 `ACCEPTABLE_FIELDS` (`lifecycleController.ts`) decides — `name`, `shortDescription`,

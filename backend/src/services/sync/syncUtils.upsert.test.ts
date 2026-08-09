@@ -4,6 +4,12 @@
  * The upsert has to answer two questions in one round trip: what the row looked
  * like before, and what it looks like now. These tests pin the shape of that
  * answer and the promise that a dry run writes nothing.
+ *
+ * A mocked pool only pins the SQL's text; it never runs the query, so it cannot
+ * prove the metadata merge actually behaves as claimed. That proof is at the
+ * database level instead -- a live sync run, and the statement run against real
+ * rows inside BEGIN...ROLLBACK -- documented in the commit that introduced the
+ * per-key guard below, not in these regexes.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -14,6 +20,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { upsertExperienceRecord, type ExperienceUpsertParams } from './syncUtils.js';
+import { METADATA_CLAIM_PREFIX } from './changeSet.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -302,5 +309,46 @@ describe('upsertExperienceRecord', () => {
     // Split rather than matched: `\s*` beside `\n` is a backtracking hazard
     // the linter rejects, and the assignment list is one clause per line anyway
     expect(sql.split('\n').some(line => /^\s*existence =/.test(line))).toBe(false);
+  });
+});
+
+describe('metadata is guarded per claimed key, not per column', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  it('keeps a key the curator claimed and takes the rest from the source', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const [sql] = mockedQuery.mock.calls[0];
+    const text = String(sql);
+    // The whole-column guard stays for a claim on `metadata` itself...
+    expect(text).toMatch(/curated_fields \? 'metadata'/);
+    // ...and a per-key claim re-applies just those keys over the source object.
+    expect(text).toMatch(/jsonb_array_elements_text\(experiences\.curated_fields\)/);
+    expect(text).toMatch(/LIKE 'metadata\.%'/);
+    // The prefix's length has to match how many characters get stripped:
+    // `substring(key FROM n)` keeps the (n-1)th character onward, so a prefix
+    // of length p needs n = p + 1. Deriving n from METADATA_CLAIM_PREFIX
+    // instead of writing the number 10 is what stops the two from silently
+    // drifting apart -- none of the regexes around this one would have
+    // noticed an off-by-one here: it would make every claimed key resolve to
+    // the wrong bare name (e.g. 'ebsite' instead of 'website'), the `WHERE
+    // experiences.metadata ? claimed.k` guard below would never find it in
+    // stored metadata, and no per-key claim would ever be re-applied again.
+    expect(text).toContain(`substring(key FROM ${METADATA_CLAIM_PREFIX.length + 1})`);
+    expect(text).toMatch(/jsonb_object_agg/);
+    // EXCLUDED.metadata must be the LEFT operand of `||` -- the source object is
+    // the base and the claimed keys are overlaid on top of it, which is what lets
+    // the claim win over the source's value for that one key. The four assertions
+    // above still match if the operands are swapped; only this one catches it.
+    expect(text).toMatch(/COALESCE\(EXCLUDED\.metadata, '\{\}'::jsonb\) \|\| COALESCE\(\(\s*SELECT jsonb_object_agg/);
+    // This guard is load-bearing, not decoration: without it, `experiences.metadata
+    // -> claimed.k` is SQL NULL for a key the curator claimed but that never actually
+    // landed in stored metadata, jsonb_object_agg accepts a NULL *value* (only a NULL
+    // *key* throws), and the `||` merge above would overlay `"k": null` on top of
+    // whatever real value the source just sent -- clobbering it. Do not delete this
+    // assertion as noise; it is what stops that regression from going unnoticed.
+    expect(text).toMatch(/WHERE experiences\.metadata \? claimed\.k/);
   });
 });

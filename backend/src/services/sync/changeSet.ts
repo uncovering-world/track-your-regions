@@ -50,6 +50,16 @@ export const LOCATION_MAJOR_METERS = 1000;
 /** Metadata keys whose change is a product event, not bookkeeping. */
 const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
 
+/**
+ * The `curated_fields` prefix for a per-key metadata claim (`metadata.website`,
+ * never `metadata` itself). The upsert's SQL guard in `syncUtils.ts` parses the
+ * same claims out of the same column and needs the identical prefix to find
+ * them and to know how many characters to strip off the front -- one constant
+ * shared by both, instead of the same literal spelled out independently in
+ * more than one place, where the two could silently drift apart (#488).
+ */
+export const METADATA_CLAIM_PREFIX = 'metadata.';
+
 /** Snapshot fields that are `major` when they differ. `location` is synthetic. */
 const MAJOR_FIELDS = new Set(['name', 'location', 'countryCodes']);
 
@@ -149,7 +159,7 @@ function metadataChanges(
 
   for (const key of MAJOR_METADATA_KEYS) {
     if (!jsonEquals(left[key], right[key])) {
-      changes.push({ field: `metadata.${key}`, old: left[key], new: right[key], significance: 'major' });
+      changes.push({ field: `${METADATA_CLAIM_PREFIX}${key}`, old: left[key], new: right[key], significance: 'major' });
     }
   }
 

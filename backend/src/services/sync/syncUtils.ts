@@ -8,7 +8,9 @@ import { eq } from 'drizzle-orm';
 import { pool, db } from '../../db/index.js';
 import { experienceSyncLogs, experienceCategories } from '../../db/schema.js';
 import { writeExperienceLocations, type LocationWriteResult } from './locationWriter.js';
-import { computeChangeSet, type ChangeSetResult, type ExperienceSnapshot } from './changeSet.js';
+import {
+  computeChangeSet, METADATA_CLAIM_PREFIX, type ChangeSetResult, type ExperienceSnapshot,
+} from './changeSet.js';
 
 // =============================================================================
 // Experience Upsert
@@ -166,7 +168,25 @@ export async function upsertExperienceRecord(
         country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
         country_names = CASE WHEN experiences.curated_fields ? 'country_names' THEN experiences.country_names ELSE EXCLUDED.country_names END,
         image_url = CASE WHEN experiences.curated_fields ? 'image_url' THEN experiences.image_url ELSE EXCLUDED.image_url END,
-        metadata = CASE WHEN experiences.curated_fields ? 'metadata' THEN experiences.metadata ELSE EXCLUDED.metadata END,
+        -- Two claim shapes reach this column, and only one of them used to work.
+        -- editExperience claims per key -- 'metadata.website',
+        -- 'metadata.wikipediaUrl' -- and ? 'metadata' is false for those, so
+        -- the guard never fired and EXCLUDED replaced the object, curator's link
+        -- included (#488). A claim on 'metadata' itself still holds the whole
+        -- column; a per-key claim now re-applies just those keys over whatever
+        -- the source sent, so an unclaimed key still updates.
+        metadata = CASE
+          WHEN experiences.curated_fields ? 'metadata' THEN experiences.metadata
+          ELSE COALESCE(EXCLUDED.metadata, '{}'::jsonb) || COALESCE((
+                 SELECT jsonb_object_agg(claimed.k, experiences.metadata -> claimed.k)
+                 FROM (
+                   SELECT substring(key FROM ${METADATA_CLAIM_PREFIX.length + 1}) AS k
+                   FROM jsonb_array_elements_text(experiences.curated_fields) AS t(key)
+                   WHERE key LIKE '${METADATA_CLAIM_PREFIX}%'
+                 ) AS claimed
+                 WHERE experiences.metadata ? claimed.k
+               ), '{}'::jsonb)
+        END,
         last_seen_sync_log_id = COALESCE(EXCLUDED.last_seen_sync_log_id, experiences.last_seen_sync_log_id),
         last_seen_at = NOW(),
         missing_since = NULL,
