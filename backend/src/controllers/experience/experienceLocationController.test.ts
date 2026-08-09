@@ -1,10 +1,18 @@
 /**
- * What a reader is shown once a point can be missing without being deleted.
+ * What a reader is shown once a point can be missing without being deleted, and
+ * once a category can refuse the experience that holds it.
  *
- * The rule these pin down is the same asymmetry `lost` already has one level
- * up: a point the source stopped offering leaves every list, marker batch and
- * count — exactly as it used to when the row was deleted — but a visit to it
- * survives, because a person who stood there stood there.
+ * Two rules, on two columns, and they are not the same rule:
+ *
+ * - `missing_since` on a *location* — a point the source stopped offering leaves
+ *   every list, marker batch and count, exactly as it used to when the row was
+ *   deleted, but a visit to it survives, because a person who stood there stood
+ *   there. That is the same asymmetry `lost` already has one level up.
+ * - `admission` on the *experience* — a row this category turned down gives
+ *   nothing back at its own address, so the reads under `/:id` answer 404
+ *   together instead of one of them handing out the name the others withhold
+ *   (ADR-0024). `existence` is deliberately left alone here, matching
+ *   `getExperience`.
  *
  * Asserted on the SQL each handler sends, which is where the predicate either
  * is or is not. The behaviour behind it was checked against the live database;
@@ -144,5 +152,57 @@ describe('a visit outlives the point', () => {
     const counts = sentSql().filter(sql => /COUNT\(\*\) as count/i.test(sql));
     expect(counts).toHaveLength(1);
     expect(counts[0]).toMatch(/el\.missing_since IS NULL/);
+  });
+});
+
+describe('getExperienceLocations and a refused row', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  it('stops before reading locations when the check rejects the row', async () => {
+    // The existence check finds nothing, because its predicate excludes the row.
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    const res = makeRes();
+
+    await getExperienceLocations(
+      { params: { id: '6205' }, query: {} } as never,
+      res as never,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    // One query, not two: the short-circuit is the fix. A refactor that ran the
+    // location read first and 404ed afterwards would re-open the same leak.
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for the experience with the refusal predicate', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Museo del Prado' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await getExperienceLocations(
+      { params: { id: '1' }, query: {} } as never,
+      makeRes() as never,
+    );
+
+    const existenceRead = sentSql().find(sql => /FROM experiences\b/i.test(sql));
+    expect(existenceRead).toBeDefined();
+    expect(existenceRead).toMatch(/admission <> 'refused'/);
+  });
+
+  it('filters admission only, which is today\'s choice and not a permanent rule', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Palmyra' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await getExperienceLocations(
+      { params: { id: '1' }, query: {} } as never,
+      makeRes() as never,
+    );
+
+    // Pinned so the two by-id reads stay in step, not because leaving `lost`
+    // reachable here is settled — the handler's own comment flags closing it as
+    // a separate decision about a different question.
+    const existenceRead = sentSql().find(sql => /FROM experiences\b/i.test(sql));
+    expect(existenceRead).not.toMatch(/existence <> 'lost'/);
   });
 });
