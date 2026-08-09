@@ -17,6 +17,7 @@ import {
   CURATOR_SCOPED_REGIONS_CTE,
   CURATOR_UNRESTRICTED_SCOPE_EXISTS,
 } from '../../middleware/auth.js';
+import { METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
 
 const UNSAFE_URL_SCHEMES = /^(javascript|data|vbscript|blob):/i;
 
@@ -378,8 +379,8 @@ function buildUpdateQuery(
   }
 
   const curatedFieldNames = updates.map(u => u.column);
-  if (hasWebsiteUpdate) curatedFieldNames.push('metadata.website');
-  if (hasWikipediaUpdate) curatedFieldNames.push('metadata.wikipediaUrl');
+  if (hasWebsiteUpdate) curatedFieldNames.push(`${METADATA_CLAIM_PREFIX}website`);
+  if (hasWikipediaUpdate) curatedFieldNames.push(`${METADATA_CLAIM_PREFIX}wikipediaUrl`);
   const newCurated = [...new Set([...existingCurated, ...curatedFieldNames])];
   setClauses.push(`curated_fields = $${paramIdx}`);
   values.push(JSON.stringify(newCurated));
