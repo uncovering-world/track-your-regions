@@ -646,6 +646,18 @@ function validateCreateManualInput(body: CreateManualBody): string | null {
   return null;
 }
 
+/**
+ * Insert the five rows a hand-made experience needs: the experience itself,
+ * its one location, both region links, and the audit entry.
+ *
+ * The experience and its location are stamped `verified` rather than taking the
+ * column's `auto` default. `auto` means "published unread" (ADR-0025); a curator
+ * who typed this in and placed the point on the map already read it — they wrote
+ * it. There is no source here to gate, so both stamps are the literal rather
+ * than a `CASE` reading `experience_categories.requires_curation` the way the
+ * sync writers do — which is also why neither is the state a sync write would
+ * have produced: that one depends on the source's setting, and this one cannot.
+ */
 async function insertManualExperience(
   client: PoolClient,
   body: CreateManualBody,
@@ -663,11 +675,14 @@ async function insertManualExperience(
     INSERT INTO experiences (
       category_id, external_id, name, short_description, category,
       location, image_url, tags, country_codes, country_names,
-      metadata, is_manual, created_by, status
+      metadata, is_manual, created_by, status, curation_state, published_at
     ) VALUES (
       $1, $2, $3, $4, $5,
       ST_SetSRID(ST_MakePoint($6, $7), 4326), $8, $9, $10, $11,
-      $12, true, $13, 'active'
+      $12, true, $13, 'active',
+      -- Verified from the moment it is created, and visible from the moment
+      -- it exists: see the function comment above.
+      'verified', NOW()
     ) RETURNING id
   `, [
     categoryId,
@@ -687,8 +702,13 @@ async function insertManualExperience(
   const experienceId = expResult.rows[0].id as number;
 
   const locResult = await client.query(`
-    INSERT INTO experience_locations (experience_id, name, ordinal, location)
-    VALUES ($1, $2, 0, ST_SetSRID(ST_MakePoint($3, $4), 4326))
+    INSERT INTO experience_locations (experience_id, name, ordinal, location, curation_state)
+    VALUES (
+      $1, $2, 0, ST_SetSRID(ST_MakePoint($3, $4), 4326),
+      -- Same reasoning as the experience row above: the curator placed this
+      -- point by hand, so it carries the same verdict.
+      'verified'
+    )
     RETURNING id
   `, [experienceId, body.name, body.longitude, body.latitude]);
   const locationId = locResult.rows[0].id as number;
