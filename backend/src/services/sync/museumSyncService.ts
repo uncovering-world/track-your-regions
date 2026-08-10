@@ -172,18 +172,30 @@ async function upsertMuseumExperience(
  * `is_iconic` is sticky on the way down: a work joins the highlights at `ICONIC_SITELINKS` and
  * only leaves below `ICONIC_RELEASE`, so the badge does not flicker on and off as Wikipedia
  * grows. Selection upstream uses the single threshold; only the stored flag has hysteresis.
+ *
+ * Exported for its test and called nowhere else: two of its promises live in a
+ * parameter number and a `RETURNING` clause, which no caller can observe.
  */
-async function upsertMuseumTreasures(
+export async function upsertMuseumTreasures(
   experienceId: number,
   artworks: ProcessedContent[]
 ): Promise<void> {
   for (const artwork of artworks) {
     // Step 1: Upsert into treasures (globally unique by external_id)
+    //
+    // `curation_state` is bound to `MUSEUM_CATEGORY_ID` directly rather than
+    // reached through an experience: a treasure is globally shared and is not
+    // owned by any one of them. It is set on insert only — absent from
+    // `DO UPDATE SET` — because a work already stored may already have been
+    // passed by a curator, and this run must not reset that (ADR-0025).
     const treasureResult = await pool.query(
       `INSERT INTO treasures (
         external_id, name, treasure_type, artist, year,
-        image_url, sitelinks_count, is_iconic, metadata, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        image_url, sitelinks_count, is_iconic, metadata, curation_state, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+        CASE WHEN (SELECT requires_curation FROM experience_categories WHERE id = $12)
+             THEN 'pending' ELSE 'auto' END,
+        NOW(), NOW())
       ON CONFLICT (external_id) DO UPDATE SET
         name = EXCLUDED.name,
         treasure_type = EXCLUDED.treasure_type,
@@ -211,15 +223,24 @@ async function upsertMuseumTreasures(
         null, // metadata
         ICONIC_SITELINKS,
         ICONIC_RELEASE,
+        MUSEUM_CATEGORY_ID,
       ]
     );
 
     const treasureId = treasureResult.rows[0].id;
 
-    // Step 2: Link treasure to experience via junction table
+    // Step 2: Link treasure to experience via junction table. Unlike the
+    // treasure above, a link does have an experience to read the gate through,
+    // so it is reached the same way the location insert reaches it. Links are
+    // never deleted (ADR-0023), so a link a curator already passed must keep
+    // that state when a later run finds it again — insert-only, same as above.
     await pool.query(
-      `INSERT INTO experience_treasures (experience_id, treasure_id)
-       VALUES ($1, $2)
+      `INSERT INTO experience_treasures (experience_id, treasure_id, curation_state)
+       VALUES ($1, $2,
+         CASE WHEN (SELECT c.requires_curation
+                      FROM experiences e JOIN experience_categories c ON c.id = e.category_id
+                     WHERE e.id = $1)
+              THEN 'pending' ELSE 'auto' END)
        ON CONFLICT (experience_id, treasure_id) DO NOTHING`,
       [experienceId, treasureId]
     );
