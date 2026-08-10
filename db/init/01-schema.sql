@@ -1618,14 +1618,45 @@ COMMENT ON COLUMN experience_categories.display_priority IS 'Display order in ex
 ALTER TABLE experience_categories ADD COLUMN IF NOT EXISTS new_badge_days INTEGER NOT NULL DEFAULT 30;
 COMMENT ON COLUMN experience_categories.new_badge_days IS 'How long an object created by the latest run keeps the "New" chip. Per category, because sources have different cadences.';
 
+-- The curation gate (ADR-0025). A category is a source here, and this is the
+-- per-source decision: does what a run brings in wait for a person, or publish
+-- on arrival. The default is `true` so a source nobody has decided about does
+-- not publish unread.
+--
+-- The three sources that predate the gate are the exception, and creating the
+-- column is the only moment at which they can be given their answer. So the
+-- two happen inside one guard, atomically, in both schema homes: whichever of
+-- this file and migration 018 reaches a database first creates the column and
+-- names those three in the same breath, and every later application of either
+-- file sees the column and does nothing. That is what keeps an admin's later
+-- decision safe -- `true` on a source they chose to gate survives any number of
+-- re-applications -- and it is also why the guard cannot be `ADD COLUMN IF NOT
+-- EXISTS`: on a database that predates the column, the `DEFAULT true` backfill
+-- would gate all three, and a separate `UPDATE` outside the guard would then be
+-- either unsafe (resetting the admin) or skipped (leaving them gated).
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'experience_categories' AND column_name = 'requires_curation'
+    ) THEN
+        ALTER TABLE experience_categories
+            ADD COLUMN requires_curation BOOLEAN NOT NULL DEFAULT true;
+        UPDATE experience_categories SET requires_curation = false
+         WHERE name IN ('UNESCO World Heritage Sites', 'Top Art Museums', 'Public Art & Monuments');
+    END IF;
+END $$;
+COMMENT ON COLUMN experience_categories.requires_curation IS 'Does a run from this source wait for a curator before its rows reach a reader (ADR-0025). Only an admin sets it; no run ever changes it.';
+
 -- Seed UNESCO as the first category
-INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority)
+INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation)
 VALUES (
     'UNESCO World Heritage Sites',
     'Official UNESCO World Heritage List - Cultural, Natural, and Mixed sites worldwide',
     'https://data.unesco.org/api/explore/v2.1/catalog/datasets/whc001/records',
     '{"pageSize": 100}'::jsonb,
-    1
+    1,
+    false
 )
 ON CONFLICT (name) DO NOTHING;
 
@@ -1859,6 +1890,29 @@ COMMENT ON COLUMN experiences.admission_reason IS
 
 CREATE INDEX IF NOT EXISTS idx_experiences_admission ON experiences(admission) WHERE admission <> 'admitted';
 
+-- The fourth column that can take a row off a reader's screen, and it is not
+-- interchangeable with the other three (ADR-0025): `existence` answers is it
+-- still standing, `admission` does it belong in this catalogue,
+-- `missing_since` does the source still offer this point, and this one answers
+-- has anyone looked at it yet. They compose rather than collapse.
+--
+-- Default `auto`, not `pending`: the sync path sets `pending` explicitly
+-- because it knows about the gate, so a writer that forgets this column keeps
+-- today's behaviour. The other default would let such a writer remove its rows
+-- from the product silently.
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS curation_state VARCHAR(10) NOT NULL DEFAULT 'auto';
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
+-- ON DELETE SET NULL, like the two provenance pointers beside it: deleting a
+-- sync log is a supported operation here, and a pointer to a log that no longer
+-- exists names nothing. The hold itself is carried by `curation_state`, so
+-- losing the pointer loses the way to find the proposal, not the hold.
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS pending_change_sync_log_id INTEGER
+    REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+COMMENT ON COLUMN experiences.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a pending row (ADR-0025).';
+COMMENT ON COLUMN experiences.published_at IS 'When the row became visible. NULL while pending and for every row that predates the gate. The "New" chip counts from the run that first saw a row; a gated row is seen months before a reader can see it, so publication is the moment the chip should count from instead.';
+COMMENT ON COLUMN experiences.pending_change_sync_log_id IS 'The run whose content proposal is held for an already-visible row. NULL when nothing is held. Contents need no equivalent — a content row is held by being written pending rather than withheld.';
+CREATE INDEX IF NOT EXISTS idx_experiences_curation_state ON experiences(curation_state) WHERE curation_state = 'pending';
+
 -- Per-object record of what a run did. 'unchanged' is deliberately NOT stored;
 -- it is only counted, or every UNESCO run would write 1247 rows of noise.
 CREATE TABLE IF NOT EXISTS experience_sync_changes (
@@ -1940,6 +1994,9 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_location ON experience_locat
 CREATE INDEX IF NOT EXISTS idx_experience_locations_offered
     ON experience_locations(experience_id) WHERE missing_since IS NULL;
 
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS curation_state VARCHAR(10) NOT NULL DEFAULT 'auto';
+COMMENT ON COLUMN experience_locations.curation_state IS 'A pending point is written, indexed and placed into regions like any other; keeping it off reader-facing reads is the job of one predicate rather than a reason to withhold the row (ADR-0025).';
+
 -- User visited locations (tracks visits to individual locations)
 CREATE TABLE IF NOT EXISTS user_visited_locations (
     id SERIAL PRIMARY KEY,
@@ -1978,24 +2035,26 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region ON experience_
 -- sculptures). Used for ranking museums by artwork fame.
 
 -- Seed "Top Art Museums" as experience category
-INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority)
+INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation)
 VALUES (
     'Top Art Museums',
     'World''s most notable museums ranked by artwork fame, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
     '{"userAgent": "TrackYourRegions/1.0"}'::jsonb,
-    2
+    2,
+    false
 )
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed "Public Art & Monuments" as experience category
-INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority)
+INSERT INTO experience_categories (name, description, api_endpoint, api_config, display_priority, requires_curation)
 VALUES (
     'Public Art & Monuments',
     'Notable outdoor sculptures and monuments worldwide, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
     '{"userAgent": "TrackYourRegions/1.0"}'::jsonb,
-    3
+    3,
+    false
 )
 ON CONFLICT (name) DO NOTHING;
 
@@ -2034,6 +2093,13 @@ CREATE INDEX IF NOT EXISTS idx_treasures_type ON treasures(treasure_type);
 CREATE INDEX IF NOT EXISTS idx_treasures_sitelinks ON treasures(sitelinks_count DESC);
 CREATE INDEX IF NOT EXISTS idx_treasures_iconic ON treasures(is_iconic) WHERE is_iconic = true;
 
+-- A work carries state here and its link carries state too, and they answer
+-- different questions (ADR-0025): this one says the work is real and correctly
+-- described, checked once globally; the link says it is here, which is the fact
+-- that changes as works are sold, moved and lent.
+ALTER TABLE treasures ADD COLUMN IF NOT EXISTS curation_state VARCHAR(10) NOT NULL DEFAULT 'auto';
+COMMENT ON COLUMN treasures.curation_state IS 'Whether this work has been passed by a curator — checked once, globally (ADR-0025).';
+
 -- Junction table: many-to-many between experiences and treasures
 CREATE TABLE IF NOT EXISTS experience_treasures (
     id SERIAL PRIMARY KEY,
@@ -2047,6 +2113,32 @@ COMMENT ON TABLE experience_treasures IS 'Links treasures to experiences (many-t
 
 CREATE INDEX IF NOT EXISTS idx_experience_treasures_experience ON experience_treasures(experience_id);
 CREATE INDEX IF NOT EXISTS idx_experience_treasures_treasure ON experience_treasures(treasure_id);
+
+ALTER TABLE experience_treasures ADD COLUMN IF NOT EXISTS curation_state VARCHAR(10) NOT NULL DEFAULT 'auto';
+COMMENT ON COLUMN experience_treasures.curation_state IS 'Whether this work has been passed as being HERE. A link may be offered to a reader only when neither it nor its work is pending (ADR-0025).';
+
+-- Guarded rather than dropped-and-added: these are new constraints, not widened
+-- ones, so the drop/add idiom used for the changeset's change_type check would
+-- be doing nothing on a fresh database and hiding a failure on an old one.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experiences_curation_state_check') THEN
+        ALTER TABLE experiences ADD CONSTRAINT experiences_curation_state_check
+            CHECK (curation_state IN ('pending', 'auto', 'verified'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_locations_curation_state_check') THEN
+        ALTER TABLE experience_locations ADD CONSTRAINT experience_locations_curation_state_check
+            CHECK (curation_state IN ('pending', 'auto', 'verified'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_treasures_curation_state_check') THEN
+        ALTER TABLE experience_treasures ADD CONSTRAINT experience_treasures_curation_state_check
+            CHECK (curation_state IN ('pending', 'auto', 'verified'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'treasures_curation_state_check') THEN
+        ALTER TABLE treasures ADD CONSTRAINT treasures_curation_state_check
+            CHECK (curation_state IN ('pending', 'auto', 'verified'));
+    END IF;
+END $$;
 
 -- =============================================================================
 -- User Viewed Treasures (artwork "seen" tracking)
