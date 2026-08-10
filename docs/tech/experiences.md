@@ -142,7 +142,33 @@ landed first.
 
 The proposal itself is already recorded, per object, in the run's changeset. What the row adds is
 `pending_change_sync_log_id`, the pointer saying whose proposal is being held, so the curator's screen
-can find it.
+can find it. It is written only by a run that actually proposed something — the upsert's own guards
+fire whether or not a value differs, so the statement cannot tell a change from a pass that touched
+nothing. *Proposed* counts both kinds of refusal: a value the hold kept out and a value
+`curated_fields` kept out are both decisions waiting on a curator, so a row whose only difference is
+in a claimed field is still holding a proposal and still points at the run that made it. The pointer
+is cleared again when a later run proposes nothing at all — nothing written and nothing refused —
+because a source that has come back to what is stored is no longer proposing anything. A row that is
+no longer held loses the pointer too: a run free to write the content leaves nothing waiting.
+
+**A `verified` row decays when a trusted source changes it.** `curation_state`
+([ADR-0025](../decisions/0025-per-source-curation-gate.md)) can also hold `verified`: a curator's
+pass on the object as it stood when they looked. `upsertExperienceRecord` returns a `verified` row
+to `auto` the moment a run from a source nobody gated writes a real change
+to it — the pass covered the object that was there, and a changed object has not been passed. A
+provenance-only pass, one that reaches the row and changes nothing, leaves `verified` standing.
+So does a change from a **gated** source: there the same statement's hold refused to write the new
+values, so what a reader sees is still exactly what the curator passed, and retiring the pass would
+punish the row for a proposal nobody has answered yet.
+The rule is resolved in TypeScript, against the change set `computeChangeSet` already produces,
+rather than folded into the upsert's own `SET` list, because the statement's `CASE` guards fire
+whether or not a value actually differs from what is stored — the SQL has no way to tell a content
+change from a no-op pass, only the computed change set does, and collapsing the decay into the
+`SET` list would retire a curator's pass on every run, changed or not. The `UPDATE` is scoped to
+`WHERE curation_state = 'verified'`, so it can only ever move a row one way: a `pending` row is
+not published and has nothing to decay, and an `auto` row is already there. Nothing writes
+`verified` yet — the curator-facing endpoint that publishes a gated row arrives with the rest of
+this feature — so today this statement is live code that matches no row in the catalogue.
 
 **`total_updated` changed meaning.** It used to count every row that passed through
 `ON CONFLICT DO UPDATE`, identical or not. Since migration 009 it counts rows that actually

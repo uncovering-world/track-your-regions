@@ -222,10 +222,11 @@ export async function upsertExperienceRecord(
         -- The pointer says which run's proposal is being held, so the curator's
         -- screen can find it. This statement can only ever clear it: whether a
         -- proposal exists at all is a question about whether anything actually
-        -- differs, and the CASE guards above fire either way. So a held row keeps
-        -- the pointer it has and a row that is not held loses it, because a run
-        -- that is free to write the content leaves nothing waiting. Setting it
-        -- needs the computed change set, so it happens after this statement.
+        -- differs, and the CASE guards above fire either way — the same reason
+        -- the decay below is resolved in TypeScript. So a held row keeps the
+        -- pointer it has and a row that is not held loses it, because a run that
+        -- is free to write the content leaves nothing waiting. Setting it is
+        -- done after this statement, and only for a run that proposed something.
         pending_change_sync_log_id = CASE WHEN ${held}
                                          THEN experiences.pending_change_sync_log_id
                                          ELSE NULL END,
@@ -241,7 +242,8 @@ export async function upsertExperienceRecord(
         -- visibility, so a source outage still cannot hide anything (ADR-0020).
         source_membership = 'present',
         updated_at = NOW()
-      RETURNING id, (xmax = 0) AS inserted, curated_fields, ${SNAPSHOT_COLUMNS.join(', ')},
+      RETURNING id, (xmax = 0) AS inserted, curated_fields, pending_change_sync_log_id,
+                ${SNAPSHOT_COLUMNS.join(', ')},
                 ST_X(location) AS lon, ST_Y(location) AS lat
     )
     SELECT ins.*,
@@ -271,10 +273,100 @@ export async function upsertExperienceRecord(
 
   const row = result.rows[0];
   const before = row.inserted ? null : snapshotFromRow(row, 'old_');
+  const changeSet = computeChangeSet(before, snapshotFromParams(params), row.curated_fields ?? []);
+
+  // A curator's pass covered the object that was there; a changed object has not
+  // been passed (ADR-0025). Resolved here rather than in SQL because the
+  // statement cannot tell a content change from a provenance-only pass — its
+  // CASE guards fire either way — and resolved inside this function rather than
+  // in the three sync services, which would be three places to forget.
+  //
+  // Only a **trusted** source's change retires a pass, and the reason is the
+  // hold above: under a gated source the changed values were not written, so
+  // what a reader sees is still exactly what the curator passed. Decaying there
+  // would retire a pass over a change the same statement had just refused to
+  // apply, on every run, for as long as the proposal went unanswered.
+  //
+  // Scoped to `verified` so it can only ever move one way. A `pending` row is
+  // untouched: it is not published, so there is nothing to decay.
+  //
+  // Its own statement, so a failure here throws after the content is already
+  // committed and the run reports that object as failed. Deliberate: the
+  // alternative is to swallow the error, which leaves a row saying `verified`
+  // about content nobody passed, and the next run finds nothing changed and so
+  // never decays it. A failed item is visible in the run's report; a silent one
+  // is not.
+  const wroteContent = changeSet.changedFields.length > 0;
+  // The pointer follows every proposal this statement refused, not only the ones
+  // it wrote — and a claimed field is refused too. `computeChangeSet` files a
+  // field a curator has claimed under `curatedConflicts` and leaves
+  // `changedFields` empty, so keying the pointer on `changedFields` alone would
+  // clear it on a run whose proposal is still standing and still unanswered:
+  // "nothing is held" about a row that is holding something. `significance` in
+  // `changeSet.ts` weighs both buckets for the same reason — the refused half is
+  // the half needing a decision, so it cannot be the hidden one.
+  const proposedAnything = wroteContent || changeSet.curatedConflicts.length > 0;
+
+  if (wroteContent) {
+    await pool.query(
+      `UPDATE experiences SET curation_state = 'auto'
+        WHERE id = $1 AND curation_state = 'verified'
+          AND NOT EXISTS (
+            SELECT 1 FROM experience_categories
+             WHERE id = $2 AND requires_curation
+          )`,
+      [row.id, params.categoryId],
+    );
+  }
+
+  if (proposedAnything) {
+    // And the mirror image of the decay: where the source IS gated and the row
+    // was visible, the statement above kept the stored content and this run's
+    // proposal is what a curator will be shown, so the row points at this run.
+    // Only here, because only here is it known that something was actually
+    // proposed — the upsert cannot tell a content change from a pass that
+    // touched nothing, and a pointer set on every pass would tell a curator that
+    // 1200 rows were waiting on a decision when none of them were.
+    //
+    // A run with no log id writes nothing here rather than writing NULL. The id
+    // is what a curator's screen resolves to see the proposal, so a run that
+    // cannot name itself has nothing to offer the column — and NULL is not
+    // "unknown run", it is "nothing is held", which would be a lie about a row
+    // whose content this run just held.
+    if (options.syncLogId != null) {
+      await pool.query(
+        `UPDATE experiences SET pending_change_sync_log_id = $3
+          WHERE id = $1 AND curation_state <> 'pending'
+            AND EXISTS (
+              SELECT 1 FROM experience_categories
+               WHERE id = $2 AND requires_curation
+            )`,
+        [row.id, params.categoryId, options.syncLogId],
+      );
+    }
+  } else if (row.pending_change_sync_log_id !== null) {
+    // The complement, and the reason the column can be trusted to mean what its
+    // comment says. A run that proposed nothing at all — nothing written and
+    // nothing refused — has nothing held: the source has come back to what is
+    // stored, so a pointer left in place would name a proposal that no longer
+    // exists, a decision waiting on a curator's screen that the source has
+    // already withdrawn. Only reached when the row actually carries a pointer,
+    // which is why the upsert returns it: otherwise every unchanged row in every
+    // run would spend a statement on this.
+    await pool.query(
+      `UPDATE experiences SET pending_change_sync_log_id = NULL
+        WHERE id = $1 AND curation_state <> 'pending'
+          AND EXISTS (
+            SELECT 1 FROM experience_categories
+             WHERE id = $2 AND requires_curation
+          )`,
+      [row.id, params.categoryId],
+    );
+  }
 
   return {
     experienceId: row.id,
-    changeSet: computeChangeSet(before, snapshotFromParams(params), row.curated_fields ?? []),
+    changeSet,
     // RETURNING carries the name after the curated_fields guards, so a
     // protected name labels the changeset row with what is actually stored.
     nameSnapshot: (row.name as string) ?? params.name,

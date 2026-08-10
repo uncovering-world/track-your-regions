@@ -85,6 +85,9 @@ function returnedRow(overrides: Record<string, unknown> = {}) {
     id: 501,
     inserted: false,
     curated_fields: [],
+    // The upsert returns this so an unchanged row with nothing held costs no
+    // further statement; a test that omitted it would exercise the wrong branch.
+    pending_change_sync_log_id: null,
     name: PARAMS.name,
     name_local: PARAMS.nameLocal,
     description: PARAMS.description,
@@ -112,6 +115,11 @@ function returnedRow(overrides: Record<string, unknown> = {}) {
     old_missing_since: null,
     ...overrides,
   };
+}
+
+/** Every statement the call sent, in order. */
+function sentSql(): string[] {
+  return mockedQuery.mock.calls.map(call => String(call[0]));
 }
 
 describe('upsertExperienceRecord', () => {
@@ -515,20 +523,105 @@ describe('a gated run holds a visible row content, not a pending one', () => {
 
   it('lets the upsert clear the held pointer but never set it', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+    mockedQuery.mockResolvedValue({ rows: [] });
 
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
     // Whether a proposal exists is a question about whether anything differs,
     // and this statement's guards fire either way. So a held row keeps the
     // pointer it has, a row that is no longer held loses it, and nothing here
-    // writes a run id — a pointer set on every pass would tell a curator that
-    // 1200 rows were waiting on a decision when none of them were.
+    // writes a run id.
     const assigned = assignmentsOf(mockedQuery.mock.calls[0][0]);
     const pointer = assigned.get('pending_change_sync_log_id');
     expect(pointer).toContain(HOLD);
     expect(pointer).toContain('THEN experiences.pending_change_sync_log_id');
     expect(pointer).toContain('ELSE NULL');
     expect(pointer).not.toContain('$15');
+  });
+
+  it('points a held row at the run that proposed something, and no other run', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow({ old_name: 'An older name' })] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // The mirror image of the decay: a changed row either loses its pass
+    // (trusted source) or records where the held proposal came from (gated).
+    const pointer = sentSql().find(sql => /SET pending_change_sync_log_id/.test(sql));
+    expect(pointer).toBeDefined();
+    expect(pointer).toMatch(/curation_state <> 'pending'/);
+    expect(pointer).toMatch(
+      /EXISTS \(\s*SELECT 1 FROM experience_categories\s*WHERE id = \$2 AND requires_curation\s*\)/,
+    );
+    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, PARAMS.categoryId, 42]);
+  });
+
+  it('records no held proposal for a pass that proposed nothing', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // A gated run that reaches 1200 unchanged rows must not tell a curator that
+    // 1200 decisions are waiting — and must not spend a statement per row
+    // saying so either, which is why a row with no pointer is left alone.
+    // `SET pending_…` matches only the follow-up statements: inside the upsert
+    // the column is assigned within its `DO UPDATE SET` list, not after a `SET`.
+    expect(sentSql().some(sql => /SET pending_change_sync_log_id/.test(sql))).toBe(false);
+  });
+
+  it('clears a held pointer when the source has come back to what is stored', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({ pending_change_sync_log_id: 41 })],
+    });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // Run 41 proposed a change; the source then reverted it. Nothing is held any
+    // more, so the pointer must not go on naming a proposal that no longer
+    // exists — the column means "NULL when nothing is held".
+    const cleared = sentSql().find(sql => /SET pending_change_sync_log_id = NULL/.test(sql));
+    expect(cleared).toBeDefined();
+    expect(cleared).toMatch(/curation_state <> 'pending'/);
+    expect(cleared).toMatch(/EXISTS \(/);
+    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, PARAMS.categoryId]);
+  });
+
+  it('points a held row at the run whose proposal a claim refused', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({
+        curated_fields: ['short_description'],
+        old_short_description: 'Curator wording.',
+        pending_change_sync_log_id: 41,
+      })],
+    });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // The source proposed a value and a claim refused it, so `changedFields` is
+    // empty and `curatedConflicts` carries the proposal. A pointer keyed on
+    // written fields alone would clear here — telling the curator that nothing
+    // waits on them about the very row whose proposal is still standing.
+    const pointer = sentSql().find(sql => /SET pending_change_sync_log_id/.test(sql));
+    expect(pointer).toBeDefined();
+    expect(pointer).not.toMatch(/= NULL/);
+    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, PARAMS.categoryId, 42]);
+  });
+
+  it('leaves the pointer alone when the run cannot name itself', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({ old_name: 'An older name', pending_change_sync_log_id: 41 })],
+    });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS);
+
+    // The id is what a curator's screen resolves to see the proposal, so a run
+    // with none has nothing to offer the column. Writing NULL would not say
+    // "unknown run", it would say "nothing is held" about a row this run held.
+    expect(sentSql().some(sql => /SET pending_change_sync_log_id/.test(sql))).toBe(false);
   });
 
   it('leaves the provenance columns outside every guard', async () => {
@@ -554,5 +647,70 @@ describe('a gated run holds a visible row content, not a pending one', () => {
     expect(assigned.get('last_seen_at')).toBe('NOW(),');
     expect(assigned.get('missing_since')).toBe('NULL,');
     expect(assigned.get('source_membership')).toBe("'present',");
+  });
+});
+
+describe('a trusted source decays a curator pass', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  it('decays only when the change set says something changed', async () => {
+    // The diff computeChangeSet runs is old_* (the stored "before") vs PARAMS
+    // (what the source proposes now), exactly like every other test in this
+    // file -- overriding the bare, post-write `name` column here would leave
+    // the diff empty and this case would never fire.
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow({ old_name: 'An older name' })] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const decay = sentSql().find(sql => /curation_state = 'auto'/.test(sql));
+    expect(decay).toBeDefined();
+    expect(decay).toMatch(/WHERE id = \$1[\s\S]*curation_state = 'verified'/);
+  });
+
+  it('leaves a pass alone when the source is gated, since nothing was written', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow({ old_name: 'An older name' })] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // Under a gated source the hold refused the change, so what a reader sees is
+    // still what the curator passed. The condition rides in the statement rather
+    // than being decided here for the same reason the hold does: a parameter is
+    // a second source of truth that can disagree with the column.
+    const decayCall = mockedQuery.mock.calls.find(call =>
+      /SET curation_state = 'auto'/.test(String(call[0])),
+    );
+    expect(decayCall?.[0]).toMatch(
+      /NOT EXISTS \(\s*SELECT 1 FROM experience_categories\s*WHERE id = \$2 AND requires_curation\s*\)/,
+    );
+    expect(decayCall?.[1]).toEqual([501, PARAMS.categoryId]);
+  });
+
+  it('sends no decay statement for a provenance-only pass', async () => {
+    // returnedRow() with no overrides is byte-identical to PARAMS, so the
+    // change set is empty — the guards fired but nothing differs.
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    expect(sentSql().some(sql => /curation_state = 'auto'/.test(sql))).toBe(false);
+  });
+
+  it('sends no decay statement when the only divergence is one the curator claimed', async () => {
+    // A claimed field the source disagrees with is a conflict, not a change:
+    // the stored value did not move, so the pass still covers what is live.
+    // `changedFields` and `curatedConflicts` are separate lists, which is what
+    // makes this hold — pinned here so a future merge of the two cannot pass.
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({ curated_fields: ['short_description'], old_short_description: 'Curator wording.' })],
+    });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    const result = await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    expect(result.changeSet.curatedConflicts.map(f => f.field)).toEqual(['shortDescription']);
+    expect(sentSql().some(sql => /curation_state = 'auto'/.test(sql))).toBe(false);
   });
 });
