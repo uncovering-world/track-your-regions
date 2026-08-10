@@ -41,6 +41,44 @@ const PARAMS: ExperienceUpsertParams = {
   metadata: { inDanger: false, dateInscribed: 1981 },
 };
 
+/**
+ * Every `column = expression` the upsert's `ON CONFLICT DO UPDATE SET` list
+ * assigns, by column.
+ *
+ * Read as assignments rather than matched as text, so a column is judged by
+ * what the statement does to it: an assignment is found however it is written,
+ * a comment that merely names a column is not one, and `RETURNING` and the
+ * outer `SELECT` — which may legitimately name any of these columns, and which
+ * later rules read the stored state through — are outside the slice entirely.
+ */
+function assignmentsOf(sql: unknown): Map<string, string> {
+  const text = String(sql);
+  const afterConflict = text.slice(text.indexOf('DO UPDATE SET'));
+  const setList = afterConflict.slice(0, afterConflict.indexOf('RETURNING'));
+
+  const assignments = new Map<string, string>();
+  let column: string | null = null;
+  let expression: string[] = [];
+  const flush = () => {
+    if (column) assignments.set(column, expression.join('\n').trim());
+  };
+
+  for (const line of setList.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('--')) continue;
+    const starts = /^([a-z_]+) = (.*)$/.exec(trimmed);
+    if (starts) {
+      flush();
+      [, column] = starts;
+      expression = [starts[2]];
+    } else if (column) {
+      expression.push(trimmed);
+    }
+  }
+  flush();
+  return assignments;
+}
+
 /** The row shape the CTE returns: new values, plus `old_*` for the prior row. */
 function returnedRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -350,5 +388,49 @@ describe('metadata is guarded per claimed key, not per column', () => {
     // whatever real value the source just sent -- clobbering it. Do not delete this
     // assertion as noise; it is what stops that regression from going unnoticed.
     expect(text).toMatch(/WHERE experiences\.metadata \? claimed\.k/);
+  });
+});
+
+describe('the curation gate stamps a new row', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  it('reads the gate from the category rather than being told', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const [sql] = mockedQuery.mock.calls[0];
+    const text = String(sql);
+    // A parameter would be a second source of truth that can disagree with the
+    // column between the check and the write.
+    expect(text).toMatch(/FROM experience_categories WHERE id = \$1/);
+  });
+
+  it('inserts pending with no published_at when the source is gated', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const text = String(mockedQuery.mock.calls[0][0]);
+    expect(text).toMatch(/curation_state/);
+    expect(text).toMatch(/published_at/);
+    // The two move together: a pending row has no publication moment, and an
+    // auto row's publication moment is now. Anchored on the gate, so neither
+    // can be written without the other having been decided.
+    expect(text).toMatch(/CASE WHEN \(SELECT requires_curation FROM gate\) THEN 'pending' ELSE 'auto' END/);
+    expect(text).toMatch(/CASE WHEN \(SELECT requires_curation FROM gate\) THEN NULL ELSE NOW\(\) END/);
+  });
+
+  it('never restarts published_at on a row that already has one', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // Neither column is a run's to change on a row that already exists.
+    // Publishing is a curator's act, and re-stamping published_at would move
+    // every touched row's "New" chip.
+    const assigned = assignmentsOf(mockedQuery.mock.calls[0][0]);
+    expect([...assigned.keys()]).not.toContain('published_at');
+    expect([...assigned.keys()]).not.toContain('curation_state');
   });
 });

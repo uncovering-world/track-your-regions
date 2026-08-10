@@ -147,15 +147,24 @@ export async function upsertExperienceRecord(
              ST_X(location) AS lon, ST_Y(location) AS lat
       FROM experiences
       WHERE category_id = $1 AND external_id = $2
+    ), gate AS (
+      SELECT requires_curation FROM experience_categories WHERE id = $1
     ), ins AS (
       INSERT INTO experiences (
         category_id, external_id, name, name_local, description, short_description,
         category, tags, location, country_codes, country_names, image_url, metadata,
-        first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at, created_at, updated_at
+        first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at, created_at, updated_at,
+        curation_state, published_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8,
         ST_SetSRID(ST_MakePoint($9, $10), 4326),
-        $11, $12, $13, $14, $15, $15, NOW(), NOW(), NOW()
+        $11, $12, $13, $14, $15, $15, NOW(), NOW(), NOW(),
+        -- A gated source's arrival waits for a person; a trusted source's is
+        -- live the moment it lands, and says so (ADR-0025). Read from the
+        -- category rather than passed in, so the check and the write cannot
+        -- disagree.
+        CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
+        CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END
       )
       ON CONFLICT (category_id, external_id) DO UPDATE SET
         name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
