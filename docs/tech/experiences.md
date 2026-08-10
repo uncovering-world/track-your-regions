@@ -160,6 +160,7 @@ provenance-only pass, one that reaches the row and changes nothing, leaves `veri
 So does a change from a **gated** source: there the same statement's hold refused to write the new
 values, so what a reader sees is still exactly what the curator passed, and retiring the pass would
 punish the row for a proposal nobody has answered yet.
+
 The rule is resolved in TypeScript, against the change set `computeChangeSet` already produces,
 rather than folded into the upsert's own `SET` list, because the statement's `CASE` guards fire
 whether or not a value actually differs from what is stored — the SQL has no way to tell a content
@@ -172,6 +173,16 @@ carry `verified` today are ones `createManualExperience` wrote by hand — each 
 upsert ever reaches it, and this statement's `WHERE` matches nothing a sync run has ever
 touched. The endpoint that lets a curator promote an existing `pending` or `auto` row to
 `verified` arrives with the rest of this feature.
+
+**New content retires its container's pass too.** A pass covers the experience as it stood — its
+points, and the works a museum was holding — so a point or a work the run has just added is content
+that pass never covered. `retirePassAfterNewContent` (`services/sync/curationDecay.ts`) is the one
+statement both writers use for it: `writeExperienceLocations` calls it in the same transaction as the
+insert that caused it, and the museum sync calls it once per museum rather than once per painting,
+because the fact is the same whether one work arrived or twelve. It moves a row only from `verified`,
+and only for a source nobody gated — a gated source writes its new content `pending`, so nothing a
+reader sees has changed. A point the source stopped offering and now offers again is not new: the
+curator saw it, and its row, its id and its region assignments are the same ones.
 
 **`total_updated` changed meaning.** It used to count every row that passed through
 `ON CONFLICT DO UPDATE`, identical or not. Since migration 009 it counts rows that actually

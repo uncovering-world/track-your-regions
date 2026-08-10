@@ -12,6 +12,7 @@
 
 import { pool } from '../../db/index.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
+import { retirePassAfterNewContent } from './curationDecay.js';
 import { orchestrateSync, getSyncStatus, cancelSync, type FilteredEntity } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import type { ChangeSetResult } from './changeSet.js';
@@ -180,6 +181,8 @@ export async function upsertMuseumTreasures(
   experienceId: number,
   artworks: ProcessedContent[]
 ): Promise<void> {
+  let linked = false;
+
   for (const artwork of artworks) {
     // Step 1: Upsert into treasures (globally unique by external_id)
     //
@@ -234,17 +237,26 @@ export async function upsertMuseumTreasures(
     // so it is reached the same way the location insert reaches it. Links are
     // never deleted (ADR-0023), so a link a curator already passed must keep
     // that state when a later run finds it again — insert-only, same as above.
-    await pool.query(
+    const link = await pool.query(
       `INSERT INTO experience_treasures (experience_id, treasure_id, curation_state)
        VALUES ($1, $2,
          CASE WHEN (SELECT c.requires_curation
                       FROM experiences e JOIN experience_categories c ON c.id = e.category_id
                      WHERE e.id = $1)
               THEN 'pending' ELSE 'auto' END)
-       ON CONFLICT (experience_id, treasure_id) DO NOTHING`,
+       ON CONFLICT (experience_id, treasure_id) DO NOTHING
+       RETURNING treasure_id`,
       [experienceId, treasureId]
     );
+    // `DO NOTHING` returns no row when the link was already there, so this is
+    // "the museum gained a work", not "the run mentioned one".
+    if (link.rows.length > 0) linked = true;
   }
+
+  // Once for the museum rather than once per painting: the fact is that a
+  // curator's pass no longer covers everything on show, and it is the same fact
+  // whether one work arrived or twelve.
+  if (linked) await retirePassAfterNewContent(pool, experienceId);
 }
 
 /**

@@ -58,6 +58,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { retirePassAfterNewContent } from './curationDecay.js';
 
 export interface IncomingLocation {
   name: string | null;
@@ -287,6 +288,11 @@ export async function writeExperienceLocations(
        RETURNING id`,
       params,
     );
+
+    // A point the curator has never seen is content their pass did not cover,
+    // so the venue stops claiming to have been passed. In the same transaction
+    // as the insert that caused it: the two are one fact about the object.
+    if (inserted.rows.length > 0) await retirePassAfterNewContent(client, experienceId);
 
     await client.query('COMMIT');
 
