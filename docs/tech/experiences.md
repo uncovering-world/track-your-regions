@@ -166,9 +166,12 @@ whether or not a value actually differs from what is stored — the SQL has no w
 change from a no-op pass, only the computed change set does, and collapsing the decay into the
 `SET` list would retire a curator's pass on every run, changed or not. The `UPDATE` is scoped to
 `WHERE curation_state = 'verified'`, so it can only ever move a row one way: a `pending` row is
-not published and has nothing to decay, and an `auto` row is already there. Nothing writes
-`verified` yet — the curator-facing endpoint that publishes a gated row arrives with the rest of
-this feature — so today this statement is live code that matches no row in the catalogue.
+not published and has nothing to decay, and an `auto` row is already there. The only rows that
+carry `verified` today are ones `createManualExperience` wrote by hand — each one's
+`curator-<id>-<ts>` external id is never in a source listing (see below), so no sync run's
+upsert ever reaches it, and this statement's `WHERE` matches nothing a sync run has ever
+touched. The endpoint that lets a curator promote an existing `pending` or `auto` row to
+`verified` arrives with the rest of this feature.
 
 **`total_updated` changed meaning.** It used to count every row that passed through
 `ON CONFLICT DO UPDATE`, identical or not. Since migration 009 it counts rows that actually
@@ -443,8 +446,11 @@ source's points and works are exactly what a run can add unchecked between one c
 the next. It answers a question none of the other three do: has anyone looked at this row yet —
 not whether the source still lists it, not whether it still exists, not whether this category
 accepts it. A sync run writes it — `pending` for a row from a gated source, `auto` everywhere
-else — but no reader-facing query consults it yet; the predicate that hides a `pending` row and
-the endpoint a curator uses to publish one arrive with the curator-facing half of this feature.
+else. `createManualExperience` writes `verified` instead, on both the experience and its one
+location: there is no source here to gate, and the curator who typed the row in and placed the
+point already read it — `auto` would say "published unread" about something a person wrote. No
+reader-facing query consults the column yet; the predicate that hides a `pending` row and the
+endpoint a curator uses to publish one arrive with the curator-facing half of this feature.
 `existence`, `admission`, `missing_since` and `curation_state` answer different questions and
 compose rather than collapse: merging any two into one column is forbidden, because it would make
 it impossible to ask about either again.
