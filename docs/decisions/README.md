@@ -35,6 +35,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0022](0022-locations-are-marked-not-deleted.md) | A location is marked, not deleted, and no run may empty a category | Accepted | 2026-08-05 |
 | [0023](0023-works-first-museum-selection.md) | Museum selection is works-first, with no institutional term and no cap | Accepted | 2026-08-07 |
 | [0024](0024-a-category-may-refuse-what-the-source-still-lists.md) | A category may refuse what the source still lists | Accepted | 2026-08-07 |
+| [0025](0025-per-source-curation-gate.md) | A source is trusted or it is not, and the product says which | Accepted | 2026-08-10 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
