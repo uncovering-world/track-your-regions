@@ -49,6 +49,10 @@ const RESURRECT = /missing_since = NULL/;
 const KEEP = /SET ordinal = i\.ordinal/;
 /** The arm that records that the source stopped offering a point. */
 const MARK = /missing_since = NOW\(\)/;
+/** The arm that writes a point the experience did not have. */
+const INSERT = /INSERT INTO experience_locations/;
+/** The statement that retires the venue's pass because it gained a point. */
+const DECAY = /UPDATE experiences e SET curation_state = 'auto'/;
 
 describe('writeExperienceLocations', () => {
   beforeEach(() => {
@@ -343,5 +347,32 @@ describe('a new point arrives stamped', () => {
     expect(returned).not.toMatch(/curation_state/);
     expect(kept).not.toMatch(/curation_state/);
     expect(marked).not.toMatch(/curation_state/);
+  });
+
+  it('retires the venue pass when it actually gained a point', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '0', matched: '0', ids: null }] });
+    const { client, statements } = fakeClient([[INSERT, { rows: [{ id: 12 }] }]]);
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    // A curator's pass covered the venue with the points it had. In the same
+    // transaction as the insert, because the two are one fact about the object.
+    const decay = statements.find(s => DECAY.test(s));
+    expect(decay).toBeDefined();
+    expect(decay).toMatch(/e\.curation_state = 'verified'/);
+    expect(statements.indexOf(decay!)).toBeLessThan(statements.indexOf('COMMIT'));
+  });
+
+  it('leaves the venue pass alone when no point was added', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    // A point that came back, or one renumbered in place, is not new: the
+    // curator saw it, and the row, its id and its assignments are the same ones.
+    expect(statements.find(s => DECAY.test(s))).toBeUndefined();
   });
 });
