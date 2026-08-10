@@ -198,6 +198,40 @@ describe('upsertExperienceRecord', () => {
     expect(result.experienceId).toBe(0);
   });
 
+  it('labels a dry run of a held row with the name the run would keep', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{
+        id: 501,
+        curated_fields: [],
+        curation_state: 'auto',
+        gated: true,
+        name: 'The name a reader sees',
+        name_local: PARAMS.nameLocal,
+        description: null,
+        short_description: PARAMS.shortDescription,
+        category: 'natural',
+        tags: ['natural'],
+        lon: PARAMS.lon,
+        lat: PARAMS.lat,
+        country_codes: ['TZ'],
+        country_names: ['Tanzania'],
+        image_url: PARAMS.imageUrl,
+        metadata: PARAMS.metadata,
+      }],
+    });
+
+    const result = await upsertExperienceRecord(PARAMS, { dryRun: true });
+
+    // A preview exists to say what the run it stands in for would do. Under a
+    // gated source that run would hold the stored name, so labelling the row
+    // with the proposed one would mislabel it in the one direction that matters.
+    expect(result.nameSnapshot).toBe('The name a reader sees');
+    // The proposal is still reported: under a gate it is exactly what the
+    // curator is being asked about, so a preview that said "nothing would
+    // change" would hide the question.
+    expect(result.changeSet.changedFields.map(f => f.field)).toEqual(['name']);
+  });
+
   it('stamps provenance on the written row', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
 
@@ -432,5 +466,93 @@ describe('the curation gate stamps a new row', () => {
     const assigned = assignmentsOf(mockedQuery.mock.calls[0][0]);
     expect([...assigned.keys()]).not.toContain('published_at');
     expect([...assigned.keys()]).not.toContain('curation_state');
+  });
+});
+
+describe('a gated run holds a visible row content, not a pending one', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  // Declared once, and reused verbatim as the `held` constant in syncUtils.ts,
+  // so the test and the SQL cannot drift apart in wording while both look right.
+  const HOLD = "((SELECT requires_curation FROM gate) AND experiences.curation_state <> 'pending')";
+
+  it('guards every content column with the hold condition as well as the claim', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const assigned = assignmentsOf(mockedQuery.mock.calls[0][0]);
+    // Named individually rather than counted: a count goes stale the moment a
+    // twelfth content column is added, and the failure would read as a passing
+    // test with one column unguarded. Each column's own expression is examined,
+    // so a lost hold on `description` cannot pass by matching the text of
+    // `short_description`'s arm.
+    for (const column of [
+      'name', 'name_local', 'description', 'short_description', 'category',
+      'tags', 'location', 'country_codes', 'country_names', 'image_url', 'metadata',
+    ]) {
+      const arm = assigned.get(column);
+      expect(arm, `${column} is not assigned`).toBeDefined();
+      expect(arm, `${column} has no CASE arm`).toMatch(/^CASE/);
+      expect(arm, `${column} is not held`).toContain(HOLD);
+    }
+  });
+
+  it('reads the stored state, not the value it is about to write', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const text = String(mockedQuery.mock.calls[0][0]);
+    // `experiences.curation_state` inside ON CONFLICT is the pre-update value.
+    // EXCLUDED is the incoming row, whose curation_state is what task 3's own
+    // CASE just computed ('pending' for a gated source) -- guarding on that
+    // would make `requires_curation AND EXCLUDED.curation_state <> 'pending'`
+    // collapse to `true AND false`, and the hold would never fire for anyone.
+    expect(text).toMatch(/experiences\.curation_state <> 'pending'/);
+    expect(text).not.toMatch(/EXCLUDED\.curation_state/);
+  });
+
+  it('lets the upsert clear the held pointer but never set it', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // Whether a proposal exists is a question about whether anything differs,
+    // and this statement's guards fire either way. So a held row keeps the
+    // pointer it has, a row that is no longer held loses it, and nothing here
+    // writes a run id — a pointer set on every pass would tell a curator that
+    // 1200 rows were waiting on a decision when none of them were.
+    const assigned = assignmentsOf(mockedQuery.mock.calls[0][0]);
+    const pointer = assigned.get('pending_change_sync_log_id');
+    expect(pointer).toContain(HOLD);
+    expect(pointer).toContain('THEN experiences.pending_change_sync_log_id');
+    expect(pointer).toContain('ELSE NULL');
+    expect(pointer).not.toContain('$15');
+  });
+
+  it('leaves the provenance columns outside every guard', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const assigned = assignmentsOf(mockedQuery.mock.calls[0][0]);
+    // A gated run still records that the source listed the object,
+    // or missing detection starts flagging everything the gate holds and one
+    // gated source manufactures a category-wide false alarm.
+    // Every one of the five named individually: naming three of them and
+    // calling it "the provenance columns" would pass while a guard sat on
+    // either of the other two.
+    for (const column of [
+      'last_seen_sync_log_id', 'last_seen_at', 'missing_since', 'source_membership', 'updated_at',
+    ]) {
+      const assignment = assigned.get(column);
+      expect(assignment, `${column} is not assigned at all`).toBeDefined();
+      expect(assignment, `${column} is guarded`).not.toMatch(/^CASE/);
+    }
+    // What those assignments have to say, not merely that they are unguarded.
+    expect(assigned.get('last_seen_at')).toBe('NOW(),');
+    expect(assigned.get('missing_since')).toBe('NULL,');
+    expect(assigned.get('source_membership')).toBe("'present',");
   });
 });

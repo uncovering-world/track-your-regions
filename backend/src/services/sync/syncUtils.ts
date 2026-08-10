@@ -94,7 +94,9 @@ function snapshotFromParams(params: ExperienceUpsertParams): ExperienceSnapshot 
  */
 async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutcome> {
   const result = await pool.query(
-    `SELECT id, curated_fields, missing_since, source_membership, ${SNAPSHOT_COLUMNS.join(', ')},
+    `SELECT id, curated_fields, missing_since, source_membership, curation_state,
+            (SELECT requires_curation FROM experience_categories WHERE id = $1) AS gated,
+            ${SNAPSHOT_COLUMNS.join(', ')},
             ST_X(location) AS lon, ST_Y(location) AS lat
      FROM experiences
      WHERE category_id = $1 AND external_id = $2`,
@@ -115,14 +117,23 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   const row = result.rows[0];
   const curatedFields: string[] = row.curated_fields ?? [];
 
+  // Both reasons the run would keep the stored name: the curator claimed it, or
+  // the row is held — a gated source may not overwrite what a reader can already
+  // see. Emulated here rather than left to the write path because the whole
+  // point of a preview is to say what the run it stands in for would do, and a
+  // preview that labelled the row with a rename the run would refuse would
+  // mislabel it in the one direction that matters.
+  const heldFromView = Boolean(row.gated) && row.curation_state !== 'pending';
+
   return {
     experienceId: row.id,
+    // The change set still reports what the source proposes, held or not: under
+    // a gate the proposal is what a curator is being asked about, so a preview
+    // that reported "nothing would change" would hide the question.
     changeSet: computeChangeSet(snapshotFromRow(row, ''), incoming, curatedFields),
-    // Emulates the upsert's own CASE guard rather than picking a side: a
-    // curated name stays as the curator wrote it, an ordinary rename shows the
-    // new name. Reading the stored name unconditionally would make a preview
-    // label a renamed row differently from the run it stands in for.
-    nameSnapshot: curatedFields.includes('name') ? (row.name as string) : params.name,
+    nameSnapshot: curatedFields.includes('name') || heldFromView
+      ? (row.name as string)
+      : params.name,
     returnedFromMissing: row.missing_since !== null || row.source_membership === 'former',
   };
 }
@@ -140,6 +151,18 @@ export async function upsertExperienceRecord(
   options: { dryRun?: boolean; syncLogId?: number | null } = {},
 ): Promise<UpsertOutcome> {
   if (options.dryRun) return previewUpsert(params);
+
+  // A gated source may not overwrite what a reader can already see: there is no
+  // second row to hide the unreviewed value behind, which is the one case
+  // writing contents invisible does not cover (ADR-0025 decision 5, and
+  // `docs/tech/experiences.md` § Change provenance for the rule as shipped). A
+  // row still `pending` has nothing to protect, so it keeps being refreshed in
+  // place and the curator reviews the newest state rather than whatever arrived
+  // first.
+  //
+  // `experiences.curation_state` is the PRE-update value here, which is what
+  // makes this expressible in SQL at all.
+  const held = `((SELECT requires_curation FROM gate) AND experiences.curation_state <> 'pending')`;
 
   const result = await pool.query(
     `WITH before AS (
@@ -167,16 +190,16 @@ export async function upsertExperienceRecord(
         CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END
       )
       ON CONFLICT (category_id, external_id) DO UPDATE SET
-        name = CASE WHEN experiences.curated_fields ? 'name' THEN experiences.name ELSE EXCLUDED.name END,
-        name_local = CASE WHEN experiences.curated_fields ? 'name_local' THEN experiences.name_local ELSE EXCLUDED.name_local END,
-        description = CASE WHEN experiences.curated_fields ? 'description' THEN experiences.description ELSE EXCLUDED.description END,
-        short_description = CASE WHEN experiences.curated_fields ? 'short_description' THEN experiences.short_description ELSE EXCLUDED.short_description END,
-        category = CASE WHEN experiences.curated_fields ? 'category' THEN experiences.category ELSE EXCLUDED.category END,
-        tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
-        location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location ELSE EXCLUDED.location END,
-        country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
-        country_names = CASE WHEN experiences.curated_fields ? 'country_names' THEN experiences.country_names ELSE EXCLUDED.country_names END,
-        image_url = CASE WHEN experiences.curated_fields ? 'image_url' THEN experiences.image_url ELSE EXCLUDED.image_url END,
+        name = CASE WHEN experiences.curated_fields ? 'name' OR ${held} THEN experiences.name ELSE EXCLUDED.name END,
+        name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${held} THEN experiences.name_local ELSE EXCLUDED.name_local END,
+        description = CASE WHEN experiences.curated_fields ? 'description' OR ${held} THEN experiences.description ELSE EXCLUDED.description END,
+        short_description = CASE WHEN experiences.curated_fields ? 'short_description' OR ${held} THEN experiences.short_description ELSE EXCLUDED.short_description END,
+        category = CASE WHEN experiences.curated_fields ? 'category' OR ${held} THEN experiences.category ELSE EXCLUDED.category END,
+        tags = CASE WHEN experiences.curated_fields ? 'tags' OR ${held} THEN experiences.tags ELSE EXCLUDED.tags END,
+        location = CASE WHEN experiences.curated_fields ? 'location' OR ${held} THEN experiences.location ELSE EXCLUDED.location END,
+        country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR ${held} THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
+        country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR ${held} THEN experiences.country_names ELSE EXCLUDED.country_names END,
+        image_url = CASE WHEN experiences.curated_fields ? 'image_url' OR ${held} THEN experiences.image_url ELSE EXCLUDED.image_url END,
         -- Two claim shapes reach this column, and only one of them used to work.
         -- editExperience claims per key -- 'metadata.website',
         -- 'metadata.wikipediaUrl' -- and ? 'metadata' is false for those, so
@@ -185,7 +208,7 @@ export async function upsertExperienceRecord(
         -- column; a per-key claim now re-applies just those keys over whatever
         -- the source sent, so an unclaimed key still updates.
         metadata = CASE
-          WHEN experiences.curated_fields ? 'metadata' THEN experiences.metadata
+          WHEN experiences.curated_fields ? 'metadata' OR ${held} THEN experiences.metadata
           ELSE COALESCE(EXCLUDED.metadata, '{}'::jsonb) || COALESCE((
                  SELECT jsonb_object_agg(claimed.k, experiences.metadata -> claimed.k)
                  FROM (
@@ -196,6 +219,16 @@ export async function upsertExperienceRecord(
                  WHERE experiences.metadata ? claimed.k
                ), '{}'::jsonb)
         END,
+        -- The pointer says which run's proposal is being held, so the curator's
+        -- screen can find it. This statement can only ever clear it: whether a
+        -- proposal exists at all is a question about whether anything actually
+        -- differs, and the CASE guards above fire either way. So a held row keeps
+        -- the pointer it has and a row that is not held loses it, because a run
+        -- that is free to write the content leaves nothing waiting. Setting it
+        -- needs the computed change set, so it happens after this statement.
+        pending_change_sync_log_id = CASE WHEN ${held}
+                                         THEN experiences.pending_change_sync_log_id
+                                         ELSE NULL END,
         last_seen_sync_log_id = COALESCE(EXCLUDED.last_seen_sync_log_id, experiences.last_seen_sync_log_id),
         last_seen_at = NOW(),
         missing_since = NULL,

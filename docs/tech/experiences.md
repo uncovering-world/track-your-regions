@@ -130,6 +130,20 @@ would have hidden it.
 rejected it**, marked `curatedConflict`. That is what makes a curator's later "accept source"
 possible; without it the proposed value exists nowhere.
 
+**A gated source may not overwrite what a reader can already see.** Contents arriving from a gated
+source are written invisible rather than withheld ([ADR-0025](../decisions/0025-per-source-curation-gate.md)),
+but an experience row that is already published has no second row to hide an unreviewed value behind
+— so for that row alone the run keeps the stored content instead. The condition is
+`requires_curation AND experiences.curation_state <> 'pending'`, computed inside the upsert because it
+depends on the stored state the same statement is about to write, and it rides on every content column
+beside that column's own `curated_fields` guard. A row still `pending` is *not* held: nobody can see
+it, so the run refreshes it in place and the curator reviews the newest state rather than whatever
+landed first.
+
+The proposal itself is already recorded, per object, in the run's changeset. What the row adds is
+`pending_change_sync_log_id`, the pointer saying whose proposal is being held, so the curator's screen
+can find it.
+
 **`total_updated` changed meaning.** It used to count every row that passed through
 `ON CONFLICT DO UPDATE`, identical or not. Since migration 009 it counts rows that actually
 changed, and `total_unchanged` absorbs the rest. Logs 1–4 are therefore not comparable with
