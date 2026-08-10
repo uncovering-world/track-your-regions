@@ -396,7 +396,20 @@ say it without asserting something false. `hideRefusedSql()` is a separate fragm
 independently: `includeLost` is a reader asking to see what is gone, and it must leave
 admission alone.
 
-Its row in the table above reads "Visit history: shown" beside "Card: not reachable", and those two
+`curation_state` ([ADR-0025](../decisions/0025-per-source-curation-gate.md)) is the fourth column
+that can take a row off a reader's screen, carried by `experiences`, `experience_locations`,
+`experience_treasures` and `treasures` rather than by the experience alone, because a gated
+source's points and works are exactly what a run can add unchecked between one curator visit and
+the next. It answers a question none of the other three do: has anyone looked at this row yet —
+not whether the source still lists it, not whether it still exists, not whether this category
+accepts it. A sync run writes it — `pending` for a row from a gated source, `auto` everywhere
+else — but no reader-facing query consults it yet; the predicate that hides a `pending` row and
+the endpoint a curator uses to publish one arrive with the curator-facing half of this feature.
+`existence`, `admission`, `missing_since` and `curation_state` answer different questions and
+compose rather than collapse: merging any two into one column is forbidden, because it would make
+it impossible to ask about either again.
+
+The `admission` row in the table above reads "Visit history: shown" beside "Card: not reachable", and those two
 cells are not a contradiction — reading them as one is what let another by-id read stay open for a
 whole slice. The line they fall either side of: **the catalogue's reads refuse a kept-out row; a
 record of what a person did is theirs and stays.** A read that describes an experience — its detail,
