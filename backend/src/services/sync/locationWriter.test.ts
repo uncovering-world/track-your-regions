@@ -305,3 +305,43 @@ describe('the match predicate', () => {
     });
   });
 });
+
+describe('a new point arrives stamped', () => {
+  // What a mocked client can see is the statement: that the insert decides the
+  // state from the gate and names both outcomes, and that no statement about a
+  // point which already existed touches the column. That the decision comes out
+  // `pending` under a gated source and `auto` under a trusted one was proved by
+  // executing this statement against a real database, both ways.
+  it('decides a new point state from the gate, and leaves an existing point alone', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '0', matched: '0', ids: null }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    const insert = statements.find(s => /INSERT INTO experience_locations/.test(s));
+    expect(insert).toBeDefined();
+    expect(insert).toMatch(/curation_state/);
+    // The gate is reached through the experience, because this writer has an
+    // experienceId and no categoryId — one subselect rather than a parameter
+    // threaded through three services.
+    expect(insert).toMatch(/FROM experiences[\s\S]*JOIN experience_categories/);
+    // Both branches named, so an edit that stamped every row 'auto' (or every
+    // row 'pending') fails this test instead of passing on column presence alone.
+    expect(insert).toMatch(/THEN 'pending' ELSE 'auto' END/);
+
+    // A returning point, a point renumbered in place, and a point just marked
+    // missing all already had rows before this run started — a curator may
+    // already have passed one of them, so none of these three may touch the
+    // column at all.
+    const returned = statements.find(s => RESURRECT.test(s));
+    const kept = statements.find(s => KEEP.test(s) && !RESURRECT.test(s));
+    const marked = statements.find(s => MARK.test(s));
+    expect(returned).toBeDefined();
+    expect(kept).toBeDefined();
+    expect(marked).toBeDefined();
+    expect(returned).not.toMatch(/curation_state/);
+    expect(kept).not.toMatch(/curation_state/);
+    expect(marked).not.toMatch(/curation_state/);
+  });
+});

@@ -260,9 +260,23 @@ export async function writeExperienceLocations(
     // visit record pointing at whichever of them the reader is not shown.
     const inserted = await client.query(
       `WITH ${cte}
-       INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location)
+       INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location, curation_state)
        SELECT $1, i.name, i.external_ref, i.ordinal,
-              ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+              ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326),
+              -- A pending point is written, indexed and placed into regions like
+              -- any other, and no reader-facing read may offer it (ADR-0025):
+              -- keeping it off those reads is one predicate's job rather than a
+              -- reason to withhold the row. Withholding it would leave a region
+              -- curator nothing to review for an arrival.
+              --
+              -- Read from the experience rather than passed in: this writer has
+              -- an experience id and no category id, and a parameter would be a
+              -- second source of truth that could disagree with the column
+              -- between the check and the write.
+              CASE WHEN (SELECT c.requires_curation
+                           FROM experiences e JOIN experience_categories c ON c.id = e.category_id
+                          WHERE e.id = $1)
+                   THEN 'pending' ELSE 'auto' END
        FROM incoming i
        WHERE NOT EXISTS (
          SELECT 1 FROM experience_locations el
