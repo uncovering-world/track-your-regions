@@ -2200,7 +2200,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     curator_id INTEGER NOT NULL REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -2209,9 +2209,16 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- CREATE TABLE IF NOT EXISTS is a no-op where the table exists, so a widened
 -- CHECK has to be applied on its own — see the same shape on
 -- experience_sync_changes above.
+--
+-- 'published' is the newest of them (ADR-0025 § 4.4) and rides in
+-- db/migrations/019-published-curation-action.sql for a database that already
+-- holds data. The list is a closed one, so a curator's publish cannot be
+-- recorded at all until it is named here: the audit insert is inside the
+-- publish transaction, and a rejected action rolls the publication back with
+-- it. That is why this is a schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published'));
 
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);

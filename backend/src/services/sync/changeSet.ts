@@ -83,6 +83,20 @@ export const CURATED_KEY_BY_FIELD: Record<string, string> = {
   'metadata.dateInscribed': 'metadata',
 };
 
+/**
+ * The `curated_fields` entry that protects a given field.
+ *
+ * The map above answers this for every field that has a column, and the
+ * fallback answers it for the ones that do not: `editExperience` claims
+ * `metadata.website` per key, and no column matches that name (#488). One
+ * function rather than the same `?? field` written out at each site, because
+ * every caller — the diff below, the queue's conflict lookup, the publish
+ * writer — has to reach the same key or one of them protects nothing.
+ */
+export function claimKeyFor(field: string): string {
+  return CURATED_KEY_BY_FIELD[field] ?? field;
+}
+
 interface RawDiff {
   field: string;
   old: unknown;
@@ -285,11 +299,9 @@ export function computeChangeSet(
   const curatedConflicts: FieldChange[] = [];
 
   for (const diff of collectDifferences(before, incoming, curatedFields)) {
-    // Fall back to the field's own name, exactly as `claimKeyFor` does in
-    // lifecycleController: a claim key is not always a column, and
-    // 'metadata.website' is claimed under that literal name (#488).
-    const protectedBy = CURATED_KEY_BY_FIELD[diff.field] ?? diff.field;
-    const isProtected = curated.has(protectedBy);
+    // A claim key is not always a column: 'metadata.website' is claimed under
+    // that literal name (#488), which is what `claimKeyFor`'s fallback is for.
+    const isProtected = curated.has(claimKeyFor(diff.field));
     const change: FieldChange = { ...diff, curatedConflict: isProtected };
     if (isProtected) curatedConflicts.push(change);
     else changedFields.push(change);

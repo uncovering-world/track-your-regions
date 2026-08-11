@@ -7,7 +7,8 @@ import { join } from 'node:path';
  *
  * `db/init/01-schema.sql` is what an empty database gets and what an existing
  * one is re-applied to gain new columns; `db/migrations/018-curation-gate.sql`
- * is what a database already holding data gets by hand. A column added to one
+ * and `019-published-curation-action.sql` are what a database already holding
+ * data gets by hand. A column added to one
  * and forgotten in the other is invisible until a fresh database behaves
  * differently from the dev one — which is exactly the class of bug nobody finds
  * quickly. There is no database in this suite, so this is a text-level guard;
@@ -23,9 +24,16 @@ const schema = collapse(readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql
 const migration = collapse(
   readFileSync(join(repoRoot, 'db', 'migrations', '018-curation-gate.sql'), 'utf8'),
 );
-/** Uncollapsed, for the one assertion that is about how a line starts. */
+const publishMigration = collapse(
+  readFileSync(join(repoRoot, 'db', 'migrations', '019-published-curation-action.sql'), 'utf8'),
+);
+/** Uncollapsed, for the assertions that are about how a line starts. */
 const migrationLines = readFileSync(
   join(repoRoot, 'db', 'migrations', '018-curation-gate.sql'),
+  'utf8',
+);
+const publishMigrationLines = readFileSync(
+  join(repoRoot, 'db', 'migrations', '019-published-curation-action.sql'),
   'utf8',
 );
 
@@ -157,5 +165,56 @@ describe('the curation gate exists in both schema homes', () => {
     // db/migrations/README.md: psql exits 0 when a statement in a piped script
     // fails, so the file sets this itself rather than trusting the caller.
     expect(migrationLines).toMatch(/^\\set ON_ERROR_STOP on$/m);
+  });
+});
+
+/**
+ * Every action a curator's write records, in both schema homes.
+ *
+ * `experience_curation_log.action` is a CHECK, so an endpoint writing a value
+ * the list does not carry does not merely lose its audit row — the insert sits
+ * inside the write's own transaction, so the whole decision rolls back. That
+ * makes the list part of the contract of every curator endpoint, and adding an
+ * action a code change alone.
+ */
+describe('the curation log accepts every action a curator endpoint writes', () => {
+  const ACTIONS = [
+    'created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region',
+    'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed',
+    'admission_confirmed', 'admission_overridden',
+    // ADR-0025 § 4.4 — what POST /:id/publish records.
+    'published',
+  ];
+  const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
+  const actionCheck = `CHECK (action IN (${quoted}))`;
+
+  it('01-schema.sql names them in both of its two copies', () => {
+    // The file states the list twice on purpose: once inline, for a fresh
+    // database, and once as a DROP/ADD, for an existing one being re-applied.
+    // Widening only the second leaves a fresh database with the old list —
+    // until the ALTER two lines later happens to fix it, which makes the inline
+    // copy look optional and is exactly how it would come to drift. Counted,
+    // because `toContain` is satisfied by either one alone.
+    expect(schema.split(actionCheck)).toHaveLength(3);
+  });
+
+  it('migration 019 names the same list', () => {
+    expect(publishMigration).toContain(actionCheck);
+  });
+
+  it('migration 019 is not defeated by how it is invoked', () => {
+    expect(publishMigrationLines).toMatch(/^\\set ON_ERROR_STOP on$/m);
+  });
+
+  it('migration 019 re-adds the constraint it drops, so either file may run first', () => {
+    // A bare ADD would fail on a database `01-schema.sql` reached first, and a
+    // bare DROP would leave the column unconstrained. The pair is what makes
+    // both orders, and any number of re-applications, come out the same.
+    const drop = 'ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;';
+    expect(publishMigration).toContain(drop);
+    expect(publishMigration).toContain(
+      `ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check ${actionCheck}`,
+    );
+    expect(publishMigration.indexOf(drop)).toBeLessThan(publishMigration.indexOf(actionCheck));
   });
 });
