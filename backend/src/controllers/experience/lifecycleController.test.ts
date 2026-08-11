@@ -200,6 +200,12 @@ describe('getReviewQueue', () => {
    * Positional indexing broke the moment a third query joined the two: the
    * conflicts read moved from calls[1] to calls[2] and six tests failed for a
    * reason unrelated to what any of them was checking.
+   *
+   * The conflicts tests below anchor on `'conflict' AS kind`, not on
+   * `q.proposed IS NOT NULL` as they once did: `held` carries that same guard
+   * now, so `.find()` would silently return whichever of the two happens to
+   * run first — these tests passed for the wrong reason (call order) until
+   * that ambiguity was found in review, not because the anchor was unique.
    */
   function callMatching(fragment: string): [string, unknown[]] {
     const found = mockedQuery.mock.calls.find(c => String(c[0]).includes(fragment));
@@ -212,7 +218,7 @@ describe('getReviewQueue', () => {
 
     // Accepting the source releases the claim but leaves the changeset row as
     // the record of what the run did — the claim is what makes it a question
-    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
+    const [conflictSql] = callMatching("'conflict' AS kind");
     expect(conflictSql).toContain('e.curated_fields ?');
     expect(conflictSql).toContain('q.proposed IS NOT NULL');
   });
@@ -222,7 +228,7 @@ describe('getReviewQueue', () => {
 
     // 'shortDescription' is claimed as 'short_description', and
     // 'metadata.inDanger' as plain 'metadata' — not a mechanical case change
-    const [, conflictParams] = callMatching('q.proposed IS NOT NULL');
+    const [, conflictParams] = callMatching("'conflict' AS kind");
     const map = JSON.parse(String(conflictParams.at(-4)));
     expect(map.shortDescription).toBe('short_description');
     expect(map['metadata.inDanger']).toBe('metadata');
@@ -234,7 +240,7 @@ describe('getReviewQueue', () => {
     // A run that finds the source agreeing writes no changeset row at all, so
     // the absence of a newer conflict proves nothing. last_seen_sync_log_id is
     // what such a run does leave behind.
-    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
+    const [conflictSql] = callMatching("'conflict' AS kind");
     expect(conflictSql).toContain('last_seen_sync_log_id');
   });
 
@@ -244,7 +250,7 @@ describe('getReviewQueue', () => {
     // last_seen is stamped per item inside the loop; the changeset lands in one
     // batch after it. Mid-run the newer value exists and the rows it would be
     // read against do not, so every conflict would vanish for the whole run.
-    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
+    const [conflictSql] = callMatching("'conflict' AS kind");
     expect(conflictSql).toContain('prev.completed_at IS NOT NULL');
   });
 
@@ -253,7 +259,7 @@ describe('getReviewQueue', () => {
 
     // Status cannot answer this: a run that throws after the item loop records
     // its changes and only then marks itself failed. The markers can.
-    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
+    const [conflictSql] = callMatching("'conflict' AS kind");
     expect(conflictSql).toContain('"externalId":"changeset"');
     expect(conflictSql).toContain(ORPHANED_RUN_ERROR);
     expect(conflictSql).not.toContain("prev.status <> 'failed'");
@@ -265,15 +271,201 @@ describe('getReviewQueue', () => {
     // recordSyncFailure writes the changes and *then* marks the log failed, so
     // keying on status would suppress the inference for a run whose changeset
     // is entirely on record — resurfacing a conflict the source withdrew
-    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
+    const [conflictSql] = callMatching("'conflict' AS kind");
     expect(conflictSql).not.toMatch(/prev\.status/);
   });
 
   it('ignores conflicts that only a preview proposed', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
-    const [conflictSql] = callMatching('q.proposed IS NOT NULL');
+    const [conflictSql] = callMatching("'conflict' AS kind");
     expect(conflictSql).toContain('l.is_dry_run = FALSE');
+  });
+
+  /**
+   * Anchor fragments unique to each of the three newer kinds, and to
+   * `missing`'s new predicate. `held` and `conflicts` both contain
+   * `q.proposed IS NOT NULL`, which is exactly the sibling-satisfies-the-
+   * assertion trap the review of the previous task's branch found — so each
+   * anchor here is text only its own query carries.
+   */
+  const QUEUE_KIND_ANCHOR = {
+    arrival: "e.curation_state = 'pending'",
+    missing: 'e.missing_since IS NOT NULL',
+    held: 'e.pending_change_sync_log_id IS NOT NULL',
+    contents: "el.curation_state = 'pending'",
+  } as const;
+
+  async function capturedQueueSql(
+    kind: keyof typeof QUEUE_KIND_ANCHOR,
+    user: typeof ADMIN | typeof CURATOR = ADMIN,
+  ): Promise<string> {
+    mockedQuery.mockClear();
+    await getReviewQueue({ user, query: {} } as never, makeRes() as never);
+    const [sql] = callMatching(QUEUE_KIND_ANCHOR[kind]);
+    return sql;
+  }
+
+  it('offers an arrival only where it is answerable', async () => {
+    const sql = await capturedQueueSql('arrival');
+    expect(sql).toContain("e.curation_state = 'pending'");
+    // A refused row is already invisible for a reason with its own card
+    // (§ 2.3): asking "may readers see this?" about it asks the second
+    // question first.
+    expect(sql).toContain("e.admission <> 'refused'");
+    // A row the source has stopped offering has no verdict to give (§ 3.6).
+    expect(sql).toContain('e.missing_since IS NULL');
+    // Without the scope filter a region curator is shown work they cannot open.
+    expect(sql).toContain('curator_scoped_regions');
+  });
+
+  it('raises no missing card for a row no reader ever saw', async () => {
+    // ADR-0025 § 3.6: nobody has seen this row yet, so there is no verdict
+    // to give about whether it disappeared from in front of anyone.
+    expect(await capturedQueueSql('missing')).toContain("e.curation_state <> 'pending'");
+  });
+
+  it('names the run whose proposal is held, and drops a card with nothing in it', async () => {
+    const sql = await capturedQueueSql('held');
+    expect(sql).toContain('e.pending_change_sync_log_id IS NOT NULL');
+    expect(sql).toContain('ch.sync_log_id = e.pending_change_sync_log_id');
+    // jsonb_agg over an empty set returns NULL, and an empty card is worse than none.
+    expect(sql).toMatch(/WHERE q\.proposed IS NOT NULL/);
+  });
+
+  it('excludes a refused row from the held card', async () => {
+    // Already invisible for its own reason (§ 2.3) — the held proposal is not
+    // the question to ask about a row this category has turned down.
+    const sql = await capturedQueueSql('held');
+    expect(sql).toContain("e.admission <> 'refused'");
+  });
+
+  it('excludes a row the source has stopped listing from the held card', async () => {
+    // That is `missing`'s question, and a row can be visible, flagged
+    // missing_since, and holding a proposal all at once — asking both would
+    // put the same row under two contradictory cards.
+    const sql = await capturedQueueSql('held');
+    expect(sql).toContain('e.missing_since IS NULL');
+  });
+
+  it('holds only the fields the gate refused, not a field a claim already refused', async () => {
+    // The pointer is set for *any* refused proposal (syncUtils.ts's
+    // proposedAnything), a curator's own claim included — so without this
+    // filter a claimed field would carry both a `conflicts` card (answerable)
+    // and a `held` twin (not), and the twin would outlive an `accept-source`
+    // answer to the first.
+    const sql = await capturedQueueSql('held');
+    expect(sql).toContain("NOT (f->>'curatedConflict')::boolean");
+  });
+
+  it('does not offer an acceptable flag on a held field', async () => {
+    // 'acceptable' is the conflict path's concept — accept-source's own
+    // lookup requires a curatedConflict:true field, which held's now
+    // deliberately excludes, so a true flag here would advertise a button
+    // that always 409s.
+    const sql = await capturedQueueSql('held');
+    expect(sql).not.toContain('acceptable');
+  });
+
+  it('raises no contents card for a row the source has stopped listing', async () => {
+    // The same row under two headings would ask two questions whose answers
+    // contradict each other: "may readers see these twelve works?" is not
+    // answerable while "did this venue disappear?" is open. `arrivals` and
+    // `held` both carry this guard; `contents` was the one that did not.
+    const sql = await capturedQueueSql('contents');
+    expect(sql).toContain('e.missing_since IS NULL');
+  });
+
+  it('counts a visible experience holding unread locations, and only unread ones', async () => {
+    const sql = await capturedQueueSql('contents');
+    expect(sql).toContain("e.curation_state <> 'pending'"); // an arrival is the other card
+    // Anchored on the JOIN clause itself, not just the predicate text: the
+    // same fragment also appears in the FILTER, so a naive `.toContain` on
+    // the predicate alone stays green even if this JOIN's own copy is
+    // deleted — the exact trap the previous task's review found, now inside
+    // one statement instead of across two.
+    expect(sql).toMatch(
+      /LEFT JOIN experience_locations el\s+ON el\.experience_id = e\.id AND el\.curation_state = 'pending' AND el\.missing_since IS NULL/,
+    );
+  });
+
+  it('does not count a withdrawn pending point as unread', async () => {
+    // A point the source has stopped offering is not "unread" in any sense a
+    // reader would notice: every reader-facing location read already carries
+    // offeredLocationSql(), so publishing it changes nothing on screen.
+    const sql = await capturedQueueSql('contents');
+    expect(sql).toContain('el.missing_since IS NULL');
+  });
+
+  it('counts a treasure held by either its link or the work itself', async () => {
+    // A link's curation_state and its treasure's are independent axes
+    // (ADR-0025): a work is checked once, globally, a link "as being HERE".
+    // getExperienceTreasures gates both separately, and this count has to
+    // ask the same two questions or a treasure whose link was reviewed while
+    // the shared work was not would be invisible and unasked-about forever.
+    const sql = await capturedQueueSql('contents');
+    expect(sql).toContain('LEFT JOIN treasures t ON t.id = et.treasure_id');
+    // Anchored on the FILTER clause specifically, not the predicate text
+    // alone — the identical fragment also appears in the row-inclusion
+    // WHERE, which would otherwise let this pass even with the FILTER's own
+    // copy deleted (the same trap the JOIN-anchored location test guards
+    // against, one clause over).
+    expect(sql).toContain(
+      "FILTER (WHERE et.curation_state = 'pending' OR t.curation_state = 'pending') AS pending_treasures",
+    );
+  });
+
+  it('counts locations and treasures distinctly, not as their cross product', async () => {
+    // el and et are independent one-to-many joins on the same experience, so
+    // their combined row count is a product: 3 pending points and 12
+    // pending works join to 36 raw rows, and a plain COUNT without DISTINCT
+    // would report 36 for a treasure count that is really 12.
+    const sql = await capturedQueueSql('contents');
+    expect(sql).toContain('COUNT(DISTINCT el.id)');
+    expect(sql).toContain('COUNT(DISTINCT et.treasure_id)');
+  });
+
+  it('excludes a refused row from the contents card', async () => {
+    const sql = await capturedQueueSql('contents');
+    expect(sql).toContain("e.admission <> 'refused'");
+  });
+
+  it('names the category and external id on all three new kinds, like the older four do', async () => {
+    // An arrival names an object without naming which gated source it
+    // arrived from, and "which source is this" is most of the judgement.
+    for (const kind of ['arrival', 'held', 'contents'] as const) {
+      const sql = await capturedQueueSql(kind);
+      expect(sql).toContain('e.external_id');
+      expect(sql).toContain('c.name AS category_name');
+    }
+  });
+
+  it('limits a curator to what their scope reaches, for each of the three new kinds', async () => {
+    // The weak `curator_scoped_regions` check above is satisfied by the CTE
+    // prelude alone, which every query carries whether or not it is actually
+    // scoped — so the real assertion is the JOIN a curator's request adds,
+    // mirroring 'limits a curator to experiences their scope reaches' above.
+    for (const kind of ['arrival', 'held', 'contents'] as const) {
+      const sql = await capturedQueueSql(kind, CURATOR);
+      expect(sql).toContain('JOIN curator_scoped_regions s ON s.id = er.region_id');
+    }
+  });
+
+  it('returns the three new kinds under their own response keys', async () => {
+    const res = makeRes();
+    mockedQuery.mockImplementation(async (sql: string) => (
+      String(sql).includes("e.curation_state = 'pending'")
+        ? { rows: [{ id: 42, name: 'A newly-arrived museum' }] }
+        : { rows: [] }
+    ));
+
+    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      arrivals: [expect.objectContaining({ id: 42, name: 'A newly-arrived museum' })],
+      held: [],
+      contents: [],
+    }));
   });
 });
 

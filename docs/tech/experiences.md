@@ -726,7 +726,7 @@ category later decides about the building.
 | DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute |
 | PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `category`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`). The last two are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge |
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) |
-| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, and `conflicts` where the source and a curator disagree — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
+| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, and `contents` where a visible row holds unread points or works of its own — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. No totals: each array's own length is the count. Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
 | POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
 | POST | `/api/experiences/:id/admission` | `{ decision: 'confirm' \| 'override', note? }` — answer a refusal. `confirm` keeps the row refused and hidden, `override` admits it again. Both pin `admission` in `curated_fields`, which is what takes the card out of the queue and what stops a later run reversing either answer; no `expected` block is needed, because a second curator collides with that pin and gets 409 |
 | POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted |
@@ -856,9 +856,18 @@ consumer as of this slice.
 ## Review Queue
 
 `GET /api/experiences/review/queue` is the other half of change provenance: the run
-records what it could not decide, and this is where a curator decides it. Three kinds of
+records what it could not decide, and this is where a curator decides it. Six kinds of
 question, kept apart because they are answered differently — and one list that is not a
-question at all, carried here because nowhere else can carry it.
+question at all, carried here because nowhere else can carry it. Three of the six —
+`missing`, `refused`, `conflicts` — predate the per-source curation gate
+([ADR-0025](../decisions/0025-per-source-curation-gate.md)); `arrivals`, `held` and `contents`
+are that gate's own open questions, covered together below the four older kinds.
+
+**No counts.** The response carries no total and no `COUNT(*)` over any of the seven arrays —
+the frontend derives a number from the page array's length and prints "first 25" when a page is
+full. A count belongs with a later rebuild of this page that needs one for its own reasons
+(a notification floor, a backlog figure); adding one here would be a second source of truth for
+a number nothing yet reads.
 
 **Refused rows** — the one kind of item here a run has *already* acted on, and the exception
 to the page's standing promise that nothing on it has changed what visitors see. None of the
@@ -884,7 +893,12 @@ pin as its concurrency check, so a stale card cannot silently re-hide a row some
 back.
 
 **Missing objects** — rows the machine flagged `missing_since` and nobody has judged yet
-(`source_membership = 'present'`, and not refused). Three answers, and only two of them change anything:
+(`source_membership = 'present'`, and not refused, and — since ADR-0025 — not `pending` either:
+`hidePendingSql()` excludes a row no reader has ever seen, because there is no verdict to give
+about whether it disappeared from in front of anyone. That row is not silently dropped: it
+raises no `missing` card and no `arrivals` card either, the latter guarded by
+`missing_since IS NULL` — the two predicates are what makes it raise the right number of cards,
+zero, rather than a wrong one under either heading). Three answers, and only two of them change anything:
 *former* (the source delisted it, it is still there), *lost* (it no longer exists), or a
 false alarm. All three clear `missing_since`, including the false alarm — leaving it set
 would put the object back in the queue after every run, which is how a queue stops being
@@ -1076,6 +1090,106 @@ unguarded — pre-existing, and not touched here.
 `editExperience` re-reads under its lock everything the transaction depends on, not only
 `curated_fields`: the `old` values in the audit row come from the locked snapshot too, since
 values read before the lock can name a version that was already gone when the edit landed.
+
+### The gate's own three kinds (ADR-0025)
+
+The four kinds above predate the per-source curation gate. These three are the open questions
+it leaves — a row a gated source wrote that nobody has passed, and the two ways an
+already-visible row can still be holding something unread. All three carry `hideRefusedSql()`:
+a refused row is already invisible for a reason with its own card above, and asking "may a
+reader see this?" about it would ask the second question before the first is settled — a refused
+row shaped like each of the three below raises no card in any of them. All three also
+carry the same scope filter as the four older kinds, or a region-scoped curator would be offered
+work outside what they cover.
+
+**Arrivals** — a row from a gated source, `curation_state = 'pending'`, that nobody has looked
+at. The whole object is the proposal, so there is nothing to show beside it but the object
+itself; the queue's own version of "created," for a source that does not get to publish on its
+own say. Ordered newest-arrived first by `first_seen_sync_log_id`. A row the source has since
+stopped offering withdraws instead of raising a card, guarded by `missing_since IS NULL`
+(ADR-0025 § 3.6) — nobody has ever seen it, so there is no verdict to give either about whether
+it disappeared. That same row raises no `missing` card either, per the predicate change noted
+above, so it is correctly invisible under both headings rather than wrongly visible under one.
+
+**Held** — an already-visible row (`curation_state <> 'pending'`) whose newest content proposal
+was kept out by the upsert's own gate rather than applied — the mechanism `syncUtils.ts`
+documents under "A gated source may not overwrite what a reader can already see" (above).
+`pending_change_sync_log_id` names the run whose proposal is waiting, and the proposal itself is
+read straight from that run's changeset row.
+
+The pointer is not proof the gate is what held every field on it. `syncUtils.ts`'s
+`proposedAnything = wroteContent || curatedConflicts.length > 0` sets the pointer for *any*
+refused proposal — a curator's own `curated_fields` claim included — so without a filter a field
+refused only by a claim would carry two contradictory cards at once: `conflicts`, which
+`accept-source` can answer, and a `held` twin that cannot be answered at all, and the twin would
+outlive an `accept-source` call showing a value already written. The query therefore excludes
+`(f->>'curatedConflict')::boolean` fields from the aggregate — this card is only ever the fields
+the *category's gate* held, never one a claim refused for its own, separately-answerable reason.
+`e.missing_since IS NULL` guards the row for the same reason `arrivals` carries it: a visible row
+can be flagged missing *and* holding a proposal at the same time, and that is `missing`'s
+question, not this one.
+
+**No endpoint answers a `held` card today.** `syncUtils.ts` clears the pointer only when a
+*later run* proposes nothing at all — the source came back to what is stored — and no curator
+action touches it: `POST /:id/publish`, which will clear it the moment a curator answers, is the
+next-but-one task on this branch. A card here is real and correctly shown, but not yet
+actionable; that is a deliberate, known consequence of building this branch in layers, not a
+bug. For the same reason the field carries no `acceptable` flag, unlike `conflict`'s — that flag
+answers "can `accept-source` write this?", and every field reaching this query is, by the filter
+above, one `accept-source`'s `curatedConflict: true` lookup would never find anyway.
+
+An empty proposal is excluded by the `WHERE` above rather than by the `WHERE q.proposed IS NOT NULL`
+that follows the grouping. `CROSS JOIN LATERAL` with a per-field predicate drops those fields before
+`GROUP BY` runs, so a changeset whose every field was claimed — or whose `changed_fields` is `[]` to
+begin with — forms no group and never reaches `jsonb_agg`. The trailing guard is a floor kept for the
+shapes that would need it (a `LEFT JOIN LATERAL`, or the field predicate moved into a `FILTER`, either
+of which keeps the group and hands `jsonb_agg` an empty set). In the `conflict` kind the same guard is
+load-bearing, because there it wraps a correlated subquery that does return NULL for a row that exists
+— the two look alike and work differently, which is why both say so at the call site.
+
+**Contents** — a visible experience (`hidePendingSql()`) holding unread points or works of its
+own, each gated independently of the container (ADR-0025 decision 2): a published museum can
+hold newly-arrived paintings, and a published UNESCO site can hold a newly-arrived component.
+Counted, not listed — `pending_locations`, `pending_treasures` — because nobody approves 758
+coordinates one row at a time, and for a large site the count plus the anchor's movement is the
+whole judgement; an expandable per-item list is a separate, later read. `hideRefusedSql()` on
+the container is what keeps a refused museum's newly-arrived paintings from raising a card here
+too — the museum already has its own card in `refused`, and its contents are not a second
+question.
+
+A location's own `missing_since` matters here too: `el.missing_since IS NULL` alongside
+`el.curation_state = 'pending'`, because a point the source has withdrawn is not "unread" in any
+sense a reader would ever notice — every reader-facing location read already carries
+`offeredLocationSql()`, so publishing a withdrawn point changes nothing on screen.
+
+Treasures need a second table, not a second column on one, mirroring
+`getExperienceTreasures`'s "three predicates, not one": a link's own `curation_state` and its
+treasure's are independent axes (a work is checked once, globally; a link "as being HERE" —
+ADR-0025), so a treasure shared across venues can have its link already reviewed while the work
+itself is still `pending`. The count asks both — `et.curation_state = 'pending' OR
+t.curation_state = 'pending'` — or such a treasure would be invisible on this page and never
+asked about. `et` and `t` are joined unfiltered (the pending check moves to the `FILTER`/`WHERE`
+instead of the JOIN condition), because `t.curation_state` is not visible from inside `et`'s own
+`ON` clause.
+
+`COUNT(DISTINCT ...)` on both counts is load-bearing, not decoration: `el` and `et` are
+independent one-to-many joins on the same experience, so their combined row count is a product,
+not a sum. Three pending points and twelve pending works join to 36 raw rows for one experience,
+and a plain `COUNT(...)` without `DISTINCT` would report 36 for a treasure count that is
+actually 12 — and 36 again for a location count that is actually 3.
+
+An `arrival` can never share a row with `held` or `contents`: `held` requires
+`pending_change_sync_log_id IS NOT NULL`, and the pointer is only ever *set* on a row whose
+`curation_state <> 'pending'` (`upsertExperienceRecord`'s guard, `syncUtils.ts`), while
+`contents` requires `hidePendingSql()` directly. Both therefore exclude `curation_state =
+'pending'` by construction, the same column `arrivals` requires to equal it — not a coincidence
+enforced by extra code, but the same column read two ways. A `pending` experience *can* hold a
+`pending` location at the same time (the location's own gate is keyed off the category, not off
+the container's current state), and such a row is real; it is classified only as an `arrival`,
+never as `contents`, for exactly that reason. `missing` and `held` are not mutually exclusive the
+same way, though — both read a row's *own* `missing_since` and `pending_change_sync_log_id`
+independently, so `held` carries its own `missing_since IS NULL` guard rather than relying on
+`arrivals`'s structural argument.
 
 The queue pages (`limit` default 25). The page labels a full first page "first N" rather than
 printing its length as a total, and carries Previous / Show more so the items behind it are
