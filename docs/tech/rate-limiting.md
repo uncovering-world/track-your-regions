@@ -62,12 +62,14 @@ Routes behind `requireAuth` + `requireAdmin` or `requireCurator` are **not** rat
 **Exempt by default:** `adminRoutes.ts`, `divisionRoutes.ts` (mounted behind admin middleware), `viewRoutes.ts`, `aiRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
 
 The exemption is about the *attack* surface, and it stops applying when a request
-is expensive to the system regardless of who sends it. Two routes are limited today:
+is expensive to the system regardless of who sends it. The exceptions are named here, and the
+table is the list — deliberately without a count in front of it, because the count above a list is
+what goes stale when a route is added to the row below (it has already happened twice here):
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission` |
 
 A re-match deletes every `region_members` row for a world view and then spends
 20–130s re-resolving them. The endpoint already answers 409 while one is running,
@@ -90,11 +92,20 @@ work the curation gate exists to make possible, to bound a branch most publishes
 never reach. Sixty bounds a runaway client and is invisible to a person reading
 cards.
 
-Its four curator siblings in the same file (`/:id/state`, `/:id/admission`,
-`/:id/accept-source`, `/review/queue`) stay exempt: each is one transaction with
-no post-commit work, so the criterion above does not reach them. CodeQL raises
-`js/missing-rate-limiting` on all five; the four are dismissed against this
-section, and this row is why the fifth is not.
+`/:id/admission` carries the same limiter, because it is the same branch and not
+merely a similar one. Overriding a refusal on a gated arrival publishes its
+contents through the shared `publishContents`, so it can release a deferred
+withdrawal, and `setExperienceAdmission` then calls `placeAfterAdmissionRelease`
+→ `placeAfterRelease` after releasing its client — the identical post-commit
+placement, on the identical `withdrawalsReleased > 0` trigger. An earlier version
+of this section said the four siblings had "no post-commit work"; that was true of
+three of them and the criterion decides per branch, not per endpoint.
+
+The three that remain (`/:id/state`, `/:id/accept-source`, `/review/queue`) stay
+exempt, checked rather than assumed: each ends at `res.json` with nothing after
+its `client.release()`. CodeQL raises `js/missing-rate-limiting` on all five; the
+three are dismissed against this section, and these two rows are why the others
+are not.
 
 ## Adding rate limiting to new endpoints
 

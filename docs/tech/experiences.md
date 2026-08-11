@@ -731,7 +731,7 @@ category later decides about the building.
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) |
 | GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, and `contents` where a visible row holds unread points or works of its own — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. No totals: each array's own length is the count. Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
 | POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
-| POST | `/api/experiences/:id/admission` | `{ decision: 'confirm' \| 'override', note? }` — answer a refusal. `confirm` keeps the row refused and hidden, `override` admits it again. Both pin `admission` in `curated_fields`, which is what takes the card out of the queue and what stops a later run reversing either answer; no `expected` block is needed, because a second curator collides with that pin and gets 409 |
+| POST | `/api/experiences/:id/admission` | `{ decision: 'confirm' \| 'override', note? }` — answer a refusal. `confirm` keeps the row refused and hidden, `override` admits it again. Both pin `admission` in `curated_fields`, which is what takes the card out of the queue and what stops a later run reversing either answer; no `expected` block is needed, because a second curator collides with that pin and gets 409. `override` on a row that was `pending` also publishes it, in the same transaction (ADR-0025 § 4.5) — `curation_state = 'verified'`, `published_at = COALESCE(published_at, NOW())` — because that verdict is the only thing that ever un-hides an arrival nobody had read; `override` on an `auto` row and `confirm` on any row never publish. The response's `published` field says which happened. See § Publishing for the mechanism and why it does not place |
 | POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted |
 | POST | `/api/experiences/:id/publish` | `{ contentsOnly?: true, locationIds?: number[], treasureIds?: number[], expectedSyncLogId? }` — say that a reader may see this (ADR-0025). An empty body publishes the object: any held content fields, `curation_state = 'verified'`, `published_at` if the row was `pending`, the pointer cleared, and every unread point and work it holds. `contentsOnly: true` or naming either array is a contents publish, leaving the experience's own state alone — `contentsOnly` for every pending content row, naming an array for exactly those rows. All three are explicit and mutually exclusive (schema `.refine`s): leaving everything absent used to be read as "the object", full stop, and a card with no ids to send had no other way to ask for its contents alone. `expectedSyncLogId` is the run the caller's card named, compared under the write lock against `pending_change_sync_log_id`, and only when the call will actually write a held field or the caller named a run at all — a pointer whose one held field is already claimed writes nothing and answers success rather than 409 forever. It may not accompany a contents publish, named or bare. A field the curator claims in `curated_fields` is skipped rather than refused; a row its category refused answers 409, because admission is asked first (ADR-0025 decision 4) and `override` on the refusal is what publishes it; a point the source has withdrawn is never published, matching the `contents` card. Needs migration 019 applied, or the audit insert violates the `action` CHECK and the whole call 500s. See § Publishing for what it writes and why it does not place |
 | POST | `/api/experiences/new-badges/seen` | `{ experienceIds: number[] }` — records that these chips were shown to the caller. Rate-limited (`authenticatedLimiter`), unlike the curator routes beside it: this is an ordinary authenticated action and the only one here a client sends on its own initiative. Only the first impression per experience is kept; a stale id is ignored rather than failing the call, and the response names what was actually recorded |
@@ -894,7 +894,9 @@ therefore allowed on a confirmed row while `confirm` is not: the way back must n
 closeable by an earlier click, and it is the safe direction, since it reveals rather than
 hides and two curators clicking it reach the same state. `confirm` keeps the curated-fields
 pin as its concurrency check, so a stale card cannot silently re-hide a row someone just put
-back.
+back. If the kept-out row was a `pending` arrival nobody had read before it was confirmed,
+putting it back publishes it in the same step (see "Overriding a refusal is the other half"
+under § Publishing) — confirming never changes `curation_state`, so it is still there to answer.
 
 **Missing objects** — rows the machine flagged `missing_since` and nobody has judged yet
 (`source_membership = 'present'`, and not refused, and — since ADR-0025 — not `pending` either:
@@ -1254,8 +1256,9 @@ only once its category's own rule has answered yes (ADR-0024). All three of the 
 carry `hideRefusedSql()` for the same reason, and the consequence of allowing it is not cosmetic:
 nothing returns a `verified` row to `pending`, so the row would leave `arrivals` for ever and a
 later `override` would put it in front of readers with nobody having reviewed its contents. The way
-through is `POST /:id/admission` with `override`, which publishes in the same transaction. Contents
-publishes are refused on a refused container too, since the `contents` card excludes it as well.
+through is `POST /:id/admission` with `override`, which publishes in the same transaction — see
+"Overriding a refusal is the other half" below for what that writes. Contents publishes are refused
+on a refused container too, since the `contents` card excludes it as well.
 
 **`expectedSyncLogId` is compared against `experiences.pending_change_sync_log_id`**, not against
 the newest changeset as `accept-source` does: the card names the run the pointer names, and a newer
@@ -1336,6 +1339,52 @@ contents under a row that is already visible. It decides nothing a second time �
 already `verified`, `published_at` does not move, the pointer is already null — but it is not a
 no-op at the row level: it writes a second audit row, and `experiences.updated_at = NOW()` moves
 whether or not anything else does, because the assignment list is fixed rather than diffed.
+
+### Overriding a refusal is the other half (ADR-0025 § 4.5)
+
+`POST /:id/admission` (`setExperienceAdmission`, `lifecycleController.ts`) is where a refused row
+comes back, and `override` on a **`pending`** row is the only path that publishes without going
+through `publishExperience` at all — the two assignments are appended to the same `UPDATE
+experiences` this endpoint already runs, inside the transaction that already holds the row `FOR
+UPDATE`, rather than a second call to the publish writer. `confirm` never publishes, on any state:
+it is the verdict that leaves an already-invisible row invisible.
+
+The decision is narrower than "override publishes":
+
+- **Only `override`.** `confirm` says the rule was right, so the row stays refused and hidden — the
+  opposite of a publication.
+- **Only from `pending`.** An `auto` row was already visible before its category refused it — the
+  refusal is what hid it, not the gate — so putting it back changes `admission` alone.
+  `curation_state` and `published_at` are untouched, and the response's `published: false` says so.
+  Only a row nobody had looked at (`pending`) turns "the rule was wrong" into a first publish.
+
+`curation_state` is set to **`verified`, not `auto`.** The default a run leaves behind means "nobody
+has looked"; a curator did — they read the card, the reason and the object's name, and overruled a
+category rule about this specific row. That claim is real but narrower than `publishExperience`'s:
+nobody has passed the description, the image or the treasures underneath, only the admission
+question. That is the deliberate cost of not asking the same question twice — the alternative is
+leaving a `pending` row unread forever because the one card that could resolve it is answered
+"admit", not "publish".
+
+`published_at = COALESCE(published_at, NOW())`, gated by the same `before.curation_state ===
+'pending'` check as the assignment itself, for the reason `publicationAssignments` states: 1603 of
+the catalogue's 1604 rows are undated because migration 018 left them so, and stamping an
+already-visible row would invent a New-chip window for something visitors could see all along.
+
+**Resolved in TypeScript, not a `CASE` over `$2`.** `nextReason` a few lines above is the same
+lesson already paid for once: a parameter used both as a varchar value and as the left side of a
+text comparison gives Postgres two types to deduce for one placeholder — "inconsistent types
+deduced for parameter $2" — invisible to a mocked-pool test and immediate on the first real click.
+`publishes` is a plain boolean computed from the locked read, and the `SET` fragment it selects is
+a literal string with no parameter in it at all.
+
+**Does not place.** Verified against a live database rather than assumed: a refused row's
+`experience_regions` count matches an admitted row's exactly, because placement's insert predicate
+(`el.missing_since IS NULL`) reads neither `admission` nor `curation_state` — a refused location was
+placed the moment it was written, and un-refusing the object moves nothing.
+
+The audit row is `admission_overridden` either way; `details.published` is what tells the two cases
+apart without a reader having to infer it from which columns moved.
 
 ## Curation Guarantees
 

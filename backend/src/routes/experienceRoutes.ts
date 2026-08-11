@@ -111,11 +111,18 @@ router.get('/:id/curation-log', validate(idParamSchema, 'params'), requireAuth, 
 // a prefetch or a crawler is not one. Above `/:id` for the same reason as the
 // review routes below — a two-segment literal path must not be read as an id.
 //
-// Rate-limited, unlike the curation routes below it. Those are exempt because
-// they are behind `requireCurator` (docs/tech/rate-limiting.md § 5); this one
-// is an ordinary authenticated user action, which that same table says takes
-// `authenticatedLimiter`. It is also the one endpoint here a client calls on
-// its own initiative rather than in response to a click.
+// Rate-limited as an ordinary authenticated user action — `authenticatedLimiter`
+// is what docs/tech/rate-limiting.md's table gives those, and this is the one
+// endpoint here a client calls on its own initiative rather than in response to a
+// click.
+//
+// Not "unlike the curation routes below", which is what this comment used to say:
+// two of them carry the same limiter now (`/:id/admission`, `/:id/publish`). The
+// difference is the reason rather than the presence. This one is limited because
+// an unauthenticated-shaped user action needs a ceiling; those two are limited
+// despite `requireCurator` because one branch does post-commit region placement
+// that costs the same whoever sends it (§ 5). A curation route added here is
+// exempt by default and joins them only if it reaches that kind of work.
 router.post('/new-badges/seen', authenticatedLimiter, requireAuth, validate(newBadgesSeenBodySchema), markNewBadgesSeen);
 
 // Decisions a sync run cannot make for itself: whether an object the source
@@ -123,7 +130,15 @@ router.post('/new-badges/seen', authenticatedLimiter, requireAuth, validate(newB
 // value the source proposed should displace a curator's edit.
 router.get('/review/queue', requireAuth, requireCurator, validate(reviewQueueQuerySchema, 'query'), getReviewQueue);
 router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceStateBodySchema), setExperienceState);
-router.post('/:id/admission', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceAdmissionBodySchema), setExperienceAdmission);
+// Rate-limited for the same reason `/:id/publish` below is, and it is the same
+// branch rather than a similar one: overriding a refusal on a gated arrival
+// publishes its contents through the shared `publishContents`, so it can release
+// a deferred withdrawal, and `setExperienceAdmission` then calls
+// `placeAfterAdmissionRelease` → `placeAfterRelease` after its client is
+// released — `assignRegionsForExperiences` once per world view with geometry.
+// Post-commit work that is expensive regardless of who sends it, which is the
+// criterion in `docs/tech/rate-limiting.md` § 5.
+router.post('/:id/admission', authenticatedLimiter, validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceAdmissionBodySchema), setExperienceAdmission);
 router.post('/:id/accept-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(acceptSourceBodySchema), acceptSourceValue);
 
 // The other half of what a gated source leaves open (ADR-0025): whether a
@@ -131,13 +146,15 @@ router.post('/:id/accept-source', validate(idParamSchema, 'params'), requireAuth
 // content proposal a run made against a row that was already visible. The only
 // writer that moves a row off `pending`, and the only one that clears
 // `pending_change_sync_log_id` in answer to a person.
-// Rate-limited, unlike its four curator siblings above, and the reason is this
-// repo's own criterion rather than an analyser's: `docs/tech/rate-limiting.md` § 5
-// exempts curator routes because the *attack* surface needs a compromised
-// account, and says the exemption stops applying when a request is expensive to
-// the system regardless of who sends it. This one can be: where a publish
-// releases a deferred withdrawal it re-places the object into every world view
-// with geometry after committing, deleting and reinserting region rows.
+// Rate-limited, like `/:id/admission` above and unlike the three other curator
+// routes there, and the reason is this repo's own criterion rather than an
+// analyser's: `docs/tech/rate-limiting.md` § 5 exempts curator routes because the
+// *attack* surface needs a compromised account, and says the exemption stops
+// applying when a request is expensive to the system regardless of who sends it.
+// This one can be: where a publish releases a deferred withdrawal it re-places
+// the object into every world view with geometry after committing, deleting and
+// reinserting region rows. The rule is the branch, not the endpoint — which is
+// why the override shares it.
 //
 // `authenticatedLimiter` (60/min) rather than `expensiveAdminLimiter` (5/min)
 // because the expensive branch fires only for a moved point while the ordinary

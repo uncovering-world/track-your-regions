@@ -453,11 +453,40 @@ export async function setExperienceState(
  * `admission` in the row's curated fields, so a second curator answering the
  * same card collides with the pin and gets a 409 whichever way the first one
  * answered.
+ *
+ * An override on an arrival publishes it (ADR-0025 § 4.5), and a publication
+ * takes everything that arrived with the object — its points and its works,
+ * not only its own fields — so the response carries the same shape `publish`
+ * does for that half: never a held field (an override does not answer a
+ * proposal; that is `/publish`'s question), but every count a content
+ * publish can report.
  */
 export async function setExperienceAdmission(
   experienceId: number,
   decision: { decision: 'confirm' | 'override'; note?: string },
-): Promise<{ experienceId: number; admission: 'admitted' | 'refused' }> {
+): Promise<{
+  experienceId: number;
+  admission: 'admitted' | 'refused';
+  /**
+   * Whether this override also made the row visible. True only where the row
+   * was unread (`curation_state = 'pending'`) and the verdict was `override`:
+   * putting a gated arrival back is what publishes it (ADR-0025), while an
+   * override of an already-visible row answers the refusal and says nothing
+   * about whether anyone has read it.
+   */
+  published: boolean;
+  /** The experience's own state after the call — unchanged when `published` is false. */
+  curationState: string;
+  /** Always empty: an override never applies a held field. */
+  appliedFields: string[];
+  /** Always empty, for the same reason. */
+  claimedFieldsSkipped: string[];
+  /** Always null, for the same reason. */
+  fromSyncLogId: number | null;
+  locationsPublished: number;
+  treasureLinksPublished: number;
+  treasuresPublished: number;
+}> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/admission`, {
     method: 'POST',
     body: JSON.stringify(decision),
