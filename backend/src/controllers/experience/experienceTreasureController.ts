@@ -4,17 +4,26 @@
  * Treasure (artwork) browsing and viewed-treasure tracking.
  */
 
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { pool } from '../../db/index.js';
-import { hideRefusedSql, offeredLocationSql } from './experienceLifecycle.js';
+import {
+  hideRefusedSql, hidePendingSql, linkedForReaderSql, offeredLocationSql, publishedContentSql,
+} from './experienceLifecycle.js';
+import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
  * Get contents (treasures) for an experience
  * GET /api/experiences/:id/treasures
+ *
+ * optionalAuth: one of the three by-id reads ADR-0025 relaxes the pending gate
+ * for (see `maySeeUnreadExperience`), so a curator or admin reaching a gated
+ * museum's page from the queue also sees its unread treasures and links,
+ * rather than a container that opened onto an empty list.
  */
-export async function getExperienceTreasures(req: Request, res: Response): Promise<void> {
+export async function getExperienceTreasures(req: AuthenticatedRequest, res: Response): Promise<void> {
   const experienceId = parseInt(String(req.params.id));
+  const maySeeUnread = await maySeeUnreadExperience(req.user?.id, req.user?.role, experienceId);
 
   const result = await pool.query(`
     SELECT
@@ -28,8 +37,15 @@ export async function getExperienceTreasures(req: Request, res: Response): Promi
       -- offer either, and answering with them would put back on screen exactly
       -- what hiding the museum took off it (ADR-0024).
       AND ${hideRefusedSql()}
+      -- Three predicates, not one: ADR-0025 gates the experience, the link and
+      -- the treasure separately, because a published museum can hold newly
+      -- written, unread paintings the container gate never reaches. All three
+      -- widen on the same boolean, so a curator let past one is let past all.
+      AND ($2::boolean OR ${hidePendingSql()})
+      AND ($2::boolean OR ${publishedContentSql('et')})
+      AND ($2::boolean OR ${publishedContentSql('t')})
     ORDER BY t.sitelinks_count DESC
-  `, [experienceId]);
+  `, [experienceId, maySeeUnread]);
 
   res.json({
     experienceId,
@@ -90,9 +106,14 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
 
   const treasureId = parseInt(String(req.params.treasureId));
 
-  // Verify treasure exists
+  // Verify the treasure exists *and* is one a read could have shown this
+  // caller. Gated on its own curation_state (ADR-0025): without this, any
+  // authenticated caller could POST a guessed id for a `pending` work, get its
+  // name echoed back below, and have written a `user_viewed_treasures` row for
+  // something no read ever offered them (#520's reasoning, unchanged from
+  // location to treasure).
   const treasureResult = await pool.query(
-    'SELECT id, name FROM treasures WHERE id = $1',
+    `SELECT t.id, t.name FROM treasures t WHERE t.id = $1 AND ${publishedContentSql('t')}`,
     [treasureId],
   );
 
@@ -115,9 +136,18 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
   let experienceName: string | null = null;
 
   if (experienceId) {
-    // Verify the treasure is linked to this experience
+    // Verify the treasure is linked to this experience, and that neither the
+    // container nor the link itself is unread — the same two gates the
+    // location auto-mark below carries, for the same reason: without them, a
+    // caller who could see this treasure (checked above) but not this
+    // particular museum, or not this particular link, would auto-mark a
+    // `pending` experience visited at :139 and have its name echoed back at
+    // :161, from a lookup this join never scoped to what the caller may see.
     const linkResult = await pool.query(
-      'SELECT 1 FROM experience_treasures WHERE experience_id = $1 AND treasure_id = $2',
+      `SELECT 1 FROM experience_treasures et
+         JOIN experiences e ON e.id = et.experience_id
+        WHERE et.experience_id = $1 AND et.treasure_id = $2
+          AND ${linkedForReaderSql()}`,
       [experienceId, treasureId],
     );
     if (linkResult.rows.length > 0) {
@@ -128,13 +158,19 @@ export async function markTreasureViewed(req: AuthenticatedRequest, res: Respons
       `, [userId, experienceId]);
 
       // Auto-mark all locations of the experience as visited — the ones on
-      // offer. A point the source withdrew is on no list this reader saw, so
-      // recording a visit to it would be a claim they never made.
+      // offer and read by someone. A point the source withdrew is on no list
+      // this reader saw, so recording a visit to it would be a claim they
+      // never made — and the same is true of a point nobody has checked yet
+      // (ADR-0025): without the curation_state gate, viewing one treasure in
+      // a museum would manufacture visits to every one of its unread points
+      // (#520 — the write path this reasoning did not account for).
       await pool.query(`
         INSERT INTO user_visited_locations (user_id, location_id, visited_at)
         SELECT $1, el.id, NOW()
         FROM experience_locations el
+        JOIN experiences e ON e.id = el.experience_id
         WHERE el.experience_id = $2 AND ${offeredLocationSql()}
+          AND ${hidePendingSql()} AND ${publishedContentSql('el')}
         ON CONFLICT (user_id, location_id) DO NOTHING
       `, [userId, experienceId]);
 

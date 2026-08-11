@@ -9,7 +9,14 @@
  * measuring the same thing.
  */
 
-import { hideLostSql, hideRefusedSql, lifecycleSelectSql, offeredLocationSql } from './experienceLifecycle.js';
+import {
+  hideLostSql,
+  hideRefusedSql,
+  hidePendingSql,
+  lifecycleSelectSql,
+  offeredLocationSql,
+  publishedContentSql,
+} from './experienceLifecycle.js';
 import { isNewSql } from './experienceNewBadge.js';
 
 /**
@@ -47,17 +54,27 @@ export function buildRegionQueries(opts: {
   // turned down is not something the reader is missing, it is something that
   // should never have been offered (ADR-0024). The curation queue reads it
   // through its own query.
+  //
+  // `hidePendingSql` has no toggle either, and for a different reason than
+  // refusal's: a region list is a *set*, and the curator relaxation
+  // (ADR-0025) stops at the three by-id reads precisely so a curator's set
+  // matches a reader's — see `maySeeUnreadExperience`.
   const lifecycleFilter = ` AND ${hideRefusedSql()}`
-    + (includeLostRows ? '' : ` AND ${hideLostSql()}`);
+    + (includeLostRows ? '' : ` AND ${hideLostSql()}`)
+    + ` AND ${hidePendingSql()}`;
   // The same rule as an expression, for the count: one aggregate answers how
   // many the list is showing and another how many it is holding back, so the
   // page can offer the toggle only where there is something behind it.
-  const lifecyclePredicate = includeLostRows
+  const lifecyclePredicate = (includeLostRows
     ? hideRefusedSql()
-    : `${hideRefusedSql()} AND ${hideLostSql()}`;
+    : `${hideRefusedSql()} AND ${hideLostSql()}`)
+    + ` AND ${hidePendingSql()}`;
   // Refused rows are excluded here too. This number is an offer to reveal, and
   // revealing would not bring back a row the other predicate still hides.
-  const lostHiddenPredicate = `e.existence = 'lost' AND ${hideRefusedSql()}`;
+  // Pending rows are excluded for the same reason: showing lost rows again
+  // would not un-hide one that is also unread, so it must not be counted as
+  // something the toggle would reveal.
+  const lostHiddenPredicate = `e.existence = 'lost' AND ${hideRefusedSql()} AND ${hidePendingSql()}`;
   // The chip's personal half needs to know who is asking. Anonymous readers
   // bind nothing and fall back to the category window, which is the whole rule
   // for them — there is nobody to have shown it to. Both branches bind
@@ -97,8 +114,17 @@ export function buildRegionQueries(opts: {
         ST_X(e.location) as longitude,
         ST_Y(e.location) as latitude,
         e.metadata->>'inDanger' as in_danger,
+        -- Unconditional, and with no curator relaxation, unlike the count of
+        -- an experience in this same read: this is a per-object number a
+        -- region-wide list shows every caller the same way. It can disagree
+        -- with what a curator sees on GET /:id/locations for the same
+        -- experience -- that read widens for a curator whose scope reaches
+        -- it (ADR-0025), this count never does -- and that disagreement is
+        -- deliberate, not a bug to close: this number answers what the
+        -- catalogue offers, the by-id read answers what one caller may see.
         (SELECT COUNT(*)::int FROM experience_locations el
-           WHERE el.experience_id = e.id AND ${offeredLocationSql()}) as location_count,
+           WHERE el.experience_id = e.id AND ${offeredLocationSql()}
+             AND ${publishedContentSql('el')}) as location_count,
         s.name as category_name,
         s.display_priority as category_priority,
         ${lifecycleSelectSql()},
@@ -150,8 +176,17 @@ export function buildRegionQueries(opts: {
         ST_X(e.location) as longitude,
         ST_Y(e.location) as latitude,
         e.metadata->>'inDanger' as in_danger,
+        -- Unconditional, and with no curator relaxation, unlike the count of
+        -- an experience in this same read: this is a per-object number a
+        -- region-wide list shows every caller the same way. It can disagree
+        -- with what a curator sees on GET /:id/locations for the same
+        -- experience -- that read widens for a curator whose scope reaches
+        -- it (ADR-0025), this count never does -- and that disagreement is
+        -- deliberate, not a bug to close: this number answers what the
+        -- catalogue offers, the by-id read answers what one caller may see.
         (SELECT COUNT(*)::int FROM experience_locations el
-           WHERE el.experience_id = e.id AND ${offeredLocationSql()}) as location_count,
+           WHERE el.experience_id = e.id AND ${offeredLocationSql()}
+             AND ${publishedContentSql('el')}) as location_count,
         s.name as category_name,
         s.display_priority as category_priority,
         ${lifecycleSelectSql()},

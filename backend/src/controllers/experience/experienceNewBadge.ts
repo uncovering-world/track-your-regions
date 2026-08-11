@@ -42,6 +42,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { experienceOfferedToReaderSql } from './experienceLifecycle.js';
 
 /**
  * Where the reader's id comes from: a bind placeholder, or `NULL` for an
@@ -131,7 +132,9 @@ export async function markNewBadgesSeen(req: AuthenticatedRequest, res: Response
 
   const result = await pool.query(
     `INSERT INTO user_new_badge_views (user_id, experience_id)
-     SELECT $1, id FROM experiences WHERE id = ANY($2::int[])
+     SELECT $1, id FROM experiences
+      WHERE id = ANY($2::int[])
+        AND ${experienceOfferedToReaderSql('experiences')}
      ON CONFLICT (user_id, experience_id) DO NOTHING
      RETURNING experience_id`,
     [userId, experienceIds],
@@ -140,5 +143,13 @@ export async function markNewBadgesSeen(req: AuthenticatedRequest, res: Response
   // Selected through `experiences` rather than inserted from the ids directly:
   // the foreign key would reject the whole statement for one stale id, and a
   // client whose list is a moment out of date is the normal case here.
+  //
+  // Filtered for the reason every writer in this family is: this records a claim
+  // about a row ("this reader has seen its chip"), and `recorded` answers with
+  // the ids it accepted — so an unfiltered version confirms the existence of a
+  // row the caller was never shown, and writes a sighting of a chip that was
+  // never on screen. A chip cannot legitimately be seen on an unread row: the
+  // only read that renders one carries the gate. `existence` stays out, matching
+  // the by-id reads — a chip seen on something since lost was still seen.
   res.json({ recorded: result.rows.map(r => r.experience_id) });
 }

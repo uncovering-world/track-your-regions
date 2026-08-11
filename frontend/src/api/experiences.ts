@@ -302,11 +302,19 @@ export interface ExperienceTreasuresResponse {
 
 /**
  * Get treasures (artworks, artifacts) for an experience
+ *
+ * Authenticated, not `fetchJson`: `/:id/treasures` widens three
+ * `curation_state` predicates (`$2::boolean OR …`) for a curator or admin
+ * whose scope reaches the experience (`maySeeUnreadExperience`), and an
+ * unauthenticated request cannot carry that scope at all — the boolean is
+ * always `false`. Sent without the header, a curator opening a museum from
+ * its own "unread contents" card saw exactly the published works an
+ * anonymous reader sees, with nothing on screen to say more had arrived.
  */
 export async function fetchExperienceTreasures(
   experienceId: number
 ): Promise<ExperienceTreasuresResponse> {
-  return fetchJson<ExperienceTreasuresResponse>(`${API_URL}/api/experiences/${experienceId}/treasures`);
+  return authFetchJson<ExperienceTreasuresResponse>(`${API_URL}/api/experiences/${experienceId}/treasures`);
 }
 
 /**

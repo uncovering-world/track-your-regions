@@ -6,7 +6,16 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { hideLostSql, hideRefusedSql, includeLost, offeredLocationSql } from './experienceLifecycle.js';
+import {
+  hideLostSql,
+  hideRefusedSql,
+  hidePendingSql,
+  includeLost,
+  offeredLocationSql,
+  offeredToReaderSql,
+  publishedContentSql,
+} from './experienceLifecycle.js';
+import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 // =============================================================================
@@ -28,8 +37,13 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
   // showing, so a reader who asked to see what no longer exists would
   // otherwise get the rows without their locations — no pins, and a
   // "0 locations" count on every one of them.
+  //
+  // `hidePendingSql` has no toggle: the map feed is a set, like the list it
+  // follows, and the curator relaxation (ADR-0025) stops at the three by-id
+  // reads so the two never disagree on what is being shown.
   const lifecycleFilter = `AND ${hideRefusedSql()} `
-    + (includeLost(req.query) ? '' : `AND ${hideLostSql()}`);
+    + (includeLost(req.query) ? '' : `AND ${hideLostSql()} `)
+    + `AND ${hidePendingSql()}`;
 
   let query: string;
   const params: number[] = [regionId];
@@ -84,6 +98,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
         WHERE er.region_id IN (SELECT id FROM descendant_regions)
       )
         AND ${offeredLocationSql()}
+        AND ${publishedContentSql('el')}
         ${lifecycleFilter}
       ORDER BY el.experience_id, el.ordinal
     `;
@@ -129,6 +144,7 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
       JOIN experience_regions er ON er.experience_id = e.id
       WHERE er.region_id = $1
         AND ${offeredLocationSql()}
+        AND ${publishedContentSql('el')}
         ${lifecycleFilter}
       ORDER BY el.experience_id, el.ordinal
     `;
@@ -182,9 +198,14 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
  * Query params:
  *   - regionId: Filter to show which locations are in this region
  */
-export async function getExperienceLocations(req: Request, res: Response): Promise<void> {
+export async function getExperienceLocations(req: AuthenticatedRequest, res: Response): Promise<void> {
   const experienceId = parseInt(String(req.params.id));
   const regionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
+  // Resolved once, ahead of both queries below, and reused by both: the
+  // existence gate needs it to decide 404 vs. 200, and the list needs it so a
+  // curator who was let through the gate is not then handed an empty list of
+  // its (also pending) locations. See `maySeeUnreadExperience` (ADR-0025).
+  const maySeeUnread = await maySeeUnreadExperience(req.user?.id, req.user?.role, experienceId);
 
   // Verify the experience exists *and* is one this catalogue still offers.
   //
@@ -194,15 +215,22 @@ export async function getExperienceLocations(req: Request, res: Response): Promi
   // filtered, matching `getExperience`: that gap predates the admission axis and
   // closing it is a separate decision about a different question.
   const expResult = await pool.query(
-    `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${hideRefusedSql()}`,
-    [experienceId],
+    `SELECT e.id, e.name FROM experiences e
+     WHERE e.id = $1 AND ${hideRefusedSql()} AND ($2::boolean OR ${hidePendingSql()})`,
+    [experienceId, maySeeUnread],
   );
   if (expResult.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
     return;
   }
 
-  // Get locations with region membership info
+  // Get locations with region membership info. `maySeeUnread` is bound as the
+  // last parameter regardless of whether `regionId` is present, so the two
+  // shapes of this query don't have to agree on a fixed slot for it.
+  const params: (number | boolean)[] = regionId ? [experienceId, regionId] : [experienceId];
+  const maySeeUnreadIdx = params.length + 1;
+  params.push(maySeeUnread);
+
   const result = await pool.query(`
     SELECT
       el.id,
@@ -220,8 +248,9 @@ export async function getExperienceLocations(req: Request, res: Response): Promi
     FROM experience_locations el
     WHERE el.experience_id = $1
       AND ${offeredLocationSql()}
+      AND ($${maySeeUnreadIdx}::boolean OR ${publishedContentSql('el')})
     ORDER BY el.ordinal
-  `, regionId ? [experienceId, regionId] : [experienceId]);
+  `, params);
 
   res.json({
     experienceId,
@@ -245,11 +274,33 @@ export async function getVisitedLocationIds(req: AuthenticatedRequest, res: Resp
 
   const experienceId = req.query.experienceId ? parseInt(String(req.query.experienceId)) : null;
 
+  // Carries exactly what `getExperienceVisitedStatus` carries, and the reason is
+  // that the two answer the same question about the same rows: this endpoint
+  // supplies the ticks a client draws, that one supplies the "n of m" a badge
+  // reads. Filter them differently and the two disagree about one traveller's
+  // own record — 3 of 2 — which is the arithmetic nobody reports and everybody
+  // notices.
+  //
+  // So all four: the gate and the content gate, because a visit to an unread
+  // point is one no writer can create any more and none should be surfaced from
+  // before; `admission`, because a museum this catalogue turned down is on no
+  // list this reader can see; and offered points only, because a point the
+  // source withdrew is not somewhere they can be shown to have been. The
+  // traveller's history is not lost by any of this — `visited-experiences`
+  // carries no lifecycle predicate at all, deliberately, and that is where a
+  // record of somewhere that has since left the catalogue belongs.
+  //
+  // Unconditional, like the writers that create these rows: this is the
+  // caller's own record, not one of the three by-id reads ADR-0025 widens for a
+  // curator.
   let query = `
     SELECT uvl.location_id, el.experience_id
     FROM user_visited_locations uvl
     JOIN experience_locations el ON uvl.location_id = el.id
+    JOIN experiences e ON e.id = el.experience_id
     WHERE uvl.user_id = $1
+      AND ${hideRefusedSql()} AND ${hidePendingSql()}
+      AND ${offeredLocationSql('el')} AND ${publishedContentSql('el')}
   `;
 
   const params: number[] = [userId];
@@ -291,12 +342,22 @@ export async function markLocationVisited(req: AuthenticatedRequest, res: Respon
   const locationId = parseInt(String(req.params.locationId));
   const notes = req.body.notes ? String(req.body.notes) : null;
 
-  // Verify location exists and get experience info
+  // Verify location exists and get experience info. Gated on curation_state,
+  // both the container's and the location's own (ADR-0025): without this, any
+  // authenticated caller could mark a `pending` location "visited" — a claim
+  // they never made, since no read shows it to them — and this same lookup
+  // echoes `el.name`/`e.name` back in the response, so the unread row's
+  // content reached a non-curator through the write path. #520 argued this
+  // read needed no gate because a `pending` location "cannot have been
+  // visited" — true only if nothing can create that visit in the first
+  // place, and this endpoint is exactly the thing that can. No curator
+  // relaxation here: this is the caller's own record, not one of the three
+  // by-id reads, so it stays unconditional.
   const locResult = await pool.query(`
     SELECT el.id, el.name, el.experience_id, e.name as experience_name
     FROM experience_locations el
     JOIN experiences e ON el.experience_id = e.id
-    WHERE el.id = $1
+    WHERE el.id = $1 AND ${offeredToReaderSql()}
   `, [locationId]);
 
   if (locResult.rows.length === 0) {
@@ -419,21 +480,28 @@ export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Re
 
   // "All of them" means the ones on offer. A point the source withdrew is on
   // no list this reader can see, so recording a visit to it would be a claim
-  // they never made.
+  // they never made. The same is true of a point nobody has read yet: gated
+  // on curation_state, both the container's and the location's own
+  // (ADR-0025), or "mark all" would write a visit to a `pending` location no
+  // read ever showed this reader and answer `locationsMarked` with a count
+  // that discloses the size of the unread set (#520 — the write path this
+  // read's own predicate assumed could not exist).
   if (regionId) {
     // Only locations that are in the specified region
     locationsQuery = `
       SELECT el.id
       FROM experience_locations el
       JOIN experience_location_regions elr ON elr.location_id = el.id
+      JOIN experiences e ON e.id = el.experience_id
       WHERE el.experience_id = $1 AND elr.region_id = $2
-        AND ${offeredLocationSql()}
+        AND ${offeredToReaderSql()}
     `;
     locationsParams = [experienceId, regionId];
   } else {
     // All locations
-    locationsQuery = `SELECT id FROM experience_locations el
-       WHERE el.experience_id = $1 AND ${offeredLocationSql()}`;
+    locationsQuery = `SELECT el.id FROM experience_locations el
+       JOIN experiences e ON e.id = el.experience_id
+       WHERE el.experience_id = $1 AND ${offeredToReaderSql()}`;
     locationsParams = [experienceId];
   }
 
@@ -581,7 +649,10 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
     -- ordinals and a confident totalLocations -- at the very moment the two
     -- reads under /:id, the row itself and its locations, both answered 404
     -- (ADR-0024, #503). Admission and not existence, matching those two.
-    JOIN experiences e ON e.id = el.experience_id AND ${hideRefusedSql()}
+    -- The pending gate rides beside it, unrelaxed: this read is not one of the
+    -- three by-id reads ADR-0025 widens for a curator, so an unread museum's
+    -- points stay out of a progress denominator the same way a refused one does.
+    JOIN experiences e ON e.id = el.experience_id AND ${hideRefusedSql()} AND ${hidePendingSql()}
     LEFT JOIN user_visited_locations uvl ON uvl.location_id = el.id AND uvl.user_id = $2
     WHERE el.experience_id = $1
       -- Offered points only, like every other read that shows a place.
@@ -606,6 +677,7 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
       -- path: if a traveller stood in the British Museum, that is true whether
       -- or not this category calls it an art museum.
       AND ${offeredLocationSql()}
+      AND ${publishedContentSql('el')}
     ORDER BY el.ordinal
   `, [experienceId, userId]);
 
