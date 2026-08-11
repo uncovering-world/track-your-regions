@@ -265,18 +265,23 @@ Common sync logic lives in ten shared utility files:
 ### Change provenance (issue #480, [ADR-0020](../decisions/0020-experience-lifecycle-and-run-changeset.md))
 
 Every run records what it did to each object in `experience_sync_changes`: one row per
-object created, changed, in conflict, missing, returned, failed, or filtered, with a
+object created, changed, in conflict, held, missing, returned, failed, or filtered, with a
 per-field diff in `changed_fields`. Rows that came through **unchanged are counted on the log, never stored** —
 a UNESCO run would otherwise write 1247 rows of noise around the few dozen that carry
-information. Two kinds of unchanged row are stored anyway, because each carries news the
+information. Three kinds of unchanged row are stored anyway, because each carries news the
 counters cannot: `conflict`, where `curated_fields` refused the source's edit and the two now
-disagree, and `returned`, where an object flagged `missing_since` is listed again — typically
-unmodified, after a transient source gap, which is precisely when a field-change requirement
-would have hidden it.
+disagree; `held`, where the category's gate refused it (below); and `returned`, where an object
+flagged `missing_since` is listed again — typically unmodified, after a transient source gap,
+which is precisely when a field-change requirement would have hidden it.
 
-`changed_fields` holds the value the source proposed for a field **even when `curated_fields`
-rejected it**, marked `curatedConflict`. That is what makes a curator's later "accept source"
-possible; without it the proposed value exists nowhere.
+`changed_fields` holds the value the source proposed for a field **even when the run refused to
+write it**, and each entry says which of the two refusals it was: `curatedConflict` for a field a
+curator had claimed, `held` for one the category's gate kept out (#519). Both flags are `false`
+on a field the run applied. That is what makes a curator's later answer possible — "accept
+source" for the first, publishing for the second — and without it the proposed value exists
+nowhere. The two are never both true of one field: they are answered by different endpoints, so a
+field carrying both would raise two contradictory cards over one value, and where both apply the
+claim wins as the narrower and separately answerable reason.
 
 **A gated source may not overwrite what a reader can already see.** Contents arriving from a gated
 source are written invisible rather than withheld ([ADR-0025](../decisions/0025-per-source-curation-gate.md)),
@@ -288,6 +293,50 @@ beside that column's own `curated_fields` guard. A row still `pending` is *not* 
 it, so the run refreshes it in place and the curator reviews the newest state rather than whatever
 landed first.
 
+**A held field is reported as a refused write, not as one the run made.** `computeChangeSet` files
+every difference in exactly one of three buckets, and the bucket is what the run reports:
+`changedFields` means *written*, `curatedConflicts` means a curator's claim refused it, `heldFields`
+means the gate refused it. The hold itself is decided in SQL — it reads the stored `curation_state`
+the same statement is about to overwrite — and the statement **answers the question once and hands
+the answer back**, as `${HELD} AS was_held` in the upsert's `RETURNING` and the same expression in
+the preview's `SELECT`; `heldSql` in `syncUtils.ts` is the rule's only home, and the diff takes the
+answer as a boolean rather than re-deriving anything. A row whose only differences were held is
+therefore `unchanged` (nothing about it changed) and its changeset row is `change_type = 'held'`.
+
+The answer has to come from `RETURNING` rather than from the `before` CTE, and this is not a detail
+of style. Inside `ON CONFLICT DO UPDATE`, `experiences.curation_state` is the stored value **as
+re-read under the row lock**, while a CTE reads the statement's own snapshot — and the two differ
+whenever a curator's publish commits in between. Measured against a real database: with a publish
+landing in that window, the CTE said `pending` while the guards said `verified` for the same run, so
+a report derived from the CTE called the write applied while the statement had held it — #519 again,
+for one run, self-healing on the next. Deriving the *guards* from the CTE instead would be far
+worse: the run would then overwrite a row the curator had just published, leaving unreviewed content
+live with no pointer, no card and nothing anywhere to say so — the gate's central promise broken
+permanently rather than a report wrong once. Worse still in a second way: the decay does not fire
+under a gated source, so the row would go on saying `verified` — asserting a curator's pass over
+content nobody had seen. And the divergence is one-directional, because nothing returns a row to
+`pending`, so every reachable instance of it is that case rather than the harmless mirror.
+`RETURNING` reads the tuple as it stands after the write, which equals the value the guards were
+built on only because this statement never assigns `curation_state` — a test pins that, on the
+SET-list's text rather than on parsed assignments, since the assignment can be written mid-line.
+
+Before all of this, a held field landed in `changedFields` — the bucket that means written — so the
+run reported an update over a row where nothing had moved, and the change list drew `old → new` with
+no chip, telling the curator that the held value was the one now live. `conflict` could not absorb
+the case: that word means a person
+claimed the field, so the stored value won on purpose and nothing is waiting, while a held row is
+waiting on a verdict nobody has given (#519). A row carrying both is `held`, because the held half
+is the part still unanswered. Counted as `unchanged`, exactly as a `conflict` row is — there is no
+per-run held counter yet (#523), and the changeset rows are the record; the run report's default
+view keeps them regardless of significance, since it drops only minor rows of type `updated`, which
+is a denylist naming one type rather than a list of the types worth showing.
+
+The same reasoning holds against `returned`: a row can come back from missing while a hold from
+this very run is still sitting on it, and the hold is again the half nobody has answered.
+`resolveChangeType` checks `heldFields` before `returnedFromMissing` for exactly that reason —
+checked in the other order, as it briefly was, a combined row read as `returned` and never turned
+up under the admin report's `?type=held` filter, the one place a curator would go looking for it.
+
 The proposal itself is already recorded, per object, in the run's changeset. What the row adds is
 `pending_change_sync_log_id`, the pointer saying whose proposal is being held, so the curator's screen
 can find it. It is written only by a run that actually proposed something — the upsert's own guards
@@ -296,8 +345,10 @@ nothing. *Proposed* counts both kinds of refusal: a value the hold kept out and 
 `curated_fields` kept out are both decisions waiting on a curator, so a row whose only difference is
 in a claimed field is still holding a proposal and still points at the run that made it. The pointer
 is cleared again when a later run proposes nothing at all — nothing written and nothing refused —
-because a source that has come back to what is stored is no longer proposing anything. A row that is
-no longer held loses the pointer too: a run free to write the content leaves nothing waiting. The
+because a source that has come back to what is stored is no longer proposing anything. *Proposed*
+therefore reads all three buckets: keying it on written fields alone would clear the pointer on the
+very run whose content the gate had just held, which is the case the pointer exists for. A row that
+is no longer held loses the pointer too: a run free to write the content leaves nothing waiting. The
 only other thing that clears it is a curator answering, through `POST /:id/publish` (§ Publishing),
 which is what makes the queue's `held` card answerable at all.
 
@@ -309,7 +360,9 @@ to it — the pass covered the object that was there, and a changed object has n
 provenance-only pass, one that reaches the row and changes nothing, leaves `verified` standing.
 So does a change from a **gated** source: there the same statement's hold refused to write the new
 values, so what a reader sees is still exactly what the curator passed, and retiring the pass would
-punish the row for a proposal nobody has answered yet.
+punish the row for a proposal nobody has answered yet. Two things say so, and both matter: the
+change set files those values as held rather than changed, so the decay statement is not even sent,
+and the statement carries the gate check itself for the case where something did get written.
 
 The rule is resolved in TypeScript, against the change set `computeChangeSet` already produces,
 rather than folded into the upsert's own `SET` list, because the statement's `CASE` guards fire
@@ -338,7 +391,15 @@ curator saw it, and its row, its id and its region assignments are the same ones
 **`total_updated` changed meaning.** It used to count every row that passed through
 `ON CONFLICT DO UPDATE`, identical or not. Since migration 009 it counts rows that actually
 changed, and `total_unchanged` absorbs the rest. Logs 1–4 are therefore not comparable with
-later ones.
+later ones. A row a gated source proposed a change to and the gate held is one of the rows
+`total_unchanged` absorbs — nothing was written to it — and it is the changeset's `held` row, not
+the counters, that says a decision is waiting. `total_curated_conflicts` stays claims-only for the
+same reason: nobody has claimed a held field. That leaves a gated run's four totals silent about how
+many proposals are waiting, which reads as an omission next to `total_curated_conflicts` rather than
+as a model: **issue #523** tracks giving the log its own `total_held`, and it has to land before a
+source is gated for real (#500) — measured on Top Art Museums run 53, which created 18 and updated
+24, a gated report of the same run would have read "created 18 · updated 0 · unchanged 82" with 24
+proposals waiting behind it.
 
 **Two lifecycle axes** on `experiences`. `existence` is curator-only. So is `former` — a
 source outage must never change what users see — but `present` can also be restored by the
@@ -1110,7 +1171,9 @@ Before this, `metadataChanges` never produced a diff a per-key claim could match
 claimed key and whatever else changed were one `metadata` diff, which `CURATED_KEY_BY_FIELD`
 protects only as a whole-column claim — so a run that correctly kept the curator's value (the
 per-key guard above) still filed `changed_fields: metadata, curatedConflict: false`: a write
-that never happened, reported as one that did, with no conflict for a queue card to raise. The
+that never happened, reported as one that did, with no conflict for a queue card to raise. (The gate
+has the same shape one layer out, and #519 is that story: a write the hold refused, filed as one the
+run made. Both are fixed the same way — the field says which refusal kept it out.) The
 keys nobody claimed individually — other than `inDanger`/`dateInscribed`, which the catch-all
 never carries, claimed or not — still fall into the catch-all and still report as applied,
 because the run did apply them; a claim on `metadata` itself is unaffected and still protects
@@ -1201,18 +1264,22 @@ above, so it is correctly invisible under both headings rather than wrongly visi
 
 **Held** — an already-visible row (`curation_state <> 'pending'`) whose newest content proposal
 was kept out by the upsert's own gate rather than applied — the mechanism `syncUtils.ts`
-documents under "A gated source may not overwrite what a reader can already see" (above).
+documents under "A gated source may not overwrite what a reader can already see" (above), and
+reported by the run as `change_type = 'held'` with each kept-out field flagged `held`.
 `pending_change_sync_log_id` names the run whose proposal is waiting, and the proposal itself is
 read straight from that run's changeset row.
 
 The pointer is not proof the gate is what held every field on it. `syncUtils.ts`'s
-`proposedAnything = wroteContent || curatedConflicts.length > 0` sets the pointer for *any*
-refused proposal — a curator's own `curated_fields` claim included — so without a filter a field
+`proposedAnything` sets the pointer for *any* refused proposal — a curator's own `curated_fields`
+claim included, and not only the gate-held fields this card is about — so without a filter a field
 refused only by a claim would carry two contradictory cards at once: `conflicts`, which
-`accept-source` can answer, and a `held` twin that cannot be answered at all, and the twin would
-outlive an `accept-source` call showing a value already written. The query therefore excludes
-`(f->>'curatedConflict')::boolean` fields from the aggregate — this card is only ever the fields
-the *category's gate* held, never one a claim refused for its own, separately-answerable reason.
+`accept-source` can answer, and a `held` twin answered by publishing, and the twin would
+outlive an `accept-source` call showing a value already written. The query therefore requires
+`(f->>'held')::boolean` on each field — this card is only ever the fields the *category's gate*
+held, never one a claim refused for its own, separately-answerable reason. Read off the field's own
+flag, not inferred from the absence of a claim (#519): the elimination was right only while the gate
+was the sole other reason a write could be refused, and a third reason would have been silently
+reclassified as gate-held here and handed to publishing, which writes all eleven columns.
 `e.missing_since IS NULL` guards the row for the same reason `arrivals` carries it: a visible row
 can be flagged missing *and* holding a proposal at the same time, and that is `missing`'s
 question, not this one.
@@ -1403,7 +1470,11 @@ re-applied from what is stored, exactly as the upsert re-applies it.
 
 **A claim is skipped, not refused.** Publishing answers "may readers see this"; a
 `curated_fields` claim answers "whose text is it". Both can be open at once, so a claimed field is
-left alone and named back in `claimedFieldsSkipped` while the rest of the call succeeds.
+left alone and named back in `claimedFieldsSkipped` while the rest of the call succeeds. The writer
+takes only the fields flagged `held`, which is the same predicate the queue's `held` card uses, so
+it writes exactly what that card showed and nothing beside it — and reads the flag rather than
+inferring it from the absence of a claim (#519), since an elimination would hand this writer, which
+assigns all eleven content columns, any future field refused for some third reason.
 
 **`published_at` is stamped only where the row was `pending`.** `COALESCE(published_at, NOW())`
 alone would not restart an existing New-chip window, but it would invent one for the rows that

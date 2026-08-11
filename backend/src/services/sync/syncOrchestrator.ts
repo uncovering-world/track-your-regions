@@ -137,11 +137,26 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
 /**
  * Name what happened to a row.
  *
- * Only reached for rows worth storing. An `unchanged` outcome therefore means
- * the row carried a curated conflict — a return from missing is the other
- * reason an untouched row is recorded, and it is answered above.
+ * Only reached for rows worth storing, so an `unchanged` outcome means the run
+ * refused something — a return from missing is the other reason an untouched row
+ * is recorded, and it is answered above.
+ *
+ * The two refusals are two different events and get two different words (#519).
+ * `conflict` is a value a curator had claimed: the stored value won on purpose
+ * and nothing is waiting. `held` is a value the category's gate kept out of a row
+ * a reader can already see: nobody has looked, and a verdict *is* waiting. A row
+ * carrying both is `held`, because the held half is the part still unanswered —
+ * `conflict` would be false of it, while `held` stays true of the whole row.
+ *
+ * The same principle holds against `returned`: a row can come back from missing
+ * while still sitting on a hold from this very run, and the hold is again the
+ * half nobody has answered. So the `held` check runs first, ahead of
+ * `returnedFromMissing` — checked second, as this function once had it, a
+ * combined row read as `returned` and never turned up under the admin report's
+ * `?type=held` filter, the one place a curator would go looking for it.
  */
 function resolveChangeType(result: ProcessItemResult): ChangeRecord['changeType'] {
+  if (result.outcome === 'unchanged' && result.changeSet.heldFields.length > 0) return 'held';
   if (result.returnedFromMissing && result.outcome !== 'created') return 'returned';
   if (result.outcome === 'unchanged') return 'conflict';
   return result.outcome;
@@ -161,20 +176,29 @@ function recordItemOutcome<T>(
   progress: SyncProgress,
   changes: ChangeRecord[],
 ): void {
-  const { changedFields, curatedConflicts, significance } = result.changeSet;
+  const { changedFields, curatedConflicts, heldFields, significance } = result.changeSet;
+  // Claimed fields only. A held field is not one a person claimed — the whole
+  // difference the two words carry — and `total_curated_conflicts` would stop
+  // meaning what its column comment says if it absorbed them.
   progress.curatedConflicts += curatedConflicts.length;
 
+  // A held row is `unchanged`: the gate kept the write out, so nothing about the
+  // row moved and `total_updated` — which counts rows that actually changed —
+  // must not move either (#519).
   if (result.outcome === 'created') progress.created++;
   else if (result.outcome === 'updated') progress.updated++;
   else progress.unchanged++;
 
   if (progress.logId === null) return;
 
-  // Unchanged rows are normally not stored, but two of them carry news anyway:
-  // one whose source diverged from a curator's edit (recorded nowhere else),
-  // and one the source has started listing again after we flagged it missing.
+  // Unchanged rows are normally not stored, but three of them carry news anyway:
+  // one whose source diverged from a curator's edit (recorded nowhere else), one
+  // whose change the gate held — the proposal a curator will be shown, which
+  // lives nowhere else either — and one the source has started listing again
+  // after we flagged it missing.
   const worthRecording = result.outcome !== 'unchanged'
     || curatedConflicts.length > 0
+    || heldFields.length > 0
     || result.returnedFromMissing;
   if (!worthRecording) return;
 
@@ -186,10 +210,11 @@ function recordItemOutcome<T>(
     externalId: config.getItemId(item),
     nameSnapshot: result.nameSnapshot,
     changeType,
-    // Conflicts travel with the applied changes: the value the source proposed
-    // is stored even though the upsert refused it, or "accept source" would
+    // Both refusals travel with the applied changes, each field carrying the
+    // reason it was not written: the value the source proposed is stored even
+    // though the upsert refused it, or "accept source" and publishing would each
     // later have nothing to apply.
-    changedFields: [...changedFields, ...curatedConflicts],
+    changedFields: [...changedFields, ...curatedConflicts, ...heldFields],
     significance,
     error: null,
   });

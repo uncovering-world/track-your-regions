@@ -288,15 +288,20 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // what a reader can already see", `syncUtils.ts`) rather than applied.
   //
   // The pointer is set for *any* refused proposal, not only a gate-held one:
-  // `syncUtils.ts`'s `proposedAnything = wroteContent || curatedConflicts.length
-  // > 0` fires equally for a field a curator individually claimed. Without the
-  // filter below, a row refused only by a `curated_fields` claim would carry
-  // the same field under two contradictory cards — `conflicts`, which is
-  // answerable, and `held`, which is not — and after the curator answered via
-  // `accept-source` this card would stay behind showing a value already
-  // written. `NOT (f->>'curatedConflict')::boolean` keeps the two questions
-  // separate: this card is only the fields the *category's gate* held, never
-  // one a claim already refused for its own reason.
+  // `syncUtils.ts`'s `proposedAnything` fires equally for a field a curator
+  // individually claimed. Without the filter below, a row refused only by a
+  // `curated_fields` claim would carry the same field under two contradictory
+  // cards — `conflicts`, which `accept-source` answers, and `held`, which
+  // publishing answers — and after the curator answered via `accept-source` this
+  // card would stay behind showing a value already written. `(f->>'held')` keeps
+  // the two questions separate: this card is only the fields the *category's
+  // gate* held, never one a claim already refused for its own reason.
+  //
+  // The field says so itself rather than being inferred from the absence of a
+  // claim (#519). The old `NOT (f->>'curatedConflict')::boolean` was right only
+  // while the gate was the sole other reason a write could be refused: a third
+  // reason would have been reclassified as gate-held here, and offered to
+  // publishing, which writes all eleven columns.
   //
   // `e.missing_since IS NULL` for the same reason `arrivals` carries it: a row
   // the source has stopped offering is `missing`'s question, not this one,
@@ -341,7 +346,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       WHERE e.pending_change_sync_log_id IS NOT NULL
         AND ${hideRefusedSql()}
         AND e.missing_since IS NULL
-        AND NOT (f->>'curatedConflict')::boolean
+        AND (f->>'held')::boolean
         AND ${scopeFilter} ${categoryFilter}
       GROUP BY e.id, e.external_id, e.name, e.category_id, c.name, ch.sync_log_id
     ) q WHERE q.proposed IS NOT NULL

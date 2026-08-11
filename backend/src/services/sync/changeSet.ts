@@ -32,7 +32,22 @@ export interface FieldChange {
   old: unknown;
   new: unknown;
   significance: FieldSignificance;
+  /** A curator had claimed this field, so the stored value won on purpose. */
   curatedConflict: boolean;
+  /**
+   * The category's gate kept this write out of a row a reader can already see,
+   * so the stored value won *provisionally* and a verdict is waiting (#519).
+   *
+   * The other half of "why was this not written", and never true beside
+   * `curatedConflict`: the two are answered by different endpoints — a claim
+   * through `accept-source`, a hold through `POST /:id/publish` — so a field
+   * carrying both would raise two contradictory cards over one value.
+   *
+   * Positive rather than inferred. Three sites used to read "held" as "refused
+   * and not claimed", which was right only while the gate was the sole other
+   * reason a write could be refused.
+   */
+  held: boolean;
 }
 
 export interface ChangeSetResult {
@@ -40,6 +55,8 @@ export interface ChangeSetResult {
   changedFields: FieldChange[];
   significance: FieldSignificance | null;
   curatedConflicts: FieldChange[];
+  /** Fields the gate refused. Proposed, recorded, and waiting on a curator. */
+  heldFields: FieldChange[];
 }
 
 /** Below this, a coordinate difference is source jitter, not a move. */
@@ -280,47 +297,80 @@ function collectDifferences(
 /**
  * Diff a stored row against the record the source just produced.
  *
- * Fields protected by `curated_fields` are reported separately: the upsert will
- * not apply them, so they are a divergence to show a curator rather than a
- * change the run made. A row whose only differences are protected is
- * `unchanged` — because nothing about it changed.
+ * Every difference lands in exactly one of three buckets, and which one says why
+ * the run did or did not write it. `changedFields` means *written*.
+ * `curatedConflicts` means a curator had claimed the field, so the stored value
+ * won on purpose and nothing is waiting. `heldFields` means the category's gate
+ * kept the write out of a row a reader can already see, so the stored value won
+ * provisionally and a verdict **is** waiting (#519).
+ *
+ * A row whose only differences were refused is `unchanged` — because nothing
+ * about it changed. Both refusals are still reported: the value the source
+ * proposed exists nowhere else, and it is what a curator is being asked about.
+ *
+ * `held` is the statement's own answer, not a rule re-applied here: the hold is
+ * decided in SQL, against the stored row as the write locked it, and
+ * `syncUtils.ts` hands that answer back (`was_held`). Re-deriving it on this side
+ * is what let the write and the report disagree about one run — see the note on
+ * `RETURNING` there.
  */
 export function computeChangeSet(
   before: ExperienceSnapshot | null,
   incoming: ExperienceSnapshot,
   curatedFields: string[],
+  held: boolean,
 ): ChangeSetResult {
   if (before === null) {
-    return { changeType: 'created', changedFields: [], significance: null, curatedConflicts: [] };
+    // An insert writes every column, and what the gate does about a new row is
+    // stamp it `pending` — so there is no refused write to report here.
+    return {
+      changeType: 'created', changedFields: [], significance: null,
+      curatedConflicts: [], heldFields: [],
+    };
   }
 
   const curated = new Set(curatedFields);
   const changedFields: FieldChange[] = [];
   const curatedConflicts: FieldChange[] = [];
+  const heldFields: FieldChange[] = [];
 
   for (const diff of collectDifferences(before, incoming, curatedFields)) {
     // A claim key is not always a column: 'metadata.website' is claimed under
     // that literal name (#488), which is what `claimKeyFor`'s fallback is for.
     const isProtected = curated.has(claimKeyFor(diff.field));
-    const change: FieldChange = { ...diff, curatedConflict: isProtected };
+    // The claim wins where both are true, and the upsert's `claim OR held` guard
+    // is indifferent — it keeps the stored value either way. The claim is the
+    // narrower and separately answerable reason: `accept-source` owns it, and
+    // publishing deliberately leaves a claimed field alone, so filing it as held
+    // would offer a curator their own value back as though a source had sent it.
+    const change: FieldChange = {
+      ...diff,
+      curatedConflict: isProtected,
+      held: !isProtected && held,
+    };
     if (isProtected) curatedConflicts.push(change);
+    else if (held) heldFields.push(change);
     else changedFields.push(change);
   }
 
-  // Significance covers conflicts as well as applied changes. A row where the
-  // source proposed a major change to a curated field and a minor one elsewhere
-  // would otherwise be filed as 'minor' and dropped from the default view — the
-  // conflict, which is the part needing a decision, would be the hidden half.
-  const weighed = [...changedFields, ...curatedConflicts];
+  // Significance covers both kinds of refusal as well as applied changes. A row
+  // where the source proposed a major change the run refused and a minor one it
+  // applied would otherwise be filed as 'minor' and dropped from the default
+  // view — the refused half, which is the part needing a decision, would be the
+  // hidden one.
+  const weighed = [...changedFields, ...curatedConflicts, ...heldFields];
   let significance: FieldSignificance | null = null;
   if (weighed.length > 0) {
     significance = weighed.some(f => f.significance === 'major') ? 'major' : 'minor';
   }
 
   return {
+    // Only what was written decides this. A held row reports `unchanged`, which
+    // is what stops the run's `total_updated` counting rows where nothing moved.
     changeType: changedFields.length === 0 ? 'unchanged' : 'updated',
     changedFields,
     significance,
     curatedConflicts,
+    heldFields,
   };
 }

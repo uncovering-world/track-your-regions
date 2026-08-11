@@ -307,6 +307,20 @@ async function publishUnderLock(
       }
       heldFrom = pointer;
 
+      if (write.proposalMissing) {
+        // The pointer names a run whose changeset row is not there, so there is
+        // nothing to apply and nothing to show a curator either. Reading that as
+        // an empty proposal would clear the pointer and answer 200: the card
+        // disappears, the values are never written, and the only record that
+        // anything was held goes with it. `accept-source` refuses the same case,
+        // and two endpoints disagreeing about it is worse than either answer.
+        // Leaving the pointer standing costs a card that returns; the next run
+        // re-proposes and records it properly.
+        return await refuse(409,
+          'The proposal this card names is no longer on record — reload to see where this stands',
+          pointer);
+      }
+
       if (write.unwritable.length > 0) {
         // Nothing held may be dropped in silence. Clearing the pointer over a
         // value this code could not write would leave that value proposed by

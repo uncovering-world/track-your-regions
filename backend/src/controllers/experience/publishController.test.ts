@@ -84,7 +84,16 @@ function makeRes() {
 const CURATOR = { id: 7, role: 'curator' as const };
 const ADMIN = { id: 1, role: 'admin' as const };
 
-interface Proposed { field: string; old?: unknown; new?: unknown; curatedConflict?: boolean }
+/**
+ * One entry of a gated run's `changed_fields`, as the changeset stores it.
+ *
+ * `held` is stated on every fixture that stands for a gate-held field, because
+ * that is what the writer now keys on (#519): a fixture leaving it out describes a
+ * field the run applied, and this endpoint has nothing to do with those.
+ */
+interface Proposed {
+  field: string; old?: unknown; new?: unknown; curatedConflict?: boolean; held?: boolean;
+}
 
 /**
  * Captures what the transaction ran, so assertions can read the statements.
@@ -284,7 +293,10 @@ describe('publishing an arrival', () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'pending', pending_change_sync_log_id: 53, curated_fields: ['name'] },
-      proposal: [{ field: 'name', new: 'X' }, { field: 'description', new: 'Y' }],
+      proposal: [
+        { field: 'name', new: 'X', held: true },
+        { field: 'description', new: 'Y', held: true },
+      ],
     });
 
     await publish({ expectedSyncLogId: 53 }, client);
@@ -384,8 +396,8 @@ describe('publishing named contents', () => {
 
 describe('publishing a held proposal', () => {
   const HELD: Proposed[] = [
-    { field: 'name', new: 'Museo Nacional del Prado' },
-    { field: 'description', new: 'Longer text' },
+    { field: 'name', new: 'Museo Nacional del Prado', held: true },
+    { field: 'description', new: 'Longer text', held: true },
   ];
 
   it('clears the pointer, which is what makes the card answerable', async () => {
@@ -444,17 +456,17 @@ describe('publishing a held proposal', () => {
     const { client, queries } = makeClient({
       row: { curation_state: 'auto', pending_change_sync_log_id: 53, metadata: { a: 1 } },
       proposal: [
-        { field: 'name', new: 'N' },
-        { field: 'nameLocal', new: { en: 'N' } },
-        { field: 'description', new: 'D' },
-        { field: 'shortDescription', new: 'S' },
-        { field: 'category', new: 'C' },
-        { field: 'tags', new: ['ancient'] },
-        { field: 'location', new: { lon: 1.5, lat: -2.5 } },
-        { field: 'countryCodes', new: ['FR'] },
-        { field: 'countryNames', new: ['France'] },
-        { field: 'imageUrl', new: 'https://example.test/a.jpg' },
-        { field: 'metadata', old: { a: 1 }, new: { a: 2 } },
+        { field: 'name', new: 'N', held: true },
+        { field: 'nameLocal', new: { en: 'N' }, held: true },
+        { field: 'description', new: 'D', held: true },
+        { field: 'shortDescription', new: 'S', held: true },
+        { field: 'category', new: 'C', held: true },
+        { field: 'tags', new: ['ancient'], held: true },
+        { field: 'location', new: { lon: 1.5, lat: -2.5 }, held: true },
+        { field: 'countryCodes', new: ['FR'], held: true },
+        { field: 'countryNames', new: ['France'], held: true },
+        { field: 'imageUrl', new: 'https://example.test/a.jpg', held: true },
+        { field: 'metadata', old: { a: 1 }, new: { a: 2 }, held: true },
       ],
     });
 
@@ -488,9 +500,15 @@ describe('publishing a held proposal', () => {
     // still looks complete, while every card carrying that field answers 409 for
     // ever, the pointer never clears, and the curator cannot dismiss it by any
     // route.
-    const diff = computeChangeSet(BEFORE_SNAPSHOT, CHANGED_SNAPSHOT, []);
-    const proposal = [...diff.changedFields, ...diff.curatedConflicts];
+    // Diffed as a gated run over an already-visible row, which is the only run
+    // that produces a held card at all — so the proposal fed back in is the
+    // record such a run writes, `held` flags and all (#519).
+    const diff = computeChangeSet(BEFORE_SNAPSHOT, CHANGED_SNAPSHOT, [], true);
+    const proposal = diff.heldFields;
     const names = proposal.map(field => field.field);
+    // Nothing may have slipped into the applied bucket, or this test would be
+    // feeding the writer fields no card ever showed.
+    expect(diff.changedFields).toEqual([]);
     // A guard on the fixture, not on the code: a snapshot pair that stopped
     // differing everywhere would quietly narrow what this test covers.
     expect(names).toEqual(expect.arrayContaining(
@@ -530,13 +548,34 @@ describe('publishing a held proposal', () => {
     }));
   });
 
+  it('writes only what the gate held, not a field refused for another reason', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53, curated_fields: [] },
+      proposal: [
+        // Neither flag: a field some future refusal kept out for a reason that is
+        // not the gate. The writer used to read "held" as "not claimed", so this
+        // would have been applied — publishing all eleven columns over a value no
+        // card ever showed and no curator ever answered (#519). Unreachable today
+        // and deliberately so: the flag is what keeps it unreachable tomorrow.
+        { field: 'name', new: 'Refused for some other reason' },
+        { field: 'description', new: 'D', held: true },
+      ],
+    });
+
+    const res = await publish({ expectedSyncLogId: 53 }, client);
+
+    expect(only(queries, 'UPDATE experiences').sql).not.toContain('name = ');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ appliedFields: ['description'] }));
+  });
+
   it('leaves a field the run itself refused to accept-source', async () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'auto', pending_change_sync_log_id: 53, curated_fields: [] },
       proposal: [
-        { field: 'name', new: 'From the source', curatedConflict: true },
-        { field: 'description', new: 'D' },
+        { field: 'name', new: 'From the source', curatedConflict: true, held: false },
+        { field: 'description', new: 'D', held: true },
       ],
     });
 
@@ -559,7 +598,7 @@ describe('publishing a held proposal', () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'auto', pending_change_sync_log_id: 53, curated_fields: ['name'] },
-      proposal: [{ field: 'name', new: 'X' }],
+      proposal: [{ field: 'name', new: 'X', held: true }],
     });
 
     const res = await publish({}, client);
@@ -647,7 +686,7 @@ describe('publishing bare contents ({ contentsOnly: true })', () => {
 describe('the metadata column, which no single entry describes', () => {
   const heldMetadata = (old: unknown, next: unknown, row: Record<string, unknown>) => makeClient({
     row: { curation_state: 'auto', pending_change_sync_log_id: 53, ...row },
-    proposal: [{ field: 'metadata', old, new: next }],
+    proposal: [{ field: 'metadata', old, new: next, held: true }],
   });
 
   const written = (queries: Array<{ sql: string; params: unknown[] }>) => {
@@ -708,6 +747,29 @@ describe('refusing to publish', () => {
     expect(mockedConnect).not.toHaveBeenCalled();
   });
 
+  it('refuses when the pointer names a run whose changeset is not on record', async () => {
+    grantScope();
+    // Pointer set, no `experience_sync_changes` row for it: `recordSyncChanges`
+    // writes a run's whole changeset as one batched insert, so a run whose
+    // pointer landed and whose changeset did not is a reachable failure, and
+    // the admin screen has an alert for exactly it.
+    // `proposal` omitted is how this helper says "no changeset row", which is
+    // the state under test — distinct from `proposal: []`, a row whose proposal
+    // is empty.
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 500 },
+    });
+
+    const res = await publish({ expectedSyncLogId: 500 }, client);
+
+    // Not 200-with-nothing-applied: that would clear the pointer, take the card
+    // away and report success, leaving the held values unwritten and no record
+    // that anything was held. `accept-source` refuses the same case, and two
+    // endpoints disagreeing about it is worse than either answer alone.
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(noWrites(queries)).toBe(true);
+  });
+
   it('answers 404 for a row that vanished before the lock', async () => {
     grantScope();
     const { client, queries } = makeClient({ row: null });
@@ -724,7 +786,7 @@ describe('refusing to publish', () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'auto', pending_change_sync_log_id: 61 },
-      proposal: [{ field: 'name', new: 'X' }],
+      proposal: [{ field: 'name', new: 'X', held: true }],
     });
 
     const res = await publish({ expectedSyncLogId: 53 }, client);
@@ -744,8 +806,10 @@ describe('refusing to publish', () => {
       // left to answer, unlike the fully-claimed case the staleness check
       // now skips. Without this the fixture proves nothing under the new
       // check: an empty proposal writes nothing either way, and the refusal
-      // this test is about would not fire for that reason instead.
-      proposal: [{ field: 'name', new: 'X' }],
+      // this test is about would not fire for that reason instead. `held: true`
+      // is required for `heldFieldWrites` to count it at all — it now reads the
+      // field's own flag rather than inferring "held" from "not a claim" (#519).
+      proposal: [{ field: 'name', new: 'X', held: true }],
     });
 
     const res = await publish({}, client);
@@ -772,7 +836,10 @@ describe('refusing to publish', () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'auto', pending_change_sync_log_id: 53 },
-      proposal: [{ field: 'location', new: { lon: 'east', lat: null } }, { field: 'name', new: 'N' }],
+      proposal: [
+        { field: 'location', new: { lon: 'east', lat: null }, held: true },
+        { field: 'name', new: 'N', held: true },
+      ],
     });
 
     const res = await publish({ expectedSyncLogId: 53 }, client);

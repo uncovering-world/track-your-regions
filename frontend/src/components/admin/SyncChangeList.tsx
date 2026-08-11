@@ -23,6 +23,10 @@ const CHANGE_TYPE_COLOR: Record<SyncChange['change_type'], 'success' | 'info' | 
   created: 'success',
   updated: 'info',
   conflict: 'warning',
+  // Not `info`: that is `updated`, and the whole point of the word is that this
+  // row was *not* updated. Warning, like `conflict`, because both mean the run
+  // refused a write — which of the two it was, the row's own chip says.
+  held: 'warning',
   filtered: 'default',
   missing: 'warning',
   returned: 'info',
@@ -46,8 +50,24 @@ function FieldRow({ change }: { change: SyncFieldChange }) {
       {isLong
         ? `changed (${oldText.length} → ${newText.length} chars)`
         : `${oldText} → ${newText}`}
+      {/* Why the run did not write this, when it did not. Without a chip the line
+          reads `old → new` and the value on the right reads as the one now live —
+          which for a refused write is the opposite of the truth (#519). The two
+          words mean opposite things about who is waiting, so they are two chips
+          rather than one shared "not applied": `curated` says a person's value
+          won on purpose and nothing is waiting; `held` says nobody has looked and
+          a verdict is.
+          Two colours rather than two shapes, checked against the rendered row: a
+          row can carry one of each (a claimed field beside a gate-held one), and
+          the same orange in an outlined variant made the held one the fainter of
+          the two — backwards, since it is the one still waiting on someone. Blue
+          cannot be misread as "applied" here, because an applied field carries no
+          chip at all: on these lines a chip always means refused. */}
       {change.curatedConflict && (
         <Chip label="curated" size="small" color="warning" sx={{ ml: 1, height: 16, fontSize: '0.6rem' }} />
+      )}
+      {change.held && (
+        <Chip label="held" size="small" color="info" sx={{ ml: 1, height: 16, fontSize: '0.6rem' }} />
       )}
     </Typography>
   );

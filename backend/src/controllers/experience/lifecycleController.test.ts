@@ -365,8 +365,13 @@ describe('getReviewQueue', () => {
     // filter a claimed field would carry both a `conflicts` card (answerable)
     // and a `held` twin (not), and the twin would outlive an `accept-source`
     // answer to the first.
+    //
+    // Read off the field's own flag, not from the absence of a claim (#519): an
+    // elimination would silently reclassify any future third reason a write was
+    // refused as gate-held, and this card is what publishing then writes.
     const sql = await capturedQueueSql('held');
-    expect(sql).toContain("NOT (f->>'curatedConflict')::boolean");
+    expect(sql).toContain("(f->>'held')::boolean");
+    expect(sql).not.toContain('curatedConflict');
   });
 
   it('does not offer an acceptable flag on a held field', async () => {
