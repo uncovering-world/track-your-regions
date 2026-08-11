@@ -1035,7 +1035,7 @@ describe('setExperienceAdmission', () => {
   }
 
   /** A locked row, refused and unanswered unless the test says otherwise. */
-  function refusedClient(overrides: Record<string, unknown> = {}) {
+  function refusedClient(overrides: Record<string, unknown> = {}, rowCounts: Record<string, number> = {}) {
     const queries: Array<{ sql: string; params: unknown[] }> = [];
     return {
       queries,
@@ -1047,10 +1047,15 @@ describe('setExperienceAdmission', () => {
               admission: 'refused',
               admission_reason: 'not an art museum',
               curated_fields: [],
+              // The common refused row: already visible before the rule caught
+              // it, not a fresh gated arrival. Tests exercising the `pending`
+              // publish path override this explicitly.
+              curation_state: 'auto',
               ...overrides,
             }] };
           }
-          return { rows: [] };
+          const counted = Object.entries(rowCounts).find(([fragment]) => sql.includes(fragment));
+          return { rows: [], rowCount: counted ? counted[1] : 0 };
         }),
         release: vi.fn(),
       },
@@ -1069,7 +1074,11 @@ describe('setExperienceAdmission', () => {
     const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
     expect(update.params[1]).toBe('admitted');
     expect(JSON.parse(String(update.params[3]))).toContain('admission');
-    expect(res.json).toHaveBeenCalledWith({ experienceId: 5, admission: 'admitted' });
+    // This row was already `auto` — visible before the rule caught it — so
+    // putting it back publishes nothing; see the `pending` cases below for the
+    // publish path itself.
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ experienceId: 5, admission: 'admitted', published: false }));
   });
 
   it('leaves a confirmed row refused, and pins that too', async () => {
@@ -1129,6 +1138,139 @@ describe('setExperienceAdmission', () => {
     expect(log.params[2]).toBe('admission_overridden');
   });
 
+  it('overriding a refused pending row publishes it, in the same statement', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient({ curation_state: 'pending' });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.sql).toContain(`curation_state = 'verified'`);
+    expect(update.sql).toContain('published_at = COALESCE(published_at, NOW())');
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ experienceId: 5, admission: 'admitted', published: true }));
+
+    const log = queries.find(q => q.sql.includes('experience_curation_log'))!;
+    expect(JSON.parse(String(log.params[4]))).toMatchObject({ published: true });
+  });
+
+  it('also publishes the arrival\'s pending locations and treasure links, and reports the counts', async () => {
+    // Un-refusing an arrival is a publication (ADR-0025 § 4.5): the object and
+    // everything that arrived under it, or the museum comes back with no pin
+    // and no works, which is the list-versus-map disagreement this codebase
+    // treats as the serious kind.
+    poolAnswers();
+    const { queries, client } = refusedClient({ curation_state: 'pending' }, {
+      'UPDATE experience_locations': 2,
+      'UPDATE experience_treasures': 12,
+      'UPDATE treasures': 12,
+    });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      locationsPublished: 2, treasureLinksPublished: 12, treasuresPublished: 12,
+    }));
+    const log = queries.find(q => q.sql.includes('experience_curation_log'))!;
+    expect(JSON.parse(String(log.params[4]))).toMatchObject({
+      locations: 2, treasureLinks: 12, treasures: 12,
+    });
+  });
+
+  it('overriding a refused auto row changes neither curation_state nor published_at, and publishes no content', async () => {
+    // It was already visible before the rule refused it — nothing about this
+    // verdict says anyone has now read it, so not one of its content rows may
+    // move even if some of them happen to be `pending` on their own (ADR-0025:
+    // a container can stay `auto`/`verified` while a specific point or work
+    // under it is still unread).
+    poolAnswers();
+    const { queries, client } = refusedClient({ curation_state: 'auto' }, {
+      // Configured so that, if the gate below were ever removed, this test
+      // would still catch it: a non-zero count here means the statement ran
+      // and wrote something, not merely that it matched nothing.
+      'UPDATE experience_locations': 1,
+      'UPDATE experience_treasures': 1,
+      'UPDATE treasures': 1,
+    });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.sql).not.toContain('curation_state');
+    expect(update.sql).not.toContain('published_at');
+    // Not just zero counts — no content statement fires at all, so a row with
+    // pending content of its own is not swept up by an unrelated admission
+    // verdict.
+    expect(queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
+    expect(queries.some(q => q.sql.includes('UPDATE experience_treasures'))).toBe(false);
+    expect(queries.some(q => q.sql.includes('UPDATE treasures'))).toBe(false);
+    expect(res.json).toHaveBeenCalledWith({
+      experienceId: 5, admission: 'admitted', published: false,
+      curationState: 'auto', appliedFields: [], claimedFieldsSkipped: [], fromSyncLogId: null,
+      locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0,
+    });
+
+    const log = queries.find(q => q.sql.includes('experience_curation_log'))!;
+    expect(JSON.parse(String(log.params[4]))).toMatchObject({
+      published: false, locations: 0, treasureLinks: 0, treasures: 0,
+    });
+  });
+
+  it('never publishes on confirm, even from a pending row', async () => {
+    // Confirming leaves an already-invisible row invisible — the opposite verdict
+    // from override, and the one that must never touch curation_state.
+    poolAnswers();
+    const { queries, client } = refusedClient({ curation_state: 'pending' }, {
+      'UPDATE experience_locations': 1,
+    });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.sql).not.toContain('curation_state');
+    expect(update.sql).not.toContain('published_at');
+    // Confirming never publishes the object, and must not publish its
+    // contents either — the same gate that protects an `auto` row protects a
+    // `pending` one from the other verdict.
+    expect(queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      experienceId: 5, admission: 'refused', published: false,
+      locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0,
+    }));
+  });
+
+  it('asks the locked read for every column this decision rests on', async () => {
+    // The mocked client answers `FOR UPDATE` with a full row whatever the
+    // SELECT actually named, so a column dropped from that list is invisible to
+    // every other test here while `undefined` in production — the publish
+    // decision would silently stop firing. Proved by mutation: dropping
+    // `curation_state` from the SELECT this task added killed no test until
+    // this one existed.
+    poolAnswers();
+    const { queries, client } = refusedClient({ curation_state: 'pending' });
+    mockedConnect.mockResolvedValue(client);
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, makeRes() as never);
+
+    const locked = queries.find(q => q.sql.includes('FOR UPDATE'))!;
+    for (const column of ['admission', 'admission_reason', 'curated_fields', 'curation_state']) {
+      expect(locked.sql, `the locked read does not select ${column}`).toContain(column);
+    }
+  });
+
   it('refuses a second answer to the same card', async () => {
     poolAnswers();
     const { client } = refusedClient({ curated_fields: ['admission'] });
@@ -1156,7 +1298,8 @@ describe('setExperienceAdmission', () => {
 
     const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
     expect(update.params[1]).toBe('admitted');
-    expect(res.json).toHaveBeenCalledWith({ experienceId: 5, admission: 'admitted' });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ experienceId: 5, admission: 'admitted', published: false }));
     expect(res.status).not.toHaveBeenCalledWith(409);
   });
 

@@ -9,10 +9,12 @@
  */
 
 import { Response } from 'express';
+import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
+import { publishContents } from './publishContents.js';
 import { hidePendingSql, hideRefusedSql, lifecycleSelectSql } from './experienceLifecycle.js';
 import { CURATED_KEY_BY_FIELD, claimKeyFor } from '../../services/sync/changeSet.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
@@ -582,6 +584,34 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
 }
 
 /**
+ * Publish an override's contents, but only when the override published the
+ * object too.
+ *
+ * Split out on its own rather than an `if` inline in `setExperienceAdmission`,
+ * which already carries the weight of two verdicts, a pin and a locked
+ * re-read: one more branch there is the difference between this function
+ * reading as one clause and reading as two. `publishes` decides everything —
+ * an `auto` row was already visible, and this verdict says nothing about
+ * whether anyone has read what is under it, so it must not publish a single
+ * one of its pending rows.
+ */
+async function publishArrivalContents(
+  client: PoolClient, experienceId: number, publishes: boolean,
+): Promise<{ locationsPublished: number; treasureLinksPublished: number; treasuresPublished: number }> {
+  if (!publishes) return { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0 };
+  // Un-refusing an arrival is a publication (ADR-0025 § 4.5), and a publication
+  // takes everything that arrived with the object, not only its own fields —
+  // otherwise the button says "Put it back" and the curator watches the museum
+  // appear with no pin and no works, because nothing else here ever moves a
+  // point or a link off `pending`. `publishContents` is `publishController.ts`'s
+  // own answer to "which rows does a publish reach", shared rather than copied
+  // so the two can never answer that question differently again: a
+  // hand-written twin here would not have gained the `missing_since IS NULL`
+  // guard the shared one already carries.
+  return publishContents(client, experienceId);
+}
+
+/**
  * Answer a refusal.
  * POST /api/experiences/:id/admission
  * Body: { decision: 'confirm' | 'override', note?: string }
@@ -636,6 +666,13 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
   const admitted = decision === 'override';
   const client = await pool.connect();
   let unusable: Error | undefined;
+  // Read by the response after the transaction settles, so they have to be
+  // hoisted out of the `try` block that assigns them.
+  let publishes = false;
+  let curationState = '';
+  let locationsPublished = 0;
+  let treasureLinksPublished = 0;
+  let treasuresPublished = 0;
   try {
     await client.query('BEGIN');
 
@@ -644,7 +681,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     // would leave the log asserting one verdict beside a column holding the
     // other.
     const locked = await client.query(
-      `SELECT admission, admission_reason, curated_fields
+      `SELECT admission, admission_reason, curated_fields, curation_state
          FROM experiences WHERE id = $1 FOR UPDATE`,
       [experienceId],
     );
@@ -693,6 +730,35 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     // and the archaeology category will be built by reading exactly these.
     // Cleared on an override, where it has stopped being true.
     const nextReason = admitted ? null : before.admission_reason;
+
+    // A refusal overridden is a publication (ADR-0025 § 4.5): otherwise the
+    // button says "Put it back" and puts nothing anywhere — the curator
+    // un-refuses a museum, watches it stay invisible, and has to find it again
+    // in another queue to say yes a second time. Only an override, and only
+    // from `pending`: an `auto` row was already visible and this verdict says
+    // nothing about whether anyone read it; a `confirm` leaves an
+    // already-invisible row invisible.
+    //
+    // `verified` rather than `auto`, because a person did look: they read the
+    // card, the reason and the name, and overruled a rule about this specific
+    // object. That claim is thinner than a full content pass — nobody checked
+    // the description, the image or the treasures underneath — and that is the
+    // deliberate cost of not asking the same question twice: the curator has
+    // just answered "does this belong here", and asking "has anyone looked at
+    // it" a moment later, about the same click, would be asking the same
+    // question with different words.
+    //
+    // Built here rather than as a `CASE` over a parameter, for the reason
+    // `nextReason` is: a parameter used both as the value of a varchar column
+    // and as the left side of a text comparison gives Postgres two types to
+    // deduce for one placeholder, and the error is invisible to every
+    // mocked-pool test.
+    publishes = admitted && before.curation_state === 'pending';
+    curationState = publishes ? 'verified' : (before.curation_state as string);
+    const publishSet = publishes
+      ? `, curation_state = 'verified', published_at = COALESCE(published_at, NOW())`
+      : '';
+
     await client.query(`
       UPDATE experiences
       SET admission = $2,
@@ -701,18 +767,38 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
           state_decided_by = $5,
           state_decided_at = NOW(),
           state_note = $6,
-          updated_at = NOW()
+          updated_at = NOW()${publishSet}
       WHERE id = $1
     `, [
       experienceId, admitted ? 'admitted' : 'refused', nextReason,
       JSON.stringify(curated), userId, note ?? null,
     ]);
 
+    ({ locationsPublished, treasureLinksPublished, treasuresPublished } =
+      await publishArrivalContents(client, experienceId, publishes));
+
+    // No placement here. Placement's insert predicate is `el.missing_since IS
+    // NULL` and nothing else — it filters neither `curation_state` nor
+    // `admission` — so a refused row was placed exactly like any other one the
+    // moment its location landed, and un-refusing it moves no geometry, no
+    // point and no membership. Verified on 2026-08-11 against a same-day clone
+    // of the live `track_regions`: `SELECT count(*) FROM experience_regions
+    // WHERE experience_id = <a refused row>` returned the same non-zero count
+    // as an admitted row's, confirming the row was already placed.
+    // "Un-refusing should re-place" is the intuitive answer and the wrong one.
+    // `publishContents` above cannot move it either, for the same reason
+    // `publishController.ts`'s own call cannot: it reads
+    // `experience_locations.location`, never `experiences.location`.
+
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
       VALUES ($1, $2, $3, $4, $5)
     `, [experienceId, userId, admitted ? 'admission_overridden' : 'admission_confirmed', logRegionId,
-      JSON.stringify({ reason: before.admission_reason, note: note ?? null })]);
+      JSON.stringify({
+        reason: before.admission_reason, note: note ?? null, published: publishes,
+        locations: locationsPublished, treasureLinks: treasureLinksPublished,
+        treasures: treasuresPublished,
+      })]);
 
     await client.query('COMMIT');
   } catch (error) {
@@ -722,7 +808,24 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     client.release(unusable);
   }
 
-  res.json({ experienceId, admission: admitted ? 'admitted' : 'refused' });
+  res.json({
+    experienceId,
+    admission: admitted ? 'admitted' : 'refused',
+    published: publishes,
+    // The rest mirrors `publish`'s own response, deliberately: a curator who
+    // clicks "Put it back" on an arrival gets both the admission verdict and
+    // the publish outcome that came with it, in the shape the review page
+    // already knows how to say in one sentence. Never a held field — an
+    // override does not apply a proposal; that is `/publish`'s question, not
+    // this one's, and a row holding one keeps its pointer and its own card.
+    curationState,
+    appliedFields: [] as string[],
+    claimedFieldsSkipped: [] as string[],
+    fromSyncLogId: null,
+    locationsPublished,
+    treasureLinksPublished,
+    treasuresPublished,
+  });
 }
 
 /**
