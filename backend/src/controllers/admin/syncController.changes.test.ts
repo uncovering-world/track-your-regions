@@ -121,6 +121,27 @@ describe('getSyncLogChanges', () => {
     expect(sql).toContain("change_type <> 'updated'");
   });
 
+  it('keeps a held row under the significant filter, whatever its significance', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    await getSyncLogChanges(makeReq({ significantOnly: 'true' }), makeRes() as never);
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    // A held row is a proposal waiting on a curator (#519), and most of them are
+    // minor field edits — a reworded description the gate kept out. It survives
+    // this filter only because the filter is a denylist naming one type, so the
+    // guard is that nothing else is excluded: `AND change_type <> 'held'` would
+    // read as a harmless tightening and empty the default view of every waiting
+    // decision. #516 is already on file because this same clause hides a row
+    // class, which is what makes it the likeliest place to regress in silence.
+    expect(sql.match(/change_type <>/g)).toHaveLength(1);
+    expect(sql).not.toMatch(/change_type NOT IN/);
+    // And the filter must stay a denylist rather than becoming a list of the
+    // types worth showing, which would omit whichever type is added next.
+    expect(sql).not.toMatch(/change_type IN \(/);
+  });
+
   it('ranks major changes first, then everything that is not a routine edit', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });

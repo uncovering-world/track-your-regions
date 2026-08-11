@@ -66,12 +66,29 @@ function processed(outcome: 'created' | 'updated' | 'unchanged'): ProcessItemRes
     changeSet: {
       changeType: outcome,
       changedFields: outcome === 'updated'
-        ? [{ field: 'shortDescription', old: 'a', new: 'b', significance: 'minor', curatedConflict: false }]
+        ? [{ field: 'shortDescription', old: 'a', new: 'b', significance: 'minor', curatedConflict: false, held: false }]
         : [],
       significance: outcome === 'updated' ? 'minor' : null,
       curatedConflicts: [],
+      heldFields: [],
     },
   };
+}
+
+const HELD_FIELD = {
+  field: 'name', old: 'what a reader sees', new: 'what the source now offers',
+  significance: 'major' as const, curatedConflict: false, held: true,
+};
+
+/**
+ * What a gated run over an already-visible row produces: nothing written, and
+ * the proposal carried in the third bucket (#519).
+ */
+function heldRun(): ProcessItemResult {
+  const result = processed('unchanged');
+  result.changeSet.heldFields = [HELD_FIELD];
+  result.changeSet.significance = 'major';
+  return result;
 }
 
 function makeProgress(overrides: Partial<SyncProgress> = {}): SyncProgress {
@@ -521,7 +538,7 @@ describe('orchestrateSync changeset recording', () => {
   it('counts curated conflicts across the run', async () => {
     const conflicted = processed('unchanged');
     conflicted.changeSet.curatedConflicts = [
-      { field: 'name', old: 'ours', new: 'theirs', significance: 'major', curatedConflict: true },
+      { field: 'name', old: 'ours', new: 'theirs', significance: 'major', curatedConflict: true, held: false },
     ];
     const config = makeConfig({
       processItem: vi.fn().mockResolvedValue(conflicted),
@@ -538,7 +555,10 @@ describe('orchestrateSync changeset recording', () => {
 
   it('stores the value the source proposed for a curated field', async () => {
     const conflicted = processed('unchanged');
-    const conflict = { field: 'name', old: 'ours', new: 'theirs', significance: 'major' as const, curatedConflict: true };
+    const conflict = {
+      field: 'name', old: 'ours', new: 'theirs', significance: 'major' as const,
+      curatedConflict: true, held: false,
+    };
     conflicted.changeSet.curatedConflicts = [conflict];
     const config = makeConfig({
       processItem: vi.fn().mockResolvedValue(conflicted),
@@ -550,6 +570,91 @@ describe('orchestrateSync changeset recording', () => {
     expect(recorded).toHaveLength(2);
     expect(recorded[0]).toMatchObject({ changeType: 'conflict' });
     expect(recorded[0].changedFields).toEqual([conflict]);
+  });
+
+  it('does not count a row whose change the gate held as updated', async () => {
+    const config = makeConfig({ processItem: vi.fn().mockResolvedValue(heldRun()) });
+
+    await orchestrateSync(config, 1);
+
+    // `total_updated` counts rows that actually changed, and the hold wrote
+    // nothing — a run reporting two updates over two rows it did not touch is
+    // the report saying the opposite of what the catalogue holds (#519).
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success',
+      expect.objectContaining({ updated: 0, unchanged: 2 }),
+      undefined,
+    );
+  });
+
+  it('keeps a held field out of the curated-conflict counter', async () => {
+    const config = makeConfig({ processItem: vi.fn().mockResolvedValue(heldRun()) });
+
+    await orchestrateSync(config, 1);
+
+    // That counter means "a person had claimed this field". Nobody has looked at
+    // a held one, which is the whole difference the two words carry.
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success',
+      expect.objectContaining({ curatedConflicts: 0 }),
+      undefined,
+    );
+  });
+
+  it('records a held row as held, so its card is not read as a decision taken', async () => {
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(heldRun()).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // Stored at all — an unchanged row is normally only counted, and dropping
+    // this one would leave the proposal nowhere and the curator's card empty.
+    expect(recorded).toHaveLength(1);
+    // `conflict` is the word for a value a person claimed on purpose, with
+    // nothing waiting. A verdict *is* waiting here, and the row has to say so.
+    expect(recorded[0].changeType).toBe('held');
+    expect(recorded[0].changedFields).toEqual([HELD_FIELD]);
+  });
+
+  it('labels a row carrying both a claim and a hold as held', async () => {
+    const both = heldRun();
+    const conflict = {
+      field: 'shortDescription', old: 'ours', new: 'theirs',
+      significance: 'minor' as const, curatedConflict: true, held: false,
+    };
+    both.changeSet.curatedConflicts = [conflict];
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(both).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // `conflict` would be false of the held half: the claim has had its answer,
+    // the hold has not, and the unanswered part is what the row is for.
+    expect(recorded[0].changeType).toBe('held');
+    // Both refusals travel, each carrying its own reason, or publishing and
+    // `accept-source` would each be missing the half they answer.
+    expect(recorded[0].changedFields).toEqual([conflict, HELD_FIELD]);
+  });
+
+  it('labels a row carrying both a hold and a return as held, not returned', async () => {
+    const both = heldRun();
+    both.returnedFromMissing = true;
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(both).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // `returned` would be true of this row too, but the hold is the half nobody
+    // has answered, and it is the half the admin report's `?type=held` filter
+    // exists to find — a row read as `returned` instead never turns up there.
+    expect(recorded[0].changeType).toBe('held');
+    expect(recorded[0].changedFields).toEqual([HELD_FIELD]);
   });
 
   it('records a return even when the row came back byte-identical', async () => {

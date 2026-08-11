@@ -480,7 +480,7 @@ export const publishExperienceBodySchema = z.object({
 );
 
 export const syncChangesQuerySchema = z.object({
-  type: z.enum(['created', 'updated', 'conflict', 'missing', 'returned', 'failed', 'filtered']).optional(),
+  type: z.enum(['created', 'updated', 'conflict', 'held', 'missing', 'returned', 'failed', 'filtered']).optional(),
   significance: z.enum(['major', 'minor']).optional(),
   // Not z.coerce.boolean(): that is Boolean(input), so 'false' would enable it
   significantOnly: z.enum(['true', 'false']).optional(),

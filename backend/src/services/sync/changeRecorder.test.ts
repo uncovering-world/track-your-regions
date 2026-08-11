@@ -23,7 +23,10 @@ function record(overrides: Partial<ChangeRecord> = {}): ChangeRecord {
     externalId: '156',
     nameSnapshot: 'Serengeti National Park',
     changeType: 'updated',
-    changedFields: [{ field: 'shortDescription', old: 'a', new: 'b', significance: 'minor', curatedConflict: false }],
+    changedFields: [{
+      field: 'shortDescription', old: 'a', new: 'b', significance: 'minor',
+      curatedConflict: false, held: false,
+    }],
     significance: 'minor',
     error: null,
     ...overrides,

@@ -74,7 +74,14 @@ export interface SyncFieldChange {
   old: unknown;
   new: unknown;
   significance: 'major' | 'minor';
+  /** A curator had claimed this field: the stored value won on purpose. */
   curatedConflict: boolean;
+  /**
+   * The category's gate kept this write out of a row readers can already see, so
+   * `new` is a proposal waiting on a curator and `old` is what is live. Absent on
+   * rows recorded before the flag existed, which is when nothing was ever held.
+   */
+  held?: boolean;
 }
 
 export interface SyncChange {
@@ -82,7 +89,7 @@ export interface SyncChange {
   experience_id: number | null;
   external_id: string;
   name_snapshot: string | null;
-  change_type: 'created' | 'updated' | 'conflict' | 'missing' | 'returned' | 'failed' | 'filtered';
+  change_type: 'created' | 'updated' | 'conflict' | 'held' | 'missing' | 'returned' | 'failed' | 'filtered';
   changed_fields: SyncFieldChange[] | null;
   significance: 'major' | 'minor' | null;
   error: string | null;

@@ -22,6 +22,8 @@ interface ProposedField {
   old?: unknown;
   new?: unknown;
   curatedConflict?: boolean;
+  /** The category's gate kept this write out, and publishing is its answer. */
+  held?: boolean;
 }
 
 /**
@@ -177,6 +179,23 @@ interface HeldFieldWrites {
   claimedFieldsSkipped: string[];
   /** Held fields this writer cannot produce. Any at all refuses the whole call. */
   unwritable: string[];
+  /**
+   * The row points at a run whose changeset row is not there.
+   *
+   * Distinct from "the proposal is empty", which is what an absent row used to
+   * be read as: publishing then applied nothing, cleared the pointer and
+   * reported success, so a curator was told they had published a proposal whose
+   * values were never written and whose record was gone. `accept-source`
+   * refuses this case outright (`No source proposal on record for this
+   * experience`), and the two endpoints answering the same question differently
+   * is how a curator learns not to trust either.
+   *
+   * Reachable rather than theoretical: `recordSyncChanges` writes a run's whole
+   * changeset as one batched insert, and the admin screen has an alert for that
+   * insert failing — a run whose pointer landed and whose changeset did not is
+   * exactly that failure.
+   */
+  proposalMissing: boolean;
 }
 
 /**
@@ -197,6 +216,7 @@ export async function heldFieldWrites(
   const bind = (value: unknown) => `$${params.push(value)}`;
   const writes: HeldFieldWrites = {
     assignments: [], params, applied: [], claimedFieldsSkipped: [], unwritable: [],
+    proposalMissing: false,
   };
   if (pointer === null) return writes;
 
@@ -206,12 +226,17 @@ export async function heldFieldWrites(
       ORDER BY id DESC LIMIT 1`,
     [experienceId, pointer],
   );
-  const proposed = (proposal.rows[0]?.changed_fields ?? []) as ProposedField[];
-  // Only what the *gate* held. A field the curator had claimed is refused for
-  // its own reason, carries `curatedConflict`, and is answered through
-  // `accept-source`; the queue's `held` card filters on the same flag, so this
-  // writes exactly what that card showed and nothing beside it.
-  const held = proposed.filter(field => !field.curatedConflict);
+  if (proposal.rows.length === 0) return { ...writes, proposalMissing: true };
+  const proposed = (proposal.rows[0].changed_fields ?? []) as ProposedField[];
+  // Only what the *gate* held, and read off the field's own flag rather than
+  // inferred from the absence of a claim (#519). A field the curator had claimed
+  // is refused for its own reason, carries `curatedConflict`, and is answered
+  // through `accept-source`; the queue's `held` card filters on this same flag,
+  // so this writes exactly what that card showed and nothing beside it. An
+  // elimination here would apply any future third kind of refused write as though
+  // the gate had held it, which is the one thing this endpoint must not do: it
+  // writes all eleven content columns.
+  const held = proposed.filter(field => field.held === true);
 
   // A claim made since the run is an answer someone already gave about whose
   // text this is, and publishing answers a different question — may readers see

@@ -51,10 +51,22 @@ const PARAMS: ExperienceUpsertParams = {
  * outer `SELECT` — which may legitimately name any of these columns, and which
  * later rules read the stored state through — are outside the slice entirely.
  */
-function assignmentsOf(sql: unknown): Map<string, string> {
+/**
+ * Everything the `ON CONFLICT DO UPDATE SET` list contains, as text.
+ *
+ * Its own helper because two rules read the same slice and only one of them can
+ * afford to parse it: `assignmentsOf` recognises an assignment by how a line
+ * starts, so a column assigned mid-line is invisible to it — see the two rules
+ * about columns this statement must NOT assign.
+ */
+function setListOf(sql: unknown): string {
   const text = String(sql);
   const afterConflict = text.slice(text.indexOf('DO UPDATE SET'));
-  const setList = afterConflict.slice(0, afterConflict.indexOf('RETURNING'));
+  return afterConflict.slice(0, afterConflict.indexOf('RETURNING'));
+}
+
+function assignmentsOf(sql: unknown): Map<string, string> {
+  const setList = setListOf(sql);
 
   const assignments = new Map<string, string>();
   let column: string | null = null;
@@ -88,6 +100,11 @@ function returnedRow(overrides: Record<string, unknown> = {}) {
     // The upsert returns this so an unchanged row with nothing held costs no
     // further statement; a test that omitted it would exercise the wrong branch.
     pending_change_sync_log_id: null,
+    // The statement's own answer to "did the gate hold this write?", which is
+    // what decides whether a refused field is reported as written. Stated rather
+    // than left undefined, so a fixture is never describing a run whose gate
+    // nobody had decided.
+    was_held: false,
     name: PARAMS.name,
     name_local: PARAMS.nameLocal,
     description: PARAMS.description,
@@ -211,8 +228,7 @@ describe('upsertExperienceRecord', () => {
       rows: [{
         id: 501,
         curated_fields: [],
-        curation_state: 'auto',
-        gated: true,
+        was_held: true,
         name: 'The name a reader sees',
         name_local: PARAMS.nameLocal,
         description: null,
@@ -236,8 +252,29 @@ describe('upsertExperienceRecord', () => {
     expect(result.nameSnapshot).toBe('The name a reader sees');
     // The proposal is still reported: under a gate it is exactly what the
     // curator is being asked about, so a preview that said "nothing would
-    // change" would hide the question.
-    expect(result.changeSet.changedFields.map(f => f.field)).toEqual(['name']);
+    // change" would hide the question. In the bucket that says it was refused,
+    // though — a preview claiming the run would apply it is the same wrong
+    // screen one step earlier (#519).
+    expect(result.changeSet.changedFields).toEqual([]);
+    expect(result.changeSet.heldFields.map(f => f.field)).toEqual(['name']);
+  });
+
+  it('asks the hold rule in a preview too, rather than assuming an answer', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { dryRun: true });
+
+    // A mocked pool hands back whatever the fixture holds, whether the query
+    // asked for it or not — so the test above would pass on a preview that
+    // selected `FALSE AS was_held` and called nothing held, for ever. This is the
+    // assertion that the preview actually asks, and asks the same rule the write
+    // path is guarded by: the gate flag (fetched inline, since a preview has no
+    // `gate` CTE) and the stored row not being `pending`.
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).toContain(
+      "((SELECT requires_curation FROM experience_categories WHERE id = $1)"
+      + " AND experiences.curation_state <> 'pending') AS was_held",
+    );
   });
 
   it('stamps provenance on the written row', async () => {
@@ -468,12 +505,42 @@ describe('the curation gate stamps a new row', () => {
 
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
-    // Neither column is a run's to change on a row that already exists.
-    // Publishing is a curator's act, and re-stamping published_at would move
-    // every touched row's "New" chip.
-    const assigned = assignmentsOf(mockedQuery.mock.calls[0][0]);
-    expect([...assigned.keys()]).not.toContain('published_at');
-    expect([...assigned.keys()]).not.toContain('curation_state');
+    // Not a run's column to change on a row that already exists: re-stamping it
+    // would move every touched row's "New" chip.
+    //
+    // On the text, not on parsed assignments. `assignmentsOf` finds an assignment
+    // by how a line starts, so `updated_at = NOW(), published_at = NOW()` written
+    // on one line would satisfy a check on its keys while doing the thing this
+    // rule forbids.
+    expect(setListOf(mockedQuery.mock.calls[0][0])).not.toMatch(/\bpublished_at\s*=/);
+  });
+
+  it('never assigns curation_state on conflict, which is what makes was_held true', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // Two rules in one assertion, and the second is not about hygiene.
+    //
+    // Publishing is a curator's act, so a run may not move this column. And
+    // `RETURNING ${HOLD} AS was_held` — the answer the whole report is built on
+    // (#519) — evaluates against the row as it stands *after* the write. It equals
+    // the value the CASE arms were guarded by only because this statement leaves
+    // the column alone. Assign it here and `was_held` starts describing the row
+    // after the write instead: on a held row it flips to false, every held field
+    // is reported as applied, the pointer is set with no card able to reach it,
+    // and #519 is back with its own guard still green.
+    //
+    // So: if you have a legitimate reason to assign `curation_state` here, this
+    // assertion is not the thing to edit — `was_held` has to stop reading the
+    // post-write tuple first (capture the pre-value in the `before` CTE and
+    // reconcile it with the lock, or the report will disagree with the write).
+    //
+    // On the text, because the assignment can be written mid-line: appending
+    // `curation_state = 'pending'` to the `updated_at = NOW()` line left all 994
+    // backend tests green against a check on parsed assignment keys, while
+    // flipping `was_held` to false against a real database.
+    expect(setListOf(mockedQuery.mock.calls[0][0])).not.toMatch(/\bcuration_state\s*=/);
   });
 });
 
@@ -504,6 +571,81 @@ describe('a gated run holds a visible row content, not a pending one', () => {
       expect(arm, `${column} has no CASE arm`).toMatch(/^CASE/);
       expect(arm, `${column} is not held`).toContain(HOLD);
     }
+  });
+
+  it('answers the hold once, in RETURNING, with the guards\' own expression', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const text = String(mockedQuery.mock.calls[0][0]);
+    const returning = text.slice(text.indexOf('RETURNING'), text.indexOf('SELECT ins.*'));
+    // Character-identical to what guards the eleven content columns, so the
+    // report cannot disagree with the write about whether the write happened.
+    expect(returning).toContain(`${HOLD} AS was_held`);
+    // And read from the row this statement locked, not from the `before` CTE's
+    // snapshot: a publish landing between the two reads made the statement hold
+    // a write the report called applied. Measured against a real database — the
+    // CTE said 'pending' while the guards said 'verified' for the same run.
+    expect(text).not.toContain('old_curation_state');
+    const beforeCte = text.slice(text.indexOf('WITH before AS'), text.indexOf('), gate AS'));
+    expect(beforeCte).not.toContain('curation_state');
+  });
+
+  it('files a gated run\'s refused write as held, not as applied', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({
+        was_held: true,
+        old_short_description: 'The summary a reader sees.',
+      })],
+    });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    const result = await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // The CASE arms kept the stored value, so reporting the field as changed
+    // would tell the curator's screen that the proposal is what is now live.
+    expect(result.changeSet.changedFields).toEqual([]);
+    expect(result.changeSet.heldFields.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.changeSet.changeType).toBe('unchanged');
+  });
+
+  it('reports what the statement answered, not a rule of its own', async () => {
+    // A pending row under a gated source: the statement refreshes it in place
+    // (nobody can see it), and says so with `was_held = false`. The diff must
+    // follow that answer — a held field here would put a card in the queue about
+    // a change already applied to the very row it is about. The rule itself is
+    // SQL, pinned as text above and walked through live.
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({ was_held: false, old_short_description: 'Whatever landed first.' })],
+    });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    const result = await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    expect(result.changeSet.heldFields).toEqual([]);
+    expect(result.changeSet.changedFields.map(f => f.field)).toEqual(['shortDescription']);
+  });
+
+  it('points a held row at the run whose proposal the gate kept out', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({
+        was_held: true,
+        old_short_description: 'The summary a reader sees.',
+      })],
+    });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // The pointer follows every refused proposal, and a gate-held field is the
+    // one this card exists for. Keyed on written fields alone it would now clear
+    // — "nothing is held" about the row whose content this run just held — and
+    // the queue's `held` card would be unreachable for ever (#518, #519).
+    const pointer = sentSql().find(sql => /SET pending_change_sync_log_id/.test(sql));
+    expect(pointer).toBeDefined();
+    expect(pointer).not.toMatch(/= NULL/);
+    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, PARAMS.categoryId, 42]);
   });
 
   it('reads the stored state, not the value it is about to write', async () => {
@@ -669,15 +811,31 @@ describe('a trusted source decays a curator pass', () => {
   });
 
   it('leaves a pass alone when the source is gated, since nothing was written', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [returnedRow({ was_held: true, old_name: 'An older name' })],
+    });
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    const result = await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    // Under a gated source the hold refused the change, so what a reader sees is
+    // still exactly what the curator passed. The decay is keyed to fields
+    // actually written, and a held field is not one — so no statement is sent at
+    // all, rather than one the SQL then declines to apply.
+    expect(result.changeSet.heldFields.map(f => f.field)).toEqual(['name']);
+    expect(sentSql().some(sql => /curation_state = 'auto'/.test(sql))).toBe(false);
+  });
+
+  it('keeps the gate guard inside the decay statement as well', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [returnedRow({ old_name: 'An older name' })] });
     mockedQuery.mockResolvedValue({ rows: [] });
 
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
-    // Under a gated source the hold refused the change, so what a reader sees is
-    // still what the curator passed. The condition rides in the statement rather
-    // than being decided here for the same reason the hold does: a parameter is
-    // a second source of truth that can disagree with the column.
+    // The belt to the braces above: the condition rides in the statement rather
+    // than being decided only here, for the same reason the hold does — a
+    // parameter is a second source of truth that can disagree with the column,
+    // and this is the statement that retires a curator's pass.
     const decayCall = mockedQuery.mock.calls.find(call =>
       /SET curation_state = 'auto'/.test(String(call[0])),
     );

@@ -45,6 +45,34 @@ export interface UpsertOutcome {
   returnedFromMissing: boolean;
 }
 
+/**
+ * The hold, as one SQL expression over the **stored** row: a gated source may not
+ * overwrite what a reader can already see (ADR-0025 decision 5). A row still
+ * `pending` has nothing to protect, so it keeps being refreshed in place and the
+ * curator reviews the newest state rather than whatever arrived first.
+ *
+ * A function, because the two statements below reach the gate flag differently —
+ * the upsert has a `gate` CTE it can also use in `VALUES`, the preview has one
+ * SELECT and no CTE — and because the rule itself must exist exactly once. It
+ * used to be written out in SQL for the write and again in TypeScript for the
+ * report, and the two could disagree about the same run: the SQL reads the row
+ * under the lock while a CTE reads the statement's snapshot, so a publish landing
+ * between the two made the statement hold a write the report called applied
+ * (#519 again, for one run). Now the statement answers the question once and
+ * hands the answer back.
+ *
+ * `experiences.` is not decoration: inside `ON CONFLICT DO UPDATE` both
+ * `experiences` and `excluded` are in scope, so an unqualified column there is
+ * ambiguous — and `excluded.curation_state` is what this statement's own CASE
+ * just computed, which would make the guard `true AND false` for everyone.
+ */
+const heldSql = (gate: string) => `(${gate} AND experiences.curation_state <> 'pending')`;
+
+/** The upsert's form, off its `gate` CTE. */
+const HELD = heldSql('(SELECT requires_curation FROM gate)');
+/** The preview's form: one SELECT, so the flag is fetched inline. */
+const PREVIEW_HELD = heldSql('(SELECT requires_curation FROM experience_categories WHERE id = $1)');
+
 /** Columns the diff reads. Declared once; the SQL below is built from them. */
 const SNAPSHOT_COLUMNS = [
   'name', 'name_local', 'description', 'short_description', 'category', 'tags',
@@ -94,8 +122,8 @@ function snapshotFromParams(params: ExperienceUpsertParams): ExperienceSnapshot 
  */
 async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutcome> {
   const result = await pool.query(
-    `SELECT id, curated_fields, missing_since, source_membership, curation_state,
-            (SELECT requires_curation FROM experience_categories WHERE id = $1) AS gated,
+    `SELECT id, curated_fields, missing_since, source_membership,
+            ${PREVIEW_HELD} AS was_held,
             ${SNAPSHOT_COLUMNS.join(', ')},
             ST_X(location) AS lon, ST_Y(location) AS lat
      FROM experiences
@@ -108,7 +136,9 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   if (result.rows.length === 0) {
     return {
       experienceId: 0,
-      changeSet: computeChangeSet(null, incoming, []),
+      // No stored row, so nothing to hold: the insert writes every column, and
+      // `pending` is what the gate does about a new row.
+      changeSet: computeChangeSet(null, incoming, [], false),
       nameSnapshot: params.name,
       returnedFromMissing: false,
     };
@@ -117,20 +147,21 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   const row = result.rows[0];
   const curatedFields: string[] = row.curated_fields ?? [];
 
-  // Both reasons the run would keep the stored name: the curator claimed it, or
-  // the row is held — a gated source may not overwrite what a reader can already
-  // see. Emulated here rather than left to the write path because the whole
-  // point of a preview is to say what the run it stands in for would do, and a
-  // preview that labelled the row with a rename the run would refuse would
-  // mislabel it in the one direction that matters.
-  const heldFromView = Boolean(row.gated) && row.curation_state !== 'pending';
+  // What the run this preview stands in for would refuse to write, asked of the
+  // same expression that run's own guards are built from. Asked at all because
+  // the whole point of a preview is to say what that run would do, and a preview
+  // reporting a rename the run would refuse would mislabel it in the one
+  // direction that matters. No lock and one snapshot here, so this row's answer
+  // cannot go stale between reads the way the write path's could.
+  const heldFromView = Boolean(row.was_held);
 
   return {
     experienceId: row.id,
     // The change set still reports what the source proposes, held or not: under
     // a gate the proposal is what a curator is being asked about, so a preview
-    // that reported "nothing would change" would hide the question.
-    changeSet: computeChangeSet(snapshotFromRow(row, ''), incoming, curatedFields),
+    // that reported "nothing would change" would hide the question. The hold
+    // rides along so it lands in the bucket that says it was refused.
+    changeSet: computeChangeSet(snapshotFromRow(row, ''), incoming, curatedFields, heldFromView),
     nameSnapshot: curatedFields.includes('name') || heldFromView
       ? (row.name as string)
       : params.name,
@@ -152,21 +183,15 @@ export async function upsertExperienceRecord(
 ): Promise<UpsertOutcome> {
   if (options.dryRun) return previewUpsert(params);
 
-  // A gated source may not overwrite what a reader can already see: there is no
-  // second row to hide the unreviewed value behind, which is the one case
-  // writing contents invisible does not cover (ADR-0025 decision 5, and
-  // `docs/tech/experiences.md` § Change provenance for the rule as shipped). A
-  // row still `pending` has nothing to protect, so it keeps being refreshed in
-  // place and the curator reviews the newest state rather than whatever arrived
-  // first.
-  //
-  // `experiences.curation_state` is the PRE-update value here, which is what
-  // makes this expressible in SQL at all.
-  const held = `((SELECT requires_curation FROM gate) AND experiences.curation_state <> 'pending')`;
-
+  // `HELD` guards every content column below, and answers for the report in
+  // `RETURNING`. Inside `ON CONFLICT DO UPDATE`, `experiences.curation_state` is
+  // the PRE-update value as re-read under the row lock — which is what makes the
+  // rule expressible in SQL at all, and what makes this the version the report
+  // has to agree with.
   const result = await pool.query(
     `WITH before AS (
-      SELECT id, curated_fields, missing_since, source_membership, ${SNAPSHOT_COLUMNS.join(', ')},
+      SELECT id, curated_fields, missing_since, source_membership,
+             ${SNAPSHOT_COLUMNS.join(', ')},
              ST_X(location) AS lon, ST_Y(location) AS lat
       FROM experiences
       WHERE category_id = $1 AND external_id = $2
@@ -190,16 +215,16 @@ export async function upsertExperienceRecord(
         CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END
       )
       ON CONFLICT (category_id, external_id) DO UPDATE SET
-        name = CASE WHEN experiences.curated_fields ? 'name' OR ${held} THEN experiences.name ELSE EXCLUDED.name END,
-        name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${held} THEN experiences.name_local ELSE EXCLUDED.name_local END,
-        description = CASE WHEN experiences.curated_fields ? 'description' OR ${held} THEN experiences.description ELSE EXCLUDED.description END,
-        short_description = CASE WHEN experiences.curated_fields ? 'short_description' OR ${held} THEN experiences.short_description ELSE EXCLUDED.short_description END,
-        category = CASE WHEN experiences.curated_fields ? 'category' OR ${held} THEN experiences.category ELSE EXCLUDED.category END,
-        tags = CASE WHEN experiences.curated_fields ? 'tags' OR ${held} THEN experiences.tags ELSE EXCLUDED.tags END,
-        location = CASE WHEN experiences.curated_fields ? 'location' OR ${held} THEN experiences.location ELSE EXCLUDED.location END,
-        country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR ${held} THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
-        country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR ${held} THEN experiences.country_names ELSE EXCLUDED.country_names END,
-        image_url = CASE WHEN experiences.curated_fields ? 'image_url' OR ${held} THEN experiences.image_url ELSE EXCLUDED.image_url END,
+        name = CASE WHEN experiences.curated_fields ? 'name' OR ${HELD} THEN experiences.name ELSE EXCLUDED.name END,
+        name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${HELD} THEN experiences.name_local ELSE EXCLUDED.name_local END,
+        description = CASE WHEN experiences.curated_fields ? 'description' OR ${HELD} THEN experiences.description ELSE EXCLUDED.description END,
+        short_description = CASE WHEN experiences.curated_fields ? 'short_description' OR ${HELD} THEN experiences.short_description ELSE EXCLUDED.short_description END,
+        category = CASE WHEN experiences.curated_fields ? 'category' OR ${HELD} THEN experiences.category ELSE EXCLUDED.category END,
+        tags = CASE WHEN experiences.curated_fields ? 'tags' OR ${HELD} THEN experiences.tags ELSE EXCLUDED.tags END,
+        location = CASE WHEN experiences.curated_fields ? 'location' OR ${HELD} THEN experiences.location ELSE EXCLUDED.location END,
+        country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR ${HELD} THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
+        country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR ${HELD} THEN experiences.country_names ELSE EXCLUDED.country_names END,
+        image_url = CASE WHEN experiences.curated_fields ? 'image_url' OR ${HELD} THEN experiences.image_url ELSE EXCLUDED.image_url END,
         -- Two claim shapes reach this column, and only one of them used to work.
         -- editExperience claims per key -- 'metadata.website',
         -- 'metadata.wikipediaUrl' -- and ? 'metadata' is false for those, so
@@ -208,7 +233,7 @@ export async function upsertExperienceRecord(
         -- column; a per-key claim now re-applies just those keys over whatever
         -- the source sent, so an unclaimed key still updates.
         metadata = CASE
-          WHEN experiences.curated_fields ? 'metadata' OR ${held} THEN experiences.metadata
+          WHEN experiences.curated_fields ? 'metadata' OR ${HELD} THEN experiences.metadata
           ELSE COALESCE(EXCLUDED.metadata, '{}'::jsonb) || COALESCE((
                  SELECT jsonb_object_agg(claimed.k, experiences.metadata -> claimed.k)
                  FROM (
@@ -227,7 +252,7 @@ export async function upsertExperienceRecord(
         -- pointer it has and a row that is not held loses it, because a run that
         -- is free to write the content leaves nothing waiting. Setting it is
         -- done after this statement, and only for a run that proposed something.
-        pending_change_sync_log_id = CASE WHEN ${held}
+        pending_change_sync_log_id = CASE WHEN ${HELD}
                                          THEN experiences.pending_change_sync_log_id
                                          ELSE NULL END,
         last_seen_sync_log_id = COALESCE(EXCLUDED.last_seen_sync_log_id, experiences.last_seen_sync_log_id),
@@ -243,6 +268,18 @@ export async function upsertExperienceRecord(
         source_membership = 'present',
         updated_at = NOW()
       RETURNING id, (xmax = 0) AS inserted, curated_fields, pending_change_sync_log_id,
+                -- The guards' own expression, so the report cannot disagree with
+                -- the write about whether the write happened. Evaluated here on
+                -- the row this statement locked, exactly as the CASE arms were:
+                -- curation_state is never assigned on conflict (pinned by a
+                -- test), so RETURNING's value for it is the one they read. A
+                -- second copy computed from the before CTE would read the
+                -- statement's snapshot instead, and a publish landing between the
+                -- two reads would have the write hold what the report called
+                -- applied (#519) -- or, with the guards moved to the snapshot,
+                -- have the run overwrite a row a curator had just published,
+                -- permanently and with nothing anywhere to say so.
+                ${HELD} AS was_held,
                 ${SNAPSHOT_COLUMNS.join(', ')},
                 ST_X(location) AS lon, ST_Y(location) AS lat
     )
@@ -273,7 +310,8 @@ export async function upsertExperienceRecord(
 
   const row = result.rows[0];
   const before = row.inserted ? null : snapshotFromRow(row, 'old_');
-  const changeSet = computeChangeSet(before, snapshotFromParams(params), row.curated_fields ?? []);
+  const changeSet = computeChangeSet(
+    before, snapshotFromParams(params), row.curated_fields ?? [], Boolean(row.was_held));
 
   // A curator's pass covered the object that was there; a changed object has not
   // been passed (ADR-0025). Resolved here rather than in SQL because the
@@ -285,7 +323,10 @@ export async function upsertExperienceRecord(
   // hold above: under a gated source the changed values were not written, so
   // what a reader sees is still exactly what the curator passed. Decaying there
   // would retire a pass over a change the same statement had just refused to
-  // apply, on every run, for as long as the proposal went unanswered.
+  // apply, on every run, for as long as the proposal went unanswered. Two things
+  // now say so — the change set files those values as held rather than changed,
+  // so `wroteContent` is false and no statement is even sent, and the statement
+  // carries the gate check itself for the case where something did get written.
   //
   // Scoped to `verified` so it can only ever move one way. A `pending` row is
   // untouched: it is not published, so there is nothing to decay.
@@ -296,16 +337,24 @@ export async function upsertExperienceRecord(
   // about content nobody passed, and the next run finds nothing changed and so
   // never decays it. A failed item is visible in the run's report; a silent one
   // is not.
+  //
+  // Fields this statement actually wrote, which is now exactly what
+  // `changedFields` holds: `computeChangeSet` files a refused write under the
+  // reason it was refused instead (#519). So the decay below stays keyed to
+  // written content without having to subtract anything.
   const wroteContent = changeSet.changedFields.length > 0;
   // The pointer follows every proposal this statement refused, not only the ones
-  // it wrote — and a claimed field is refused too. `computeChangeSet` files a
-  // field a curator has claimed under `curatedConflicts` and leaves
-  // `changedFields` empty, so keying the pointer on `changedFields` alone would
-  // clear it on a run whose proposal is still standing and still unanswered:
-  // "nothing is held" about a row that is holding something. `significance` in
-  // `changeSet.ts` weighs both buckets for the same reason — the refused half is
-  // the half needing a decision, so it cannot be the hidden one.
-  const proposedAnything = wroteContent || changeSet.curatedConflicts.length > 0;
+  // it wrote — and both kinds of refusal are proposals. A field a curator claimed
+  // lands in `curatedConflicts`, a field the gate held in `heldFields`, and
+  // either way `changedFields` is empty; keying the pointer on that alone would
+  // clear it on a run whose proposal is still standing and still unanswered —
+  // "nothing is held" about a row that is holding something, and about the
+  // gate-held case that is the whole reason the pointer exists. `significance` in
+  // `changeSet.ts` weighs all three buckets for the same reason: the refused half
+  // is the half needing a decision, so it cannot be the hidden one.
+  const proposedAnything = wroteContent
+    || changeSet.curatedConflicts.length > 0
+    || changeSet.heldFields.length > 0;
 
   if (wroteContent) {
     await pool.query(
