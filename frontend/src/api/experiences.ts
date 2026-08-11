@@ -60,7 +60,12 @@ export interface ExperienceLocation {
   experience_id: number;
   name: string | null;
   external_ref: string | null;
-  ordinal: number;
+  // Nullable: a point the source no longer lists has no place in that list. Either
+  // its withdrawal is recorded and no read returns the row, or it is a point whose
+  // replacement is still waiting to be published and readers do see it (ADR-0025
+  // decision 5). `ORDER BY ordinal` puts it last. Use `locationLabel` rather than
+  // arithmetic on this.
+  ordinal: number | null;
   longitude: number;
   latitude: number;
   created_at: string;
@@ -74,7 +79,8 @@ export interface ExperienceLocation {
 export interface LocationWithVisitedStatus {
   id: number;
   name: string | null;
-  ordinal: number;
+  /** Nullable, for the reason given on `ExperienceLocation.ordinal`. */
+  ordinal: number | null;
   longitude: number;
   latitude: number;
   isVisited: boolean;
@@ -486,6 +492,19 @@ export async function setExperienceAdmission(
   locationsPublished: number;
   treasureLinksPublished: number;
   treasuresPublished: number;
+  /** Points the source had replaced, no longer shown now their replacement is. */
+  withdrawalsReleased: number;
+  /** The publication landed; re-placing the object into its regions did not. */
+  placementFailed?: true;
+  /**
+   * Which world views it did not land in, named rather than counted.
+   *
+   * The remedy is admin-only, so a curator's actionable step is to tell an admin
+   * which object and which world views — a bare flag reduces them to "something
+   * about regions failed". The publish endpoint answers with the same shape, so
+   * the page renders one sentence for both.
+   */
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
 }> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/admission`, {
     method: 'POST',

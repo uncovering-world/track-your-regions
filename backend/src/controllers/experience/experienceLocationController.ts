@@ -158,7 +158,12 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
     experience_id: number;
     name: string | null;
     external_ref: string | null;
-    ordinal: number;
+    // Nullable, and this branch is what made it so: a point whose replacement is
+    // waiting to be published keeps its row and loses its ordinal, so the feed
+    // that draws the map returns it with none. The frontend's own type says
+    // `number | null` and `locationLabel` handles it; this declaration was the
+    // last place still promising a number.
+    ordinal: number | null;
     longitude: number;
     latitude: number;
     created_at: string;

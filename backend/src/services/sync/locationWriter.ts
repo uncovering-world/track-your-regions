@@ -55,6 +55,59 @@
  * Every comparison happens in PostGIS rather than on JavaScript numbers.
  * Round-tripping a coordinate through a JS float to compare it risks calling an
  * unmoved point moved, which would throw away a good assignment for nothing.
+ *
+ * **A point that moved is a withdrawal plus an insert, and under a gated source
+ * the two halves become visible at different moments.** The insert lands
+ * `pending`, so applying the withdrawal in the same run takes the old pin off the
+ * map while the new one is invisible — and 1119 of the catalogue's 1604
+ * experiences hold exactly one point (measured 2026-08-11: 788 of 1272 UNESCO
+ * sites, all 128 museums, 203 of 204 landmarks), so for most of them that is an
+ * object still in every list with nothing on the map. So the arrival records
+ * which point it replaces, in `withdrawal_deferred_for_location_id`, and the
+ * withdrawal waits for the publish that makes the arrival visible
+ * (`publishController.ts`, ADR-0025 decision 5).
+ *
+ * **The pairing has to be created here, because nothing else in the run knows
+ * it.** This function returns aggregates — a `rowCount` and a flat id list — and
+ * the withdrawal `UPDATE` does not report the ids it marked, so no caller could
+ * reconstruct "old point X moved to new point Y" afterwards. The definition
+ * available is the reference: `external_ref` is populated on 6679 of 6680 stored
+ * locations, and a move is *the same reference at a different point*. For museums
+ * and landmarks it is the experience's own Wikidata id, so it cannot change while
+ * the experience stays the same; for UNESCO it names a component.
+ *
+ * Three shapes make the reference an imperfect key, and all three hold rather
+ * than apply, because the mistakes are not the same size: holding too long leaves
+ * a pin the source dropped, applying too early leaves an object with no pin at
+ * all while it is still in every list.
+ *
+ * - Nine `(experience_id, external_ref)` pairs are duplicated, across nine
+ *   objects — a component crossing a border is listed once per country under one
+ *   reference. Withdrawals and arrivals are numbered within a reference and
+ *   matched by position, so each arrival holds one withdrawal and no two arrivals
+ *   claim the same one.
+ * - One location carries no reference at all (8754, "Routes of Santiago de
+ *   Compostela in France"), and it is that experience's only point — so the match
+ *   is `IS NOT DISTINCT FROM` rather than `=`. Under `=` that site's withdrawal
+ *   would apply at once and leave a World Heritage site with nothing on the map.
+ * - A renumbered component changes the reference itself, so no match by reference
+ *   is possible at all — and 787 of the 788 single-point UNESCO sites carry one.
+ *   Whatever the references cannot pair is therefore paired by position.
+ *
+ * That makes the promise a count rather than a hope. Exactly
+ * min(withdrawals, arrivals) withdrawals are held, so the points a reader can see
+ * after a run are min(what they could see before, what the source now offers) —
+ * and therefore **never zero while the source still offers a point**. Stated that
+ * way rather than as "never below the source's list", which is not what happens:
+ * an arrival is gated, so a run that adds more points than it drops leaves the
+ * visible count below the new list, on purpose, until a curator answers.
+ *
+ * A withdrawal with no arrival left to hold it is applied at once, exactly as
+ * before. So is one whose arrival the source withdrew in turn — that arrival can
+ * never be published, since the publish statement carries `missing_since IS
+ * NULL`, so a pairing left standing on it would hold the old point visible for
+ * ever. That one takes a further run to notice, because the arrival still looks
+ * offered while the statement withdrawing it is deciding what to pass over.
  */
 
 import { pool } from '../../db/index.js';
@@ -186,30 +239,15 @@ export async function writeExperienceLocations(
   try {
     await client.query('BEGIN');
 
-    // Rows the source no longer offers. Marked, not deleted: the row is what a
-    // person's visit record points at. `missing_since IS NULL` restricts this
-    // to points going missing *now* — a row unoffered for the fifth run running
-    // was first observed missing once, and rewriting it every run would churn
-    // the table to say nothing new.
-    const marked = await client.query(
-      `WITH ${cte}
-       UPDATE experience_locations el
-       SET ordinal = NULL, missing_since = NOW()
-       WHERE el.experience_id = $1
-         AND el.missing_since IS NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM incoming i
-           WHERE el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-           AND el.external_ref IS NOT DISTINCT FROM i.external_ref
-         )`,
-      params,
-    );
-
     // `ordinal` is unique per experience, so renumbering in place would collide
-    // with a row that has not been renumbered yet. Park the survivors on the
-    // negative side first — only reached when the set really changed, since the
-    // fast path returned otherwise. Marked rows sit at NULL and are already out
-    // of the way.
+    // with a row that has not been renumbered yet. Park every positive ordinal on
+    // the negative side first — only reached when the set really changed, since
+    // the fast path returned otherwise.
+    //
+    // Rows the source has stopped offering are parked too, and their ordinals go
+    // to NULL at the end of the transaction rather than at the start. That order
+    // is what lets the withdrawal read the pairing: the column lives on the
+    // arrival, so nothing can be paired until the insert has run.
     await client.query(
       `UPDATE experience_locations SET ordinal = -ordinal
        WHERE experience_id = $1 AND ordinal > 0`,
@@ -285,7 +323,208 @@ export async function writeExperienceLocations(
            AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
            AND el.external_ref IS NOT DISTINCT FROM i.external_ref
        )
-       RETURNING id`,
+       RETURNING id, curation_state`,
+      params,
+    );
+
+    // Each arrival a reader cannot see yet names the point it replaces, so the
+    // withdrawal below can wait for it. Asked only when there is such an arrival:
+    // an ungated source writes every point `auto`, so this leaves the statement
+    // list of an ungated run exactly as it was.
+    //
+    // The state comes back from the insert's own RETURNING rather than from a
+    // second reading of `requires_curation`, so this cannot disagree with what
+    // was written.
+    const unreadArrivals = inserted.rows
+      .filter(r => r.curation_state === 'pending')
+      .map(r => r.id as number);
+    if (unreadArrivals.length > 0) {
+      await client.query(
+        `WITH ${cte},
+              -- Only points a reader can actually see. An unread one costs a
+              -- reader nothing when it goes, so it is withdrawn at once rather
+              -- than held — and letting it compete to *be* the held point builds a
+              -- chain that nothing can take apart.
+              --
+              -- Traced end to end: a gated site shows P(r1); a run renumbers and
+              -- moves it, so A1(r2) holds P; before anyone publishes, the next run
+              -- moves it again, and A2(r2) matches A1 by reference while P is left
+              -- over with no arrival — surviving only because A1 still names it.
+              -- Publishing A2 withdraws A1 but leaves A1's own pairing standing,
+              -- and A1 can never be published (the publish statement carries
+              -- \`missing_since IS NULL\`), never revisited by the statements below
+              -- (they take offered rows only), and never deleted (nothing in this
+              -- backend deletes a location, so the foreign key's ON DELETE SET NULL
+              -- never fires). P stays visible for ever beside A2: two pins on a
+              -- one-point site, one of them a coordinate the source retired two
+              -- runs ago, recoverable only by hand-written SQL.
+              --
+              -- With this predicate the chain cannot form: the arrival pairs with
+              -- the visible row, and the invisible intermediate is withdrawn in the
+              -- same run.
+              withdrawn AS (
+                SELECT el.id, el.external_ref
+                FROM experience_locations el
+                WHERE el.experience_id = $1
+                  AND el.missing_since IS NULL
+                  AND el.curation_state <> 'pending'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM incoming i
+                    WHERE el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+                    AND el.external_ref IS NOT DISTINCT FROM i.external_ref
+                  )
+              ),
+              arrived AS (
+                SELECT el.id, el.external_ref
+                FROM experience_locations el
+                WHERE el.id = ANY($${params.length + 1}::int[])
+                  -- The rule, in the one place the database enforces it: only a
+                  -- point a reader cannot see yet is worth waiting for. An
+                  -- arrival a reader can already see replaces the old pin the
+                  -- moment it lands, so holding the withdrawal would put the same
+                  -- place on the map twice.
+                  AND el.curation_state = 'pending'
+              ),
+              -- Numbered within the reference and matched by position, because
+              -- nine (experience_id, external_ref) pairs are duplicated across
+              -- nine objects. Without the numbers both withdrawn rows would pair
+              -- to both arrivals, and each arrival can name only one point — so
+              -- one of the two withdrawals would be applied on the strength of a
+              -- row another arrival had already claimed.
+              by_reference AS (
+                SELECT w.id AS old_id, a.id AS new_id
+                FROM (SELECT id, external_ref,
+                             row_number() OVER (PARTITION BY external_ref ORDER BY id) AS rn
+                        FROM withdrawn) w
+                JOIN (SELECT id, external_ref,
+                             row_number() OVER (PARTITION BY external_ref ORDER BY id) AS rn
+                        FROM arrived) a
+                  ON a.external_ref IS NOT DISTINCT FROM w.external_ref AND a.rn = w.rn
+              ),
+              -- Whatever the references could not pair, matched by position
+              -- alone. This is where "hold rather than apply" is decided, and it
+              -- is not a nicety: a source that renumbers a component writes a
+              -- withdrawal and an insert whose references do not line up, and 787
+              -- of the 788 single-point UNESCO sites carry a component reference.
+              -- Under a gate, applying that withdrawal takes the site's only pin
+              -- off the map while its replacement is invisible — and a renumber
+              -- does not even have to move the point to do it.
+              --
+              -- What this buys is stated as a count, because that is the promise:
+              -- exactly min(withdrawals, arrivals) withdrawals are held, so the
+              -- points a reader sees after a run are min(what they saw before, what
+              -- the source now offers) — never zero while the source still offers a
+              -- point. Not "never below the source's list": an arrival is gated, so
+              -- a run that adds more than it drops leaves the visible count below
+              -- the new list on purpose. It costs holding a point the source really
+              -- did drop until an unrelated arrival is published, which is the
+              -- visible mistake rather than the invisible one.
+              left_over AS (
+                SELECT w.id AS old_id, a.id AS new_id
+                FROM (SELECT id, row_number() OVER (ORDER BY id) AS rn FROM withdrawn
+                       WHERE id NOT IN (SELECT old_id FROM by_reference)) w
+                JOIN (SELECT id, row_number() OVER (ORDER BY id) AS rn FROM arrived
+                       WHERE id NOT IN (SELECT new_id FROM by_reference)) a
+                  ON a.rn = w.rn
+              )
+         UPDATE experience_locations n
+         SET withdrawal_deferred_for_location_id = m.old_id
+         FROM (SELECT old_id, new_id FROM by_reference
+               UNION ALL
+               SELECT old_id, new_id FROM left_over) m
+         WHERE n.id = m.new_id`,
+        [...params, unreadArrivals],
+      );
+    }
+
+    // A point the source is offering again is not being withdrawn, so nothing is
+    // waiting for anything. Reachable where one reference covers two points — a
+    // component listed once per country — and the source lists the replaced point
+    // beside its replacement: `kept` above gives it its place back, no withdrawal
+    // is left to hold, and a pairing standing from an earlier run would otherwise
+    // hide a point the source offers the moment the arrival is published.
+    await client.query(
+      `WITH ${cte}
+       UPDATE experience_locations n
+       SET withdrawal_deferred_for_location_id = NULL
+       FROM experience_locations old
+       WHERE n.experience_id = $1
+         AND old.experience_id = $1
+         AND n.withdrawal_deferred_for_location_id = old.id
+         AND EXISTS (
+           SELECT 1 FROM incoming i
+           WHERE old.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+           AND old.external_ref IS NOT DISTINCT FROM i.external_ref
+         )`,
+      params,
+    );
+
+    // Rows the source no longer offers. Marked, not deleted: the row is what a
+    // person's visit record points at. `missing_since IS NULL` restricts this
+    // to points going missing *now* — a row unoffered for the fifth run running
+    // was first observed missing once, and rewriting it every run would churn
+    // the table to say nothing new.
+    //
+    // Passed over where an arrival is waiting on it. That is the half which makes
+    // the pairing mean anything: without it the row would be paired and withdrawn
+    // in the same transaction.
+    //
+    // The pairing on a row this *does* withdraw goes with it. Such a row was an
+    // arrival in an earlier run, and the source has now dropped it before anyone
+    // published it — so it can never be published (the publish statement carries
+    // `missing_since IS NULL`) and a pairing left standing on it would hold the
+    // point it named visible for ever, with nothing able to release it.
+    const marked = await client.query(
+      `WITH ${cte}
+       UPDATE experience_locations el
+       SET ordinal = NULL, missing_since = NOW(),
+           withdrawal_deferred_for_location_id = NULL
+       WHERE el.experience_id = $1
+         AND el.missing_since IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM incoming i
+           WHERE el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+           AND el.external_ref IS NOT DISTINCT FROM i.external_ref
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM experience_locations waiting
+           WHERE waiting.experience_id = $1
+           AND waiting.withdrawal_deferred_for_location_id = el.id
+         )`,
+      params,
+    );
+
+    // The other half of a held withdrawal: the point keeps its `missing_since`
+    // NULL, so every reader still sees it, and loses its place in a list it is no
+    // longer in.
+    //
+    // Not cosmetic. `ordinal` is unique per experience and every later run parks
+    // the positives at their negatives before renumbering, so a held row left at
+    // -3 collides with its replacement's 3 the moment anything else about the
+    // object changes — and the whole write for that experience dies on the unique
+    // key, on every run, until a curator answers. NULL is also what the column
+    // already means for a row the source no longer lists.
+    //
+    // `el.ordinal IS NOT NULL` because a held row keeps failing the fast path
+    // until it is answered, so every run reaches this statement; without the guard
+    // each one would rewrite the row to the value it already holds.
+    await client.query(
+      `WITH ${cte}
+       UPDATE experience_locations el
+       SET ordinal = NULL
+       WHERE el.experience_id = $1
+         AND el.missing_since IS NULL
+         AND el.ordinal IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM incoming i
+           WHERE el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+           AND el.external_ref IS NOT DISTINCT FROM i.external_ref
+         )
+         AND EXISTS (
+           SELECT 1 FROM experience_locations waiting
+           WHERE waiting.experience_id = $1
+           AND waiting.withdrawal_deferred_for_location_id = el.id
+         )`,
       params,
     );
 
@@ -302,6 +541,10 @@ export async function writeExperienceLocations(
         ...inserted.rows.map(r => r.id as number),
         ...returned.rows.map(r => r.id as number),
       ],
+      // A held point is not counted: `unoffered` answers "how many stored points
+      // this run was the first to find missing", and this run wrote nothing of
+      // the kind about it. The callers turn that number into "place this
+      // experience again", which the arrival beside it asks for anyway.
       unoffered: marked.rowCount ?? 0,
     };
   } catch (err) {

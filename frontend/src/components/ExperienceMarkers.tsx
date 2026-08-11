@@ -27,6 +27,7 @@ import { useExperienceContext } from '../hooks/useExperienceContext';
 import { useNavigation } from '../hooks/useNavigation';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience } from '../api/experiences';
+import { locationLabel } from '../utils/locationLabel';
 
 // Source IDs
 const SOURCE_MARKERS = 'exp-markers';
@@ -269,7 +270,8 @@ function buildPointHoverData(coords: [number, number]): GeoJSON.FeatureCollectio
 interface ExperienceLocation {
   id: number;
   name?: string | null;
-  ordinal: number;
+  /** Nullable, for the reason given on the API's `ExperienceLocation.ordinal`. */
+  ordinal: number | null;
   longitude: number;
   latitude: number;
 }
@@ -302,7 +304,7 @@ function tryHoverSpecificLocation(
       experienceId: exp.id,
       experienceName: exp.name,
       locationId: loc.id,
-      locationName: loc.name || `Location ${loc.ordinal + 1}`,
+      locationName: locationLabel(loc),
       categoryName: exp.category_name ?? null,
       category: exp.category ?? null,
       imageUrl: exp.image_url,
@@ -450,7 +452,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         geometry: { type: 'Point' as const, coordinates: [loc.longitude, loc.latitude] },
         properties: {
           locationId: loc.id,
-          name: loc.name || `Location ${loc.ordinal + 1}`,
+          name: locationLabel(loc),
         },
       })),
     };

@@ -1982,7 +1982,7 @@ ALTER TABLE experience_locations ALTER COLUMN ordinal DROP NOT NULL;
 -- `CREATE TABLE IF NOT EXISTS` above is a no-op, so commenting the column
 -- first aborts the whole re-application with "column does not exist" — which
 -- is exactly the workflow the ALTERs exist to serve.
-COMMENT ON COLUMN experience_locations.ordinal IS 'Display order within the experience. A sync numbers from 1; a curator-created first location is 0. NULL when the source no longer lists this point — see missing_since.';
+COMMENT ON COLUMN experience_locations.ordinal IS 'Display order within the experience. A sync numbers from 1; a curator-created first location is 0. NULL when the source no longer lists this point — whether that is already recorded (missing_since) or still waiting on the point that replaces it (withdrawal_deferred_for_location_id).';
 COMMENT ON COLUMN experience_locations.missing_since IS 'When a run first offered this experience without this point. A machine observation, not a verdict. NULL = currently offered.';
 
 CREATE INDEX IF NOT EXISTS idx_experience_locations_experience ON experience_locations(experience_id);
@@ -1996,6 +1996,30 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_offered
 
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS curation_state VARCHAR(10) NOT NULL DEFAULT 'auto';
 COMMENT ON COLUMN experience_locations.curation_state IS 'A pending point is written, indexed and placed into regions like any other; keeping it off reader-facing reads is the job of one predicate rather than a reason to withhold the row (ADR-0025).';
+
+-- A moved point is a withdrawal plus an insert, and under a gated source the two
+-- halves become visible at different moments: the insert lands `pending`, so
+-- applying the withdrawal at once would take the old pin off the map while the
+-- new one is still invisible. 1119 of 1604 experiences hold exactly one point,
+-- so for most of the catalogue that is an object still in every list with
+-- nothing on the map. The arrival therefore names the point it replaces, and the
+-- withdrawal waits until a curator publishes the arrival — see
+-- `locationWriter.ts` for how the pairing is built and `publishController.ts`
+-- for the one transaction that releases it.
+--
+-- `ON DELETE SET NULL` rather than CASCADE: deleting the old point must not take
+-- the new one with it. The pairing is then simply gone, which is the right
+-- reading — there is no longer a withdrawal to hold.
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS withdrawal_deferred_for_location_id INTEGER REFERENCES experience_locations(id) ON DELETE SET NULL;
+COMMENT ON COLUMN experience_locations.withdrawal_deferred_for_location_id IS 'Set on a pending point that replaces another: the named point stopped being offered, and its missing_since is held back until this one is published (ADR-0025 decision 5). NULL on every other row.';
+
+-- The withdrawal statement asks, for each stored row, whether anything is
+-- waiting on it — a predicate with no experience_id to narrow it. Partial,
+-- because the column is NULL on all but the handful of rows in flight, and every
+-- query asks only about those. It is also the index the foreign key above needs:
+-- Postgres does not create one for a referencing column, so without it every
+-- delete of a location scans this table.
+CREATE INDEX IF NOT EXISTS idx_experience_locations_deferred_withdrawal ON experience_locations(withdrawal_deferred_for_location_id) WHERE withdrawal_deferred_for_location_id IS NOT NULL;
 
 -- User visited locations (tracks visits to individual locations)
 CREATE TABLE IF NOT EXISTS user_visited_locations (

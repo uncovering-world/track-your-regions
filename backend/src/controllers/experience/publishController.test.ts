@@ -24,7 +24,18 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
+// Mocked as a module rather than through the pool: placement opens its own
+// transaction on its own connection, so driving it through the fake client would
+// prove nothing about whether it ran off this one.
+vi.mock('../../services/sync/regionAssignmentService.js', () => ({
+  worldViewsWithGeometry: vi.fn(async () => [1, 4]),
+  assignRegionsForExperiences: vi.fn(async () => 3),
+}));
+
 import { pool } from '../../db/index.js';
+import {
+  assignRegionsForExperiences, worldViewsWithGeometry,
+} from '../../services/sync/regionAssignmentService.js';
 import { publishExperience } from './publishController.js';
 import { publishExperienceBodySchema } from '../../types/index.js';
 import { computeChangeSet, type ExperienceSnapshot } from '../../services/sync/changeSet.js';
@@ -87,6 +98,9 @@ function makeClient(opts: {
   proposal?: Proposed[];
   rowCounts?: Record<string, number>;
 } = {}) {
+  // Fragments must not be prefixes of one another: the lookup below takes the
+  // first entry whose text appears in the statement, and two `UPDATE
+  // experience_locations` statements now run in one publish.
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   return {
     queries,
@@ -166,9 +180,16 @@ async function publish(
   return res;
 }
 
+const mockedPlace = assignRegionsForExperiences as unknown as ReturnType<typeof vi.fn>;
+const mockedWorldViews = worldViewsWithGeometry as unknown as ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
   mockedQuery.mockReset();
   mockedConnect.mockReset();
+  mockedPlace.mockReset();
+  mockedPlace.mockResolvedValue(3);
+  mockedWorldViews.mockReset();
+  mockedWorldViews.mockResolvedValue([1, 4]);
 });
 
 describe('publishing an arrival', () => {
@@ -176,7 +197,7 @@ describe('publishing an arrival', () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'pending' },
-      rowCounts: { 'UPDATE experience_locations': 2, 'UPDATE experience_treasures': 12, 'UPDATE treasures': 12 },
+      rowCounts: { 'UPDATE experience_locations SET curation_state': 2, 'UPDATE experience_treasures': 12, 'UPDATE treasures': 12 },
     });
 
     const res = await publish({}, client);
@@ -186,7 +207,7 @@ describe('publishing an arrival', () => {
     expect(update.sql).toContain(`curation_state = 'verified'`);
     // Its contents go with it: naming none means all of them, which is what an
     // arrival card asks about — the whole object, nobody having seen any of it.
-    expect(only(queries, 'UPDATE experience_locations').sql).not.toContain('ANY($2::int[])');
+    expect(only(queries, 'UPDATE experience_locations SET curation_state').sql).not.toContain('ANY($2::int[])');
     expect(only(queries, 'UPDATE experience_treasures').sql).not.toContain('ANY($2::int[])');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       curationState: 'verified', locationsPublished: 2, treasureLinksPublished: 12, treasuresPublished: 12,
@@ -214,7 +235,7 @@ describe('publishing an arrival', () => {
 
     // Without this predicate `rowCount` would report every row the caller's ids
     // matched, published or not — a publication of 12 works that publishes none.
-    expect(only(queries, 'UPDATE experience_locations').sql).toContain(`curation_state = 'pending'`);
+    expect(only(queries, 'UPDATE experience_locations SET curation_state').sql).toContain(`curation_state = 'pending'`);
     expect(only(queries, 'UPDATE experience_treasures').sql).toContain(`curation_state = 'pending'`);
   });
 
@@ -235,7 +256,7 @@ describe('publishing an arrival', () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'pending' },
-      rowCounts: { 'UPDATE experience_locations': 2, 'UPDATE experience_treasures': 12, 'UPDATE treasures': 12 },
+      rowCounts: { 'UPDATE experience_locations SET curation_state': 2, 'UPDATE experience_treasures': 12, 'UPDATE treasures': 12 },
     });
 
     await publish({}, client);
@@ -254,6 +275,7 @@ describe('publishing an arrival', () => {
       locations: 2,
       treasureLinks: 12,
       treasures: 12,
+      withdrawalsReleased: 0,
     });
     expect(queries.at(-1)?.sql).toBe('COMMIT');
   });
@@ -294,7 +316,7 @@ describe('publishing an arrival', () => {
     // run that offers it again, which clears `missing_since` and leaves
     // `curation_state` alone: the coordinate then appears on the map marked as
     // one a curator passed, having been on no card at any point.
-    expect(only(queries, 'UPDATE experience_locations').sql).toContain('missing_since IS NULL');
+    expect(only(queries, 'UPDATE experience_locations SET curation_state').sql).toContain('missing_since IS NULL');
   });
 });
 
@@ -303,7 +325,7 @@ describe('publishing named contents', () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'auto' },
-      rowCounts: { 'UPDATE experience_locations': 1 },
+      rowCounts: { 'UPDATE experience_locations SET curation_state': 1 },
     });
 
     const res = await publish({ locationIds: [11] }, client);
@@ -322,7 +344,7 @@ describe('publishing named contents', () => {
 
     await publish({ locationIds: [11, 12] }, client);
 
-    const locations = only(queries, 'UPDATE experience_locations');
+    const locations = only(queries, 'UPDATE experience_locations SET curation_state');
     expect(locations.sql).toContain('AND id = ANY($2::int[])');
     expect(locations.params[1]).toEqual([11, 12]);
     // The other kind is untouched: naming points says nothing about works.
@@ -342,7 +364,7 @@ describe('publishing named contents', () => {
     expect(works.sql).toContain('et.experience_id = $1');
     expect(only(queries, 'UPDATE experience_treasures').sql)
       .toContain('AND treasure_id = ANY($2::int[])');
-    expect(none(queries, 'UPDATE experience_locations')).toBe(true);
+    expect(none(queries, 'UPDATE experience_locations SET curation_state')).toBe(true);
   });
 
   it('does not go looking for a held proposal', async () => {
@@ -568,12 +590,12 @@ describe('publishing bare contents ({ contentsOnly: true })', () => {
     grantScope();
     const { client, queries } = makeClient({
       row: { curation_state: 'auto' },
-      rowCounts: { 'UPDATE experience_locations': 2, 'UPDATE experience_treasures': 5, 'UPDATE treasures': 5 },
+      rowCounts: { 'UPDATE experience_locations SET curation_state': 2, 'UPDATE experience_treasures': 5, 'UPDATE treasures': 5 },
     });
 
     const res = await publish({ contentsOnly: true }, client);
 
-    expect(only(queries, 'UPDATE experience_locations').sql).not.toContain('ANY($2::int[])');
+    expect(only(queries, 'UPDATE experience_locations SET curation_state').sql).not.toContain('ANY($2::int[])');
     expect(only(queries, 'UPDATE experience_treasures').sql).not.toContain('ANY($2::int[])');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       locationsPublished: 2, treasureLinksPublished: 5, treasuresPublished: 5,
@@ -609,7 +631,7 @@ describe('publishing bare contents ({ contentsOnly: true })', () => {
     const { client, queries } = makeClient({
       row: { curation_state: 'auto', pending_change_sync_log_id: 53, curated_fields: [] },
       proposal: [{ field: 'name', new: 'X' }],
-      rowCounts: { 'UPDATE experience_locations': 1 },
+      rowCounts: { 'UPDATE experience_locations SET curation_state': 1 },
     });
 
     // No `expectedSyncLogId` at all — this shape has nothing to say about the
@@ -901,6 +923,248 @@ describe('publishing does not re-place the object', () => {
     expect(none(queries, 'experience_location_regions')).toBe(true);
     expect(none(queries, 'experience_regions')).toBe(true);
     expect(mockedQuery).toHaveBeenCalledTimes(1);   // the existence check, nothing after
+    // The one exception is a released withdrawal, and this publish released
+    // none. Asserted on the service rather than on the SQL, because placement
+    // runs off its own connection and issues no statement on this client.
+    expect(mockedPlace).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The one publish that changes where an object is.
+ *
+ * A moved point under a gated source is a withdrawal the run held back and an
+ * arrival nobody can see (`locationWriter.ts`). Publishing the arrival is the
+ * moment the two swap, and it has to happen in one transaction or the point
+ * exists twice or not at all.
+ */
+describe('publishing releases the withdrawal that was waiting on it', () => {
+  /** A publish that made an unread point visible, and released one withdrawal. */
+  const releasing = () => makeClient({
+    row: { curation_state: 'pending' },
+    rowCounts: {
+      'UPDATE experience_locations SET curation_state': 1,
+      'SET missing_since = NOW()': 1,
+    },
+  });
+
+  it('withdraws the old point the published one was holding', async () => {
+    grantScope();
+    const { client, queries } = releasing();
+
+    await publish({}, client);
+
+    const release = only(queries, 'SET missing_since = NOW()');
+    // Read off the arrival rather than searched for: the column is on the new
+    // row and names the old one, so publishing reads the pairing from the row it
+    // is publishing.
+    expect(release.sql).toContain('arrived.withdrawal_deferred_for_location_id = old.id');
+    // Only a pairing whose arrival a reader can now see. Before the statement
+    // above ran, this one would match nothing.
+    expect(release.sql).toContain(`arrived.curation_state <> 'pending'`);
+    // Never a second time, and never over a point some other path already
+    // withdrew.
+    expect(release.sql).toContain('old.missing_since IS NULL');
+    // Both sides scoped to this experience. The writer never pairs across
+    // objects, and the foreign key does not say so, so this is the one statement
+    // here that could otherwise reach a row the caller's scope was not checked
+    // against.
+    expect(release.sql).toContain('arrived.experience_id = $1');
+    expect(release.sql).toContain('old.experience_id = $1');
+    expect(release.params[0]).toBe(5);
+  });
+
+  it('does it inside the transaction that published the point', async () => {
+    grantScope();
+    const { client, queries } = releasing();
+
+    await publish({}, client);
+
+    // The whole reason this was deferred out of the writer's own sub-branch: on
+    // either side of a COMMIT the map shows the place twice or not at all.
+    const publishing = queries.findIndex(q => q.sql.includes('UPDATE experience_locations SET curation_state'));
+    const release = queries.findIndex(q => q.sql.includes('SET missing_since = NOW()'));
+    expect(publishing).toBeLessThan(release);
+    expect(release).toBeLessThan(queries.findIndex(q => q.sql === 'COMMIT'));
+  });
+
+  it('leaves no waiter on the point it withdraws', async () => {
+    grantScope();
+    const { client, queries } = releasing();
+
+    await publish({}, client);
+
+    // The floor under `locationWriter`'s prevention, and it belongs in the same
+    // `SET` list as the withdrawal rather than in the clear two statements below:
+    // that one skips rows still `pending`, which is exactly what a released
+    // intermediate is. Without this, a chain P <- A1 <- A2 survives publishing A2 —
+    // A1 is withdrawn but keeps naming P, A1 can never be published
+    // (`missing_since IS NULL`), nothing deletes a location so the foreign key
+    // never fires, and P stays visible beside A2 for ever.
+    expect(only(queries, 'SET missing_since = NOW()').sql)
+      .toContain('withdrawal_deferred_for_location_id = NULL');
+  });
+
+  it('lets go of the pairing it has just released', async () => {
+    grantScope();
+    const { client, queries } = releasing();
+
+    await publish({}, client);
+
+    // A pairing left standing outlives its purpose and turns harmful: a run that
+    // offers the old point again clears `missing_since`, and the next run to
+    // withdraw it would find the stale pointer and hold it for ever, with no
+    // arrival left to publish.
+    //
+    // Keyed on `IS NOT NULL`, which only this statement carries: the release's own
+    // `SET` clears the column too, so a fragment naming the assignment alone now
+    // depends on where the line happens to wrap.
+    const clear = only(queries, 'withdrawal_deferred_for_location_id IS NOT NULL');
+    expect(clear.sql).toContain('SET withdrawal_deferred_for_location_id = NULL');
+    expect(clear.sql).toContain(`curation_state <> 'pending'`);
+    const release = queries.findIndex(q => q.sql.includes('SET missing_since = NOW()'));
+    expect(queries.indexOf(clear)).toBeGreaterThan(release);
+  });
+
+  it('places the object again, because a point stopped being offered', async () => {
+    grantScope();
+    const { client } = releasing();
+
+    const res = await publish({}, client);
+
+    // The one publish that genuinely moves geometry. Placement's insert carries
+    // `el.missing_since IS NULL` while its clear does not, so the released
+    // point's region rows have to go — and only a full re-place can recompute
+    // the experience-level union they fed.
+    expect(mockedPlace).toHaveBeenCalledWith([5], 1);
+    expect(mockedPlace).toHaveBeenCalledWith([5], 4);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ withdrawalsReleased: 1 }));
+  });
+
+  it('places after the commit, on a connection of its own', async () => {
+    grantScope();
+    const { client, queries } = releasing();
+    let committed = false;
+    const inner = client.query.getMockImplementation()!;
+    client.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql === 'COMMIT') committed = true;
+      return inner(sql, params);
+    });
+    // Recorded and asserted afterwards, never `expect`ed inside the mock: this
+    // call is wrapped in the try/catch that turns a placement failure into a
+    // reported one, so a failed assertion in here is swallowed and the test
+    // passes. Proved by mutation — moving the COMMIT after the placement killed
+    // no test until this was recorded instead of asserted.
+    let placedBeforeCommit = false;
+    mockedPlace.mockImplementation(async () => {
+      if (!committed) placedBeforeCommit = true;
+      return 3;
+    });
+
+    await publish({}, client);
+
+    // `assignRegionsForExperiences` opens a transaction of its own, so calling it
+    // from inside this one would have it wait on rows this transaction holds.
+    expect(mockedPlace).toHaveBeenCalled();
+    expect(placedBeforeCommit).toBe(false);
+    expect(queries.some(q => q.sql.includes('experience_location_regions'))).toBe(false);
+  });
+
+  it('tries every world view, even after one of them fails', async () => {
+    grantScope();
+    const { client } = releasing();
+    mockedPlace.mockImplementation(async (_ids: number[], worldViewId: number) => {
+      if (worldViewId === 1) throw new Error('world view 1 is busy');
+      return 3;
+    });
+
+    const res = await publish({}, client);
+
+    // Each world view is its own transaction over its own regions, so one failing
+    // says nothing about the next. Stopping at the first would leave the rest stale
+    // with nothing in the log naming them — and the response carries one boolean,
+    // so the log is the only place "which" can live.
+    expect(mockedPlace).toHaveBeenCalledWith([5], 1);
+    expect(mockedPlace).toHaveBeenCalledWith([5], 4);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ placementFailed: true }));
+  });
+
+  it('says nothing failed when the world views cannot even be listed', async () => {
+    grantScope();
+    const { client } = releasing();
+    mockedWorldViews.mockRejectedValue(new Error('no connection'));
+
+    const res = await publish({}, client);
+
+    // A different sentence from a named world view refusing: nothing was placed at
+    // all. It must still not throw, and must still not claim success.
+    expect(mockedPlace).not.toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ placementFailed: true }));
+  });
+
+  it('does not undo the publication when placing afterwards fails', async () => {
+    grantScope();
+    const { client, queries } = releasing();
+    mockedPlace.mockRejectedValue(new Error('regions are busy'));
+
+    const res = await publish({}, client);
+
+    // The publication is committed by then. Throwing here would answer 500 to a
+    // curator whose click did land, and the catch above would run ROLLBACK on a
+    // transaction that no longer exists.
+    expect(queries.at(-1)?.sql).toBe('COMMIT');
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      withdrawalsReleased: 1, placementFailed: true,
+    }));
+  });
+
+  it('says in the audit row how many withdrawals it released', async () => {
+    grantScope();
+    const { client, queries } = releasing();
+
+    await publish({}, client);
+
+    // The publication's own record. A reader looking at why a pin moved has the
+    // audit row and nothing else — the run that proposed the move is a different
+    // row in a different table, and says nothing about when it took effect.
+    expect(JSON.parse(String(only(queries, 'INSERT INTO experience_curation_log').params[3])))
+      .toMatchObject({ withdrawalsReleased: 1 });
+  });
+
+  it('asks nothing and places nothing when it published no point', async () => {
+    grantScope();
+    const { client, queries } = makeClient({ row: { curation_state: 'auto' } });
+
+    await publish({ treasureIds: [900] }, client);
+
+    // A pairing only ever sits on a `pending` point, so a publish that moved no
+    // point cannot have released one. Two statements and two placement
+    // transactions per treasures-only publish, for nothing.
+    expect(none(queries, 'SET missing_since = NOW()')).toBe(true);
+    expect(none(queries, 'SET withdrawal_deferred_for_location_id = NULL')).toBe(true);
+    expect(mockedPlace).not.toHaveBeenCalled();
+  });
+
+  it('leaves a withdrawn point unread even when the caller names it', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto' },
+      rowCounts: { 'UPDATE experience_locations SET curation_state': 1 },
+    });
+
+    await publish({ locationIds: [11] }, client);
+
+    // The named path needs the guard as much as the "all" path does, and it is
+    // the same statement — asserted separately because a `($2 IS NULL OR …)`
+    // rewrite, or a named-only branch, is exactly how the two would come apart.
+    // A point published while withdrawn reappears on the map already `verified`
+    // the next time a run offers it, having been on no card at any point.
+    const locations = only(queries, 'UPDATE experience_locations SET curation_state');
+    expect(locations.sql).toContain('missing_since IS NULL');
+    expect(locations.sql).toContain('AND id = ANY($2::int[])');
+    expect(locations.params[1]).toEqual([11]);
   });
 });
 

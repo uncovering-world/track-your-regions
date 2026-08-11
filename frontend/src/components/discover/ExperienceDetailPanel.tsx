@@ -48,6 +48,7 @@ import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContex
 
 import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
 import { EmptyState } from '../shared/EmptyState';
+import { locationLabel } from '../../utils/locationLabel';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 const CONTENTS_COLLAPSE_THRESHOLD = 15;
@@ -347,7 +348,7 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
 // =============================================================================
 
 interface LocationsSectionProps {
-  locations: { id: number; name: string | null; ordinal: number; longitude: number; latitude: number; isVisited: boolean }[];
+  locations: { id: number; name: string | null; ordinal: number | null; longitude: number; latitude: number; isVisited: boolean }[];
   totalCount: number;
   isAuthenticated: boolean;
   onMarkLocation: (id: number) => void;
@@ -529,7 +530,7 @@ function LocationsSection({
                         color: loc.isVisited ? 'text.secondary' : 'text.primary',
                       }}
                     >
-                      {loc.name || `Location ${loc.ordinal + 1}`}
+                      {locationLabel(loc)}
                     </Typography>
                     {isAuthenticated && (
                       <Checkbox

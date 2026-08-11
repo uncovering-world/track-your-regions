@@ -6,9 +6,9 @@ import { join } from 'node:path';
  * The two schema homes must agree.
  *
  * `db/init/01-schema.sql` is what an empty database gets and what an existing
- * one is re-applied to gain new columns; `db/migrations/018-curation-gate.sql`
- * and `019-published-curation-action.sql` are what a database already holding
- * data gets by hand. A column added to one
+ * one is re-applied to gain new columns; `db/migrations/018-curation-gate.sql`,
+ * `019-published-curation-action.sql` and `020-deferred-withdrawal.sql` are what
+ * a database already holding data gets by hand. A column added to one
  * and forgotten in the other is invisible until a fresh database behaves
  * differently from the dev one — which is exactly the class of bug nobody finds
  * quickly. There is no database in this suite, so this is a text-level guard;
@@ -36,6 +36,11 @@ const publishMigrationLines = readFileSync(
   join(repoRoot, 'db', 'migrations', '019-published-curation-action.sql'),
   'utf8',
 );
+const deferralMigrationRaw = readFileSync(
+  join(repoRoot, 'db', 'migrations', '020-deferred-withdrawal.sql'),
+  'utf8',
+);
+const deferralMigration = collapse(deferralMigrationRaw);
 
 const GATE_COLUMNS: Array<[table: string, column: string]> = [
   ['experiences', 'curation_state'],
@@ -216,5 +221,53 @@ describe('the curation log accepts every action a curator endpoint writes', () =
       `ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check ${actionCheck}`,
     );
     expect(publishMigration.indexOf(drop)).toBeLessThan(publishMigration.indexOf(actionCheck));
+  });
+});
+
+/**
+ * Where a held withdrawal is recorded, in both schema homes.
+ *
+ * One nullable self-reference on `experience_locations`, carried by the arrival
+ * and naming the point it replaces. Absent from either file, a gated run writes
+ * the pairing into a column that is not there and the whole location write for
+ * that experience rolls back on every sync — which is the loudest possible
+ * failure and still worth a text-level guard, because the two files are edited
+ * separately and nothing else compares them.
+ */
+describe('a held withdrawal has a column in both schema homes', () => {
+  const addColumn =
+    'ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS ' +
+    'withdrawal_deferred_for_location_id INTEGER REFERENCES experience_locations(id) ' +
+    'ON DELETE SET NULL;';
+
+  it('both files add the column, with the same reference behaviour', () => {
+    // `ON DELETE SET NULL` and not `CASCADE`, stated as one literal so the two
+    // cannot drift: cascading would make deleting the point a curator wants gone
+    // delete the arrival that replaces it — the row a reader is waiting for.
+    // `ADD COLUMN IF NOT EXISTS` carries the REFERENCES inside it, so a second
+    // application adds neither the column nor a duplicate constraint, whichever
+    // file reached the database first.
+    expect(schema).toContain(addColumn);
+    expect(deferralMigration).toContain(addColumn);
+  });
+
+  it('both files index it the same way, partially', () => {
+    // The withdrawal statement asks, for each stored row, whether anything is
+    // waiting on it — a predicate with no `experience_id` to narrow it, so
+    // without this index every changed object of every run scans the table.
+    // Partial because the column is NULL on all 6680 rows today and every query
+    // asks only about the ones that are not.
+    const index =
+      'CREATE INDEX IF NOT EXISTS idx_experience_locations_deferred_withdrawal ' +
+      'ON experience_locations(withdrawal_deferred_for_location_id) ' +
+      'WHERE withdrawal_deferred_for_location_id IS NOT NULL;';
+    expect(schema).toContain(index);
+    expect(deferralMigration).toContain(index);
+  });
+
+  it('migration 020 is not defeated by how it is invoked', () => {
+    // db/migrations/README.md: psql exits 0 when a statement in a piped script
+    // fails, so the file sets this itself rather than trusting the caller.
+    expect(deferralMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
   });
 });

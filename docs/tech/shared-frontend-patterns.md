@@ -24,6 +24,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | `imageUrl.ts` | `toThumbnailUrl()`, `extractImageUrl()` |
 | `queryInvalidation.ts` | `invalidateExperiences(queryClient, opts?)`, `invalidateVisitedStatus(queryClient)` |
 | `scrollUtils.ts` | `scrollToCenter(container, el)`, `scrollToTop(container, el)` |
+| `locationLabel.ts` | `locationLabel(location)` — what to call one of an experience's points. Use it instead of `` `Location ${loc.ordinal + 1}` ``: `ordinal` is nullable (a point whose replacement is waiting to be published has no place in the source's list), and `null + 1` is `1`, which is the label a curator-created first point already carries |
 | `coordinateParser.ts` | Coordinate string parsing |
 | `mapUtils.ts` | Map helper functions |
 | `webgl.ts` | `isWebGLAvailable()` — ask before constructing any map; see `maplibre-patterns.md` |

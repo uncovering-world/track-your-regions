@@ -40,6 +40,7 @@ import {
   computeVisitedStatus,
   resolveLocationColor,
 } from './utils';
+import { locationLabel } from '../../utils/locationLabel';
 
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
@@ -324,7 +325,7 @@ export function ExperienceExpandedDetails({
                       />
                     </ListItemIcon>
                     <ListItemText
-                      primary={loc.name || `Location ${loc.ordinal + 1}`}
+                      primary={locationLabel(loc)}
                       primaryTypographyProps={{
                         variant: 'body2',
                         sx: {
@@ -371,7 +372,7 @@ export function ExperienceExpandedDetails({
                         <LocationIcon fontSize="small" color="disabled" />
                       </ListItemIcon>
                       <ListItemText
-                        primary={loc.name || `Location ${loc.ordinal + 1}`}
+                        primary={locationLabel(loc)}
                         secondary={outOfRegionDisplayPaths.get(loc.id) || 'Outside region'}
                         primaryTypographyProps={{
                           variant: 'body2',

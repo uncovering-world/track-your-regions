@@ -20,14 +20,25 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
+// Mocked as a module rather than through the pool: placement opens its own
+// transaction on its own connection, so driving it through the fake client
+// would prove nothing about whether it ran off this one — the same reason
+// `publishController.test.ts` mocks it this way.
+vi.mock('../../services/sync/regionAssignmentService.js', () => ({
+  worldViewsWithGeometry: vi.fn(async () => [1, 4]),
+  assignRegionsForExperiences: vi.fn(async () => 3),
+}));
+
 import { pool } from '../../db/index.js';
 import {
   getReviewQueue, setExperienceState, setExperienceAdmission, acceptSourceValue,
 } from './lifecycleController.js';
 import { CHANGESET_LANDED_SQL, ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
+import { assignRegionsForExperiences } from '../../services/sync/regionAssignmentService.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
+const mockedPlace = assignRegionsForExperiences as unknown as ReturnType<typeof vi.fn>;
 
 function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
@@ -1025,6 +1036,8 @@ describe('setExperienceAdmission', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedConnect.mockReset();
+    mockedPlace.mockClear();
+    mockedPlace.mockResolvedValue(3);
   });
 
   /** The row lookup and the scope check both run on the pool before the lock. */
@@ -1164,7 +1177,7 @@ describe('setExperienceAdmission', () => {
     // treats as the serious kind.
     poolAnswers();
     const { queries, client } = refusedClient({ curation_state: 'pending' }, {
-      'UPDATE experience_locations': 2,
+      'UPDATE experience_locations SET curation_state': 2,
       'UPDATE experience_treasures': 12,
       'UPDATE treasures': 12,
     });
@@ -1183,6 +1196,67 @@ describe('setExperienceAdmission', () => {
     });
   });
 
+  it('releases a withdrawal the arrival\'s publish uncovers, and re-places the object', async () => {
+    // Nothing about a row being refused stops a later sync run deferring a
+    // withdrawal on one of its locations — the same reachable case
+    // `publishController.ts`'s own publish answers, and this override reaches
+    // it through the same shared unit.
+    poolAnswers();
+    const { queries, client } = refusedClient({ curation_state: 'pending' }, {
+      'UPDATE experience_locations SET curation_state': 1,
+      'SET missing_since = NOW()': 1,
+    });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ withdrawalsReleased: 1 }));
+    const log = queries.find(q => q.sql.includes('experience_curation_log'))!;
+    expect(JSON.parse(String(log.params[4]))).toMatchObject({ withdrawalsReleased: 1 });
+    // After the COMMIT and off this client — placement opens a transaction of
+    // its own, so mocking it through the fake client would prove nothing about
+    // whether it ran off this one.
+    expect(mockedPlace).toHaveBeenCalledWith([5], 1);
+    expect(mockedPlace).toHaveBeenCalledWith([5], 4);
+  });
+
+  it('does not place the object when nothing was withdrawn', async () => {
+    // "Publish places" reads as the obvious symmetry and is wrong: placing
+    // every arrival on override would delete and reinsert region rows for no
+    // change at all.
+    poolAnswers();
+    const { client } = refusedClient({ curation_state: 'pending' }, {
+      'UPDATE experience_locations SET curation_state': 1,
+    });
+    mockedConnect.mockResolvedValue(client);
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, makeRes() as never);
+
+    expect(mockedPlace).not.toHaveBeenCalled();
+  });
+
+  it('reports placementFailed when the re-place after a release does not land', async () => {
+    poolAnswers();
+    const { client } = refusedClient({ curation_state: 'pending' }, {
+      'UPDATE experience_locations SET curation_state': 1,
+      'SET missing_since = NOW()': 1,
+    });
+    mockedConnect.mockResolvedValue(client);
+    mockedPlace.mockRejectedValueOnce(new Error('world view 1 is busy'));
+    const res = makeRes();
+
+    await setExperienceAdmission(
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
+
+    // The publication itself still landed — a curator whose click did land
+    // must not be told it failed because a follow-up step did.
+    expect(res.status).not.toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ placementFailed: true }));
+  });
+
   it('overriding a refused auto row changes neither curation_state nor published_at, and publishes no content', async () => {
     // It was already visible before the rule refused it — nothing about this
     // verdict says anyone has now read it, so not one of its content rows may
@@ -1194,7 +1268,7 @@ describe('setExperienceAdmission', () => {
       // Configured so that, if the gate below were ever removed, this test
       // would still catch it: a non-zero count here means the statement ran
       // and wrote something, not merely that it matched nothing.
-      'UPDATE experience_locations': 1,
+      'UPDATE experience_locations SET curation_state': 1,
       'UPDATE experience_treasures': 1,
       'UPDATE treasures': 1,
     });
@@ -1216,12 +1290,12 @@ describe('setExperienceAdmission', () => {
     expect(res.json).toHaveBeenCalledWith({
       experienceId: 5, admission: 'admitted', published: false,
       curationState: 'auto', appliedFields: [], claimedFieldsSkipped: [], fromSyncLogId: null,
-      locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0,
+      locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0,
     });
 
     const log = queries.find(q => q.sql.includes('experience_curation_log'))!;
     expect(JSON.parse(String(log.params[4]))).toMatchObject({
-      published: false, locations: 0, treasureLinks: 0, treasures: 0,
+      published: false, locations: 0, treasureLinks: 0, treasures: 0, withdrawalsReleased: 0,
     });
   });
 
@@ -1230,7 +1304,7 @@ describe('setExperienceAdmission', () => {
     // from override, and the one that must never touch curation_state.
     poolAnswers();
     const { queries, client } = refusedClient({ curation_state: 'pending' }, {
-      'UPDATE experience_locations': 1,
+      'UPDATE experience_locations SET curation_state': 1,
     });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
