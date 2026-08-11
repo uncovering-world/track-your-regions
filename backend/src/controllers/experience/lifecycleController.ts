@@ -13,6 +13,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
+import { hidePendingSql, hideRefusedSql, lifecycleSelectSql } from './experienceLifecycle.js';
 import { CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 
@@ -56,7 +57,7 @@ type Existence = 'extant' | 'lost';
  * The decisions waiting for a curator, scoped to what they cover.
  * GET /api/experiences/review/queue?categoryId=&limit=&offset=
  *
- * Three kinds of item, and they are answered differently:
+ * Six kinds of open question, and one list that is not a question at all:
  *
  * - **gone from the source** — a run stamped `missing_since` and stopped there.
  *   Users still see the object exactly as before; nothing about it changes
@@ -71,6 +72,24 @@ type Existence = 'extant' | 'lost';
  *   three verdicts is true of it: the British Museum is open, so not `lost`; it
  *   was never a legitimate member of *Top Art Museums*, so not `former`; and the
  *   refusal was right, so not a false alarm. Its two answers are its own.
+ * - **arrived from a gated source, and nobody has looked** — `curation_state =
+ *   'pending'` (ADR-0025). Readers see nothing at this address; a curator sees
+ *   the whole object, because the queue is the only place there is anything
+ *   to look at yet.
+ * - **a visible row is holding a newer proposal** — a gated source proposed a
+ *   change to a row that was already published, and the upsert kept the
+ *   stored content rather than overwrite what a reader can already see.
+ *   `pending_change_sync_log_id` names the run whose proposal is waiting. This
+ *   is distinct from `conflicts`: a `curated_fields` claim is answered through
+ *   `accept-source`, while a gate-held field is answered through
+ *   `POST /:id/publish`, which is what clears this pointer in response to a
+ *   person. A later run proposing nothing clears it too, on its own.
+ * - **a visible row is holding unread contents** — its points or its works
+ *   arrived `pending` while the experience itself was already published.
+ *   Counted, not listed: the expandable detail is a separate read.
+ *
+ * `keptOut` is the exception to all of it: those rows are answered, not
+ * waiting, and are carried here only because nowhere else can show them.
  */
 export async function getReviewQueue(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
@@ -103,15 +122,22 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // The same row under two headings would ask two contradictory questions —
   // "did this disappear?" beside "was refusing it right?" — and only the second
   // has a true answer.
+  //
+  // A `pending` row is excluded too (ADR-0025 § 3.6): no reader has ever seen
+  // it, so there is no verdict to give about whether it disappeared from in
+  // front of anyone. It stays out of `arrivals` as well, guarded there by
+  // `missing_since IS NULL` — the two predicates are what makes such a row
+  // raise no card in either kind rather than a wrong one in either.
   const missing = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
-           e.missing_since, e.source_membership, e.existence,
+           ${lifecycleSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
     WHERE e.missing_since IS NOT NULL
       AND e.source_membership = 'present'
-      AND e.admission <> 'refused'
+      AND ${hideRefusedSql()}
+      AND ${hidePendingSql()}
       ${categoryFilter}
       AND ${scopeFilter}
     ORDER BY e.missing_since DESC, e.id
@@ -129,7 +155,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const refused = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            e.admission_reason,
-           'refused' AS kind
+           ${lifecycleSelectSql()},
+           'refused' AS kind, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
     WHERE e.admission = 'refused'
@@ -162,7 +189,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const keptOut = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            e.admission_reason, e.state_decided_at, e.state_note,
-           'kept-out' AS kind
+           ${lifecycleSelectSql()},
+           'kept-out' AS kind, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
     WHERE e.admission = 'refused'
@@ -191,7 +219,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     SELECT * FROM (
       SELECT DISTINCT ON (e.id)
              e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
-             e.missing_since, e.source_membership, e.existence,
+             ${lifecycleSelectSql()},
              'conflict' AS kind, ch.sync_log_id,
              (SELECT jsonb_agg(f || jsonb_build_object(
                        'acceptable', $${acceptableIdx}::jsonb ? (f->>'field')))
@@ -237,11 +265,165 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     LIMIT $${acceptableIdx + 1} OFFSET $${acceptableIdx + 2}
   `, [...params, JSON.stringify(CURATED_KEY_BY_FIELD), JSON.stringify([...ACCEPTABLE_FIELDS]), limit, offset]);
 
+  // arrival: the whole object is the proposal. A row from a gated source that
+  // nobody has passed yet (ADR-0025) — the queue's own version of "created",
+  // for a source that does not get to publish on its own say.
+  //
+  // A refused row is excluded for the same reason `missing` excludes one: it
+  // already has a card of its own (§ 2.3), and one asking "may a reader see
+  // this?" would be asking the second question before the first is settled.
+  //
+  // A row the source has since stopped offering withdraws instead (§ 3.6),
+  // guarded by `missing_since IS NULL` — there is nobody it could be shown to
+  // either way, and `missing` excludes the same row so it raises no card
+  // under that heading either.
+  const arrivals = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+           e.curation_state, e.first_seen_sync_log_id AS sync_log_id,
+           ${lifecycleSelectSql()},
+           'arrival' AS kind, NULL::jsonb AS proposed
+    FROM experiences e
+    JOIN experience_categories c ON c.id = e.category_id
+    WHERE e.curation_state = 'pending'
+      AND ${hideRefusedSql()}
+      AND e.missing_since IS NULL
+      AND ${scopeFilter} ${categoryFilter}
+    ORDER BY e.first_seen_sync_log_id DESC NULLS LAST, e.id
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+  `, [...params, limit, offset]);
+
+  // held: an already-visible row whose newest content proposal was kept out
+  // by the upsert's own gate (ADR-0025 § "A gated source may not overwrite
+  // what a reader can already see", `syncUtils.ts`) rather than applied.
+  //
+  // The pointer is set for *any* refused proposal, not only a gate-held one:
+  // `syncUtils.ts`'s `proposedAnything = wroteContent || curatedConflicts.length
+  // > 0` fires equally for a field a curator individually claimed. Without the
+  // filter below, a row refused only by a `curated_fields` claim would carry
+  // the same field under two contradictory cards — `conflicts`, which is
+  // answerable, and `held`, which is not — and after the curator answered via
+  // `accept-source` this card would stay behind showing a value already
+  // written. `NOT (f->>'curatedConflict')::boolean` keeps the two questions
+  // separate: this card is only the fields the *category's gate* held, never
+  // one a claim already refused for its own reason.
+  //
+  // `e.missing_since IS NULL` for the same reason `arrivals` carries it: a row
+  // the source has stopped offering is `missing`'s question, not this one,
+  // and showing both would ask two things about one row.
+  //
+  // `POST /:id/publish` is what clears this pointer in response to a person —
+  // under its own staleness check, whenever a curator's `expectedSyncLogId`
+  // matches what is stored (or the call has nothing left to be stale about).
+  // `syncUtils.ts` is the only other thing that ever clears it, and only when
+  // a *later run* proposes nothing at all (the source came back to what is
+  // stored). Answering a refusal at `POST /:id/admission` does not, even
+  // though an override can publish the same row: admitting it says the object
+  // belongs, not what a later proposal against it holds, and that stays a
+  // separate question with its own card for a curator to answer through
+  // `/publish`.
+  //
+  // What actually excludes an empty proposal is the `WHERE` above, not the
+  // `q.proposed IS NOT NULL` below. `CROSS JOIN LATERAL` plus a per-field
+  // predicate drops the rows before `GROUP BY` runs, so a changeset whose only
+  // fields were claimed — or whose `changed_fields` is `[]` — forms no group at
+  // all and `jsonb_agg` is never called on an empty set. Measured against a
+  // real database: the result is byte-identical with the guard removed.
+  //
+  // It stays as a floor, and this comment exists so the next reader is not
+  // misled about which line is doing the work: the guard starts mattering the
+  // moment this becomes a `LEFT JOIN LATERAL`, or the field predicate moves into
+  // a `FILTER`, either of which would keep the group and hand `jsonb_agg` an
+  // empty set — and NULL there would render a card with nothing on it, which is
+  // worse than no card. The neighbouring `conflict` kind is the opposite case:
+  // there the same guard is load-bearing, because it wraps a correlated
+  // subquery that genuinely returns NULL for a row that exists.
+  const held = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+    SELECT * FROM (
+      SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+             ${lifecycleSelectSql()},
+             ch.sync_log_id, 'held' AS kind, jsonb_agg(f) AS proposed
+      FROM experiences e
+      JOIN experience_categories c ON c.id = e.category_id
+      JOIN experience_sync_changes ch ON ch.experience_id = e.id
+                                     AND ch.sync_log_id = e.pending_change_sync_log_id
+      CROSS JOIN LATERAL jsonb_array_elements(ch.changed_fields) AS f
+      WHERE e.pending_change_sync_log_id IS NOT NULL
+        AND ${hideRefusedSql()}
+        AND e.missing_since IS NULL
+        AND NOT (f->>'curatedConflict')::boolean
+        AND ${scopeFilter} ${categoryFilter}
+      GROUP BY e.id, e.external_id, e.name, e.category_id, c.name, ch.sync_log_id
+    ) q WHERE q.proposed IS NOT NULL
+    ORDER BY q.sync_log_id DESC, q.id
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+  `, [...params, limit, offset]);
+
+  // contents: a visible experience holding unread points or works of its own
+  // (ADR-0025 decision 2 — the gate is on the content row, not only on its
+  // container). Counted rather than listed: nobody approves 758 coordinates
+  // one at a time, and for a large site the count plus the anchor's movement
+  // is the whole judgement. The expandable row list is a separate, per-item
+  // read — this endpoint only says that unread contents exist.
+  //
+  // `el.missing_since IS NULL` alongside `el.curation_state = 'pending'`: a
+  // point the source has withdrawn is not "unread" in any sense a reader would
+  // ever notice, since every reader-facing location read already carries
+  // `offeredLocationSql()` — publishing it changes nothing on screen.
+  //
+  // Treasures need a second table, not a second column on one: a link's own
+  // `curation_state` and its treasure's are independent axes (a work is
+  // "checked once, globally", a link "as being HERE" — ADR-0025), so
+  // `getExperienceTreasures` gates both separately (three predicates, not
+  // one) and this count has to ask the same two questions or it would miss a
+  // treasure whose link was already reviewed while the work itself was not
+  // (a treasure shared across venues is exactly this shape). `et`/`t` are
+  // joined unfiltered and the pending check moves to `WHERE`/`FILTER`,
+  // because `t.curation_state` is not visible from inside `et`'s own JOIN
+  // condition.
+  //
+  // `COUNT(DISTINCT ...)` is load-bearing, not decoration: `el` and `et` are
+  // independent one-to-many joins on the same experience, so their combined
+  // row count is a product, not a sum — 3 pending points and 12 pending
+  // works join to 36 raw rows for one experience, and a plain `COUNT(...)`
+  // without `DISTINCT` would report 36 for a treasure count that is actually
+  // 12 (and 36 again for a location count that is actually 3).
+  const contents = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+           ${lifecycleSelectSql()},
+           'contents' AS kind,
+           COUNT(DISTINCT el.id) FILTER (WHERE el.curation_state = 'pending') AS pending_locations,
+           COUNT(DISTINCT et.treasure_id)
+             FILTER (WHERE et.curation_state = 'pending' OR t.curation_state = 'pending') AS pending_treasures,
+           NULL::jsonb AS proposed
+    FROM experiences e
+    JOIN experience_categories c ON c.id = e.category_id
+    LEFT JOIN experience_locations el
+           ON el.experience_id = e.id AND el.curation_state = 'pending' AND el.missing_since IS NULL
+    LEFT JOIN experience_treasures et ON et.experience_id = e.id
+    LEFT JOIN treasures t ON t.id = et.treasure_id
+    WHERE ${hidePendingSql()}            -- an unread experience is an arrival, not this
+      AND ${hideRefusedSql()}
+      AND (el.id IS NOT NULL OR et.curation_state = 'pending' OR t.curation_state = 'pending')
+      -- Withdrawn rows belong to the 'missing' card, like an arrival and like a
+      -- held proposal: the same row under two headings would ask two questions
+      -- whose answers contradict each other. "May readers see these twelve
+      -- works?" is not answerable while "did this venue disappear?" is open, and
+      -- publishing the works would not put them anywhere a reader looks anyway.
+      AND e.missing_since IS NULL
+      AND ${scopeFilter} ${categoryFilter}
+    GROUP BY e.id, e.external_id, e.name, e.category_id, c.name
+    ORDER BY e.id
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+  `, [...params, limit, offset]);
+
   res.json({
     missing: missing.rows,
     refused: refused.rows,
     keptOut: keptOut.rows,
     conflicts: conflicts.rows,
+    arrivals: arrivals.rows,
+    held: held.rows,
+    contents: contents.rows,
     limit: Number(limit),
     offset: Number(offset),
   });
