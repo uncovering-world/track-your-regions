@@ -215,7 +215,9 @@ nothing. *Proposed* counts both kinds of refusal: a value the hold kept out and 
 in a claimed field is still holding a proposal and still points at the run that made it. The pointer
 is cleared again when a later run proposes nothing at all — nothing written and nothing refused —
 because a source that has come back to what is stored is no longer proposing anything. A row that is
-no longer held loses the pointer too: a run free to write the content leaves nothing waiting.
+no longer held loses the pointer too: a run free to write the content leaves nothing waiting. The
+only other thing that clears it is a curator answering, through `POST /:id/publish` (§ Publishing),
+which is what makes the queue's `held` card answerable at all.
 
 **A `verified` row decays when a trusted source changes it.** `curation_state`
 ([ADR-0025](../decisions/0025-per-source-curation-gate.md)) can also hold `verified`: a curator's
@@ -237,8 +239,9 @@ not published and has nothing to decay, and an `auto` row is already there. The 
 carry `verified` today are ones `createManualExperience` wrote by hand — each one's
 `curator-<id>-<ts>` external id is never in a source listing (see below), so no sync run's
 upsert ever reaches it, and this statement's `WHERE` matches nothing a sync run has ever
-touched. The endpoint that lets a curator promote an existing `pending` or `auto` row to
-`verified` arrives with the rest of this feature.
+touched. `POST /:id/publish` (§ Publishing) is what promotes a `pending` or `auto` row to
+`verified`, and a row it published from a *trusted* source is exactly what this decay can then
+retire again.
 
 **New content retires its container's pass too.** A pass covers the experience as it stood — its
 points, and the works a museum was holding — so a point or a work the run has just added is content
@@ -730,6 +733,7 @@ category later decides about the building.
 | POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
 | POST | `/api/experiences/:id/admission` | `{ decision: 'confirm' \| 'override', note? }` — answer a refusal. `confirm` keeps the row refused and hidden, `override` admits it again. Both pin `admission` in `curated_fields`, which is what takes the card out of the queue and what stops a later run reversing either answer; no `expected` block is needed, because a second curator collides with that pin and gets 409 |
 | POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted |
+| POST | `/api/experiences/:id/publish` | `{ contentsOnly?: true, locationIds?: number[], treasureIds?: number[], expectedSyncLogId? }` — say that a reader may see this (ADR-0025). An empty body publishes the object: any held content fields, `curation_state = 'verified'`, `published_at` if the row was `pending`, the pointer cleared, and every unread point and work it holds. `contentsOnly: true` or naming either array is a contents publish, leaving the experience's own state alone — `contentsOnly` for every pending content row, naming an array for exactly those rows. All three are explicit and mutually exclusive (schema `.refine`s): leaving everything absent used to be read as "the object", full stop, and a card with no ids to send had no other way to ask for its contents alone. `expectedSyncLogId` is the run the caller's card named, compared under the write lock against `pending_change_sync_log_id`, and only when the call will actually write a held field or the caller named a run at all — a pointer whose one held field is already claimed writes nothing and answers success rather than 409 forever. It may not accompany a contents publish, named or bare. A field the curator claims in `curated_fields` is skipped rather than refused; a row its category refused answers 409, because admission is asked first (ADR-0025 decision 4) and `override` on the refusal is what publishes it; a point the source has withdrawn is never published, matching the `contents` card. Needs migration 019 applied, or the audit insert violates the `action` CHECK and the whole call 500s. See § Publishing for what it writes and why it does not place |
 | POST | `/api/experiences/new-badges/seen` | `{ experienceIds: number[] }` — records that these chips were shown to the caller. Rate-limited (`authenticatedLimiter`), unlike the curator routes beside it: this is an ordinary authenticated action and the only one here a client sends on its own initiative. Only the first impression per experience is kept; a stale id is ignored rather than failing the call, and the response names what was actually recorded |
 
 ### Geocoding (public + admin)
@@ -1129,14 +1133,13 @@ the *category's gate* held, never one a claim refused for its own, separately-an
 can be flagged missing *and* holding a proposal at the same time, and that is `missing`'s
 question, not this one.
 
-**No endpoint answers a `held` card today.** `syncUtils.ts` clears the pointer only when a
-*later run* proposes nothing at all — the source came back to what is stored — and no curator
-action touches it: `POST /:id/publish`, which will clear it the moment a curator answers, is the
-next-but-one task on this branch. A card here is real and correctly shown, but not yet
-actionable; that is a deliberate, known consequence of building this branch in layers, not a
-bug. For the same reason the field carries no `acceptable` flag, unlike `conflict`'s — that flag
-answers "can `accept-source` write this?", and every field reaching this query is, by the filter
-above, one `accept-source`'s `curatedConflict: true` lookup would never find anyway.
+**`POST /:id/publish` is the only thing that answers a `held` card**, and the only writer that
+clears the pointer in response to a person — `syncUtils.ts` clears it otherwise only when a
+*later run* proposes nothing at all, the source having come back to what is stored. The field
+carries no `acceptable` flag, unlike `conflict`'s: that flag answers "can `accept-source` write
+this?", and every field reaching this query is, by the filter above, one `accept-source`'s
+`curatedConflict: true` lookup would never find anyway. Publishing writes all eleven, which is
+why it has to exist as a separate writer — see § Publishing below.
 
 An empty proposal is excluded by the `WHERE` above rather than by the `WHERE q.proposed IS NOT NULL`
 that follows the grouping. `CROSS JOIN LATERAL` with a per-field predicate drops those fields before
@@ -1199,6 +1202,140 @@ answering everything in front of it.
 The page lives at `/review` (`frontend/src/components/curation/ReviewQueue.tsx`), reachable
 from the header for curators. That gate is convenience: every action it offers is checked
 server-side against the caller's scope.
+
+### Publishing (ADR-0025 § 4.4)
+
+`POST /api/experiences/:id/publish` (`publishController.ts`) is the answer to all three of the
+kinds above, and the only writer that moves a row off `pending`. One transaction under
+`SELECT … FOR UPDATE`, shaped after `applyProposedFields`: everything the decision rests on —
+the pointer, the proposal, `curated_fields`, `curation_state`, `admission`, `metadata` — is
+re-read inside the lock that writes, and every refusal is awaited before the client is released.
+
+**It needs migration 019 to exist.** On any database that predates it the audit insert violates the
+`action` CHECK, so the endpoint answers a bare 500 and the publication rolls back correctly and
+completely — a working refusal, but an opaque one. `db/migrations/README.md` records nothing about
+which files a database has already seen (#435), so this is a hand-application to remember, not
+something the code can detect.
+
+**Three shapes, all explicit, none of them inferred from the others' absence.** An empty body
+publishes the object: its held fields, `curation_state = 'verified'`, and every unread point and
+work it holds. `{ contentsOnly: true }` publishes every pending content row and leaves the
+experience's own row alone — a visible museum that gained three checked paintings has not thereby
+been read. `{ locationIds }` / `{ treasureIds }` (or both) do the same for exactly those rows.
+The schema's `.refine`s make the three mutually exclusive: `contentsOnly` beside a named array says
+"contents only" twice, and any contents publish beside `expectedSyncLogId` answers a question it
+is not asking. An empty array is a 400 rather than either reading, since it would mean "publish
+nothing and do not publish the object either". A named work publishes two rows, its link
+(`experience_treasures`) and the work itself (`treasures`), because a reader's treasure list gates
+both and a work is passed once globally while its link is passed as being *here*; both writes are
+scoped through this experience's own links, so an id belonging to another venue changes nothing.
+
+**`contentsOnly` exists because "absent means the object" was a defect, not a convenience.**
+Before it, a contents publish was inferred from named ids alone — nothing named meant an object
+publish, full stop. A card with pending contents but no ids to name (one that counts rather than
+lists them) would have to send an empty body to publish just its contents, which published the
+object instead. Usually harmless, since publishing an already-visible object's non-existent held
+fields is a no-op; not harmless when the row held a real pointer whose one held field a curator had
+already claimed (see the staleness paragraph below), where the empty body both silently marked the
+object read and, before that fix, 409ed forever trying to. `{ contentsOnly: true }` says the
+intent explicitly, so the inference never has to be made again.
+
+**A point the source has withdrawn is never published**, named or not: the location statement
+carries `missing_since IS NULL`, the same predicate the `contents` card carries, and the two have to
+move together — the card is what asks the question the statement answers. The reason is not that a
+withdrawn point is invisible anyway (it is, through `offeredLocationSql()`) but what happens when it
+comes back: `locationWriter`'s "offering it again" arm clears `missing_since` and deliberately
+leaves `curation_state` alone, so a point published while withdrawn reappears on the map already
+marked `verified` — a coordinate no card ever showed a curator, recorded as one a curator passed.
+
+**A refused row cannot be published** — 409, naming the order to work in. ADR-0025 decision 4:
+admission is asked before publication, so whether anyone has looked at an object is a question asked
+only once its category's own rule has answered yes (ADR-0024). All three of the gate's queue kinds
+carry `hideRefusedSql()` for the same reason, and the consequence of allowing it is not cosmetic:
+nothing returns a `verified` row to `pending`, so the row would leave `arrivals` for ever and a
+later `override` would put it in front of readers with nobody having reviewed its contents. The way
+through is `POST /:id/admission` with `override`, which publishes in the same transaction. Contents
+publishes are refused on a refused container too, since the `contents` card excludes it as well.
+
+**`expectedSyncLogId` is compared against `experiences.pending_change_sync_log_id`**, not against
+the newest changeset as `accept-source` does: the card names the run the pointer names, and a newer
+run overwrites the pointer, so equality with the pointer is the whole staleness question. Absent is
+a claim too — "this row was holding nothing" — so a proposal that arrived after the card was drawn
+is refused with 409 and the current pointer rather than published unread. It may not accompany a
+contents publish, named or bare, which touches neither the held fields nor the pointer.
+
+**The check only applies when it has something to be about.** `pending_change_sync_log_id` is set
+for *any* refused proposal, including one whose only refused field a curator had already claimed —
+and the queue's own `held` card correctly excludes a claimed field from what it shows, so such a
+row's card has no held half at all. Before this was narrowed, the comparison ran unconditionally
+whenever the call was an object publish: the card sent an empty body (no held field to show meant
+no `expectedSyncLogId` to send), the stored pointer was non-null, and the row 409ed forever with no
+run id the curator could ever discover to answer with. The check now runs only when the call will
+actually write a held field (`applied`/`unwritable` between them say whether there is one left once
+a claim has taken its share out — see `staleProposalRefusal`, `publishController.ts`) **or** the
+caller named a run at all: a caller who sent nothing was shown nothing to answer and is exempted the
+way the fully-claimed row now is, but a caller who did name a run believed something specific was
+held, and if the row now disagrees that belief was still stale even though nothing would have been
+written from it. ADR-0025 § 4.4 already says a contents publish leaves the experience's own state
+untouched, which is why skipping the check for a call that writes nothing costs nothing: the
+object's row is not being answered for either way.
+
+**An arrival has no staleness check available at all**, and the parameter must not be read as
+covering it. A `pending` row never holds a pointer — `syncUtils.ts` sets one only where
+`curation_state <> 'pending'`, because a row nobody can see is refreshed in place rather than held,
+so that a curator reviews the newest state instead of whatever landed first. A run that rewrites an
+arrival between the card being drawn and the click is therefore invisible to the curator and to this
+comparison alike, and what gets published is the newest state rather than the state on the card.
+Nothing in the schema records what the card showed, so there is nothing to compare against;
+changing that would be a decision about how arrivals are stored, not about this endpoint.
+
+**All eleven content fields, not `accept-source`'s five.** The column list comes from
+`CURATED_KEY_BY_FIELD`, so it cannot drift from what the upsert honours. It has to be the full
+eleven because `accept-source`'s answer for the other six is to release the claim and let the next
+ordinary run apply the value, and under a gate the next run holds it too — six fields would be
+proposed every run and applied never. For the same reason nothing held may be dropped in silence:
+a value this writer cannot produce (a coordinate the changeset did not record as a pair of numbers)
+refuses the whole call rather than clearing the pointer around it.
+
+`metadata` is the one field that cannot be assigned from what the changeset carries.
+`computeChangeSet` reports it in parts and strips the individually reported keys out of both sides
+before diffing the rest, so the catch-all's `new` is the source's object *minus* those keys.
+Publishing reconstructs it: keys the catch-all's `old` does not mention were not its business and
+are kept, everything it does speak for is replaced wholesale — deletions included, since a dropped
+key is recorded only by its absence and a `||` merge would leave it proposed for ever — each
+per-key entry then decides its own key, and finally every `metadata.<key>` a curator claims is
+re-applied from what is stored, exactly as the upsert re-applies it.
+
+**A claim is skipped, not refused.** Publishing answers "may readers see this"; a
+`curated_fields` claim answers "whose text is it". Both can be open at once, so a claimed field is
+left alone and named back in `claimedFieldsSkipped` while the rest of the call succeeds.
+
+**`published_at` is stamped only where the row was `pending`.** `COALESCE(published_at, NOW())`
+alone would not restart an existing New-chip window, but it would invent one for the rows that
+predate the gate — 1603 of the catalogue's 1604, measured 2026-08-11 — visible for months with
+`published_at` NULL, because migration 018 deliberately did not date them. So an already-visible
+row's `published_at` is not touched at all, in either direction.
+
+**Publishing does not place.** Placement's insert predicate is `el.missing_since IS NULL` and
+nothing else — no `curation_state`, no `admission`, no `existence` — so a `pending` location was
+already placed by the run that wrote it and flipping it to `verified` moves no geometry, no point
+and no membership. A held content field cannot move it either: placement reads
+`experience_locations.location`, never `experiences.location`, and no trigger connects the two. The
+one publish that would genuinely change placement is one releasing a deferred withdrawal, and
+nothing defers one yet. "Publish places" reads as the obvious symmetry, so the reason it is absent
+is stated at the call site: an unconditional placement would delete and reinsert region rows across
+every world view with geometry, for 18 museums at a time, for no change at all.
+
+The audit row is `action = 'published'`, whose value had to be added to the
+`experience_curation_log.action` CHECK in both schema homes (`db/init/01-schema.sql` and
+`db/migrations/019-published-curation-action.sql`) — the insert is inside the publish transaction,
+so a rejected action would roll the publication back with it. `details` carries the scope
+(`object` / `contents`), the fields applied and skipped, the run id, and the three counts.
+Publishing an already-published object is allowed, and is how a curator takes newly-arrived unread
+contents under a row that is already visible. It decides nothing a second time — `curation_state` is
+already `verified`, `published_at` does not move, the pointer is already null — but it is not a
+no-op at the row level: it writes a second audit row, and `experiences.updated_at = NOW()` moves
+whether or not anything else does, because the assignment list is fixed rather than diffed.
 
 ## Curation Guarantees
 

@@ -28,6 +28,7 @@ import {
   setExperienceAdmission,
   setExperienceState,
   acceptSourceValue,
+  publishExperience,
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
 import { requireAuth, requireCurator, optionalAuth } from '../middleware/auth.js';
@@ -47,6 +48,7 @@ import {
   newBadgesSeenBodySchema,
   experienceStateBodySchema,
   acceptSourceBodySchema,
+  publishExperienceBodySchema,
   regionIdParamSchema,
   idAndRegionIdParamSchema,
   rejectExperienceBodySchema,
@@ -123,6 +125,27 @@ router.get('/review/queue', requireAuth, requireCurator, validate(reviewQueueQue
 router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceStateBodySchema), setExperienceState);
 router.post('/:id/admission', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceAdmissionBodySchema), setExperienceAdmission);
 router.post('/:id/accept-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(acceptSourceBodySchema), acceptSourceValue);
+
+// The other half of what a gated source leaves open (ADR-0025): whether a
+// reader may see an unread row at all, its unread points and works, and the
+// content proposal a run made against a row that was already visible. The only
+// writer that moves a row off `pending`, and the only one that clears
+// `pending_change_sync_log_id` in answer to a person.
+// Rate-limited, unlike its four curator siblings above, and the reason is this
+// repo's own criterion rather than an analyser's: `docs/tech/rate-limiting.md` § 5
+// exempts curator routes because the *attack* surface needs a compromised
+// account, and says the exemption stops applying when a request is expensive to
+// the system regardless of who sends it. This one can be: where a publish
+// releases a deferred withdrawal it re-places the object into every world view
+// with geometry after committing, deleting and reinserting region rows.
+//
+// `authenticatedLimiter` (60/min) rather than `expensiveAdminLimiter` (5/min)
+// because the expensive branch fires only for a moved point while the ordinary
+// publish is one transaction, and a curator works a queue in batches — the first
+// gated round is about 18 arrivals. Five a minute would answer 429 in the middle
+// of the work this whole stage exists to make possible; sixty bounds a runaway
+// client without a person ever noticing it.
+router.post('/:id/publish', authenticatedLimiter, validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(publishExperienceBodySchema), publishExperience);
 
 // Unassign an experience from a region (manual only)
 router.delete('/:id/assign/:regionId', validate(idAndRegionIdParamSchema, 'params'), requireAuth, requireCurator, unassignExperienceFromRegion);

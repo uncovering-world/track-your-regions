@@ -62,11 +62,12 @@ Routes behind `requireAuth` + `requireAdmin` or `requireCurator` are **not** rat
 **Exempt by default:** `adminRoutes.ts`, `divisionRoutes.ts` (mounted behind admin middleware), `viewRoutes.ts`, `aiRoutes.ts`, plus write operations in `worldViewRoutes.ts` and `experienceRoutes.ts` curation routes.
 
 The exemption is about the *attack* surface, and it stops applying when a request
-is expensive to the system regardless of who sends it. One route is limited today:
+is expensive to the system regardless of who sends it. Two routes are limited today:
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish` |
 
 A re-match deletes every `region_members` row for a world view and then spends
 20–130s re-resolving them. The endpoint already answers 409 while one is running,
@@ -74,6 +75,26 @@ which stops concurrent runs but not a rapid succession of them — and each run
 discards the previous one's output. Deliberately its own limiter rather than one
 applied to the whole admin mount, because the bulk workflows above legitimately
 issue many requests a minute and must not inherit a limit sized for this.
+
+`/:id/publish` is here because of one branch, not the whole endpoint: where a
+publication releases a deferred withdrawal (ADR-0025), it re-places the object
+into every world view with geometry after committing — deleting and reinserting
+region rows. That is expensive regardless of who sends it, which is the test this
+section states.
+
+It takes the 60/min limiter rather than the 5/min one deliberately. The expensive
+branch fires only for a point that moved; an ordinary publish is a single
+transaction, and a curator answers a queue in batches — the first gated round is
+about 18 arrivals. Five a minute would answer 429 in the middle of exactly the
+work the curation gate exists to make possible, to bound a branch most publishes
+never reach. Sixty bounds a runaway client and is invisible to a person reading
+cards.
+
+Its four curator siblings in the same file (`/:id/state`, `/:id/admission`,
+`/:id/accept-source`, `/review/queue`) stay exempt: each is one transaction with
+no post-commit work, so the criterion above does not reach them. CodeQL raises
+`js/missing-rate-limiting` on all five; the four are dismissed against this
+section, and this row is why the fifth is not.
 
 ## Adding rate limiting to new endpoints
 

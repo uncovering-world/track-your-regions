@@ -396,6 +396,89 @@ export const acceptSourceBodySchema = z.object({
   expectedSyncLogId: z.number().int().positive().max(2147483647),
 });
 
+export const publishExperienceBodySchema = z.object({
+  /**
+   * Which unread points to publish. Naming any (with or without `treasureIds`
+   * beside it) makes this a *named-contents* publish: only these points, and
+   * the experience's own state left alone, because a visible museum that
+   * gained three checked paintings has not thereby been read (ADR-0025 § 4.4).
+   *
+   * `.min(1)` so an empty array is a 400 rather than either reading: it would
+   * otherwise mean "publish exactly nothing, and do not publish the object
+   * either", which no caller can want and which would silently answer a card
+   * without changing anything.
+   *
+   * Bounded above the largest object the catalogue actually holds — 758 points
+   * on one UNESCO nomination — because a request answers a card, not an
+   * arbitrary list, and the ids go into an `= ANY($n::int[])`.
+   */
+  locationIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(2000).optional(),
+  /**
+   * Treasure ids, not link ids: that is what the queue counts
+   * (`COUNT(DISTINCT et.treasure_id)`) and what a card can therefore name, and
+   * a work is passed once globally while its link is passed as being *here* —
+   * two states this endpoint writes together from one id.
+   */
+  treasureIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(2000).optional(),
+  /**
+   * "Every pending content row, and nothing about the experience's own state"
+   * — the shape for a card that names no ids at all, because it reports
+   * counts rather than the ids behind them. Leaving everything absent means
+   * the opposite thing: an arrival, answering for the object too. That
+   * inference — "named nothing" reads as "publish the object" — is exactly
+   * the defect this field exists to remove: a contents card whose only held
+   * field a curator had already claimed used to send `{}` and silently
+   * publish the object, asserting a person had read a museum whose paintings
+   * were all a curator ever looked at.
+   *
+   * `true` only, never `false`: there is no meaningful "not contents-only" to
+   * say with this field — that is what leaving it absent already means — so a
+   * caller either sends it true or does not send it.
+   *
+   * Three shapes for what a body can mean, spelled out because "absent means
+   * all of it" is exactly the inference that produced the defect above:
+   * - absent, with no ids: an object publish — the experience and every
+   *   pending content row it holds. The arrival case.
+   * - `{ contentsOnly: true }`: every pending content row, object untouched.
+   * - `{ locationIds }` / `{ treasureIds }` (or both): those ids only, object
+   *   untouched.
+   */
+  contentsOnly: z.literal(true).optional(),
+  /**
+   * The run whose held proposal the caller was looking at.
+   *
+   * Compared under the write lock against `experiences.pending_change_sync_log_id`
+   * — not against the newest changeset, as `accept-source` does. The card names
+   * the run the pointer names, and a newer run overwrites the pointer, so
+   * equality with the pointer is exactly the staleness question. Absent is a
+   * claim too, and the same comparison judges it: "this row was holding
+   * nothing", which is what an arrival looks like and what a row whose proposal
+   * a later run withdrew no longer does.
+   *
+   * Meaningless for any contents publish — named or bare — which is why the
+   * `.refine` below forbids sending it alongside either.
+   */
+  expectedSyncLogId: z.number().int().positive().max(2147483647).optional(),
+}).refine(
+  b => !(b.contentsOnly === true && (b.locationIds !== undefined || b.treasureIds !== undefined)),
+  {
+    // Two ways of saying "contents only" in the same body say nothing a
+    // caller could not have said with one of them, and inventing a rule for
+    // which one wins is worse than refusing the ambiguity.
+    message: 'contentsOnly already means every pending content row; naming locationIds or treasureIds beside it is redundant',
+  },
+).refine(
+  b => b.expectedSyncLogId === undefined
+    || (b.locationIds === undefined && b.treasureIds === undefined && b.contentsOnly === undefined),
+  {
+    // A contents publish, named or bare, touches neither the held fields nor
+    // the pointer, so accepting the run id beside it would let a caller
+    // believe it had answered the held card when nothing about that card
+    // changed.
+    message: 'expectedSyncLogId answers the held proposal on the object; a contents publish (named or not) publishes only those',
+  },
+);
+
 export const syncChangesQuerySchema = z.object({
   type: z.enum(['created', 'updated', 'conflict', 'missing', 'returned', 'failed', 'filtered']).optional(),
   significance: z.enum(['major', 'minor']).optional(),

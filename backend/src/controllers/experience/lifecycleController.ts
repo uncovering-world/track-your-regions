@@ -14,7 +14,7 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { hidePendingSql, hideRefusedSql, lifecycleSelectSql } from './experienceLifecycle.js';
-import { CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
+import { CURATED_KEY_BY_FIELD, claimKeyFor } from '../../services/sync/changeSet.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 
 /** How many items a queue page holds by default. */
@@ -32,17 +32,6 @@ const QUEUE_PAGE_SIZE = 25;
  * ever drifting from what the upsert honours.
  */
 const ACCEPTABLE_FIELDS = new Set(['name', 'shortDescription', 'description', 'category', 'imageUrl']);
-
-/**
- * The `curated_fields` key that protects a field.
- *
- * Usually the column name, but not always: `editExperience` claims
- * `metadata.website` per key, and no column matches that — hence the fallback
- * to the field's own name for keys the map does not carry.
- */
-function claimKeyFor(field: string): string {
-  return CURATED_KEY_BY_FIELD[field] ?? field;
-}
 
 /** The column an accepted field writes to, or null if it is not acceptable. */
 function columnFor(field: string): string | null {
