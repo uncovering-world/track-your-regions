@@ -6,8 +6,9 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { hideLostSql, hideRefusedSql, lifecycleSelectSql, includeLost } from './experienceLifecycle.js';
+import { hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost } from './experienceLifecycle.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
+import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 interface ListExperiencesFilters {
@@ -27,6 +28,10 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
   // gone, and a row the category's own rule turned down was never theirs to
   // miss (ADR-0024).
   conditions.push(hideRefusedSql());
+  // Unconditional, and with no toggle at all: unlike `includeLost`, there is
+  // no "show me the unread ones too" affordance for a list. The only
+  // relaxation `curation_state` gets is on the three by-id reads (ADR-0025).
+  conditions.push(hidePendingSql());
 
   if (query.categoryId) {
     conditions.push(`e.category_id = $${paramIndex++}`);
@@ -127,16 +132,22 @@ export async function listExperiences(req: Request, res: Response): Promise<void
  * Get single experience by ID
  * GET /api/experiences/:id
  *
- * optionalAuth: the experience itself is public data and can never 404 on
- * visibility here, but its region/world-view assignments are filtered by
- * visibility below — admins see every assignment, everyone else only
- * assignments whose world view is both active and public. The predicate
- * matches `getWorldViews` (worldViewCrud.ts) exactly so the two cannot
- * drift apart.
+ * optionalAuth: two different things can 404 the row itself now — a refused
+ * admission (ADR-0024) and an unread `pending` row a caller's scope does not
+ * reach (ADR-0025, relaxed by `maySeeUnreadExperience` below) — before this
+ * row/no-row question is even reached, its region/world-view assignments are
+ * filtered by visibility separately — admins see every assignment, everyone
+ * else only assignments whose world view is both active and public. The
+ * predicate matches `getWorldViews` (worldViewCrud.ts) exactly so the two
+ * cannot drift apart.
  */
 export async function getExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
   const id = parseInt(String(req.params.id));
   const isAdmin = req.user?.role === 'admin';
+  // Resolved before the row is fetched, because it has to be a parameter
+  // inside that query's WHERE — see `maySeeUnreadExperience` for why this is
+  // the one place the pending gate opens (ADR-0025).
+  const maySeeUnread = await maySeeUnreadExperience(req.user?.id, req.user?.role, id);
 
   const result = await pool.query(`
     SELECT
@@ -173,7 +184,11 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
       -- axis, and closing it would be a separate decision about a different
       -- question.
       AND ${hideRefusedSql()}
-  `, [id]);
+      -- Unread stays hidden for everyone except a curator or admin whose scope
+      -- reaches this experience (ADR-0025) -- the one relaxation this predicate
+      -- gets, and the only reason $2 exists on this query.
+      AND ($2::boolean OR ${hidePendingSql()})
+  `, [id, maySeeUnread]);
 
   if (result.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
@@ -297,7 +312,8 @@ export async function listCategories(_req: Request, res: Response): Promise<void
       (SELECT COUNT(*) FROM experiences e
         WHERE e.category_id = s.id
           AND ${hideLostSql()}
-          AND ${hideRefusedSql()}) as experience_count
+          AND ${hideRefusedSql()}
+          AND ${hidePendingSql()}) as experience_count
     FROM experience_categories s
     WHERE s.is_active = true
     ORDER BY s.display_priority, s.name
@@ -337,6 +353,7 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
     WHERE (e.name ILIKE $2 OR e.name % $1)
       AND ${hideLostSql()}
       AND ${hideRefusedSql()}
+      AND ${hidePendingSql()}
     ORDER BY
       CASE WHEN e.name ILIKE $2 THEN 0 ELSE 1 END,
       similarity(e.name, $1) DESC
@@ -392,6 +409,7 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
       AND rej.id IS NULL
       AND ${hideLostSql()}
       AND ${hideRefusedSql()}
+      AND ${hidePendingSql()}
     GROUP BY r.id, r.name, r.color, e.category_id
     ORDER BY r.name
   `, parentRegionId ? [worldViewId, parentRegionId] : [worldViewId]);

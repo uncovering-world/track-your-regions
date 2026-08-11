@@ -65,11 +65,77 @@ a filtered count, which is that one line drawn through a single handler.
 That view counts offered points only because identity is the point together with the source's
 reference: an edit to either — a corrected coordinate, a renumbered component — is a withdrawal
 plus an insert, and the reader would otherwise meet the same place twice.
-`getVisitedLocationIds` is the third unfiltered read and stays that way: every consumer uses it
-as a set-membership test over a list that is already filtered, so it draws no pin and inflates
-no count. The visit
-row is untouched either way; what a withdrawn point means is a curator's verdict, and until
-there is one it is simply not shown.
+`getVisitedLocationIds` is the third unfiltered read and stays that way *for `missing_since`*:
+every consumer uses it as a set-membership test over a list that is already filtered, so it draws
+no pin and inflates no count. The visit row is untouched either way; what a withdrawn point means
+is a curator's verdict, and until there is one it is simply not shown.
+
+**`curation_state` does not get the same exemption, on the read or on the writers beside it, and
+getting that wrong once is the reason this paragraph exists.** Issue #520 argued the opposite —
+that none of `markLocationVisited`, `markAllLocationsVisited`, `markTreasureViewed`'s auto-mark, or
+`getVisitedLocationIds` needed a `curation_state` gate, because "a `pending` location cannot have
+been visited": nobody sees it, so nobody clicks it. That argument treats the write path as a
+closed question the read paths already answered, and it is not — `markAllLocationsVisited` and
+the treasure auto-mark each run their own `SELECT`/`INSERT ... SELECT` deciding *which* locations
+count as "all" or "this venue's", independently of whatever a reader was shown, and
+`markLocationVisited`'s single-mark lookup ran with no lifecycle predicate at all. Before this
+gate, "mark all visited" on a museum with an unread new wing would write a visit to every one of
+its `pending` points and answer `locationsMarked` with a count that disclosed the size of the
+unread set; viewing one treasure would auto-mark every unread location of its venue the same way;
+and a location id guessed or replayed against the single-mark endpoint would both write a
+manufactured visit *and* echo the pending row's own name and its experience's name back in the
+response — the one place a `pending` row's content reached a caller with no scope at all. All four
+now carry `curation_state <> 'pending'`, on the container and on the location, unconditionally —
+no curator relaxation, since these are a caller's own record, not one of the three by-id reads —
+and the read agrees with the (now-fixed) writers rather than assuming, as #520 did, that they could
+never produce what it would otherwise have to filter.
+
+**The same shape, one table over, twice.** The warning above — "the same reasoning would be wrong
+again for a treasure's view, if repeated there" — was not hypothetical. A second review pass found
+three more sites carrying exactly the pattern this section describes, none of them about a
+location:
+
+- `markVisited` (`experienceVisitController.ts`) verified an experience existed with no
+  `curation_state` predicate at all, so a guessed id for a `pending` row got its name echoed back
+  and a `user_visited_experiences` row written for a row no read had ever shown the caller — a
+  thirteenth reader-facing read, reached by manufacturing history instead of by any GET. It now
+  carries `experienceOfferedToReaderSql` — the refusal predicate as well as the gate, which is the
+  experience-level half of what `markLocationVisited` carries and the whole of what
+  `markNewBadgesSeen` does. The first attempt carried the gate alone and a later review found it:
+  the same hole one column over, since a refused row is equally absent from every read and equally
+  permanent in the visit list once written.
+- `getVisitedExperiences` and its count, unfiltered on every axis, now carry `curation_state <>
+  'pending'` and *only* that one. `existence`, `admission` and `missing_since` keep their exemption
+  here on purpose and it is not the same exemption: someone who saw Palmyra before 2015, stood in a
+  since-refused museum, or visited a since-withdrawn point still did those things, and a record of
+  that cannot depend on what the row says today. A `pending` row was never shown to anyone by any
+  read, so a visit to one could only be the manufactured kind `markVisited` no longer writes —
+  filtering it erases nothing genuine.
+- `markTreasureViewed` had two more ungated lookups above the location auto-mark this section
+  already covers: the treasure lookup itself (gated on its own `curation_state`, so a guessed
+  treasure id 404s before its name could be echoed back or a `user_viewed_treasures` row written for
+  it) and the link check that decides whether to auto-mark the venue (gated on the container's
+  `curation_state` and the link's own, so a caller who could see the treasure but not this
+  particular museum, or not this particular link, gets the auto-mark silently skipped rather than a
+  `pending` experience marked visited and its name echoed back).
+
+A fifth writer turned up after that list was written, which is the useful part of this section rather
+than a footnote to it. `markNewBadgesSeen` records that a reader has seen an object's "new" chip and
+answers with the ids it accepted, so unfiltered it confirmed that an unread row exists and wrote a
+sighting of a chip that had never been on screen. It now carries `admission` and the gate, and
+`existence` stays out for the reason above — a chip seen on something since lost was still seen.
+
+So the rule is stated by **shape** and not as a list, in `experienceLifecycle.ts`'s own doctrine
+block: **any statement that records a claim about a row and answers with something about that row
+belongs to it** — a visit, a viewed work, a seen chip. Enumerating the writers is what let the fifth
+exist: each of the four was fixed once, three came back carrying a different subset of the
+predicates, and the sentence naming four was read as a closed set. `offeredToReaderSql` and
+`linkedForReaderSql` are what "showable" means, in one place, so a call site cannot be written
+carrying three of the four.
+
+The same reasoning that was wrong for a location's visit was wrong again for an experience's, a
+treasure's and a chip's, unchanged each time — which is the point of writing it down here rather than
+trusting that reading the first fix would be enough to generalise it.
 
 ### Treasures (artworks/artifacts)
 
@@ -423,14 +489,19 @@ query, and the rule is deliberately asymmetric because the reasons are:
 | `former` | shown | shown | `Former` chip |
 | `lost` | hidden | **shown** | `Lost` chip |
 | `admission = 'refused'` | hidden | **shown** | not reachable |
+| `curation_state = 'pending'` | hidden | **hidden** | not reachable, except `GET /:id`, `/:id/locations` and `/:id/treasures` for a curator/admin whose scope reaches the experience |
 
 `former` is a claim about the source's catalogue, not about the world: the place still stands
 and you can still go, so nothing about who sees it changes. `lost` is a claim about the world,
 and offering somewhere demolished as somewhere to go is the one thing this data can get
 actively wrong — so it leaves every read that offers a *set* to go through: the lists, the map,
 search and the counts. It does **not** leave a visit: someone who saw Palmyra before 2015 saw
-it, and that record cannot depend on the thing still standing. Visit history is the one read
-left unfiltered, which is what lets the counts elsewhere shrink without erasing anything.
+it, and that record cannot depend on the thing still standing. Visit history is the one read that
+keeps all three of those exemptions — `existence`, `admission` and `missing_since` — which is what
+lets the counts elsewhere shrink without erasing anything. It is not exempt from the fourth:
+`getVisitedExperiences` and its count carry `curation_state <> 'pending'`, because an unread row
+was never shown to this reader, so a visit to one cannot be a visit they made. Filtering the other
+three would erase history; filtering this one can only hide something that was never real.
 
 **A by-id read is the documented exception, and it is `lost` only.** `getExperience` and its
 siblings hide a row the category refused but leave a `lost` one reachable, so an object judged
@@ -459,12 +530,56 @@ not whether the source still lists it, not whether it still exists, not whether 
 accepts it. A sync run writes it — `pending` for a row from a gated source, `auto` everywhere
 else. `createManualExperience` writes `verified` instead, on both the experience and its one
 location: there is no source here to gate, and the curator who typed the row in and placed the
-point already read it — `auto` would say "published unread" about something a person wrote. No
-reader-facing query consults the column yet; the predicate that hides a `pending` row and the
-endpoint a curator uses to publish one arrive with the curator-facing half of this feature.
+point already read it — `auto` would say "published unread" about something a person wrote.
 `existence`, `admission`, `missing_since` and `curation_state` answer different questions and
 compose rather than collapse: merging any two into one column is forbidden, because it would make
 it impossible to ask about either again.
+
+Every reader-facing read now honours it. `hidePendingSql()` gates an experience row and
+`publishedContentSql()` gates a content row — a location, a treasure link, a treasure — because
+ADR-0025's split is load-bearing: a published museum may hold newly-written, unread paintings, and
+a predicate that only checked the experience would publish them the moment a run wrote them. Both
+live beside the other three fragments in `experienceLifecycle.ts`, unconditional everywhere a list,
+count, search or map feed applies them — there is no `?includeUnread=true`, unlike `?includeLost`,
+because a reader has no legitimate reason to ask for what nobody has checked. The by-region
+**count**'s two `FILTER` expressions both need it, or a row that is both `lost` and `pending` gets
+counted as something the "show what is gone" toggle would reveal when revealing it would still
+leave it gated — measured live: without the fix, `lostHidden` read 1 for such a row; with it, 0.
+
+**The relaxation is narrower than the gate.** `GET /:id`, `/:id/locations` and `/:id/treasures` —
+and only those three — widen the predicate for a curator or admin whose scope reaches the
+experience, resolved by `maySeeUnreadExperience()` (`experienceScope.ts`). Every other read that
+carries the gate — the flat list, search, the by-region list and its counts, the category counts,
+region-counts, the map feed, and the per-user visited-status denominator — applies it
+unconditionally, to everyone: a curator comparing "what the catalogue offers" against a reader's
+view has to see the same numbers, or the two could never agree on what the catalogue offers.
+`/:id/locations` and `/:id/treasures` widen their *content* predicates on the same boolean as their
+container, not just the container's: a curator who was let through the gate on a queue item that
+is itself a location or a treasure, rather than the whole experience, still needs to see that one
+row once past it. `maySeeUnreadExperience()` costs nothing for a caller who cannot benefit from
+it — an anonymous or non-curator request returns `false` before touching the database; only an
+authenticated curator's request resolves scope, via `resolveExperienceScope()`, the same function
+`editExperience` and the lifecycle decisions already use for "does this caller's authority reach
+this experience".
+
+That split has a visible consequence, not a bug: `experienceRegionQuery.ts`'s `location_count` —
+the number a region card shows beside each experience — carries the gate unconditionally, with no
+relaxation, because it is the same kind of number as the by-region list it sits inside. A curator
+whose scope reaches a gated experience can therefore see a card say "2 locations" and then open
+`/:id/locations` for that same experience and see 3 — the relaxed read and the unconditional count
+are answering different questions ("what may this caller see at this address" versus "what does
+the catalogue offer"), and making them agree would mean removing the relaxation, not extending it
+to the count.
+
+A region-scoped curator (not a global or category one) can meet a narrower gap than that, for a
+reason worth naming so nobody debugs it twice: `resolveExperienceScope()` — and so
+`maySeeUnreadExperience()` — decides a region-scoped curator's reach via `MIN(er.region_id)` over
+`experience_regions`, so a `pending` experience with no `experience_regions` row *yet* answers
+"no scope reaches this" to every region-scoped curator, admins and global/category curators
+excepted. Placement runs at the end of a sync (issue #480's fix), so the window between a row
+landing `pending` and its placement finishing is the same window every other region-scoped read
+already treats as "not yet in any region" — including the curation queue's own scope filter,
+which this matches rather than diverges from.
 
 The `admission` row in the table above reads "Visit history: shown" beside "Card: not reachable", and those two
 cells are not a contradiction — reading them as one is what let another by-id read stay open for a
@@ -562,15 +677,15 @@ the control that would not compete with its category filters.
 
 | Method | Endpoint | Notes |
 |--------|----------|-------|
-| GET | `/api/experiences` | Filters: `categoryId`, `category`, `country`, `regionId`, `search`, `bbox`, `includeLost`, `limit`, `offset` |
-| GET | `/api/experiences/:id` | Full detail. 404s for a refused row — the class rule, not this row's exception: every read that describes an experience refuses one the category kept out, and every by-id read whose answer *is* the row answers 404 (see § Lifecycle filtering, which also says what shape the refusal takes where the answer is not the row) |
-| GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `includeLost`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility. Rows come back `ORDER BY e.name`, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id) FILTER (…)` over the same predicate the list uses — which includes the lifecycle rule, so it follows `includeLost` — and not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience. `lostHidden` reports how many the region holds that no longer exist and are **not** being shown — zero once `includeLost` is on, since nothing is hidden then |
-| GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren` and `includeLost`, the latter because this batch has to follow the list: a row the list shows but this omits arrives with no markers and a confident `0/N in region`. Eliminates N+1 per-experience location fetches |
-| GET | `/api/experiences/search` | `q`, `limit` |
-| GET | `/api/experiences/categories` | Active categories ordered by priority. `experience_count` excludes `lost` and `admission = 'refused'` rows, unconditionally — it labels the category, not a page, and no caller passes `includeLost` here |
-| GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId` |
-| GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region`. 404s for a refused row, like `/:id` |
-| GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts). Carries `hideRefusedSql()` on the container, so a refused museum's works come back empty: the contents follow the container, and answering with them would put back on screen exactly what hiding the museum took off it |
+| GET | `/api/experiences` | Filters: `categoryId`, `category`, `country`, `regionId`, `search`, `bbox`, `includeLost`, `limit`, `offset`. Also excludes `pending` rows unconditionally — no `includeUnread` toggle exists |
+| GET | `/api/experiences/:id` | Full detail. 404s for a refused row — the class rule, not this row's exception: every read that describes an experience refuses one the category kept out, and every by-id read whose answer *is* the row answers 404 (see § Lifecycle filtering, which also says what shape the refusal takes where the answer is not the row). Also 404s a `pending` row, except for a curator/admin whose scope reaches the experience (`maySeeUnreadExperience()`) |
+| GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `includeLost`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility. Rows come back `ORDER BY e.name`, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id) FILTER (…)` over the same predicate the list uses — which includes the lifecycle rule, so it follows `includeLost` — and not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience. `lostHidden` reports how many the region holds that no longer exist and are **not** being shown — zero once `includeLost` is on, since nothing is hidden then, and it excludes `pending` rows too, or a row gated for both reasons would be counted as something the toggle would reveal. `pending` rows are excluded from both the list and the count unconditionally, for every caller including a curator: this is a *set*, not one of the three by-id reads the pending gate relaxes |
+| GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren` and `includeLost`, the latter because this batch has to follow the list: a row the list shows but this omits arrives with no markers and a confident `0/N in region`. Eliminates N+1 per-experience location fetches. Excludes a `pending` container or a `pending` location, unconditionally |
+| GET | `/api/experiences/search` | `q`, `limit`. Also excludes `pending` rows unconditionally |
+| GET | `/api/experiences/categories` | Active categories ordered by priority. `experience_count` excludes `lost`, `admission = 'refused'` and `curation_state = 'pending'` rows, unconditionally — it labels the category, not a page, and no caller passes `includeLost` here |
+| GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId`. Also excludes `pending` rows unconditionally |
+| GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region`. 404s for a refused row, like `/:id`. Also 404s a `pending` container, and excludes a `pending` location from the list — both relaxed together for a curator/admin whose scope reaches the experience, so a queue item that is itself one pending location inside an otherwise-published experience is still visible once past the gate |
+| GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts). Carries `hideRefusedSql()` on the container, so a refused museum's works come back empty: the contents follow the container, and answering with them would put back on screen exactly what hiding the museum took off it. Three more predicates gate `curation_state` — on the experience, the `experience_treasures` link and the treasure itself — because any of the three can be `pending` independently; all three relax together for a curator/admin whose scope reaches the experience |
 
 ### User visits (`requireAuth`)
 

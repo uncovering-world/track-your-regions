@@ -6,7 +6,7 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
-import { lifecycleSelectSql } from './experienceLifecycle.js';
+import { experienceOfferedToReaderSql, hidePendingSql, lifecycleSelectSql } from './experienceLifecycle.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -44,11 +44,22 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
     JOIN experiences e ON uve.experience_id = e.id
     JOIN experience_categories s ON e.category_id = s.id
     WHERE uve.user_id = $1
+      AND ${hidePendingSql()}
   `;
-  // Deliberately unfiltered. Someone who saw Palmyra before 2015 saw it, and
-  // a record of that cannot depend on the thing still standing — this is the
-  // one read where `lost` must survive, and it is why the counts elsewhere can
-  // safely shrink.
+  // `existence`, `admission` and `missing_since` are deliberately absent, all
+  // three, and for one reason repeated three times: someone who saw Palmyra
+  // before 2015 saw it, a museum this catalogue later refused was still the
+  // museum they stood in, and a point the source has since withdrawn is still
+  // the point they visited — a record of any of that cannot depend on what the
+  // row says today. This is the one read where all three must survive, which
+  // is why the counts elsewhere can safely shrink without erasing anything.
+  //
+  // `curation_state` is not that kind of question, and gets no such exemption.
+  // A `pending` row was never shown to this reader by any read, so a visit to
+  // one could only be `markVisited` writing what nobody clicked — which it no
+  // longer can (see that handler) — or a manufactured id from before this fix.
+  // Filtering it here does not erase a real visit the way filtering the other
+  // three would; it can only hide a visit that was never genuine.
 
   const params: (number | string)[] = [userId];
   let paramIndex = 2;
@@ -63,8 +74,11 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
 
   const result = await pool.query(query, params);
 
-  // Get total count
-  let countQuery = 'SELECT COUNT(*) FROM user_visited_experiences uve JOIN experiences e ON uve.experience_id = e.id WHERE uve.user_id = $1';
+  // Get total count. Same gate as the list above, for the same reason every
+  // count on this branch carries whatever its list carries: a total that
+  // counted a manufactured visit the list above already hides would disagree
+  // with what a caller can even see rows for.
+  let countQuery = `SELECT COUNT(*) FROM user_visited_experiences uve JOIN experiences e ON uve.experience_id = e.id WHERE uve.user_id = $1 AND ${hidePendingSql()}`;
   const countParams: number[] = [userId];
   if (categoryId) {
     countQuery += ' AND e.category_id = $2';
@@ -101,8 +115,26 @@ export async function markVisited(req: AuthenticatedRequest, res: Response): Pro
     return;
   }
 
-  // Verify experience exists
-  const expResult = await pool.query('SELECT id, name FROM experiences WHERE id = $1', [experienceId]);
+  // Verify the experience exists *and* is one this reader could have been
+  // shown — `experienceOfferedToReaderSql`, the same predicate the other
+  // experience-level claim-writer (`markNewBadgesSeen`) carries and the
+  // experience-level half of what `markLocationVisited` carries. Both halves
+  // matter and for the same reason (#520): a row that is unread, or that this
+  // catalogue turned down, is on no list this caller could have seen, so a POST
+  // naming its id is a guess rather than an action on something they were
+  // shown. Without the pair this handler echoes the row's name back below and
+  // leaves `getVisitedExperiences` handing back the rest of it — name,
+  // description, category, coordinates — for ever, because that read exempts
+  // `admission` deliberately (ADR-0022: a visit outlives the catalogue's
+  // verdict) and nothing here ever clears the row the POST just wrote.
+  //
+  // Gating the write does not touch that exemption: a visit already recorded
+  // stays visible after a refusal, and the note on it is edited through
+  // `updateVisit`, which only ever updates a row this reader already has.
+  const expResult = await pool.query(
+    `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${experienceOfferedToReaderSql()}`,
+    [experienceId],
+  );
   if (expResult.rows.length === 0) {
     res.status(404).json({ error: 'Experience not found' });
     return;

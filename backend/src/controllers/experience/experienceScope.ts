@@ -56,3 +56,39 @@ export async function resolveExperienceScope(
   return { permitted: row.scoped_region_id !== null, logRegionId: row.scoped_region_id };
 }
 
+/**
+ * May this caller see a `pending` row through one of the three by-id reads
+ * (`GET /:id`, `/:id/locations`, `/:id/treasures` — ADR-0025)? Admins always
+ * may. A curator may when `resolveExperienceScope` says their scope reaches
+ * this experience — the same question that function already answers for a
+ * curator's *write* actions, asked here for a read instead, so a curator
+ * following a queue item through to an object's page sees exactly the object
+ * their queue named. Everyone else may not, and the check costs them nothing:
+ * an anonymous or non-curator caller returns before touching the database.
+ *
+ * The relaxation stops here on purpose. It widens `GET /:id`, `/:id/locations`
+ * and `/:id/treasures` only — never a list, a count, the map feed or search —
+ * because those describe a *set*, and a curator's set has to match a reader's
+ * or the two could never agree on what the catalogue offers.
+ *
+ * Takes `experienceId` alone rather than a pre-fetched `categoryId`, unlike
+ * `resolveExperienceScope`: none of the three by-id reads has a category to
+ * hand before its row is fetched — the row is exactly what the pending gate
+ * is deciding whether to return — so the lookup lives here once instead of
+ * being repeated at each of the three call sites.
+ */
+export async function maySeeUnreadExperience(
+  userId: number | undefined,
+  userRole: UserRole | undefined,
+  experienceId: number,
+): Promise<boolean> {
+  if (userRole === 'admin') return true;
+  if (!userId || userRole !== 'curator') return false;
+
+  const categoryResult = await pool.query('SELECT category_id FROM experiences WHERE id = $1', [experienceId]);
+  if (categoryResult.rows.length === 0) return false;
+
+  const { permitted } = await resolveExperienceScope(userId, userRole, experienceId, categoryResult.rows[0].category_id);
+  return permitted;
+}
+

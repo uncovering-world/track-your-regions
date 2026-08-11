@@ -34,6 +34,7 @@ import {
   fetchExperienceLocations,
   fetchRegionExperienceLocations,
   fetchExperienceRegionCounts,
+  fetchExperienceTreasures,
 } from './experiences';
 
 /**
@@ -168,5 +169,49 @@ describe('the locations batch follows what the list is showing', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(String(fetchSpy.mock.calls[0][0])).not.toContain('includeLost');
+  });
+});
+
+/**
+ * `/:id/treasures` widens three `curation_state` predicates
+ * (`$2::boolean OR …`) for a curator or admin whose scope reaches the
+ * experience — a different reason from the world-view-visibility group
+ * above, so its own block rather than one more case in that one.
+ *
+ * Sent through the unauthenticated `fetchJson`, that boolean is always
+ * `false`: a curator opening a museum from its own "unread contents" card
+ * saw exactly the published works an anonymous reader sees, with nothing on
+ * screen to say the relaxation existed at all.
+ */
+describe('the curator relaxation on gated treasures', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ experienceId: 552, treasures: [], total: 0 }),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setAccessToken(null);
+  });
+
+  it('sends the token, so the backend\'s curator relaxation can fire', async () => {
+    const token = makeToken();
+    setAccessToken(token);
+
+    await fetchExperienceTreasures(552);
+
+    expect(authHeaderOf(fetchSpy.mock.calls[0])).toBe(`Bearer ${token}`);
+  });
+
+  it('leaves an anonymous reader\'s request unchanged: no token, no header', async () => {
+    // authFetchJson sends no Authorization header when there is no token —
+    // this is the regression to guard against, not just the fix above.
+    await fetchExperienceTreasures(552);
+
+    expect(authHeaderOf(fetchSpy.mock.calls[0])).toBe('(no Authorization header)');
   });
 });

@@ -110,6 +110,84 @@ describe('getExperience visibility', () => {
 });
 
 /**
+ * `getExperience` is one of the three by-id reads ADR-0025 relaxes the
+ * pending gate for. `maySeeUnreadExperience` (`experienceScope.ts`) is what
+ * resolves the boolean; these tests pin how `getExperience` wires it in, not
+ * `maySeeUnreadExperience`'s own scope logic.
+ */
+describe('getExperience curation relaxation', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+  });
+
+  it('binds the gate closed for an anonymous caller, without asking the database about scope', async () => {
+    queueQueries([PUBLIC_WV_REGION]);
+
+    await getExperience({ params: { id: '281' } } as never, makeRes() as never);
+
+    // Exactly the two queries `getExperience` itself makes — no third call for
+    // a scope check nobody needs.
+    expect(mockedQuery).toHaveBeenCalledTimes(2);
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/\$2::boolean OR e\.curation_state <> 'pending'/);
+    expect(params).toEqual([281, false]);
+  });
+
+  it('opens the gate for an admin, without asking the database about scope', async () => {
+    queueQueries([PUBLIC_WV_REGION]);
+
+    await getExperience(
+      { params: { id: '281' }, user: { id: 1, role: 'admin' } } as never,
+      makeRes() as never,
+    );
+
+    // Admin short-circuits inside `maySeeUnreadExperience` (and inside
+    // `resolveExperienceScope`, which it never reaches): no scope query.
+    expect(mockedQuery).toHaveBeenCalledTimes(2);
+    const [, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual([281, true]);
+  });
+
+  /**
+   * Queues what a curator call to `getExperience` needs, in the order
+   * `maySeeUnreadExperience` asks for them: the category lookup, then
+   * `resolveExperienceScope`'s own scope query — both ahead of the two
+   * `getExperience` makes itself.
+   */
+  function queueCuratorPath(scopeRow: { unrestricted: boolean; scoped_region_id: number | null }, regionRows: unknown[]) {
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValueOnce({ rows: [{ category_id: 1 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [scopeRow] });
+    mockedQuery.mockResolvedValueOnce({ rows: [EXPERIENCE_ROW] });
+    mockedQuery.mockResolvedValueOnce({ rows: regionRows });
+  }
+
+  it('opens the gate for a curator whose scope reaches the experience', async () => {
+    queueCuratorPath({ unrestricted: true, scoped_region_id: null }, [PUBLIC_WV_REGION]);
+
+    await getExperience(
+      { params: { id: '281' }, user: { id: 9, role: 'curator' } } as never,
+      makeRes() as never,
+    );
+
+    const [, params] = mockedQuery.mock.calls[2] as [string, unknown[]];
+    expect(params).toEqual([281, true]);
+  });
+
+  it('keeps the gate closed for a curator whose scope does not reach the experience', async () => {
+    queueCuratorPath({ unrestricted: false, scoped_region_id: null }, []);
+
+    await getExperience(
+      { params: { id: '281' }, user: { id: 9, role: 'curator' } } as never,
+      makeRes() as never,
+    );
+
+    const [, params] = mockedQuery.mock.calls[2] as [string, unknown[]];
+    expect(params).toEqual([281, false]);
+  });
+});
+
+/**
  * The lifecycle rule is asymmetric, and the asymmetry is the whole design: a
  * delisted place is still somewhere you can go, a demolished one is not. Every
  * read that offers a *set* to go through — a list, the map, a search, a count —
@@ -217,6 +295,25 @@ describe('lifecycle visibility across the read paths', () => {
     });
   }
 
+  for (const { name, run } of paths) {
+    it(`hides an unread row from ${name}`, async () => {
+      await run();
+
+      // Anchored on `calls[0]` rather than every call joined together: a
+      // path like `getExperiencesByRegion` sends a separate list and count,
+      // built from two independently-constructed strings, and joining them
+      // would let a predicate missing from the list hide behind one the
+      // count still carries — the exact half-right case the by-region count
+      // test right below this loop pins on its own.
+      //
+      // The fragment is present even on `getExperience`'s path, where nobody
+      // in this loop is authenticated: the predicate is what a curator's
+      // scope widens (Step 5), not something absent until then.
+      const list = String(mockedQuery.mock.calls[0][0]);
+      expect(list).toMatch(/e\.curation_state <> 'pending'/);
+    });
+  }
+
   it('keeps a refused row hidden from a caller who asked to see what is gone', async () => {
     // The discriminating case for two predicates rather than one: `includeLost`
     // drops the existence filter and must leave admission alone (ADR-0024).
@@ -234,6 +331,25 @@ describe('lifecycle visibility across the read paths', () => {
     const [list, count] = mockedQuery.mock.calls.map(c => String(c[0]));
     expect(list).toContain("existence <> 'lost'");
     expect(count).toContain("existence <> 'lost'");
+  });
+
+  it('gates the same rows it lists, or the tree would disagree with itself', async () => {
+    // `lifecycleFilter` (the list) and `lifecyclePredicate` (the count) are
+    // built as two separate strings in `buildRegionQueries` — removing the
+    // pending gate from one and not the other leaves this exact test the
+    // only thing standing between that and a green suite, since a check
+    // that joined every call together could not tell the two apart.
+    await getExperiencesByRegion(
+      { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
+
+    const [list, count] = mockedQuery.mock.calls.map(c => String(c[0]));
+    // Anchored on the `e.` alias, not a bare substring match: the list's
+    // `location_count` subquery carries its own `el.curation_state`
+    // predicate (`publishedContentSql('el')`), and an unanchored check would
+    // pass on that alone even with the container-level gate missing — which
+    // is exactly what happened here until this was anchored.
+    expect(list).toMatch(/e\.curation_state <> 'pending'/);
+    expect(count).toMatch(/e\.curation_state <> 'pending'/);
   });
 
   it('keeps search brackets round the name alternatives', async () => {
@@ -261,11 +377,15 @@ describe('lifecycle visibility across the read paths', () => {
     // Answered by the count that was already running: a permanent "show lost"
     // control for a state almost no region has is worse than none
     const count = String(mockedQuery.mock.calls[1][0]);
-    expect(count).toContain("FILTER (WHERE e.existence = 'lost' AND e.admission <> 'refused')");
+    expect(count).toContain(
+      "FILTER (WHERE e.existence = 'lost' AND e.admission <> 'refused' AND e.curation_state <> 'pending')");
     expect(count).toContain('lost_hidden');
     // A refused row is not something the reader is being offered a look at:
-    // revealing the lost would not bring it back (ADR-0024).
-    expect(count).toContain("FILTER (WHERE e.admission <> 'refused' AND e.existence <> 'lost')");
+    // revealing the lost would not bring it back (ADR-0024). Same for a
+    // pending one: `curation_state` has no toggle here, unlike `existence`
+    // (ADR-0025), so it rides along in both FILTER expressions unconditionally.
+    expect(count).toContain(
+      "FILTER (WHERE e.admission <> 'refused' AND e.existence <> 'lost' AND e.curation_state <> 'pending')");
   });
 
   it('counts everything as shown once the caller asked for them', async () => {
@@ -274,10 +394,11 @@ describe('lifecycle visibility across the read paths', () => {
       makeRes() as never);
 
     // The total has to follow the list, or the page would say 40 and show 41.
-    // `includeLost` drops the lost predicate and only that one: admission has no
-    // toggle, so it survives into a count the caller asked to widen.
+    // `includeLost` drops the lost predicate and only that one: admission and
+    // curation_state have no toggle, so both survive into a count the caller
+    // asked to widen.
     expect(String(mockedQuery.mock.calls[1][0])).toContain(
-      "FILTER (WHERE e.admission <> 'refused')");
+      "FILTER (WHERE e.admission <> 'refused' AND e.curation_state <> 'pending')");
   });
 
   it('reports nothing hidden once it is showing them', async () => {

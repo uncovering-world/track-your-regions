@@ -130,16 +130,19 @@ router.delete('/:id/assign/:regionId', validate(idAndRegionIdParamSchema, 'param
 // Remove an experience from a region entirely (any assignment type, keeps rejection as guard)
 router.delete('/:id/remove-from-region/:regionId', validate(idAndRegionIdParamSchema, 'params'), requireAuth, requireCurator, removeExperienceFromRegion);
 
-// Get single experience (optionalAuth: the experience is public, but its
-// regions[] are filtered by world-view visibility in the controller — admins
-// see every assignment, everyone else only visible ones)
+// Get single experience (optionalAuth: 404s on a refused row (ADR-0024) and
+// on an unread `pending` row outside a curator/admin's scope (ADR-0025); its
+// regions[] are filtered by world-view visibility separately in the
+// controller — admins see every assignment, everyone else only visible ones)
 router.get('/:id', publicReadLimiter, validate(idParamSchema, 'params'), optionalAuth, getExperience);
 
 // Get locations for an experience (multi-location support; optionalAuth
 // for the same regionId visibility guard as the list endpoint above)
 router.get('/:id/locations', publicReadLimiter, validate(idParamSchema, 'params'), validate(experienceLocationsQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('regionIdQuery'), getExperienceLocations);
 
-// Get treasures (artworks, artifacts) for an experience
-router.get('/:id/treasures', publicReadLimiter, validate(idParamSchema, 'params'), getExperienceTreasures);
+// Get treasures (artworks, artifacts) for an experience (optionalAuth: a
+// curator or admin reaching a gated museum from the queue sees its unread
+// treasures too — see getExperienceTreasures/maySeeUnreadExperience, ADR-0025)
+router.get('/:id/treasures', publicReadLimiter, validate(idParamSchema, 'params'), optionalAuth, getExperienceTreasures);
 
 export default router;

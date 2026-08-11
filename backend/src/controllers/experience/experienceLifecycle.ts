@@ -1,7 +1,20 @@
 /**
  * What an experience's lifecycle means to the people looking at it.
  *
- * The two axes are set by curators (ADR-0020, narrowed by ADR-0021) and read
+ * Four columns can take a row off a reader's screen, and each answers a
+ * question none of the others do (ADR-0025's Negative consequences say so
+ * explicitly: merging any two into one predicate is forbidden, because
+ * collapsing two questions into one column would make it impossible to ask
+ * about either separately again):
+ *
+ * | column | question | who answers it |
+ * |---|---|---|
+ * | `existence` | does it still stand? | the world |
+ * | `admission` | does this catalogue accept it? | a category's rule (ADR-0024) |
+ * | `experience_locations.missing_since` | does its source still offer this point? | the source |
+ * | `curation_state` | has anyone looked at it? | a curator (ADR-0025) |
+ *
+ * The first two are set by curators (ADR-0020, narrowed by ADR-0021) and read
  * here. They are not symmetric, because the reasons behind them are not:
  *
  * - `former` — the source stopped listing it, but it is still standing. You can
@@ -18,6 +31,10 @@
  *
  * One of an experience's *locations* is filtered on `missing_since` even so —
  * `offeredLocationSql` below says why the two are not the same question.
+ *
+ * `curation_state` is the fourth, and `hidePendingSql`/`publishedContentSql`
+ * below say why a gated source's unread rows get their own predicate rather
+ * than reusing one of the first three.
  */
 
 /**
@@ -76,11 +93,28 @@ export function hideRefusedSql(alias = 'e'): string {
  * The line is not "visits are exempt", which would be the obvious reading and
  * is wrong. It runs between two kinds of statement:
  *
- * - **what a reader asked for, exactly as they asked** — recording a visit,
- *   and removing one — is unfiltered. The first because they are acting on
- *   what they were just shown; the second because a record on an invisible
- *   point could otherwise never be cleared. The lookup that resolves which
- *   experience a visit belonged to goes with them.
+ * - **removing** what a reader asked to remove is unfiltered, because a record
+ *   on a point they can no longer see could otherwise never be cleared. The
+ *   lookup that resolves which experience a visit belonged to goes with it.
+ * - **recording** a visit was unfiltered too, on the reasoning that a reader is
+ *   acting on what they were just shown. ADR-0025 ended that: an id can be
+ *   guessed, and under a gate the thing being hidden is the row's *existence*,
+ *   so "they were shown it" stopped being an assumption the server may make and
+ *   became one it has to check. A write that verifies nothing hands back a name
+ *   and manufactures a record for a row nobody was offered — measured on this
+ *   branch, `mark-all` then made a badge read *visited* while hiding a point the
+ *   reader could see and had not been to. So the rule is now: **adding a claim
+ *   requires the row to have been showable; removing one never does.**
+ *   `offeredToReaderSql` and `linkedForReaderSql` are what "showable" means, in
+ *   one place, because the writers that create these rows were each fixed once
+ *   and each came back carrying a different subset of the predicates.
+ *
+ *   The class, not a list: **any statement that records a claim about a row and
+ *   answers with something about that row** belongs here — a visit, a viewed
+ *   work, a seen chip. An earlier version of this paragraph named four such
+ *   writers and a reviewer immediately found the fifth (`markNewBadgesSeen`,
+ *   which returns the ids it accepted and so confirms a row exists). Counting
+ *   them invites exactly that, which is why the rule is stated by shape.
  * - **what the system decides on their behalf** carries the filter: every read
  *   that puts a point on screen, the per-user visited status included, and
  *   equally the count that infers from what remains whether the
@@ -126,4 +160,102 @@ export function lifecycleSelectSql(alias = 'e'): string {
  */
 export function includeLost(query: Record<string, unknown>): boolean {
   return query.includeLost === 'true' || query.includeLost === true;
+}
+
+/**
+ * The fourth question a read has to ask: has anyone looked at this row?
+ *
+ * `pending` means a gated source wrote it and no curator has passed it
+ * (ADR-0025). It is not "wrong", "gone" or "turned down" — the other three
+ * helpers above answer those — so it gets its own predicate and its own
+ * relaxation: a curator following a queue item through to an object's page is
+ * served the row, while every list, count and feed refuses it (the three
+ * by-id reads under `/api/experiences/:id` do the widening; nothing else
+ * does — `maySeeUnreadExperience` in `experienceScope.ts` is where that
+ * boolean comes from).
+ *
+ * A fragment for the same reason `hideLostSql` is one: it goes into queries
+ * that build a WHERE by concatenation, some bare and some already inside a
+ * conditions array, so it is returned bare too.
+ */
+export function hidePendingSql(alias = 'e'): string {
+  return `${alias}.curation_state <> 'pending'`;
+}
+
+/**
+ * The same question, asked of a content row — a location, a treasure link, a
+ * treasure — rather than the experience that holds it.
+ *
+ * A separate fragment from `hidePendingSql` rather than a shared one taking
+ * any alias, because a call site should read as what it gates: a content
+ * row's state is its own, and ADR-0025's split is load-bearing precisely
+ * because of this — a published museum may hold newly-written, unread
+ * paintings, and gating only the museum's row would publish them the moment
+ * a run wrote them, through the one table the gate never reached.
+ */
+export function publishedContentSql(alias: string): string {
+  return `${alias}.curation_state <> 'pending'`;
+}
+
+/**
+ * Everything that must be true of an *experience* before a reader may claim
+ * anything about it: the catalogue accepts it, and a curator has passed it.
+ *
+ * The experience-level half of the two composites below, and the whole
+ * predicate for the two writers whose claim is about an experience rather than
+ * a point or a work — `markVisited` and `markNewBadgesSeen`. It exists because
+ * the pair kept being spelled by hand: the composites carried it correctly, the
+ * two experience-level writers spelled it themselves, and a review found one of
+ * them carrying `hidePendingSql` alone — a guessed id for a refused row
+ * answering 200, echoing the row's name, and writing a visit that
+ * `getVisitedExperiences` then serves in full for ever, since that read exempts
+ * `admission` on purpose (ADR-0022) and nothing else clears the row.
+ *
+ * That is the sixth time on this branch a predicate in this family was written
+ * as a subset of itself. A conjunction spelled in one place cannot be spelled
+ * partly.
+ */
+export function experienceOfferedToReaderSql(alias = 'e'): string {
+  return `${hideRefusedSql(alias)} AND ${hidePendingSql(alias)}`;
+}
+
+/**
+ * Everything that must be true of a location before a reader may claim a visit
+ * to it: the catalogue accepts its experience, a curator has passed that
+ * experience, the source still offers the point, and a curator has passed the
+ * point.
+ *
+ * Composed rather than left to each call site, and the reason is a measurement
+ * rather than taste: the four writers that create these rows were each fixed
+ * once during ADR-0025's review, and three of them came back carrying three of
+ * the four predicates — a different one missing each time. Four separate calls
+ * invite three. One call cannot be partly written.
+ *
+ * `existence` is deliberately absent, matching the by-id reads: a place that no
+ * longer stands is still somewhere a traveller went, and the record of having
+ * been there is the one thing that outlives it.
+ */
+export function offeredToReaderSql(experienceAlias = 'e', locationAlias = 'el'): string {
+  return [
+    experienceOfferedToReaderSql(experienceAlias),
+    offeredLocationSql(locationAlias),
+    publishedContentSql(locationAlias),
+  ].join(' AND ');
+}
+
+/**
+ * The same question for a work: may a reader claim to have looked at this one,
+ * in this experience? `experience_treasures` is the row that says the work is on
+ * show here, so it carries its own state beside the container's — a published
+ * museum can hold a link nobody has passed.
+ *
+ * `treasures.curation_state` is not here: it belongs to the work globally rather
+ * than to its being shown in this venue, so a call site that needs it says so
+ * with `publishedContentSql('t')` beside this — which the treasure lookup does.
+ */
+export function linkedForReaderSql(experienceAlias = 'e', linkAlias = 'et'): string {
+  return [
+    experienceOfferedToReaderSql(experienceAlias),
+    publishedContentSql(linkAlias),
+  ].join(' AND ');
 }

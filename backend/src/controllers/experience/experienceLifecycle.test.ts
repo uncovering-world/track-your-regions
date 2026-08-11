@@ -13,6 +13,8 @@ import {
   lifecycleSelectSql,
   includeLost,
   offeredLocationSql,
+  hidePendingSql,
+  publishedContentSql,
 } from './experienceLifecycle.js';
 
 describe('offeredLocationSql', () => {
@@ -94,6 +96,29 @@ describe('lifecycleSelectSql', () => {
     // included. Inferring it from the verdict would be an assumption where the
     // truth is one column away.
     expect(lifecycleSelectSql()).toContain('missing_since');
+  });
+});
+
+describe('hidePendingSql', () => {
+  it('hides an unread row, and says nothing about the other three questions', () => {
+    expect(hidePendingSql()).toBe("e.curation_state <> 'pending'");
+    expect(hidePendingSql('x')).toBe("x.curation_state <> 'pending'");
+    // The gate must not mention existence, admission or missing_since: a
+    // predicate that answered two questions could not be relaxed for one of
+    // them alone (ADR-0025's Negative consequences).
+    expect(hidePendingSql()).not.toMatch(/existence|admission|missing_since/);
+  });
+
+  it('qualifies the column, so it can join a query with more than one table', () => {
+    expect(hidePendingSql('ex')).toContain("ex.curation_state <> 'pending'");
+  });
+});
+
+describe('publishedContentSql', () => {
+  it('gates a content row on its own state, not on its container', () => {
+    expect(publishedContentSql('el')).toBe("el.curation_state <> 'pending'");
+    expect(publishedContentSql('et')).toBe("et.curation_state <> 'pending'");
+    expect(publishedContentSql('t')).toBe("t.curation_state <> 'pending'");
   });
 });
 

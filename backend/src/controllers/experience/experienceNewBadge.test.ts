@@ -136,7 +136,24 @@ describe('markNewBadgesSeen', () => {
     // Inserting the ids directly would let the foreign key reject the whole
     // statement for one stale id, and a client a moment out of date is normal
     const sql = String(mockedQuery.mock.calls[0][0]);
-    expect(sql).toContain('SELECT $1, id FROM experiences WHERE id = ANY');
+    expect(sql).toContain('SELECT $1, id FROM experiences');
+    expect(sql).toContain('id = ANY($2::int[])');
+  });
+
+  it('records a sighting only for a row this reader could have been shown', async () => {
+    await markNewBadgesSeen(
+      { user: { id: 9 }, body: { experienceIds: [4] } } as never, makeRes() as never);
+
+    // This writes a claim ("they saw its chip") and answers with the ids it
+    // accepted, so without these it confirms an unread row exists and records a
+    // sighting of a chip that was never on screen. A chip cannot legitimately be
+    // seen on an unread row: the only read that renders one carries the gate.
+    // `existence` stays out, matching the by-id reads — a chip seen on something
+    // since lost was still seen.
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    expect(sql).toContain("experiences.admission <> 'refused'");
+    expect(sql).toContain("experiences.curation_state <> 'pending'");
+    expect(sql).not.toContain('existence');
   });
 
   it('reports what it actually recorded, not what it was asked to', async () => {
