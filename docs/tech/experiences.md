@@ -46,6 +46,88 @@ no later run can rebuild. A source that offers the point again finds the same ro
 `(point, external_ref)` identity, clears `missing_since`, restores its ordinal, and sends it
 for placement; the visit and any manual assignment were never touched.
 
+**A point that moved is a withdrawal plus an insert, and under a gated source the two halves
+become visible at different moments** — so the withdrawal waits for the insert
+([ADR-0025](../decisions/0025-per-source-curation-gate.md) decision 5). The insert lands
+`pending`, invisible; applying the withdrawal in the same run would take the old pin off the map
+while its replacement could not be seen. Measured 2026-08-11, 1119 of the catalogue's 1604
+experiences hold exactly one point — 788 of 1272 UNESCO World Heritage Sites, all 128 Top Art
+Museums, 203 of 204 Public Art & Monuments — so for most of them that is an object still in every
+list with nothing on the map.
+
+So `locationWriter` writes the pairing instead: `experience_locations.withdrawal_deferred_for_location_id`
+sits on the **arrival** and names the point it replaces, so publishing the arrival reads the
+pairing off the row it is publishing rather than searching for a partner. The held point keeps
+`missing_since` NULL — every reader still sees it — and loses its `ordinal`, which is not
+cosmetic: ordinals are unique per experience and every later run parks the positives at their
+negatives before renumbering, so a held row that kept its number collides with its replacement's
+the moment anything else about the object changes, and the whole write for that experience dies
+on the unique key. NULL is also what that column already means for a row the source no longer
+lists.
+
+**Only a point a reader can actually see is a candidate to be held.** An unread point costs a
+reader nothing when it goes, so it is withdrawn at once — and letting one compete to *be* the held
+point builds a chain that no path can take apart. Traced end to end: a gated site shows `P(r1)`; a
+run renumbers and moves it, so `A1(r2)` holds `P`; before anyone publishes, the next run moves it
+again, `A2(r2)` matches `A1` by reference, and `P` is left over with no arrival — surviving only
+because `A1` still names it. Publishing `A2` withdraws `A1` but `A1` keeps naming `P`, and `A1` can
+then never be published (`missing_since IS NULL`), never be revisited by the statements that touch
+offered rows only, and never be deleted (nothing in the backend deletes a location, so the foreign
+key's `ON DELETE SET NULL` never fires). `P` stays visible beside `A2` for ever: two pins on a
+one-point site, one at a coordinate the source retired two runs ago, recoverable only by
+hand-written SQL. The release carries a second guard for the same failure — it clears the released
+row's own pairing — so a chain arriving by some other route is repaired within one source interval
+rather than never; prevention and floor, both deliberate.
+
+The pairing has to be *created* here, because nothing else in the run knows it: the writer
+returns aggregates, and the withdrawal `UPDATE` does not report the ids it marked. The key is
+the reference — `external_ref` is populated on 6679 of 6680 stored locations, and for museums and
+landmarks it is the experience's own Wikidata id, so it cannot change while the experience does
+not. Withdrawals and arrivals are numbered within a reference and paired by position, then
+whatever the references could not pair is paired by position alone. All three imperfections in
+the key therefore hold rather than apply, and each is a measured shape rather than a
+hypothetical:
+
+- **nine `(experience_id, external_ref)` pairs are duplicated**, across nine objects — a
+  component crossing a border is listed once per country under one reference. The row numbers are
+  what stop both withdrawn rows pairing to both arrivals, since each arrival can name only one
+  point;
+- **one location carries no reference at all** (8754, "Routes of Santiago de Compostela in
+  France"), and it is that experience's only point — so the match is `IS NOT DISTINCT FROM`
+  rather than `=`;
+- **a renumbered component changes the reference itself**, so no match by reference is possible,
+  and 787 of the 788 single-point UNESCO sites carry a component reference. This is what the
+  by-position pass is for, and a renumber does not even have to move the point to blank the map
+  without it.
+
+What that buys is a count rather than a hope: exactly `min(withdrawals, arrivals)` withdrawals
+are held, so the points a reader can see after a run are
+`min(what they could see before, what the source now offers)` — and therefore **never zero for an
+experience the reader could already see a point of.** The qualifier is load-bearing: an experience
+whose only point is a first arrival has nothing visible either way, because the arrival is gated,
+and no withdrawal-pairing can conjure a pin the curator has not published. What the pairing
+guarantees is that a run never empties a map that had something on it.
+
+Stated that way rather than as "never below the source's list",
+which is not what happens: an arrival is gated, so a run that adds more points than it drops
+leaves the visible count below the new list, deliberately, until a curator answers. The cost is
+holding a point the source really did drop until an unrelated arrival is published — the visible
+mistake rather than the invisible one, which is the trade ADR-0025 decision 5 asks for.
+
+A withdrawal with no arrival left to hold it is applied at once, exactly as before. So is one
+whose arrival the source withdrew in turn, since that arrival can never be published — the
+publish statement carries `missing_since IS NULL` — so the withdrawal statement clears the
+pairing of every row it marks. That case takes one further run to take effect, because the
+arrival still looks offered while the statement withdrawing it decides what to pass over. And a
+pairing whose point the source starts offering again is dropped by a statement of its own: no
+withdrawal is left to hold, and a pairing left standing would hide a point the source offers the
+moment the arrival is published.
+
+None of this changes an ungated run. `requires_curation` is false on all three categories, so
+every point a run inserts lands `auto`; the pairing statement is skipped outright when the insert
+returned no `pending` row, and the two housekeeping statements match nothing. Verified by running
+the same fixture on both sides of the commit: identical return values and identical rows.
+
 `missing_since` here is a machine observation, exactly as it is on an experience. What a reader
 sees does not change, because a withdrawn point used to be deleted and so left every list the
 moment a run stopped seeing it: the predicate `missing_since IS NULL` keeps it out
@@ -1213,11 +1295,21 @@ kinds above, and the only writer that moves a row off `pending`. One transaction
 the pointer, the proposal, `curated_fields`, `curation_state`, `admission`, `metadata` — is
 re-read inside the lock that writes, and every refusal is awaited before the client is released.
 
-**It needs migration 019 to exist.** On any database that predates it the audit insert violates the
-`action` CHECK, so the endpoint answers a bare 500 and the publication rolls back correctly and
-completely — a working refusal, but an opaque one. `db/migrations/README.md` records nothing about
-which files a database has already seen (#435), so this is a hand-application to remember, not
-something the code can detect.
+It is two modules. `publishController.ts` is the transaction shell — the lock, the staleness check,
+the contents, the released withdrawal, the placement, the audit line. `publishHeldFields.ts` is the
+other half: given the `changed_fields` a gated run recorded rather than wrote, which columns does
+publishing assign and which does it leave alone. That half depends on nothing in the shell (no
+lock, no refusal, no pool), and the shapes that make it awkward are all per-column — two jsonb
+columns, one geometry built from a pair, and `metadata`, which no single changeset entry describes.
+
+**It needs migrations 019 and 020 to exist.** Without 019 the audit insert violates the `action`
+CHECK, so the endpoint answers a bare 500 and the publication rolls back correctly and completely
+— a working refusal, but an opaque one. Without 020 the two statements that release a held
+withdrawal name a column that is not there, with the same result; and a gated run fails earlier
+still, since `locationWriter` writes the pairing into that column and the whole location write for
+that experience rolls back. `db/migrations/README.md` records nothing about which files a database
+has already seen (#435), so both are hand-applications to remember, not something the code can
+detect.
 
 **Three shapes, all explicit, none of them inferred from the others' absence.** An empty body
 publishes the object: its held fields, `curation_state = 'verified'`, and every unread point and
@@ -1319,15 +1411,48 @@ predate the gate — 1603 of the catalogue's 1604, measured 2026-08-11 — visib
 `published_at` NULL, because migration 018 deliberately did not date them. So an already-visible
 row's `published_at` is not touched at all, in either direction.
 
-**Publishing does not place.** Placement's insert predicate is `el.missing_since IS NULL` and
-nothing else — no `curation_state`, no `admission`, no `existence` — so a `pending` location was
-already placed by the run that wrote it and flipping it to `verified` moves no geometry, no point
-and no membership. A held content field cannot move it either: placement reads
-`experience_locations.location`, never `experiences.location`, and no trigger connects the two. The
-one publish that would genuinely change placement is one releasing a deferred withdrawal, and
-nothing defers one yet. "Publish places" reads as the obvious symmetry, so the reason it is absent
-is stated at the call site: an unconditional placement would delete and reinsert region rows across
-every world view with geometry, for 18 museums at a time, for no change at all.
+**Publishing releases a withdrawal that was waiting on it.** A moved point under a gated source
+is a withdrawal `locationWriter` held back and an arrival nobody can see (see "Location model"
+above). Publishing the arrival is the moment the two swap, and it happens in this transaction
+because on either side of a COMMIT the place exists twice or not at all. Two statements: the held
+point takes `missing_since = NOW()`, driven off `arrived.withdrawal_deferred_for_location_id`
+where the arrival is no longer `pending` — which the statement above is the only thing that can
+have made true — and then the pairing is cleared, because a pairing left standing outlives its
+purpose and turns harmful (a run that offers the old point again clears its `missing_since`, and
+the next run to withdraw it would find the stale pointer and hold it for ever, with no second
+arrival for anyone to publish). Both are skipped when the call published no point at all, since a
+pairing only ever sits on a `pending` one. The count is returned as `withdrawalsReleased` and
+recorded in the audit row: a person asking why a pin moved has that row and nothing else, because
+the run that proposed the move is a different row in a different table and says nothing about when
+it took effect.
+
+The withdrawal also clears the released row's **own** pairing, in the same `SET` list rather than
+leaving it to the clear that follows — that one skips rows still `pending`, which is exactly what a
+released intermediate in a chain is. It is the floor under `locationWriter`'s prevention (see
+"Location model"), and it is a floor rather than a duplicate: without it a chain arriving by any
+route the writer does not cover leaves a duplicate pin for ever, and with it for at most one source
+interval.
+
+**Publishing does not place — except that one.** Placement's insert predicate is
+`el.missing_since IS NULL` and nothing else — no `curation_state`, no `admission`, no `existence`
+— so a `pending` location was already placed by the run that wrote it and flipping it to
+`verified` moves no geometry, no point and no membership. A held content field cannot move it
+either: placement reads `experience_locations.location`, never `experiences.location`, and no
+trigger connects the two. A released withdrawal is the exception, because the old point stops
+being offered and the clear is unfiltered while the insert is not: its
+`experience_location_regions` rows have to go, and the experience-level union they fed has to be
+recomputed. So `assignRegionsForExperiences` runs for that publish only, after the COMMIT and on
+its own connection since it opens a transaction of its own, and reports failure rather than
+throwing — the publication is already committed, so an exception there would answer 500 to a
+click that landed, and the response says `placementFailed` instead. Every world view is attempted
+and every failure named in the log, rather than stopping at the first: each is its own transaction
+over its own regions, so one failing says nothing about the next, and abandoning the rest would
+leave them stale with nothing recording which. The response names them too —
+`placementFailedWorldViews`, one entry per failed world view, beside the flag — so the curator
+reading the notice can say *which* object and *which* world views to an admin; the log carries the
+same list with the database error each gave, which is the half only an admin can use. "Publish places" reads as the obvious symmetry and is wrong for every
+other case: an unconditional placement would delete and reinsert region rows across every world
+view with geometry, for 18 museums at a time, for no change at all.
 
 The audit row is `action = 'published'`, whose value had to be added to the
 `experience_curation_log.action` CHECK in both schema homes (`db/init/01-schema.sql` and

@@ -1,15 +1,18 @@
 /**
  * Publishing the unread points and works under an object — the named ones, or
- * all of them.
+ * all of them — and, since that publish can release a withdrawal, placing the
+ * object again afterward.
  *
- * Its own module rather than a function inside `publishController.ts`,
- * because the question it answers ("which rows does a publish reach") is a
- * whole one on its own and has no dependency on the transaction shell that
- * calls it: no lock, no refusal, no audit row, no scope check — only the
- * client already inside somebody else's transaction and the id.
+ * Its own module rather than functions inside `publishController.ts`, because
+ * both questions stand on their own and have no dependency on the transaction
+ * shell that calls them: no lock, no refusal, no audit row, no scope check —
+ * only the client already inside somebody else's transaction and the id.
  */
 
 import type { PoolClient } from 'pg';
+import {
+  assignRegionsForExperiences, worldViewsWithGeometry,
+} from '../../services/sync/regionAssignmentService.js';
 
 /**
  * Publish the unread points and works — the named ones, or all of them.
@@ -37,7 +40,12 @@ export async function publishContents(
   experienceId: number,
   locationIds?: number[],
   treasureIds?: number[],
-): Promise<{ locationsPublished: number; treasureLinksPublished: number; treasuresPublished: number }> {
+): Promise<{
+  locationsPublished: number;
+  treasureLinksPublished: number;
+  treasuresPublished: number;
+  withdrawalsReleased: number;
+}> {
   const anyNamed = locationIds !== undefined || treasureIds !== undefined;
 
   let locationsPublished = 0;
@@ -65,10 +73,71 @@ export async function publishContents(
     locationsPublished = result.rowCount ?? 0;
   }
 
-  // A withdrawal deferred against one of these points would be released here,
-  // and Task 6 of this branch is what defers one. Nothing does yet, so there is
-  // nothing to release and no statement to write — see the note after the COMMIT
-  // for why that is also the reason nothing is placed.
+  // A point that moved is a withdrawal plus an insert, and `locationWriter` held
+  // the withdrawal back so a reader would not watch the old pin vanish while its
+  // replacement was invisible. This is the moment the two swap, and it is in this
+  // transaction because on either side of a COMMIT the place exists twice or not
+  // at all.
+  //
+  // Driven off the arrival's own column rather than off the ids just published:
+  // the pairing is on the new row and names the old one, so this reads it from the
+  // row it is publishing instead of searching for a partner. `<> 'pending'` is
+  // what makes it "now that a reader can see it" — the statement above is the only
+  // thing that can have made that true, since `locationWriter` writes a pairing
+  // only onto a `pending` row.
+  //
+  // `old.missing_since IS NULL` so nothing is withdrawn twice: a second publish
+  // of the same point must not restamp the date on which its predecessor stopped
+  // being offered.
+  //
+  // Both sides are scoped to this experience, not only the arrival. The writer
+  // never pairs across objects, and the foreign key does not say so — this is the
+  // one statement in the endpoint that could reach a row whose scope the caller
+  // was not checked against, so it says so itself.
+  //
+  // **The released point's own pairing goes with it**, mirroring the writer's
+  // withdraw statement, which clears the pairing of every row it marks and for the
+  // same reason: a withdrawn row can never be published, so a pairing left on it
+  // would hold the point *it* named visible with nothing able to release it. This
+  // is the floor rather than the fix — `locationWriter`'s `withdrawn` CTE takes
+  // visible rows only, so a chain of pairings cannot form in the first place — and
+  // both are here on purpose. Prevention costs a reader nothing; without the floor,
+  // a chain arriving by some route the writer does not cover leaves a duplicate pin
+  // for up to one source interval, and the failure it guards is permanent and
+  // needs hand-written SQL to undo.
+  let withdrawalsReleased = 0;
+  if (locationsPublished > 0) {
+    const released = await client.query(
+      `UPDATE experience_locations old
+        SET missing_since = NOW(), ordinal = NULL,
+            withdrawal_deferred_for_location_id = NULL
+        FROM experience_locations arrived
+       WHERE arrived.experience_id = $1
+         AND old.experience_id = $1
+         AND arrived.withdrawal_deferred_for_location_id = old.id
+         AND arrived.curation_state <> 'pending'
+         AND old.missing_since IS NULL`,
+      [experienceId],
+    );
+    withdrawalsReleased = released.rowCount ?? 0;
+
+    // The pairing has done its work and must not outlive it. Left standing, a run
+    // that offers the old point again clears its `missing_since`, and the next run
+    // to withdraw it finds the stale pointer and holds it for ever — there is no
+    // second arrival left for anyone to publish.
+    //
+    // Unconditional on which rows the release above matched: a pairing whose point
+    // some other path had already withdrawn matched nothing there, and is just as
+    // finished.
+    await client.query(
+      `UPDATE experience_locations
+        SET withdrawal_deferred_for_location_id = NULL
+       WHERE experience_id = $1
+         AND withdrawal_deferred_for_location_id IS NOT NULL
+         AND curation_state <> 'pending'`,
+      [experienceId],
+    );
+  }
 
   let treasureLinksPublished = 0;
   let treasuresPublished = 0;
@@ -104,5 +173,60 @@ export async function publishContents(
     treasuresPublished = works.rowCount ?? 0;
   }
 
-  return { locationsPublished, treasureLinksPublished, treasuresPublished };
+  return { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased };
+}
+
+/**
+ * Place the object again, because one of its points stopped being offered.
+ *
+ * The one publish that genuinely moves geometry — see the note after the COMMIT
+ * for why every other one does not. Placement's insert carries
+ * `el.missing_since IS NULL` while its clear is unfiltered, so the released
+ * point's `experience_location_regions` rows have to go, and only a re-place can
+ * recompute the experience-level union they fed.
+ *
+ * Reports failure rather than throwing, the way `recordPlacementFailure`
+ * downgrades a run to `partial`: by the time this runs the publication is
+ * committed, so an exception here would answer 500 to a curator whose click did
+ * land — and the caller's `catch` would run ROLLBACK on a transaction that no
+ * longer exists. What is stale on a failure is `experience_regions` for one
+ * object, and the remedy is a re-assignment, so the honest answer is to say the
+ * publication happened and that this did not.
+ *
+ * Every world view is attempted and every failure named, rather than stopping at
+ * the first: each one is its own transaction over its own regions, so one failing
+ * says nothing about the next, and abandoning the rest would leave them stale
+ * with nothing in the log saying which. `placeMovedExperiences` collects them the
+ * same way for the same reason. Returns one message per world view that failed,
+ * empty when they all placed — the caller turns "any" into the response's
+ * `placementFailed`, while which ones lives in the log, where an operator looks.
+ */
+export async function placeAfterRelease(experienceId: number): Promise<string[]> {
+  const failures: string[] = [];
+  let worldViews: number[];
+  try {
+    worldViews = await worldViewsWithGeometry();
+  } catch (error) {
+    // Its own catch, outside the loop: a transient failure listing world views
+    // means nothing was placed at all, which is a different sentence from a named
+    // world view refusing.
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Publishing experience %d released a withdrawal but the world views to place it in could not be listed: %s',
+      experienceId, message);
+    return [`could not list world views: ${message}`];
+  }
+
+  for (const worldViewId of worldViews) {
+    try {
+      await assignRegionsForExperiences([experienceId], worldViewId);
+    } catch (error) {
+      // Constant format string, as everywhere this codebase logs a value: a
+      // template literal lets that value forge the shape of a log line.
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Publishing experience %d released a withdrawal but re-placing it in world view %d failed: %s',
+        experienceId, worldViewId, message);
+      failures.push(`world view ${worldViewId}: ${message}`);
+    }
+  }
+  return failures;
 }

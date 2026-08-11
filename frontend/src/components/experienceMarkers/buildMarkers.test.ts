@@ -33,6 +33,37 @@ function makeLocation(id: number, overrides: Partial<ExperienceLocation> = {}): 
   } as ExperienceLocation;
 }
 
+describe('the point that stands for the row', () => {
+  it('prefers one the source still lists over one waiting to be replaced', () => {
+    // A point whose replacement is waiting to be published keeps its row and loses
+    // its `ordinal` (ADR-0025 decision 5), and readers still see it. It must not
+    // become the row's hover marker while a listed component is available: the ring
+    // would sit on a place that disappears the moment a curator publishes.
+    const exp = makeExperience(1, { location_count: 2 });
+    const held = makeLocation(11, { ordinal: null, longitude: 1, latitude: 1 });
+    const listed = makeLocation(12, { ordinal: 1, longitude: 2, latitude: 2 });
+
+    const markers = buildExperienceMarkers([exp], { 1: [held, listed] }, new Set());
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0].locationId).toBe(12);
+  });
+
+  it('still resolves a venue whose only point is waiting to be replaced', () => {
+    // 1119 of 1604 experiences hold exactly one point, so mid-hold this is the
+    // common shape. Preferring listed points must not mean building no marker —
+    // that is a row whose hover does nothing, silently.
+    const exp = makeExperience(2);
+    const held = makeLocation(21, { ordinal: null });
+
+    const markers = buildExperienceMarkers([exp], { 2: [held] }, new Set());
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0].locationId).toBe(21);
+    expect(markers[0].locationOrdinal).toBeNull();
+  });
+});
+
 describe('buildExperienceMarkers', () => {
   it('builds a marker for every experience, past the hundredth', () => {
     // The regression: `experiences.slice(0, 100)`. Europe carries 200 in the
@@ -142,5 +173,23 @@ describe('buildExperienceMarkers', () => {
     const markers = buildExperienceMarkers([shown, hidden], {}, new Set(['Top Museums']));
 
     expect(markers.map(m => m.experienceId)).toEqual([1]);
+  });
+
+  it('treats a point whose ordinal the payload omitted as unlisted, like the label does', () => {
+    // Copilot's suppressed note, and it is a real case: `undefined !== null` is
+    // true, so a strict check would read a missing ordinal as a listed component
+    // and could hand a held point the hover ring — the thing this preference
+    // exists to prevent. `locationLabel` has always used `== null`; this now
+    // agrees with it.
+    const markers = buildExperienceMarkers(
+      [{ id: 1, name: 'Site', category_name: 'UNESCO World Heritage Sites' } as never],
+      { 1: [
+        { id: 10, experience_id: 1, longitude: 1, latitude: 1 } as never,
+        { id: 11, experience_id: 1, ordinal: 2, longitude: 2, latitude: 2 } as never,
+      ] },
+      new Set(),
+    );
+
+    expect(markers.find(m => m.experienceId === 1)?.locationId).toBe(11);
   });
 });

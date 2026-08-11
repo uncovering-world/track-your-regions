@@ -21,8 +21,34 @@ export interface MarkerData {
   locationName: string | null;
   locationCount: number;
   isMultiLocation: boolean;
-  locationOrdinal: number;
+  /** Null where the source no longer lists this point — see `locationLabel`. */
+  locationOrdinal: number | null;
   inRegion: boolean;
+}
+
+/**
+ * The one point that stands for a whole row on hover.
+ *
+ * Prefers a point the source still lists. A point whose replacement is waiting to
+ * be published keeps its row and loses its `ordinal` (ADR-0025 decision 5), and
+ * the reads that feed this sort `ORDER BY ordinal` with nulls last — so such a
+ * point is picked here only when it is the sole candidate, which is exactly when
+ * it should be. Without the preference a single-point venue mid-hold would still
+ * resolve, but a site whose held point sorted first for any other reason would
+ * hand its hover ring to a place about to disappear.
+ *
+ * What no ordering can preserve: when the held point *was* the primary, the ring
+ * moves to the next listed component for the length of the hold. There is no
+ * number left to keep it in place, and inventing one would collide with a real
+ * component's.
+ */
+function primaryLocation(representable: ExperienceLocation[]): ExperienceLocation | undefined {
+  // `== null`, matching `locationLabel`: a payload that omits `ordinal` arrives
+  // as `undefined`, and `undefined !== null` is true — so a strict check would
+  // read a point whose ordinal is merely missing as a *listed* one and could hand
+  // it the hover ring, which is the case this function exists to prevent.
+  const listed = representable.filter(loc => loc.ordinal != null);
+  return (listed.length > 0 ? listed : representable)[0];
 }
 
 export function buildExperienceMarkers(
@@ -58,7 +84,7 @@ export function buildExperienceMarkers(
       // fitting the map to an experience.
       const inRegionLocations = locations.filter(loc => loc.in_region !== false);
       const representable = inRegionLocations.length > 0 ? inRegionLocations : locations;
-      const primaryLoc = representable[0];
+      const primaryLoc = primaryLocation(representable);
       if (primaryLoc) {
         result.push({
           id: `${exp.id}-${primaryLoc.id}`,

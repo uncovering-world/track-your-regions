@@ -14,7 +14,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { publishContents } from './publishContents.js';
+import { publishContents, placeAfterRelease } from './publishContents.js';
 import { hidePendingSql, hideRefusedSql, lifecycleSelectSql } from './experienceLifecycle.js';
 import { CURATED_KEY_BY_FIELD, claimKeyFor } from '../../services/sync/changeSet.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
@@ -597,8 +597,15 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
  */
 async function publishArrivalContents(
   client: PoolClient, experienceId: number, publishes: boolean,
-): Promise<{ locationsPublished: number; treasureLinksPublished: number; treasuresPublished: number }> {
-  if (!publishes) return { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0 };
+): Promise<{
+  locationsPublished: number;
+  treasureLinksPublished: number;
+  treasuresPublished: number;
+  withdrawalsReleased: number;
+}> {
+  if (!publishes) {
+    return { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0 };
+  }
   // Un-refusing an arrival is a publication (ADR-0025 § 4.5), and a publication
   // takes everything that arrived with the object, not only its own fields —
   // otherwise the button says "Put it back" and the curator watches the museum
@@ -673,6 +680,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
   let locationsPublished = 0;
   let treasureLinksPublished = 0;
   let treasuresPublished = 0;
+  let withdrawalsReleased = 0;
   try {
     await client.query('BEGIN');
 
@@ -774,21 +782,26 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
       JSON.stringify(curated), userId, note ?? null,
     ]);
 
-    ({ locationsPublished, treasureLinksPublished, treasuresPublished } =
+    ({ locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
       await publishArrivalContents(client, experienceId, publishes));
 
-    // No placement here. Placement's insert predicate is `el.missing_since IS
-    // NULL` and nothing else — it filters neither `curation_state` nor
-    // `admission` — so a refused row was placed exactly like any other one the
-    // moment its location landed, and un-refusing it moves no geometry, no
-    // point and no membership. Verified on 2026-08-11 against a same-day clone
-    // of the live `track_regions`: `SELECT count(*) FROM experience_regions
-    // WHERE experience_id = <a refused row>` returned the same non-zero count
-    // as an admitted row's, confirming the row was already placed.
-    // "Un-refusing should re-place" is the intuitive answer and the wrong one.
-    // `publishContents` above cannot move it either, for the same reason
-    // `publishController.ts`'s own call cannot: it reads
-    // `experience_locations.location`, never `experiences.location`.
+    // No placement for the admission columns themselves. Placement's insert
+    // predicate is `el.missing_since IS NULL` and nothing else — it filters
+    // neither `curation_state` nor `admission` — so a refused row was placed
+    // exactly like any other one the moment its location landed, and
+    // un-refusing it moves no geometry, no point and no membership by itself.
+    // Verified on 2026-08-11 against a same-day clone of the live
+    // `track_regions`: `SELECT count(*) FROM experience_regions WHERE
+    // experience_id = <a refused row>` returned the same non-zero count as an
+    // admitted row's, confirming the row was already placed. "Un-refusing
+    // should re-place" is the intuitive answer and the wrong one — for the
+    // admission columns.
+    //
+    // `publishArrivalContents` above is a different story: nothing about a row
+    // being refused stops a later sync run deferring a withdrawal on one of
+    // its locations, so an override that publishes an arrival's contents can
+    // release one exactly as `publishController.ts`'s own publish can — same
+    // unit, same consequence, so it gets the same follow-up below.
 
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
@@ -797,7 +810,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
       JSON.stringify({
         reason: before.admission_reason, note: note ?? null, published: publishes,
         locations: locationsPublished, treasureLinks: treasureLinksPublished,
-        treasures: treasuresPublished,
+        treasures: treasuresPublished, withdrawalsReleased,
       })]);
 
     await client.query('COMMIT');
@@ -807,6 +820,8 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
   } finally {
     client.release(unusable);
   }
+
+  const placementFields = await placeAfterAdmissionRelease(experienceId, withdrawalsReleased);
 
   res.json({
     experienceId,
@@ -825,7 +840,46 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     locationsPublished,
     treasureLinksPublished,
     treasuresPublished,
+    withdrawalsReleased,
+    ...placementFields,
   });
+}
+
+/**
+ * Place the object again if publishing its contents released a withdrawal,
+ * and fold the outcome into the response.
+ *
+ * Split out on its own for the same reason `publishArrivalContents` is: one
+ * more branch inline in `setExperienceAdmission` is the difference between
+ * the function reading as a sequence of decisions and reading as a maze of
+ * them. Run after `setExperienceAdmission`'s own `try`/`finally` has released
+ * the client — after the COMMIT and off it, since `assignRegionsForExperiences`
+ * opens a transaction of its own, the same reason `publishController.ts`
+ * places after its own COMMIT rather than inside the transaction it just
+ * closed.
+ */
+async function placeAfterAdmissionRelease(
+  experienceId: number, withdrawalsReleased: number,
+): Promise<{
+  placementFailed?: true;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+}> {
+  if (withdrawalsReleased === 0) return {};
+  const failures = await placeAfterRelease(experienceId);
+  if (failures.length === 0) return {};
+  // The list, not only the flag. The remedy — a region re-assignment — is
+  // admin-only, so a curator's actionable step is to tell an admin *which*
+  // object and *which* world views, and a bare boolean reduces them to
+  // "something about regions failed on the Prado". `placeAfterRelease` already
+  // returns one entry per failed world view with its id and its name, and
+  // `/:id/publish` already passes them through; dropping them here would have
+  // made three sentences in this branch false about this one endpoint.
+  // Reshaped to the same `{ id, name }` the publish endpoint answers with, so
+  // the page renders one sentence for both rather than two.
+  return {
+    placementFailed: true,
+    placementFailedWorldViews: failures.map(f => ({ id: f.worldViewId, name: f.worldViewName })),
+  };
 }
 
 /**
