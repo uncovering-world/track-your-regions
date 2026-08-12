@@ -15,7 +15,7 @@
  * saying who decided. A publication that wrote three of those four would leave
  * the catalogue asserting something nobody said.
  *
- * Shaped after `applyProposedFields` in `lifecycleController.ts`, deliberately
+ * Shaped after `applyProposedFields` in `acceptSourceController.ts`, deliberately
  * and down to the details: everything the decision rests on is re-read under
  * the row lock, every `refuse()` is awaited so `finally` cannot release the
  * client mid-ROLLBACK, and a client whose ROLLBACK also failed is destroyed

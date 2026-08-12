@@ -4,8 +4,8 @@
  * Split out of `lifecycleController.test.ts` when that file passed eslint's
  * `max-lines` (1000, comments and blanks excluded). The seam was already there:
  * the queue is one read with seven independent queries, and everything left
- * behind is a curator write under a row lock. The controller is over the guide's
- * own threshold too, which is #526.
+ * behind is a curator write under a row lock — and #526 split the controllers
+ * along the same seam, so this file now sits beside the module it tests.
  *
  * What these pin, one sentence each: every kind carries the curator scope filter
  * and the refusal predicate; a row the source stopped listing raises one card
@@ -21,7 +21,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { getReviewQueue } from './lifecycleController.js';
+import { getReviewQueue } from './reviewQueueController.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
