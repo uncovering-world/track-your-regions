@@ -8,6 +8,7 @@ import { Request, Response } from 'express';
 import { isTerminalSyncStatus } from '../../services/sync/types.js';
 import { isCancellable } from '../../services/sync/syncOrchestrator.js';
 import { pool } from '../../db/index.js';
+import { waitingCountsByCategory } from '../experience/waitingCounts.js';
 import {
   syncUnescoSites,
   syncMuseums,
@@ -366,6 +367,7 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
       name,
       description,
       is_active,
+      requires_curation,
       last_sync_at,
       last_sync_status,
       display_priority,
@@ -374,6 +376,35 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
     WHERE is_active = true
     ORDER BY display_priority, id
   `);
+
+  // What each source is holding, in the three kinds the review queue asks about
+  // (ADR-0025). Sent with the list rather than fetched per source: the panel's
+  // question is "which of these needs a person", and one number per row arriving
+  // after the rows would render as an empty state that fills in.
+  //
+  // Zero for every source on the database as it stands today, since no gate has ever
+  // been switched on. Not a rule, and the difference matters here more than anywhere:
+  // none of the three predicates reads `requires_curation`, so a source gated, left to
+  // accumulate and then un-gated has a false flag and a real backlog — the state this
+  // whole feature is built around, and the one `publish-waiting` exists to clear. A
+  // reader who took the flag as a licence and skipped this call for ungated sources
+  // would zero that backlog on the one screen that reports it.
+  //
+  // In its own `try`, and the asymmetry is the same one `publishWaitingController`
+  // argues: the counts are this endpoint's addition, the sources list is what it is
+  // for. This aggregate walks every row of `experiences` with three `EXISTS` filters,
+  // one of them a `LATERAL` into a run's changeset — a lock, a pool error or a slow
+  // scan on a grown catalogue is enough. A throw used to reject `getCategories`
+  // entirely, and the panel that reads it destructures only `data`: no sources, no
+  // Start Sync, no Cancel and no message saying why, on all three screens that share
+  // the query. `null` costs three numbers and says so; the alternative cost the
+  // screen.
+  let waiting: Awaited<ReturnType<typeof waitingCountsByCategory>> | null = null;
+  try {
+    waiting = await waitingCountsByCategory();
+  } catch (error) {
+    console.error('[sync/categories] waiting counts failed:', error);
+  }
 
   // No `assignment_needed` flag any more, and no `last_assignment_at` either.
   //
@@ -387,7 +418,16 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
   // existed to feed that comparison and no client ever read it on its own. The
   // column is still written by `assignExperiencesToRegions` and still available
   // to whatever wants it later.
-  res.json(sourcesResult.rows);
+  res.json(sourcesResult.rows.map(source => ({
+    ...source,
+    // Three zeros for a source the aggregate returned no row for — it groups, so a
+    // source with nothing waiting is absent rather than zero — but `null` when the
+    // aggregate itself did not answer. A zero there would be a claim about the source
+    // that nothing checked, which is the same reason `heldLeftForReview` is nullable.
+    waiting: waiting === null
+      ? null
+      : waiting.get(source.id) ?? { arrivals: 0, held: 0, contents: 0 },
+  })));
 }
 
 // =============================================================================
