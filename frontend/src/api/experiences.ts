@@ -381,20 +381,61 @@ export interface ReviewQueueItem {
   name: string;
   category_id: number;
   category_name: string;
+  /**
+   * The lifecycle axes, on **every** kind rather than only the two whose cards
+   * are about them. Required here and therefore selected by all seven queries
+   * (`lifecycleSelectSql`), because the alternative — required in the type and
+   * absent from five queries — is the trap that reads as a working comparison:
+   * `item.existence === 'lost'` on an arrival card typechecks, compares against
+   * `undefined`, and silently never fires.
+   */
   missing_since: string | null;
   source_membership: 'present' | 'former';
   existence: 'extant' | 'lost';
-  kind: 'missing' | 'conflict' | 'refused' | 'kept-out';
+  kind: 'missing' | 'conflict' | 'refused' | 'kept-out' | 'arrival' | 'held' | 'contents';
   /** Why this category turned the row down, in the rule's own words. Refused items only. */
   admission_reason?: string | null;
   /** When a curator answered. Kept-out items only. */
   state_decided_at?: string | null;
   /** What the curator wrote when they answered. Kept-out items only. */
   state_note?: string | null;
-  /** `acceptable` false means accepting releases the claim and the next run writes it. */
-  proposed: Array<{ field: string; old: unknown; new: unknown; acceptable: boolean }> | null;
-  /** The run whose proposal this card shows; sent back so a newer one cannot substitute itself. */
+  /**
+   * `acceptable` false means accepting releases the claim and the next run
+   * writes it — a `conflict` field only. A `held` field carries `held: true`
+   * instead and no `acceptable`: nobody claimed it, the category's gate kept it
+   * out, and publishing is the only thing that can apply it (ADR-0025).
+   *
+   * `null` on the five kinds that carry no proposal, never absent: each of their
+   * queries selects `NULL::jsonb AS proposed` explicitly, for the same reason
+   * the three lifecycle fields above are selected everywhere. `Array<…> | null`
+   * tells the next author that `item.proposed === null` is the whole check
+   * before `.length`, and that is only true while every query answers with the
+   * column.
+   */
+  proposed: Array<{
+    field: string; old: unknown; new: unknown; acceptable?: boolean; held?: boolean;
+  }> | null;
+  /**
+   * The run this card is about. For a `conflict` or a `held` proposal it is
+   * sent back so a newer run cannot substitute itself. For an `arrival` it is
+   * the run that first saw the row and is **not** a pointer to anything held —
+   * sending it as `expectedSyncLogId` would 409 every time, because a row
+   * nobody can see holds no proposal.
+   */
   sync_log_id?: number;
+  /**
+   * Unread points under a row readers already see. `contents` items only.
+   *
+   * A number because the query casts it. `COUNT(*)` is `bigint`, which `pg`
+   * hands over as a string, and an uncast count arrives here as `"12"` — which
+   * survives arithmetic by coercion and breaks a plural rule, since `'1' === 1`
+   * is false. The cast is pinned by a test in `lifecycleController.test.ts`.
+   */
+  pending_locations?: number;
+  /** Unread works under a row readers already see. `contents` items only. */
+  pending_treasures?: number;
+  /** Whether anyone has passed the row. `arrival` items only, where it is `pending`. */
+  curation_state?: string;
 }
 
 export interface ReviewQueue {
@@ -408,6 +449,18 @@ export interface ReviewQueue {
    */
   keptOut: ReviewQueueItem[];
   conflicts: ReviewQueueItem[];
+  /**
+   * The three kinds a gated source leaves open (ADR-0025). Kept apart here
+   * because each is one query; the page groups them by experience, since a
+   * museum whose label is `held` and which gained twelve `contents` is one
+   * decision to a curator.
+   *
+   * An arrival is always alone: `held` fires only on a row that is not
+   * `pending`, and `contents` hides a `pending` container outright.
+   */
+  arrivals: ReviewQueueItem[];
+  held: ReviewQueueItem[];
+  contents: ReviewQueueItem[];
   limit: number;
   offset: number;
 }
@@ -523,6 +576,62 @@ export async function acceptSourceValue(
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/accept-source`, {
     method: 'POST',
     body: JSON.stringify({ fields, expectedSyncLogId }),
+  });
+}
+
+/** What a publication did, so the page can say it before the refetch. */
+export interface PublishResult {
+  experienceId: number;
+  curationState: string;
+  /** Held fields written now. */
+  appliedFields: string[];
+  /** Held fields left as the curator wrote them, because they claim them. */
+  claimedFieldsSkipped: string[];
+  fromSyncLogId: number | null;
+  locationsPublished: number;
+  treasureLinksPublished: number;
+  treasuresPublished: number;
+  /** Points the source had replaced, no longer shown now their replacement is. */
+  withdrawalsReleased: number;
+  /** The publication landed; re-placing the object into its regions did not. */
+  placementFailed?: true;
+  /**
+   * Where the regions are stale now. Present exactly when `placementFailed` is.
+   *
+   * A curator cannot re-assign regions — that is admin-only — so the only thing
+   * they can do with this is tell an admin which object and which world views.
+   * `id: null` means the world views could not be listed at all, so none was
+   * attempted and there is none to name.
+   */
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+}
+
+/**
+ * Say that a reader may see this — the only endpoint that applies a gate-held
+ * field (ADR-0025).
+ *
+ * Not `accept-source`, which looks the same from a distance and is not an
+ * option: its lookup requires `curatedConflict: true`, and a field held purely
+ * by a category's gate carries `false`, so it would refuse every one of them.
+ *
+ * Naming no contents publishes the object — its held fields, its own state, and
+ * every unread point and work under it. Naming any makes it those rows and
+ * nothing else, because a visible museum that gained three checked paintings has
+ * not thereby been read. `contentsOnly: true` is the shape for that case without
+ * naming ids: every pending content row, and the object's own state left alone
+ * — an absent body means the opposite (the object too), which is exactly the
+ * inference a contents-only card must not make, since the object may already be
+ * verified by a person who never looked at what just arrived under it.
+ */
+export async function publishExperience(
+  experienceId: number,
+  body: {
+    locationIds?: number[]; treasureIds?: number[]; contentsOnly?: true; expectedSyncLogId?: number;
+  } = {},
+): Promise<PublishResult> {
+  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/publish`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   });
 }
 

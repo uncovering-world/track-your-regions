@@ -5,11 +5,14 @@
  *
  * Its own module rather than functions inside `publishController.ts`, because
  * both questions stand on their own and have no dependency on the transaction
- * shell that calls them: no lock, no refusal, no audit row, no scope check —
- * only the client already inside somebody else's transaction and the id.
+ * shell that calls them: no lock, no refusal, no audit row, no scope check.
+ * `publishContents` takes only the client already inside somebody else's
+ * transaction and the id; `placeAfterRelease` takes only the id, since it runs
+ * after that transaction has committed and opens transactions of its own.
  */
 
 import type { PoolClient } from 'pg';
+import { pool } from '../../db/index.js';
 import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
@@ -196,24 +199,33 @@ export async function publishContents(
  * Every world view is attempted and every failure named, rather than stopping at
  * the first: each one is its own transaction over its own regions, so one failing
  * says nothing about the next, and abandoning the rest would leave them stale
- * with nothing in the log saying which. `placeMovedExperiences` collects them the
- * same way for the same reason. Returns one message per world view that failed,
- * empty when they all placed — the caller turns "any" into the response's
- * `placementFailed`, while which ones lives in the log, where an operator looks.
+ * with nothing saying which. `placeMovedExperiences` collects them the same way
+ * for the same reason. Returns one entry per world view that failed, empty when
+ * they all placed — the caller turns "any" into `placementFailed` and hands the
+ * entries themselves to the curator, who cannot re-assign anything and needs to
+ * be able to say which object and which world views to an admin who can.
+ *
+ * Each failure is named twice over: `worldViewName` for the person reading the
+ * notice and `worldViewId` for the admin they take it to. The name is looked up
+ * once, for the failures only, and a lookup that fails itself costs nothing —
+ * the id still identifies the world view, and this whole path is already the
+ * error path.
  */
-export async function placeAfterRelease(experienceId: number): Promise<string[]> {
-  const failures: string[] = [];
+export async function placeAfterRelease(
+  experienceId: number,
+): Promise<Array<{ worldViewId: number | null; worldViewName: string | null }>> {
+  const failed: number[] = [];
   let worldViews: number[];
   try {
     worldViews = await worldViewsWithGeometry();
   } catch (error) {
     // Its own catch, outside the loop: a transient failure listing world views
     // means nothing was placed at all, which is a different sentence from a named
-    // world view refusing.
+    // world view refusing — and the one case with no world view to name.
     const message = error instanceof Error ? error.message : String(error);
     console.error('Publishing experience %d released a withdrawal but the world views to place it in could not be listed: %s',
       experienceId, message);
-    return [`could not list world views: ${message}`];
+    return [{ worldViewId: null, worldViewName: null }];
   }
 
   for (const worldViewId of worldViews) {
@@ -225,8 +237,22 @@ export async function placeAfterRelease(experienceId: number): Promise<string[]>
       const message = error instanceof Error ? error.message : String(error);
       console.error('Publishing experience %d released a withdrawal but re-placing it in world view %d failed: %s',
         experienceId, worldViewId, message);
-      failures.push(`world view ${worldViewId}: ${message}`);
+      failed.push(worldViewId);
     }
   }
-  return failures;
+  if (failed.length === 0) return [];
+
+  const names = new Map<number, string>();
+  try {
+    const named = await pool.query(
+      `SELECT id, name FROM world_views WHERE id = ANY($1::int[])`, [failed]);
+    for (const row of named.rows) names.set(row.id as number, row.name as string);
+  } catch (error) {
+    // Deliberately swallowed: the ids are already the answer, and failing the
+    // whole call over a cosmetic lookup would report a publication that landed
+    // as an error.
+    console.error('Publishing experience %d could not name the world views that failed to place: %s',
+      experienceId, error instanceof Error ? error.message : String(error));
+  }
+  return failed.map(id => ({ worldViewId: id, worldViewName: names.get(id) ?? null }));
 }

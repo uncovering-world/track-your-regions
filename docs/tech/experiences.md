@@ -1354,6 +1354,87 @@ The page lives at `/review` (`frontend/src/components/curation/ReviewQueue.tsx`)
 from the header for curators. That gate is convenience: every action it offers is checked
 server-side against the caller's scope.
 
+**The three gated kinds share one section and group by experience.**
+`frontend/src/components/curation/WaitingToPublish.tsx` renders "Waiting to be published" — one
+heading, one sentence (nothing here has reached a visitor), and one card per experience whatever
+mix of `arrival` / `held` / `contents` named it. `groupGated()` does the joining, because the API
+answers `held` and `contents` separately so each query stays simple while a museum whose label is
+held *and* which gained twelve paintings is one object and one decision to the person looking at it.
+Inside a card the rows follow ADR-0025 § 4.2 — `fields` with both versions, `points` and `works` as
+counts — and `ItemHeader`, `describe` and `messageFor` come from `queueCard.tsx`, which exists so
+the two page files can share the card idiom without importing each other (`lint:circular`).
+
+What the card does that is not a free choice:
+
+- **One publish button, not one per row.** An object publish is one act at the endpoint: naming no
+  contents applies the held fields, marks the row read *and* releases every unread point and work
+  under it. A separate "publish the points" would need their ids, and this queue counts contents
+  rather than listing them — so it would either send the same request under a narrower promise or
+  409. The label says what the click covers ("Publish the change and what arrived with it").
+- **`expectedSyncLogId` is sent for a `held` card only.** An arrival's `sync_log_id` is the run that
+  first saw it, not a pointer — a `pending` row holds no proposal — so sending it would be compared
+  against `NULL` and refused every time.
+- **A card with contents but no held half sends `contentsOnly: true`, not an empty body.** An empty
+  body is an object publish: the endpoint sets `curation_state = 'verified'` on the experience, which
+  is exactly right for an arrival — there is no earlier verified state to misreport — and exactly
+  wrong for a card whose only open question is twelve unread paintings under a museum readers already
+  see. `contentsOnly` publishes every pending content row and leaves the experience's own state alone,
+  with no staleness check, matching what `held` alone already gets right by naming the pointer.
+- **The contents counts are cast.** `COUNT(...)` is `bigint`, which `pg` hands over as a string, so both
+  counts carry `::int` — wrapping the whole aggregate, since `FILTER` binds to it. Measured before the
+  cast: `pending_locations` arrived as `"1"`. That survives arithmetic by coercion and breaks a plural
+  rule, which compares against 1 (`'1' === 1` is false), so an uncast count reads "1 points" on the
+  card. A test pins the cast, and the card keeps one `Number(...)` as a floor under it.
+
+What the publication did is reported in the page's own notice, because the refetch takes the card
+away: which fields landed, how many points and works became visible, `withdrawalsReleased` (the
+moment a replaced pin stopped being shown, recorded nowhere else) and `placementFailed`, which turns
+the sentence from a success into a success with stale regions. `POST /:id/admission`'s `published`
+is reported the same way, so "put it back" says whether the row is now visible rather than leaving
+the curator to look for a second button.
+
+**A placement failure names its world views, because its reader cannot act on it.** Re-assignment is
+admin-only end to end (`requireAdmin` on the whole admin router; `AdminDashboard` redirects everyone
+else), while this page's ordinary reader is a region- or category-scoped curator — so the response
+carries `placementFailedWorldViews` beside the flag, one entry per world view that failed, each with
+its name for the person reading the notice and its id for the admin they take it to. `id: null` is the
+one case with no world view to name: listing them is what failed, so none was attempted. The reason
+each gave stays in the server log and out of the response — it is a database error string the curator
+can do nothing with, and the admin reading the log has it in full. Before this the "which" existed
+only in a `console.error`, which left the curator saying "something about regions failed on the Prado".
+
+**Publishing invalidates the object's own caches, not only the queue.** `invalidateExperiences(qc, {
+experienceId })` — the same helper the edit and reject mutations call. A publication changes the
+fields, points, works and counts every other surface reads, and the object a curator opens from the
+card shares its cache key (`['experience', id]`) with Discover and `CurationDialog`; without this a
+publish that succeeded is followed by the pre-publish snapshot for as long as the global 60s
+`staleTime` lasts. The admission cards invalidate for the same reason, since an `override` publishes.
+
+Three caches hold what a publication releases and each is keyed differently: the object's points
+(`['experience-locations', id]`), its works (`['experience-contents', id]`), and the **region** batch
+that draws the pins (`['region-locations', regionId, includeLost]`). The queue is not region-scoped,
+so it cannot name the third — and the helper therefore invalidates that key by prefix whenever it is
+given an object without a region. The asymmetry that makes the omission visible rather than
+theoretical: `['experiences']` prefix-matches the by-region list, so the list refetches on its own,
+while the batch beside it is held for five minutes (`useRegionLocations.ts`) — a just-published
+museum in the list with no pin, and the `0 locations` count that hook's docblock warns about. A
+region-scoped caller still invalidates only its own region, because it knows which one it changed.
+
+**The card names the one way to keep a curator's own wording.** `heldFieldWrites` re-reads
+`curated_fields` fresh under the write lock and skips any held field the curator has claimed since the
+run, reporting it back as `claimedFieldsSkipped`. So "keep the twelve paintings, refuse the proposed
+label" *is* expressible — edit the field first, which claims it, then publish — and the card says so
+next to the wording it is showing, because a lever nobody is told about is an accident rather than a
+feature.
+
+A curator can also follow a card through to the object it names — the card's "Look at the object"
+reads `GET /api/experiences/:id`, which is the by-id relaxation's whole purpose (§ What a curator
+can open). An arrival is in no list, no count and on no map, so without it the card names an object
+and offers nothing to judge it by. That read carries no `location_count` at all — the column exists
+only on the region list's own query (`buildRegionQueries`) — so the preview says nothing about how
+many points or works the object holds, rather than printing a count that would read zero regardless
+of the truth; issue #524 tracks the read that would list them properly.
+
 ### Publishing (ADR-0025 § 4.4)
 
 `POST /api/experiences/:id/publish` (`publishController.ts`) is the answer to all three of the

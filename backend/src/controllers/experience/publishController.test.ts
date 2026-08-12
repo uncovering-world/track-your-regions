@@ -1148,12 +1148,49 @@ describe('publishing releases the withdrawal that was waiting on it', () => {
     const res = await publish({}, client);
 
     // Each world view is its own transaction over its own regions, so one failing
-    // says nothing about the next. Stopping at the first would leave the rest stale
-    // with nothing in the log naming them — and the response carries one boolean,
-    // so the log is the only place "which" can live.
+    // says nothing about the next. Stopping at the first would leave the rest
+    // stale with nothing naming them.
     expect(mockedPlace).toHaveBeenCalledWith([5], 1);
     expect(mockedPlace).toHaveBeenCalledWith([5], 4);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ placementFailed: true }));
+  });
+
+  it('names the world views left stale, because the curator cannot re-place them', async () => {
+    grantScope();
+    const { client } = releasing();
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 1, name: 'GADM' }] });
+    mockedPlace.mockImplementation(async (_ids: number[], worldViewId: number) => {
+      if (worldViewId === 1) throw new Error('world view 1 is busy');
+      return 3;
+    });
+
+    const res = await publish({}, client);
+
+    // Re-assignment is admin-only, and this endpoint's caller is usually a scoped
+    // curator. A boolean plus a line in this process's log leaves them telling an
+    // admin "something about regions failed on the Prado", so the answer names
+    // each one: the name for the person reading it, the id for the admin they
+    // take it to. Only the failures — world view 4 placed and is not in here.
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      placementFailed: true,
+      placementFailedWorldViews: [{ id: 1, name: 'GADM' }],
+    }));
+  });
+
+  it('answers with the ids when the world views cannot be named', async () => {
+    grantScope();
+    const { client } = releasing();
+    mockedQuery.mockRejectedValueOnce(new Error('name lookup failed'));
+    mockedPlace.mockRejectedValue(new Error('regions are busy'));
+
+    const res = await publish({}, client);
+
+    // The name is cosmetic and the id is the answer. Failing the whole call over
+    // the lookup would report a publication that landed as an error.
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      placementFailedWorldViews: [{ id: 1, name: null }, { id: 4, name: null }],
+    }));
   });
 
   it('says nothing failed when the world views cannot even be listed', async () => {
@@ -1164,10 +1201,15 @@ describe('publishing releases the withdrawal that was waiting on it', () => {
     const res = await publish({}, client);
 
     // A different sentence from a named world view refusing: nothing was placed at
-    // all. It must still not throw, and must still not claim success.
+    // all. It must still not throw, and must still not claim success — and it is
+    // the one failure with no world view to name, which the page says in those
+    // words rather than printing "world view null".
     expect(mockedPlace).not.toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ placementFailed: true }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      placementFailed: true,
+      placementFailedWorldViews: [{ id: null, name: null }],
+    }));
   });
 
   it('does not undo the publication when placing afterwards fails', async () => {

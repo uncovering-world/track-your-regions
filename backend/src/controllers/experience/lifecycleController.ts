@@ -377,6 +377,16 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // because `t.curation_state` is not visible from inside `et`'s own JOIN
   // condition.
   //
+  // `::int` on both counts, wrapping the whole aggregate because `FILTER` binds
+  // to it: `COUNT(*)` is `bigint`, which `pg` hands to JavaScript as a *string*
+  // to keep values above 2^53 exact. No count here can reach that — 758
+  // locations is the catalogue's largest — so the cast costs nothing and stops
+  // `"12"` reaching a client. It matters beyond arithmetic, where coercion would
+  // cover for it: a plural rule compares against 1, and `'1' === 1` is false, so
+  // an uncast count reads "1 points" on the queue page. Every other count in
+  // this codebase casts for the same reason (`missingDetection.ts`,
+  // `admission.ts`, `experienceRegionQuery.ts`).
+  //
   // `COUNT(DISTINCT ...)` is load-bearing, not decoration: `el` and `et` are
   // independent one-to-many joins on the same experience, so their combined
   // row count is a product, not a sum — 3 pending points and 12 pending
@@ -387,9 +397,15 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            ${lifecycleSelectSql()},
            'contents' AS kind,
-           COUNT(DISTINCT el.id) FILTER (WHERE el.curation_state = 'pending') AS pending_locations,
-           COUNT(DISTINCT et.treasure_id)
-             FILTER (WHERE et.curation_state = 'pending' OR t.curation_state = 'pending') AS pending_treasures,
+           -- No FILTER, unlike the treasures below: the join above already
+           -- restricts el to pending, offered rows, so repeating it here would
+           -- state the rule twice and leave the fragment appearing twice in one
+           -- statement — which is what made two tests on this branch pass while
+           -- the clause they were about had been deleted. The treasure count
+           -- keeps its FILTER because et and t are joined unfiltered.
+           COUNT(DISTINCT el.id)::int AS pending_locations,
+           (COUNT(DISTINCT et.treasure_id)
+             FILTER (WHERE et.curation_state = 'pending' OR t.curation_state = 'pending'))::int AS pending_treasures,
            NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id

@@ -21,7 +21,7 @@
 
 import { useState } from 'react';
 import {
-  Box, Typography, Card, CardContent, Button, Stack, Chip, Alert,
+  Box, Typography, Card, CardContent, Button, Stack, Alert,
   TextField, Divider,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -31,9 +31,13 @@ import {
   setExperienceAdmission,
   acceptSourceValue,
   type ReviewQueueItem,
+  type PublishResult,
 } from '../../api/experiences';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { formatDateTime } from '../../utils/dateFormat';
+import { invalidateExperiences } from '../../utils/queryInvalidation';
+import { ItemHeader, describe, messageFor } from './queueCard';
+import { WaitingToPublish, groupGated, publishOutcomeFor } from './WaitingToPublish';
 
 export function ReviewQueue() {
   const queryClient = useQueryClient();
@@ -58,8 +62,19 @@ export function ReviewQueue() {
   // refusal, and `staleTime` plus no refetch-on-focus means nothing else
   // would recover it short of a reload. The message is held here rather than
   // on the card, since the refetch is what takes the card away.
-  const refresh = (message?: string) => {
+  //
+  // `experienceId` is not optional decoration: every verdict on this page
+  // changes what some *other* surface shows about the same object — a state
+  // verdict moves its chips, an override makes it visible and publishes what
+  // arrived under it — and the object's own cache is shared with Discover and
+  // `CurationDialog` under `['experience', id]`. Without invalidating it, a
+  // curator who follows a card through to the object and then answers the card
+  // sees the pre-verdict snapshot for as long as the global 60s `staleTime`
+  // lasts. `WaitingToPublish` does the same for a publish; `docs/tech/experiences.md`
+  // describes it as what every card here does, and it was true of one of them.
+  const refresh = (message?: string, experienceId?: number) => {
     setNotice(message ?? null);
+    if (experienceId !== undefined) invalidateExperiences(queryClient, { experienceId });
     return queryClient.invalidateQueries({ queryKey: ['curation', 'reviewQueue'] });
   };
 
@@ -83,13 +98,24 @@ export function ReviewQueue() {
   const refused = data?.refused ?? [];
   const keptOut = data?.keptOut ?? [];
   const conflicts = data?.conflicts ?? [];
+  const arrivals = data?.arrivals ?? [];
+  const held = data?.held ?? [];
+  const contents = data?.contents ?? [];
+  // One card per experience, however many of the three gated kinds name it.
+  const gated = groupGated(arrivals, held, contents);
   // The API pages; a full page means there are more behind it, and printing
   // its length as a total would understate the backlog.
   const pageSize = data?.limit ?? 0;
+  // Every kind, because each is its own query with its own LIMIT: a kind left
+  // out of this disjunction pages silently — its page 2 exists on the server
+  // and no control on this page can ask for it.
   const fullPage = missing.length === pageSize
     || refused.length === pageSize
     || keptOut.length === pageSize
-    || conflicts.length === pageSize;
+    || conflicts.length === pageSize
+    || arrivals.length === pageSize
+    || held.length === pageSize
+    || contents.length === pageSize;
   const countLabel = (n: number) => (n === pageSize && offset === 0 ? `first ${n}` : `${n}`);
 
   return (
@@ -109,7 +135,11 @@ export function ReviewQueue() {
         </Alert>
       )}
 
-      {missing.length === 0 && refused.length === 0 && conflicts.length === 0 && (
+      {/* `keptOut` stays out of this on purpose — those are answered work. The
+          three gated kinds are not answered, so claiming "nothing waiting"
+          while a gated museum sits below would be false. */}
+      {missing.length === 0 && refused.length === 0 && conflicts.length === 0
+        && gated.length === 0 && (
         <Alert severity="success">
           {offset === 0
             ? 'Nothing waiting. Every flagged object has been answered.'
@@ -170,6 +200,10 @@ export function ReviewQueue() {
           </Stack>
         </>
       )}
+      {/* One section for the three kinds a gated source raises, and one card per
+          experience inside it — see `WaitingToPublish`. */}
+      <WaitingToPublish groups={gated} countLabel={countLabel} onDone={refresh} />
+
       {keptOut.length > 0 && (
         <>
           <Divider sx={{ mt: 4 }} />
@@ -206,17 +240,7 @@ export function ReviewQueue() {
   );
 }
 
-function ItemHeader({ item }: { item: ReviewQueueItem }) {
-  return (
-    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
-      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.name}</Typography>
-      <Typography variant="caption" color="text.secondary">({item.external_id})</Typography>
-      <Chip label={item.category_name} size="small" variant="outlined" />
-    </Stack>
-  );
-}
-
-function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string) => void }) {
+function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const [note, setNote] = useState('');
   const decide = useMutation({
     mutationFn: (decision: { membership?: 'present' | 'former'; existence?: 'extant' | 'lost' }) =>
@@ -236,7 +260,7 @@ function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
           flagged: item.missing_since != null,
         },
       }),
-    onSettled: (_data, error) => onDone(error ? messageFor(item, error) : undefined),
+    onSettled: (_data, error) => onDone(error ? messageFor(item, error) : undefined, item.id),
   });
 
   return (
@@ -293,12 +317,16 @@ function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
  * lets them confirm a rule or spot a bad one, and a bad rule shows up here as a
  * run of near-identical reasons rather than as a mystery.
  */
-function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string) => void }) {
+function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const [note, setNote] = useState('');
   const decide = useMutation({
     mutationFn: (decision: 'confirm' | 'override') =>
       setExperienceAdmission(item.id, { decision, note: note || undefined }),
-    onSettled: (_data, error) => onDone(error ? messageFor(item, error) : undefined),
+    // "Put it back" on a row nobody had passed publishes it as well, and a
+    // curator watching an object stay invisible after un-refusing it would go
+    // looking for a second button that does not exist.
+    onSettled: (data, error) => onDone(
+      error ? messageFor(item, error) : admissionOutcomeFor(item, data), item.id),
   });
 
   return (
@@ -347,10 +375,11 @@ function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
  * and re-asking it would invite a second answer to a settled thing. What this
  * offers is a correction — one button, in the direction that reveals.
  */
-function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string) => void }) {
+function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const putBack = useMutation({
     mutationFn: () => setExperienceAdmission(item.id, { decision: 'override' }),
-    onSettled: (_data, error) => onDone(error ? messageFor(item, error) : undefined),
+    onSettled: (data, error) => onDone(
+      error ? messageFor(item, error) : admissionOutcomeFor(item, data), item.id),
   });
 
   return (
@@ -378,7 +407,7 @@ function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
   );
 }
 
-function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string) => void }) {
+function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const proposed = item.proposed ?? [];
   // A moved coordinate or a metadata key cannot be written here, but accepting
   // still releases the claim, and the next run applies it. Editing would not:
@@ -390,7 +419,8 @@ function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (messag
     // next sync — and the response names the run the values came from, which
     // is the whole mitigation for a later run proposing something else. The
     // refetch takes the card away, so this is the only place either can be said.
-    onSettled: (data, error) => onDone(error ? messageFor(item, error) : outcomeFor(item, data)),
+    onSettled: (data, error) => onDone(
+      error ? messageFor(item, error) : outcomeFor(item, data), item.id),
   });
 
   return (
@@ -447,14 +477,25 @@ export function outcomeFor(
   return `${item.name}: ${parts.join('; ')} — from run ${data.fromSyncLogId}.`;
 }
 
-/** What to tell the curator when their answer was refused. */
-export function messageFor(item: { name: string }, error: unknown): string {
-  return `${item.name}: ${error instanceof Error ? error.message : 'could not be saved'}`;
-}
-
-/** Long values are described rather than reproduced, as in the run card. */
-function describe(value: unknown): string {
-  if (value === null || value === undefined) return '—';
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  return text.length > 120 ? `${text.slice(0, 120)}… (${text.length} chars)` : text;
+/**
+ * Whether putting a row back also put it in front of readers, and if so,
+ * everything that came with it.
+ *
+ * An override on a row nobody had passed publishes it in the same transaction
+ * (ADR-0025 § 4.5) — otherwise the button says "Put it back" and puts nothing
+ * anywhere. It publishes the arrival's contents too, not only the object —
+ * "Put it back" does considerably more than it says, and a curator who clicks
+ * it deserves to be told what happened, in the same sentence shape the publish
+ * card already uses (`publishOutcomeFor`): a curator who clicks "Put it back"
+ * and quietly gets twelve paintings published as a side effect deserves the
+ * same sentence a curator who clicks "Publish" gets, not a vaguer one because
+ * the button had a different label. Never a held field or a run id — an
+ * override does not answer a proposal, so `publishOutcomeFor`'s clauses for
+ * those two simply have nothing to say and are silent on their own.
+ */
+export function admissionOutcomeFor(
+  item: { name: string }, data?: PublishResult & { admission: string; published: boolean },
+): string | undefined {
+  if (!data?.published) return undefined;
+  return publishOutcomeFor(item, data);
 }
