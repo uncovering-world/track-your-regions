@@ -33,6 +33,8 @@ import {
 } from '../../api/experiences';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
+import { plural } from '../../utils/plural';
+import { worldViewList } from '../../utils/worldViewList';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ItemHeader, describe, messageFor } from './queueCard';
 
@@ -66,11 +68,6 @@ export function groupGated(
   held.forEach(item => put(item, 'held'));
   contents.forEach(item => put(item, 'contents'));
   return [...byId.values()];
-}
-
-/** "1 point", "12 works" — the count is the judgement, so it leads. */
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 /**
@@ -432,21 +429,17 @@ export function publishOutcomeFor(
   // category-scoped curator — so the actionable step is to hand an admin the
   // object and the world views, which means the sentence has to contain them.
   // Ids come along with the names because that is what an admin works from.
-  return `${outcome} Its regions were not recomputed in ${worldViewList(data)} — only an admin can `
-    + 'run a re-assignment, so tell one this object and that world view; until then it is placed by '
-    + 'the point it no longer has.';
+  // Bent by what the same sentence just printed, and keyed on a *named* world view
+  // rather than on the array's length: `worldViewList` joins several — one failure per
+  // world view is its ordinary shape — and the two shapes that name none are `[]` and
+  // the single `{id: null}` the server sends when listing the world views is itself what
+  // failed, which renders "every world view — they could not even be listed". Counting
+  // that one as length 1 put "that world view" under a plural sentence, in the line
+  // written to be handed to an admin word for word.
+  const failed = data.placementFailedWorldViews;
+  const failedOne = failed?.length === 1 && failed[0].id !== null;
+  return `${outcome} Its regions were not recomputed in ${worldViewList(data.placementFailedWorldViews)} — only an admin can `
+    + `run a re-assignment, so tell one this object and ${failedOne ? 'that world view' : 'those world views'}; `
+    + 'until then it is placed by the point it no longer has.';
 }
 
-/** The failed world views, named for the curator and numbered for the admin. */
-function worldViewList(data: PublishResult): string {
-  const failed = data.placementFailedWorldViews ?? [];
-  // `placementFailedWorldViews` and `placementFailed` travel together, so this is
-  // the shape of an older server rather than of a successful placement.
-  if (failed.length === 0) return 'its world views';
-  return failed
-    .map(view => {
-      if (view.id === null) return 'every world view — they could not even be listed';
-      return view.name ? `${view.name} (world view ${view.id})` : `world view ${view.id}`;
-    })
-    .join(', ');
-}

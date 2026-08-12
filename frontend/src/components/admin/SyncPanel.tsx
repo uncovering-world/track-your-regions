@@ -36,6 +36,7 @@ import {
 } from '../../api/admin';
 import { formatDateTime } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { CurationGateControls } from './CurationGateControls';
 
 export function SyncPanel() {
   const queryClient = useQueryClient();
@@ -296,6 +297,7 @@ function SourceCard({ source }: SourceCardProps) {
             nothing further to do — check the status chip if it reports Partial.
           </Alert>
         )}
+        <CurationGateControls source={source} />
       </CardContent>
 
       <CardActions sx={{ flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
