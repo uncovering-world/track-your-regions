@@ -72,6 +72,22 @@ interface PublishResult {
   withdrawalsReleased: number;
   /** Set when the publication landed but re-placing the object afterwards did not. */
   placementFailed?: true;
+  /**
+   * Where the regions are now stale, named rather than only counted. Present
+   * exactly when `placementFailed` is, and never empty.
+   *
+   * The caller cannot fix any of this: a re-assignment is admin-only, and this
+   * page's ordinary user is a region- or category-scoped curator. What they can
+   * do is tell an admin which object and which world views — so the answer has
+   * to contain that, and a boolean plus a line in the server's log leaves them
+   * saying "something about regions failed". `id: null` is the one case with no
+   * world view to name: listing them is what failed, so none was attempted.
+   *
+   * The reason each one gave stays in the log and out of this: it is a database
+   * error string, the curator can do nothing with it, and an admin reading the
+   * log has it in full.
+   */
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
 }
 
 interface PublishRefusal {
@@ -417,7 +433,16 @@ async function publishUnderLock(
         treasureLinksPublished,
         treasuresPublished,
         withdrawalsReleased,
-        ...(placementFailures.length === 0 ? {} : { placementFailed: true as const }),
+        // The flag and the list travel together or not at all: a flag without the
+        // list is the dead end this endpoint just stopped handing to a curator,
+        // and a list without the flag would need every reader to re-derive
+        // "did it fail" from an array's length.
+        ...(placementFailures.length === 0 ? {} : {
+          placementFailed: true as const,
+          placementFailedWorldViews: placementFailures.map(f => ({
+            id: f.worldViewId, name: f.worldViewName,
+          })),
+        }),
       },
     };
   } catch (error) {

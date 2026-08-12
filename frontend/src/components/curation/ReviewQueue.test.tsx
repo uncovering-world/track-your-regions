@@ -11,22 +11,46 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+vi.mock('../../utils/queryInvalidation', () => ({
+  invalidateExperiences: vi.fn(),
+}));
+
 vi.mock('../../api/experiences', () => ({
   fetchReviewQueue: vi.fn(),
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
   acceptSourceValue: vi.fn(),
+  publishExperience: vi.fn(),
+  fetchExperience: vi.fn(),
 }));
 
 import {
   fetchReviewQueue, setExperienceState, setExperienceAdmission, acceptSourceValue,
+  publishExperience, fetchExperience,
 } from '../../api/experiences';
+import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ReviewQueue } from './ReviewQueue';
 
 const mockedFetch = fetchReviewQueue as unknown as ReturnType<typeof vi.fn>;
 const mockedState = setExperienceState as unknown as ReturnType<typeof vi.fn>;
 const mockedAccept = acceptSourceValue as unknown as ReturnType<typeof vi.fn>;
 const mockedAdmission = setExperienceAdmission as unknown as ReturnType<typeof vi.fn>;
+const mockedPublish = publishExperience as unknown as ReturnType<typeof vi.fn>;
+const mockedExperience = fetchExperience as unknown as ReturnType<typeof vi.fn>;
+const mockedInvalidate = invalidateExperiences as unknown as ReturnType<typeof vi.fn>;
+
+/** What `POST /:id/publish` answers when nothing but the row itself moved. */
+const PUBLISHED = {
+  experienceId: 7,
+  curationState: 'verified',
+  appliedFields: ['name'],
+  claimedFieldsSkipped: [],
+  fromSyncLogId: 47,
+  locationsPublished: 0,
+  treasureLinksPublished: 0,
+  treasuresPublished: 0,
+  withdrawalsReleased: 0,
+};
 
 const MISSING = {
   id: 77,
@@ -70,6 +94,43 @@ const CONFLICT = {
   sync_log_id: 41,
 };
 
+const ARRIVAL = {
+  ...MISSING,
+  id: 55,
+  external_id: 'Q160236',
+  name: 'Museo Soumaya',
+  category_id: 2,
+  category_name: 'Top Art Museums',
+  kind: 'arrival' as const,
+  missing_since: null,
+  curation_state: 'pending',
+  // The run that first saw it, not a held pointer — see the test that pins
+  // what the publish body may carry for an arrival.
+  sync_log_id: 61,
+};
+
+const HELD = {
+  ...MISSING,
+  id: 7,
+  external_id: 'Q160112',
+  name: 'Museo del Prado',
+  category_id: 2,
+  category_name: 'Top Art Museums',
+  kind: 'held' as const,
+  missing_since: null,
+  proposed: [{ field: 'name', old: 'Prado', new: 'Museo Nacional del Prado', held: true }],
+  sync_log_id: 47,
+};
+
+const CONTENTS = {
+  ...HELD,
+  kind: 'contents' as const,
+  proposed: null,
+  sync_log_id: undefined,
+  pending_locations: 1,
+  pending_treasures: 12,
+};
+
 function renderQueue() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -84,7 +145,16 @@ describe('ReviewQueue', () => {
     mockedFetch.mockReset();
     mockedState.mockReset().mockResolvedValue({ experienceId: 77 });
     mockedAccept.mockReset().mockResolvedValue({ experienceId: 88, applied: ['name'], released: [], fromSyncLogId: 9 });
-    mockedAdmission.mockReset().mockResolvedValue({ experienceId: 99, admission: 'refused' });
+    mockedAdmission.mockReset().mockResolvedValue({
+      experienceId: 99, admission: 'refused', published: false,
+    });
+    mockedPublish.mockReset().mockResolvedValue(PUBLISHED);
+    mockedInvalidate.mockReset();
+    mockedExperience.mockReset().mockResolvedValue({
+      id: 55, name: 'Museo Soumaya', description: 'The Slim family collection.',
+      short_description: null, image_url: null, latitude: 19.4406, longitude: -99.2047,
+      country_names: ['Mexico'], location_count: 1,
+    });
     mockedFetch.mockResolvedValue({
       missing: [MISSING], refused: [], conflicts: [CONFLICT], limit: 25, offset: 0,
     });
@@ -399,6 +469,324 @@ describe('ReviewQueue', () => {
       await screen.findByRole('button', { name: /former/i });
       expect(screen.queryByRole('button', { name: /kept out/i })).not.toBeInTheDocument();
     });
+  });
+
+  describe('what a gated run is holding', () => {
+    it('asks about one museum once, however many things are open about it', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [],
+        held: [HELD], contents: [CONTENTS],
+        limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      // The API answers this as two rows so each query stays simple. To a
+      // curator a museum whose label is held and which gained twelve paintings
+      // is one object and one decision.
+      expect(await screen.findAllByText('Museo del Prado')).toHaveLength(1);
+      expect(screen.getByText(/1 new point/)).toBeInTheDocument();
+      expect(screen.getByText(/12 new works/)).toBeInTheDocument();
+    });
+
+    it('publishes through the one endpoint that can apply a held field', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], held: [HELD], contents: [], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+
+      // Not `accept-source`: its lookup requires `curatedConflict: true`, and a
+      // field held by the category's gate carries false — that button would 409
+      // on every click. The run id is the held pointer, so a newer proposal
+      // cannot substitute itself for the one on the card.
+      await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { expectedSyncLogId: 47 }));
+      expect(mockedAccept).not.toHaveBeenCalled();
+    });
+
+    it('names no run for an arrival, whose own run id points at nothing held', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /readers may see it/i }));
+
+      // A `pending` row holds no proposal — the pointer is set only on a row
+      // that is not pending — so sending the run that first saw it would be
+      // compared against null and refused every time.
+      await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(55, {}));
+    });
+
+    it('publishes contents only for a card with no held half, never an object publish', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], contents: [CONTENTS], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish what has arrived/i }));
+
+      // `{}` means an object publish, which sets curation_state = 'verified' —
+      // a false claim that a person read the museum when only twelve paintings
+      // were ever looked at (ADR-0025 § 4.4), and a 409 waiting to happen on any
+      // row that also carries a claim's own pointer.
+      await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { contentsOnly: true }));
+    });
+
+    it('still publishes the object when a held change accompanies the contents', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], held: [HELD], contents: [CONTENTS], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish the change and what arrived/i }));
+
+      // A held half is a real object publish — sending `contentsOnly` here
+      // would mark the row read without ever answering the held proposal.
+      await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { expectedSyncLogId: 47 }));
+    });
+
+    it('keeps a claimed field a separate question from a held one', async () => {
+      // The same museum, both ways: the gate held the description, the curator
+      // claims the name. Two answers, two endpoints — merging them under one
+      // button is the collapse #519 was filed about.
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [{ ...CONFLICT, id: 7, name: 'Museo del Prado' }],
+        held: [HELD], contents: [], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+      await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { expectedSyncLogId: 47 }));
+
+      fireEvent.click(screen.getByRole('button', { name: /accept the source/i }));
+      await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(7, ['name'], 41));
+    });
+
+    it('does not claim nothing is waiting while a gated object sits below', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      await screen.findByRole('button', { name: /readers may see it/i });
+      expect(screen.queryByText(/nothing waiting/i)).not.toBeInTheDocument();
+    });
+
+    it('can reach gated objects behind a full page', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [],
+        contents: Array.from({ length: 2 }, (_, i) => ({ ...CONTENTS, id: 300 + i })),
+        limit: 2, offset: 0,
+      });
+      renderQueue();
+
+      // Each kind is its own query with its own LIMIT — left out of `fullPage`,
+      // its second page exists on the server with no control able to ask for it.
+      fireEvent.click(await screen.findByRole('button', { name: /show more/i }));
+
+      await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith({ offset: 2 }));
+    });
+
+    it('says what the publication released, including the pin that went with it', async () => {
+      mockedPublish.mockResolvedValue({
+        ...PUBLISHED, locationsPublished: 2, treasureLinksPublished: 12, treasuresPublished: 12,
+        withdrawalsReleased: 1,
+      });
+      mockedFetch
+        .mockResolvedValueOnce({
+          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+        })
+        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+
+      // The refetch takes the card away, so this is the only place the moment a
+      // replaced pin stopped being shown is recorded for the person who caused it.
+      expect(await screen.findByText(/2 points and 12 works now visible/)).toBeInTheDocument();
+      expect(screen.getByText(/1 replaced point no longer shown/)).toBeInTheDocument();
+    });
+
+    it('does not report a publication with stale regions as an unqualified success', async () => {
+      mockedPublish.mockResolvedValue({
+        ...PUBLISHED, locationsPublished: 1, withdrawalsReleased: 1, placementFailed: true,
+        placementFailedWorldViews: [{ id: 4, name: 'Wikivoyage' }],
+      });
+      mockedFetch
+        .mockResolvedValueOnce({
+          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+        })
+        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+
+      expect(await screen.findByText(/were not recomputed/)).toBeInTheDocument();
+    });
+
+    it('names the world views a curator has to report, since they cannot re-place them', async () => {
+      mockedPublish.mockResolvedValue({
+        ...PUBLISHED, withdrawalsReleased: 1, placementFailed: true,
+        placementFailedWorldViews: [{ id: 4, name: 'Wikivoyage' }, { id: 7, name: null }],
+      });
+      mockedFetch
+        .mockResolvedValueOnce({
+          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+        })
+        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+
+      // Region assignment is admin-only end to end, and this page's ordinary
+      // reader is a scoped curator. "Something about regions failed" is not a
+      // thing they can hand to an admin; a named world view is. The id rides
+      // along because that is what the admin works from.
+      const notice = await screen.findByText(/were not recomputed/);
+      expect(notice).toHaveTextContent('Wikivoyage (world view 4)');
+      expect(notice).toHaveTextContent('world view 7');
+      expect(notice).toHaveTextContent(/only an admin can run a re-assignment/);
+    });
+
+    it('says nothing was even attempted when the world views could not be listed', async () => {
+      mockedPublish.mockResolvedValue({
+        ...PUBLISHED, withdrawalsReleased: 1, placementFailed: true,
+        placementFailedWorldViews: [{ id: null, name: null }],
+      });
+      mockedFetch
+        .mockResolvedValueOnce({
+          missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+        })
+        .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+
+      // A different fact from a named world view refusing: nothing was placed at
+      // all, and there is no world view to name.
+      expect(await screen.findByText(/could not even be listed/)).toBeInTheDocument();
+    });
+
+    it('drops the object\'s own caches, not only this queue', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+
+      // A publication changes the fields, points, works and counts every other
+      // surface reads — including the object the curator just looked at from
+      // this card, whose cache key Discover and the curation dialog share. Left
+      // alone, a publish that succeeded is followed by the pre-publish snapshot
+      // for as long as the global staleTime lasts.
+      await waitFor(() => expect(mockedInvalidate).toHaveBeenCalledWith(
+        expect.anything(), { experienceId: 7 }));
+    });
+
+    it('names the order that keeps a curator\'s own wording through a publish', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      // Publishing re-reads the claims under its write lock and skips a field the
+      // curator has claimed since the run. That makes "keep the paintings, refuse
+      // the label" possible — but only if the card says which order to do it in.
+      expect(await screen.findByText(/editing claims the field/i)).toBeInTheDocument();
+    });
+
+    it('shows what the server said when the card was drawn against an older run', async () => {
+      mockedPublish.mockRejectedValue(
+        new Error('This row is holding a proposal from a different run — reload to see it'));
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+
+      // The refusal is the answer, and the card has to come back live rather
+      // than disabled: the refetch redraws it against what the server now holds.
+      await waitFor(() => expect(screen.getByText(/from a different run/)).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /publish the change/i })).toBeEnabled();
+    });
+
+    it('follows the card through to the object the gate is hiding', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /look at the object/i }));
+
+      // An arrival is in no list, no count and on no map. A curator's by-id read
+      // is the only place it answers at all, and judging it is the whole reason
+      // that read was relaxed.
+      await waitFor(() => expect(mockedExperience).toHaveBeenCalledWith(55));
+      expect(await screen.findByText(/Slim family collection/)).toBeInTheDocument();
+    });
+
+    it('does not claim a point count the by-id read never carries', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /look at the object/i }));
+
+      // GET /api/experiences/:id carries no location_count column at all —
+      // that field only exists on the region list's own query — so this
+      // number was always zero regardless of the object's real contents. A
+      // true sentence beats a false zero (#524 tracks the read that would
+      // list this properly).
+      await screen.findByText(/Slim family collection/);
+      expect(screen.queryByText(/reader would see/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/0 points?/i)).not.toBeInTheDocument();
+    });
+
+    it('does not print "undefined" for a held card with no run id on record', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [],
+        held: [{ ...HELD, sync_log_id: undefined }], contents: [], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      // `sync_log_id` is optional on the type; printing the literal word
+      // "undefined" for a row that somehow lacks it is worse than naming no
+      // run at all.
+      expect(await screen.findByText(/Proposed by an earlier run/)).toBeInTheDocument();
+      expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('says whether putting a row back also put it in front of readers, and what came with it', async () => {
+    mockedAdmission.mockResolvedValue({
+      experienceId: 99, admission: 'admitted', published: true,
+      curationState: 'verified', appliedFields: [], claimedFieldsSkipped: [], fromSyncLogId: null,
+      locationsPublished: 1, treasureLinksPublished: 12, treasuresPublished: 12, withdrawalsReleased: 0,
+    });
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [], refused: [REFUSED], conflicts: [], limit: 25, offset: 0 })
+      .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25, offset: 0 });
+    renderQueue();
+
+    fireEvent.click(await screen.findByRole('button', { name: /the rule was wrong/i }));
+
+    // Un-refusing a row nobody had passed publishes it in the same transaction,
+    // and everything that arrived under it — the same sentence shape the
+    // publish card uses, not a vaguer one because the button had a different
+    // label.
+    expect(await screen.findByText(/1 point and 12 works now visible/)).toBeInTheDocument();
+
+    // And the object's own caches, not only the queue's. An override makes the
+    // row visible and publishes what arrived under it, so every other surface
+    // reading `['experience', id]` — Discover, `CurationDialog`, the page the
+    // curator may have just opened from this card — is now stale for as long as
+    // the global 60s `staleTime` lasts. `docs/tech/experiences.md` described
+    // this as what every card here does when it was true of one of them.
+    expect(mockedInvalidate).toHaveBeenCalledWith(expect.anything(), { experienceId: 99 });
   });
 
   it('says plainly when there is nothing to answer', async () => {

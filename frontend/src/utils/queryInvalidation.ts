@@ -31,6 +31,26 @@ export function invalidateExperiences(
   if (opts?.experienceId) {
     queryClient.invalidateQueries({ queryKey: ['experience', opts.experienceId] });
     queryClient.invalidateQueries({ queryKey: ['curation-log', opts.experienceId] });
+    // The object's own points and works, which are the two things a publication
+    // actually releases (ADR-0025) and the two caches this helper did not reach.
+    // `experience-contents` holds them for five minutes (`staleTime: 300000`), so
+    // without these a curator who published twelve paintings is told they are
+    // visible and then shown the list from before — on the very screen the card's
+    // "Look at the object" sends them to.
+    queryClient.invalidateQueries({ queryKey: ['experience-locations', opts.experienceId] });
+    queryClient.invalidateQueries({ queryKey: ['experience-contents', opts.experienceId] });
+    // The region batch holds the same points, keyed by region instead of by
+    // object — and the curation queue that publishes them is not region-scoped,
+    // so it cannot name the region to invalidate. Stopping at the prefix is
+    // therefore the only reach it has.
+    //
+    // Without this the two caches disagree in the way that shows: `['experiences']`
+    // above prefix-matches the by-region list, so the list refetches and the
+    // just-published museum appears in it, while the batch that draws its pin is
+    // held for five minutes (`useRegionLocations.ts:35`) — an object in the list
+    // with nothing on the map and the `0 locations` count that hook's own
+    // docblock warns about.
+    if (!opts.regionId) queryClient.invalidateQueries({ queryKey: ['region-locations'] });
   }
 }
 
