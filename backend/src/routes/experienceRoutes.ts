@@ -29,6 +29,7 @@ import {
   setExperienceState,
   acceptSourceValue,
   publishExperience,
+  publishWaiting,
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
 import { requireAuth, requireCurator, optionalAuth } from '../middleware/auth.js';
@@ -43,6 +44,7 @@ import {
   experienceLocationsQuerySchema,
   regionLocationsQuerySchema,
   idParamSchema,
+  categoryIdParamSchema,
   reviewQueueQuerySchema,
   experienceAdmissionBodySchema,
   newBadgesSeenBodySchema,
@@ -141,11 +143,40 @@ router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requir
 router.post('/:id/admission', authenticatedLimiter, validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceAdmissionBodySchema), setExperienceAdmission);
 router.post('/:id/accept-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(acceptSourceBodySchema), acceptSourceValue);
 
+// Release everything one source is holding (ADR-0025 decision 5, and
+// `docs/tech/experiences.md` § "Turning a source's gate on, and letting it go").
+// The batch form of `/:id/publish` below, and rate-limited for the same reason with
+// more force: it runs that transaction once per waiting object and can reach the
+// post-commit placement on any of them.
+//
+// Mounted under `categories/` rather than `:id/` so it cannot be read as an
+// action on one experience. Its position among the `:id` routes is free, and
+// that is worth stating because the obvious guess is wrong. Two `:id` routes are
+// three segments like this one — `/:id/assign/:regionId` and
+// `/:id/remove-from-region/:regionId` — but both are `DELETE`, and Express matches
+// per method, so no `POST` sibling can capture `categories` as an id. Even a future
+// `POST /:id/assign/:regionId` would not: its middle segment is a literal, and
+// `publish-waiting` is not `assign`. What would collide is a `POST /:id/:action/:x`
+// with a parameter in the middle, and there is none.
+router.post(
+  '/categories/:categoryId/publish-waiting',
+  authenticatedLimiter,
+  validate(categoryIdParamSchema, 'params'),
+  requireAuth,
+  requireCurator,
+  publishWaiting,
+);
+
 // The other half of what a gated source leaves open (ADR-0025): whether a
 // reader may see an unread row at all, its unread points and works, and the
-// content proposal a run made against a row that was already visible. The only
-// writer that moves a row off `pending`, and the only one that clears
-// `pending_change_sync_log_id` in answer to a person.
+// content proposal a run made against a row that was already visible. Not the only
+// writer that moves a row off `pending`, and never was: `/:id/admission` has done it
+// since ADR-0025 § 4.5 — overriding a refusal on an unread arrival marks it read —
+// and `publish-waiting` above now does it per object for a whole source. Still the
+// only one that clears `pending_change_sync_log_id` in answer to a person, because
+// the batch deliberately leaves held proposals for the card that can show them and
+// an admission override does not touch the pointer.
+//
 // Rate-limited, like `/:id/admission` above and unlike the three other curator
 // routes there, and the reason is this repo's own criterion rather than an
 // analyser's: `docs/tech/rate-limiting.md` § 5 exempts curator routes because the

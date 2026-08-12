@@ -209,8 +209,16 @@ function staleProposalRefusal(
  * or another curator landing in between would have its values written under the
  * run id this caller sent — the substitution `expectedSyncLogId` exists to
  * refuse — and a claim made in that window would be silently overwritten.
+ *
+ * Exported for `publishWaitingController.ts`, which releases what a whole source is
+ * holding: that is the same act per object, so it must be the same transaction
+ * rather than a second implementation that drifts from this one. Written inside this
+ * block rather than as a second one above the signature: two doc blocks in a row
+ * attach only the nearest, so a note about the export would hide the paragraph a
+ * caller actually needs. (Spelling the closing delimiter here would end this
+ * comment mid-sentence, which is how the first attempt at this line broke the file.)
  */
-async function publishUnderLock(
+export async function publishUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
