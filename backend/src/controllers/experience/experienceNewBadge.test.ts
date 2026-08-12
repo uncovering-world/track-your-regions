@@ -1,9 +1,11 @@
 /**
- * The chip answers "arrived in the latest run", not "created recently".
+ * The chip answers "a reader could first see this recently", not "a run found it
+ * recently" — #529 moved the anchor to `published_at`, because under a gate those
+ * are different moments and the old one failed in the ordinary case.
  *
- * These pin the shape of the expression; the behaviour it produces on real
- * rows is checked against the database, because a SQL predicate is exactly the
- * kind of thing that reads correctly and evaluates otherwise.
+ * These pin the shape of the expression; the behaviour it produces on real rows is
+ * checked against the database, because a SQL predicate is exactly the kind of
+ * thing that reads correctly and evaluates otherwise.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -22,81 +24,50 @@ function makeRes() {
 }
 
 describe('isNewSql', () => {
-  it('keys off the run the row arrived in, not when the row was created', () => {
+  it('keys off becoming visible, not off the run that found the row', () => {
     const sql = isNewSql();
-
-    expect(sql).toContain('first_seen_sync_log_id');
-    // `created_at` is what the client-side heuristic used, and it measures
-    // something else: a row created last week may have been in the source for
-    // a decade. (The converse does not hold — `first_seen_sync_log_id` is
-    // INSERT-only, so an old row's first sighting is old. The one case where
-    // an old row points at a recent run is 009's backfill, which the next test
-    // covers and the predicate rejects.)
-    expect(sql).not.toContain('created_at');
+    expect(sql).toContain('e.published_at IS NOT NULL');
+    // The whole of #529: a gated arrival is invisible until a curator answers, so
+    // the run that found it is the wrong clock. Two clauses went with the old
+    // anchor and must not come back — the `created` changeset proof (which existed
+    // only because migration 009 backfilled `first_seen_sync_log_id`) and the
+    // latest-completed-run bound (which the window already provides).
+    expect(sql).not.toContain('first_seen_sync_log_id');
+    expect(sql).not.toContain('change_type');
+    expect(sql).not.toContain('completed_at');
   });
 
-  it('wants the arrival observed, not merely attributed to a run', () => {
-    // Migration 009 backfilled `first_seen_sync_log_id` to the newest run of
-    // each category for every pre-existing row. Trusting that attribution puts
-    // the chip on the entire catalogue the day this ships — 1547 of 1547 rows,
-    // measured — until each category next runs. A changeset row of type
-    // `created` is the difference between a sighting and a guess.
-    const sql = isNewSql().replace(/\s+/g, ' ');
-
-    expect(sql).toContain('experience_sync_changes');
-    expect(sql).toContain("change_type = 'created'");
-  });
-
-  it('asks about first arrival, which a return does not reset', () => {
-    // `first_seen_sync_log_id` is written on INSERT and never on update, so a
-    // row that went missing and came back keeps the run it arrived in. The
-    // predicate must not reach for anything that a return would move —
-    // `last_seen_sync_log_id` is exactly that.
+  it('lights for an arrival published after a later run of the same category', () => {
+    // The case the old predicate could not pass, and the one #529 names as its
+    // acceptance: a museum arrives Monday, the category runs again Wednesday, a
+    // curator publishes Thursday. Nothing in this expression mentions a run, so
+    // the later one cannot switch the chip off.
     const sql = isNewSql();
-
-    expect(sql).toContain('first_seen_sync_log_id');
-    expect(sql).not.toContain('last_seen_sync_log_id');
-  });
-
-  it('ignores previews, which write a changeset but change nothing', () => {
-    expect(isNewSql()).toContain('is_dry_run = FALSE');
-  });
-
-  it('ignores a run still in progress, whose arrivals are not all in yet', () => {
-    expect(isNewSql()).toContain('completed_at IS NOT NULL');
-  });
-
-  it('finds the latest run by when it finished, not by its id', () => {
-    // id order is creation order. A run that started earlier can finish later,
-    // and taking the highest id then names a run from months ago as "latest",
-    // which switches every chip in the category off at once.
-    const sql = isNewSql().replace(/\s+/g, ' ');
-
-    expect(sql).toContain('ORDER BY l.completed_at DESC, l.id DESC');
+    expect(sql).not.toMatch(/experience_sync_logs/);
+    expect(sql).toMatch(/published_at > NOW\(\) - \(c\.new_badge_days/);
   });
 
   it('takes the window from the category, since sources have different cadences', () => {
-    expect(isNewSql()).toContain('new_badge_days');
+    expect(isNewSql()).toContain("(c.new_badge_days || ' days')::interval");
   });
 
   it('lets a reader keep it a week from their own first sighting', () => {
     expect(isNewSql()).toContain(`INTERVAL '${NEW_BADGE_PERSONAL_DAYS} days'`);
-    expect(isNewSql()).toContain('user_new_badge_views');
   });
 
   it('reads the two windows as alternatives, so neither can shorten the other', () => {
-    // The category window is a floor, not a competing rule: a reader arriving
-    // near its end keeps the chip a week longer, and one who never sees it
-    // still had the whole category window to.
-    const sql = isNewSql().replace(/\s+/g, ' ');
-
-    expect(sql).toMatch(/new_badge_days.*\) OR EXISTS/);
+    const sql = isNewSql();
+    // A maximum, not a choice: the category window is the floor everyone gets, and
+    // a reader who arrives near its end keeps the chip a week from their own first
+    // sighting rather than losing it the next day.
+    expect(sql).toMatch(/new_badge_days[\s\S]*\)\s*OR\s*EXISTS/);
   });
 
   it('leaves the anonymous reader with the category window alone', () => {
-    // `v.user_id = NULL` is never true, so the personal clause drops out
-    // rather than needing a separate query for logged-out readers.
-    expect(isNewSql('e')).toContain('v.user_id = NULL');
+    // `NULL` for the reader means the personal clause can never match, rather
+    // than the whole predicate collapsing: an anonymous reader still gets the
+    // category's window.
+    expect(isNewSql('e', 'NULL')).toContain('v.user_id = NULL');
   });
 
   it('takes the user as a placeholder, so the caller keeps parameter numbering', () => {
@@ -104,11 +75,13 @@ describe('isNewSql', () => {
   });
 
   it('qualifies every column it reads off the experience', () => {
-    const sql = isNewSql('ex');
-
-    expect(sql).toContain('ex.first_seen_sync_log_id');
-    expect(sql).toContain('ex.category_id');
-    expect(sql).toContain('v.experience_id = ex.id');
+    // Interpolated into queries that join several tables, so an unqualified
+    // column is an ambiguity error at best and the wrong table's column at worst.
+    const sql = isNewSql('x');
+    expect(sql).toContain('x.published_at IS NOT NULL');
+    expect(sql).toContain('c.id = x.category_id');
+    expect(sql).toContain('v.experience_id = x.id');
+    expect(sql).not.toMatch(/(?<![.\w])published_at/);
   });
 });
 

@@ -48,15 +48,16 @@ next re-application of `01-schema.sql`.
 `012-new-badge-views.sql` adds `user_new_badge_views`, which records when a reader was
 first shown the "New" chip. Nothing to backfill: an absent row means "not yet shown", which
 is the correct starting state for every existing reader and experience. No retention job
-either — the chip is bounded by the next completed non-dry run of its category, not by the age of
-these rows.
+either — the personal clause is bounded by the age of these rows themselves, so one that
+ages past its seven days stops being read rather than needing to be swept.
 
-Nothing to backfill *here*, but 009's backfill decides what the chip shows on day one, and
-the answer would have been "everything": it credited every pre-existing row to the newest run
-of its category, which is the value the chip compares against. `isNewSql` therefore also
-requires a changeset row of type `created`, which only a run that actually inserted the row
-leaves behind — 1547 of 1547 rows in the current database are credited without being observed,
-and none of them wears the chip.
+Nothing to backfill *here*, but 009's backfill decided what the chip would show on day one,
+and the answer would have been "everything": it credited every pre-existing row to the newest
+run of its category, which was then the value the chip compared against. That is no longer
+what the chip asks — #529 re-anchored it on `published_at`, which nothing backfills — so the
+1547 rows credited without ever being observed wear no chip because they were never published,
+not because of what a changeset says about them. The `created` clause that used to carry this
+paragraph is gone with it.
 
 `011-curation-lifecycle-actions.sql` widens the curation log's action check to
 admit the five verdicts a curator can now record — `marked_former`,

@@ -1616,7 +1616,7 @@ COMMENT ON COLUMN experience_categories.last_sync_status IS 'Status of last sync
 COMMENT ON COLUMN experience_categories.display_priority IS 'Display order in experience list (lower = shown first)';
 
 ALTER TABLE experience_categories ADD COLUMN IF NOT EXISTS new_badge_days INTEGER NOT NULL DEFAULT 30;
-COMMENT ON COLUMN experience_categories.new_badge_days IS 'How long an object created by the latest run keeps the "New" chip. Per category, because sources have different cadences.';
+COMMENT ON COLUMN experience_categories.new_badge_days IS 'How long an object keeps the "New" chip after it becomes visible to readers. Per category, because sources have different cadences. Counted from published_at, not from the run that found the row: under a gate those are a curator week apart (#529).';
 
 -- The curation gate (ADR-0025). A category is a source here, and this is the
 -- per-source decision: does what a run brings in wait for a person, or publish
@@ -1802,8 +1802,10 @@ COMMENT ON COLUMN experience_sync_logs.is_dry_run IS 'TRUE for preview runs: the
 COMMENT ON COLUMN experience_sync_logs.total_filtered IS 'Entities the source offered that are not of the kind this category holds — e.g. a Wikidata collection with no physical address answering a museum query. Not errors: nothing failed, and the run stays successful.';
 COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-object detection did not run: ranked source, force run, cancelled, errors, or coverage below the floor. Every value missingDetectionSkipReason() produces lands here.';
 
--- Serves the "New" chip's per-row lookup of the latest completed non-dry run
--- of a category: without it each row scans and sorts every run in its category.
+-- Built for the "New" chip's per-row lookup of the latest completed non-dry run
+-- of a category, which #529 deleted: the chip now counts from published_at and
+-- reads no sync log at all. Kept because dropping an index is its own decision
+-- with its own measurement, but nothing about the chip should be read from it.
 -- Declared here rather than beside the other sync-log indexes above because it
 -- reads is_dry_run, which the ALTER just above adds.
 CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_latest
@@ -1909,7 +1911,7 @@ ALTER TABLE experiences ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS pending_change_sync_log_id INTEGER
     REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
 COMMENT ON COLUMN experiences.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a pending row (ADR-0025).';
-COMMENT ON COLUMN experiences.published_at IS 'When the row became visible. NULL while pending and for every row that predates the gate. The "New" chip counts from the run that first saw a row; a gated row is seen months before a reader can see it, so publication is the moment the chip should count from instead.';
+COMMENT ON COLUMN experiences.published_at IS 'When the row became visible. NULL while pending and for every row that predates the gate. This is what the "New" chip counts from (#529): a gated row is found months before a reader can see it, so the run that found it is the wrong clock.';
 COMMENT ON COLUMN experiences.pending_change_sync_log_id IS 'The run whose content proposal is held for an already-visible row. NULL when nothing is held. Contents need no equivalent — a content row is held by being written pending rather than withheld.';
 CREATE INDEX IF NOT EXISTS idx_experiences_curation_state ON experiences(curation_state) WHERE curation_state = 'pending';
 
