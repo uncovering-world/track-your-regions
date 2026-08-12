@@ -103,9 +103,32 @@ three of them and the criterion decides per branch, not per endpoint.
 
 The three that remain (`/:id/state`, `/:id/accept-source`, `/review/queue`) stay
 exempt, checked rather than assumed: each ends at `res.json` with nothing after
-its `client.release()`. CodeQL raises `js/missing-rate-limiting` on all five; the
-three are dismissed against this section, and these two rows are why the others
-are not.
+its `client.release()`.
+
+`PUT /api/admin/sync/categories/:categoryId/curation-gate` — the switch that holds
+a source's content for review — stays exempt too, and CodeQL flags it, so the
+reason is here rather than only in a dismissal. It is one `UPDATE` of one row in a
+three-row table, and it does no work itself: it changes what *future* runs do. A
+flood of flips costs a flood of single-row updates, which is what the default
+exemption on this router is for. The criterion above is about cost per request,
+not about how much a request decides — and adding a limiter to satisfy an
+analyser, against the rule this section states, would make the rule mean less
+each time it is done.
+
+`POST /api/experiences/categories/:categoryId/publish-waiting` carries
+`authenticatedLimiter`, and it is the clearest case of the criterion rather than a
+borderline one: it runs the publish transaction once per waiting object, so its
+cost scales with the source's backlog instead of with the request, and it can
+reach the post-commit placement on any of them. Named in full rather than as "the
+same limiter" — the sentence used to sit at the end of the paragraph above, where
+the nearest antecedent was the gate switch, a route that carries none.
+
+CodeQL raises `js/missing-rate-limiting` on every route this section exempts, on
+either router — the curator ones in `experienceRoutes.ts` and the admin gate switch
+in `adminRoutes.ts` — and each such alert is dismissed against this section. The
+count is deliberately not written down, because it has already been wrong twice:
+once when a route was added to a row of this table, and once when this sentence
+outlived the route it counted.
 
 ## Adding rate limiting to new endpoints
 
@@ -119,11 +142,20 @@ When adding a new route, choose the appropriate limiter:
 | Auth flow (login, register, etc.) | Create dedicated limiter | `middleware/rateLimiter.ts` |
 | Admin/curator only | None needed | — |
 | Admin/curator, **and** long-running or destructive | `expensiveAdminLimiter` | `middleware/rateLimiter.ts` |
+| Curator batch whose cost scales with a backlog | `authenticatedLimiter` | `middleware/rateLimiter.ts` |
 
-The criterion for that last row is not "is it admin-only" but "does a repeat
+The criterion for the long-running row is not "is it admin-only" but "does a repeat
 request cost more than the request": long-running, destructive, or discarding the
 previous run's result. Being behind `requireAdmin` does not make a 130-second
 destructive operation safe to fire six times a minute by accident.
+
+The last row exists because those two answers pull apart for a curator working a
+queue. `publish-waiting` qualifies as expensive — its cost is one transaction per
+waiting object — but 5/min is a ceiling on *the person*, and a curator answering a
+backlog in batches would hit it mid-work. So the rule is: bound the runaway client
+at 60/min and leave the human alone, unless a single call is expensive on its own
+(a re-match is 20–130s and discards its predecessor's output; a publish is one
+transaction). § 5 above records which routes this has been applied to and why.
 
 **Important:** Always apply rate limiting middleware **before** the route handler in the middleware chain. For per-route application, place it as the first middleware argument:
 
