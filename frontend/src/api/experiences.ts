@@ -429,7 +429,7 @@ export interface ReviewQueueItem {
    * A number because the query casts it. `COUNT(*)` is `bigint`, which `pg`
    * hands over as a string, and an uncast count arrives here as `"12"` — which
    * survives arithmetic by coercion and breaks a plural rule, since `'1' === 1`
-   * is false. The cast is pinned by a test in `lifecycleController.test.ts`.
+   * is false. The cast is pinned by a test in `reviewQueueController.test.ts`.
    */
   pending_locations?: number;
   /** Unread works under a row readers already see. `contents` items only. */

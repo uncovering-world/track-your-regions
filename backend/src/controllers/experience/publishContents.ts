@@ -55,7 +55,7 @@ export async function publishContents(
   if (locationIds !== undefined || !anyNamed) {
     const named = locationIds !== undefined;
     // `missing_since IS NULL` matches the `contents` card exactly
-    // (`lifecycleController.ts`'s query carries it on the same table), and the
+    // (`reviewQueueController.ts`'s query carries it on the same table), and the
     // two have to move together: the card is what asks the question this
     // statement answers, so a row the card never showed must not be something
     // this can publish, and a row it shows must be something this reaches.

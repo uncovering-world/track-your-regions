@@ -3,9 +3,10 @@
  *
  * The rules worth pinning are the ones a reader cannot infer from the column
  * names: every verdict clears `missing_since` (including "false alarm", which
- * changes nothing else), accepting a source value has to release the curator's
- * claim or the next run refuses it again, and a region-scoped curator may only
- * act on experiences their scope reaches.
+ * changes nothing else), a region-scoped curator may only act on experiences
+ * their scope reaches, and an override that un-refuses a gated arrival publishes
+ * what arrived under it. The accept-source path moved out with its handler
+ * (#526) — see `acceptSourceController.test.ts`.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -30,10 +31,7 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import {
-  setExperienceState, setExperienceAdmission, acceptSourceValue,
-} from './lifecycleController.js';
-import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
+import { setExperienceState, setExperienceAdmission } from './lifecycleController.js';
 import { assignRegionsForExperiences } from '../../services/sync/regionAssignmentService.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -50,24 +48,27 @@ const ADMIN = { id: 1, role: 'admin' as const };
 /**
  * Captures what a transaction ran, so assertions can read the statements.
  *
- * `claimed` answers the `FOR UPDATE` re-read: the accept path reads
- * `curated_fields` inside its own transaction rather than trusting a value
- * fetched before the lock.
+ * Serves `setExperienceState` only — `setExperienceAdmission` has its own
+ * `refusedClient` below, and the two locked reads select different columns.
+ *
+ * `state` is the row as this handler's `FOR UPDATE` finds it, and the default is
+ * a realistic one on purpose: the handler compares those three axes with what the
+ * card claimed to be showing, so a mock without them would let a test pass while
+ * the handler wrote NULL into an axis nobody decided. Nothing else belongs in the
+ * row — a column this read does not select is padding that reads as a constraint.
  */
-function makeClient(claimed?: string[], state?: Record<string, unknown>, proposal?: unknown[]) {
+function makeClient(state?: Record<string, unknown>) {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   return {
     queries,
     client: {
-      query: vi.fn(async (sql: string, params?: unknown[]) => {
+      // The row type is declared rather than inferred: one test overrides this
+      // implementation to make ROLLBACK throw, and an inferred shape would pin
+      // that override to whatever columns the default happens to carry.
+      query: vi.fn(async (sql: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => {
         queries.push({ sql, params: params ?? [] });
-        if (sql.includes('experience_sync_changes')) return { rows: proposal ?? [] };
         if (sql.includes('FOR UPDATE')) {
-          // Default to a realistic row: the locked read always carries these
-          // columns in production, and a mock without them would let a test
-          // pass while the handler wrote NULL into an axis nobody decided.
           return { rows: [{
-            curated_fields: claimed ?? [],
             source_membership: 'present',
             existence: 'extant',
             missing_since: new Date('2026-08-03T10:00:00Z'),
@@ -154,7 +155,7 @@ describe('setExperienceState', () => {
   it('refuses a decision made about a state that is no longer stored', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
     // Another curator answered `former` between this card being drawn and clicked
-    const { client, queries } = makeClient(undefined, { source_membership: 'former', existence: 'extant' });
+    const { client, queries } = makeClient({ source_membership: 'former', existence: 'extant' });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -173,7 +174,7 @@ describe('setExperienceState', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
     // The source listed the object again, so the upsert cleared the flag and
     // left both axes exactly as the card rendered them
-    const { client, queries } = makeClient(undefined, { source_membership: 'present', existence: 'extant', missing_since: null });
+    const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant', missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -194,7 +195,7 @@ describe('setExperienceState', () => {
   it('allows a correction made with the current state in view', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'former', existence: 'extant' }] });
     // No flag: this is a decided row, reached from a view that shows it
-    const { client, queries } = makeClient(undefined, { source_membership: 'former', existence: 'extant', missing_since: null });
+    const { client, queries } = makeClient({ source_membership: 'former', existence: 'extant', missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -212,7 +213,7 @@ describe('setExperienceState', () => {
 
   it('takes the lock before writing the verdict', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
-    const { client, queries } = makeClient(undefined, { source_membership: 'present', existence: 'extant' });
+    const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant' });
     mockedConnect.mockResolvedValue(client);
 
     await setExperienceState(
@@ -228,7 +229,7 @@ describe('setExperienceState', () => {
   it('refuses a verdict another curator already recorded', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
     // Both curators had the same flagged card open; the other clicked first
-    const { client, queries } = makeClient(undefined, { source_membership: 'present', existence: 'lost', missing_since: null });
+    const { client, queries } = makeClient({ source_membership: 'present', existence: 'lost', missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -246,7 +247,7 @@ describe('setExperienceState', () => {
 
   it('still records a false alarm the curator did assert', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
-    const { client, queries } = makeClient(undefined, { source_membership: 'present', existence: 'extant' });
+    const { client, queries } = makeClient({ source_membership: 'present', existence: 'extant' });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -265,7 +266,7 @@ describe('setExperienceState', () => {
   it('refuses a stale verdict that would undo another curator\'s answer', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
     // A answered `former`, which cleared the flag. B's card predates that.
-    const { client, queries } = makeClient(undefined, { source_membership: 'former', existence: 'extant', missing_since: null });
+    const { client, queries } = makeClient({ source_membership: 'former', existence: 'extant', missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -283,7 +284,7 @@ describe('setExperienceState', () => {
 
   it('refuses a decision on a question that was never open', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1, source_membership: 'present', existence: 'extant' }] });
-    const { client, queries } = makeClient(undefined, { missing_since: null });
+    const { client, queries } = makeClient({ missing_since: null });
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -395,241 +396,6 @@ describe('setExperienceState', () => {
 
     expect(queries.some(q => q.sql === 'ROLLBACK')).toBe(true);
     expect(client.release).toHaveBeenCalled();
-  });
-});
-
-describe('acceptSourceValue', () => {
-  beforeEach(() => {
-    mockedQuery.mockReset();
-    mockedConnect.mockReset();
-  });
-
-  it('refuses a curator whose scope does not reach the experience', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    mockedQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
-    const res = makeRes();
-
-    await acceptSourceValue(
-      { user: CURATOR, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
-      res as never,
-    );
-
-    expect(res.status).toHaveBeenCalledWith(403);
-  });
-
-  it('says so when the source never proposed anything', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    mockedConnect.mockResolvedValue(makeClient(['name'], undefined, []).client);
-    const res = makeRes();
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
-      res as never,
-    );
-
-    expect(res.status).toHaveBeenCalledWith(409);
-  });
-
-  it('releases the curator claim, or the next run would refuse the value again', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'Renamed upstream', curatedConflict: true }] }];
-    const { client, queries } = makeClient(['name', 'description'], undefined, PROPOSAL);
-    mockedConnect.mockResolvedValue(client);
-    const res = makeRes();
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
-      res as never,
-    );
-
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'));
-    expect(update?.sql).toContain('name = $2');
-    expect(update?.params).toContain('Renamed upstream');
-    // 'name' released, 'description' still claimed
-    expect(update?.params).toContain(JSON.stringify(['description']));
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ fromSyncLogId: 9 }));
-  });
-
-  it('will not write a proposal the source has since withdrawn', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    // The withdrawal check is in the SQL, so a withdrawn proposal comes back
-    // as no row — the same answer as no proposal ever existing
-    const { client, queries } = makeClient(['name'], undefined, []);
-    mockedConnect.mockResolvedValue(client);
-    const res = makeRes();
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 41 } } as never,
-      res as never,
-    );
-
-    const lookup = queries.find(q => q.sql.includes('experience_sync_changes'));
-    expect(lookup?.sql).toContain('last_seen_sync_log_id');
-    // Same gate as the queue, or a card fetched before a run started would be
-    // refused mid-run with "no proposal on record", which is false
-    // The two copies must stay identical, or the endpoint would refuse a
-    // newer proposal while writing a retracted one. Sharing one definition is
-    // what makes that structural; this asserts they really do share it.
-    const queueSql = CHANGESET_LANDED_SQL.replace(/\s+/g, ' ').trim();
-    expect(lookup!.sql.replace(/\s+/g, ' ')).toContain(queueSql);
-    expect(res.status).toHaveBeenCalledWith(409);
-    expect(queries.some(q => q.sql.includes('UPDATE experiences'))).toBe(false);
-  });
-
-  it('resolves the proposal under the same lock that writes it', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
-    const { client, queries } = makeClient(['name'], undefined, PROPOSAL);
-    mockedConnect.mockResolvedValue(client);
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
-      makeRes() as never,
-    );
-
-    // Resolving it before the lock would let a run landing in between have its
-    // values written under the run id the curator sent — the substitution
-    // expectedSyncLogId exists to refuse
-    expect(queries[0].sql).toBe('BEGIN');
-    expect(queries.some(q => q.sql.includes('experience_sync_changes'))).toBe(true);
-    const lookup = queries.findIndex(q => q.sql.includes('experience_sync_changes'));
-    const write = queries.findIndex(q => q.sql.includes('UPDATE experiences'));
-    expect(lookup).toBeGreaterThan(0);
-    expect(write).toBeGreaterThan(lookup);
-  });
-
-  it('finishes rolling back before letting go of the client', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    const PROPOSAL = [{ sync_log_id: 42, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
-    const { client, queries } = makeClient(['name'], undefined, PROPOSAL);
-    let rollbackDone = false;
-    let releasedBeforeRollback = false;
-    const inner = client.query.getMockImplementation()!;
-    client.query.mockImplementation(async (sql: string, params?: unknown[]) => {
-      if (sql === 'ROLLBACK') {
-        await new Promise(r => setTimeout(r, 5));
-        rollbackDone = true;
-        queries.push({ sql, params: params ?? [] });
-        return { rows: [] };
-      }
-      return inner(sql, params);
-    });
-    client.release.mockImplementation(() => { if (!rollbackDone) releasedBeforeRollback = true; });
-    mockedConnect.mockResolvedValue(client);
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 41 } } as never,
-      makeRes() as never,
-    );
-
-    // An unawaited refusal settles the try block at once, so `finally` hands
-    // the client back while its ROLLBACK is still running on the wire
-    expect(releasedBeforeRollback).toBe(false);
-  });
-
-  it('refuses a proposal a newer run has replaced', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    // The card was drawn from run 41; run 42 has since proposed something else
-    const PROPOSAL = [{ sync_log_id: 42, changed_fields: [{ field: 'name', new: 'Rathaus', curatedConflict: true }] }];
-    const { client, queries } = makeClient(['name'], undefined, PROPOSAL);
-    mockedConnect.mockResolvedValue(client);
-    const res = makeRes();
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 41 } } as never,
-      res as never,
-    );
-
-    // Writing here would replace the curator's edit with a value they never
-    // saw — the same exposure `expected` closes on the verdict path
-    expect(res.status).toHaveBeenCalledWith(409);
-    expect(queries.some(q => q.sql.includes('UPDATE experiences'))).toBe(false);
-  });
-
-  it('names the run its value came from, since a later one may differ', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    const PROPOSAL = [{ sync_log_id: 42, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
-    mockedConnect.mockResolvedValue(makeClient(['name'], undefined, PROPOSAL).client);
-    const res = makeRes();
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 42 } } as never,
-      res as never,
-    );
-
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ applied: ['name'], released: [], fromSyncLogId: 42 }));
-  });
-
-  it('releases a field it cannot write, since nothing else ever would', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'tags', new: ['a'], curatedConflict: true }] }];
-    const { client, queries } = makeClient(['tags', 'name'], undefined, PROPOSAL);
-    mockedConnect.mockResolvedValue(client);
-    const res = makeRes();
-
-    // 'tags' carries a real proposal but has no column here. Editing would not
-    // clear it either — every other writer of curated_fields only ever adds —
-    // so releasing the claim is the only way off the queue, and the next run
-    // then writes the value through the ordinary upsert.
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['tags'], expectedSyncLogId: 9 } } as never,
-      res as never,
-    );
-
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'));
-    expect(update?.sql).not.toContain('tags =');
-    expect(update?.params).toContain(JSON.stringify(['name']));
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ applied: [], released: ['tags'] }));
-  });
-
-  it('reads the claim it is about to rewrite under the same lock', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
-    const { client, queries } = makeClient(['name'], undefined, PROPOSAL);
-    mockedConnect.mockResolvedValue(client);
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
-      makeRes() as never,
-    );
-
-    // Reading it before the transaction and writing the filtered result back
-    // would drop whatever a concurrent edit claimed in between
-    const order = queries.map(q => q.sql.trim().split(/\s+/).slice(0, 2).join(' '));
-    expect(order[0]).toBe('BEGIN');
-    expect(queries[1].sql).toContain('FOR UPDATE');
-    expect(queries.findIndex(q => q.sql.includes('UPDATE experiences'))).toBeGreaterThan(1);
-  });
-
-  it('does not overwrite an answer another curator already gave', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
-    // The claim was released while this request was in flight
-    const { client, queries } = makeClient([], undefined, PROPOSAL);
-    mockedConnect.mockResolvedValue(client);
-    const res = makeRes();
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
-      res as never,
-    );
-
-    expect(queries.some(q => q.sql.includes('UPDATE experiences'))).toBe(false);
-    expect(res.status).toHaveBeenCalledWith(409);
-  });
-
-  it('refuses a field the source did not propose', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
-    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
-    mockedConnect.mockResolvedValue(makeClient(['name'], undefined, PROPOSAL).client);
-    const res = makeRes();
-
-    await acceptSourceValue(
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['description'], expectedSyncLogId: 9 } } as never,
-      res as never,
-    );
-
-    expect(res.status).toHaveBeenCalledWith(409);
   });
 });
 

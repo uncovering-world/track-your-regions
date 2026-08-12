@@ -1195,7 +1195,7 @@ the claim key the queue reads and the claim key the upsert honours are the same 
 reads — uses that same string too.
 
 Accepting is always a claim release; whether the value is *also* written on the spot is what
-`ACCEPTABLE_FIELDS` (`lifecycleController.ts`) decides — `name`, `shortDescription`,
+`ACCEPTABLE_FIELDS` (`acceptableFields.ts`) decides — `name`, `shortDescription`,
 `description`, `category`, `imageUrl`. Their **claim keys** are `name`, `short_description`,
 `description`, `category`, `image_url`, and each of those is a real column, which is what
 lets `CURATED_KEY_BY_FIELD` answer both questions for them: the field name itself is
