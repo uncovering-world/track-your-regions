@@ -492,6 +492,19 @@ export const reorderCategoriesBodySchema = z.object({
   categoryIds: z.array(z.number().int().positive()).min(1),
 });
 
+/**
+ * Whether a source holds its new and changed content for a curator (ADR-0025).
+ *
+ * `z.boolean()` rather than a coerced or enum'd form: this arrives as JSON from
+ * one admin control, so there is no string to interpret, and the neighbours above
+ * show what interpreting one costs — `z.coerce.boolean()` is `Boolean(input)`, so
+ * the string `'false'` would switch a gate *on*. A request that cannot say which
+ * way the switch went should be refused, not guessed.
+ */
+export const curationGateBodySchema = z.object({
+  requiresCuration: z.boolean(),
+});
+
 export const startRegionAssignmentBodySchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
   categoryId: z.coerce.number().int().positive().optional(),
