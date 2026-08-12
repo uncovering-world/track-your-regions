@@ -44,10 +44,12 @@ export interface Experience {
   /** Set by a run, cleared by any verdict. Sent back when correcting one. */
   missing_since?: string | null;
   /**
-   * Decided by the server: observed arriving in the latest completed non-dry
-   * run of its category, and still inside the category window or this reader's
-   * own week.
-   * Not "recently created" — see `experienceNewBadge.ts`.
+   * Decided by the server: the reader could first see this recently — the row has
+   * been published, and either that publication is inside the category's window or
+   * this reader's own week has not run out.
+   * Not "recently created", and not "found by the latest run" either: under a gated
+   * source those are a curator's working week apart (#529). See
+   * `experienceNewBadge.ts`.
    */
   is_new?: boolean;
 }

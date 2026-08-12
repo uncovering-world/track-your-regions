@@ -1,42 +1,55 @@
 /**
  * What makes an experience "new" to the person looking at it.
  *
- * Not "recently created" — that is what the client-side heuristic this
- * replaces measured, and it answers a different question. Both measure a first
- * appearance, but of different things: `created_at` is when the row entered
- * this database, which for a category loaded in bulk is the same instant for
- * thousands of rows that entered the *source* years apart. The chip is about
- * arriving in a run, so it keys off the run:
+ * Not "recently created" — that is what the client-side heuristic this replaced
+ * measured, and it answers a different question. `created_at` is when the row
+ * entered this database, which for a category loaded in bulk is one instant for
+ * thousands of objects that entered the *source* years apart.
  *
- *     is_new = a run was observed creating the row, AND that run is the latest
- *              completed non-dry run of its category, AND ( it is still inside
- *              the category's window OR this reader first saw the chip less
- *              than a week ago )
+ * It keys off **becoming visible**:
  *
- * The two clauses are a maximum, not a choice: the category window is the
- * floor — everyone gets at least that long — and a reader who happens to arrive
- * near the end of it keeps the chip a week from *their* first sighting rather
- * than losing it the next day. Anonymous readers get the first clause only,
- * since there is nobody to remember.
+ *     is_new = the row has been published, AND ( that publication is still inside
+ *              the category's window OR this reader first saw the chip less than
+ *              a week ago )
  *
- * "Observed" is load-bearing, and is why the first clause is not just the
- * column: migration 009 backfilled `first_seen_sync_log_id` to the newest run
- * of each category for every pre-existing row, so the column alone credits
- * 1547 of 1547 rows to a run that never inserted them. A changeset row of type
- * `created` is the difference between a sighting and a guess — do not
- * "simplify" it away.
+ * The two clauses are a maximum, not a choice: the category window is the floor —
+ * everyone gets at least that long — and a reader who arrives near the end of it
+ * keeps the chip a week from *their* first sighting rather than losing it the next
+ * day. Anonymous readers get the first clause only, since there is nobody to
+ * remember.
  *
- * Scoped by that, the column does mean first: it is written on INSERT and
- * never on update, so a row that went missing and came back keeps the run it
- * originally arrived in and does not wear the chip again — which is right, it
- * is not new to anyone who was here before, and `returned` is where that event
- * is recorded.
+ * **Why becoming visible and not arriving in a run (#529).** Under a gated source
+ * the two are not the same moment. An arrival is invisible until a curator passes
+ * it, so a chip anchored to the run that found it fails in the ordinary case
+ * rather than an exotic one: a museum arrives on Monday, the category runs again
+ * on Wednesday, the curator answers on Thursday — and by then the run that found
+ * it is no longer the latest, so the chip never appears for anyone. Even with no
+ * intervening run, the window was being spent while nobody could see the row.
+ * `published_at` is when a reader could first see it, which is the only moment the
+ * word "new" can honestly mean.
  *
- * The bound on the whole thing is the next completed non-dry run: once the
- * category runs again for real,
- * `first_seen_sync_log_id` no longer names the latest run and the chip goes,
- * whatever either window says. That is the property that keeps a batch from
- * accumulating chips forever.
+ * **Two clauses were removed, and both removals are deliberate — do not re-add:**
+ *
+ * - the `EXISTS … change_type = 'created'` proof of a sighting existed only
+ *   because migration 009 backfilled `first_seen_sync_log_id` to the newest run
+ *   of each category, so the column alone credited 1547 of 1547 rows to a run
+ *   that never inserted them. `published_at` is never backfilled — migration 018
+ *   left 1603 of 1604 rows NULL on purpose — so a publication needs no proof.
+ * - the latest-completed-run bound existed to stop chips accumulating. The
+ *   category window already bounds them, and under piecemeal approval "the newest
+ *   batch" has stopped being a unit: a curator answers eighteen arrivals over a
+ *   week, and no run divides them.
+ *
+ * **Two consequences, stated rather than discovered later.** Chips no longer clear
+ * when a category next runs — they last their full window per row, so a weekly
+ * source shows roughly four windows' worth at once instead of one batch. And
+ * everything published before the gate existed wears no chip at all, because
+ * `published_at` is NULL for it; the column starts meaning something from the
+ * first publication forward.
+ *
+ * Nothing re-inserts a whole category any more — force sync is gone (66960d8d) —
+ * so no single act can chip a whole source, which is the property the removed
+ * bound was protecting.
  */
 
 import { Response } from 'express';
@@ -63,44 +76,23 @@ export const NEW_BADGE_PERSONAL_DAYS = 7;
  * keeps control of parameter numbering, which is the part that has bitten this
  * file's neighbours twice.
  *
- * Correlated rather than joined: a join against the latest-run subquery would
- * multiply rows on a read that already joins categories and regions, and the
- * planner treats this as a scalar per row either way.
+ * Two correlated subqueries rather than joins, and after #529 that is a choice
+ * about readability rather than about row counts: neither could multiply anything —
+ * `experience_categories` is reached by primary key and `user_new_badge_views` is
+ * unique on `(user_id, experience_id)`. The paragraph that used to be here
+ * justified the shape by the latest-run subquery this predicate no longer has,
+ * which would have sent the next reader looking for a join risk that is gone.
+ * `EXISTS` also keeps each clause readable as the question it asks, which matters
+ * more than the shape when the two are alternatives rather than filters.
  */
 export function isNewSql(alias = 'e', userIdParam: NewBadgeReaderParam = 'NULL'): string {
   return `(
-    ${alias}.first_seen_sync_log_id IS NOT NULL
-    -- Observed arriving, not merely attributed to a run. Migration 009
-    -- backfilled first_seen_sync_log_id to the newest run of each category
-    -- for every pre-existing row — a reasonable guess about where they came
-    -- from, but not a sighting. Without this clause the whole catalogue wears
-    -- the chip on the day this ships, and keeps it until each category next
-    -- runs: 1547 of 1547 rows, measured. Nothing re-inserts a whole category
-    -- any more — force sync, which did, is gone — so this clause only ever
-    -- sees rows a run genuinely brought in for the first time.
-    AND EXISTS (
-      SELECT 1 FROM experience_sync_changes ch
-      WHERE ch.experience_id = ${alias}.id
-        AND ch.sync_log_id = ${alias}.first_seen_sync_log_id
-        AND ch.change_type = 'created'
-    )
-    AND ${alias}.first_seen_sync_log_id = (
-      SELECT l.id FROM experience_sync_logs l
-      WHERE l.category_id = ${alias}.category_id
-        AND l.is_dry_run = FALSE
-        AND l.completed_at IS NOT NULL
-      -- By completion, not by id. A run that started earlier can finish later,
-      -- and id order is creation order — so ordering by id can name a run that
-      -- finished months ago as the latest and quietly switch every chip off.
-      ORDER BY l.completed_at DESC, l.id DESC
-      LIMIT 1
-    )
+    ${alias}.published_at IS NOT NULL
     AND (
       EXISTS (
-        SELECT 1 FROM experience_sync_logs l
-        JOIN experience_categories c ON c.id = ${alias}.category_id
-        WHERE l.id = ${alias}.first_seen_sync_log_id
-          AND l.completed_at > NOW() - (c.new_badge_days || ' days')::interval
+        SELECT 1 FROM experience_categories c
+        WHERE c.id = ${alias}.category_id
+          AND ${alias}.published_at > NOW() - (c.new_badge_days || ' days')::interval
       )
       OR EXISTS (
         SELECT 1 FROM user_new_badge_views v
