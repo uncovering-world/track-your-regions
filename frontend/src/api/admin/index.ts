@@ -12,15 +12,36 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 // Types
 // =============================================================================
 
+/** What one source is holding, in the three kinds the review queue asks about. */
+export interface WaitingCounts {
+  /** Rows nobody has read yet. */
+  arrivals: number;
+  /** Visible rows holding a change the gate refused — answered per card, not in a batch. */
+  held: number;
+  /** Visible rows holding unread points or works. */
+  contents: number;
+}
+
 export interface ExperienceCategory {
   id: number;
   name: string;
   description: string | null;
   is_active: boolean;
+  /** Does a run from this source hold its new and changed content for review (ADR-0025)? */
+  requires_curation: boolean;
   last_sync_at: string | null;
   last_sync_status: string | null;
   display_priority: number;
   created_at: string;
+  /**
+   * Three zeros for a source holding nothing — never an absent key, so a panel
+   * deciding whether to show "nothing waiting" compares numbers — and `null` when the
+   * server could not count. The counts are an addition to this endpoint and the source
+   * list is what it is for, so a failed aggregate answers `null` beside intact sources
+   * rather than failing the request; a panel that showed `null` as three zeros would
+   * make a claim about the source that nothing checked.
+   */
+  waiting: WaitingCounts | null;
 }
 
 export interface SyncStatus {
@@ -159,6 +180,92 @@ export async function getSyncStatus(categoryId: number): Promise<SyncStatus> {
  */
 export async function cancelSync(categoryId: number): Promise<{ cancelled: boolean }> {
   return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/cancel`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Hold this source's new and changed content for review, or stop holding it.
+ *
+ * Answers with the state that is now stored rather than echoing the request, so a
+ * switch that lost a race renders what is true. Turning the gate **on** publishes
+ * nothing and hides nothing: rows the source already published stay visible.
+ * Turning it **off** publishes nothing either, and what a backlog does afterwards
+ * depends on its kind: unread objects and unread contents wait until someone releases
+ * them (`publishWaiting`), while a change a run is holding is applied by that source's
+ * next run — the hold only exists while the gate does.
+ */
+export async function setCurationGate(
+  categoryId: number, requiresCuration: boolean,
+): Promise<{ categoryId: number; name: string; requiresCuration: boolean }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/curation-gate`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requiresCuration }),
+  });
+}
+
+/** One object the batch released, and what came with it. */
+export interface PublishedWaitingObject {
+  id: number;
+  name: string;
+  locationsPublished: number;
+  /**
+   * Works released, from both axes, because either can be zero while a work was.
+   *
+   * A work reviewed in one venue and unread in another publishes as a link and not as a
+   * row, so a consumer reading one number reports zero works for an object that
+   * released one — which is why `publishOutcomeFor` takes the `Math.max` of the pair on
+   * the single-object path, and why the batch's notice takes it per object too. Declared
+   * here so the batch cannot be the form that reports fewer works than the card does for
+   * the same act.
+   */
+  treasureLinksPublished: number;
+  treasuresPublished: number;
+  /**
+   * Points a source replaced whose old pin this publication took off the map.
+   *
+   * The twin of `placementFailed`, and declared for the same reason: releasing a
+   * visible row's unread points releases the withdrawals deferred behind them, so a
+   * pin a reader could see yesterday is gone — and "40 objects published." says
+   * nothing about it. The single-object notice has carried this sentence since the
+   * publish endpoint landed; a batch that dropped it would be the one form of the
+   * same act that stays silent about it.
+   */
+  withdrawalsReleased: number;
+  /**
+   * The publication landed and re-placing the object into its regions did not.
+   *
+   * Declared here because dropping it is how a publication with stale regions
+   * reads as an unqualified success — and this is the only caller that could
+   * report it. Rebuilding a world view is an admin's job, so the curator's one
+   * useful act is naming the object and the world views to an admin.
+   */
+  placementFailed?: true;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+}
+
+/**
+ * Release everything this source is holding, except the changes it is holding.
+ *
+ * `heldLeftForReview` is what the caller's *own scope* still holds afterwards, and holds
+ * *on purpose*: a held proposal changes a row a reader is already looking at, so it is
+ * answered on its own card where the old and new values are visible. A caller that does
+ * not show this number will look like it failed. It is not the panel's figure: the panel
+ * counts the same kind for the same source but for nobody in particular, so a
+ * region-scoped curator is shown a larger number there — by design, and the difference is
+ * their scope rather than anything about how the two are counted. It is `null` when the server could not
+ * count it — the publications had already committed by then, so the report is sent
+ * with the count missing rather than replaced by a `0` nothing checked.
+ */
+export async function publishWaiting(categoryId: number): Promise<{
+  categoryId: number;
+  published: PublishedWaitingObject[];
+  refused: Array<{ id: number; name: string; error: string }>;
+  outOfScope: number;
+  heldLeftForReview: number | null;
+}> {
+  return authFetchJson(`${API_URL}/api/experiences/categories/${categoryId}/publish-waiting`, {
     method: 'POST',
   });
 }

@@ -55,6 +55,46 @@ export function invalidateExperiences(
 }
 
 /**
+ * The batch counterpart: many objects changed and naming them is pointless.
+ *
+ * `invalidateExperiences(qc)` with nothing named deliberately reaches no object
+ * keys — that is what its own "leaves it alone when nothing is named" test pins,
+ * because a caller who changed one object should say which. A batch publication is
+ * the other case: it changed a whole source's worth, and the object keys are
+ * `['experience', id]`, `['experience-locations', id]`, `['experience-contents', id]`
+ * and `['curation-log', id]` — all four the object form reaches — so their prefixes
+ * cover exactly the objects that changed plus some cheap extras, cheaper than
+ * enumerating 1272 ids and unable to miss one.
+ *
+ * `['curation-log']` is not an afterthought in that list: **one audit row per object,
+ * never one for the batch** is this endpoint's headline decision, and that cache is
+ * where those rows are read (`CurationDialog`). A batch that wrote forty of them and
+ * left the log showing none would contradict its own promise on the first object a
+ * curator opened.
+ *
+ * `['region-locations']` is here for the reason the object form documents: the list
+ * refetches on its own because `['experiences']` prefix-matches the by-region key,
+ * while the batch that draws the pins is held for five minutes. Without it the
+ * curator releases forty museums and opens Map mode onto forty rows with no pins.
+ *
+ * `['curation', 'reviewQueue']` is here because this is the one publication path
+ * that does not start on that page. Every verdict taken *in* the queue invalidates
+ * it, for the reason `ReviewQueue.tsx` writes down — a card left up lets the next
+ * click repeat a refusal, and with `staleTime: 60000` and no refetch-on-focus
+ * nothing recovers it short of a reload. A batch removes those cards in bulk from a
+ * different screen, so it has to say so.
+ */
+export function invalidateAfterBatchPublication(queryClient: QueryClient) {
+  invalidateExperiences(queryClient);
+  for (const prefix of [
+    ['experience'], ['experience-locations'], ['experience-contents'],
+    ['curation-log'], ['region-locations'], ['curation', 'reviewQueue'],
+  ]) {
+    queryClient.invalidateQueries({ queryKey: prefix });
+  }
+}
+
+/**
  * Invalidate visited status caches after marking/unmarking visits.
  * Used by experience visit, location visit, and treasure view mutations.
  */

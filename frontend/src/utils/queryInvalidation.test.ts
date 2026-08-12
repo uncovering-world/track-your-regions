@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
-import { invalidateExperiences } from './queryInvalidation';
+import { invalidateExperiences, invalidateAfterBatchPublication } from './queryInvalidation';
 
 function makeClient() {
   const keys: unknown[][] = [];
@@ -114,5 +114,65 @@ describe('invalidateExperiences', () => {
     invalidateExperiences(client as never);
 
     expect(keys.some(k => k[0] === 'region-locations')).toBe(false);
+  });
+});
+
+describe('invalidateAfterBatchPublication', () => {
+  it('reaches every published object by prefix, and the pins with them', () => {
+    const client = new QueryClient();
+    client.setQueryData(['experience', 6206], { name: 'Prado' });
+    client.setQueryData(['experience-locations', 6206], ['pin']);
+    client.setQueryData(['experience-contents', 6206], ['work']);
+    client.setQueryData(['region-locations', 7, false], ['pin']);
+
+    invalidateAfterBatchPublication(client);
+
+    // The object form deliberately reaches none of these without an id — a caller
+    // who changed one object should say which. A batch changed a source's worth, so
+    // the prefixes cover exactly what changed plus cheap extras, and cannot miss one
+    // the way a list of 1272 ids can.
+    for (const key of [
+      ['experience', 6206], ['experience-locations', 6206],
+      ['experience-contents', 6206], ['region-locations', 7, false],
+    ]) {
+      expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    }
+  });
+
+  it('reaches the audit log, which is where its one-row-per-object promise is read', () => {
+    const client = new QueryClient();
+    client.setQueryData(['curation-log', 6206], [{ action: 'published' }]);
+
+    invalidateAfterBatchPublication(client);
+
+    // "One `published` row per object, never one for the batch" is this endpoint's
+    // headline decision, and this cache is where those rows are read. A batch that
+    // wrote forty and left the log showing none would contradict itself on the first
+    // object a curator opened.
+    expect(client.getQueryState(['curation-log', 6206])?.isInvalidated).toBe(true);
+  });
+
+  it('clears the queue cards it just answered, from a screen that is not the queue', () => {
+    const client = new QueryClient();
+    client.setQueryData(['curation', 'reviewQueue', 0], { arrivals: [{ id: 1 }] });
+
+    invalidateAfterBatchPublication(client);
+
+    // The one publication path that does not start on the review page. Every verdict
+    // taken *in* the queue invalidates this itself; a batch removes those cards in
+    // bulk from the admin panel, and with `staleTime: 60000` and no refetch-on-focus
+    // nothing else would recover them short of a reload.
+    expect(client.getQueryState(['curation', 'reviewQueue', 0])?.isInvalidated).toBe(true);
+  });
+
+  it('still refetches the lists, since a released object joins them', () => {
+    const client = new QueryClient();
+    client.setQueryData(['experiences', 'by-region', 7, false], []);
+    client.setQueryData(['discover-experiences'], []);
+
+    invalidateAfterBatchPublication(client);
+
+    expect(client.getQueryState(['experiences', 'by-region', 7, false])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['discover-experiences'])?.isInvalidated).toBe(true);
   });
 });
