@@ -1,0 +1,122 @@
+/**
+ * How much a gated source is holding, per source.
+ *
+ * The sync panel needs one number per source to answer "is there work here",
+ * and the number has to agree with the queue a curator opens next. So the
+ * authority is `reviewQueueController.ts`'s three gated kinds, and these
+ * predicates are written to match them row for row:
+ *
+ * | kind | a row counts when |
+ * |---|---|
+ * | `arrival` | nobody has read the row itself |
+ * | `held` | a run's proposal against a *visible* row was refused by the gate |
+ * | `contents` | a visible row holds unread points or unread works |
+ *
+ * **Where this cannot share the queue's spelling, and what would catch a drift.**
+ * The queue's `held` query reaches the held fields through
+ * `CROSS JOIN LATERAL jsonb_array_elements(changed_fields)` because it has to
+ * *show* them; a count only needs to know one exists, so it asks with `EXISTS`.
+ * Two spellings of one rule is exactly the shape this branch has been closing,
+ * and the honest defence is the case that separates them: a pointer whose
+ * changeset holds only fields a **curator** claimed (`curatedConflict`, no
+ * `held`) must count zero and raise no `held` card. `waitingCounts.test.ts` and
+ * the live cross-check in the branch's report both drive that row.
+ *
+ * A `pending` row never carries a proposal pointer — `syncUtils` writes the
+ * pointer only `WHERE curation_state <> 'pending'` — so `held` needs no
+ * "not pending" clause, and adding one would spell a conjunction the database
+ * already guarantees.
+ */
+
+import { pool } from '../../db/index.js';
+import { hideRefusedSql, offeredLocationSql } from './experienceLifecycle.js';
+
+/** A row nobody has read yet, and that the source still offers. */
+export function arrivalWaitingSql(alias = 'e'): string {
+  return `${alias}.curation_state = 'pending' AND ${alias}.missing_since IS NULL AND ${hideRefusedSql(alias)}`;
+}
+
+/**
+ * A visible row holding a proposal the gate refused.
+ *
+ * `held: true` on the field itself rather than the absence of a curator's claim
+ * (#519): a field can be refused for either reason, and only the gate's refusal
+ * is answerable by publishing.
+ */
+export function heldWaitingSql(alias = 'e'): string {
+  return `${alias}.pending_change_sync_log_id IS NOT NULL
+    AND ${alias}.missing_since IS NULL AND ${hideRefusedSql(alias)}
+    AND EXISTS (
+      SELECT 1 FROM experience_sync_changes ch
+      CROSS JOIN LATERAL jsonb_array_elements(ch.changed_fields) AS f
+      WHERE ch.experience_id = ${alias}.id
+        AND ch.sync_log_id = ${alias}.pending_change_sync_log_id
+        AND (f->>'held')::boolean
+    )`;
+}
+
+/**
+ * A visible row holding unread contents.
+ *
+ * Two tables, not one column: a link's state and its work's state are
+ * independent axes (ADR-0025), so a work reviewed in one venue and unread in
+ * another has to count here — which is why `getExperienceTreasures` gates both
+ * separately and this asks both questions too.
+ *
+ * A withdrawn point is not "unread" in any sense a reader notices, since every
+ * reader-facing location read already filters it, so publishing it would change
+ * nothing on screen — hence `offeredLocationSql`.
+ *
+ * `curation_state = 'pending'` is spelled positively rather than through
+ * `publishedContentSql`, which states the reader's side (`<> 'pending'`): this
+ * asks the opposite question, and `NOT (…)` around a fragment named for the
+ * other direction reads worse than the four words it replaces.
+ */
+export function contentsWaitingSql(alias = 'e'): string {
+  return `${alias}.curation_state <> 'pending'
+    AND ${alias}.missing_since IS NULL AND ${hideRefusedSql(alias)}
+    AND (
+      EXISTS (
+        SELECT 1 FROM experience_locations el
+        WHERE el.experience_id = ${alias}.id
+          AND ${offeredLocationSql('el')} AND el.curation_state = 'pending'
+      )
+      OR EXISTS (
+        SELECT 1 FROM experience_treasures et
+        LEFT JOIN treasures t ON t.id = et.treasure_id
+        WHERE et.experience_id = ${alias}.id
+          AND (et.curation_state = 'pending' OR t.curation_state = 'pending')
+      )
+    )`;
+}
+
+/** What one source is holding, in the three kinds the queue asks about. */
+export interface WaitingCounts {
+  arrivals: number;
+  held: number;
+  contents: number;
+}
+
+/**
+ * One pass over `experiences`, one row per category.
+ *
+ * Not scoped to a curator: this feeds the admin sync panel, which is behind
+ * `requireAdmin`, and an admin's scope is every category. The queue itself
+ * restricts what a *curator* is asked about, so the panel's number can be larger
+ * than what a region-scoped curator will find there — the panel answers "is this
+ * source holding anything", not "is there work for me".
+ */
+export async function waitingCountsByCategory(): Promise<Map<number, WaitingCounts>> {
+  const result = await pool.query(`
+    SELECT e.category_id,
+           COUNT(*) FILTER (WHERE ${arrivalWaitingSql()})::int  AS arrivals,
+           COUNT(*) FILTER (WHERE ${heldWaitingSql()})::int     AS held,
+           COUNT(*) FILTER (WHERE ${contentsWaitingSql()})::int AS contents
+    FROM experiences e
+    GROUP BY e.category_id
+  `);
+  return new Map(result.rows.map(r => [
+    r.category_id as number,
+    { arrivals: r.arrivals as number, held: r.held as number, contents: r.contents as number },
+  ]));
+}
