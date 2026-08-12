@@ -123,10 +123,13 @@ pairing whose point the source starts offering again is dropped by a statement o
 withdrawal is left to hold, and a pairing left standing would hide a point the source offers the
 moment the arrival is published.
 
-None of this changes an ungated run. `requires_curation` is false on all three categories, so
-every point a run inserts lands `auto`; the pairing statement is skipped outright when the insert
-returned no `pending` row, and the two housekeeping statements match nothing. Verified by running
-the same fixture on both sides of the commit: identical return values and identical rows.
+None of this changes an ungated run: every point such a run inserts lands `auto`, so the pairing
+statement is skipped outright when the insert returned no `pending` row, and the two housekeeping
+statements match nothing. Verified by running the same fixture on both sides of the commit:
+identical return values and identical rows. `requires_curation` is false on all three categories
+on the database as it stands today, which is a fact about the data rather than a property to rely
+on — an admin gates a source in one click, and from then on this paragraph describes only the
+sources they left alone.
 
 `missing_since` here is a machine observation, exactly as it is on an experience. What a reader
 sees does not change, because a withdrawn point used to be deleted and so left every list the
@@ -877,6 +880,7 @@ category later decides about the building.
 | POST | `/api/experiences/:id/admission` | `{ decision: 'confirm' \| 'override', note? }` — answer a refusal. `confirm` keeps the row refused and hidden, `override` admits it again. Both pin `admission` in `curated_fields`, which is what takes the card out of the queue and what stops a later run reversing either answer; no `expected` block is needed, because a second curator collides with that pin and gets 409. `override` on a row that was `pending` also publishes it, in the same transaction (ADR-0025 § 4.5) — `curation_state = 'verified'`, `published_at = COALESCE(published_at, NOW())` — because that verdict is the only thing that ever un-hides an arrival nobody had read; `override` on an `auto` row and `confirm` on any row never publish. The response's `published` field says which happened. See § Publishing for the mechanism and why it does not place |
 | POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted |
 | POST | `/api/experiences/:id/publish` | `{ contentsOnly?: true, locationIds?: number[], treasureIds?: number[], expectedSyncLogId? }` — say that a reader may see this (ADR-0025). An empty body publishes the object: any held content fields, `curation_state = 'verified'`, `published_at` if the row was `pending`, the pointer cleared, and every unread point and work it holds. `contentsOnly: true` or naming either array is a contents publish, leaving the experience's own state alone — `contentsOnly` for every pending content row, naming an array for exactly those rows. All three are explicit and mutually exclusive (schema `.refine`s): leaving everything absent used to be read as "the object", full stop, and a card with no ids to send had no other way to ask for its contents alone. `expectedSyncLogId` is the run the caller's card named, compared under the write lock against `pending_change_sync_log_id`, and only when the call will actually write a held field or the caller named a run at all — a pointer whose one held field is already claimed writes nothing and answers success rather than 409 forever. It may not accompany a contents publish, named or bare. A field the curator claims in `curated_fields` is skipped rather than refused; a row its category refused answers 409, because admission is asked first (ADR-0025 decision 4) and `override` on the refusal is what publishes it; a point the source has withdrawn is never published, matching the `contents` card. Needs migration 019 applied, or the audit insert violates the `action` CHECK and the whole call 500s. See § Publishing for what it writes and why it does not place |
+| POST | `/api/experiences/categories/:categoryId/publish-waiting` | no body — release everything this source is holding: every unread object as an object publish, every visible object holding unread contents as a contents publish. One transaction and one `published` log row per object. Held field proposals are deliberately left for their own cards. Answers `published[]` (each object with `locationsPublished`, `treasureLinksPublished`/`treasuresPublished` — both axes, since a work passed in one venue and unread in another moves the link and not the row — `withdrawalsReleased`, and with `placementFailed`/`placementFailedWorldViews` where re-placing failed), `refused[]`, `outOfScope` and `heldLeftForReview` — `null` where the count itself failed after the publications had committed — all scoped to the caller. Rate-limited (`authenticatedLimiter`) |
 | POST | `/api/experiences/new-badges/seen` | `{ experienceIds: number[] }` — records that these chips were shown to the caller. Rate-limited (`authenticatedLimiter`), unlike the curator routes beside it: this is an ordinary authenticated action and the only one here a client sends on its own initiative. Only the first impression per experience is kept; a stale id is ignored rather than failing the call, and the response names what was actually recorded |
 
 ### Geocoding (public + admin)
@@ -896,6 +900,7 @@ category later decides about the building.
 | POST | `/api/admin/sync/categories/:categoryId/start` |
 | GET | `/api/admin/sync/categories/:categoryId/status` |
 | POST | `/api/admin/sync/categories/:categoryId/cancel` |
+| PUT | `/api/admin/sync/categories/:categoryId/curation-gate` |
 | POST | `/api/admin/sync/categories/:categoryId/fix-images` |
 | GET | `/api/admin/sync/logs` |
 | GET | `/api/admin/sync/logs/:logId` |
@@ -930,58 +935,69 @@ live inside the `metadata` JSONB, so none of them has a width to align with.
 
 ## The "New" chip
 
-`is_new` is decided server-side and means **was observed arriving in the latest completed
-non-dry run of its category**, not "recently created". The distinction is the whole point. Both dates mark a first
-appearance, but of different things: `created_at` is when the row entered *this database*,
-which for a bulk-loaded category is the same instant for thousands of rows that entered the
-source years apart. The client-side `isNewExperience(created_at)` this replaces measured that
-while the chip claimed to mean arrival.
+`is_new` is decided server-side and means **the reader could first see it recently** — not
+"recently created", and no longer "arrived in the latest run". All three mark a first
+appearance, of different things. `created_at` is when the row entered *this database*, which
+for a bulk-loaded category is one instant for thousands of objects that entered the source
+years apart; the client-side `isNewExperience(created_at)` this replaced measured that while
+the chip claimed to mean arrival.
 
-The run has to have been **observed** creating the row, not merely credited with it. Migration
-009 backfilled `first_seen_sync_log_id` to the newest run of each category for every
-pre-existing row — a reasonable guess about where they came from, but not a sighting. Taking
-it at face value puts the chip on the whole catalogue the day this ships and keeps it there
-until each category next runs; measured against the current database, that is 1547 rows of
-1547. So `isNewSql` also requires a changeset row of type `created` for that run and
-experience, which only a run that actually inserted it leaves behind. Nothing re-inserts a
-whole category any more — force sync, which did, is gone — so that clause now only ever sees
-rows a run genuinely brought in for the first time.
-
-`first_seen_sync_log_id` is written on INSERT and never on update, so `is_new` means genuinely
-first seen: a row that went missing and came back keeps the run it originally arrived in and
-does not wear the chip a second time. That is the right answer — it is not new to anyone who
-was here before — and the return is recorded as a `returned` changeset row instead.
+**Why the anchor moved from the run to publication (#529).** Under a gated source, arriving and
+becoming visible are different moments, and the gap is a curator's working week. An arrival is
+invisible until someone passes it, so a chip keyed to the run that found it failed in the
+ordinary case rather than an exotic one: a museum arrives Monday, Top Art Museums runs again
+Wednesday, the curator answers Thursday — and by then the arrival's own run is not the latest,
+so the chip never appeared for anyone. With no intervening run it was no better: the window was
+counted from the run's completion, so it was being spent while nobody could see the row.
+`published_at` is when a reader could first see it, which is the only moment "new" can honestly
+mean once a gate exists.
 
 ```text
-is_new = a run was observed creating the row (a `created` changeset row for it)
-         AND first_seen_sync_log_id = the latest completed non-dry run of the category
-         AND ( that run finished inside category.new_badge_days
+is_new = published_at IS NOT NULL
+         AND ( published_at inside category.new_badge_days
                OR this reader first saw the chip < 7 days ago )
 ```
 
-The two clauses are a **maximum, not a choice**. The category window is the floor everyone
-gets — sources have different cadences, so it is per category — and a reader who happens to
-arrive near its end keeps the chip a week from their own first sighting rather than losing it
-the next day. Anonymous readers get the first clause alone; there is nobody to have shown it
-to, and `v.user_id = NULL` is never true, so the personal clause drops out without needing a
-second query.
+The two clauses are a **maximum, not a choice**. The category window is the floor everyone gets
+— sources have different cadences, so it is per category — and a reader who arrives near its end
+keeps the chip a week from their own first sighting rather than losing it the next day. Anonymous
+readers get the first clause alone; there is nobody to have shown it to, and `v.user_id = NULL`
+is never true, so the personal clause drops out without needing a second query.
 
-The bound on all of it is the **next completed non-dry run**: once the category runs again for
-real, `first_seen_sync_log_id` no longer names the latest run and the chip goes, whatever
-either window says. A preview finishes without moving it — dry runs are excluded from the
-lookup, which is the same reason they cannot disturb provenance. That is what stops a batch accumulating chips indefinitely, and it is why no
-retention job is needed for `user_new_badge_views`.
+**Two clauses were removed with the old anchor, and both removals are deliberate.** The
+`EXISTS … change_type = 'created'` proof of a sighting existed only because migration 009
+backfilled `first_seen_sync_log_id` to the newest run of each category, so the column alone
+credited 1547 of 1547 rows to a run that never inserted them; `published_at` is never
+backfilled — migration 018 left 1603 of 1604 rows NULL on purpose — so a publication needs no
+proof. And the latest-completed-run bound existed to stop chips accumulating, which the window
+already does; under piecemeal approval "the newest batch" has stopped being a unit, because a
+curator answers eighteen arrivals across a week and no run divides them.
 
-The lookup is a correlated scalar subquery, so it runs once per output row — 5000 of them on a
-whole-region read. `idx_experience_sync_logs_latest` (`category_id, completed_at DESC, id DESC`,
-partial on the same predicate) turns each into an index-only scan; `id` is in the key because
-it is the tiebreak in the same `ORDER BY`, and without it the scan is presorted only on
-`completed_at` and still pays an incremental sort.
+**Two consequences, stated here rather than discovered later.** Chips no longer clear when a
+category next runs — each lasts its own full window, so a weekly source shows roughly four
+windows' worth at once instead of one batch. And everything published before the gate existed
+wears no chip at all, because `published_at` is NULL for it: the column starts meaning something
+from the first publication forward. Nothing re-inserts a whole category any more — force sync is
+gone — so no single act can chip a whole source, which is the property the removed bound was
+protecting. No retention job is needed for `user_new_badge_views` either: the personal clause is
+bounded by its own seven days.
 
-"Latest" is by `completed_at`, **not** by id (`isNewSql` in `experienceNewBadge.ts`). A run
-that starts earlier can finish later, and id order is creation order — so ordering by id can
-name a run from months ago as the latest and switch every chip in the category off at once.
-This was found by running the predicate against real rows; the shape tests passed either way.
+Both clauses are correlated subqueries, so they run once per output row — 5000 of them on a
+whole-region read. Each is now a primary-key lookup rather than a sorted scan: the window clause
+reads `experience_categories` by `id` for `new_badge_days`, and the personal clause hits
+`user_new_badge_views` by `(user_id, experience_id)`. The `published_at` comparison itself is on
+the row already being returned.
+
+`idx_experience_sync_logs_latest` (`category_id, completed_at DESC, id DESC`) was built for the
+predicate this replaced, and `isNewSql` no longer reads `experience_sync_logs` at all — `grep -rn
+"completed_at DESC" backend/src` returns nothing. Whether the index earns its keep for other
+queries is a separate question; what matters here is that the chip is no longer the reason it
+exists, so nothing about the chip should be read from it.
+
+The `completed_at`-versus-id warning that used to live here went with the clause it was about: a
+run that starts earlier can finish later, so ordering runs by id could name a months-old run as
+the latest and switch every chip in a category off at once. Nothing in the predicate orders runs
+any more, which is why that trap is gone rather than fixed.
 
 **Impressions** arrive by `POST /api/experiences/new-badges/seen` rather than as a side effect
 of the read that produced the chips: a GET that writes is a GET that lies about being
@@ -1242,6 +1258,91 @@ unguarded — pre-existing, and not touched here.
 `curated_fields`: the `old` values in the audit row come from the locked snapshot too, since
 values read before the lock can name a version that was already gone when the edit landed.
 
+### Turning a source's gate on, and letting it go (ADR-0025)
+
+`requires_curation` was read by four services from the day the gate landed and written by
+nobody: the schema sets it, migration 018 seeded it `false` on all three sources, and gating one
+meant hand-written SQL against production. Three things closed that.
+
+**The switch.** `PUT /api/admin/sync/categories/:categoryId/curation-gate`, admin-only like
+everything on that router, and beside the other category writes because the gate is a property
+of the source rather than of any object. Two promises are properties of its single statement
+rather than of anything it checks: it touches `experience_categories` and nothing else, so
+**turning it on is not retroactive** — rows the source already published stay `auto` and stay
+visible, and one category can hold `auto` rows from before the switch beside `pending` ones from
+after it. And it names no content column, so **turning it off publishes nothing** — the statement moves
+no row. What a backlog does next depends on its kind. Unread objects and unread contents stay put,
+because only the insert arm ever writes `pending` and only a person moves a row out of it. A change
+a run is holding does the opposite: the hold is `requires_curation AND curation_state <> 'pending'`,
+so it stops existing with the gate, and the next ungated run writes the proposed values and clears
+the pointer with nobody involved. The flip is logged with
+the actor's id; there is no per-category audit table, and the switch that decides whether a
+whole source reaches readers unreviewed should not leave no trace at all.
+
+**What a source is holding.** `getCategories` answers `requires_curation` and a `waiting` object
+per source, counted in the three kinds the review queue asks about — arrivals, held changes,
+unread contents. Three numbers rather than one, because "18 waiting" is equally true of eighteen
+unread museums and of eighteen paintings inside one published museum, and those are different
+days' work. The queue is named as the authority for each predicate, since the panel's number and
+the cards a curator opens next must not disagree. `waitingCounts.ts` records the one place the
+two cannot share a spelling — the queue reaches held fields through `CROSS JOIN LATERAL` because
+it has to show them, a count asks `EXISTS` — and the case that separates those readings: a
+pointer whose changeset holds only a field a *curator* claimed must count zero, because it
+raises no `held` card either.
+
+The counts are an addition to that endpoint and the source list is what it is for, so they are
+counted in their own `try` and answered as `null` when the aggregate fails. Three screens share
+that query and read only its data: a throw used to leave an admin with a heading, no sources, no
+Start Sync and no reason. The panel says "How much this source is holding could not be counted",
+offers no release — the confirmation names what it will publish, and it could name nothing — and
+states the switch's two backlog answers as kinds rather than counts. Count-free but not silent:
+how much is unknown, what becomes of it is not, and the held-change half is the only consequence
+on that control a flip back cannot undo, since a run that applies a held change clears the pointer
+and re-gating restores nothing. Silence would leave an admin deciding without knowing the class of
+thing exists, which is a step past the report-after-the-click the copy is written against — and
+the unknown is not independent of the risk, because the aggregate that fails is the one that gets
+slow on a grown, gated catalogue. Zeros would have been the wrong
+fallback for the reason `heldLeftForReview` is nullable too: they are an answer about the source
+that nothing checked.
+
+**Letting it go.** `POST /api/experiences/categories/:categoryId/publish-waiting`, curator or
+admin, one transaction per object through the same `publishUnderLock` a single card uses, and one
+`published` audit row per object — never one for the batch, since a log row saying "42 objects"
+answers "when did this museum become visible" for none of them. Scope is resolved per object and
+what the caller does not cover comes back as `outOfScope`, because a batch that quietly published
+fewer than it found would read as a cleared source.
+
+**Nothing a single publish reports is dropped because there are forty of them.** Each entry
+carries its point count, both work counts, `withdrawalsReleased` and the placement failure, each
+for the reason the card carries it: a count of objects is not what a visitor gains, releasing a visible object's
+unread points releases the withdrawals deferred behind them so an old pin stops being shown at
+that moment and nowhere else records when, and a publication whose re-placement failed is a
+success with stale regions. Read off a batch of forty, each of them is otherwise recoverable only
+by opening forty histories, which is the work this endpoint exists to avoid. The same reasoning wraps every statement from the first object onwards — the loop's body and the
+closing held-count query — while the selection that runs before any of it deliberately stays
+unwrapped, because nothing has committed yet and "I could not read the source" is then the honest
+answer. Past that point the report describes publications that already exist, and the world-view
+names in it reach a person here and nowhere else, so a throw from the closing query would answer
+500 and discard them.
+That count is therefore `null` rather than absent or `0` when it fails, and the panel says it
+could not be counted — `0` would be a claim about the source that nothing checked.
+
+**It does not publish a held change, and that is the decision worth carrying forward.** The three
+kinds are not equal in what releasing them does: an arrival and unread contents are things a
+reader cannot see yet, so publishing reveals them, while a held change rewrites a row a reader is
+looking at with a value nobody read. The card for that one shows `old → new`; a batch has nowhere
+to show it. So held changes stay for the queue, the response names how many were left, and the
+panel's remaining count is explainable instead of looking like a failure. It also keeps the
+staleness check honest rather than routed around: `publishUnderLock` refuses a call that would
+write held fields without naming the run it saw, and passing each row's own pointer back would
+satisfy that check falsely, when its whole purpose is that a person looked.
+
+The panel's copy carries the rest. The switch reads "Hold new and changed content for review"
+with the consequence underneath in both directions — including that what was published before
+the switch stays visible, which is the clause an admin needs before they will touch it — and the
+confirmation for "Publish all waiting" offers `arrivals + contents` and says outright that a
+change to an object readers can already see will not be published there.
+
 ### The gate's own three kinds (ADR-0025)
 
 The four kinds above predate the per-source curation gate. These three are the open questions
@@ -1438,7 +1539,10 @@ of the truth; issue #524 tracks the read that would list them properly.
 ### Publishing (ADR-0025 § 4.4)
 
 `POST /api/experiences/:id/publish` (`publishController.ts`) is the answer to all three of the
-kinds above, and the only writer that moves a row off `pending`. One transaction under
+kinds above. No longer the only writer that moves a row off `pending`, and never was: `/:id/admission` has
+done it since this stage's own § 4.5, since overriding a refusal on an unread arrival marks it
+read, and `publish-waiting` does it per object for a whole source — but still the only one that clears `pending_change_sync_log_id` in answer
+to a person, because the batch leaves held proposals for the card that can show `old → new`. One transaction under
 `SELECT … FOR UPDATE`, shaped after `applyProposedFields`: everything the decision rests on —
 the pointer, the proposal, `curated_fields`, `curation_state`, `admission`, `metadata` — is
 re-read inside the lock that writes, and every refusal is awaited before the client is released.
