@@ -18,6 +18,7 @@ import {
   userIdParamSchema,
   startSyncBodySchema,
   reorderCategoriesBodySchema,
+  curationGateBodySchema,
   startRegionAssignmentBodySchema,
   regionAssignmentStatusQuerySchema,
   experienceCountsQuerySchema,
@@ -85,6 +86,7 @@ import {
   cancelRegionAssignment,
   getExperienceCounts,
 } from '../controllers/admin/syncController.js';
+import { setCurationGate } from '../controllers/admin/curationGateController.js';
 import {
   listCurators,
   createCuratorAssignment,
@@ -148,6 +150,22 @@ router.get('/sync/categories', getCategories);
 
 // Reorder experience sources (set display_priority)
 router.put('/sync/categories/reorder', validate(reorderCategoriesBodySchema), reorderCategories);
+
+/**
+ * Whether this source holds new and changed content for a curator (ADR-0025).
+ *
+ * Admin-only, like everything on this router — the guard is the mount
+ * (`routes/index.ts`: `router.use('/api/admin', requireAuth, requireAdmin, …)`),
+ * which is why no route here repeats it. The gate is a property of the source: a
+ * curator answers what a gated run leaves waiting, while deciding that a source
+ * needs answering at all is the admin's.
+ */
+router.put(
+  '/sync/categories/:categoryId/curation-gate',
+  validate(categoryIdParamSchema, 'params'),
+  validate(curationGateBodySchema),
+  setCurationGate,
+);
 
 // Start sync for a source
 router.post('/sync/categories/:categoryId/start', validate(categoryIdParamSchema, 'params'), validate(startSyncBodySchema), startSync);

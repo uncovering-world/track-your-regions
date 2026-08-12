@@ -353,6 +353,10 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
 /**
  * List all experience sources with assignment status
  * GET /api/admin/sync/sources
+ *
+ * Reports each source's curation gate and what it is holding; the switch that *writes*
+ * the gate is `curationGateController.ts`, because this file is about starting, watching
+ * and cancelling runs while that is about what a run is allowed to show.
  */
 export async function getCategories(req: Request, res: Response): Promise<void> {
   // Get sources
