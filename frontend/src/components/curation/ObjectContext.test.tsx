@@ -24,6 +24,9 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
     source_membership: 'present',
     existence: 'extant',
     kind: 'conflict',
+    // Required rather than optional on purpose (`api/experiences.ts`): every queue
+    // selects it explicitly so `item.proposed === null` is the whole check anywhere.
+    proposed: null,
     ...over,
   };
 }

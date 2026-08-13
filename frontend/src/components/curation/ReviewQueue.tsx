@@ -39,6 +39,7 @@ import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ItemHeader, messageFor } from './queueCard';
 import { FieldDiff } from './FieldDiff';
 import { fieldLabel } from './fieldLabel';
+import { ProvenanceTrail } from './ProvenanceTrail';
 import { WaitingToPublish, groupGated, publishOutcomeFor } from './WaitingToPublish';
 
 export function ReviewQueue() {
@@ -432,21 +433,52 @@ function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (messag
 
         <Stack divider={<Divider flexItem />} spacing={1.5} sx={{ mb: 2 }}>
           {proposed.map((field) => (
-            <FieldDiff key={field.field} field={field} />
+            <Box key={field.field}>
+              <FieldDiff
+                field={field}
+                // One field at a time, because a run improves and damages in the same
+                // breath: a better description arriving with a mangled name used to be
+                // one button that took both or neither. The endpoint has always accepted
+                // a list — it was the screen that could not say "this one".
+                // The label names the direction and the scope, because the button sits
+                // between two columns and "take this one" answered neither: take what,
+                // and whose? A field the endpoint cannot write says so in the same
+                // breath, since the note underneath is easy to read past when a button
+                // beside it promises something immediate.
+                action={(
+                  <Button
+                    size="small"
+                    disabled={accept.isPending}
+                    onClick={() => accept.mutate([field.field])}
+                  >
+                    {field.acceptable === false
+                      ? 'take the source’s value (at next sync)'
+                      : 'take the source’s value'}
+                  </Button>
+                )}
+              />
+              <ProvenanceTrail field={field} runCompletedAt={item.run_completed_at} />
+            </Box>
           ))}
         </Stack>
 
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
           <Button
             variant="outlined"
             disabled={accept.isPending || proposed.length === 0}
             onClick={() => accept.mutate(proposed.map(f => f.field))}
           >
-            {deferred ? 'Accept the source (some at next sync)' : 'Accept the source'}
+            {deferred ? 'Accept the source for all (some at next sync)' : 'Accept the source for all'}
           </Button>
-          {/* Keeping the edit needs no call: refusing is the current state, and
-              the run will go on proposing until someone accepts. */}
-          <Button variant="text" disabled>Keep my edit (current)</Button>
+          {/* Still not a call, and still the current state — but it no longer says
+              "my edit" about a claim someone else made. Whose it is now comes from
+              the trail above each field; here the sentence only promises what
+              standing still does, which is that the run goes on proposing until
+              someone accepts. Making this a decision that ends the asking is the
+              next sub-branch. */}
+          <Typography variant="caption" color="text.secondary">
+            Doing nothing keeps what is stored — the source will propose again.
+          </Typography>
         </Stack>
       </CardContent>
     </Card>
