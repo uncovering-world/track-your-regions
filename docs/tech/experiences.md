@@ -875,7 +875,7 @@ category later decides about the building.
 | DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute |
 | PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `category`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`). The last two are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge |
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) |
-| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, and `contents` where a visible row holds unread points or works of its own — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. No totals: each array's own length is the count. Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
+| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, and `contents` where a visible row holds unread points or works of its own — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. No totals: each array's own length is the count. Every kind carries what the object *is* — `image_url`, `latitude`/`longitude`, `website_url` and `wikipedia_url` from `metadata`, and `region_names` — through one shared fragment, so no card can show less about an object than its neighbour. `conflicts` additionally carry `run_completed_at` and, per proposed field, `claim` (who claimed it and when, read from the newest `edited` log entry under the *column* name) and `decidedBefore` (earlier `accepted_source` answers on that field, newest first). Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
 | POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
 | POST | `/api/experiences/:id/admission` | `{ decision: 'confirm' \| 'override', note? }` — answer a refusal. `confirm` keeps the row refused and hidden, `override` admits it again. Both pin `admission` in `curated_fields`, which is what takes the card out of the queue and what stops a later run reversing either answer; no `expected` block is needed, because a second curator collides with that pin and gets 409. `override` on a row that was `pending` also publishes it, in the same transaction (ADR-0025 § 4.5) — `curation_state = 'verified'`, `published_at = COALESCE(published_at, NOW())` — because that verdict is the only thing that ever un-hides an arrival nobody had read; `override` on an `auto` row and `confirm` on any row never publish. The response's `published` field says which happened. See § Publishing for the mechanism and why it does not place |
 | POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted |
@@ -1021,7 +1021,20 @@ consumer as of this slice.
 `GET /api/experiences/review/queue` is the other half of change provenance: the run
 records what it could not decide, and this is where a curator decides it. Six kinds of
 question, kept apart because they are answered differently — and one list that is not a
-question at all, carried here because nowhere else can carry it. Three of the six —
+question at all, carried here because nowhere else can carry it.
+
+**What a decision rests on travels with the question.** Every kind carries the object
+itself — its image, its point, the source page and Wikipedia from `metadata`, and the names
+of the regions it crosses — through one select fragment shared by all seven queries, for the
+reason `lifecycleSelectSql` is shared: a field required in the type and selected by some of
+the queries is the shape that typechecks and silently reads `undefined`. A conflict carries
+more, because it is the kind that asks a curator to choose between two texts: when the run
+that proposed finished, who claimed the field and when, and every earlier acceptance on that
+same field. None of it is new storage. The claim's author is the newest `edited` entry in
+`experience_curation_log`, and it is keyed by the **column** name — `short_description`, not
+`shortDescription` — so the lookup goes through `CURATED_KEY_BY_FIELD`, the same map the
+claim itself does; reading it by the changeset's own name finds nothing and every edit reads
+as anonymous. Three of the six —
 `missing`, `refused`, `conflicts` — predate the per-source curation gate
 ([ADR-0025](../decisions/0025-per-source-curation-gate.md)); `arrivals`, `held` and `contents`
 are that gate's own open questions, covered together below the four older kinds.
