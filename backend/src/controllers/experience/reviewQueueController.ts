@@ -22,6 +22,32 @@ import { ACCEPTABLE_FIELDS } from './acceptableFields.js';
 const QUEUE_PAGE_SIZE = 25;
 
 /**
+ * What the object *is*, for a card that asks a question about it.
+ *
+ * Every kind here asks a curator to judge something — whether a site is gone, whether a
+ * description is better, whether a museum should be visible — and until now none of them
+ * showed the thing being judged: no picture, no coordinates, no way to open the source
+ * page. Deciding meant leaving the queue.
+ *
+ * Carried on every kind through one fragment rather than added per query, so the seven
+ * cards cannot drift into showing different amounts about the same object. It costs each
+ * query four columns off the row it already reads plus one region lookup; the regions are
+ * a list because an object crosses them, and their names are what a curator recognises —
+ * the ids on the object are not.
+ */
+function objectContextSelectSql(alias = 'e'): string {
+  return `${alias}.image_url,
+          ST_Y(${alias}.location) AS latitude,
+          ST_X(${alias}.location) AS longitude,
+          ${alias}.metadata->>'website' AS website_url,
+          ${alias}.metadata->>'wikipediaUrl' AS wikipedia_url,
+          (SELECT jsonb_agg(r.name ORDER BY r.name)
+             FROM experience_regions er
+             JOIN regions r ON r.id = er.region_id
+            WHERE er.experience_id = ${alias}.id) AS region_names`;
+}
+
+/**
  * The decisions waiting for a curator, scoped to what they cover.
  * GET /api/experiences/review/queue?categoryId=&limit=&offset=
  *
@@ -98,7 +124,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // raise no card in either kind rather than a wrong one in either.
   const missing = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
-           ${lifecycleSelectSql()},
+           ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
@@ -123,7 +149,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const refused = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            e.admission_reason,
-           ${lifecycleSelectSql()},
+           ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'refused' AS kind, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
@@ -157,7 +183,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const keptOut = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            e.admission_reason, e.state_decided_at, e.state_note,
-           ${lifecycleSelectSql()},
+           ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'kept-out' AS kind, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
@@ -203,7 +229,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     SELECT * FROM (
       SELECT DISTINCT ON (e.id)
              e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
-             ${lifecycleSelectSql()},
+             ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              'conflict' AS kind, ch.sync_log_id,
              -- When the run that is asking finished. The card names a run either
              -- way; a curator deciding whose text is newer needs the date, and
@@ -304,7 +330,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const arrivals = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            e.curation_state, e.first_seen_sync_log_id AS sync_log_id,
-           ${lifecycleSelectSql()},
+           ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'arrival' AS kind, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
@@ -369,7 +395,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const held = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
       SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
-             ${lifecycleSelectSql()},
+             ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              ch.sync_log_id, 'held' AS kind, jsonb_agg(f) AS proposed
       FROM experiences e
       JOIN experience_categories c ON c.id = e.category_id
@@ -428,7 +454,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // 12 (and 36 again for a location count that is actually 3).
   const contents = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
-           ${lifecycleSelectSql()},
+           ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'contents' AS kind,
            -- No FILTER, unlike the treasures below: the join above already
            -- restricts el to pending, offered rows, so repeating it here would
