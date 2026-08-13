@@ -48,6 +48,46 @@ function objectContextSelectSql(alias = 'e'): string {
 }
 
 /**
+ * The famous works a refusal counted, named — and, below, how many there are in all.
+ *
+ * A refusal reads "0 of 5 famous works are paintings" and a curator's first question is
+ * *which five*. They are in the catalogue already — the run imports a venue's works before
+ * deciding about the venue — so the card can name them instead of asserting a number.
+ * Ordered as the rule ordered them, by how widely known each work is, and capped at twelve:
+ * the widest holding a refusal cites here is sixteen, so the cap almost never bites, and
+ * where it does the card says how many it is not showing rather than quietly stopping.
+ * `counted_works_total` is what makes that possible on a refusal whose sentence cites no
+ * number of its own — a cathedral's does not, and the array alone cannot tell a holding of
+ * twelve from the first twelve of thirty.
+ *
+ * Only on the two kinds whose text cites the count. UNESCO sites hold no works, and adding
+ * the lookup to all seven queries would cost six of them a join for an empty array.
+ */
+/** How many are held here in all — cast, because `count(*)` arrives as a string. */
+function countedWorksTotalSql(alias = 'e'): string {
+  return `(SELECT count(*) FROM experience_treasures et
+            WHERE et.experience_id = ${alias}.id)::int AS counted_works_total`;
+}
+
+/** The best-known twelve of them, ranked, with what each one is. */
+function countedWorksSelectSql(alias = 'e'): string {
+  // `row_number()` rather than `ORDER BY w->>'name'`: the aggregate imposes its own order on
+  // what the subquery hands it, so sorting it by name would leave the LIMIT picking the
+  // twelve best-known works and then present them alphabetically — and the card's own
+  // headings ("less widely known", "the least widely known") would rank nothing.
+  return `(SELECT jsonb_agg(w ORDER BY fame)
+             FROM (SELECT jsonb_build_object(
+                            'name', t.name, 'type', t.treasure_type, 'artist', t.artist,
+                            'imageUrl', t.image_url, 'year', t.year) AS w,
+                          row_number() OVER (ORDER BY t.sitelinks_count DESC NULLS LAST) AS fame
+                     FROM experience_treasures et
+                     JOIN treasures t ON t.id = et.treasure_id
+                    WHERE et.experience_id = ${alias}.id
+                    ORDER BY t.sitelinks_count DESC NULLS LAST
+                    LIMIT 12) top) AS counted_works`;
+}
+
+/**
  * The decisions waiting for a curator, scoped to what they cover.
  * GET /api/experiences/review/queue?categoryId=&limit=&offset=
  *
@@ -150,7 +190,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            e.admission_reason,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
-           'refused' AS kind, NULL::jsonb AS proposed
+           'refused' AS kind, ${countedWorksSelectSql()},
+           ${countedWorksTotalSql()}, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
     WHERE e.admission = 'refused'
@@ -184,7 +225,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            e.admission_reason, e.state_decided_at, e.state_note,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
-           'kept-out' AS kind, NULL::jsonb AS proposed
+           'kept-out' AS kind, ${countedWorksSelectSql()},
+           ${countedWorksTotalSql()}, NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
     WHERE e.admission = 'refused'

@@ -39,6 +39,7 @@ import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ItemHeader, messageFor } from './queueCard';
 import { FieldDiff } from './FieldDiff';
 import { fieldLabel } from './fieldLabel';
+import { RefusalLine } from './RefusalLine';
 import { ProvenanceTrail } from './ProvenanceTrail';
 import { WaitingToPublish, groupGated, publishOutcomeFor } from './WaitingToPublish';
 
@@ -125,10 +126,11 @@ export function ReviewQueue() {
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>Review</Typography>
       <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Decisions a sync run cannot make on its own. Nothing here has changed what visitors see and
-        it waits for you
+        Decisions a sync run cannot make on its own. Nothing here has changed what visitors see;
+        it is all waiting for you
         {refused.length > 0
-          ? ' — except what this category refused, which is hidden already and says why below.'
+          ? ' — except the rows our own rule for a list turned down, which are hidden already and'
+            + ' say why below.'
           : '.'}
       </Typography>
 
@@ -156,9 +158,9 @@ export function ReviewQueue() {
             Gone from the source ({countLabel(missing.length)})
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            A clean run stopped finding these. That can mean the source delisted them, that they no
-            longer exist, or that the source was simply wrong — and only the first two change
-            anything.
+            A run that finished without errors stopped finding these. That can mean the source
+            delisted them, that they no longer exist, or that the source was simply wrong — and
+            only the first two change anything.
           </Typography>
           <Stack spacing={2}>
             {missing.map(item => (
@@ -171,13 +173,17 @@ export function ReviewQueue() {
       {refused.length > 0 && (
         <>
           <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
-            This category turned these down ({countLabel(refused.length)})
+            Our own rule for this list turned these down ({countLabel(refused.length)})
           </Typography>
+          {/* Ours, not the source's, and the difference is the whole of ADR-0024: Wikidata
+              goes on listing the British Museum, and what keeps it out of *Top Art Museums*
+              is a line we wrote. Naming the source as the one refusing would send a curator
+              to argue with Wikidata about a decision it never made. */}
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            A rule named each of these and refused it, so they are hidden from visitors already —
-            a candidate that fails the same rule is never added in the first place, and a row that
-            predates the rule has to end up in the same place. Your answer is durable either way:
-            no later run will reverse it.
+            Every list here has a rule of ours for what belongs in it, and these failed it — so
+            visitors have never seen them. The source may well still list them. The question is
+            not whether the object is interesting, but whether our rule was right about it.
+            Either answer sticks: no later run reverses it.
           </Typography>
           <Stack spacing={2}>
             {refused.map(item => (
@@ -193,7 +199,7 @@ export function ReviewQueue() {
             The source disagrees with an edit ({countLabel(conflicts.length)})
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Your version is the one on the site. The source has been proposing something else, and
+            Your version is the one visitors see. The source has been proposing something else, and
             will keep proposing it until you decide.
           </Typography>
           <Stack spacing={2}>
@@ -243,6 +249,13 @@ export function ReviewQueue() {
   );
 }
 
+/**
+ * An object a clean run stopped finding, and the three things that can mean.
+ *
+ * Delisted, destroyed, or the source hiccupped — and the first two are different
+ * facts that can both be true, which is why they are two buttons and not one
+ * status. Nothing here has changed what visitors see; the card is the asking.
+ */
 function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const [note, setNote] = useState('');
   const decide = useMutation({
@@ -313,12 +326,14 @@ function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
 }
 
 /**
- * A row this category refused, with the rule's own words on it.
+ * A row this category's own rule refused, with that objection on it.
  *
  * The reason is the whole point of the card. "Refused" alone leaves a curator
- * guessing; "not a museum class — named by Column of Phocas (36 sitelinks)"
- * lets them confirm a rule or spot a bad one, and a bad rule shows up here as a
- * run of near-identical reasons rather than as a mystery.
+ * guessing, and the rule's own note — `not a museum class — named by Column of
+ * Phocas (36 sitelinks)` — names internal tests and states no threshold, so
+ * `RefusalLine` says what was found in ordinary words and keeps the recorded
+ * wording behind the question mark beside it. Either way a bad rule shows up
+ * here as a run of near-identical cards rather than as a mystery.
  */
 function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const [note, setNote] = useState('');
@@ -336,9 +351,12 @@ function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
     <Card variant="outlined">
       <CardContent>
         <ItemHeader item={item} />
-        <Typography variant="body2" sx={{ mb: 2 }}>
-          {item.admission_reason || 'No reason was recorded.'}
-        </Typography>
+        <RefusalLine
+          reason={item.admission_reason}
+          works={item.counted_works}
+          held={item.counted_works_total}
+          name={item.name}
+        />
 
         <TextField
           size="small"
@@ -389,9 +407,15 @@ function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
     <Card variant="outlined">
       <CardContent>
         <ItemHeader item={item} />
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          {item.admission_reason || 'No reason was recorded.'}
-        </Typography>
+        {/* The same sentence and the same evidence as the open card above. This is the
+            list a mis-click is undone from, so it is the last place to make someone
+            re-read the rule's own wording to work out what they are putting back. */}
+        <RefusalLine
+          reason={item.admission_reason}
+          works={item.counted_works}
+          held={item.counted_works_total}
+          name={item.name}
+        />
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
           Kept out{item.state_decided_at ? ` on ${formatDateTime(item.state_decided_at)}` : ''}
           {item.state_note ? ` — “${item.state_note}”` : ''}
@@ -410,6 +434,14 @@ function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
   );
 }
 
+/**
+ * Two versions of a field a curator claimed, and a decision for each one.
+ *
+ * Per field rather than per object, because a run improves and damages in the
+ * same breath: taking a better description used to mean taking a mangled name
+ * with it. Standing still keeps what is stored, so there is no button for it —
+ * the card says so instead, and the question stays until the source is answered.
+ */
 function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const proposed = item.proposed ?? [];
   // A moved coordinate or a metadata key cannot be written here, but accepting

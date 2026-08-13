@@ -445,6 +445,28 @@ export interface ReviewQueueItem {
   /** When the run whose proposal this is finished. Conflicts only. */
   run_completed_at?: string | null;
   /**
+   * The famous works the category's rule weighed, most widely known first, capped at twelve.
+   *
+   * Refusals only, and only because the refusal text talks about them: "0 of 5 famous
+   * works are paintings" asks *which five*, and the answer is already in the catalogue —
+   * a run imports a venue's works before deciding about the venue.
+   */
+  counted_works?: Array<{
+    name: string;
+    type: string | null;
+    artist: string | null;
+    imageUrl: string | null;
+    year: number | null;
+  }> | null;
+  /**
+   * How many the catalogue holds here, which the capped array cannot say.
+   *
+   * A refusal that cites a number is reconciled against that number; one that names a
+   * single work cites none, and without this the preview cannot tell a holding of twelve
+   * from the first twelve of thirty.
+   */
+  counted_works_total?: number | null;
+  /**
    * The run this card is about. For a `conflict` or a `held` proposal it is
    * sent back so a newer run cannot substitute itself. For an `arrival` it is
    * the run that first saw the row and is **not** a pointer to anything held —
