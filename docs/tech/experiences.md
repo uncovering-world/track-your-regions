@@ -875,7 +875,7 @@ category later decides about the building.
 | DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute |
 | PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `category`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`). The last two are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge |
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) |
-| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, and `contents` where a visible row holds unread points or works of its own — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. No totals: each array's own length is the count. Every kind carries what the object *is* — `image_url`, `latitude`/`longitude`, `website_url` and `wikipedia_url` from `metadata`, and `region_names` — through one shared fragment, so no card can show less about an object than its neighbour. `conflicts` additionally carry `run_completed_at` and, per proposed field, `claim` (who claimed it and when, read from the newest `edited` log entry under the *column* name) and `decidedBefore` (earlier `accepted_source` answers on that field, newest first). Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
+| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, and `contents` where a visible row holds unread points or works of its own — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. No totals: each array's own length is the count. Every kind carries what the object *is* — `image_url`, `latitude`/`longitude`, `website_url` and `wikipedia_url` from `metadata`, and `region_names` — through one shared fragment, so no card can show less about an object than its neighbour. `conflicts` additionally carry `run_completed_at` and, per proposed field, `claim` (who claimed it and when, read from the newest `edited` log entry under the *column* name) and `decidedBefore` (earlier `accepted_source` answers on that field, newest first). `refused` and `keptOut` additionally carry `counted_works` — the venue's famous works from `experience_treasures`, most widely known first, capped at twelve — plus `counted_works_total`, how many are held in all, because the capped array cannot say and a refusal that names one work rather than counting has no number of its own to reconcile against. Params `limit` (default 25), `offset`, `categoryId`. Scoped like the curation log |
 | POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
 | POST | `/api/experiences/:id/admission` | `{ decision: 'confirm' \| 'override', note? }` — answer a refusal. `confirm` keeps the row refused and hidden, `override` admits it again. Both pin `admission` in `curated_fields`, which is what takes the card out of the queue and what stops a later run reversing either answer; no `expected` block is needed, because a second curator collides with that pin and gets 409. `override` on a row that was `pending` also publishes it, in the same transaction (ADR-0025 § 4.5) — `curation_state = 'verified'`, `published_at = COALESCE(published_at, NOW())` — because that verdict is the only thing that ever un-hides an arrival nobody had read; `override` on an `auto` row and `confirm` on any row never publish. The response's `published` field says which happened. See § Publishing for the mechanism and why it does not place |
 | POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted |
@@ -1050,11 +1050,27 @@ to the page's standing promise that nothing on it has changed what visitors see.
 three answers below is true of one: the British Museum is open, so not `lost`; it was never a
 legitimate member of *Top Art Museums*, so not `former`; and the refusal was right, so not a
 false alarm. Its two answers are its own — the rule was right, or the rule was wrong — and the
-card carries `admission_reason` verbatim, because "refused" alone leaves a curator guessing
-while *"not a museum class — named by Column of Phocas (36 sitelinks)"* lets them confirm a
-rule or spot a bad one. A confirmed row is not deleted: the refused set is the list the
-archaeology category will be built from. Refused rows are excluded from the missing group, or
-the same row would appear twice under two contradictory framings.
+card carries the rule's objection, because "refused" alone leaves a curator guessing while the
+reason lets them confirm a rule or spot a bad one. A confirmed row is not deleted: the refused
+set is the list the archaeology category will be built from. Refused rows are excluded from
+the missing group, or the same row would appear twice under two contradictory framings.
+
+**A refusal is shown in two sizes.** `admission_reason` is written by and for the rule —
+`painting-share: 2 painting(s) vs 9 sculptural work(s)`, `site, not a venue: church building;
+Catholic cathedral — named by The Elevation of the Cross (24 sitelinks)`. It names internal
+tests, states no threshold, and never says where its numbers came from. `refusalReason.ts`
+splits it in two: a sentence for the card, and the reasoning — the threshold, what the counts
+are of, and the stored text verbatim — behind a question mark (`RuleHelp`). Every shape the
+live catalogue holds is covered, and an unrecognised one falls through to the stored text
+rather than to a confident summary of a rule the file has not read. Two details are load-
+bearing. Twelve of the twenty-two refusals here weigh exactly one work, so the one-work case
+gets its own wording rather than "of the 1 famous works". And the phrase that carries a number
+— or names a single work — is hoverable: `counted_works` puts the works themselves under it
+with their pictures (`WorksPreview`), which is the difference between a claim and something a
+curator can check. The counts come from the rule's own run and the works from the catalogue
+now, so the preview says how many it is not showing rather than stopping at the cap: it
+reconciles against the sentence's own number where there is one, and against
+`counted_works_total` where the sentence names a work instead of counting.
 
 **Kept out** — the refusals a curator confirmed, returned as `keptOut` and collapsed at the
 foot of the page. They are answered, so they are not work; they are here because this is the
