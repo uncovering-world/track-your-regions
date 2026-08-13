@@ -428,8 +428,22 @@ export interface ReviewQueueItem {
    * column.
    */
   proposed: Array<{
-    field: string; old: unknown; new: unknown; acceptable?: boolean; held?: boolean;
+    field: string;
+    old: unknown;
+    new: unknown;
+    acceptable?: boolean;
+    held?: boolean;
+    /**
+     * Who claimed this field and when — absent where the claim predates the log, or
+     * where the field is held by the gate rather than by a person. The card says "a
+     * curator" for a claimant with no display name, because someone still decided.
+     */
+    claim?: { by: string; at: string } | null;
+    /** Earlier acceptances of the source on this same field, newest first. */
+    decidedBefore?: Array<{ by: string; at: string; applied: unknown }>;
   }> | null;
+  /** When the run whose proposal this is finished. Conflicts only. */
+  run_completed_at?: string | null;
   /**
    * The run this card is about. For a `conflict` or a `held` proposal it is
    * sent back so a newer run cannot substitute itself. For an `arrival` it is

@@ -248,6 +248,54 @@ describe('ReviewQueue', () => {
     expect(screen.queryByText(/the shape is part of the difference/)).not.toBeInTheDocument();
   });
 
+  it('takes one field without taking the rest', async () => {
+    mockedFetch.mockResolvedValue({
+      missing: [],
+      conflicts: [{ ...CONFLICT, proposed: [
+        { field: 'name', old: 'Curator wording', new: 'Renamed upstream', acceptable: true },
+        { field: 'shortDescription', old: 'Mine', new: 'Theirs', acceptable: true },
+      ] }],
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+    });
+    renderQueue();
+
+    // A run improves and damages in the same breath: a better description arriving with
+    // a mangled name was one button that took both or neither. The endpoint always
+    // accepted a list — the screen could not say "this one".
+    const takeThese = await screen.findAllByRole('button', { name: 'take the source’s value' });
+    fireEvent.click(takeThese[1]);
+
+    await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['shortDescription'], 41));
+  });
+
+  it('stops calling another curator’s claim "my edit"', async () => {
+    mockedFetch.mockResolvedValue({
+      missing: [],
+      conflicts: [{
+        ...CONFLICT,
+        run_completed_at: '2026-08-05T09:00:00Z',
+        proposed: [{
+          field: 'name',
+          old: 'Curator wording',
+          new: 'Renamed upstream',
+          acceptable: true,
+          claim: { by: 'Dana', at: '2026-08-04T12:29:32Z' },
+          decidedBefore: [{ by: 'admin', at: '2026-07-30T08:00:00Z', applied: 'An earlier upstream name' }],
+        }],
+      }],
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+    });
+    renderQueue();
+
+    // The dead button said "Keep my edit (current)" over a claim someone else made, and
+    // named the run only after acting. Now the trail says whose text stands, when the
+    // source proposed otherwise, and what was answered here before.
+    expect(await screen.findByText(/Claimed by Dana/)).toBeInTheDocument();
+    expect(screen.getByText(/Proposed by the run that finished/)).toBeInTheDocument();
+    expect(screen.getByText(/admin took the source’s value/)).toBeInTheDocument();
+    expect(screen.queryByText(/Keep my edit/)).not.toBeInTheDocument();
+  });
+
   it('accepts exactly the fields the source proposed', async () => {
     renderQueue();
 
