@@ -197,6 +197,66 @@ describe('getReviewQueue', () => {
     expect(map['metadata.inDanger']).toBe('metadata');
   });
 
+  it('names who claimed each field and when, by the key the claim is stored under', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    const [conflictSql] = callMatching("'conflict' AS kind");
+    // The claim itself is set membership in `curated_fields` and carries no
+    // author; the act that put it there is an `edited` log entry, keyed by the
+    // *column* name — so the lookup goes through the same map the claim does.
+    // Reading it by the changeset's own name would find nothing for
+    // `shortDescription`, and the card would say "a curator" about every edit.
+    expect(conflictSql).toContain("log.action = 'edited'");
+    expect(conflictSql).toMatch(/log\.details \? COALESCE\(\s*\$\d+::jsonb->>\(f->>'field'\), f->>'field'\)/);
+    // Newest wins, and `created_at` alone does not decide it: two edits in one
+    // request share a timestamp, so the id breaks the tie the way it does
+    // everywhere else in this file.
+    expect(conflictSql).toContain('ORDER BY log.created_at DESC, log.id DESC');
+    // A curator with no display name is still a person who decided: the card
+    // says "a curator", never `null` and never an email address.
+    expect(conflictSql).toContain("COALESCE(u.display_name, 'a curator')");
+  });
+
+  it('reads the log through the log’s own per-row scope, not the object’s', async () => {
+    await getReviewQueue({ user: CURATOR, query: {} } as never, makeRes() as never);
+
+    const [conflictSql] = callMatching("'conflict' AS kind");
+    // The outer filter admits an object through *any* of its regions, so a curator
+    // scoped to one of them sees a card about an object another curator edited under a
+    // region they do not cover. Reading the log per experience would then name that
+    // curator, their dates and the values they applied — the rows `getCurationLog`
+    // drops for the same reader. Same predicate, same shape: a row belonging to no
+    // region is an admin's or a global curator's act and stays visible to everyone.
+    expect(conflictSql).toContain('log.region_id IS NULL');
+    expect(conflictSql).toContain('log.region_id IN (SELECT id FROM curator_scoped_regions)');
+    // Both reads, not only the first: the claim and the earlier decisions come from the
+    // same table and leak the same way.
+    expect(conflictSql.match(/log\.region_id IN \(SELECT id FROM curator_scoped_regions\)/g))
+      .toHaveLength(2);
+  });
+
+  it('does not filter the log for an admin, who is scoped to everything', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    const [conflictSql] = callMatching("'conflict' AS kind");
+    expect(conflictSql).not.toContain('log.region_id IN');
+  });
+
+  it('carries the earlier decisions on the same field, and the run date the card asks about', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    const [conflictSql] = callMatching("'conflict' AS kind");
+    // `accepted_source` records the fields it applied in `details.fields`, so a
+    // field's history is those entries naming it — an empty array rather than
+    // null, because the card renders a list and "nothing decided yet" is a list
+    // of none.
+    expect(conflictSql).toContain("log.action = 'accepted_source'");
+    expect(conflictSql).toContain("d->>'field' = f->>'field'");
+    expect(conflictSql).toContain("'[]'::jsonb)))");
+    // The run's own date, read off the log the item already names.
+    expect(conflictSql).toContain('l.completed_at AS run_completed_at');
+  });
+
   it('drops a conflict a later run stopped proposing', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 

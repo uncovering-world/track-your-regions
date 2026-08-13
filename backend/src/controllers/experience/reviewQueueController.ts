@@ -183,14 +183,70 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // 409s would leave the item unanswerable.
   const keyMapIdx = params.length + 1;
   const acceptableIdx = keyMapIdx + 1;
+
+  // The curation log is scope-filtered **per row**, not per experience, and the two
+  // subqueries below read it — so they carry the same predicate `getCurationLog` does.
+  // Without it the queue would leak past its own scope: an object assigned to regions A
+  // and B admits a curator scoped only to A through the outer filter (an EXISTS over
+  // *any* region), while an edit made by a curator of B is logged with `region_id = B`.
+  // The card would then name that curator, the date, and the values they applied —
+  // exactly the rows the log endpoint drops for the same reader.
+  //
+  // A row with no region is an act that belonged to no one region (an admin's, a global
+  // curator's), and stays visible to everyone, as it is in the log.
+  const logScopeFilter = isAdmin
+    ? 'TRUE'
+    : `(${curatorUnrestrictedScopeExists('e.category_id')}
+         OR log.region_id IS NULL
+         OR log.region_id IN (SELECT id FROM curator_scoped_regions))`;
   const conflicts = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
       SELECT DISTINCT ON (e.id)
              e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
              ${lifecycleSelectSql()},
              'conflict' AS kind, ch.sync_log_id,
+             -- When the run that is asking finished. The card names a run either
+             -- way; a curator deciding whose text is newer needs the date, and
+             -- reading it off the log is the only place it exists.
+             l.completed_at AS run_completed_at,
              (SELECT jsonb_agg(f || jsonb_build_object(
-                       'acceptable', $${acceptableIdx}::jsonb ? (f->>'field')))
+                       'acceptable', $${acceptableIdx}::jsonb ? (f->>'field'),
+                       -- Who claimed this field and when, so the button stops
+                       -- saying "my edit" about another curator's work. The
+                       -- claim itself is a set membership in curated_fields and
+                       -- carries no author; the act that put it there is an
+                       -- 'edited' log entry keyed by the *column* name, which is
+                       -- what the same map above translates to.
+                       'claim', (
+                         SELECT jsonb_build_object(
+                                  'by', COALESCE(u.display_name, 'a curator'),
+                                  'at', log.created_at)
+                           FROM experience_curation_log log
+                           JOIN users u ON u.id = log.curator_id
+                          WHERE log.experience_id = e.id
+                            AND log.action = 'edited'
+                            AND log.details ? COALESCE(
+                                  $${keyMapIdx}::jsonb->>(f->>'field'), f->>'field')
+                            AND ${logScopeFilter}
+                          ORDER BY log.created_at DESC, log.id DESC
+                          LIMIT 1),
+                       -- What was decided about this field before, newest first.
+                       -- A curator meeting the same field a third time is owed
+                       -- the two answers already given to it.
+                       'decidedBefore', COALESCE((
+                         SELECT jsonb_agg(jsonb_build_object(
+                                  'by', COALESCE(u.display_name, 'a curator'),
+                                  'at', log.created_at,
+                                  'applied', d->>'applied')
+                                ORDER BY log.created_at DESC)
+                           FROM experience_curation_log log
+                           JOIN users u ON u.id = log.curator_id
+                           CROSS JOIN LATERAL jsonb_array_elements(
+                                  COALESCE(log.details->'fields', '[]'::jsonb)) d
+                          WHERE log.experience_id = e.id
+                            AND log.action = 'accepted_source'
+                            AND d->>'field' = f->>'field'
+                            AND ${logScopeFilter}), '[]'::jsonb)))
                FROM jsonb_array_elements(ch.changed_fields) f
                WHERE (f->>'curatedConflict')::boolean
                  AND e.curated_fields ? COALESCE($${keyMapIdx}::jsonb->>(f->>'field'), f->>'field')
