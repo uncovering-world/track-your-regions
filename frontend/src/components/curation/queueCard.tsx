@@ -12,15 +12,25 @@
 
 import { Typography, Stack, Chip } from '@mui/material';
 import type { ReviewQueueItem } from '../../api/experiences';
+import { ObjectContext } from './ObjectContext';
 
-/** Which object a card is about, in the words a curator can judge it by. */
+/**
+ * Which object a card is about, in the words a curator can judge it by.
+ *
+ * The name and the id say *which* object; `ObjectContext` says what it is — the picture,
+ * the place, the page it came from. Both live here so every kind of card carries the
+ * same amount, which is the property that made this module worth having.
+ */
 export function ItemHeader({ item }: { item: ReviewQueueItem }) {
   return (
-    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
-      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.name}</Typography>
-      <Typography variant="caption" color="text.secondary">({item.external_id})</Typography>
-      <Chip label={item.category_name} size="small" variant="outlined" />
-    </Stack>
+    <>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.name}</Typography>
+        <Typography variant="caption" color="text.secondary">({item.external_id})</Typography>
+        <Chip label={item.category_name} size="small" variant="outlined" />
+      </Stack>
+      <ObjectContext item={item} />
+    </>
   );
 }
 

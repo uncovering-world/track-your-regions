@@ -395,6 +395,19 @@ export interface ReviewQueueItem {
   source_membership: 'present' | 'former';
   existence: 'extant' | 'lost';
   kind: 'missing' | 'conflict' | 'refused' | 'kept-out' | 'arrival' | 'held' | 'contents';
+  /**
+   * What the object is, carried on every kind for the same reason the lifecycle axes
+   * are: one fragment feeds all seven queries, so a card cannot show less about an
+   * object than its neighbour. Every one of them is genuinely optional in the data —
+   * 14 of 1604 rows have no image, and a landmark commonly has no website — so the
+   * card renders what exists rather than reserving space for what does not.
+   */
+  image_url?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  website_url?: string | null;
+  wikipedia_url?: string | null;
+  region_names?: string[] | null;
   /** Why this category turned the row down, in the rule's own words. Refused items only. */
   admission_reason?: string | null;
   /** When a curator answered. Kept-out items only. */
