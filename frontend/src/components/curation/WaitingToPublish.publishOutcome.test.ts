@@ -40,6 +40,22 @@ describe('publishOutcomeFor', () => {
     expect(line).toBe('Museo Nacional del Prado: 3 points and 12 works now visible.');
   });
 
+  it('names fields the way the card that asked did', () => {
+    // The card's rows are labelled through `fieldLabel`, and the server answers with the
+    // changeset's own names. A line confirming a click must not rename what it acted on:
+    // "shortDescription applied" under a row headed "short description" reads as a second
+    // subject, and it is the schema talking on the one screen written to keep it quiet.
+    const line = publishOutcomeFor(item, result({
+      appliedFields: ['shortDescription', 'imageUrl'],
+      claimedFieldsSkipped: ['name'],
+    }));
+
+    expect(line).toContain('short description, picture applied');
+    expect(line).toContain('name left as you wrote them');
+    expect(line).not.toContain('shortDescription');
+    expect(line).not.toContain('imageUrl');
+  });
+
   it('says which replaced points stopped being shown', () => {
     const line = publishOutcomeFor(item, result({ locationsPublished: 1, withdrawalsReleased: 2 }));
 

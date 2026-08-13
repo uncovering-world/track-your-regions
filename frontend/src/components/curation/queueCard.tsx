@@ -29,9 +29,7 @@ export function messageFor(item: { name: string }, error: unknown): string {
   return `${item.name}: ${error instanceof Error ? error.message : 'could not be saved'}`;
 }
 
-/** Long values are described rather than reproduced, as in the run card. */
-export function describe(value: unknown): string {
-  if (value === null || value === undefined) return '—';
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  return text.length > 120 ? `${text.slice(0, 120)}… (${text.length} chars)` : text;
-}
+// `describe()` lived here and cut every value at 120 characters. It is gone rather than
+// tightened: on Aksum it turned a decision between 200 characters of a curator's text and
+// 511 from the source into two ellipses, and the screen's whole purpose is to show what
+// the decision rests on. `FieldDiff` renders both values whole and marks the difference.

@@ -36,7 +36,9 @@ import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
 import { worldViewList } from '../../utils/worldViewList';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
-import { ItemHeader, describe, messageFor } from './queueCard';
+import { ItemHeader, messageFor } from './queueCard';
+import { FieldDiff } from './FieldDiff';
+import { fieldLabel } from './fieldLabel';
 
 /** One experience, with whatever a gated run left open about it. */
 export interface GatedGroup {
@@ -183,17 +185,18 @@ function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (message?: st
           {proposed.length > 0 && (
             <GatedRow label="fields">
               <Typography variant="body2" sx={{ mb: 0.5 }}>
-                {plural(proposed.length, 'field')} held — {proposed.map(f => f.field).join(', ')}
+                {plural(proposed.length, 'field')} held — {proposed.map(f => fieldLabel(f.field)).join(', ')}
               </Typography>
+              {/* The same comparison the conflict card makes, because it is the same
+                  decision: two versions of one text and a person choosing between them.
+                  The labels differ and are the caller's to give — here the left side is
+                  what readers are looking at right now, and no curator wrote it. */}
               {proposed.map(field => (
                 <Box key={field.field} sx={{ mb: 0.5 }}>
-                  <Typography variant="caption" color="text.secondary">{field.field}</Typography>
-                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                    readers see: {describe(field.old)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                    the run proposed: {describe(field.new)}
-                  </Typography>
+                  <FieldDiff
+                    field={field}
+                    labels={{ before: 'readers see', after: 'the run proposed' }}
+                  />
                 </Box>
               ))}
               {/* Said here, where a curator is looking at wording they may not
@@ -405,9 +408,13 @@ export function publishOutcomeFor(
 ): string | undefined {
   if (!data) return undefined;
   const parts: string[] = [];
-  if (data.appliedFields.length > 0) parts.push(`${data.appliedFields.join(', ')} applied`);
+  // Field names in the reader's words here too — this line answers the same card whose
+  // rows are labelled through `fieldLabel`.
+  if (data.appliedFields.length > 0) {
+    parts.push(`${data.appliedFields.map(fieldLabel).join(', ')} applied`);
+  }
   if (data.claimedFieldsSkipped.length > 0) {
-    parts.push(`${data.claimedFieldsSkipped.join(', ')} left as you wrote them`);
+    parts.push(`${data.claimedFieldsSkipped.map(fieldLabel).join(', ')} left as you wrote them`);
   }
   const released: string[] = [];
   if (data.locationsPublished > 0) released.push(plural(data.locationsPublished, 'point'));

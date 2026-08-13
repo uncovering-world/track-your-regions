@@ -215,11 +215,37 @@ describe('ReviewQueue', () => {
     });
   });
 
-  it('shows both versions before asking anyone to choose', async () => {
+  it('shows both versions in full before asking anyone to choose', async () => {
     renderQueue();
 
-    expect(await screen.findByText(/yours: Curator wording/)).toBeInTheDocument();
-    expect(screen.getByText(/source: Renamed upstream/)).toBeInTheDocument();
+    // Whole values, side by side under their own labels — not the two ellipses the
+    // 120-character summary used to give. The words themselves are split across marked
+    // and unmarked runs, so this asks the rendered text for them rather than one node.
+    const yours = await screen.findByText('yours');
+    const source = screen.getByText('the source proposes');
+    expect(yours.parentElement?.textContent).toContain('Curator wording');
+    expect(source.parentElement?.textContent).toContain('Renamed upstream');
+    // Each value stays under its own heading: a comparison that put the source's text on
+    // the curator's side would read as their own words being replaced by themselves.
+    expect(yours.parentElement?.textContent).not.toContain('Renamed upstream');
+  });
+
+  it('compares an added value against nothing, instead of calling it a shape difference', async () => {
+    mockedFetch.mockResolvedValue({
+      missing: [],
+      conflicts: [{ ...CONFLICT, proposed: [
+        { field: 'shortDescription', old: null, new: 'A description this row never had', acceptable: true },
+      ] }],
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+    });
+    renderQueue();
+
+    // The commonest non-text shape is not a shape disagreement at all: one side is
+    // simply empty, which a gated proposal adding a description does constantly. Saying
+    // "the shape is part of the difference" there is false, and it withholds the marking
+    // from text that compares perfectly well.
+    expect(await screen.findByText(/A description this row never had/)).toBeInTheDocument();
+    expect(screen.queryByText(/the shape is part of the difference/)).not.toBeInTheDocument();
   });
 
   it('accepts exactly the fields the source proposed', async () => {
@@ -338,9 +364,11 @@ describe('ReviewQueue', () => {
     fireEvent.click(await screen.findByRole('button', { name: /accept the source/i }));
 
     // The refetch removes the card, so this is the only place the split the
-    // button promised, and the run the values came from, can be said at all
+    // button promised, and the run the values came from, can be said at all.
+    // In the same words the card used: the server answers `location`, the card
+    // called it coordinates, and one click must not rename the thing it acted on.
     expect(await screen.findByText(/name applied now/)).toBeInTheDocument();
-    expect(screen.getByText(/location at the next sync/)).toBeInTheDocument();
+    expect(screen.getByText(/coordinates at the next sync/)).toBeInTheDocument();
     expect(screen.getByText(/from run 41/)).toBeInTheDocument();
   });
 

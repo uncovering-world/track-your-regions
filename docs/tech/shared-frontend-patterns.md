@@ -29,6 +29,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | `mapUtils.ts` | Map helper functions |
 | `plural.ts` | `plural(n, noun)` — `"1 point"`, `"12 works"`. The count leads, because it is the judgement |
 | `worldViewList.ts` | `worldViewList(failed)` — the world views a re-placement failed for, named for the curator and numbered for the admin. Handles the `id: null` shape that means listing them failed |
+| `wordDiff.ts` | `wordDiff(before, after)` — which words differ between two versions of a text, as parts that reassemble into each side exactly. Refuses values past 400 words (`capped`) rather than freezing the tab; marks nothing that would change a decision, since both values render in full either way |
 | `webgl.ts` | `isWebGLAvailable()` — ask before constructing any map; see `maplibre-patterns.md` |
 | `fetchUtils.ts` | `ensureFreshToken()` — proactive JWT refresh before SSE connections |
 
@@ -49,6 +50,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | Scroll element to top | `scrollToTop(container, el)` | Manual scroll math |
 | Say "N things" | `plural(n, noun)` | Inline `` `${n} ${noun}${n === 1 ? '' : 's'}` `` — the comparison that reads "1 points" the day a count arrives uncast from `COUNT(*)` |
 | Name the world views a placement failed for | `worldViewList(failed)` | An inline `.map()` over `placementFailedWorldViews` — which renders "world view null" for the shape that means listing them failed, in the sentence a curator hands to an admin |
+| Show which words differ between two versions of a text | `wordDiff(before, after)` | Truncating either side, or rendering them plain and leaving the reader to spot the change — which is what made a 200-character edit against 511 characters of source text unanswerable |
 | Format duration | `formatDuration(start, end)` | Inline ms-to-seconds/minutes conversion |
 | Rendering any map | `GuardedMap` (aliased to your local name), or an early return on `isWebGLAvailable()` where overlays sit over the map | Importing `Map` straight from `react-map-gl/maplibre`, or a bare `new maplibregl.Map` — both throw without WebGL, and there is no error boundary to catch it |
 

@@ -36,7 +36,9 @@ import {
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { formatDateTime } from '../../utils/dateFormat';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
-import { ItemHeader, describe, messageFor } from './queueCard';
+import { ItemHeader, messageFor } from './queueCard';
+import { FieldDiff } from './FieldDiff';
+import { fieldLabel } from './fieldLabel';
 import { WaitingToPublish, groupGated, publishOutcomeFor } from './WaitingToPublish';
 
 export function ReviewQueue() {
@@ -430,20 +432,7 @@ function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (messag
 
         <Stack divider={<Divider flexItem />} spacing={1.5} sx={{ mb: 2 }}>
           {proposed.map((field) => (
-            <Box key={field.field}>
-              <Typography variant="caption" color="text.secondary">{field.field}</Typography>
-              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                yours: {describe(field.old)}
-              </Typography>
-              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                source: {describe(field.new)}
-              </Typography>
-              {!field.acceptable && (
-                <Typography variant="caption" color="text.secondary">
-                  This one lands at the next sync — accepting lifts your protection on it.
-                </Typography>
-              )}
-            </Box>
+            <FieldDiff key={field.field} field={field} />
           ))}
         </Stack>
 
@@ -471,8 +460,13 @@ export function outcomeFor(
 ): string | undefined {
   if (!data) return undefined;
   const parts: string[] = [];
-  if (data.applied.length > 0) parts.push(`${data.applied.join(', ')} applied now`);
-  if (data.released.length > 0) parts.push(`${data.released.join(', ')} at the next sync`);
+  // Through `fieldLabel` for the reason the headings are: the card the curator just read
+  // said "short description", and an answer that says `shortDescription` reads as a
+  // different subject — our word for the column, in the one line confirming their click.
+  if (data.applied.length > 0) parts.push(`${data.applied.map(fieldLabel).join(', ')} applied now`);
+  if (data.released.length > 0) {
+    parts.push(`${data.released.map(fieldLabel).join(', ')} at the next sync`);
+  }
   if (parts.length === 0) return undefined;
   return `${item.name}: ${parts.join('; ')} — from run ${data.fromSyncLogId}.`;
 }
