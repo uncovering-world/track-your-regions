@@ -54,7 +54,18 @@ function comparablePair(a: unknown, b: unknown): boolean {
   return textOrEmpty(a) && textOrEmpty(b) && (typeof a === 'string' || typeof b === 'string');
 }
 
-function Marked({ parts, tint }: { parts: DiffPart[]; tint: 'warning.light' | 'success.light' }) {
+/**
+ * One tint for both sides, and that is a decision rather than a simplification.
+ *
+ * Green against orange is how a diff tool marks *added* against *removed*, and it reads as a
+ * verdict: the source's column looked like the accepted one and the curator's like the
+ * discarded one, on the screen whose entire premise is that the curator's version stands
+ * until they say otherwise. What the marking is actually for is "these words differ" — the
+ * same fact about both columns — and the labels above them already say whose text each is.
+ */
+const DIFFERS_TINT = 'warning.light';
+
+function Marked({ parts }: { parts: DiffPart[] }) {
   return (
     <Typography
       variant="body2"
@@ -66,7 +77,7 @@ function Marked({ parts, tint }: { parts: DiffPart[]; tint: 'warning.light' | 's
           <Box
             key={i}
             component="mark"
-            sx={{ bgcolor: tint, color: 'text.primary', borderRadius: 0.5, px: 0.25 }}
+            sx={{ bgcolor: DIFFERS_TINT, color: 'text.primary', borderRadius: 0.5, px: 0.25 }}
           >
             {part.text}
           </Box>
@@ -92,9 +103,18 @@ export interface DiffLabels {
 
 const CONFLICT_LABELS: DiffLabels = { before: 'yours', after: 'the source proposes' };
 
-export function FieldDiff({ field, action, labels = CONFLICT_LABELS }: {
+export function FieldDiff({ field, keepAction, takeAction, labels = CONFLICT_LABELS }: {
   field: ConflictField;
-  action?: React.ReactNode;
+  /**
+   * The two answers, each under the value it applies.
+   *
+   * They used to sit together in the heading, in the opposite order to the columns —
+   * "take the source's value, keep mine" above "yours, the source proposes" — so the
+   * button nearest a column was the one that discarded it. Under its own column there is
+   * no order to get wrong and nothing to read twice.
+   */
+  keepAction?: React.ReactNode;
+  takeAction?: React.ReactNode;
   labels?: DiffLabels;
 }) {
   const before = readable(field.old);
@@ -104,23 +124,22 @@ export function FieldDiff({ field, action, labels = CONFLICT_LABELS }: {
 
   return (
     <Box>
-      <Stack direction="row" spacing={1} alignItems="baseline" sx={{ mb: 0.5 }}>
-        <Typography variant="subtitle2">{fieldLabel(field.field)}</Typography>
-        {action}
-      </Stack>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>{fieldLabel(field.field)}</Typography>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary">{labels.before}</Typography>
           {diff
-            ? <Marked parts={diff.before} tint="warning.light" />
+            ? <Marked parts={diff.before} />
             : <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', m: 0 }}>{before}</Typography>}
+          {keepAction && <Box sx={{ mt: 0.5 }}>{keepAction}</Box>}
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary">{labels.after}</Typography>
           {diff
-            ? <Marked parts={diff.after} tint="success.light" />
+            ? <Marked parts={diff.after} />
             : <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', m: 0 }}>{after}</Typography>}
+          {takeAction && <Box sx={{ mt: 0.5 }}>{takeAction}</Box>}
         </Box>
       </Stack>
 
