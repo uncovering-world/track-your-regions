@@ -20,12 +20,13 @@ vi.mock('../../api/experiences', () => ({
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
   acceptSourceValue: vi.fn(),
+  declineSourceValue: vi.fn(),
   publishExperience: vi.fn(),
   fetchExperience: vi.fn(),
 }));
 
 import {
-  fetchReviewQueue, setExperienceState, setExperienceAdmission, acceptSourceValue,
+  fetchReviewQueue, setExperienceState, setExperienceAdmission, acceptSourceValue, declineSourceValue,
   publishExperience, fetchExperience,
 } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
@@ -34,6 +35,7 @@ import { ReviewQueue } from './ReviewQueue';
 const mockedFetch = fetchReviewQueue as unknown as ReturnType<typeof vi.fn>;
 const mockedState = setExperienceState as unknown as ReturnType<typeof vi.fn>;
 const mockedAccept = acceptSourceValue as unknown as ReturnType<typeof vi.fn>;
+const mockedDecline = declineSourceValue as unknown as ReturnType<typeof vi.fn>;
 const mockedAdmission = setExperienceAdmission as unknown as ReturnType<typeof vi.fn>;
 const mockedPublish = publishExperience as unknown as ReturnType<typeof vi.fn>;
 const mockedExperience = fetchExperience as unknown as ReturnType<typeof vi.fn>;
@@ -145,6 +147,7 @@ describe('ReviewQueue', () => {
     mockedFetch.mockReset();
     mockedState.mockReset().mockResolvedValue({ experienceId: 77 });
     mockedAccept.mockReset().mockResolvedValue({ experienceId: 88, applied: ['name'], released: [], fromSyncLogId: 9 });
+    mockedDecline.mockReset().mockResolvedValue({ experienceId: 88, declined: ['name'], fromSyncLogId: 41 });
     mockedAdmission.mockReset().mockResolvedValue({
       experienceId: 99, admission: 'refused', published: false,
     });
@@ -266,6 +269,69 @@ describe('ReviewQueue', () => {
     fireEvent.click(takeThese[1]);
 
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['shortDescription'], 41));
+  });
+
+  it('lets a curator settle one field their own way', async () => {
+    mockedFetch.mockResolvedValue({
+      missing: [],
+      conflicts: [{
+        ...CONFLICT,
+        sync_log_id: 41,
+        proposed: [
+          { field: 'name', old: 'Curator wording', new: 'Renamed upstream', acceptable: true },
+          { field: 'shortDescription', old: 'Mine', new: 'Theirs', acceptable: true },
+        ],
+      }],
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+    });
+    renderQueue();
+
+    // Standing by your own value used to be the absence of an action, which is why the
+    // same card came back after every run. The run id goes with it for the reason it goes
+    // with an acceptance: refusing the wrong run silences a proposal nobody read.
+    const keepThese = await screen.findAllByRole('button', { name: 'keep mine' });
+    fireEvent.click(keepThese[1]);
+
+    await waitFor(() => expect(mockedDecline).toHaveBeenCalledWith(88, ['shortDescription'], 41));
+    expect(mockedAccept).not.toHaveBeenCalled();
+  });
+
+  it('offers the refusal on a field the source’s value cannot be written to', async () => {
+    mockedFetch.mockResolvedValue({
+      missing: [],
+      conflicts: [{
+        ...CONFLICT,
+        sync_log_id: 41,
+        proposed: [{ field: 'location', old: null, new: { lat: 1 }, acceptable: false }],
+      }],
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+    });
+    renderQueue();
+
+    // Accepting a coordinate waits for the next sync; refusing one writes nothing at
+    // all, so there is no field the answer cannot reach.
+    fireEvent.click(await screen.findByRole('button', { name: 'keep mine' }));
+
+    await waitFor(() => expect(mockedDecline).toHaveBeenCalledWith(88, ['location'], 41));
+  });
+
+  it('says what a refusal settled, since the card leaves with it', async () => {
+    mockedDecline.mockResolvedValue({ experienceId: 88, declined: ['shortDescription'], fromSyncLogId: 41 });
+    mockedFetch
+      .mockResolvedValueOnce({
+        missing: [],
+        conflicts: [{ ...CONFLICT, sync_log_id: 41, proposed: [{ field: 'shortDescription', old: 'Mine', new: 'Theirs', acceptable: true }] }],
+        refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+      })
+      .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
+    renderQueue();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'keep mine' }));
+
+    // In the reader's words, and naming the run — so a curator meeting the field again
+    // later is being told the source changed its mind, not that the click failed.
+    expect(await screen.findByText(/short description — yours stands/)).toBeInTheDocument();
+    expect(screen.getByText(/run 41/)).toBeInTheDocument();
   });
 
   it('stops calling another curator’s claim "my edit"', async () => {

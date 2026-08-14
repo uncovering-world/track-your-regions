@@ -283,11 +283,15 @@ describe('getReviewQueue', () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
     const [conflictSql] = callMatching("'conflict' AS kind");
-    // `accepted_source` records the fields it applied in `details.fields`, so a
-    // field's history is those entries naming it — an empty array rather than
-    // null, because the card renders a list and "nothing decided yet" is a list
-    // of none.
-    expect(conflictSql).toContain("log.action = 'accepted_source'");
+    // Both answers record their fields in `details.fields`, so a field's history is
+    // those entries naming it — an empty array rather than null, because the card
+    // renders a list and "nothing decided yet" is a list of none.
+    //
+    // Both kinds, and not only acceptances: a trail that showed one of them would
+    // report a field answered once when it was answered twice, and would say the
+    // field went the source's way every time it went the other.
+    expect(conflictSql).toContain("log.action IN ('accepted_source', 'declined_source')");
+    expect(conflictSql).toContain("'action', log.action");
     expect(conflictSql).toContain("d->>'field' = f->>'field'");
     expect(conflictSql).toContain("'[]'::jsonb)))");
     // The run's own date, read off the log the item already names.

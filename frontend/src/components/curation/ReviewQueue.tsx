@@ -30,6 +30,7 @@ import {
   setExperienceState,
   setExperienceAdmission,
   acceptSourceValue,
+  declineSourceValue,
   type ReviewQueueItem,
   type PublishResult,
 } from '../../api/experiences';
@@ -439,8 +440,14 @@ function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
  *
  * Per field rather than per object, because a run improves and damages in the
  * same breath: taking a better description used to mean taking a mangled name
- * with it. Standing still keeps what is stored, so there is no button for it —
- * the card says so instead, and the question stays until the source is answered.
+ * with it.
+ *
+ * Both answers are buttons now. Standing by your own value used to be the
+ * absence of an action, which meant the card came back after every run — Aksum's
+ * three times in two days, the source proposing the identical text each time.
+ * Refusing writes nothing to the object: the stored value has already won every
+ * one of those runs. What it settles is the asking, and only for the value being
+ * refused, so a source that changes its mind is heard.
  */
 function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const proposed = item.proposed ?? [];
@@ -457,6 +464,12 @@ function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (messag
     onSettled: (data, error) => onDone(
       error ? messageFor(item, error) : outcomeFor(item, data), item.id),
   });
+  const decline = useMutation({
+    mutationFn: (fields: string[]) => declineSourceValue(item.id, fields, item.sync_log_id ?? 0),
+    onSettled: (data, error) => onDone(
+      error ? messageFor(item, error) : refusalOutcomeFor(item, data), item.id),
+  });
+  const busy = accept.isPending || decline.isPending;
 
   return (
     <Card variant="outlined">
@@ -478,15 +491,28 @@ function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (messag
                 // breath, since the note underneath is easy to read past when a button
                 // beside it promises something immediate.
                 action={(
-                  <Button
-                    size="small"
-                    disabled={accept.isPending}
-                    onClick={() => accept.mutate([field.field])}
-                  >
-                    {field.acceptable === false
-                      ? 'take the source’s value (at next sync)'
-                      : 'take the source’s value'}
-                  </Button>
+                  <Stack direction="row" spacing={0.5}>
+                    <Button
+                      size="small"
+                      disabled={busy}
+                      onClick={() => accept.mutate([field.field])}
+                    >
+                      {field.acceptable === false
+                        ? 'take the source’s value (at next sync)'
+                        : 'take the source’s value'}
+                    </Button>
+                    {/* Every field is refusable, including the ones above that say
+                        "at next sync": refusing writes nothing, so there is no such
+                        thing here as a field the answer cannot reach. */}
+                    <Button
+                      size="small"
+                      color="inherit"
+                      disabled={busy}
+                      onClick={() => decline.mutate([field.field])}
+                    >
+                      keep mine
+                    </Button>
+                  </Stack>
                 )}
               />
               <ProvenanceTrail field={field} runCompletedAt={item.run_completed_at} />
@@ -494,27 +520,59 @@ function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (messag
           ))}
         </Stack>
 
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           <Button
             variant="outlined"
-            disabled={accept.isPending || proposed.length === 0}
+            disabled={busy || proposed.length === 0}
             onClick={() => accept.mutate(proposed.map(f => f.field))}
           >
             {deferred ? 'Accept the source for all (some at next sync)' : 'Accept the source for all'}
           </Button>
-          {/* Still not a call, and still the current state — but it no longer says
-              "my edit" about a claim someone else made. Whose it is now comes from
-              the trail above each field; here the sentence only promises what
-              standing still does, which is that the run goes on proposing until
-              someone accepts. Making this a decision that ends the asking is the
-              next sub-branch. */}
+          <Button
+            variant="outlined"
+            color="inherit"
+            disabled={busy || proposed.length === 0}
+            onClick={() => decline.mutate(proposed.map(f => f.field))}
+          >
+            Keep mine for all
+          </Button>
+          {/* What the two buttons differ in, and the difference is not symmetric.
+              Accepting hands the field back and writes the source's value — now for
+              the five fields this endpoint can write, at the next sync for the rest,
+              which is what the button labels distinguish. Refusing writes nothing at
+              all, so readers stay on the curator's version; what it changes is the
+              asking, and only for the text being refused — the sentence that stops a
+              curator wondering whether "keep mine" hides a source that later changes
+              its mind. Doing nothing is still possible and still keeps what is
+              stored; it is no longer the only way to say so. */}
           <Typography variant="caption" color="text.secondary">
-            Doing nothing keeps what is stored — the source will propose again.
+            Accepting puts the source’s text on the site. Keeping yours changes nothing
+            readers see and settles the question — the source has to propose something
+            different to ask again.
           </Typography>
         </Stack>
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * What a refusal settled, since the refetch takes the card away.
+ *
+ * Named fields rather than a count, and the run they were refused from: the answer is
+ * about *those values*, so a curator who sees this line and then meets the field again
+ * next month is being told the source changed its mind, not that the click failed.
+ */
+export function refusalOutcomeFor(
+  item: { name: string },
+  data?: { declined: string[]; fromSyncLogId: number },
+): string | undefined {
+  if (!data || data.declined.length === 0) return undefined;
+  // "not asked about again", not "not proposed again": the source goes on proposing it
+  // every run and each one still records a changeset row an admin can see. What the
+  // refusal ends is the question, which is the whole of what this feature does.
+  return `${item.name}: ${data.declined.map(fieldLabel).join(', ')} — yours stands, `
+    + `and run ${data.fromSyncLogId}’s version will not be asked about again.`;
 }
 
 /** What landed, and from which run — neither survives the refetch otherwise. */
