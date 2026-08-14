@@ -32,6 +32,7 @@ import {
   acceptSourceValue,
   declineSourceValue,
   type ReviewQueueItem,
+  type ReviewQueueKind,
   type PublishResult,
 } from '../../api/experiences';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
@@ -47,18 +48,18 @@ import { WaitingToPublish, groupGated, publishOutcomeFor } from './WaitingToPubl
 export function ReviewQueue() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string | null>(null);
-  // The API pages both lists. Without an offset the page could only ever show
-  // the first one, and items behind it would stay unreachable until the ones
-  // in front were answered — which is the queue-that-cannot-be-emptied shape
-  // this page exists to avoid.
-  const [offset, setOffset] = useState(0);
+  // One offset per kind. A single number moved all seven at once, which made "next" mean
+  // something different in each section and left a full page of one kind with a page 2
+  // nothing could ask for — the queue-that-cannot-be-emptied shape this page exists to
+  // avoid, reintroduced by its own pager.
+  const [offsets, setOffsets] = useState<Partial<Record<ReviewQueueKind, number>>>({});
   // Collapsed by default. These are answered, and a curator opening this page
   // is here to work through what is not — but they must still be one click
   // from reach, because no other surface shows them.
   const [showKeptOut, setShowKeptOut] = useState(false);
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['curation', 'reviewQueue', offset],
-    queryFn: () => fetchReviewQueue({ offset }),
+    queryKey: ['curation', 'reviewQueue', offsets],
+    queryFn: () => fetchReviewQueue({ offsets }),
   });
 
   // Refetch whether the call succeeded or not. A failure is often the server
@@ -85,8 +86,9 @@ export function ReviewQueue() {
 
   // Answering shortens the list, so paging back has to stay possible; an
   // offset past the end would otherwise strand the curator on an empty page.
-  const goBack = () => setOffset(o => Math.max(0, o - (data?.limit ?? 25)));
-  const goForward = () => setOffset(o => o + (data?.limit ?? 25));
+  const step = (kind: ReviewQueueKind, by: number) => setOffsets(o => ({
+    ...o, [kind]: Math.max(0, (o[kind] ?? 0) + by * (data?.limit ?? 25)),
+  }));
 
   if (isLoading) return <LoadingSpinner padding={4} />;
 
@@ -108,20 +110,62 @@ export function ReviewQueue() {
   const contents = data?.contents ?? [];
   // One card per experience, however many of the three gated kinds name it.
   const gated = groupGated(arrivals, held, contents);
-  // The API pages; a full page means there are more behind it, and printing
-  // its length as a total would understate the backlog.
-  const pageSize = data?.limit ?? 0;
-  // Every kind, because each is its own query with its own LIMIT: a kind left
-  // out of this disjunction pages silently — its page 2 exists on the server
-  // and no control on this page can ask for it.
-  const fullPage = missing.length === pageSize
-    || refused.length === pageSize
-    || keptOut.length === pageSize
-    || conflicts.length === pageSize
-    || arrivals.length === pageSize
-    || held.length === pageSize
-    || contents.length === pageSize;
-  const countLabel = (n: number) => (n === pageSize && offset === 0 ? `first ${n}` : `${n}`);
+  // Each kind says for itself where it is and whether more waits behind it, so a heading
+  // can be honest without a total: "first 25" only where there really is a page 2.
+  const pageOf = (kind: ReviewQueueKind) => data?.paging?.[kind] ?? { offset: 0, hasMore: false };
+  const countLabel = (kind: ReviewQueueKind, n: number) => {
+    const { offset, hasMore } = pageOf(kind);
+    if (offset > 0) return `${n} more`;
+    return hasMore ? `first ${n}` : `${n}`;
+  };
+  /**
+   * The gated section is three kinds shown as one list, so it gets one control.
+   *
+   * Not the shared offset this commit removes: those seven kinds are seven separate
+   * questions in seven separate sections, while these three are already merged into one
+   * card per experience — a curator reading it cannot tell which kind a row came from, so
+   * three "show more" buttons would be three answers to a question nobody asked. Each kind
+   * still keeps its own offset; the control moves whichever of them have more.
+   */
+  const GATED = ['arrivals', 'held', 'contents'] as const;
+  const gatedLabel = (n: number) => {
+    if (GATED.some(k => pageOf(k).offset > 0)) return `${n} more`;
+    return GATED.some(k => pageOf(k).hasMore) ? `first ${n}` : `${n}`;
+  };
+  const gatedPager = () => {
+    const more = GATED.filter(k => pageOf(k).hasMore);
+    const back = GATED.filter(k => pageOf(k).offset > 0);
+    if (more.length === 0 && back.length === 0) return null;
+    return (
+      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+        <Button
+          size="small"
+          disabled={back.length === 0}
+          onClick={() => back.forEach(k => step(k, -1))}
+        >
+          Previous
+        </Button>
+        <Button
+          size="small"
+          disabled={more.length === 0}
+          onClick={() => more.forEach(k => step(k, 1))}
+        >
+          Show more
+        </Button>
+      </Stack>
+    );
+  };
+  /** Previous / Show more for one kind, shown only where that kind has somewhere to go. */
+  const pagerFor = (kind: ReviewQueueKind) => {
+    const { offset, hasMore } = pageOf(kind);
+    if (offset === 0 && !hasMore) return null;
+    return (
+      <Stack direction="row" spacing={1} sx={{ mt: 1, mb: 1 }}>
+        <Button size="small" disabled={offset === 0} onClick={() => step(kind, -1)}>Previous</Button>
+        <Button size="small" disabled={!hasMore} onClick={() => step(kind, 1)}>Show more</Button>
+      </Stack>
+    );
+  };
 
   return (
     <Box sx={{ p: 3 }}>
@@ -147,16 +191,16 @@ export function ReviewQueue() {
       {missing.length === 0 && refused.length === 0 && conflicts.length === 0
         && gated.length === 0 && (
         <Alert severity="success">
-          {offset === 0
-            ? 'Nothing waiting. Every flagged object has been answered.'
-            : 'Nothing further on this page.'}
+          {Object.values(offsets).some(Boolean)
+            ? 'Nothing further on this page.'
+            : 'Nothing waiting. Every flagged object has been answered.'}
         </Alert>
       )}
 
       {missing.length > 0 && (
         <>
           <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
-            Gone from the source ({countLabel(missing.length)})
+            Gone from the source ({countLabel('missing', missing.length)})
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             A run that finished without errors stopped finding these. That can mean the source
@@ -168,13 +212,14 @@ export function ReviewQueue() {
               <MissingCard key={item.id} item={item} onDone={refresh} />
             ))}
           </Stack>
+          {pagerFor('missing')}
         </>
       )}
 
       {refused.length > 0 && (
         <>
           <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
-            Our own rule for this list turned these down ({countLabel(refused.length)})
+            Our own rule for this list turned these down ({countLabel('refused', refused.length)})
           </Typography>
           {/* Ours, not the source's, and the difference is the whole of ADR-0024: Wikidata
               goes on listing the British Museum, and what keeps it out of *Top Art Museums*
@@ -191,13 +236,14 @@ export function ReviewQueue() {
               <RefusedCard key={item.id} item={item} onDone={refresh} />
             ))}
           </Stack>
+          {pagerFor('refused')}
         </>
       )}
 
       {conflicts.length > 0 && (
         <>
           <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
-            The source disagrees with an edit ({countLabel(conflicts.length)})
+            The source disagrees with an edit ({countLabel('conflicts', conflicts.length)})
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Your version is the one visitors see. The source has been proposing something else, and
@@ -208,17 +254,18 @@ export function ReviewQueue() {
               <ConflictCard key={item.id} item={item} onDone={refresh} />
             ))}
           </Stack>
+          {pagerFor('conflicts')}
         </>
       )}
       {/* One section for the three kinds a gated source raises, and one card per
           experience inside it — see `WaitingToPublish`. */}
-      <WaitingToPublish groups={gated} countLabel={countLabel} onDone={refresh} />
+      <WaitingToPublish groups={gated} countLabel={gatedLabel} pager={gatedPager()} onDone={refresh} />
 
       {keptOut.length > 0 && (
         <>
           <Divider sx={{ mt: 4 }} />
           <Button size="small" sx={{ mt: 2 }} onClick={() => setShowKeptOut(v => !v)}>
-            {showKeptOut ? 'Hide' : 'Show'} what you have kept out ({countLabel(keptOut.length)})
+            {showKeptOut ? 'Hide' : 'Show'} what you have kept out ({countLabel('keptOut', keptOut.length)})
           </Button>
           {showKeptOut && (
             <>
@@ -232,20 +279,12 @@ export function ReviewQueue() {
                   <KeptOutCard key={item.id} item={item} onDone={refresh} />
                 ))}
               </Stack>
+              {pagerFor('keptOut')}
             </>
           )}
         </>
       )}
 
-      {(offset > 0 || fullPage) && (
-        <Stack direction="row" spacing={1} sx={{ mt: 4 }} alignItems="center">
-          <Button size="small" disabled={offset === 0} onClick={goBack}>Previous</Button>
-          <Button size="small" disabled={!fullPage} onClick={goForward}>Show more</Button>
-          <Typography variant="caption" color="text.secondary">
-            {offset > 0 ? `from ${offset + 1}` : 'from the start'}
-          </Typography>
-        </Stack>
-      )}
     </Box>
   );
 }

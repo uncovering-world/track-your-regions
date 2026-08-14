@@ -89,7 +89,7 @@ function countedWorksSelectSql(alias = 'e'): string {
 
 /**
  * The decisions waiting for a curator, scoped to what they cover.
- * GET /api/experiences/review/queue?categoryId=&limit=&offset=
+ * GET /api/experiences/review/queue?categoryId=&limit=&<kind>Offset=
  *
  * Six kinds of open question, and one list that is not a question at all:
  *
@@ -128,9 +128,28 @@ function countedWorksSelectSql(alias = 'e'): string {
 export async function getReviewQueue(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
   const isAdmin = req.user!.role === 'admin';
-  const { categoryId, limit = QUEUE_PAGE_SIZE, offset = 0 } = req.query as {
-    categoryId?: number; limit?: number; offset?: number;
+  const { categoryId, limit = QUEUE_PAGE_SIZE } = req.query as {
+    categoryId?: number; limit?: number;
   };
+  // Seven offsets, because they are seven queries with seven LIMITs. One shared number
+  // moved all of them at once, so a full page of one kind hid a page 2 that no control
+  // could ask for.
+  const q = req.query as Record<string, number | undefined>;
+  const offsets = {
+    missing: q.missingOffset ?? 0,
+    refused: q.refusedOffset ?? 0,
+    keptOut: q.keptOutOffset ?? 0,
+    conflicts: q.conflictsOffset ?? 0,
+    arrivals: q.arrivalsOffset ?? 0,
+    held: q.heldOffset ?? 0,
+    contents: q.contentsOffset ?? 0,
+  };
+
+  // Asked for one more than the page, so "is there another page" is answered by the rows
+  // themselves. A COUNT(*) per kind would be a second source of truth for a number, and
+  // this endpoint deliberately returns no totals — see the note on counts below.
+  const pageSize = Number(limit) + 1;
+  const paged = <T>(rows: T[]) => ({ items: rows.slice(0, Number(limit)), hasMore: rows.length > Number(limit) });
 
   // The rows span categories, so the unrestricted check correlates on each
   // row's own category rather than on the optional request filter.
@@ -176,7 +195,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       AND ${scopeFilter}
     ORDER BY e.missing_since DESC, e.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, limit, offset]);
+  `, [...params, pageSize, offsets.missing]);
 
   // Ordered by id rather than by time: admission carries no date of its own,
   // and `updated_at` moves for every unrelated edit, so ordering by it would
@@ -200,7 +219,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       AND ${scopeFilter}
     ORDER BY e.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, limit, offset]);
+  `, [...params, pageSize, offsets.refused]);
 
   // The rows a curator confirmed, and the only place they can be seen.
   //
@@ -235,7 +254,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       AND ${scopeFilter}
     ORDER BY e.state_decided_at DESC NULLS LAST, e.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, limit, offset]);
+  `, [...params, pageSize, offsets.keptOut]);
 
   // A conflict is worth answering only while it is still the source's current
   // position, so the newest changeset row for the experience wins — and only
@@ -381,7 +400,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     WHERE q.proposed IS NOT NULL
     ORDER BY q.id
     LIMIT $${acceptableIdx + 1} OFFSET $${acceptableIdx + 2}
-  `, [...params, JSON.stringify(CURATED_KEY_BY_FIELD), JSON.stringify([...ACCEPTABLE_FIELDS]), limit, offset]);
+  `, [...params, JSON.stringify(CURATED_KEY_BY_FIELD), JSON.stringify([...ACCEPTABLE_FIELDS]), pageSize, offsets.conflicts]);
 
   // arrival: the whole object is the proposal. A row from a gated source that
   // nobody has passed yet (ADR-0025) — the queue's own version of "created",
@@ -408,7 +427,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       AND ${scopeFilter} ${categoryFilter}
     ORDER BY e.first_seen_sync_log_id DESC NULLS LAST, e.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, limit, offset]);
+  `, [...params, pageSize, offsets.arrivals]);
 
   // held: an already-visible row whose newest content proposal was kept out
   // by the upsert's own gate (ADR-0025 § "A gated source may not overwrite
@@ -479,7 +498,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     ) q WHERE q.proposed IS NOT NULL
     ORDER BY q.sync_log_id DESC, q.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, limit, offset]);
+  `, [...params, pageSize, offsets.held]);
 
   // contents: a visible experience holding unread points or works of its own
   // (ADR-0025 decision 2 — the gate is on the content row, not only on its
@@ -553,17 +572,35 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     GROUP BY e.id, e.external_id, e.name, e.category_id, c.name
     ORDER BY e.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `, [...params, limit, offset]);
+  `, [...params, pageSize, offsets.contents]);
 
+  const pages = {
+    missing: paged(missing.rows),
+    refused: paged(refused.rows),
+    keptOut: paged(keptOut.rows),
+    conflicts: paged(conflicts.rows),
+    arrivals: paged(arrivals.rows),
+    held: paged(held.rows),
+    contents: paged(contents.rows),
+  };
+
+  // The arrays keep their names and their place at the top level — every reader of this
+  // response indexes them by kind. What is new sits beside them: where each kind is and
+  // whether it has another page, which is the pair a control needs to page one kind
+  // without moving the others.
   res.json({
-    missing: missing.rows,
-    refused: refused.rows,
-    keptOut: keptOut.rows,
-    conflicts: conflicts.rows,
-    arrivals: arrivals.rows,
-    held: held.rows,
-    contents: contents.rows,
+    missing: pages.missing.items,
+    refused: pages.refused.items,
+    keptOut: pages.keptOut.items,
+    conflicts: pages.conflicts.items,
+    arrivals: pages.arrivals.items,
+    held: pages.held.items,
+    contents: pages.contents.items,
     limit: Number(limit),
-    offset: Number(offset),
+    paging: Object.fromEntries(
+      Object.entries(pages).map(([kind, page]) => [
+        kind, { offset: offsets[kind as keyof typeof offsets], hasMore: page.hasMore },
+      ]),
+    ),
   });
 }

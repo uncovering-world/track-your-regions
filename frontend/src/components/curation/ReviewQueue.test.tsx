@@ -404,20 +404,24 @@ describe('ReviewQueue', () => {
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['name', 'location'], 41));
   });
 
-  it('can reach the items behind a full page', async () => {
+  it('can reach the items behind a full page, moving only that kind', async () => {
     mockedFetch.mockResolvedValue({
       missing: Array.from({ length: 2 }, (_, i) => ({ ...MISSING, id: i + 1 })),
-      conflicts: [],
+      conflicts: [CONFLICT],
       limit: 2,
-      offset: 0,
+      paging: {
+        missing: { offset: 0, hasMore: true },
+        conflicts: { offset: 0, hasMore: false },
+      },
     });
     renderQueue();
 
-    // Without this the curator is told more exist and cannot see them until
-    // the ones in front are answered
+    // Without this the curator is told more exist and cannot see them until the ones in
+    // front are answered. And the offset it moves is that kind's own: a shared one made
+    // "show more" under one heading page every other section past its own first page.
     fireEvent.click(await screen.findByRole('button', { name: /show more/i }));
 
-    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith({ offset: 2 }));
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith({ offsets: { missing: 2 } }));
   });
 
   it('offers no paging when one page holds everything', async () => {
@@ -433,11 +437,27 @@ describe('ReviewQueue', () => {
       missing: Array.from({ length: 2 }, (_, i) => ({ ...MISSING, id: i + 1 })),
       conflicts: [],
       limit: 2,
-      offset: 0,
+      paging: { missing: { offset: 0, hasMore: true } },
     });
     renderQueue();
 
     expect(await screen.findByText(/Gone from the source \(first 2\)/)).toBeInTheDocument();
+  });
+
+  it('says a full page is the whole of it when nothing waits behind', async () => {
+    // The old heading read "first N" off the page being full, so a kind that happened to
+    // hold exactly one page always claimed a backlog it did not have. The server answers
+    // this now, from the row it fetched past the page.
+    mockedFetch.mockResolvedValue({
+      missing: Array.from({ length: 2 }, (_, i) => ({ ...MISSING, id: i + 1 })),
+      conflicts: [],
+      limit: 2,
+      paging: { missing: { offset: 0, hasMore: false } },
+    });
+    renderQueue();
+
+    expect(await screen.findByText(/Gone from the source \(2\)/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /show more/i })).toBeNull();
   });
 
   it('refreshes after a refusal, so the stale card cannot be clicked again', async () => {
@@ -549,7 +569,8 @@ describe('ReviewQueue', () => {
     it('can reach refusals behind a full page', async () => {
       const page = Array.from({ length: 25 }, (_, i) => ({ ...REFUSED, id: 200 + i }));
       mockedFetch.mockResolvedValue({
-        missing: [], refused: page, conflicts: [], limit: 25, offset: 0,
+        missing: [], refused: page, conflicts: [], limit: 25,
+        paging: { refused: { offset: 0, hasMore: true } },
       });
       renderQueue();
 
@@ -719,15 +740,18 @@ describe('ReviewQueue', () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [],
         contents: Array.from({ length: 2 }, (_, i) => ({ ...CONTENTS, id: 300 + i })),
-        limit: 2, offset: 0,
+        limit: 2,
+        paging: { contents: { offset: 0, hasMore: true } },
       });
       renderQueue();
 
-      // Each kind is its own query with its own LIMIT — left out of `fullPage`,
-      // its second page exists on the server with no control able to ask for it.
+      // Each kind is its own query with its own LIMIT, so its second page exists on the
+      // server whether or not any control asks for it.
       fireEvent.click(await screen.findByRole('button', { name: /show more/i }));
 
-      await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith({ offset: 2 }));
+      // The three gated kinds share one control because the section groups them by
+      // experience — but not one offset: only the kind that has more moves.
+      await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith({ offsets: { contents: 2 } }));
     });
 
     it('says what the publication released, including the pin that went with it', async () => {
