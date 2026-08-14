@@ -30,7 +30,7 @@ import {
   publishExperience, fetchExperience,
 } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
-import { ReviewQueue } from './ReviewQueue';
+import { ReviewPage } from './ReviewPage';
 
 const mockedFetch = fetchReviewQueue as unknown as ReturnType<typeof vi.fn>;
 const mockedState = setExperienceState as unknown as ReturnType<typeof vi.fn>;
@@ -133,13 +133,32 @@ const CONTENTS = {
   pending_treasures: 12,
 };
 
+/**
+ * The page, not the cards.
+ *
+ * These assertions are about what a curator can do — answer, be told what happened, reach
+ * what is behind a page — and none of them was about the single-column layout the page used
+ * to have. The screen is now a list beside a bench, which selects the first question on its
+ * own, so a queue holding one of something opens on it exactly as before.
+ */
 function renderQueue() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ReviewQueue />
+      <ReviewPage />
     </QueryClientProvider>
   );
+}
+
+/**
+ * Open one question, where the queue holds more than one.
+ *
+ * The page selects the first row on its own, so a queue with a single question needs no
+ * click. With several, the bench shows one at a time — which is the change — and a test
+ * about a particular card has to say which.
+ */
+async function openRow(name: string | RegExp) {
+  fireEvent.click(await screen.findByRole('button', { name }));
 }
 
 describe('ReviewQueue', () => {
@@ -163,8 +182,43 @@ describe('ReviewQueue', () => {
     });
   });
 
+  it('moves to the question that took the answered one’s place, not back to the top', async () => {
+    // The property the whole list/bench split is for, and it was wired wrong while the
+    // function underneath it passed its own tests: `selectedIndex` is recomputed from the
+    // *current* rows, so the moment the answered row leaves it reads -1 — which means
+    // "nothing was selected" and sends the selection to row one.
+    const three = [77, 78, 79].map(id => ({ ...MISSING, id, name: `Site ${id}` }));
+    mockedFetch
+      .mockResolvedValueOnce({ missing: three, conflicts: [], limit: 25 })
+      .mockResolvedValue({ missing: [three[0], three[2]], conflicts: [], limit: 25 });
+    renderQueue();
+
+    await openRow(/Site 78/);
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+
+    // Site 79 took index 1 when 78 left, so it is the question in front of the curator.
+    expect(await screen.findByRole('heading', { name: /Site 79/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Site 77/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps a way back when a kind’s page comes back empty', async () => {
+    // Page the refusals forward, answer what was on page 2, and the rows in front of them
+    // become unreachable: the per-kind pager renders under the last row of its kind, so a
+    // kind with no rows renders no pager at all.
+    mockedFetch.mockResolvedValue({
+      missing: [MISSING], refused: [], conflicts: [], limit: 25,
+      paging: { refused: { offset: 25, hasMore: false }, missing: { offset: 0, hasMore: false } },
+    });
+    renderQueue();
+
+    fireEvent.click(await screen.findByRole('button', { name: /refused — previous/i }));
+
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith({ offsets: { refused: 0 } }));
+  });
+
   it('offers the three answers a missing object can have', async () => {
     renderQueue();
+    await openRow(/Dresden Elbe Valley/);
 
     expect(await screen.findByRole('button', { name: /former/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /lost/i })).toBeInTheDocument();
@@ -173,6 +227,7 @@ describe('ReviewQueue', () => {
 
   it('tells the server what the card was showing', async () => {
     renderQueue();
+    await openRow(/Dresden Elbe Valley/);
 
     fireEvent.click(await screen.findByRole('button', { name: /former/i }));
 
@@ -188,6 +243,7 @@ describe('ReviewQueue', () => {
 
   it('sends "former" as a membership decision, leaving existence alone', async () => {
     renderQueue();
+    await openRow(/Dresden Elbe Valley/);
 
     fireEvent.click(await screen.findByRole('button', { name: /former/i }));
 
@@ -199,6 +255,7 @@ describe('ReviewQueue', () => {
 
   it('sends "lost" as an existence decision — a destroyed site can still be listed', async () => {
     renderQueue();
+    await openRow(/Dresden Elbe Valley/);
 
     fireEvent.click(await screen.findByRole('button', { name: /lost/i }));
 
@@ -210,6 +267,7 @@ describe('ReviewQueue', () => {
 
   it('treats "false alarm" as restoring presence, which clears the flag', async () => {
     renderQueue();
+    await openRow(/Dresden Elbe Valley/);
 
     fireEvent.click(await screen.findByRole('button', { name: /false alarm/i }));
 
@@ -479,6 +537,7 @@ describe('ReviewQueue', () => {
   it('keeps the card and shows the reason while the queue still lists it', async () => {
     mockedState.mockRejectedValue(new Error('network down'));
     renderQueue();
+    await openRow(/Dresden Elbe Valley/);
 
     fireEvent.click(await screen.findByRole('button', { name: /former/i }));
 
@@ -645,8 +704,10 @@ describe('ReviewQueue', () => {
 
       // The API answers this as two rows so each query stays simple. To a
       // curator a museum whose label is held and which gained twelve paintings
-      // is one object and one decision.
-      expect(await screen.findAllByText('Museo del Prado')).toHaveLength(1);
+      // is one object and one decision — so one question in the queue, and one
+      // card. (The name appears twice on the screen: once in the list, once on
+      // the card it opens.)
+      expect(await screen.findAllByRole('button', { name: /Museo del Prado/ })).toHaveLength(1);
       expect(screen.getByText(/1 new point/)).toBeInTheDocument();
       expect(screen.getByText(/12 new works/)).toBeInTheDocument();
     });
@@ -719,10 +780,17 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
+      // Two rows for one museum, which is the point: the queue asks them separately
+      // because they are answered separately, and the bench shows whichever is open.
+      const rows = await screen.findAllByRole('button', { name: /Museo del Prado/ });
+      expect(rows).toHaveLength(2);
+
+      fireEvent.click(rows[1]);
       fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
       await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { expectedSyncLogId: 47 }));
 
-      fireEvent.click(screen.getByRole('button', { name: /accept the source/i }));
+      fireEvent.click(rows[0]);
+      fireEvent.click(await screen.findByRole('button', { name: /accept the source/i }));
       await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(7, ['name'], 41));
     });
 

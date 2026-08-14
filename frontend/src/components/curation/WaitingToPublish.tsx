@@ -144,7 +144,7 @@ export function WaitingToPublish({ groups, countLabel, pager, onDone }: {
  * already answered and this page is the stale one, and a card left standing
  * would let every further click repeat the same refusal.
  */
-function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (message?: string) => void }) {
+export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (message?: string) => void }) {
   const { arrival, held, contents } = group;
   const item = arrival ?? held ?? contents!;
   const queryClient = useQueryClient();
