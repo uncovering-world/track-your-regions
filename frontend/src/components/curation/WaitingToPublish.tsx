@@ -86,57 +86,6 @@ function count(value: number | undefined): number {
 }
 
 /**
- * The section — one heading, one sentence, one card per experience.
- *
- * The page's existing idiom (`ReviewQueue.tsx`) is a section per kind, each
- * teaching the curator what that decision means. These three teach the same
- * thing, so splitting them into three would repeat the sentence and split one
- * museum's card in two.
- */
-export function WaitingToPublish({ groups, countLabel, pager, onDone }: {
-  groups: GatedGroup[];
-  countLabel: (n: number) => string;
-  /**
-   * The paging control, built by the page because the offsets live there.
-   *
-   * One control for three kinds, and here that is right rather than a compromise: the
-   * section groups them by experience, so a curator reading a card cannot tell which kind
-   * a row came from and would have nothing to do with three separate buttons.
-   */
-  pager?: React.ReactNode;
-  onDone: (message?: string) => void;
-}) {
-  if (groups.length === 0) return null;
-
-  return (
-    <>
-      {/* The count is of experiences, not of rows, which is the number a curator
-          is about to work through. It is the one heading whose "first N" can
-          understate the page: three kinds page independently, so 25 held plus 25
-          contents on different objects group to 50 and read as a total. The
-          paging control is what carries the truth there — it appears whenever any
-          kind filled its page — and inflating this number to match would name a
-          backlog nobody can point at. */}
-      <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
-        Waiting to be published ({countLabel(groups.length)})
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        These came from a source that is held back until a person looks, so none of it has reached a
-        visitor: an object nobody has passed yet, a change kept off a page readers can already see,
-        or newly-arrived points and works underneath a row that is visible. Publishing is what lets
-        any of it out, and nothing else does.
-      </Typography>
-      <Stack spacing={2}>
-        {groups.map(group => (
-          <GatedCard key={group.id} group={group} onDone={onDone} />
-        ))}
-      </Stack>
-      {pager}
-    </>
-  );
-}
-
-/**
  * One experience's card: what is open about it, and the button that answers.
  *
  * Follows `MissingCard`'s idiom, `onSettled` included — the refetch runs whether
