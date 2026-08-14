@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -25,18 +25,30 @@ const schema = collapse(readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql
 const migration = collapse(
   readFileSync(join(repoRoot, 'db', 'migrations', '018-curation-gate.sql'), 'utf8'),
 );
-const publishMigration = collapse(
-  readFileSync(join(repoRoot, 'db', 'migrations', '019-published-curation-action.sql'), 'utf8'),
-);
+/**
+ * The newest migration that restates the curation-log action list, found rather than named.
+ *
+ * Every migration that widens the list carries the *whole* list, so only the last one states
+ * what the column accepts today; the earlier ones are correct history and must not be edited.
+ * Naming a file here would pin the guard to whichever migration was newest the day it was
+ * written — 019 when the list gained `published`, 022 when it gained `declined_source` — and
+ * a guard that quietly checks a superseded file passes for the wrong reason.
+ */
+const ACTION_CHECK_CONSTRAINT = 'experience_curation_log_action_check';
+const migrationsDir = join(repoRoot, 'db', 'migrations');
+const actionMigrationFile = readdirSync(migrationsDir)
+  .filter(name => name.endsWith('.sql'))
+  .filter(name => readFileSync(join(migrationsDir, name), 'utf8').includes(ACTION_CHECK_CONSTRAINT))
+  .sort()
+  .at(-1) as string;
+const publishMigrationRaw = readFileSync(join(migrationsDir, actionMigrationFile), 'utf8');
+const publishMigration = collapse(publishMigrationRaw);
 /** Uncollapsed, for the assertions that are about how a line starts. */
 const migrationLines = readFileSync(
   join(repoRoot, 'db', 'migrations', '018-curation-gate.sql'),
   'utf8',
 );
-const publishMigrationLines = readFileSync(
-  join(repoRoot, 'db', 'migrations', '019-published-curation-action.sql'),
-  'utf8',
-);
+const publishMigrationLines = publishMigrationRaw;
 const deferralMigrationRaw = readFileSync(
   join(repoRoot, 'db', 'migrations', '020-deferred-withdrawal.sql'),
   'utf8',
@@ -275,8 +287,13 @@ describe('the changeset accepts every type a run records', () => {
 describe('the curation log accepts every action a curator endpoint writes', () => {
   const ACTIONS = [
     'created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region',
-    'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed',
-    'admission_confirmed', 'admission_overridden',
+    'marked_former', 'marked_lost', 'state_restored', 'accepted_source',
+    // What POST /:id/decline-source records: a curator standing by their own value,
+    // which used to be the absence of an action and therefore left no trace at all.
+    // Beside its opposite, because the SQL lists it there and this is a literal
+    // comparison — the list's *order* is part of what the two files must agree on.
+    'declined_source',
+    'missing_dismissed', 'admission_confirmed', 'admission_overridden',
     // ADR-0025 § 4.4 — what POST /:id/publish records.
     'published',
   ];
@@ -293,15 +310,15 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     expect(schema.split(actionCheck)).toHaveLength(3);
   });
 
-  it('migration 019 names the same list', () => {
+  it('the newest action migration names the same list', () => {
     expect(publishMigration).toContain(actionCheck);
   });
 
-  it('migration 019 is not defeated by how it is invoked', () => {
+  it('the newest action migration is not defeated by how it is invoked', () => {
     expect(publishMigrationLines).toMatch(/^\\set ON_ERROR_STOP on$/m);
   });
 
-  it('migration 019 re-adds the constraint it drops, so either file may run first', () => {
+  it('the newest action migration re-adds the constraint it drops, so either file may run first', () => {
     // A bare ADD would fail on a database `01-schema.sql` reached first, and a
     // bare DROP would leave the column unconstrained. The pair is what makes
     // both orders, and any number of re-applications, come out the same.

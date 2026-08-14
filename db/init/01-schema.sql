@@ -2226,7 +2226,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     curator_id INTEGER NOT NULL REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -2236,21 +2236,52 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- CHECK has to be applied on its own — see the same shape on
 -- experience_sync_changes above.
 --
--- 'published' is the newest of them (ADR-0025 § 4.4) and rides in
--- db/migrations/019-published-curation-action.sql for a database that already
--- holds data. The list is a closed one, so a curator's publish cannot be
--- recorded at all until it is named here: the audit insert is inside the
--- publish transaction, and a rejected action rolls the publication back with
--- it. That is why this is a schema change and not a code-only one.
+-- 'declined_source' is the newest of them and rides in
+-- db/migrations/022-conflict-decisions.sql for a database that already holds
+-- data. The list is a closed one, so a curator's action cannot be recorded at
+-- all until it is named here: the audit insert is inside the same transaction
+-- as the decision, and a rejected action rolls the decision back with it. That
+-- is why widening it is a schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published'));
 
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_created ON experience_curation_log(created_at DESC);
 
 COMMENT ON TABLE experience_curation_log IS 'Audit trail of all curator actions on experiences';
+
+-- The proposals a curator has refused, so the queue stops asking about them.
+--
+-- A conflict is a field a curator claimed and a source keeps proposing otherwise. The
+-- stored value already wins every time — `curated_fields` decides that — so standing by
+-- it required no action, and the card came back after every run: Aksum's arrived three
+-- times in two days, with the source proposing the identical value each time.
+--
+-- What is stored is the refused **value**, not the field, and the queue suppresses a
+-- proposal only while it is jsonb-equal to this one. A field-level rule would hide the
+-- one case a curator must see — a source that has changed its mind.
+--
+-- One row per field, replaced rather than appended: this is the standing answer, and the
+-- history of answers is what experience_curation_log is for. Deleted when the claim is
+-- released by accepting the source, since an answer to a question nobody is asking must
+-- not silence the field the day someone claims it again.
+CREATE TABLE IF NOT EXISTS experience_conflict_decisions (
+    id BIGSERIAL PRIMARY KEY,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    field VARCHAR(100) NOT NULL,
+    declined JSONB NOT NULL,
+    decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (experience_id, field)
+);
+
+-- No index beyond the unique constraint: its btree leads on experience_id, so it already
+-- serves the queue's lookup (experience_id AND field — which it serves better than a
+-- single-column index would) and accept-source's delete by experience and field list.
+
+COMMENT ON TABLE experience_conflict_decisions IS 'Source proposals a curator refused; suppresses the queue card while the proposal is unchanged';
 
 -- When a user was first shown the "New" chip (issue #480). The chip lives for
 -- max(category window, a week from this timestamp), so only the first
