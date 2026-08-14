@@ -183,6 +183,17 @@ async function applyProposedFields(
        WHERE id = $1`,
       [experienceId, ...values, JSON.stringify(remaining)],
     );
+    // Any standing refusal of these fields goes with the claim it belonged to. A
+    // refusal answers "the source may not have this field *while I hold it*", and
+    // accepting hands the field back — so leaving the row behind would silence the
+    // field the day someone claims it again, with an answer given about a claim that
+    // no longer exists.
+    await client.query(
+      `DELETE FROM experience_conflict_decisions
+        WHERE experience_id = $1 AND field = ANY($2::text[])`,
+      [experienceId, open.map(p => p.field)],
+    );
+
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
       VALUES ($1, $2, 'accepted_source', $3, $4)

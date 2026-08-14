@@ -92,6 +92,27 @@ describe('acceptSourceValue', () => {
     expect(res.status).toHaveBeenCalledWith(409);
   });
 
+  it('clears a standing refusal along with the claim it belonged to', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'Renamed upstream', curatedConflict: true }] }];
+    const { client, queries } = makeClient(['name'], PROPOSAL);
+    mockedConnect.mockResolvedValue(client);
+
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
+      makeRes() as never,
+    );
+
+    // A refusal says "not while I hold this field". Accepting hands the field back, so
+    // a refusal left behind would silence it the day someone claims it again — with an
+    // answer given about a claim that no longer exists.
+    const del = queries.find(q => q.sql.includes('DELETE FROM experience_conflict_decisions'));
+    expect(del?.params).toEqual([5, ['name']]);
+    // Inside the same transaction: a delete that survived a rolled-back acceptance
+    // would un-answer a question nobody re-asked.
+    expect(queries.findIndex(q => q === del)).toBeLessThan(queries.findIndex(q => q.sql === 'COMMIT'));
+  });
+
   it('releases the curator claim, or the next run would refuse the value again', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'Renamed upstream', curatedConflict: true }] }];
