@@ -523,19 +523,39 @@ export interface ReviewQueue {
   held: ReviewQueueItem[];
   contents: ReviewQueueItem[];
   limit: number;
-  offset: number;
+  /**
+   * Where each kind is and whether it has another page.
+   *
+   * `hasMore` is answered by the rows themselves — the server asks for one more than the
+   * page and drops it — so no kind needs a `COUNT(*)`, and this endpoint keeps its
+   * promise of returning no totals.
+   */
+  paging: Record<ReviewQueueKind, { offset: number; hasMore: boolean }>;
 }
+
+/** The seven arrays the queue returns, each paged on its own. */
+export type ReviewQueueKind =
+  'missing' | 'refused' | 'keptOut' | 'conflicts' | 'arrivals' | 'held' | 'contents';
 
 /**
  * What needs a curator's judgement, within their scope.
  */
 export async function fetchReviewQueue(params: {
-  categoryId?: number; limit?: number; offset?: number;
+  categoryId?: number;
+  limit?: number;
+  /**
+   * Where each kind is, by kind. Seven numbers rather than one, because the queue is
+   * seven queries with seven limits: a single offset moved all of them at once, so a
+   * kind whose page was full had a page 2 no control could ask for.
+   */
+  offsets?: Partial<Record<ReviewQueueKind, number>>;
 } = {}): Promise<ReviewQueue> {
   const search = new URLSearchParams();
   if (params.categoryId) search.set('categoryId', String(params.categoryId));
   if (params.limit !== undefined) search.set('limit', String(params.limit));
-  if (params.offset !== undefined) search.set('offset', String(params.offset));
+  for (const [kind, offset] of Object.entries(params.offsets ?? {})) {
+    if (offset) search.set(`${kind}Offset`, String(offset));
+  }
   return authFetchJson<ReviewQueue>(`${API_URL}/api/experiences/review/queue?${search}`);
 }
 

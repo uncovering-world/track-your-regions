@@ -93,9 +93,17 @@ function count(value: number | undefined): number {
  * thing, so splitting them into three would repeat the sentence and split one
  * museum's card in two.
  */
-export function WaitingToPublish({ groups, countLabel, onDone }: {
+export function WaitingToPublish({ groups, countLabel, pager, onDone }: {
   groups: GatedGroup[];
   countLabel: (n: number) => string;
+  /**
+   * The paging control, built by the page because the offsets live there.
+   *
+   * One control for three kinds, and here that is right rather than a compromise: the
+   * section groups them by experience, so a curator reading a card cannot tell which kind
+   * a row came from and would have nothing to do with three separate buttons.
+   */
+  pager?: React.ReactNode;
   onDone: (message?: string) => void;
 }) {
   if (groups.length === 0) return null;
@@ -123,6 +131,7 @@ export function WaitingToPublish({ groups, countLabel, onDone }: {
           <GatedCard key={group.id} group={group} onDone={onDone} />
         ))}
       </Stack>
+      {pager}
     </>
   );
 }

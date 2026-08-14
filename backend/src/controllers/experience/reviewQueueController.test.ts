@@ -186,6 +186,51 @@ describe('getReviewQueue', () => {
     expect(conflictSql).toContain('q.proposed IS NOT NULL');
   });
 
+  it('pages each kind on its own offset', async () => {
+    await getReviewQueue(
+      { user: ADMIN, query: { refusedOffset: 25, conflictsOffset: 50 } } as never,
+      makeRes() as never,
+    );
+
+    // Seven queries with seven LIMITs: one shared offset moved all of them at once, so a
+    // kind whose page was full had a page 2 no control could ask for.
+    const [, refusedParams] = callMatching("e.admission = 'refused'\n      AND NOT");
+    const [, conflictParams] = callMatching("'conflict' AS kind");
+    const [, missingParams] = callMatching('missing_since IS NOT NULL');
+    expect(refusedParams.at(-1)).toBe(25);
+    expect(conflictParams.at(-1)).toBe(50);
+    expect(missingParams.at(-1)).toBe(0);
+  });
+
+  it('asks for one row more than the page, so a total is never needed', async () => {
+    const res = makeRes();
+    // Exactly `limit + 1` rows come back: the extra one is the answer to "is there more",
+    // and it must not reach the caller as an item.
+    mockedQuery.mockImplementation(async (sql: string) => (
+      String(sql).includes("e.admission = 'refused'\n      AND NOT")
+        ? { rows: Array.from({ length: 4 }, (_, i) => ({ id: i })) }
+        : { rows: [] }
+    ));
+
+    await getReviewQueue({ user: ADMIN, query: { limit: 3 } } as never, res as never);
+
+    const answered = res.json.mock.calls[0][0];
+    expect(answered.refused).toHaveLength(3);
+    expect(answered.paging.refused).toEqual({ offset: 0, hasMore: true });
+    expect(answered.paging.missing).toEqual({ offset: 0, hasMore: false });
+    // Still one query per kind and no eighth: "is there another page" is answered by the
+    // extra row, so no count query joins the seven. (The contents query counts a *row's*
+    // points and works, which is a different number and stays.)
+    expect(mockedQuery.mock.calls).toHaveLength(7);
+    // And every one of them asked for `limit + 1`. The mock answers with four rows whatever
+    // it is asked, so without this the page size could regress to `limit` and the three
+    // items plus `hasMore: true` above would still be produced — by the mock, not the code.
+    for (const call of mockedQuery.mock.calls) {
+      const params = call[1] as unknown[];
+      expect(params.at(-2)).toBe(4);
+    }
+  });
+
   it('stops asking about a proposal a curator already refused', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 

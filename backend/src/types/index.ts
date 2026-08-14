@@ -333,12 +333,29 @@ export const startSyncBodySchema = z.object({
   dryRun: z.boolean().optional(),
 });
 
+/**
+ * The queue's seven kinds page independently, which is why there are seven offsets.
+ *
+ * One shared offset was the defect: the kinds are seven separate queries with seven
+ * separate LIMITs, so "next" moved all of them at once and a kind whose page was full had
+ * a page 2 no control could ask for. Nothing was unreachable while the largest kind held 19
+ * against a limit of 25 — but the first gated round is measured at 139 cards, and at that
+ * size the page silently hides work.
+ *
+ * `limit` stays shared: it is a page size, and one number is what a reader means by it.
+ */
 export const reviewQueueQuerySchema = z.object({
   // Bounded to int4: `experience_categories.id` is SERIAL, and a larger value
   // would reach Postgres and error there rather than answering 400 here.
   categoryId: z.coerce.number().int().positive().max(2147483647).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
-  offset: z.coerce.number().int().min(0).default(0),
+  missingOffset: z.coerce.number().int().min(0).default(0),
+  refusedOffset: z.coerce.number().int().min(0).default(0),
+  keptOutOffset: z.coerce.number().int().min(0).default(0),
+  conflictsOffset: z.coerce.number().int().min(0).default(0),
+  arrivalsOffset: z.coerce.number().int().min(0).default(0),
+  heldOffset: z.coerce.number().int().min(0).default(0),
+  contentsOffset: z.coerce.number().int().min(0).default(0),
 });
 
 export const experienceStateBodySchema = z.object({
