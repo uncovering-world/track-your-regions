@@ -101,9 +101,11 @@ placement, on the identical `withdrawalsReleased > 0` trigger. An earlier versio
 of this section said the four siblings had "no post-commit work"; that was true of
 three of them and the criterion decides per branch, not per endpoint.
 
-The three that remain (`/:id/state`, `/:id/accept-source`, `/review/queue`) stay
-exempt, checked rather than assumed: each ends at `res.json` with nothing after
-its `client.release()`.
+The ones that remain — `/:id/state`, `/:id/accept-source`, `/:id/decline-source`,
+`/review/queue` — stay exempt, checked rather than assumed: each ends at `res.json`
+with nothing after its `client.release()`. `/:id/decline-source` is the plainest of
+them: it writes one small row per field and does not touch the experience at all,
+because the value it refuses had already won every run.
 
 `PUT /api/admin/sync/categories/:categoryId/curation-gate` — the switch that holds
 a source's content for review — stays exempt too, and CodeQL flags it, so the
