@@ -28,6 +28,7 @@ import {
   setExperienceAdmission,
   setExperienceState,
   acceptSourceValue,
+  declineSourceValue,
   publishExperience,
   publishWaiting,
   markNewBadgesSeen,
@@ -50,6 +51,7 @@ import {
   newBadgesSeenBodySchema,
   experienceStateBodySchema,
   acceptSourceBodySchema,
+  declineSourceBodySchema,
   publishExperienceBodySchema,
   regionIdParamSchema,
   idAndRegionIdParamSchema,
@@ -142,6 +144,10 @@ router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requir
 // criterion in `docs/tech/rate-limiting.md` § 5.
 router.post('/:id/admission', authenticatedLimiter, validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceAdmissionBodySchema), setExperienceAdmission);
 router.post('/:id/accept-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(acceptSourceBodySchema), acceptSourceValue);
+// The other answer to the same card. Unrate-limited beside its opposite and for the
+// same reason: it writes one small row inside one transaction and schedules no
+// post-commit work at all — it does not even touch the experience.
+router.post('/:id/decline-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(declineSourceBodySchema), declineSourceValue);
 
 // Release everything one source is holding (ADR-0025 decision 5, and
 // `docs/tech/experiences.md` § "Turning a source's gate on, and letting it go").
