@@ -14,7 +14,9 @@
  */
 
 import { useState } from 'react';
-import { Box, Button, Chip, Link, Stack } from '@mui/material';
+import {
+  Box, Button, ButtonBase, Chip, Dialog, DialogContent, DialogTitle, Link, Stack, Typography,
+} from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
 import type { ReviewQueueItem } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
@@ -27,6 +29,7 @@ function coordinateLabel(lat: number, lon: number): string {
 
 export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const [showMap, setShowMap] = useState(false);
+  const [showImage, setShowImage] = useState(false);
   const image = extractImageUrl(item.image_url ?? null);
   // The thumbnail, not the extracted URL, is what decides whether there is a picture:
   // `extractImageUrl` turns a stored `/images/…` path into one on our own API, whose host
@@ -54,13 +57,28 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
         // URLs (`docs/tech/experiences.md`), so that route failed twice per image and
         // filled the console on a page of cards. `AuthImage` is for images our own API
         // serves behind its auth, and those are the CV previews.
-        <Box
-          component="img"
-          src={thumbnail}
-          alt=""
-          loading="lazy"
-          sx={{ width: 96, height: 72, objectFit: 'cover', borderRadius: 1, bgcolor: 'grey.100' }}
-        />
+        // Openable, because 96×72 answers "is there a picture" and the question a curator
+        // actually has is "is this the building I think it is" — which needs a size the
+        // card has no room for. The larger one is requested at 960, a width Wikimedia's
+        // CDN already holds, so opening it costs a cached fetch rather than the full file.
+        //
+        // `ButtonBase` and not an `<img onClick>`: an image takes no focus and fires on no
+        // key, so the alt text would announce a control to a reader who then cannot operate
+        // it. Nothing in the frontend's lint config checks this — `jsx-a11y` is not
+        // installed — so it is a decision rather than something the gate would have caught.
+        <ButtonBase
+          onClick={() => setShowImage(true)}
+          aria-label={`${item.name} — enlarge the picture`}
+          sx={{ borderRadius: 1, flexShrink: 0, cursor: 'zoom-in' }}
+        >
+          <Box
+            component="img"
+            src={thumbnail}
+            alt=""
+            loading="lazy"
+            sx={{ width: 96, height: 72, objectFit: 'cover', borderRadius: 1, bgcolor: 'grey.100' }}
+          />
+        </ButtonBase>
       )}
       <Box sx={{ minWidth: 0 }}>
         {hasPoint && (
@@ -99,16 +117,42 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
           </Stack>
         )}
         {regions.length > 0 && (
-          <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
-            {/* Names rather than ids, and all of them: an object crosses regions, and
-                which ones it is in is exactly what tells a region-scoped curator why
-                this card reached them. */}
+          <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap alignItems="center">
+            {/* Named, because unlabelled chips are decoration. They answer a real question
+                — where this object counts, and therefore what a refusal takes it out of,
+                and why this card reached a region-scoped curator at all — and none of that
+                is guessable from three place names in a row. */}
+            <Typography variant="caption" color="text.secondary">counts in</Typography>
+            {/* Names rather than ids, and all of them: an object crosses regions.
+                `whiteSpace: normal` because a region can be called "Peloponnese, Western
+                Greece and the Ionian Islands", and a chip that clips mid-word ends on the
+                word "and" — which reads as a bug rather than as a long name. */}
             {regions.map(region => (
-              <Chip key={region} label={region} size="small" variant="outlined" />
+              <Chip
+                key={region}
+                label={region}
+                size="small"
+                variant="outlined"
+                sx={{ height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }}
+              />
             ))}
           </Stack>
         )}
       </Box>
+
+      {image && (
+        <Dialog open={showImage} onClose={() => setShowImage(false)} maxWidth="md">
+          <DialogTitle sx={{ pb: 1 }}>{item.name}</DialogTitle>
+          <DialogContent sx={{ pt: 0 }}>
+            <Box
+              component="img"
+              src={toThumbnailUrl(image, 960)}
+              alt={item.name}
+              sx={{ width: '100%', height: 'auto', display: 'block' }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
 
       {hasPoint && (
         <PointPreviewDialog

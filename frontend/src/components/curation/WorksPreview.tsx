@@ -11,7 +11,7 @@
  * which is a different question and a longer read.
  */
 
-import { Box, Stack, Tooltip, Typography } from '@mui/material';
+import { Box, Link, Stack, Tooltip, Typography } from '@mui/material';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 
 export interface CountedWork {
@@ -20,6 +20,22 @@ export interface CountedWork {
   artist: string | null;
   imageUrl: string | null;
   year: number | null;
+  /** The source's own id — a Wikidata QID for every work in the catalogue today. */
+  externalId?: string | null;
+}
+
+/**
+ * Where a work goes when a curator does not recognise it.
+ *
+ * The preview showed a thumbnail and stopped, which answers "what does it look like" and
+ * not "what is it" — and the second is the question a name like *Venus of Dolní Věstonice*
+ * raises. Every treasure here carries the id it was imported under, and that id is a
+ * Wikidata entity, so the page it came from is one link away.
+ */
+function sourceLink(work: CountedWork): string | null {
+  return /^Q\d+$/.test(work.externalId ?? '')
+    ? `https://www.wikidata.org/wiki/${work.externalId}`
+    : null;
 }
 
 /**
@@ -42,6 +58,7 @@ function subtitle(work: CountedWork): string {
 
 function WorkRow({ work }: { work: CountedWork }) {
   const line = subtitle(work);
+  const link = sourceLink(work);
   // The normalised URL decides whether there is a picture at all: `toThumbnailUrl` answers
   // with an empty string for a host we do not trust, and `src=""` is not "no image" — the
   // browser resolves it against the page and draws a broken thumbnail. Every treasure image
@@ -62,7 +79,24 @@ function WorkRow({ work }: { work: CountedWork }) {
         />
       )}
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="caption" component="div" sx={{ fontWeight: 600 }}>{work.name}</Typography>
+        {/* The name opens where the work came from, when the id says where that is. The
+            tooltip stays open while the pointer is inside it, so the link is reachable —
+            and it opens in a new tab, because losing the queue to read about one sculpture
+            would cost the curator their place in it. */}
+        {link
+          ? (
+            <Link
+              href={link}
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="caption"
+              color="inherit"
+              sx={{ fontWeight: 600, display: 'block' }}
+            >
+              {work.name}
+            </Link>
+          )
+          : <Typography variant="caption" component="div" sx={{ fontWeight: 600 }}>{work.name}</Typography>}
         {line && <Typography variant="caption" component="div">{line}</Typography>}
       </Box>
     </Stack>

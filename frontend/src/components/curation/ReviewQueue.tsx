@@ -80,10 +80,13 @@ export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
           Last listed before {item.missing_since ? formatDateTime(item.missing_since) : 'an earlier run'}.
         </Typography>
 
+        {/* Who reads it, said on the field. A box labelled only "Note (optional)" asks a
+            curator to write for nobody in particular, which is why they mostly do not. */}
         <TextField
           size="small"
           fullWidth
           label="Note (optional)"
+          helperText="Kept with your answer in this object’s curation history."
           value={note}
           onChange={(e) => setNote(e.target.value)}
           sx={{ mb: 2 }}
@@ -151,10 +154,14 @@ export function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
           name={item.name}
         />
 
+        {/* This one really is read again, and soon: a kept-out row shows its note in the
+            list at the foot of the page, which is where someone decides whether the
+            refusal was a mis-click. Saying so is what makes writing one worth the time. */}
         <TextField
           size="small"
           fullWidth
           label="Note (optional)"
+          helperText="Shown beside this row in the kept-out list, and in its curation history."
           value={note}
           onChange={(e) => setNote(e.target.value)}
           sx={{ mb: 2 }}

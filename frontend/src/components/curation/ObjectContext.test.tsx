@@ -42,7 +42,11 @@ describe('ObjectContext', () => {
       region_names: ['Africa', 'Ethiopia', 'Tigray'],
     })} />);
 
-    expect(screen.getByRole('presentation')).toBeInTheDocument();
+    // A button and not an image with a click handler: 96×72 answers "is there a picture"
+    // while the question a curator has is "is this the building I think it is", so the
+    // thumbnail opens a larger copy — and a control that cannot be reached from the
+    // keyboard is one a screen reader announces and then cannot operate.
+    expect(screen.getByRole('button', { name: /Aksum — enlarge the picture/ })).toBeInTheDocument();
     // A button, not a link: nothing in the app reads `lat`/`lon`/`zoom`, so a link would
     // navigate the whole document to the default map view and drop the curator out of the
     // queue mid-decision. It opens the map in place instead.
@@ -77,7 +81,7 @@ describe('ObjectContext', () => {
     render(<ObjectContext item={item({ region_names: ['Berlin', 'Europe', 'Germany'] })} />);
 
     expect(screen.getByText('Berlin')).toBeInTheDocument();
-    expect(screen.queryByRole('presentation')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /enlarge the picture/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     // Bounded rather than `\d+\.\d+`: two unbounded runs either side of a literal is
     // the backtracking shape the linter refuses, and a coordinate has a known width.
