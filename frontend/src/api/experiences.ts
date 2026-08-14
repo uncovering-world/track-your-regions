@@ -467,6 +467,13 @@ export interface ReviewQueueItem {
     artist: string | null;
     imageUrl: string | null;
     year: number | null;
+    /**
+     * The source's own id for the work — a Wikidata QID for everything stored today.
+     *
+     * Sent so the preview is not a dead end: a curator who does not recognise a work needs
+     * somewhere to go, and this is where it came from. Nullable because the column is.
+     */
+    externalId: string | null;
   }> | null;
   /**
    * How many the catalogue holds here, which the capped array cannot say.

@@ -13,6 +13,7 @@
 import { Typography, Stack, Chip } from '@mui/material';
 import type { ReviewQueueItem } from '../../api/experiences';
 import { ObjectContext } from './ObjectContext';
+import { SourceId } from './SourceId';
 
 /**
  * Which object a card is about, in the words a curator can judge it by.
@@ -26,7 +27,7 @@ export function ItemHeader({ item }: { item: ReviewQueueItem }) {
     <>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.name}</Typography>
-        <Typography variant="caption" color="text.secondary">({item.external_id})</Typography>
+        <SourceId id={item.external_id} category={item.category_name} />
         <Chip label={item.category_name} size="small" variant="outlined" />
       </Stack>
       <ObjectContext item={item} />

@@ -78,7 +78,11 @@ function countedWorksSelectSql(alias = 'e'): string {
   return `(SELECT jsonb_agg(w ORDER BY fame)
              FROM (SELECT jsonb_build_object(
                             'name', t.name, 'type', t.treasure_type, 'artist', t.artist,
-                            'imageUrl', t.image_url, 'year', t.year) AS w,
+                            'imageUrl', t.image_url, 'year', t.year,
+                            -- The source's own id, so the preview can stop being a dead
+                            -- end: a curator who does not recognise a work needs somewhere
+                            -- to go, and this is where the work came from.
+                            'externalId', t.external_id) AS w,
                           row_number() OVER (ORDER BY t.sitelinks_count DESC NULLS LAST) AS fame
                      FROM experience_treasures et
                      JOIN treasures t ON t.id = et.treasure_id
