@@ -282,29 +282,27 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
                 // and whose? A field the endpoint cannot write says so in the same
                 // breath, since the note underneath is easy to read past when a button
                 // beside it promises something immediate.
-                action={(
-                  <Stack direction="row" spacing={0.5}>
-                    <Button
-                      size="small"
-                      disabled={busy}
-                      onClick={() => accept.mutate([field.field])}
-                    >
-                      {field.acceptable === false
-                        ? 'take the source’s value (at next sync)'
-                        : 'take the source’s value'}
-                    </Button>
-                    {/* Every field is refusable, including the ones above that say
-                        "at next sync": refusing writes nothing, so there is no such
-                        thing here as a field the answer cannot reach. */}
-                    <Button
-                      size="small"
-                      color="inherit"
-                      disabled={busy}
-                      onClick={() => decline.mutate([field.field])}
-                    >
-                      keep mine
-                    </Button>
-                  </Stack>
+                // Each answer under the value it applies. Every field is refusable,
+                // including the ones whose acceptance says "at next sync": refusing
+                // writes nothing, so there is no field this answer cannot reach.
+                keepAction={(
+                  <Button
+                    size="small"
+                    color="inherit"
+                    disabled={busy}
+                    onClick={() => decline.mutate([field.field])}
+                  >
+                    keep this
+                  </Button>
+                )}
+                takeAction={(
+                  <Button
+                    size="small"
+                    disabled={busy}
+                    onClick={() => accept.mutate([field.field])}
+                  >
+                    {field.acceptable === false ? 'take this (at next sync)' : 'take this'}
+                  </Button>
                 )}
               />
               <ProvenanceTrail field={field} runCompletedAt={item.run_completed_at} />
@@ -312,21 +310,26 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
           ))}
         </Stack>
 
+        {/* Same order as the columns above and as the per-field buttons: what is stored
+            first, what is proposed second. And neither is a primary — one of them being
+            the coloured one made the screen recommend an answer, and the only answer this
+            screen has a default for is the one that changes nothing. */}
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Button
-            variant="outlined"
-            disabled={busy || proposed.length === 0}
-            onClick={() => accept.mutate(proposed.map(f => f.field))}
-          >
-            {deferred ? 'Accept the source for all (some at next sync)' : 'Accept the source for all'}
-          </Button>
           <Button
             variant="outlined"
             color="inherit"
             disabled={busy || proposed.length === 0}
             onClick={() => decline.mutate(proposed.map(f => f.field))}
           >
-            Keep mine for all
+            Keep all of mine
+          </Button>
+          <Button
+            variant="outlined"
+            color="inherit"
+            disabled={busy || proposed.length === 0}
+            onClick={() => accept.mutate(proposed.map(f => f.field))}
+          >
+            {deferred ? 'Take all of the source’s (some at next sync)' : 'Take all of the source’s'}
           </Button>
           {/* What the two buttons differ in, and the difference is not symmetric.
               Accepting hands the field back and writes the source's value — now for

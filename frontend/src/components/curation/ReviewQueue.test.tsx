@@ -323,7 +323,7 @@ describe('ReviewQueue', () => {
     // A run improves and damages in the same breath: a better description arriving with
     // a mangled name was one button that took both or neither. The endpoint always
     // accepted a list — the screen could not say "this one".
-    const takeThese = await screen.findAllByRole('button', { name: 'take the source’s value' });
+    const takeThese = await screen.findAllByRole('button', { name: 'take this' });
     fireEvent.click(takeThese[1]);
 
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['shortDescription'], 41));
@@ -347,7 +347,7 @@ describe('ReviewQueue', () => {
     // Standing by your own value used to be the absence of an action, which is why the
     // same card came back after every run. The run id goes with it for the reason it goes
     // with an acceptance: refusing the wrong run silences a proposal nobody read.
-    const keepThese = await screen.findAllByRole('button', { name: 'keep mine' });
+    const keepThese = await screen.findAllByRole('button', { name: 'keep this' });
     fireEvent.click(keepThese[1]);
 
     await waitFor(() => expect(mockedDecline).toHaveBeenCalledWith(88, ['shortDescription'], 41));
@@ -368,7 +368,7 @@ describe('ReviewQueue', () => {
 
     // Accepting a coordinate waits for the next sync; refusing one writes nothing at
     // all, so there is no field the answer cannot reach.
-    fireEvent.click(await screen.findByRole('button', { name: 'keep mine' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'keep this' }));
 
     await waitFor(() => expect(mockedDecline).toHaveBeenCalledWith(88, ['location'], 41));
   });
@@ -384,7 +384,7 @@ describe('ReviewQueue', () => {
       .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'keep mine' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'keep this' }));
 
     // In the reader's words, and naming the run — so a curator meeting the field again
     // later is being told the source changed its mind, not that the click failed.
@@ -423,7 +423,7 @@ describe('ReviewQueue', () => {
   it('accepts exactly the fields the source proposed', async () => {
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: /accept the source/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
 
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['name'], 41));
   });
@@ -442,7 +442,7 @@ describe('ReviewQueue', () => {
     expect(await screen.findByText(/lands at the next sync/)).toBeInTheDocument();
     // Still answerable: releasing the claim is what takes it off the queue,
     // and it is the only thing that does — editing only ever adds a claim
-    expect(screen.getByRole('button', { name: /accept the source/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /take all of the source/i })).toBeEnabled();
   });
 
   it('sends every conflicted field, not only the ones written on the spot', async () => {
@@ -457,7 +457,7 @@ describe('ReviewQueue', () => {
     });
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: /accept the source/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
 
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['name', 'location'], 41));
   });
@@ -554,7 +554,7 @@ describe('ReviewQueue', () => {
       .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: /accept the source/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
 
     // The refetch removes the card, so this is the only place the split the
     // button promised, and the run the values came from, can be said at all.
@@ -790,7 +790,7 @@ describe('ReviewQueue', () => {
       await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { expectedSyncLogId: 47 }));
 
       fireEvent.click(rows[0]);
-      fireEvent.click(await screen.findByRole('button', { name: /accept the source/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
       await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(7, ['name'], 41));
     });
 

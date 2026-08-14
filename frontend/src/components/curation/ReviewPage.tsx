@@ -201,8 +201,22 @@ export function ReviewPage() {
             : 'Nothing waiting. Every flagged object has been answered.'}
         </Alert>
       ) : (
-        <Stack direction={{ xs: 'column', md: 'row' }} sx={{ minHeight: 400 }}>
-          <Box sx={{ width: { xs: '100%', md: 320 }, flexShrink: 0 }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={0} alignItems="flex-start">
+          {/* The two columns scroll on their own, and that is not a nicety: sharing the
+              page's scroll meant clicking a row near the foot of a nineteen-row list left
+              the card rendered far above the viewport — the curator clicked and the screen
+              appeared not to react. The list keeps its own scrollbar, and the bench sticks
+              to the top, so the answer to a click is always where the click was. */}
+          <Box
+            sx={{
+              width: { xs: '100%', md: 320 },
+              flexShrink: 0,
+              maxHeight: { xs: 320, md: 'calc(100vh - 220px)' },
+              overflowY: 'auto',
+              position: { md: 'sticky' },
+              top: { md: 16 },
+            }}
+          >
             <ReviewQueueList
               rows={rows}
               selected={selected}
