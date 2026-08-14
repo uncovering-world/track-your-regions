@@ -396,6 +396,19 @@ export const acceptSourceBodySchema = z.object({
   expectedSyncLogId: z.number().int().positive().max(2147483647),
 });
 
+/**
+ * The opposite answer to the same card, and it carries no value at all.
+ *
+ * What was refused is read from the locked proposal, never from the request: the queue
+ * compares a stored refusal against the live proposal by equality, so a refusal naming
+ * something nobody proposed would silence nothing while looking like an answer. Which
+ * fields and which run is therefore the whole of what a client may say here.
+ */
+export const declineSourceBodySchema = z.object({
+  fields: z.array(z.string().min(1)).min(1).max(20),
+  expectedSyncLogId: z.number().int().positive().max(2147483647),
+});
+
 export const publishExperienceBodySchema = z.object({
   /**
    * Which unread points to publish. Naming any (with or without `treasureIds`
