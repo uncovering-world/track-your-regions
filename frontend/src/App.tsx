@@ -9,7 +9,7 @@ import { MainDisplay, setExplorationModeListener } from './components/MainDispla
 import { DiscoverPage } from './components/discover/DiscoverPage';
 import { AuthCallbackHandler, VerifyEmailPage } from './components/auth';
 import { AdminDashboard } from './components/admin';
-import { ReviewQueue } from './components/curation/ReviewQueue';
+import { ReviewPage } from './components/curation/ReviewPage';
 import { NavigationProvider } from './hooks/useNavigation';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { AppThemeProvider, useAppTheme, createAppTheme } from './theme';
@@ -122,7 +122,7 @@ function CurationReview() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'auto' }}>
       <Header />
-      <ReviewQueue />
+      <ReviewPage />
     </Box>
   );
 }

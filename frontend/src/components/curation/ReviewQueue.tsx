@@ -21,273 +21,26 @@
 
 import { useState } from 'react';
 import {
-  Box, Typography, Card, CardContent, Button, Stack, Alert,
+  Box, Typography, Card, CardContent, Button, Stack,
   TextField, Divider,
 } from '@mui/material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import {
-  fetchReviewQueue,
   setExperienceState,
   setExperienceAdmission,
   acceptSourceValue,
   declineSourceValue,
   type ReviewQueueItem,
-  type ReviewQueueKind,
   type PublishResult,
 } from '../../api/experiences';
-import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { publishOutcomeFor } from './WaitingToPublish';
 import { formatDateTime } from '../../utils/dateFormat';
-import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ItemHeader, messageFor } from './queueCard';
 import { FieldDiff } from './FieldDiff';
 import { fieldLabel } from './fieldLabel';
 import { RefusalLine } from './RefusalLine';
 import { ProvenanceTrail } from './ProvenanceTrail';
-import { WaitingToPublish, groupGated, publishOutcomeFor } from './WaitingToPublish';
 
-export function ReviewQueue() {
-  const queryClient = useQueryClient();
-  const [notice, setNotice] = useState<string | null>(null);
-  // One offset per kind. A single number moved all seven at once, which made "next" mean
-  // something different in each section and left a full page of one kind with a page 2
-  // nothing could ask for — the queue-that-cannot-be-emptied shape this page exists to
-  // avoid, reintroduced by its own pager.
-  const [offsets, setOffsets] = useState<Partial<Record<ReviewQueueKind, number>>>({});
-  // Collapsed by default. These are answered, and a curator opening this page
-  // is here to work through what is not — but they must still be one click
-  // from reach, because no other surface shows them.
-  const [showKeptOut, setShowKeptOut] = useState(false);
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['curation', 'reviewQueue', offsets],
-    queryFn: () => fetchReviewQueue({ offsets }),
-  });
-
-  // Refetch whether the call succeeded or not. A failure is often the server
-  // saying the item is already answered, which means this page is the stale
-  // one — leaving the card up would let every further click repeat the same
-  // refusal, and `staleTime` plus no refetch-on-focus means nothing else
-  // would recover it short of a reload. The message is held here rather than
-  // on the card, since the refetch is what takes the card away.
-  //
-  // `experienceId` is not optional decoration: every verdict on this page
-  // changes what some *other* surface shows about the same object — a state
-  // verdict moves its chips, an override makes it visible and publishes what
-  // arrived under it — and the object's own cache is shared with Discover and
-  // `CurationDialog` under `['experience', id]`. Without invalidating it, a
-  // curator who follows a card through to the object and then answers the card
-  // sees the pre-verdict snapshot for as long as the global 60s `staleTime`
-  // lasts. `WaitingToPublish` does the same for a publish; `docs/tech/experiences.md`
-  // describes it as what every card here does, and it was true of one of them.
-  const refresh = (message?: string, experienceId?: number) => {
-    setNotice(message ?? null);
-    if (experienceId !== undefined) invalidateExperiences(queryClient, { experienceId });
-    return queryClient.invalidateQueries({ queryKey: ['curation', 'reviewQueue'] });
-  };
-
-  // Answering shortens the list, so paging back has to stay possible; an
-  // offset past the end would otherwise strand the curator on an empty page.
-  const step = (kind: ReviewQueueKind, by: number) => setOffsets(o => ({
-    ...o, [kind]: Math.max(0, (o[kind] ?? 0) + by * (data?.limit ?? 25)),
-  }));
-
-  if (isLoading) return <LoadingSpinner padding={4} />;
-
-  if (isError) {
-    return (
-      <Alert severity="error" sx={{ m: 3 }}>
-        Could not load the review queue
-        {error instanceof Error ? `: ${error.message}` : '.'}
-      </Alert>
-    );
-  }
-
-  const missing = data?.missing ?? [];
-  const refused = data?.refused ?? [];
-  const keptOut = data?.keptOut ?? [];
-  const conflicts = data?.conflicts ?? [];
-  const arrivals = data?.arrivals ?? [];
-  const held = data?.held ?? [];
-  const contents = data?.contents ?? [];
-  // One card per experience, however many of the three gated kinds name it.
-  const gated = groupGated(arrivals, held, contents);
-  // Each kind says for itself where it is and whether more waits behind it, so a heading
-  // can be honest without a total: "first 25" only where there really is a page 2.
-  const pageOf = (kind: ReviewQueueKind) => data?.paging?.[kind] ?? { offset: 0, hasMore: false };
-  const countLabel = (kind: ReviewQueueKind, n: number) => {
-    const { offset, hasMore } = pageOf(kind);
-    if (offset > 0) return `${n} more`;
-    return hasMore ? `first ${n}` : `${n}`;
-  };
-  /**
-   * The gated section is three kinds shown as one list, so it gets one control.
-   *
-   * Not the shared offset this commit removes: those seven kinds are seven separate
-   * questions in seven separate sections, while these three are already merged into one
-   * card per experience — a curator reading it cannot tell which kind a row came from, so
-   * three "show more" buttons would be three answers to a question nobody asked. Each kind
-   * still keeps its own offset; the control moves whichever of them have more.
-   */
-  const GATED = ['arrivals', 'held', 'contents'] as const;
-  const gatedLabel = (n: number) => {
-    if (GATED.some(k => pageOf(k).offset > 0)) return `${n} more`;
-    return GATED.some(k => pageOf(k).hasMore) ? `first ${n}` : `${n}`;
-  };
-  const gatedPager = () => {
-    const more = GATED.filter(k => pageOf(k).hasMore);
-    const back = GATED.filter(k => pageOf(k).offset > 0);
-    if (more.length === 0 && back.length === 0) return null;
-    return (
-      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-        <Button
-          size="small"
-          disabled={back.length === 0}
-          onClick={() => back.forEach(k => step(k, -1))}
-        >
-          Previous
-        </Button>
-        <Button
-          size="small"
-          disabled={more.length === 0}
-          onClick={() => more.forEach(k => step(k, 1))}
-        >
-          Show more
-        </Button>
-      </Stack>
-    );
-  };
-  /** Previous / Show more for one kind, shown only where that kind has somewhere to go. */
-  const pagerFor = (kind: ReviewQueueKind) => {
-    const { offset, hasMore } = pageOf(kind);
-    if (offset === 0 && !hasMore) return null;
-    return (
-      <Stack direction="row" spacing={1} sx={{ mt: 1, mb: 1 }}>
-        <Button size="small" disabled={offset === 0} onClick={() => step(kind, -1)}>Previous</Button>
-        <Button size="small" disabled={!hasMore} onClick={() => step(kind, 1)}>Show more</Button>
-      </Stack>
-    );
-  };
-
-  return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>Review</Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Decisions a sync run cannot make on its own. Nothing here has changed what visitors see;
-        it is all waiting for you
-        {refused.length > 0
-          ? ' — except the rows our own rule for a list turned down, which are hidden already and'
-            + ' say why below.'
-          : '.'}
-      </Typography>
-
-      {notice && (
-        <Alert severity="info" sx={{ mb: 2 }} onClose={() => setNotice(null)}>
-          {notice}
-        </Alert>
-      )}
-
-      {/* `keptOut` stays out of this on purpose — those are answered work. The
-          three gated kinds are not answered, so claiming "nothing waiting"
-          while a gated museum sits below would be false. */}
-      {missing.length === 0 && refused.length === 0 && conflicts.length === 0
-        && gated.length === 0 && (
-        <Alert severity="success">
-          {Object.values(offsets).some(Boolean)
-            ? 'Nothing further on this page.'
-            : 'Nothing waiting. Every flagged object has been answered.'}
-        </Alert>
-      )}
-
-      {missing.length > 0 && (
-        <>
-          <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
-            Gone from the source ({countLabel('missing', missing.length)})
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            A run that finished without errors stopped finding these. That can mean the source
-            delisted them, that they no longer exist, or that the source was simply wrong — and
-            only the first two change anything.
-          </Typography>
-          <Stack spacing={2}>
-            {missing.map(item => (
-              <MissingCard key={item.id} item={item} onDone={refresh} />
-            ))}
-          </Stack>
-          {pagerFor('missing')}
-        </>
-      )}
-
-      {refused.length > 0 && (
-        <>
-          <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
-            Our own rule for this list turned these down ({countLabel('refused', refused.length)})
-          </Typography>
-          {/* Ours, not the source's, and the difference is the whole of ADR-0024: Wikidata
-              goes on listing the British Museum, and what keeps it out of *Top Art Museums*
-              is a line we wrote. Naming the source as the one refusing would send a curator
-              to argue with Wikidata about a decision it never made. */}
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Every list here has a rule of ours for what belongs in it, and these failed it — so
-            visitors have never seen them. The source may well still list them. The question is
-            not whether the object is interesting, but whether our rule was right about it.
-            Either answer sticks: no later run reverses it.
-          </Typography>
-          <Stack spacing={2}>
-            {refused.map(item => (
-              <RefusedCard key={item.id} item={item} onDone={refresh} />
-            ))}
-          </Stack>
-          {pagerFor('refused')}
-        </>
-      )}
-
-      {conflicts.length > 0 && (
-        <>
-          <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
-            The source disagrees with an edit ({countLabel('conflicts', conflicts.length)})
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Your version is the one visitors see. The source has been proposing something else, and
-            will keep proposing it until you decide.
-          </Typography>
-          <Stack spacing={2}>
-            {conflicts.map(item => (
-              <ConflictCard key={item.id} item={item} onDone={refresh} />
-            ))}
-          </Stack>
-          {pagerFor('conflicts')}
-        </>
-      )}
-      {/* One section for the three kinds a gated source raises, and one card per
-          experience inside it — see `WaitingToPublish`. */}
-      <WaitingToPublish groups={gated} countLabel={gatedLabel} pager={gatedPager()} onDone={refresh} />
-
-      {keptOut.length > 0 && (
-        <>
-          <Divider sx={{ mt: 4 }} />
-          <Button size="small" sx={{ mt: 2 }} onClick={() => setShowKeptOut(v => !v)}>
-            {showKeptOut ? 'Hide' : 'Show'} what you have kept out ({countLabel('keptOut', keptOut.length)})
-          </Button>
-          {showKeptOut && (
-            <>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-                Answered, so not waiting on you — listed because this page is the only place they
-                appear at all. A kept-out row is hidden from every list and gives nothing back at
-                its own address, so if one of these was a mis-click, this is where it comes back.
-              </Typography>
-              <Stack spacing={2}>
-                {keptOut.map(item => (
-                  <KeptOutCard key={item.id} item={item} onDone={refresh} />
-                ))}
-              </Stack>
-              {pagerFor('keptOut')}
-            </>
-          )}
-        </>
-      )}
-
-    </Box>
-  );
-}
 
 /**
  * An object a clean run stopped finding, and the three things that can mean.
@@ -296,7 +49,7 @@ export function ReviewQueue() {
  * facts that can both be true, which is why they are two buttons and not one
  * status. Nothing here has changed what visitors see; the card is the asking.
  */
-function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
+export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const [note, setNote] = useState('');
   const decide = useMutation({
     mutationFn: (decision: { membership?: 'present' | 'former'; existence?: 'extant' | 'lost' }) =>
@@ -375,7 +128,7 @@ function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
  * wording behind the question mark beside it. Either way a bad rule shows up
  * here as a run of near-identical cards rather than as a mystery.
  */
-function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
+export function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const [note, setNote] = useState('');
   const decide = useMutation({
     mutationFn: (decision: 'confirm' | 'override') =>
@@ -436,7 +189,7 @@ function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
  * and re-asking it would invite a second answer to a settled thing. What this
  * offers is a correction — one button, in the direction that reveals.
  */
-function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
+export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const putBack = useMutation({
     mutationFn: () => setExperienceAdmission(item.id, { decision: 'override' }),
     onSettled: (data, error) => onDone(
@@ -488,7 +241,7 @@ function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message
  * one of those runs. What it settles is the asking, and only for the value being
  * refused, so a source that changes its mind is heard.
  */
-function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
+export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const proposed = item.proposed ?? [];
   // A moved coordinate or a metadata key cannot be written here, but accepting
   // still releases the claim, and the next run applies it. Editing would not:
