@@ -300,19 +300,25 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                           LIMIT 1),
                        -- What was decided about this field before, newest first.
                        -- A curator meeting the same field a third time is owed
-                       -- the two answers already given to it.
+                       -- the answers already given to it — both kinds. Refusals
+                       -- are read here too, and carry the action, because "took
+                       -- the source's value" and "kept theirs" are the two
+                       -- halves of the same history and a trail showing one of
+                       -- them says the field was answered once when it was
+                       -- answered twice.
                        'decidedBefore', COALESCE((
                          SELECT jsonb_agg(jsonb_build_object(
                                   'by', COALESCE(u.display_name, 'a curator'),
                                   'at', log.created_at,
-                                  'applied', d->>'applied')
+                                  'action', log.action,
+                                  'applied', COALESCE(d->>'applied', d->>'declined'))
                                 ORDER BY log.created_at DESC)
                            FROM experience_curation_log log
                            JOIN users u ON u.id = log.curator_id
                            CROSS JOIN LATERAL jsonb_array_elements(
                                   COALESCE(log.details->'fields', '[]'::jsonb)) d
                           WHERE log.experience_id = e.id
-                            AND log.action = 'accepted_source'
+                            AND log.action IN ('accepted_source', 'declined_source')
                             AND d->>'field' = f->>'field'
                             AND ${logScopeFilter}), '[]'::jsonb)))
                FROM jsonb_array_elements(ch.changed_fields) f

@@ -38,9 +38,13 @@ const ACTION_CHECK_CONSTRAINT = 'experience_curation_log_action_check';
 const migrationsDir = join(repoRoot, 'db', 'migrations');
 const actionMigrationFile = readdirSync(migrationsDir)
   .filter(name => name.endsWith('.sql'))
+  // The names come from a listing of a fixed in-repo directory, in a test that no request
+  // data reaches — the rule is about paths a caller can steer.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- listing of a fixed in-repo directory
   .filter(name => readFileSync(join(migrationsDir, name), 'utf8').includes(ACTION_CHECK_CONSTRAINT))
   .sort()
   .at(-1) as string;
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- same directory listing
 const publishMigrationRaw = readFileSync(join(migrationsDir, actionMigrationFile), 'utf8');
 const publishMigration = collapse(publishMigrationRaw);
 /** Uncollapsed, for the assertions that are about how a line starts. */

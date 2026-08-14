@@ -8,9 +8,11 @@
  * twice.
  *
  * No new storage: the claim's author is the most recent `edited` entry in
- * `experience_curation_log`, earlier answers are its `accepted_source` entries, and the
- * run's date is on the log row the item already names. The queue reads them; this
- * renders them.
+ * `experience_curation_log`, earlier answers are its `accepted_source` **and**
+ * `declined_source` entries, and the run's date is on the log row the item already names.
+ * Both kinds, because a field can have been answered either way and a trail showing one of
+ * them reports it as its opposite. The queue reads them; this renders them, each with the
+ * verb its own action earned.
  */
 
 import { Stack, Typography } from '@mui/material';
@@ -18,7 +20,14 @@ import { formatDateTime } from '../../utils/dateFormat';
 
 export interface FieldProvenance {
   claim?: { by: string; at: string } | null;
-  decidedBefore?: Array<{ by: string; at: string; applied: unknown }>;
+  decidedBefore?: Array<{
+    by: string;
+    at: string;
+    /** Which answer it was. Absent on rows written before refusing was possible. */
+    action?: 'accepted_source' | 'declined_source';
+    /** What that answer was about: the value taken, or the one refused. */
+    applied: unknown;
+  }>;
 }
 
 /**
@@ -64,7 +73,15 @@ export function ProvenanceTrail({ field, runCompletedAt }: {
           names tell them whether the source has changed its mind or they have. */}
       {earlier.map(decision => (
         <Typography key={`${decision.at}`} variant="caption" color="text.secondary">
-          {decision.by} took the source’s value on {formatDateTime(decision.at)}
+          {/* Which answer it was, in the verb: a trail that reported both as "took the
+              source's value" would tell a curator the field went the other way every
+              time. Rows written before refusing existed carry no action and are
+              acceptances by construction — nothing else could have been recorded. */}
+          {decision.by}
+          {decision.action === 'declined_source'
+            ? ' refused the source’s value on '
+            : ' took the source’s value on '}
+          {formatDateTime(decision.at)}
           {typeof decision.applied === 'string' && decision.applied.length > 0
             ? `: “${taken(decision.applied)}”`
             : ''}

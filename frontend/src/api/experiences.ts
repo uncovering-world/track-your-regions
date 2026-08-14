@@ -439,8 +439,18 @@ export interface ReviewQueueItem {
      * curator" for a claimant with no display name, because someone still decided.
      */
     claim?: { by: string; at: string } | null;
-    /** Earlier acceptances of the source on this same field, newest first. */
-    decidedBefore?: Array<{ by: string; at: string; applied: unknown }>;
+    /**
+     * Every earlier answer on this same field, newest first — refusals as well as
+     * acceptances, since a refusal shown as an acceptance is its own opposite.
+     */
+    decidedBefore?: Array<{
+      by: string;
+      at: string;
+      /** Which answer it was. Absent on rows written before refusing was possible. */
+      action?: 'accepted_source' | 'declined_source';
+      /** What that answer was about: the value taken, or the one refused. */
+      applied: unknown;
+    }>;
   }> | null;
   /** When the run whose proposal this is finished. Conflicts only. */
   run_completed_at?: string | null;
@@ -625,6 +635,25 @@ export async function acceptSourceValue(
   expectedSyncLogId: number,
 ): Promise<{ experienceId: number; applied: string[]; released: string[]; fromSyncLogId: number }> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/accept-source`, {
+    method: 'POST',
+    body: JSON.stringify({ fields, expectedSyncLogId }),
+  });
+}
+
+/**
+ * Stand by the curator's own value, and record that the question was answered.
+ *
+ * No value goes up: what was refused is read from the proposal under the write lock,
+ * because the queue suppresses the card by comparing the stored refusal against what
+ * the source is proposing now — a refusal of something nobody proposed would silence
+ * nothing while looking like an answer.
+ */
+export async function declineSourceValue(
+  experienceId: number,
+  fields: string[],
+  expectedSyncLogId: number,
+): Promise<{ experienceId: number; declined: string[]; fromSyncLogId: number }> {
+  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/decline-source`, {
     method: 'POST',
     body: JSON.stringify({ fields, expectedSyncLogId }),
   });

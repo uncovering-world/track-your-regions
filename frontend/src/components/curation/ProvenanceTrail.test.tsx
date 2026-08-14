@@ -47,6 +47,27 @@ describe('ProvenanceTrail', () => {
     }
   });
 
+  it('says which answer each earlier decision was', () => {
+    // Both are answers to the same field, and a trail that reported them with one verb
+    // would say the field went the source's way every time it went the other.
+    render(<ProvenanceTrail field={{ decidedBefore: [
+      { by: 'nina', at: '2026-07-31T09:00:00Z', action: 'declined_source', applied: 'Renamed upstream' },
+      { by: 'admin', at: '2026-07-30T09:00:00Z', action: 'accepted_source', applied: 'Serengeti National Park' },
+    ] }}
+    />);
+
+    expect(screen.getByText(/nina refused the source’s value/)).toBeInTheDocument();
+    expect(screen.getByText(/admin took the source’s value/)).toBeInTheDocument();
+  });
+
+  it('reads a decision with no action recorded as an acceptance', () => {
+    // Rows written before refusing was possible carry no action, and an acceptance is
+    // the only thing they could have been — nothing else was recordable.
+    render(<ProvenanceTrail field={{ decidedBefore: [{ by: 'admin', at: '2026-07-30T09:00:00Z', applied: 'Older' }] }} />);
+
+    expect(screen.getByText(/took the source’s value/)).toBeInTheDocument();
+  });
+
   it('renders nothing at all when there is no provenance to show', () => {
     const { container } = render(<ProvenanceTrail field={{}} />);
 
