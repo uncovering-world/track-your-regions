@@ -318,6 +318,26 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                FROM jsonb_array_elements(ch.changed_fields) f
                WHERE (f->>'curatedConflict')::boolean
                  AND e.curated_fields ? COALESCE($${keyMapIdx}::jsonb->>(f->>'field'), f->>'field')
+                 -- ...and the curator has not already answered *this* proposal. By
+                 -- value, not by field: a refusal says "not that text", and a source
+                 -- that comes back with different text is asking a new question, which
+                 -- is the one case a suppressed card must not swallow. The field name
+                 -- here is the changeset's own, since that is what the decision
+                 -- recorded — no claim-key translation, unlike the line above.
+                 --
+                 -- COALESCE because a proposal can carry no value at all: a source that
+                 -- stops publishing a claimed metadata key proposes undefined, which
+                 -- JSON.stringify drops from the row, and the entry is still an ordinary
+                 -- conflict. The refusal stores a jsonb null for it, so comparing against
+                 -- SQL NULL would answer NULL, never true — that class of card
+                 -- would come back after a refusal that reported success, which is the
+                 -- exact failure this design exists to prevent. Both sides now agree on
+                 -- the missing case.
+                 AND NOT EXISTS (
+                   SELECT 1 FROM experience_conflict_decisions d
+                    WHERE d.experience_id = e.id
+                      AND d.field = f->>'field'
+                      AND d.declined = COALESCE(f->'new', 'null'::jsonb))
              ) AS proposed
       FROM experience_sync_changes ch
       JOIN experiences e ON e.id = ch.experience_id

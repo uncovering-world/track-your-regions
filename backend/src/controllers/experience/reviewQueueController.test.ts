@@ -186,6 +186,43 @@ describe('getReviewQueue', () => {
     expect(conflictSql).toContain('q.proposed IS NOT NULL');
   });
 
+  it('stops asking about a proposal a curator already refused', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // Standing by your own edit used to be the absence of an action, so the card
+    // came back after every run — Aksum's three times in two days, with the source
+    // proposing the identical value each time.
+    const [conflictSql] = callMatching("'conflict' AS kind");
+    expect(conflictSql).toContain('experience_conflict_decisions');
+    expect(conflictSql).toContain("d.field = f->>'field'");
+  });
+
+  it('compares the refusal by value, so a source that changed its mind is heard', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // The one case a curator must not miss. Suppressing by field would answer
+    // every future proposal with an answer given about a different value.
+    //
+    // Asserted as one predicate rather than as three substrings that could each be
+    // satisfied by a sibling fragment of the same statement — the whole point is that
+    // the field and the value are tested *together*, on the same row.
+    const [conflictSql] = callMatching("'conflict' AS kind");
+    expect(conflictSql).toMatch(
+      /NOT EXISTS \(\s*SELECT 1 FROM experience_conflict_decisions d\s+WHERE d\.experience_id = e\.id\s+AND d\.field = f->>'field'\s+AND d\.declined = COALESCE\(f->'new', 'null'::jsonb\)\)/,
+    );
+  });
+
+  it('treats a proposal with no value and a refusal of none as the same thing', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // A source that stops publishing a claimed `metadata.*` key proposes `undefined`,
+    // which JSON.stringify drops from the changeset row — while the refusal of it is
+    // stored as jsonb `null`. Compared against SQL NULL that is never true, so the card
+    // would return after a refusal that answered 200 and said the question was settled.
+    const [conflictSql] = callMatching("'conflict' AS kind");
+    expect(conflictSql).toContain("COALESCE(f->'new', 'null'::jsonb)");
+  });
+
   it('translates the changeset field name to the key curated_fields holds', async () => {
     await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
 
