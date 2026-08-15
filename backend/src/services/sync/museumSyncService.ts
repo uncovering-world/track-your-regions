@@ -20,6 +20,8 @@ import type {
   SyncProgress,
   ProcessedContent,
   CollectedMuseum,
+  ContentItem,
+  ContentsDelta,
 } from './types.js';
 import { isTerminalSyncStatus, runningSyncs } from './types.js';
 import { collectTier1Museums } from './museum/pipeline.js';
@@ -174,14 +176,19 @@ async function upsertMuseumExperience(
  * only leaves below `ICONIC_RELEASE`, so the badge does not flicker on and off as Wikipedia
  * grows. Selection upstream uses the single threshold; only the stored flag has hysteresis.
  *
- * Exported for its test and called nowhere else: two of its promises live in a
- * parameter number and a `RETURNING` clause, which no caller can observe.
+ * Returns what the museum gained, named (ADR-0026). `withdrawn` and `returned`
+ * are always empty and that is the decision, not an omission: nothing unlinks a
+ * work, because no contents coverage floor exists for treasures and a run that
+ * under-fetched would take real works off the walls and report success.
+ *
+ * Exported for its test as well as for the sync: one of its promises lives in a
+ * parameter number, which no caller can observe.
  */
 export async function upsertMuseumTreasures(
   experienceId: number,
   artworks: ProcessedContent[]
-): Promise<void> {
-  let linked = false;
+): Promise<ContentsDelta> {
+  const added: ContentItem[] = [];
 
   for (const artwork of artworks) {
     // Step 1: Upsert into treasures (globally unique by external_id)
@@ -250,13 +257,19 @@ export async function upsertMuseumTreasures(
     );
     // `DO NOTHING` returns no row when the link was already there, so this is
     // "the museum gained a work", not "the run mentioned one".
-    if (link.rows.length > 0) linked = true;
+    //
+    // Named from the artwork in hand rather than from a further read: the same
+    // record the insert was built from, so the name stored and the name reported
+    // cannot disagree.
+    if (link.rows.length > 0) added.push({ name: artwork.name, ref: artwork.externalId });
   }
 
   // Once for the museum rather than once per painting: the fact is that a
   // curator's pass no longer covers everything on show, and it is the same fact
   // whether one work arrived or twelve.
-  if (linked) await retirePassAfterNewContent(pool, experienceId);
+  if (added.length > 0) await retirePassAfterNewContent(pool, experienceId);
+
+  return { added, withdrawn: [], returned: [] };
 }
 
 /**
