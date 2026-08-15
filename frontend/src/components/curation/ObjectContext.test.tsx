@@ -92,7 +92,7 @@ describe('ObjectContext', () => {
     render(<ObjectContext item={item({ latitude: 14.1303, longitude: 38.7186 })} />);
 
     // Each map holds a WebGL context and browsers keep about a dozen per tab, while this
-    // page renders up to 25 cards per kind across seven kinds. Mounting one per card
+    // page renders up to 25 cards per kind across eight kinds. Mounting one per card
     // would evict the earlier contexts and blank the maps, so nothing is built until the
     // button is pressed — and a dialog can only be open once, which caps it at one.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -103,6 +103,40 @@ describe('ObjectContext', () => {
     expect(dialog).toBeInTheDocument();
     expect(dialog.textContent).toContain('Aksum');
     expect(dialog.textContent).toContain('14.1303, 38.7186');
+  });
+
+  it('says an object is made of several places, so a diff about one part reads as one part', () => {
+    // UNESCO 1239, Berlin Modernism Housing Estates: the source proposed a
+    // description of one of its seven estates and the card showed it against the
+    // site's own text with nothing to say the site had parts.
+    render(<ObjectContext item={item({ offered_locations: 7 })} />);
+
+    expect(screen.getByText(/made of 7 places/)).toBeInTheDocument();
+  });
+
+  it('says how many works a venue holds', () => {
+    render(<ObjectContext item={item({ offered_locations: 1, counted_works_total: 122 })} />);
+
+    expect(screen.getByText(/holds 122 famous works/)).toBeInTheDocument();
+  });
+
+  it('counts one work in the singular, beside the plural above', () => {
+    // 43 of the 128 work-holding objects hold exactly one, so this is the ordinary
+    // museum rather than an edge. Asserted beside the 122 case on purpose: a
+    // hardcoded noun satisfies one of the two, so the pair is what holds the count.
+    render(<ObjectContext item={item({ offered_locations: 1, counted_works_total: 1 })} />);
+
+    expect(screen.getByText(/holds 1 famous work/)).toBeInTheDocument();
+    expect(screen.queryByText(/famous works/)).not.toBeInTheDocument();
+  });
+
+  it('says nothing about the shape of a single place holding nothing', () => {
+    // 1119 of 1604 objects are exactly this. A line that reads "made of 1 place" on
+    // all of them is one a curator learns to skip before meeting the one that counts.
+    render(<ObjectContext item={item({ offered_locations: 1, counted_works_total: 0 })} />);
+
+    expect(screen.queryByText(/made of/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/holds/)).not.toBeInTheDocument();
   });
 
   it('does not print a coordinate for an object that has no point', () => {

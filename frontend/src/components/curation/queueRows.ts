@@ -1,7 +1,7 @@
 /**
  * The queue as one list of questions, which is how a curator works it.
  *
- * The response arrives as seven arrays because they are seven queries; a curator does not
+ * The response arrives as eight arrays because they are eight queries; a curator does not
  * think in arrays. They work down a list, and what they need from each entry before opening
  * it is which object it is about and what is being asked — enough to skip one, which is the
  * whole reason a list beats a stack of cards.
@@ -15,8 +15,8 @@
 import type { ReviewQueue, ReviewQueueItem, ReviewQueueKind } from '../../api/experiences';
 import { groupGated, type GatedGroup } from './WaitingToPublish';
 
-/** Which of the four questions a row asks. `waiting` is the three gated kinds, grouped. */
-export type RowKind = 'missing' | 'refused' | 'conflicts' | 'waiting';
+/** Which of the five questions a row asks. `waiting` is the three gated kinds, grouped. */
+export type RowKind = 'missing' | 'refused' | 'conflicts' | 'waiting' | 'withdrawn';
 
 export interface QueueRow {
   /** Stable across refetches: the same object under the same question keeps its place. */
@@ -36,6 +36,7 @@ const QUESTION: Record<RowKind, string> = {
   refused: 'our rule turned it down',
   conflicts: 'the source disagrees with an edit',
   waiting: 'waiting to be published',
+  withdrawn: 'lost places it is made of',
 };
 
 function rowFor(kind: Exclude<RowKind, 'waiting'>, item: ReviewQueueItem): QueueRow {
@@ -53,11 +54,13 @@ function rowFor(kind: Exclude<RowKind, 'waiting'>, item: ReviewQueueItem): Queue
 /**
  * Every open question, in the order a curator meets them.
  *
- * Conflicts first, then arrivals, then refusals, then the missing — cheapest decision first
- * is the wrong rule here, and this is deliberately not it. A conflict is a curator's own
- * words being argued with, an arrival is a reader seeing nothing at all; both are somebody
- * waiting. A refusal is already settled for the reader and asks only whether we were right,
- * and a missing row changes nothing until answered. The list is worked from the top, so the
+ * Conflicts first, then arrivals, then lost places, then refusals, then the missing —
+ * cheapest decision first is the wrong rule here, and this is deliberately not it. A
+ * conflict is a curator's own words being argued with, an arrival is a reader seeing nothing
+ * at all; both are somebody waiting. A lost place has already *taken* something away — a pin
+ * a reader could see, sometimes one they had ticked — which is why it sits above a refusal,
+ * where the row was never shown at all and the question is only whether our rule was right.
+ * A missing row changes nothing until answered. The list is worked from the top, so the
  * order is the claim about what matters most.
  *
  * `keptOut` is absent on purpose: it is answered work, and the page keeps it collapsed at
@@ -79,6 +82,7 @@ export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
       question: QUESTION.waiting,
       group,
     })),
+    ...(data.withdrawn ?? []).map(item => rowFor('withdrawn', item)),
     ...(data.refused ?? []).map(item => rowFor('refused', item)),
     ...(data.missing ?? []).map(item => rowFor('missing', item)),
   ];
@@ -103,12 +107,13 @@ export function nextSelection(rows: QueueRow[], previousIndex: number): string |
 }
 
 /** The kinds a row can belong to, in list order — used by the pagers. */
-export const ROW_KINDS: readonly RowKind[] = ['conflicts', 'waiting', 'refused', 'missing'];
+export const ROW_KINDS: readonly RowKind[] = ['conflicts', 'waiting', 'withdrawn', 'refused', 'missing'];
 
 /** Short enough to sit on a button, in the words the headings use. */
 export const KIND_NAME: Record<RowKind, string> = {
   conflicts: 'disagreements',
   waiting: 'waiting to be published',
+  withdrawn: 'lost places',
   refused: 'refused',
   missing: 'gone from the source',
 };
@@ -117,6 +122,7 @@ export const KIND_NAME: Record<RowKind, string> = {
 export const KINDS_BEHIND: Record<RowKind, readonly ReviewQueueKind[]> = {
   conflicts: ['conflicts'],
   waiting: ['arrivals', 'held', 'contents'],
+  withdrawn: ['withdrawn'],
   refused: ['refused'],
   missing: ['missing'],
 };

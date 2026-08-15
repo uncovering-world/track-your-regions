@@ -44,7 +44,28 @@ function objectContextSelectSql(alias = 'e'): string {
           (SELECT jsonb_agg(r.name ORDER BY r.name)
              FROM experience_regions er
              JOIN regions r ON r.id = er.region_id
-            WHERE er.experience_id = ${alias}.id) AS region_names`;
+            WHERE er.experience_id = ${alias}.id) AS region_names,
+          -- How much the object holds, which is part of what it *is* and what every
+          -- card here was missing: a text diff about one component of a serial site
+          -- read as a diff about the site. UNESCO 1239 is the case — the source
+          -- proposed a description of Waldsiedlung Zehlendorf, one of seven parts,
+          -- and nothing on the card said the object had parts at all.
+          --
+          -- Both counts on every kind, reversing the narrower judgement the works
+          -- total was added under ("only the two kinds whose text cites the count").
+          -- That was right while the number served a refusal's sentence; it is the
+          -- object's own shape now, and a fragment that answers "what is this"
+          -- cannot answer it differently per card. Two indexed counts per row,
+          -- 25 rows a page.
+          -- Through the fragment, not spelled out: this count is what every card
+          -- turns "made of N places" on, and a point a curator declared gone from the
+          -- world is not one of them. Written by hand it would have counted one, which
+          -- is the divergence the contents join below already learned once.
+          (SELECT count(*) FROM experience_locations off
+            WHERE off.experience_id = ${alias}.id AND ${offeredLocationSql('off')})::int
+            AS offered_locations,
+          (SELECT count(*) FROM experience_treasures et
+            WHERE et.experience_id = ${alias}.id)::int AS counted_works_total`;
 }
 
 /**
@@ -58,17 +79,14 @@ function objectContextSelectSql(alias = 'e'): string {
  * where it does the card says how many it is not showing rather than quietly stopping.
  * `counted_works_total` is what makes that possible on a refusal whose sentence cites no
  * number of its own — a cathedral's does not, and the array alone cannot tell a holding of
- * twelve from the first twelve of thirty.
+ * twelve from the first twelve of thirty. It now lives in `objectContextSelectSql` above,
+ * with the point count beside it: how much an object holds turned out to be part of what
+ * the object *is*, needed by every card rather than by the two whose text cites it.
  *
- * Only on the two kinds whose text cites the count. UNESCO sites hold no works, and adding
- * the lookup to all seven queries would cost six of them a join for an empty array.
+ * The named array stays on those two kinds alone. UNESCO sites hold no works, and adding
+ * the lookup to every kind would cost a join for an empty array on each one that holds
+ * none.
  */
-/** How many are held here in all — cast, because `count(*)` arrives as a string. */
-function countedWorksTotalSql(alias = 'e'): string {
-  return `(SELECT count(*) FROM experience_treasures et
-            WHERE et.experience_id = ${alias}.id)::int AS counted_works_total`;
-}
-
 /** The best-known twelve of them, ranked, with what each one is. */
 function countedWorksSelectSql(alias = 'e'): string {
   // `row_number()` rather than `ORDER BY w->>'name'`: the aggregate imposes its own order on
@@ -222,7 +240,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
            e.admission_reason,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'refused' AS kind, ${countedWorksSelectSql()},
-           ${countedWorksTotalSql()}, NULL::jsonb AS proposed
+           NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
     WHERE e.admission = 'refused'
@@ -257,7 +275,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
            e.admission_reason, e.state_decided_at, e.state_note,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'kept-out' AS kind, ${countedWorksSelectSql()},
-           ${countedWorksTotalSql()}, NULL::jsonb AS proposed
+           NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
     WHERE e.admission = 'refused'
@@ -618,12 +636,6 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'withdrawn' AS kind,
-           -- How much the object still holds, so a departure has a denominator: "a
-           -- part of Berlin Modernism Housing Estates is gone" reads differently at
-           -- one of seven and at the only one there was.
-           (SELECT count(*) FROM experience_locations off
-              WHERE off.experience_id = e.id AND off.missing_since IS NULL)::int
-             AS offered_locations,
            jsonb_agg(jsonb_build_object(
              'id', el.id,
              'name', el.name,
@@ -634,7 +646,31 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
              -- Whether anyone had been there. It is what makes the verdict matter
              -- rather than tidy-up: the visit survives either answer (ADR-0022), and
              -- the point it is attached to stops being shown.
-             'visited', EXISTS (SELECT 1 FROM user_visited_locations v WHERE v.location_id = el.id)
+             'visited', EXISTS (SELECT 1 FROM user_visited_locations v WHERE v.location_id = el.id),
+             -- How far away the source now offers this same component, or NULL where
+             -- it offers it nowhere. Identity is the point together with the
+             -- reference, so a rewritten coordinate is a withdrawal plus an arrival,
+             -- and this is the difference between "the component is gone" and "the
+             -- source moved it".
+             --
+             -- A distance rather than a flag, because the flag was not enough to
+             -- decide with: Bilbao's replacement is **1.2 cm** away — the stored
+             -- latitude had been rounded to six decimals and a later run wrote the
+             -- source's full value — and a card showing two coordinates rounded to
+             -- four decimals showed the same numbers twice. The number is what tells
+             -- a rewritten coordinate from a component that really moved.
+             --
+             -- Nearest, because nine (experience_id, external_ref) pairs cover two
+             -- points: with two candidates the question is what replaced *this* one.
+             'replacedMetres', (
+               SELECT round(MIN(ST_Distance(el.location::geography, moved.location::geography))::numeric, 2)
+               FROM experience_locations moved
+               WHERE moved.experience_id = e.id
+                 -- The same fragment: a replacement a reader cannot see is no
+                 -- replacement, and the card's whole sentence turns on this distance.
+                 AND ${offeredLocationSql('moved')}
+                 AND moved.external_ref IS NOT DISTINCT FROM el.external_ref
+             )
            ) ORDER BY el.missing_since DESC, el.id) AS withdrawn_points,
            NULL::jsonb AS proposed
     FROM experiences e

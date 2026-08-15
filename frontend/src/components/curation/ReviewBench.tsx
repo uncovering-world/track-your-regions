@@ -12,6 +12,7 @@ import { Alert, Box, Typography } from '@mui/material';
 import type { QueueRow, RowKind } from './queueRows';
 import { MissingCard, RefusedCard, ConflictCard } from './ReviewQueue';
 import { GatedCard } from './WaitingToPublish';
+import { WithdrawnCard } from './WithdrawnPoints';
 
 /**
  * What this kind of question means, above the card that answers it.
@@ -35,6 +36,10 @@ const KIND_NOTE: Record<RowKind, string> = {
   missing: 'A run that finished without errors stopped finding this. That can mean the source '
     + 'delisted it, that it no longer exists, or that the source was simply wrong — and only '
     + 'the first two change anything.',
+  withdrawn: 'The object is still listed; one or more of the places it is made of are not. '
+    + 'Visitors stopped seeing them the moment the run noticed, so this asks what to record '
+    + 'about each — not whether to hide it. Nothing was deleted: anyone who had been there '
+    + 'keeps that.',
 };
 
 export function ReviewBench({ row, onDone }: {
@@ -63,6 +68,7 @@ export function ReviewBench({ row, onDone }: {
       {row.kind === 'conflicts' && row.item && <ConflictCard item={row.item} onDone={onDone} />}
       {row.kind === 'refused' && row.item && <RefusedCard item={row.item} onDone={onDone} />}
       {row.kind === 'missing' && row.item && <MissingCard item={row.item} onDone={onDone} />}
+      {row.kind === 'withdrawn' && row.item && <WithdrawnCard item={row.item} onDone={onDone} />}
       {row.kind === 'waiting' && row.group && <GatedCard group={row.group} onDone={onDone} />}
       {/* A row whose payload is missing is a bug in the row builder rather than a state a
           curator can be in — but silence here would read as "nothing to decide", which is

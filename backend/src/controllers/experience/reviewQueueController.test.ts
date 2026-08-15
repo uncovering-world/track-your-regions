@@ -405,6 +405,8 @@ describe('getReviewQueue', () => {
     held: 'e.pending_change_sync_log_id IS NOT NULL',
     contents: "el.curation_state = 'pending'",
     withdrawn: 'el.missing_since IS NOT NULL',
+    refused: "'refused' AS kind",
+    conflicts: "'conflict' AS kind",
   } as const;
 
   async function capturedQueueSql(
@@ -645,13 +647,32 @@ describe('getReviewQueue', () => {
     expect(sql).toContain('el.withdrawal_deferred_for_location_id');
   });
 
-  it('says how much the container still holds, so a departure has a denominator', async () => {
-    const sql = await capturedQueueSql('withdrawn');
+  it('says how much the object holds, on every kind', async () => {
+    // "A point of Berlin Modernism Housing Estates is gone" reads differently at one
+    // part of seven and at the only part there was — and so does a proposed
+    // description of one component, which is the case that found this (UNESCO 1239).
+    // So it rides on the shared object-context fragment rather than on the two cards
+    // that happen to need it today, and this asserts every kind carries it —
+    // `conflicts` first among equals, since the Berlin card is a conflict and is the
+    // case that asked for the count at all.
+    for (const kind of ['arrival', 'missing', 'held', 'contents', 'withdrawn', 'conflicts', 'refused'] as const) {
+      const sql = await capturedQueueSql(kind);
+      expect(sql, `${kind} lost the point count`).toContain('AS offered_locations');
+      // Both terms, because the count is what "made of N places" reads: written by
+      // hand it counted a point a curator had declared gone from the world.
+      expect(sql, `${kind}'s point count stopped using the shared predicate`)
+        .toMatch(/off\.missing_since IS NULL AND off\.existence <> 'lost'/);
+      expect(sql, `${kind} lost the works count`).toContain('AS counted_works_total');
+    }
+  });
 
-    // "A point of Berlin Modernism Housing Estates is gone" reads differently at
-    // one part of seven and at the only part there was, and the card cannot tell
-    // the curator which without this.
-    expect(sql).toContain('offered_locations');
+  it('states the works total once, not twice, on the refusal kinds', async () => {
+    // Both counts moved into the shared fragment, and the refusal query used to
+    // select the total itself. Two columns of the same name are legal SQL and the
+    // driver hands over whichever came last — so the duplicate would be invisible
+    // rather than loud.
+    const sql = await capturedQueueSql('refused');
+    expect(sql.split('AS counted_works_total')).toHaveLength(2);
   });
 
   it('names each withdrawn point, rather than counting them', async () => {
@@ -663,6 +684,9 @@ describe('getReviewQueue', () => {
     expect(sql).toContain('jsonb_agg');
     expect(sql).toContain('el.external_ref');
     expect(sql).toContain('el.id');
+    // The distance measures a replacement a reader can actually see: one that is
+    // itself withdrawn, or declared gone, replaces nothing.
+    expect(sql).toMatch(/moved\.missing_since IS NULL AND moved\.existence <> 'lost'/);
   });
 
   it('excludes a refused or unread container from the withdrawal card', async () => {

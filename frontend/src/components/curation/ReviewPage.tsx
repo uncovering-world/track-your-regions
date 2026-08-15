@@ -26,6 +26,35 @@ import { ReviewQueueList } from './ReviewQueueList';
 import { ReviewBench } from './ReviewBench';
 import { KeptOutCard } from './ReviewQueue';
 
+/**
+ * What to add to "nothing here has changed what visitors see", which is not always true.
+ *
+ * Two kinds are exceptions, for opposite reasons, and both have to be named when they are
+ * on the page — a promise a curator can see a counter-example to on the same screen is
+ * worse than no promise. A refusal was never shown at all; a withdrawn point *was*, and
+ * stopped being the moment the run marked it, since the queue asks only about points whose
+ * `missing_since` is set and whose row a reader could reach. The other kinds are genuinely
+ * exempt: an object flagged `missing` still reads as ordinary everywhere (ADR-0022, and
+ * `experienceLifecycle.ts`'s note on why a *location* is filtered on the same flag where
+ * an experience is not).
+ *
+ * A clause per kind rather than one covering both, because they are different facts and a
+ * curator with only one of them on screen should not be told about the other.
+ */
+export function visibilityCaveat(kinds: Set<RowKind>): string {
+  const clauses: string[] = [];
+  if (kinds.has('withdrawn')) {
+    clauses.push('the places an object lost, which readers stopped seeing the moment the'
+      + ' run noticed');
+  }
+  if (kinds.has('refused')) {
+    clauses.push('the rows our own rule for a list turned down, which are hidden already'
+      + ' and say why');
+  }
+  if (clauses.length === 0) return '.';
+  return ` — except ${clauses.join(', and ')}.`;
+}
+
 export function ReviewPage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string | null>(null);
@@ -34,7 +63,7 @@ export function ReviewPage() {
   // work through what is not — but they must still be one click from reach, because no
   // other surface shows them at all.
   const [showKeptOut, setShowKeptOut] = useState(false);
-  // One offset per kind: the queue is seven queries with seven limits, and a shared number
+  // One offset per kind: the queue is eight queries with eight limits, and a shared number
   // made "show more" under one heading page every other section past its own first page.
   const [offsets, setOffsets] = useState<Partial<Record<ReviewQueueKind, number>>>({});
 
@@ -157,16 +186,12 @@ export function ReviewPage() {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>Review</Typography>
-      {/* The exception is named only when there is one. Said unconditionally it tells a
-          curator with no refusals in front of them that something on this page is already
-          hidden from readers, which is the opposite of what the page is promising. */}
+      {/* Exceptions are named only where they are on the page. Said unconditionally the
+          sentence tells a curator with none of them in front of them that something here
+          is already hidden from readers, which is the opposite of what it promises. */}
       <Typography color="text.secondary" sx={{ mb: 2 }}>
         Decisions a sync run cannot make on its own. Nothing here has changed what visitors
-        see
-        {rows.some(r => r.kind === 'refused')
-          ? ' — except the rows our own rule for a list turned down, which are hidden'
-            + ' already and say why.'
-          : '.'}
+        see{visibilityCaveat(new Set(rows.map(r => r.kind)))}
       </Typography>
 
       {notice && (

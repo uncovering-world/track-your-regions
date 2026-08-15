@@ -30,7 +30,7 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
 function queue(over: Partial<ReviewQueue> = {}): ReviewQueue {
   return {
     missing: [], refused: [], keptOut: [], conflicts: [],
-    arrivals: [], held: [], contents: [],
+    arrivals: [], held: [], contents: [], withdrawn: [],
     limit: 25,
     paging: {} as ReviewQueue['paging'],
     ...over,
@@ -50,6 +50,20 @@ describe('queueRows', () => {
     }));
 
     expect(rows.map(r => r.name)).toEqual(['Aksum', 'Museo Soumaya', 'British Museum', 'Dresden']);
+  });
+
+  it('puts a place already taken away above a row that was never shown', () => {
+    // A lost place has *taken* something from a reader — a pin they could see, sometimes
+    // one they had ticked. A refusal never showed the row at all, and a missing object
+    // changes nothing until it is answered. So the order is not "cheapest first".
+    const rows = queueRows(queue({
+      missing: [item({ id: 4, name: 'Dresden' })],
+      refused: [item({ id: 3, name: 'British Museum' })],
+      withdrawn: [item({ id: 5, name: 'Bilbao Fine Arts Museum', kind: 'withdrawn' })],
+    }));
+
+    expect(rows.map(r => r.name)).toEqual(['Bilbao Fine Arts Museum', 'British Museum', 'Dresden']);
+    expect(rows[0].question).toBe('lost places it is made of');
   });
 
   it('gives one object one row, however many gated kinds name it', () => {

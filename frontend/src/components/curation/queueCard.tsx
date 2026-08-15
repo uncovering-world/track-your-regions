@@ -1,13 +1,17 @@
 /**
  * The pieces every card in the review queue is built from.
  *
- * Its own module for one reason: the queue's sections live in two files now —
- * `ReviewQueue.tsx` holds the four a run's own observations raise, and
- * `WaitingToPublish.tsx` the one a gated source raises — and both draw the same
- * header, describe values the same way and report a refusal in the same
- * sentence. Importing them from either page file would put a cycle between the
- * two, which `lint:circular` refuses and which reads as an accident to the next
- * person; a header duplicated in both would drift instead.
+ * Its own module for one reason: the queue's sections are spread over several
+ * files, grouped by what raises them — `ReviewQueue.tsx` for a run's own
+ * observations, `WaitingToPublish.tsx` for what a gated source raises,
+ * `WithdrawnPoints.tsx` for a verdict asked per point — and every one of them
+ * draws the same header, describes values the same way and reports a refusal in
+ * the same sentence. Importing those pieces from any one of the page files would
+ * put a cycle between them, which `lint:circular` refuses and which reads as an
+ * accident to the next person; a header duplicated per file would drift instead.
+ *
+ * Stated as a class and not a tally on purpose: the next card file is a section
+ * added, not this sentence to renumber. It imports from here like the rest.
  */
 
 import { Typography, Stack, Chip } from '@mui/material';
