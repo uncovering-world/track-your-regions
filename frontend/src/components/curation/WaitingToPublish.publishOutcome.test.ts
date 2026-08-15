@@ -62,15 +62,22 @@ describe('publishOutcomeFor', () => {
     expect(line).toContain('2 replaced points no longer shown');
   });
 
-  it('asks for one world view in the singular', () => {
+  // Every case below carries `withdrawalsReleased` above zero, because placement is
+  // reached only when a withdrawal was released (`publishController.ts` places on
+  // `withdrawalsReleased > 0`, `lifecycleController` answers `{}` on zero). A fixture
+  // pairing `placementFailed` with zero releases is a state production cannot produce,
+  // and the notice's closing count is written on the strength of that invariant.
+  it('asks for one world view in the singular, and counts the one point it kept', () => {
     const line = publishOutcomeFor(item, result({
       locationsPublished: 1,
+      withdrawalsReleased: 1,
       placementFailed: true,
       placementFailedWorldViews: [{ id: 4, name: 'Continents' }],
     }));
 
     expect(line).toContain('not recomputed in Continents (world view 4)');
     expect(line).toContain('tell one this object and that world view');
+    expect(line).toContain('placed by 1 point it no longer has');
   });
 
   it('asks for several in the plural, which is the ordinary shape', () => {
@@ -78,6 +85,7 @@ describe('publishOutcomeFor', () => {
     // list and then said "that world view", in the sentence meant to be forwarded as is.
     const line = publishOutcomeFor(item, result({
       locationsPublished: 1,
+      withdrawalsReleased: 3,
       placementFailed: true,
       placementFailedWorldViews: [
         { id: 4, name: 'Continents' },
@@ -88,11 +96,15 @@ describe('publishOutcomeFor', () => {
 
     expect(line).toContain('tell one this object and those world views');
     expect(line).not.toContain('that world view;');
+    // The closing count in the plural, beside the singular case above: a hardcoded noun
+    // satisfies exactly one of the two, so the pair is what holds the count in place.
+    expect(line).toContain('placed by 3 points it no longer has');
   });
 
   it('takes the plural for an empty list', () => {
     const line = publishOutcomeFor(item, result({
       locationsPublished: 1,
+      withdrawalsReleased: 2,
       placementFailed: true,
       placementFailedWorldViews: [],
     }));
@@ -108,6 +120,7 @@ describe('publishOutcomeFor', () => {
     // `worldViewList`'s "every world view — they could not even be listed".
     const line = publishOutcomeFor(item, result({
       locationsPublished: 1,
+      withdrawalsReleased: 2,
       placementFailed: true,
       placementFailedWorldViews: [{ id: null, name: null }],
     }));
