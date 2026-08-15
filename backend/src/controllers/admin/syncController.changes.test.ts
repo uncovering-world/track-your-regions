@@ -121,6 +121,47 @@ describe('getSyncLogChanges', () => {
     expect(sql).toContain("change_type <> 'updated'");
   });
 
+  it('keeps a row whose contents moved beside a minor edit, and hands it back', async () => {
+    const contentsRow = {
+      id: 7, experience_id: 96, external_id: '1239', name_snapshot: 'Berlin Modernism Housing Estates',
+      change_type: 'updated', significance: 'minor',
+      changed_fields: [{ field: 'nameLocal', old: 'a', new: 'b', significance: 'minor' }],
+      contents: { locations: { added: [{ name: 'Waldsiedlung Zehlendorf', ref: '1239-006' }], withdrawn: [], returned: [] } },
+      error: null,
+    };
+    mockedQuery.mockResolvedValueOnce({ rows: [{ total: '1' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [contentsRow] });
+    const res = makeRes();
+
+    await getSyncLogChanges(makeReq({ significantOnly: 'true' }), res as never);
+
+    // `significance` weighs field changes only, so a run that rewrote one minor field
+    // *and* added a component lands as `updated`/`minor` — dropped by the other two
+    // terms, and that row is the only record anywhere that the component arrived.
+    //
+    // Both queries, because they are two statements built from one `where`: asserting
+    // the count alone leaves a rows query that could lose the term, and the response
+    // would then be a total with nothing under it. And the row is asserted as
+    // *returned*, since the `contents` projection is what carries the news — dropping
+    // it from the SELECT would keep this filter working and still say nothing.
+    expect(String(mockedQuery.mock.calls[0][0])).toContain('contents IS NOT NULL');
+    const rowsSql = String(mockedQuery.mock.calls[1][0]);
+    expect(rowsSql).toContain('contents IS NOT NULL');
+    // The *projection*, sliced off before the WHERE: a `toContain('contents')` over the
+    // whole statement is satisfied by the filter term this test also asserts, so
+    // dropping `contents` from the SELECT would leave it green — and the mock hands the
+    // row back whatever the query asked for, which is the other half of that trap.
+    expect(rowsSql.slice(0, rowsSql.indexOf('FROM experience_sync_changes')))
+      .toContain('contents');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      total: 1,
+      changes: [expect.objectContaining({
+        change_type: 'updated',
+        contents: contentsRow.contents,
+      })],
+    }));
+  });
+
   it('keeps a held row under the significant filter, whatever its significance', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });

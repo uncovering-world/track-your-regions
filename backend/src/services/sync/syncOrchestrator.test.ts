@@ -657,6 +657,118 @@ describe('orchestrateSync changeset recording', () => {
     expect(recorded[0].changedFields).toEqual([HELD_FIELD]);
   });
 
+  it('records a row whose only change is what it holds', async () => {
+    const gained = processed('unchanged');
+    gained.contents = {
+      locations: { added: [{ name: 'Waldsiedlung Zehlendorf', ref: '1239-006' }], withdrawn: [], returned: [] },
+    };
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(gained).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // The defect ADR-0026 exists to fix: an object every field of which came
+    // through unchanged, whose set of points moved, produced no row at all — so
+    // a serial site gaining a component was recorded nowhere, not merely
+    // rendered nowhere.
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].contents.locations.added[0].name).toBe('Waldsiedlung Zehlendorf');
+    // Its own word, because the alternative was the catch-all `conflict` — which
+    // means a curator had claimed a field and the source's proposal lost, and the
+    // admin report's `?type=conflict` filter would hand this back as one.
+    expect(recorded[0].changeType).toBe('contents');
+  });
+
+  it('calls a row with both a claim and a contents move a conflict, not a contents row', async () => {
+    const both = processed('unchanged');
+    both.changeSet.curatedConflicts = [
+      { field: 'name', old: 'ours', new: 'theirs', significance: 'major', curatedConflict: true, held: false },
+    ];
+    both.contents = { locations: { added: [{ name: 'A new part', ref: '1239-008' }], withdrawn: [], returned: [] } };
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(both).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // The claim is the half a curator has to answer; the delta raises no question and
+    // travels in its own column either way. So the unanswered thing names the row.
+    expect(recorded[0].changeType).toBe('conflict');
+    expect(recorded[0].contents.locations.added[0].ref).toBe('1239-008');
+  });
+
+  it('calls a row that returned and gained a part returned, not a contents row', async () => {
+    const both = processed('unchanged');
+    both.returnedFromMissing = true;
+    both.contents = { treasures: { added: [{ name: 'The Night Watch', ref: 'Q219831' }], withdrawn: [], returned: [] } };
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(both).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // An object back in the source's list is the larger fact about the object, and it
+    // is the one a reader of the report goes looking for by type.
+    expect(recorded[0].changeType).toBe('returned');
+  });
+
+  it('leaves an unchanged row unrecorded when its contents did not move either', async () => {
+    const quiet = processed('unchanged');
+    quiet.contents = { locations: { added: [], withdrawn: [], returned: [] } };
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(quiet).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    // A writer reports an empty delta on every quiet object, and there are 1235
+    // of those in a UNESCO run. Storing them would be the noise ADR-0020
+    // rejected, wearing a new field's clothes.
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(recorded).toEqual([]);
+  });
+
+  it('counts a contents-only change as unchanged, because nothing about the row changed', async () => {
+    const gained = processed('unchanged');
+    gained.contents = { treasures: { added: [{ name: 'The Night Watch', ref: 'Q219831' }], withdrawn: [], returned: [] } };
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(gained).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    // `total_updated` counts rows that actually changed, and this one did not —
+    // the museum did. Same rule a held row follows (#519): stored, not counted.
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success',
+      expect.objectContaining({ updated: 0, unchanged: 2 }),
+      undefined,
+    );
+  });
+
+  it('carries the contents delta on a row it was already recording', async () => {
+    const changed = processed('updated');
+    changed.contents = {
+      locations: { added: [], withdrawn: [{ name: 'Bilbao Fine Arts Museum', ref: 'Q127064' }], returned: [] },
+    };
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(changed).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // The two facts are independent: a run can rewrite a description and drop a
+    // point in the same pass, and reading one off the other's presence would
+    // lose whichever came second.
+    expect(recorded[0].changeType).toBe('updated');
+    expect(recorded[0].contents.locations.withdrawn[0].ref).toBe('Q127064');
+  });
+
   it('records a return even when the row came back byte-identical', async () => {
     const returned = processed('unchanged');
     returned.returnedFromMissing = true;

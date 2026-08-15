@@ -27,11 +27,42 @@ const CHANGE_TYPE_COLOR: Record<SyncChange['change_type'], 'success' | 'info' | 
   // row was *not* updated. Warning, like `conflict`, because both mean the run
   // refused a write — which of the two it was, the row's own chip says.
   held: 'warning',
+  // `info`, beside `updated`: something really did change about the object, and
+  // unlike the two above nothing was refused and nobody is waiting.
+  contents: 'info',
   filtered: 'default',
   missing: 'warning',
   returned: 'info',
   failed: 'error',
 };
+
+/** What a source's own reference calls a thing, when it has no name of its own. */
+function itemLabel(item: { name: string | null; ref: string | null }): string {
+  return item.name ?? item.ref ?? 'an unnamed one';
+}
+
+/**
+ * One line per kind of contents the run moved, in words rather than as JSON.
+ *
+ * Exported for its test: the shape is a nested record and the line it produces is
+ * the whole of what a report reader sees about a `contents` row.
+ */
+export function contentsLines(
+  contents: SyncChange['contents'],
+): string[] {
+  if (!contents) return [];
+  const kindName: Record<string, string> = { locations: 'places', treasures: 'works' };
+  return Object.entries(contents).flatMap(([kind, delta]) => {
+    if (!delta) return [];
+    const parts: string[] = [];
+    if (delta.added.length > 0) parts.push(`gained ${delta.added.map(itemLabel).join(', ')}`);
+    if (delta.withdrawn.length > 0) parts.push(`lost ${delta.withdrawn.map(itemLabel).join(', ')}`);
+    // Its own word, because the row and everything hanging off it are the same ones
+    // as before — a visit on that point was never touched (ADR-0022).
+    if (delta.returned.length > 0) parts.push(`offered again: ${delta.returned.map(itemLabel).join(', ')}`);
+    return parts.length > 0 ? [`${kindName[kind] ?? kind}: ${parts.join('; ')}`] : [];
+  });
+}
 
 function describeValue(value: unknown): string {
   if (value === null || value === undefined) return '—';
@@ -87,6 +118,13 @@ function ChangeRow({ change }: { change: SyncChange }) {
         )}
       </Stack>
       {change.changed_fields?.map((field, i) => <FieldRow key={i} change={field} />)}
+      {contentsLines(change.contents).map(line => (
+        // Named, not counted: "gained 1 place" is what the run's own counters already
+        // say badly, and *which* component arrived is the thing this column exists to
+        // keep (ADR-0026). A `contents` row has no field rows at all, so without this
+        // it would be a name and a chip.
+        <Typography key={line} variant="body2" sx={{ pl: 2 }}>{line}</Typography>
+      ))}
       {change.error && (
         <Typography
           variant="body2"
@@ -110,10 +148,12 @@ export function SyncChangeList({ logId }: { logId: number }) {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin', 'syncChanges', logId, significantOnly, page],
     queryFn: () => getSyncLogChanges(logId, {
-      // Not significance='major': created, missing, returned, conflict and
-      // failed rows carry no significance, and filtering on it would hide
-      // everything a run is actually reporting. The server drops only minor
-      // field edits.
+      // Not significance='major': created, missing, returned, conflict, contents and
+      // failed rows carry no significance — it is null wherever no *field* was weighed
+      // — and filtering on it would hide everything a run is actually reporting. What the server drops is a minor
+      // field edit that moved nothing else — a row whose contents moved stays,
+      // because `significance` weighs fields only and that row is the only record
+      // anywhere that a component arrived (ADR-0026).
       ...(significantOnly ? { significantOnly: true } : {}),
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,

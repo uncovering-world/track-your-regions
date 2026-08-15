@@ -239,3 +239,41 @@ export interface ContentsDelta {
   withdrawn: ContentItem[];
   returned: ContentItem[];
 }
+
+/**
+ * The kinds of contents an experience holds.
+ *
+ * The same two the curation gate already spans — `pending_locations` and
+ * `pending_treasures` in the queue's `contents` kind.
+ */
+export type ContentKind = 'locations' | 'treasures';
+
+/**
+ * What a run did to an object's contents, by kind (ADR-0026 decision 1).
+ *
+ * Keyed rather than one field per kind so a third kind of contents costs no
+ * migration, and partial because a kind the run did nothing to is absent rather
+ * than present and empty.
+ */
+export type ContentsByKind = Partial<Record<ContentKind, ContentsDelta>>;
+
+/** Whether a delta says anything happened. */
+function moved(delta: ContentsDelta | undefined): boolean {
+  if (!delta) return false;
+  return delta.added.length > 0 || delta.withdrawn.length > 0 || delta.returned.length > 0;
+}
+
+/**
+ * The contents record for a run's row, or `null` where the run moved nothing.
+ *
+ * Both halves matter. Dropping the kinds that did nothing keeps a museum's row
+ * from claiming a points delta it never computed; returning `null` for the whole
+ * thing is what keeps 1235 quiet objects of a UNESCO run out of the changeset,
+ * which is the noise ADR-0020 refused to store.
+ */
+export function recordedContents(byKind: ContentsByKind): ContentsByKind | null {
+  const kinds = Object.keys(byKind) as ContentKind[];
+  const moving = kinds.filter(kind => moved(byKind[kind]));
+  if (moving.length === 0) return null;
+  return Object.fromEntries(moving.map(kind => [kind, byKind[kind]]));
+}

@@ -110,8 +110,19 @@ export interface SyncChange {
   experience_id: number | null;
   external_id: string;
   name_snapshot: string | null;
-  change_type: 'created' | 'updated' | 'conflict' | 'held' | 'missing' | 'returned' | 'failed' | 'filtered';
+  change_type: 'created' | 'updated' | 'conflict' | 'held' | 'contents' | 'missing' | 'returned' | 'failed' | 'filtered';
   changed_fields: SyncFieldChange[] | null;
+  /**
+   * What the run did to what the object holds, by kind of contents (ADR-0026), or
+   * `null` where it moved none. A `contents` row carries no `changed_fields` at all —
+   * every field came through — so without this the row would name an object and say
+   * nothing about why it is in the report.
+   */
+  contents: Partial<Record<'locations' | 'treasures', {
+    added: Array<{ name: string | null; ref: string | null }>;
+    withdrawn: Array<{ name: string | null; ref: string | null }>;
+    returned: Array<{ name: string | null; ref: string | null }>;
+  }>> | null;
   significance: 'major' | 'minor' | null;
   error: string | null;
 }

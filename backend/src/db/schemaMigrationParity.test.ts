@@ -6,10 +6,11 @@ import { join } from 'node:path';
  * The two schema homes must agree.
  *
  * `db/init/01-schema.sql` is what an empty database gets and what an existing
- * one is re-applied to gain new columns; `db/migrations/018-curation-gate.sql`,
- * `019-published-curation-action.sql`, `020-deferred-withdrawal.sql` and
- * `021-held-change-type.sql` are what
- * a database already holding data gets by hand. A column added to one
+ * one is re-applied to gain new columns; the numbered files in `db/migrations/` are
+ * what a database already holding data gets by hand — named individually below
+ * where a guard reads one, and *found* where a list of values has been widened more
+ * than once, since only the newest such file states what a column accepts today.
+ * A column added to one
  * and forgotten in the other is invisible until a fresh database behaves
  * differently from the dev one — which is exactly the class of bug nobody finds
  * quickly. There is no database in this suite, so this is a text-level guard;
@@ -58,11 +59,26 @@ const deferralMigrationRaw = readFileSync(
   'utf8',
 );
 const deferralMigration = collapse(deferralMigrationRaw);
-const heldTypeMigrationRaw = readFileSync(
-  join(repoRoot, 'db', 'migrations', '021-held-change-type.sql'),
-  'utf8',
-);
-const heldTypeMigration = collapse(heldTypeMigrationRaw);
+/**
+ * The newest migration that restates the changeset's type list, found rather than named.
+ *
+ * The same lesson the action list above learned: every migration widening the list carries
+ * the *whole* list, so only the last one states what the column accepts today, and the
+ * earlier ones are correct history that must not be edited. Naming a file here pinned the
+ * guard to whichever was newest the day it was written — 021 when the list gained `held`,
+ * 025 when it gained `contents` — and a guard checking a superseded file passes for the
+ * wrong reason.
+ */
+const TYPE_CHECK_CONSTRAINT = 'experience_sync_changes_change_type_check';
+const typeMigrationFile = readdirSync(migrationsDir)
+  .filter(name => name.endsWith('.sql'))
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- same fixed in-repo directory listing
+  .filter(name => readFileSync(join(migrationsDir, name), 'utf8').includes(TYPE_CHECK_CONSTRAINT))
+  .sort()
+  .at(-1) as string;
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- same fixed in-repo directory listing
+const typeMigrationRaw = readFileSync(join(migrationsDir, typeMigrationFile), 'utf8');
+const typeMigration = collapse(typeMigrationRaw);
 const contentsMigrationRaw = readFileSync(
   join(repoRoot, 'db', 'migrations', '023-contents-delta.sql'),
   'utf8',
@@ -218,13 +234,13 @@ describe('the curation gate exists in both schema homes', () => {
  * fix, empty.
  *
  * Two of the homes are SQL: the inline CHECK, and the DROP/ADD that re-applies to
- * an existing database — plus migration 021, for a database that gets only the
+ * an existing database — plus the newest type migration, for a database that gets only the
  * migration. Widen some of them and a fresh database accepts a value a migrated
  * one rejects, invisible until a real run hits it.
  *
  * The other two are TypeScript, and they are the side a change starts on:
  * `ChangeRecord.changeType` is what the recorder will happily insert, and the
- * `type` filter's zod enum is what the admin API will accept. A ninth type added
+ * `type` filter's zod enum is what the admin API will accept. A tenth type added
  * there alone compiles, passes review, and loses a run's changeset the first time
  * it is written. Whichever home you are editing, the other three are the diff.
  */
@@ -234,11 +250,16 @@ describe('the changeset accepts every type a run records', () => {
     // #519 — the gate refused the write, and a verdict is waiting. Distinct from
     // 'conflict', which is a claim a person made on purpose.
     'held',
+    // ADR-0026 — every field came through and what the object holds moved. Also
+    // distinct from 'conflict', and for a sharper reason: without a word of its own
+    // such a row *was* written as `conflict`, so the admin report's `?type=conflict`
+    // filter answered with a disagreement that never happened.
+    'contents',
     'missing', 'returned', 'failed', 'filtered',
   ];
   const quoted = CHANGE_TYPES.map(type => `'${type}'`).join(', ');
   const typeCheck = `CHECK (change_type IN (${quoted}))`;
-  /** The same eight values as a TypeScript union, for the recorder's own home. */
+  /** The same nine values as a TypeScript union, for the recorder's own home. */
   const union = CHANGE_TYPES.map(type => `'${type}'`).join(' | ');
 
   it('01-schema.sql names them in both of its two copies', () => {
@@ -247,17 +268,17 @@ describe('the changeset accepts every type a run records', () => {
     expect(schema.split(typeCheck)).toHaveLength(3);
   });
 
-  it('migration 021 names the same list', () => {
-    expect(heldTypeMigration).toContain(typeCheck);
+  it('the newest type migration names the same list', () => {
+    expect(typeMigration).toContain(typeCheck);
   });
 
-  it('migration 021 is not defeated by how it is invoked', () => {
-    expect(heldTypeMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
+  it('the newest type migration is not defeated by how it is invoked', () => {
+    expect(typeMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
   });
 
   it('the changeset recorder names the same list, in the same order', () => {
     // The type that decides what `recordSyncChanges` will insert. Asserted with
-    // its trailing `;` so a ninth member appended before it cannot pass — a
+    // its trailing `;` so a tenth member appended before it cannot pass — a
     // substring check on the list alone survives exactly that edit, which is the
     // shape this whole describe exists to catch.
     expect(changeRecorderSource).toContain(`changeType: ${union};`);
@@ -271,16 +292,16 @@ describe('the changeset accepts every type a run records', () => {
     expect(backendTypesSource).toContain(`type: z.enum([${quoted}])`);
   });
 
-  it('migration 021 re-adds the constraint it drops, so either file may run first', () => {
+  it('the newest type migration re-adds the constraint it drops, so either file may run first', () => {
     // A bare ADD would fail on a database `01-schema.sql` reached first, and a
     // bare DROP would leave the column unconstrained. The pair is what makes both
     // orders, and any number of re-applications, come out the same.
     const drop = 'ALTER TABLE experience_sync_changes DROP CONSTRAINT IF EXISTS experience_sync_changes_change_type_check;';
-    expect(heldTypeMigration).toContain(drop);
-    expect(heldTypeMigration).toContain(
+    expect(typeMigration).toContain(drop);
+    expect(typeMigration).toContain(
       `ALTER TABLE experience_sync_changes ADD CONSTRAINT experience_sync_changes_change_type_check ${typeCheck}`,
     );
-    expect(heldTypeMigration.indexOf(drop)).toBeLessThan(heldTypeMigration.indexOf(typeCheck));
+    expect(typeMigration.indexOf(drop)).toBeLessThan(typeMigration.indexOf(typeCheck));
   });
 });
 

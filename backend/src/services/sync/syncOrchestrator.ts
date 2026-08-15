@@ -28,7 +28,8 @@ import {
 import type { ChangeSetResult } from './changeSet.js';
 import type { SyncProgress } from './types.js';
 import { runningSyncs, isTerminalSyncStatus } from './types.js';
-import type { RunVerdict, ErrorDetail } from './types.js';
+import type { RunVerdict, ErrorDetail, ContentsByKind } from './types.js';
+import { recordedContents } from './types.js';
 
 // =============================================================================
 // Types
@@ -77,6 +78,14 @@ export interface ProcessItemResult {
   changeSet: ChangeSetResult;
   /** The row had been flagged missing and the source has produced it again. */
   returnedFromMissing: boolean;
+  /**
+   * What the run did to the object's contents, by kind (ADR-0026).
+   *
+   * Optional because a source with nothing to hold has nothing to report, and
+   * absent is not the same as an empty delta: one says the question does not
+   * apply, the other that it was asked and the answer was nothing.
+   */
+  contents?: ContentsByKind;
 }
 
 export interface SyncServiceConfig<T> {
@@ -154,10 +163,31 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
  * `returnedFromMissing` — checked second, as this function once had it, a
  * combined row read as `returned` and never turned up under the admin report's
  * `?type=held` filter, the one place a curator would go looking for it.
+ *
+ * `contents` is the fourth word and it needed one: a row whose own fields all came
+ * through while what it holds moved (ADR-0026). It has to be named because the
+ * `unchanged` catch-all used to be safe — a curated divergence was the only other
+ * reason such a row was stored — and the fourth exception made that fall-through
+ * claim a disagreement that never happened, which the admin report's `?type=conflict`
+ * filter would then hand back as one. So the claim is now asserted rather than
+ * inferred: `conflict` requires a `curatedConflicts` entry, and `contents` is what
+ * is left. Ordered after `conflict`, because a row carrying both has an unanswered
+ * question on it and the delta is news that raises none.
  */
-function resolveChangeType(result: ProcessItemResult): ChangeRecord['changeType'] {
+function resolveChangeType(
+  result: ProcessItemResult,
+  contents: ContentsByKind | null,
+): ChangeRecord['changeType'] {
   if (result.outcome === 'unchanged' && result.changeSet.heldFields.length > 0) return 'held';
   if (result.returnedFromMissing && result.outcome !== 'created') return 'returned';
+  if (result.outcome === 'unchanged' && result.changeSet.curatedConflicts.length > 0) return 'conflict';
+  if (result.outcome === 'unchanged' && contents !== null) return 'contents';
+  // Unreachable, and kept as the historical value rather than a new invention:
+  // `worthRecording` stores an `unchanged` row for exactly the four reasons named
+  // above, so nothing reaches this with that outcome today. It is where a *fifth*
+  // exception would land silently, which is what happened to the fourth — so a fifth
+  // belongs in a branch of its own here, decided before the exception ships rather
+  // than discovered in the admin report afterwards.
   if (result.outcome === 'unchanged') return 'conflict';
   return result.outcome;
 }
@@ -191,18 +221,23 @@ function recordItemOutcome<T>(
 
   if (progress.logId === null) return;
 
-  // Unchanged rows are normally not stored, but three of them carry news anyway:
+  // Unchanged rows are normally not stored, but four of them carry news anyway:
   // one whose source diverged from a curator's edit (recorded nowhere else), one
   // whose change the gate held — the proposal a curator will be shown, which
-  // lives nowhere else either — and one the source has started listing again
-  // after we flagged it missing.
+  // lives nowhere else either — one the source has started listing again after we
+  // flagged it missing, and one whose own fields all came through while what it
+  // holds moved (ADR-0026). The fourth is the case that produced no row at all
+  // until this column existed: a serial site gaining a component was recorded
+  // nowhere, not merely rendered nowhere.
+  const contents = recordedContents(result.contents ?? {});
   const worthRecording = result.outcome !== 'unchanged'
     || curatedConflicts.length > 0
     || heldFields.length > 0
-    || result.returnedFromMissing;
+    || result.returnedFromMissing
+    || contents !== null;
   if (!worthRecording) return;
 
-  const changeType = resolveChangeType(result);
+  const changeType = resolveChangeType(result, contents);
 
   changes.push({
     syncLogId: progress.logId,
@@ -215,6 +250,7 @@ function recordItemOutcome<T>(
     // though the upsert refused it, or "accept source" and publishing would each
     // later have nothing to apply.
     changedFields: [...changedFields, ...curatedConflicts, ...heldFields],
+    contents,
     significance,
     error: null,
   });
@@ -246,6 +282,7 @@ function recordItemFailure<T>(
       nameSnapshot: config.getItemName(item),
       changeType: 'failed',
       changedFields: null,
+      contents: null,
       significance: null,
       error: errorMsg,
     });
@@ -280,6 +317,7 @@ function recordFilteredEntities(
       nameSnapshot: entity.name,
       changeType: 'filtered',
       changedFields: null,
+      contents: null,
       significance: null,
       error: entity.reason,
     });
@@ -337,6 +375,7 @@ async function applyAdmissionSweep<T>(
       nameSnapshot: row.name,
       changeType: 'filtered',
       changedFields: null,
+      contents: null,
       significance: null,
       error: NOT_ADMITTED_REASON,
     });
