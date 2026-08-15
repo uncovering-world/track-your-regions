@@ -20,11 +20,39 @@ import {
 import PlaceIcon from '@mui/icons-material/Place';
 import type { ReviewQueueItem } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
+import { plural } from '../../utils/plural';
 import { PointPreviewDialog } from './PointPreviewDialog';
 
 /** Four decimals is about 11 m at the equator — finer than this screen can use. */
 function coordinateLabel(lat: number, lon: number): string {
   return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+}
+
+/**
+ * What the object is *made of*, when that changes how the card reads.
+ *
+ * UNESCO 1239 is why this exists: the source proposed a description of Waldsiedlung
+ * Zehlendorf, one of the seven housing estates the site is made of, and the card
+ * showed that text against the site's own with nothing to say the site had parts.
+ * A curator reading it has no way to know they are being shown a part.
+ *
+ * Silent for a single place holding nothing, which is most of the catalogue — 1119
+ * of 1604 objects hold exactly one point. Saying "made of 1 place" on all of them
+ * would be a line that never carries information, and a curator learns to stop
+ * reading a line like that before they meet the one that matters.
+ */
+export function madeOfLabel(
+  offeredLocations: number | undefined,
+  works: number | undefined,
+): string | null {
+  const parts: string[] = [];
+  // Two and up, because "1 place" is what an object is by default. Both counts go
+  // through `plural` even though this one can never be 1: the point of the helper is
+  // that the `n === 1` comparison lives in one place, and a card that spelled one
+  // plural and computed the other is how a second copy of it starts.
+  if ((offeredLocations ?? 0) > 1) parts.push(`made of ${plural(offeredLocations ?? 0, 'place')}`);
+  if ((works ?? 0) > 0) parts.push(`holds ${plural(works ?? 0, 'famous work')}`);
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 export function ObjectContext({ item }: { item: ReviewQueueItem }) {
@@ -44,7 +72,9 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   if (item.website_url) links.push({ label: 'source page', href: item.website_url });
   if (item.wikipedia_url) links.push({ label: 'Wikipedia', href: item.wikipedia_url });
 
-  if (!thumbnail && !hasPoint && regions.length === 0 && links.length === 0) return null;
+  const madeOf = madeOfLabel(item.offered_locations, item.counted_works_total ?? undefined);
+
+  if (!thumbnail && !hasPoint && !madeOf && regions.length === 0 && links.length === 0) return null;
 
   return (
     <Stack direction="row" spacing={1.5} sx={{ mb: 1.5 }} alignItems="flex-start">
@@ -81,6 +111,13 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
         </ButtonBase>
       )}
       <Box sx={{ minWidth: 0 }}>
+        {madeOf && (
+          // Above the coordinates, because it changes what the coordinates mean: one
+          // pair of numbers on an object made of seven places is one of seven.
+          <Typography variant="caption" color="text.secondary" display="block">
+            {madeOf}
+          </Typography>
+        )}
         {hasPoint && (
           // Opens a map here rather than navigating: the app reads four query parameters
           // — `wv`, `code`, `error`, `token` — and none positions the map, so a

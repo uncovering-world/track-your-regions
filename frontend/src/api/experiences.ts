@@ -385,19 +385,21 @@ export interface ReviewQueueItem {
   category_name: string;
   /**
    * The lifecycle axes, on **every** kind rather than only the two whose cards
-   * are about them. Required here and therefore selected by all seven queries
-   * (`lifecycleSelectSql`), because the alternative — required in the type and
-   * absent from five queries — is the trap that reads as a working comparison:
+   * are about them. Required here and therefore selected by all eight queries
+   * (`lifecycleSelectSql`), because the alternative — required in the type and absent
+   * from the kinds whose cards are not about it — is the trap that reads as a working
+   * comparison:
    * `item.existence === 'lost'` on an arrival card typechecks, compares against
    * `undefined`, and silently never fires.
    */
   missing_since: string | null;
   source_membership: 'present' | 'former';
   existence: 'extant' | 'lost';
-  kind: 'missing' | 'conflict' | 'refused' | 'kept-out' | 'arrival' | 'held' | 'contents';
+  kind: 'missing' | 'conflict' | 'refused' | 'kept-out' | 'arrival' | 'held' | 'contents'
+    | 'withdrawn';
   /**
    * What the object is, carried on every kind for the same reason the lifecycle axes
-   * are: one fragment feeds all seven queries, so a card cannot show less about an
+   * are: one fragment feeds all eight queries, so a card cannot show less about an
    * object than its neighbour. Every one of them is genuinely optional in the data —
    * 14 of 1604 rows have no image, and a landmark commonly has no website — so the
    * card renders what exists rather than reserving space for what does not.
@@ -420,7 +422,7 @@ export interface ReviewQueueItem {
    * instead and no `acceptable`: nobody claimed it, the category's gate kept it
    * out, and publishing is the only thing that can apply it (ADR-0025).
    *
-   * `null` on the five kinds that carry no proposal, never absent: each of their
+   * `null` on every kind that carries no proposal, never absent: each of those
    * queries selects `NULL::jsonb AS proposed` explicitly, for the same reason
    * the three lifecycle fields above are selected everywhere. `Array<…> | null`
    * tells the next author that `item.proposed === null` is the whole check
@@ -476,11 +478,14 @@ export interface ReviewQueueItem {
     externalId: string | null;
   }> | null;
   /**
-   * How many the catalogue holds here, which the capped array cannot say.
+   * How many works the object holds — on **every** kind, beside `offered_locations`,
+   * because the pair is what the object is made of.
    *
-   * A refusal that cites a number is reconciled against that number; one that names a
-   * single work cites none, and without this the preview cannot tell a holding of twelve
-   * from the first twelve of thirty.
+   * It began as a refusal's own arithmetic and outgrew it: a refusal that cites a
+   * number is reconciled against that number, one that names a single work cites none,
+   * and without this the preview cannot tell a holding of twelve from the first twelve
+   * of thirty. The *named* array beside it is still refusals only — UNESCO sites hold
+   * no works, and every kind that holds none would carry a join for an empty list.
    */
   counted_works_total?: number | null;
   /**
@@ -504,6 +509,52 @@ export interface ReviewQueueItem {
   pending_treasures?: number;
   /** Whether anyone has passed the row. `arrival` items only, where it is `pending`. */
   curation_state?: string;
+  /**
+   * How many points the object still offers — on **every** kind, like the lifecycle
+   * axes and the object context above, and for the same reason: it is part of what
+   * the object *is*.
+   *
+   * The denominator a departure needs, and equally the thing a text diff needs: "a
+   * part is gone" reads one way at one of seven and another at the only one there
+   * was, and a proposed description of one estate of seven is unreadable against the
+   * whole site's without it. Optional in the type only because a queue response
+   * predating this field would not carry it. Cast server-side, for the reason given
+   * on `pending_locations`.
+   */
+  offered_locations?: number;
+  /**
+   * The points this object lost, each waiting on its own verdict. `withdrawn` items only.
+   *
+   * The verdict goes to `POST /api/experiences/locations/:id/state`, so the id is what
+   * the card needs; the name and the reference are how it says *which* point, and most
+   * UNESCO components carry a reference and no name of their own.
+   */
+  withdrawn_points?: Array<{
+    id: number;
+    name: string | null;
+    externalRef: string | null;
+    missingSince: string;
+    latitude: number | null;
+    longitude: number | null;
+    /**
+     * Whether anyone had been there. The visit survives either answer (ADR-0022) and
+     * the point it hangs on stops being shown, which is what makes the verdict matter
+     * rather than tidy-up.
+     */
+    visited: boolean;
+    /**
+     * How far away the source now offers this same part, in metres — `null` where it
+     * offers it nowhere.
+     *
+     * Identity is the point together with the source's reference, so a rewritten
+     * coordinate arrives as a withdrawal plus an arrival. A distance rather than a
+     * flag because the flag could not be decided with: Bilbao's replacement is 1.2 cm
+     * away — this field carries it as `0.01`, the query rounding to two decimals — the
+     * stored latitude having been rounded before a later run wrote the source's full
+     * value, and two coordinates rounded to four decimals showed the same numbers twice.
+     */
+    replacedMetres: number | null;
+  }> | null;
 }
 
 export interface ReviewQueue {
@@ -529,6 +580,12 @@ export interface ReviewQueue {
   arrivals: ReviewQueueItem[];
   held: ReviewQueueItem[];
   contents: ReviewQueueItem[];
+  /**
+   * Objects that lost a point the source stopped offering, waiting on a verdict
+   * (ADR-0026). One entry per object, listing the points inside it, because a
+   * serial site can lose two components in one run — and the verdict is per point.
+   */
+  withdrawn: ReviewQueueItem[];
   limit: number;
   /**
    * Where each kind is and whether it has another page.
@@ -540,9 +597,9 @@ export interface ReviewQueue {
   paging: Record<ReviewQueueKind, { offset: number; hasMore: boolean }>;
 }
 
-/** The seven arrays the queue returns, each paged on its own. */
+/** The eight arrays the queue returns, each paged on its own. */
 export type ReviewQueueKind =
-  'missing' | 'refused' | 'keptOut' | 'conflicts' | 'arrivals' | 'held' | 'contents';
+  'missing' | 'refused' | 'keptOut' | 'conflicts' | 'arrivals' | 'held' | 'contents' | 'withdrawn';
 
 /**
  * What needs a curator's judgement, within their scope.
@@ -551,8 +608,8 @@ export async function fetchReviewQueue(params: {
   categoryId?: number;
   limit?: number;
   /**
-   * Where each kind is, by kind. Seven numbers rather than one, because the queue is
-   * seven queries with seven limits: a single offset moved all of them at once, so a
+   * Where each kind is, by kind. Eight numbers rather than one, because the queue is
+   * eight queries with eight limits: a single offset moved all of them at once, so a
    * kind whose page was full had a page 2 no control could ask for.
    */
   offsets?: Partial<Record<ReviewQueueKind, number>>;
@@ -588,6 +645,50 @@ export async function setExperienceState(
   },
 ): Promise<{ experienceId: number; sourceMembership: 'present' | 'former'; existence: 'extant' | 'lost' }> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/state`, {
+    method: 'POST',
+    body: JSON.stringify(decision),
+  });
+}
+
+/**
+ * The same verdict about one point inside an object (ADR-0026).
+ *
+ * Same body, and one thing to know about the answer: it can move visibility either
+ * way. The false alarm reveals a flagged point, `former` leaves a flagged one hidden,
+ * `lost` hides a point that was on offer, and taking a `lost` back reveals one whose
+ * flag is already clear — because a reader-facing read carries both the withdrawal flag
+ * and the `lost` verdict (ADR-0026 decision 7), so either axis alone can move it. Which is why
+ * the reply says `offeredToReaders` outright rather than leaving a card to work it out
+ * from two axes, and why it may carry `placementFailed`: a verdict that changes what a
+ * reader sees re-places the point, in either direction.
+ */
+export async function setLocationState(
+  locationId: number,
+  decision: {
+    membership?: 'present' | 'former';
+    existence?: 'extant' | 'lost';
+    note?: string;
+    expected: { membership: 'present' | 'former'; existence: 'extant' | 'lost'; flagged: boolean };
+  },
+): Promise<{
+  locationId: number;
+  experienceId: number;
+  sourceMembership: 'present' | 'former';
+  existence: 'extant' | 'lost';
+  offeredToReaders: boolean;
+  /**
+   * Present only where the verdict committed and re-placing the point into a world
+   * view did not — so it is on the map (or off it) and the regions disagree.
+   *
+   * A verdict that changes what a reader sees is a placement event in either
+   * direction, because a withdrawn point holds no `auto` region rows (ADR-0022) and a
+   * `lost` one must hold none. Undeclared, this field was unreadable without a cast,
+   * which is how the endpoint came to report a state no screen could show.
+   */
+  placementFailed?: true;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+}> {
+  return authFetchJson(`${API_URL}/api/experiences/locations/${locationId}/state`, {
     method: 'POST',
     body: JSON.stringify(decision),
   });

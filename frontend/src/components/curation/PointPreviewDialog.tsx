@@ -7,7 +7,7 @@
  *
  * A dialog rather than a map on every card, and the reason is a hard limit rather than
  * taste: each MapLibre instance holds its own WebGL context, browsers keep about a dozen
- * per tab, and this page renders up to 25 cards *per kind* across seven kinds. Mounting
+ * per tab, and this page renders up to 25 cards *per kind* across eight kinds. Mounting
  * one map per card would evict the earlier contexts and blank the maps — the failure
  * looks like a rendering bug and is really a resource cap. One dialog can only ever be
  * open once, so the count is one by construction, and nothing loads until it is asked

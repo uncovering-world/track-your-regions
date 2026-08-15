@@ -1605,8 +1605,10 @@ mix of `arrival` / `held` / `contents` named it. `groupGated()` does the joining
 answers `held` and `contents` separately so each query stays simple while a museum whose label is
 held *and* which gained twelve paintings is one object and one decision to the person looking at it.
 Inside a card the rows follow ADR-0025 § 4.2 — `fields` with both versions, `points` and `works` as
-counts — and `ItemHeader`, `describe` and `messageFor` come from `queueCard.tsx`, which exists so
-the two page files can share the card idiom without importing each other (`lint:circular`).
+counts — and `ItemHeader` and `messageFor` come from `queueCard.tsx`, which exists so every page
+file rendering a card shares the idiom without importing another one (`lint:circular`). There are
+three of them today, grouped by what raises the section, and the module's own docblock names them:
+a fourth is a section added rather than a count to revise.
 
 What the card does that is not a free choice:
 
