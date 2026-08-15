@@ -1,9 +1,9 @@
 /**
- * Tests for the review queue's seven kinds.
+ * Tests for the review queue's eight kinds.
  *
  * Split out of `lifecycleController.test.ts` when that file passed eslint's
  * `max-lines` (1000, comments and blanks excluded). The seam was already there:
- * the queue is one read with seven independent queries, and everything left
+ * the queue is one read with eight independent queries, and everything left
  * behind is a curator write under a row lock — and #526 split the controllers
  * along the same seam, so this file now sits beside the module it tests.
  *
@@ -192,7 +192,7 @@ describe('getReviewQueue', () => {
       makeRes() as never,
     );
 
-    // Seven queries with seven LIMITs: one shared offset moved all of them at once, so a
+    // Eight queries with eight LIMITs: one shared offset moved all of them at once, so a
     // kind whose page was full had a page 2 no control could ask for.
     const [, refusedParams] = callMatching("e.admission = 'refused'\n      AND NOT");
     const [, conflictParams] = callMatching("'conflict' AS kind");
@@ -218,10 +218,11 @@ describe('getReviewQueue', () => {
     expect(answered.refused).toHaveLength(3);
     expect(answered.paging.refused).toEqual({ offset: 0, hasMore: true });
     expect(answered.paging.missing).toEqual({ offset: 0, hasMore: false });
-    // Still one query per kind and no eighth: "is there another page" is answered by the
-    // extra row, so no count query joins the seven. (The contents query counts a *row's*
-    // points and works, which is a different number and stays.)
-    expect(mockedQuery.mock.calls).toHaveLength(7);
+    // Still one query per kind and no ninth: "is there another page" is answered by the
+    // extra row, so no count query joins the eight. (The contents query counts a *row's*
+    // points and works, and the withdrawal query counts the points it still offers —
+    // different numbers, both about one row, and both stay.)
+    expect(mockedQuery.mock.calls).toHaveLength(8);
     // And every one of them asked for `limit + 1`. The mock answers with four rows whatever
     // it is asked, so without this the page size could regress to `limit` and the three
     // items plus `hasMore: true` above would still be produced — by the mock, not the code.
@@ -403,6 +404,7 @@ describe('getReviewQueue', () => {
     missing: 'e.missing_since IS NOT NULL',
     held: 'e.pending_change_sync_log_id IS NOT NULL',
     contents: "el.curation_state = 'pending'",
+    withdrawn: 'el.missing_since IS NOT NULL',
   } as const;
 
   async function capturedQueueSql(
@@ -484,7 +486,7 @@ describe('getReviewQueue', () => {
   it('labels all three new kinds, like the four that predate them', async () => {
     // `ReviewQueueItem.kind` is declared required and is a real column on the
     // older four (`'missing' AS kind` and its siblings). The three added here did
-    // not select it, so three of the union's seven values were never sent while
+    // not select it, so three of the union's values were never sent while
     // the type said they always are — and a card cannot ask what it is.
     for (const [kind, label] of [
       ['arrival', "'arrival' AS kind"],
@@ -513,9 +515,19 @@ describe('getReviewQueue', () => {
     // previous task's review found. The FILTER is gone now (the join makes it
     // redundant), so one occurrence is left; the anchor stays on the clause
     // rather than the fragment, because that is what this test is about.
-    expect(sql).toMatch(
-      /LEFT JOIN experience_locations el\s+ON el\.experience_id = e\.id AND el\.curation_state = 'pending' AND el\.missing_since IS NULL/,
-    );
+    // The predicate now arrives from `offeredLocationSql` rather than spelled out, so
+    // the anchor takes both of its terms in the order the fragment emits them —
+    // spelled out, this join missed the existence term when the fragment gained it,
+    // and `contentsWaitingSql` (which composes the fragment) would have counted rows
+    // the card does not show.
+    // Sliced rather than matched with a nested quantifier: the comment lines between
+    // the JOIN and its ON clause would need `(?:…)*`, which is what
+    // `security/detect-unsafe-regex` objects to — fairly, in a file whose other
+    // guards say a check about safety must not itself be the backtracking risk.
+    const join = sql.slice(sql.indexOf('LEFT JOIN experience_locations el'));
+    const onClause = join.slice(0, join.indexOf('LEFT JOIN experience_treasures'));
+    expect(onClause).toContain("ON el.experience_id = e.id AND el.curation_state = 'pending'");
+    expect(onClause).toContain("AND el.missing_since IS NULL AND el.existence <> 'lost'");
   });
 
   it('does not count a withdrawn or lost pending point as unread', async () => {
@@ -590,6 +602,102 @@ describe('getReviewQueue', () => {
       const sql = await capturedQueueSql(kind, CURATOR);
       expect(sql).toContain('JOIN curator_scoped_regions s ON s.id = er.region_id');
     }
+  });
+
+  /**
+   * The eighth kind: a point the source stopped offering, waiting on a verdict
+   * (ADR-0026, #541).
+   *
+   * One row per container, listing the points inside it, because the queue is a
+   * list of objects and a serial site can lose two components in one run. The
+   * decision is per point — `POST /locations/:locationId/state` — which is the
+   * same shape the gated `contents` card already has.
+   */
+  it('asks about a point the source stopped offering', async () => {
+    const sql = await capturedQueueSql('withdrawn');
+
+    expect(sql).toContain('el.missing_since IS NOT NULL');
+    // Only the points nobody has answered for. A verdict leaves `missing_since`
+    // standing (it is what keeps the point off the map), so without these two the
+    // card would come back for ever with the answer already recorded on it.
+    expect(sql).toContain("el.source_membership = 'present'");
+    expect(sql).toContain("el.existence = 'extant'");
+  });
+
+  it('asks nothing about a point no reader ever saw', async () => {
+    const sql = await capturedQueueSql('withdrawn');
+
+    // The same reasoning ADR-0025 § 3.6 applies to an unread object: the card asks
+    // whether a place readers could see has gone, and about an arrival the gate never
+    // released there is no such fact. Reachable, not theoretical — a gated source can
+    // offer a point and withdraw it before anyone publishes it.
+    expect(sql).toContain("el.curation_state <> 'pending'");
+  });
+
+  it('leaves a held withdrawal out, because the run did not perform one', async () => {
+    const sql = await capturedQueueSql('withdrawn');
+
+    // A withdrawal waiting on its replacement has `missing_since IS NULL` — the
+    // point is still on the map — so it cannot reach this query at all. Asserted
+    // on the arrival's own column rather than trusting that: the pairing is what
+    // says a withdrawal is in flight, and a curator asked "did this go?" about a
+    // point they can still see has no true answer to give.
+    expect(sql).toContain('el.withdrawal_deferred_for_location_id');
+  });
+
+  it('says how much the container still holds, so a departure has a denominator', async () => {
+    const sql = await capturedQueueSql('withdrawn');
+
+    // "A point of Berlin Modernism Housing Estates is gone" reads differently at
+    // one part of seven and at the only part there was, and the card cannot tell
+    // the curator which without this.
+    expect(sql).toContain('offered_locations');
+  });
+
+  it('names each withdrawn point, rather than counting them', async () => {
+    const sql = await capturedQueueSql('withdrawn');
+
+    // The verdict is per point, so the card needs the id to send it to — and the
+    // name and reference to say which point it is about. Bilbao's is nameless,
+    // which is why the reference travels beside the name rather than instead of it.
+    expect(sql).toContain('jsonb_agg');
+    expect(sql).toContain('el.external_ref');
+    expect(sql).toContain('el.id');
+  });
+
+  it('excludes a refused or unread container from the withdrawal card', async () => {
+    const sql = await capturedQueueSql('withdrawn');
+
+    // Same reasoning the other kinds carry: a refused row is already invisible for
+    // a reason with its own card, and nobody has seen an unread one, so no point
+    // inside it disappeared from in front of anyone.
+    expect(sql).toContain("e.admission <> 'refused'");
+    expect(sql).toContain("e.curation_state <> 'pending'");
+  });
+
+  it('limits a curator to what their scope reaches on the withdrawal card too', async () => {
+    const sql = await capturedQueueSql('withdrawn', CURATOR);
+    expect(sql).toContain('JOIN curator_scoped_regions s ON s.id = er.region_id');
+  });
+
+  it('returns the withdrawal kind under its own response key, with its own pager', async () => {
+    const res = makeRes();
+    mockedQuery.mockImplementation(async (sql: string) => (
+      String(sql).includes('el.missing_since IS NOT NULL')
+        ? { rows: [{ id: 502, name: 'Bilbao Fine Arts Museum' }] }
+        : { rows: [] }
+    ));
+
+    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+
+    const body = res.json.mock.calls[0][0];
+    expect(body.withdrawn).toEqual([
+      expect.objectContaining({ id: 502, name: 'Bilbao Fine Arts Museum' }),
+    ]);
+    // Eight queries with eight LIMITs, so eight offsets: one shared number moved
+    // all of them at once, and a full page of one kind hid a page 2 no control
+    // could ask for.
+    expect(body.paging.withdrawn).toEqual({ offset: 0, hasMore: false });
   });
 
   it('returns the three new kinds under their own response keys', async () => {
