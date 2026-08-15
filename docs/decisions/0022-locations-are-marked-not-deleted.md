@@ -1,7 +1,9 @@
 # ADR-0022: A location is marked, not deleted, and no run may empty a category
 
 **Date:** 2026-08-05
-**Status:** Accepted
+**Status:** Accepted — every decision stands; the deferral its alternatives table
+records ("the verdicts arrive with the curator's grouped card for an object's
+contents") is landed by [ADR-0026](0026-a-run-records-what-a-container-holds.md), which is that card
 
 ---
 

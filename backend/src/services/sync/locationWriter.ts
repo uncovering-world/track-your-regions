@@ -240,7 +240,14 @@ export async function writeExperienceLocations(
                 AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
                 AND el.external_ref IS NOT DISTINCT FROM i.external_ref
                 AND el.ordinal = i.ordinal
-                AND el.name IS NOT DISTINCT FROM i.name) AS matched,
+                AND el.name IS NOT DISTINCT FROM i.name
+                -- A row the source lists while recorded as delisted is *not* matched:
+                -- it needs the one-direction restore below, and this comparison is how
+                -- the writer decides there is nothing to do. Without the term the fast
+                -- path returns first and a delisting written on an offered point is
+                -- permanent, and such a point can never be asked about again, since
+                -- the queue reads the axes as nobody having answered.
+                AND el.source_membership = 'present') AS matched,
             (SELECT array_agg(id) FROM experience_locations
                WHERE experience_id = $1 AND missing_since IS NULL) AS ids`,
     params,
@@ -274,6 +281,15 @@ export async function writeExperienceLocations(
     // Survivors keep their id. At most one incoming entry can match, since the
     // incoming list is deduped by identity above.
     //
+    // `source_membership` is restored here as well as in the `returned` arm, and that
+    // is what makes this the analogue of the experience upsert rather than a narrower
+    // copy of it: `syncUtils.ts` writes `present` unconditionally, so a still-listed
+    // object carrying `former` is corrected on the next run. Gated on the flag, the
+    // restore would reach a flagged row only, and a `former` written on an offered
+    // point would be permanent (ADR-0021, and ADR-0026 decision 6, which states the
+    // restore as unconditional wherever the source lists the point — both arms and the
+    // fast path's `matched` term — precisely so it cannot be rebuilt as one arm).
+    //
     // Runs *before* the arm below, and the order is what keeps the two over
     // disjoint sets: that one clears `missing_since`, so a row it had already
     // resurrected would satisfy this predicate too and be reported as both
@@ -281,7 +297,8 @@ export async function writeExperienceLocations(
     const kept = await client.query(
       `WITH ${cte}
        UPDATE experience_locations el
-       SET ordinal = i.ordinal, external_ref = i.external_ref, name = i.name
+       SET ordinal = i.ordinal, external_ref = i.external_ref, name = i.name,
+           source_membership = 'present'
        FROM incoming i
        WHERE el.experience_id = $1
          AND el.missing_since IS NULL
@@ -295,11 +312,23 @@ export async function writeExperienceLocations(
     // record and any manual region assignment on it are still the right ones —
     // but its *auto* assignments were dropped while it was missing, so it goes
     // back for placement rather than being reported as unchanged.
+    //
+    // `source_membership` comes back with it, in the one direction, exactly as the
+    // experience upsert does it (`syncUtils.ts`, ADR-0021): the source listing a
+    // point is evidence about membership, and a curator's `former` was a claim about
+    // the source's list that the source has just contradicted. Without this the row
+    // returns visible while still recorded as delisted — and worse, it can never be
+    // asked about again, because the queue's withdrawal kind reads the axes to mean
+    // "nobody has answered": the next withdrawal of that point would raise no card
+    // and the point would go quiet for ever. `existence` is untouched, because a
+    // listing says nothing about whether the thing still stands, and a curator's
+    // `lost` must outlive a source that keeps offering a demolished building.
     const returned = await client.query(
       `WITH ${cte}
        UPDATE experience_locations el
        SET ordinal = i.ordinal, external_ref = i.external_ref, name = i.name,
-           missing_since = NULL
+           missing_since = NULL,
+           source_membership = 'present'
        FROM incoming i
        WHERE el.experience_id = $1
          AND el.missing_since IS NOT NULL

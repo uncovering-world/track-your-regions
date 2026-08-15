@@ -63,9 +63,12 @@ export function heldWaitingSql(alias = 'e'): string {
  * another has to count here — which is why `getExperienceTreasures` gates both
  * separately and this asks both questions too.
  *
- * A withdrawn point is not "unread" in any sense a reader notices, since every
- * reader-facing location read already filters it, so publishing it would change
- * nothing on screen — hence `offeredLocationSql`.
+ * `offeredLocationSql` here, and both of its terms carry: a point the source has
+ * withdrawn, or one a curator has declared gone from the world, is not "unread"
+ * in any sense a reader notices, since every reader-facing location read carries
+ * the same fragment — publishing either would change nothing on screen. Named the
+ * same way, and in the same order, as the queue comment this count has to match
+ * row for row.
  *
  * `curation_state = 'pending'` is spelled positively rather than through
  * `publishedContentSql`, which states the reader's side (`<> 'pending'`): this

@@ -84,6 +84,11 @@ const contentsMigrationRaw = readFileSync(
   'utf8',
 );
 const contentsMigration = collapse(contentsMigrationRaw);
+const locationVerdictMigrationRaw = readFileSync(
+  join(repoRoot, 'db', 'migrations', '024-location-verdicts.sql'),
+  'utf8',
+);
+const locationVerdictMigration = collapse(locationVerdictMigrationRaw);
 /** The two TypeScript homes of the same list, read as text for the same reason. */
 const changeRecorderSource = collapse(
   readFileSync(join(__dirname, '..', 'services', 'sync', 'changeRecorder.ts'), 'utf8'),
@@ -326,6 +331,13 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     'missing_dismissed', 'admission_confirmed', 'admission_overridden',
     // ADR-0025 § 4.4 — what POST /:id/publish records.
     'published',
+    // A verdict about one point inside the object, not about the object
+    // (ADR-0026, #541). Prefixed, so a trail cannot read a component's departure
+    // as the whole site's — the four mirror the four above them one for one, the
+    // restore included, because a location verdict has to stay correctable for the
+    // same reason an experience's does.
+    'location_marked_former', 'location_marked_lost',
+    'location_state_restored', 'location_missing_dismissed',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
@@ -506,5 +518,96 @@ describe('the contents delta has a column in both schema homes', () => {
     // db/migrations/README.md: psql exits 0 when a statement in a piped script
     // fails, so the file sets this itself rather than trusting the caller.
     expect(contentsMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
+  });
+});
+
+/**
+ * A curator's verdict on a point, in both schema homes (ADR-0026, #541).
+ *
+ * Five columns and two constraints, mirroring the axes `experiences` has carried
+ * since ADR-0020. Absent from either file, the endpoint writes to a column that is
+ * not there and every verdict 500s — loud, but only for whoever runs the file that
+ * lacks them, which is how the dev database and a fresh one come to disagree.
+ */
+describe('a point has verdict columns in both schema homes', () => {
+  const VERDICT_COLUMNS: Array<[column: string, definition: string]> = [
+    ['source_membership', "VARCHAR(10) NOT NULL DEFAULT 'present'"],
+    ['existence', "VARCHAR(10) NOT NULL DEFAULT 'extant'"],
+    ['state_decided_by', 'INTEGER REFERENCES users(id)'],
+    ['state_decided_at', 'TIMESTAMPTZ'],
+    ['state_note', 'TEXT'],
+  ];
+
+  for (const [column, definition] of VERDICT_COLUMNS) {
+    it(`both files add experience_locations.${column}`, () => {
+      const addColumn =
+        `ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS ${column} ${definition};`;
+      expect(schema).toContain(addColumn);
+      expect(locationVerdictMigration).toContain(addColumn);
+    });
+  }
+
+  it('both files constrain the two axes to the same words an experience uses', () => {
+    // A column accepting any string is one that eventually holds 'Former', which
+    // silently stops matching every predicate. The words are shared with
+    // `experiences` on purpose: one vocabulary for the same two questions.
+    for (const sql of [schema, locationVerdictMigration]) {
+      expect(sql).toContain(
+        'ALTER TABLE experience_locations ADD CONSTRAINT experience_locations_source_membership_check '
+        + "CHECK (source_membership IN ('present', 'former'))",
+      );
+      expect(sql).toContain(
+        'ALTER TABLE experience_locations ADD CONSTRAINT experience_locations_existence_check '
+        + "CHECK (existence IN ('extant', 'lost'))",
+      );
+    }
+  });
+
+  it('both files carry the rules the two axes have nowhere else', () => {
+    // Neither rule is expressible as a constraint, and neither lives anywhere a
+    // person reading `\d+ experience_locations` can reach — so the column comment
+    // is the whole of it, in both files. The restore clause is the string on this
+    // branch with a measured drift rate: it was wrong twice before it was right,
+    // first claiming a curator is the only writer, then crediting the `returned`
+    // arm alone. Pinning the phrase and not the sentence, because the wording
+    // will keep being improved and the rule must not move under it.
+    for (const sql of [schema, locationVerdictMigration]) {
+      expect(sql).toContain('COMMENT ON COLUMN experience_locations.source_membership IS');
+      expect(sql).toContain('sets it back to present, wherever that point is');
+      expect(sql).toContain('what a reader sees also needs existence <> lost');
+      expect(sql).toContain('COMMENT ON COLUMN experience_locations.existence IS');
+      expect(sql).toContain('Independent of whether the source still lists it.');
+    }
+  });
+
+  it('both files index the points still waiting for a verdict', () => {
+    // The queue asks for exactly these rows on every page load, and the predicate
+    // has no experience_id to narrow it. Partial for the same reason as the
+    // experience-level pair: the answered rows are the rare ones and no read asks
+    // for them alone.
+    const index =
+      'CREATE INDEX IF NOT EXISTS idx_experience_locations_undecided '
+      + 'ON experience_locations(experience_id) '
+      + "WHERE missing_since IS NOT NULL AND source_membership = 'present' AND existence = 'extant';";
+    expect(schema).toContain(index);
+    expect(locationVerdictMigration).toContain(index);
+  });
+
+  it('the four location actions are in every copy of the log CHECK', () => {
+    // Two copies live in 01-schema.sql — the CREATE TABLE and the drop/add ALTER —
+    // and a fresh database takes the first. A verdict whose action the CHECK
+    // rejects rolls back the whole endpoint, audit insert and all.
+    for (const action of [
+      'location_marked_former', 'location_marked_lost',
+      'location_state_restored', 'location_missing_dismissed',
+    ]) {
+      expect(schema.match(new RegExp(`'${action}'`, 'g')) ?? [])
+        .toHaveLength(2);
+      expect(locationVerdictMigration).toContain(`'${action}'`);
+    }
+  });
+
+  it('migration 024 is not defeated by how it is invoked', () => {
+    expect(locationVerdictMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
   });
 });

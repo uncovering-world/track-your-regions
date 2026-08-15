@@ -121,6 +121,50 @@ describe('writeExperienceLocations', () => {
     expect(mark[0]).toMatch(/ordinal = NULL/);
   });
 
+  it('takes back a delisting on a point the source never stopped offering', async () => {
+    // Reachable through the verdict endpoint: `former` on an offered point leaves the
+    // flag NULL, so the `returned` arm — which matches flagged rows only — never sees
+    // it. Ungated, the row would keep `former` for ever, and the withdrawal card reads
+    // the axes as "nobody has answered", so its next departure would raise nothing.
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    expect(statements.find(s => KEEP.test(s))).toMatch(/source_membership = 'present'/);
+  });
+
+  it('does not let the fast path skip a delisting the source has contradicted', async () => {
+    // The fast path means "nothing to do", and a row the source lists while recorded as
+    // delisted is something to do — so it must not count as matched.
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '1', ids: [7] }] });
+
+    await writeExperienceLocations(1, [A]);
+
+    const [sql] = mockedQuery.mock.calls[0];
+    expect(String(sql)).toMatch(/AS matched/);
+    expect(String(sql)).toMatch(/el\.source_membership = 'present'\) AS matched/);
+  });
+
+  it('takes back a curator’s delisting when the source offers a withdrawn point again', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '0', matched: '0', ids: null }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    // The one direction, as the experience upsert does it (ADR-0021): a listing is
+    // evidence about the source's list, and `former` was a claim about that list.
+    // Without this the point comes back visible while recorded as delisted — and can
+    // never be asked about again, because the withdrawal card reads the axes as
+    // "nobody has answered", so its next departure would raise no card at all.
+    expect(statements.find(s => RESURRECT.test(s))).toMatch(/source_membership = 'present'/);
+    // `existence` is not touched: a source that keeps listing a demolished building
+    // does not un-demolish it, and that verdict has to outlive the listing.
+    expect(statements.find(s => RESURRECT.test(s))).not.toMatch(/existence =/);
+  });
+
   it('does not restamp a point that was already missing', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
     const { client, statements } = fakeClient();

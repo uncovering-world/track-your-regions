@@ -132,9 +132,24 @@ export function hideRefusedSql(alias = 'e'): string {
  * layer, and importing a controller module there would be the first such import
  * in the codebase — a worse trade than one repeated predicate, which is why the
  * duplication is deliberate and noted at both sites.
+ *
+ * **`existence` joins it with the verdicts (ADR-0026).** A point a curator has
+ * declared gone from the world must stay off the map even when the source starts
+ * offering it again — and the source doing so is not hypothetical, it is the
+ * flapping case of #543. Without this term the run's `returned` arm would clear
+ * `missing_since`, and a demolished component would come back. It is the same pair
+ * an experience already carries — `hideLostSql` beside the one-direction membership
+ * restore — so the two layers answer the two questions the same way: a listing is
+ * evidence about the source's list, never about whether the thing still stands.
+ *
+ * `source_membership` is deliberately *not* here, exactly as it is not in an
+ * experience's reads: `former` says the source stopped listing it, and hiding on
+ * that would let a curator's reading of a list remove a place that is still there.
+ * What keeps a `former` point off the map is its `missing_since`, which the verdict
+ * leaves standing.
  */
 export function offeredLocationSql(alias = 'el'): string {
-  return `${alias}.missing_since IS NULL`;
+  return `${alias}.missing_since IS NULL AND ${alias}.existence <> 'lost'`;
 }
 
 /**
@@ -231,9 +246,16 @@ export function experienceOfferedToReaderSql(alias = 'e'): string {
  * the four predicates — a different one missing each time. Four separate calls
  * invite three. One call cannot be partly written.
  *
- * `existence` is deliberately absent, matching the by-id reads: a place that no
- * longer stands is still somewhere a traveller went, and the record of having
- * been there is the one thing that outlives it.
+ * The **experience's** `existence` is deliberately absent, matching the by-id reads:
+ * a place that no longer stands is still somewhere a traveller went, and the record
+ * of having been there is the one thing that outlives it.
+ *
+ * A **point's** own `existence` does appear, since ADR-0026, because it arrives
+ * inside `offeredLocationSql` — and the two are not the same claim. The exemption
+ * above is about the object a visit is remembered against; this is about whether a
+ * component is somewhere a reader may be sent, and a curator who has said a
+ * component is demolished has answered that. The visit is untouched either way:
+ * removing one runs unfiltered, as the note on that fragment sets out.
  */
 export function offeredToReaderSql(experienceAlias = 'e', locationAlias = 'el'): string {
   return [

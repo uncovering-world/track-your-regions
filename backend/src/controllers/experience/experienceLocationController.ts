@@ -289,8 +289,12 @@ export async function getVisitedLocationIds(req: AuthenticatedRequest, res: Resp
   // So all four: the gate and the content gate, because a visit to an unread
   // point is one no writer can create any more and none should be surfaced from
   // before; `admission`, because a museum this catalogue turned down is on no
-  // list this reader can see; and offered points only, because a point the
-  // source withdrew is not somewhere they can be shown to have been. The
+  // list this reader can see; and points a reader may be shown, which since ADR-0026
+  // decision 7 is two exclusions rather than one — a point the source withdrew is not somewhere
+  // they can be shown to have been, and a point a curator declared gone from the world
+  // is not somewhere anyone can be sent, which is a different claim resting on a
+  // different person's judgement. The consequence worth stating because nothing else
+  // here does: a tick on a component declared `lost` leaves this map. The
   // traveller's history is not lost by any of this — `visited-experiences`
   // carries no lifecycle predicate at all, deliberately, and that is where a
   // record of somewhere that has since left the catalogue belongs.
