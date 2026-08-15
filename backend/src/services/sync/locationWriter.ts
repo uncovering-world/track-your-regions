@@ -112,6 +112,15 @@
 
 import { pool } from '../../db/index.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
+import type { ContentItem, ContentsDelta } from './types.js';
+
+/** An empty delta, for the paths on which the writer performed nothing. */
+const NO_CHANGE: ContentsDelta = { added: [], withdrawn: [], returned: [] };
+
+/** Name a row the way the record names it: what the source calls it, not its id. */
+function named(rows: Array<{ name?: string | null; external_ref?: string | null }>): ContentItem[] {
+  return rows.map(r => ({ name: r.name ?? null, ref: r.external_ref ?? null }));
+}
 
 export interface IncomingLocation {
   name: string | null;
@@ -128,6 +137,14 @@ export interface LocationWriteResult {
   needsAssignment: number[];
   /** How many stored points this run was the first to find missing. */
   unoffered: number;
+  /**
+   * What the run did to the object's set of points, named (ADR-0026).
+   *
+   * Separate from the id lists above, which exist for region placement: these
+   * are the same events read as news about the object rather than as work still
+   * to do, and a reader of one has no use for the other.
+   */
+  delta: ContentsDelta;
 }
 
 /**
@@ -232,7 +249,7 @@ export async function writeExperienceLocations(
     { stored: string; matched: string; ids: number[] | null };
 
   if (Number(stored) === incoming.length && Number(matched) === incoming.length) {
-    return { unchanged: ids ?? [], needsAssignment: [], unoffered: 0 };
+    return { unchanged: ids ?? [], needsAssignment: [], unoffered: 0, delta: NO_CHANGE };
   }
 
   const client = await pool.connect();
@@ -288,7 +305,7 @@ export async function writeExperienceLocations(
          AND el.missing_since IS NOT NULL
          AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
            AND el.external_ref IS NOT DISTINCT FROM i.external_ref
-       RETURNING el.id`,
+       RETURNING el.id, el.name, el.external_ref`,
       params,
     );
 
@@ -323,7 +340,7 @@ export async function writeExperienceLocations(
            AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
            AND el.external_ref IS NOT DISTINCT FROM i.external_ref
        )
-       RETURNING id, curation_state`,
+       RETURNING id, curation_state, name, external_ref`,
       params,
     );
 
@@ -490,7 +507,8 @@ export async function writeExperienceLocations(
            SELECT 1 FROM experience_locations waiting
            WHERE waiting.experience_id = $1
            AND waiting.withdrawal_deferred_for_location_id = el.id
-         )`,
+         )
+       RETURNING el.id, el.name, el.external_ref`,
       params,
     );
 
@@ -546,6 +564,15 @@ export async function writeExperienceLocations(
       // the kind about it. The callers turn that number into "place this
       // experience again", which the arrival beside it asks for anyway.
       unoffered: marked.rowCount ?? 0,
+      // Read off the same statements, which is what keeps the delta and the
+      // write from disagreeing: `withdrawn` is what the mark actually marked, so
+      // a held withdrawal is absent here for the same reason it is absent from
+      // `unoffered` — the point is still on the map.
+      delta: {
+        added: named(inserted.rows),
+        withdrawn: named(marked.rows),
+        returned: named(returned.rows),
+      },
     };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
