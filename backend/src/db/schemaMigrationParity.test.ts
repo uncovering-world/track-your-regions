@@ -63,6 +63,11 @@ const heldTypeMigrationRaw = readFileSync(
   'utf8',
 );
 const heldTypeMigration = collapse(heldTypeMigrationRaw);
+const contentsMigrationRaw = readFileSync(
+  join(repoRoot, 'db', 'migrations', '023-contents-delta.sql'),
+  'utf8',
+);
+const contentsMigration = collapse(contentsMigrationRaw);
 /** The two TypeScript homes of the same list, read as text for the same reason. */
 const changeRecorderSource = collapse(
   readFileSync(join(__dirname, '..', 'services', 'sync', 'changeRecorder.ts'), 'utf8'),
@@ -430,5 +435,55 @@ describe('a held withdrawal has a column in both schema homes', () => {
       expect(definition, `a trigger fires on experiences: ${definition.slice(0, 120)}`)
         .not.toMatch(/\bON experiences\b/);
     }
+  });
+});
+
+/**
+ * Where a run records what the object holds, in both schema homes (ADR-0026).
+ *
+ * Missing from `01-schema.sql`, a fresh database takes every insert of a run that
+ * moved any contents and fails on an unknown column — every object of every run,
+ * since the recorder names the column unconditionally. Missing from the migration,
+ * the dev database does the same while a fresh one is fine, which is the harder
+ * direction to find.
+ */
+describe('the contents delta has a column in both schema homes', () => {
+  const addColumn = 'ALTER TABLE experience_sync_changes ADD COLUMN IF NOT EXISTS contents JSONB;';
+
+  it('both files add the column', () => {
+    // Stated as an ALTER in `01-schema.sql` as well as in the CREATE TABLE:
+    // `CREATE TABLE IF NOT EXISTS` is a no-op on a database that already holds
+    // the table, so re-applying that file is the only way an existing database
+    // gains a column and the ALTER is what carries it.
+    expect(schema).toContain(addColumn);
+    expect(contentsMigration).toContain(addColumn);
+  });
+
+  it('both files say what NULL means, because the data cannot', () => {
+    // A row written before this column existed is indistinguishable from a run
+    // that moved nothing, and only one of those is true. Nothing can be
+    // backfilled — `experience_locations.created_at` was overwritten wholesale on
+    // 2026-08-04 — so the column comment is where that warning lives, in both
+    // files, or a later reader counts absent deltas as quiet runs.
+    for (const sql of [schema, contentsMigration]) {
+      expect(sql).toContain('COMMENT ON COLUMN experience_sync_changes.contents IS');
+      expect(sql).toContain('NULL means the run recorded nothing here');
+    }
+  });
+
+  it('the column is added before it is commented on', () => {
+    // On a database that already holds the table, the COMMENT is the statement
+    // that would fail: the column reaches it through the ALTER above, and a file
+    // that commented first would abort there and never run the ALTER at all.
+    for (const sql of [schema, contentsMigration]) {
+      expect(sql.indexOf(addColumn))
+        .toBeLessThan(sql.indexOf('COMMENT ON COLUMN experience_sync_changes.contents'));
+    }
+  });
+
+  it('migration 023 is not defeated by how it is invoked', () => {
+    // db/migrations/README.md: psql exits 0 when a statement in a piped script
+    // fails, so the file sets this itself rather than trusting the caller.
+    expect(contentsMigrationRaw).toMatch(/^\\set ON_ERROR_STOP on$/m);
   });
 });

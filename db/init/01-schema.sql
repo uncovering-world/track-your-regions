@@ -1925,6 +1925,7 @@ CREATE TABLE IF NOT EXISTS experience_sync_changes (
     name_snapshot  VARCHAR(500),
     change_type    VARCHAR(20) NOT NULL CHECK (change_type IN ('created', 'updated', 'conflict', 'held', 'missing', 'returned', 'failed', 'filtered')),
     changed_fields JSONB,
+    contents       JSONB,
     significance   VARCHAR(10) CHECK (significance IN ('major', 'minor')),
     error          TEXT,
     created_at     TIMESTAMPTZ DEFAULT NOW()
@@ -1932,6 +1933,14 @@ CREATE TABLE IF NOT EXISTS experience_sync_changes (
 
 COMMENT ON TABLE experience_sync_changes IS 'Per-object provenance for a sync run (issue #480). See ADR-0020.';
 COMMENT ON COLUMN experience_sync_changes.name_snapshot IS 'The name at the time of the run, so the report stays readable if the row is later deleted.';
+-- Declared in the CREATE TABLE above and added again here, in that order:
+-- `CREATE TABLE IF NOT EXISTS` is a no-op on a database that already holds this
+-- table, so a new column reaches one only through the ALTER — and the COMMENT
+-- below it would fail on such a database if it ran first.
+ALTER TABLE experience_sync_changes ADD COLUMN IF NOT EXISTS contents JSONB;
+
+COMMENT ON COLUMN experience_sync_changes.contents IS 'What the run did to what the object holds, keyed by kind of contents: {"locations": {"added": [{"name","ref"}], "withdrawn": [...], "returned": [...]}, "treasures": {...}}. See ADR-0026. Keyed rather than one column per kind so a new kind of contents costs no migration; a kind the run did nothing to is absent. Items are named, never identified by id, so the record stays legible after the row it names is renamed. NULL means the run recorded nothing here - for a run older than this column that is not the same as "the contents did not move", and the location rows cannot be asked instead (created_at was overwritten wholesale on 2026-08-04).';
+
 COMMENT ON COLUMN experience_sync_changes.changed_fields IS 'Array of {field, old, new, significance, curatedConflict, held}. Each entry holds the value the source proposed for that field even when the run refused to write it, so a curator can answer it later; the two flags say why it was refused - curatedConflict = a curator had claimed the field (answered by accept-source), held = the category gate kept it out of a row a reader can already see (answered by publishing). Both false on a field the run applied.';
 
 -- CREATE TABLE IF NOT EXISTS is a no-op where the table already exists, so a
