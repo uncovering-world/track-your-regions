@@ -949,7 +949,7 @@ category later decides about the building.
 | DELETE | `/api/experiences/:id/remove-from-region/:regionId` | Full removal (any assignment type). Keeps rejection as guard against spatial recompute |
 | PATCH | `/api/experiences/:id/edit` | Editable fields (`name`, descriptions, `category`, `imageUrl`, `tags`, `websiteUrl`, `wikipediaUrl`). The last two are stored in `metadata.website` / `metadata.wikipediaUrl` via JSONB merge |
 | GET | `/api/experiences/:id/curation-log` | Latest curation actions, filtered to the caller's curator scope (see Curation Guarantees) |
-| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, and `contents` where a visible row holds unread points or works of its own — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. No totals: each array's own length is the count, and `paging` says per kind where it is and whether another page waits behind it. Every kind carries what the object *is* — `image_url`, `latitude`/`longitude`, `website_url` and `wikipedia_url` from `metadata`, and `region_names` — through one shared fragment, so no card can show less about an object than its neighbour. `conflicts` additionally carry `run_completed_at` and, per proposed field, `claim` (who claimed it and when, read from the newest `edited` log entry under the *column* name) and `decidedBefore` (every earlier answer on that field, newest first — both `accepted_source` and `declined_source`, each entry carrying its `action`, since a refusal rendered as an acceptance is its own opposite). A `conflicts` entry lists the claimed fields that are still *open*: one whose current proposal matches a stored refusal is dropped, and an object with none left leaves the array. `refused` and `keptOut` additionally carry `counted_works` — the venue's famous works from `experience_treasures`, most widely known first, capped at twelve — plus `counted_works_total`, how many are held in all, because the capped array cannot say and a refusal that names one work rather than counting has no number of its own to reconcile against. Params `limit` (default 25), `categoryId`, and one offset per kind — `missingOffset`, `refusedOffset`, `keptOutOffset`, `conflictsOffset`, `arrivalsOffset`, `heldOffset`, `contentsOffset`. Seven, because these are seven queries with seven LIMITs: one shared offset moved all of them at once, so a kind whose page was full had a page 2 that no control could ask for. Scoped like the curation log |
+| GET | `/api/experiences/review/queue` | What a run could not decide: `missing` objects awaiting a verdict, `refused` rows a category rule turned down, `conflicts` where the source and a curator disagree, `arrivals` a gated source wrote that nobody has passed, `held` where an already-visible row is holding a newer proposal, `contents` where a visible row holds unread points or works of its own, and `withdrawn` where a point the source stopped offering is waiting on a verdict — plus `keptOut`, the confirmed refusals, which are answered rather than waiting and appear on no other surface. No totals: each array's own length is the count, and `paging` says per kind where it is and whether another page waits behind it. Every kind carries what the object *is* — `image_url`, `latitude`/`longitude`, `website_url` and `wikipedia_url` from `metadata`, `region_names`, and how much it holds (`offered_locations`, `counted_works_total`) — through one shared fragment, so no card can show less about an object than its neighbour. `conflicts` additionally carry `run_completed_at` and, per proposed field, `claim` (who claimed it and when, read from the newest `edited` log entry under the *column* name) and `decidedBefore` (every earlier answer on that field, newest first — both `accepted_source` and `declined_source`, each entry carrying its `action`, since a refusal rendered as an acceptance is its own opposite). A `conflicts` entry lists the claimed fields that are still *open*: one whose current proposal matches a stored refusal is dropped, and an object with none left leaves the array. `refused` and `keptOut` additionally carry `counted_works` — the venue's famous works from `experience_treasures`, named, most widely known first, capped at twelve. The *array* is those two kinds only, because UNESCO sites hold no works and six of the eight queries would carry a join for an empty list; the total beside it is universal, which is what lets the capped array say how many it is not showing, and what a refusal naming one work rather than counting has to reconcile against. A `withdrawn` entry carries `withdrawn_points`, each with its `id` (the verdict is per point), `name`, `externalRef`, `missingSince`, coordinates, `visited` — which is what makes the verdict matter rather than tidy-up — and `replacedMetres`: how far away the source now offers that same part, or `null` where it offers it nowhere. That last one is the field the card's whole sentence turns on, and the reason it is a distance rather than a flag is measured: the catalogue's first withdrawal has a replacement **1.2 cm** away, a coordinate rewritten at finer precision, which a flag would have called a move. Params `limit` (default 25), `categoryId`, and one offset per kind — `missingOffset`, `refusedOffset`, `keptOutOffset`, `conflictsOffset`, `arrivalsOffset`, `heldOffset`, `contentsOffset`, `withdrawnOffset`. Eight, because these are eight queries with eight LIMITs: one shared offset moved all of them at once, so a kind whose page was full had a page 2 that no control could ask for. Scoped like the curation log |
 | POST | `/api/experiences/:id/state` | `{ membership?: 'present' \| 'former', existence?: 'extant' \| 'lost', note?, expected: { membership, existence, flagged } }` — a verdict on one or both axes; at least one required. `expected` is **not** optional: it is the row as the caller saw it, compared under the write lock, and without it the server cannot tell a stale view from a deliberate correction |
 | POST | `/api/experiences/locations/:locationId/state` | The same body, about one point inside the object (ADR-0026). Answers whether a point the source stopped offering is delisted, gone, or was never gone. Three things differ from the object-level verdict. Scope: a point carries none of its own, so the id is resolved to its containing experience server-side and `resolveExperienceScope` is asked about that. `missing_since`: only the false alarm (`present` + `extant`) clears it, because on a location that column is *one of the two terms* a reader-facing read carries (ADR-0026 decision 7), and each verdict is held by a different one — `former` by the flag, which is why clearing it would put back a pin for a place the source no longer lists; `lost` by its own axis, whatever the flag says, which is what makes that verdict outlive a run and also makes it the one answer here that can hide a point readers could see. Leaving the flag standing is what takes an answered row out of the queue without any read learning a filter for the queue's sake. A source that lists the point again takes the delisting back, in one direction only and wherever that point is — every arm of the writer that matches an offered row writes `source_membership = 'present'`, the one that gives a withdrawn point its place back and the one that keeps a point never withdrawn, and the fast path counts a delisted-but-listed row as unmatched so one of them is reached at all (ADR-0026 decision 6). Never the reverse, as the experience upsert has it (ADR-0021); `existence` is untouched, because a listing says nothing about whether the thing still stands. Without that the point would come back visible while recorded as delisted, and its next departure would raise no card at all, since the queue reads the axes as "nobody has answered". The one answer with no transition to name is the false alarm, and it is the *only* one: re-sending a verdict a row already carries answers 409 rather than writing a dismissal into the trail beside a flag nothing dismissed. And the audit row hangs off the *experience*, with the point named in `details.locationId`, so a serial site's seven components cannot record seven indistinguishable verdicts. The response says `offeredToReaders`, rather than leaving a client to infer visibility from two axes — and, where the answer changed what a reader sees and re-placing the point failed, `placementFailed`/`placementFailedWorldViews`, named as the sibling endpoints name them: a verdict is a placement event in either direction, because a withdrawn point holds no `auto` region rows and a `lost` one must hold none, so a curator has to be told when the regions are out of date. Needs migration 024 applied, or the audit insert violates the `action` CHECK and the whole call 500s |
 | POST | `/api/experiences/:id/admission` | `{ decision: 'confirm' \| 'override', note? }` — answer a refusal. `confirm` keeps the row refused and hidden, `override` admits it again. Both pin `admission` in `curated_fields`, which is what takes the card out of the queue and what stops a later run reversing either answer; no `expected` block is needed, because a second curator collides with that pin and gets 409. `override` on a row that was `pending` also publishes it, in the same transaction (ADR-0025 § 4.5) — `curation_state = 'verified'`, `published_at = COALESCE(published_at, NOW())` — because that verdict is the only thing that ever un-hides an arrival nobody had read; `override` on an `auto` row and `confirm` on any row never publish. The response's `published` field says which happened. See § Publishing for the mechanism and why it does not place |
@@ -1095,13 +1095,13 @@ consumer as of this slice.
 ## Review Queue
 
 `GET /api/experiences/review/queue` is the other half of change provenance: the run
-records what it could not decide, and this is where a curator decides it. Six kinds of
+records what it could not decide, and this is where a curator decides it. Seven kinds of
 question, kept apart because they are answered differently — and one list that is not a
 question at all, carried here because nowhere else can carry it.
 
 **What a decision rests on travels with the question.** Every kind carries the object
 itself — its image, its point, the source page and Wikipedia from `metadata`, and the names
-of the regions it crosses — through one select fragment shared by all seven queries, for the
+of the regions it crosses, and how much it holds — through one select fragment shared by all eight queries, for the
 reason `lifecycleSelectSql` is shared: a field required in the type and selected by some of
 the queries is the shape that typechecks and silently reads `undefined`. A conflict carries
 more, because it is the kind that asks a curator to choose between two texts: when the run
@@ -1110,13 +1110,16 @@ same field. None of it is new storage. The claim's author is the newest `edited`
 `experience_curation_log`, and it is keyed by the **column** name — `short_description`, not
 `shortDescription` — so the lookup goes through `CURATED_KEY_BY_FIELD`, the same map the
 claim itself does; reading it by the changeset's own name finds nothing and every edit reads
-as anonymous. Three of the six —
+as anonymous. Three of the seven —
 `missing`, `refused`, `conflicts` — predate the per-source curation gate
 ([ADR-0025](../decisions/0025-per-source-curation-gate.md)); `arrivals`, `held` and `contents`
-are that gate's own open questions, covered together below the four older kinds.
+are that gate's own open questions, covered together below the four older kinds. `withdrawn`
+belongs to neither group: it is a question about a point *inside* an object
+([ADR-0026](../decisions/0026-a-run-records-what-a-container-holds.md)), answered per point
+rather than per object, and the only kind whose verdict goes to a different endpoint.
 
 **No counts, and each kind pages on its own.** The response carries no total and no `COUNT(*)`
-over any of the seven arrays. "Is there another page" is answered by the rows themselves: each
+over any of the eight arrays. "Is there another page" is answered by the rows themselves: each
 query asks for `limit + 1` and the extra row is dropped before the array is returned, so the
 answer costs nothing and no kind needs a count. A count belongs with a later rebuild of this
 page that needs one for its own reasons (a notification floor, a backlog figure); adding one
@@ -1551,10 +1554,11 @@ the container is what keeps a refused museum's newly-arrived paintings from rais
 too — the museum already has its own card in `refused`, and its contents are not a second
 question.
 
-A location's own `missing_since` matters here too: `el.missing_since IS NULL` alongside
-`el.curation_state = 'pending'`, because a point the source has withdrawn is not "unread" in any
-sense a reader would ever notice — every reader-facing location read already carries
-`offeredLocationSql()`, so publishing a withdrawn point changes nothing on screen.
+A location's own visibility matters here too: `offeredLocationSql()` — both terms — alongside
+`el.curation_state = 'pending'`, because a point the source has withdrawn — or one a curator has
+declared gone from the world — is not "unread" in any sense a reader would ever notice: every
+reader-facing location read carries the same fragment, so publishing either changes nothing on
+screen.
 
 Treasures need a second table, not a second column on one, mirroring
 `getExperienceTreasures`'s "three predicates, not one": a link's own `curation_state` and its
@@ -1726,7 +1730,7 @@ object read and, before that fix, 409ed forever trying to. `{ contentsOnly: true
 intent explicitly, so the inference never has to be made again.
 
 **A point the source has withdrawn is never published**, named or not: the location statement
-carries `missing_since IS NULL`, the same predicate the `contents` card carries, and the two have to
+carries `offeredLocationSql()`, the same predicate the `contents` card carries, and the two have to
 move together — the card is what asks the question the statement answers. The reason is not that a
 withdrawn point is invisible anyway (it is, through `offeredLocationSql()`) but what happens when it
 comes back: `locationWriter`'s "offering it again" arm clears `missing_since` and deliberately
@@ -1828,10 +1832,16 @@ released intermediate in a chain is. It is the floor under `locationWriter`'s pr
 route the writer does not cover leaves a duplicate pin for ever, and with it for at most one source
 interval.
 
-**Publishing does not place — except that one.** Placement's insert predicate is
-`el.missing_since IS NULL` and nothing else — no `curation_state`, no `admission`, no `existence`
-— so a `pending` location was already placed by the run that wrote it and flipping it to
-`verified` moves no geometry, no point and no membership. A held content field cannot move it
+**Publishing does not place — except that one.** Placement's insert predicate is the same
+`offeredLocationSql` pair the reads carry — `el.missing_since IS NULL AND el.existence <> 'lost'`
+— and nothing else: no `curation_state`, no `admission`, nothing about the experience. So a
+`pending` location was already placed by the run that wrote it and flipping it to `verified` moves
+no geometry, no point and no membership. The `existence` term joined it with the verdicts
+([ADR-0026](../decisions/0026-a-run-records-what-a-container-holds.md)) and changes nothing about
+this paragraph's conclusion, because publishing touches `curation_state` alone: what it does mean is
+that a curator's verdict on a point *is* a placement event, in either direction, which is why the
+verdict endpoint places when it changes what a reader sees and the queue's own contents join takes
+the predicate from the fragment rather than spelling it out. A held content field cannot move it
 either: placement reads `experience_locations.location`, never `experiences.location`, and no
 trigger connects the two. A released withdrawal is the exception, because the old point stops
 being offered and the clear is unfiltered while the insert is not: its
@@ -1900,7 +1910,7 @@ a literal string with no parameter in it at all.
 
 **Does not place.** Verified against a live database rather than assumed: a refused row's
 `experience_regions` count matches an admitted row's exactly, because placement's insert predicate
-(`el.missing_since IS NULL`) reads neither `admission` nor `curation_state` — a refused location was
+(`offeredLocationSql()`: the withdrawal flag and the `lost` verdict) reads neither `admission` nor `curation_state` — a refused location was
 placed the moment it was written, and un-refusing the object moves nothing.
 
 The audit row is `admission_overridden` either way; `details.published` is what tells the two cases

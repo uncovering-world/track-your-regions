@@ -13,7 +13,7 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
-import { hidePendingSql, hideRefusedSql, lifecycleSelectSql } from './experienceLifecycle.js';
+import { hidePendingSql, hideRefusedSql, lifecycleSelectSql, offeredLocationSql } from './experienceLifecycle.js';
 import { CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import { ACCEPTABLE_FIELDS } from './acceptableFields.js';
@@ -29,7 +29,7 @@ const QUEUE_PAGE_SIZE = 25;
  * showed the thing being judged: no picture, no coordinates, no way to open the source
  * page. Deciding meant leaving the queue.
  *
- * Carried on every kind through one fragment rather than added per query, so the seven
+ * Carried on every kind through one fragment rather than added per query, so the eight
  * cards cannot drift into showing different amounts about the same object. It costs each
  * query four columns off the row it already reads plus one region lookup; the regions are
  * a list because an object crosses them, and their names are what a curator recognises —
@@ -95,7 +95,7 @@ function countedWorksSelectSql(alias = 'e'): string {
  * The decisions waiting for a curator, scoped to what they cover.
  * GET /api/experiences/review/queue?categoryId=&limit=&<kind>Offset=
  *
- * Six kinds of open question, and one list that is not a question at all:
+ * Seven kinds of open question, and one list that is not a question at all:
  *
  * - **gone from the source** — a run stamped `missing_since` and stopped there.
  *   Users still see the object exactly as before; nothing about it changes
@@ -125,6 +125,13 @@ function countedWorksSelectSql(alias = 'e'): string {
  * - **a visible row is holding unread contents** — its points or its works
  *   arrived `pending` while the experience itself was already published.
  *   Counted, not listed: the expandable detail is a separate read.
+ * - **the object lost places it is made of** — a run stopped offering them and
+ *   marked them (ADR-0022), so readers lost those pins the moment it noticed, and
+ *   nobody has said what any of it means (ADR-0026). The row carries every such
+ *   point of the object, since one run can drop several components of a serial
+ *   site; the verdict is per *point* rather than per object, which no other kind
+ *   is, and it is answered at a different endpoint —
+ *   `POST /locations/:locationId/state`.
  *
  * `keptOut` is the exception to all of it: those rows are answered, not
  * waiting, and are carried here only because nowhere else can show them.
@@ -135,7 +142,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const { categoryId, limit = QUEUE_PAGE_SIZE } = req.query as {
     categoryId?: number; limit?: number;
   };
-  // Seven offsets, because they are seven queries with seven LIMITs. One shared number
+  // Eight offsets, because they are eight queries with eight LIMITs. One shared number
   // moved all of them at once, so a full page of one kind hid a page 2 that no control
   // could ask for.
   const q = req.query as Record<string, number | undefined>;
@@ -147,6 +154,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     arrivals: q.arrivalsOffset ?? 0,
     held: q.heldOffset ?? 0,
     contents: q.contentsOffset ?? 0,
+    withdrawn: q.withdrawnOffset ?? 0,
   };
 
   // Asked for one more than the page, so "is there another page" is answered by the rows
@@ -511,10 +519,11 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // is the whole judgement. The expandable row list is a separate, per-item
   // read — this endpoint only says that unread contents exist.
   //
-  // `el.missing_since IS NULL` alongside `el.curation_state = 'pending'`: a
-  // point the source has withdrawn is not "unread" in any sense a reader would
-  // ever notice, since every reader-facing location read already carries
-  // `offeredLocationSql()` — publishing it changes nothing on screen.
+  // `offeredLocationSql()` alongside `el.curation_state = 'pending'`, and both of
+  // its terms carry: a point the source has withdrawn, or one a curator has declared
+  // gone from the world, is not "unread" in any sense a reader would ever notice,
+  // since every reader-facing location read carries the same fragment — publishing
+  // either changes nothing on screen.
   //
   // Treasures need a second table, not a second column on one: a link's own
   // `curation_state` and its treasure's are independent axes (a work is
@@ -560,7 +569,13 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
     LEFT JOIN experience_locations el
-           ON el.experience_id = e.id AND el.curation_state = 'pending' AND el.missing_since IS NULL
+           -- The shared fragment rather than the predicate spelled out, because
+           -- contentsWaitingSql composes it and the two are written to count the same
+           -- rows: spelled out here, this join missed the existence term when the
+           -- fragment gained it, so the badge and the card would have disagreed about
+           -- an object holding one unread point a curator had declared gone.
+           ON el.experience_id = e.id AND el.curation_state = 'pending'
+          AND ${offeredLocationSql('el')}
     LEFT JOIN experience_treasures et ON et.experience_id = e.id
     LEFT JOIN treasures t ON t.id = et.treasure_id
     WHERE ${hidePendingSql()}            -- an unread experience is an arrival, not this
@@ -578,6 +593,77 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
   `, [...params, pageSize, offsets.contents]);
 
+  // A point the source stopped offering, waiting on a verdict (ADR-0026, #541).
+  //
+  // One row per container listing the points inside it, not one row per point: the
+  // queue is a list of objects, and a serial site can lose two components in one
+  // run. The decision stays per point — `POST /locations/:locationId/state` — which
+  // is the shape the gated `contents` card already has.
+  //
+  // The three predicates on `el` are what make the card answerable exactly once.
+  // `missing_since IS NOT NULL` is the run's observation; the two axes are whether
+  // anyone has answered it. A verdict deliberately leaves the flag standing, because
+  // that flag is what keeps the point off every reader-facing read, so without the
+  // axes here an answered point would come back for ever with its own answer
+  // recorded on it.
+  //
+  // `withdrawal_deferred_for_location_id` says a *different* row is waiting to
+  // replace this one. Such a withdrawal has not happened yet — the point is still on
+  // the map with `missing_since IS NULL` — so it cannot reach this query anyway; the
+  // predicate is here for the row that *is* flagged while an arrival still names it,
+  // which the writer produces when the source withdraws the replacement in turn. A
+  // curator asked "did this go?" about a point their readers can still see has no
+  // true answer available.
+  const withdrawn = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+           ${lifecycleSelectSql()}, ${objectContextSelectSql()},
+           'withdrawn' AS kind,
+           -- How much the object still holds, so a departure has a denominator: "a
+           -- part of Berlin Modernism Housing Estates is gone" reads differently at
+           -- one of seven and at the only one there was.
+           (SELECT count(*) FROM experience_locations off
+              WHERE off.experience_id = e.id AND off.missing_since IS NULL)::int
+             AS offered_locations,
+           jsonb_agg(jsonb_build_object(
+             'id', el.id,
+             'name', el.name,
+             'externalRef', el.external_ref,
+             'missingSince', el.missing_since,
+             'latitude', ST_Y(el.location),
+             'longitude', ST_X(el.location),
+             -- Whether anyone had been there. It is what makes the verdict matter
+             -- rather than tidy-up: the visit survives either answer (ADR-0022), and
+             -- the point it is attached to stops being shown.
+             'visited', EXISTS (SELECT 1 FROM user_visited_locations v WHERE v.location_id = el.id)
+           ) ORDER BY el.missing_since DESC, el.id) AS withdrawn_points,
+           NULL::jsonb AS proposed
+    FROM experiences e
+    JOIN experience_categories c ON c.id = e.category_id
+    JOIN experience_locations el
+      ON el.experience_id = e.id
+     AND el.missing_since IS NOT NULL
+     AND el.source_membership = 'present'
+     AND el.existence = 'extant'
+     AND el.withdrawal_deferred_for_location_id IS NULL
+     -- A point nobody ever saw raises no question about its departure, the same
+     -- reasoning ADR-0025 section 3.6 applies to an unread object: the card asks
+     -- whether a place readers could see has gone, and about an arrival the gate
+     -- never released there is no such fact. Reachable — a gated source can offer a
+     -- point and withdraw it before anyone publishes it, and the mark statement
+     -- treats it like any other stored row.
+     AND el.curation_state <> 'pending'
+    WHERE ${hidePendingSql()}
+      AND ${hideRefusedSql()}
+      -- The object's own disappearance is the missing kind's question, and that one
+      -- comes first: what a component of a vanished site did is not answerable while
+      -- the site itself is unaccounted for.
+      AND e.missing_since IS NULL
+      AND ${scopeFilter} ${categoryFilter}
+    GROUP BY e.id, e.external_id, e.name, e.category_id, c.name
+    ORDER BY e.id
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+  `, [...params, pageSize, offsets.withdrawn]);
+
   const pages = {
     missing: paged(missing.rows),
     refused: paged(refused.rows),
@@ -586,6 +672,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     arrivals: paged(arrivals.rows),
     held: paged(held.rows),
     contents: paged(contents.rows),
+    withdrawn: paged(withdrawn.rows),
   };
 
   // The arrays keep their names and their place at the top level — every reader of this
@@ -600,6 +687,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     arrivals: pages.arrivals.items,
     held: pages.held.items,
     contents: pages.contents.items,
+    withdrawn: pages.withdrawn.items,
     limit: Number(limit),
     paging: Object.fromEntries(
       Object.entries(pages).map(([kind, page]) => [

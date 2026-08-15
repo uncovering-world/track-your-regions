@@ -356,6 +356,7 @@ export const reviewQueueQuerySchema = z.object({
   arrivalsOffset: z.coerce.number().int().min(0).default(0),
   heldOffset: z.coerce.number().int().min(0).default(0),
   contentsOffset: z.coerce.number().int().min(0).default(0),
+  withdrawnOffset: z.coerce.number().int().min(0).default(0),
 });
 
 /**
