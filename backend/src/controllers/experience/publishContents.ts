@@ -218,6 +218,13 @@ export async function publishContents(
  */
 export async function placeAfterRelease(
   experienceId: number,
+  // What sent it here, in the log's own words. Two callers now: a publication that
+  // released a deferred withdrawal, and a curator's verdict on a point, which places
+  // whenever it changes what a reader sees. Hardcoding the first made every line this
+  // function logs false for the second — nothing was published and no withdrawal was
+  // released — and a log line that names the wrong cause is worse than a vague one,
+  // because it sends whoever reads it to the wrong code.
+  trigger = 'Publishing experience %d released a withdrawal',
 ): Promise<Array<{ worldViewId: number | null; worldViewName: string | null }>> {
   const failed: number[] = [];
   let worldViews: number[];
@@ -228,8 +235,8 @@ export async function placeAfterRelease(
     // means nothing was placed at all, which is a different sentence from a named
     // world view refusing — and the one case with no world view to name.
     const message = error instanceof Error ? error.message : String(error);
-    console.error('Publishing experience %d released a withdrawal but the world views to place it in could not be listed: %s',
-      experienceId, message);
+    console.error('%s but the world views to place it in could not be listed: %s',
+      trigger.replace('%d', String(experienceId)), message);
     return [{ worldViewId: null, worldViewName: null }];
   }
 
@@ -240,8 +247,8 @@ export async function placeAfterRelease(
       // Constant format string, as everywhere this codebase logs a value: a
       // template literal lets that value forge the shape of a log line.
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Publishing experience %d released a withdrawal but re-placing it in world view %d failed: %s',
-        experienceId, worldViewId, message);
+      console.error('%s but re-placing it in world view %d failed: %s',
+        trigger.replace('%d', String(experienceId)), worldViewId, message);
       failed.push(worldViewId);
     }
   }
@@ -256,8 +263,8 @@ export async function placeAfterRelease(
     // Deliberately swallowed: the ids are already the answer, and failing the
     // whole call over a cosmetic lookup would report a publication that landed
     // as an error.
-    console.error('Publishing experience %d could not name the world views that failed to place: %s',
-      experienceId, error instanceof Error ? error.message : String(error));
+    console.error('%s but the world views that failed to place could not be named: %s',
+      trigger.replace('%d', String(experienceId)), error instanceof Error ? error.message : String(error));
   }
   return failed.map(id => ({ worldViewId: id, worldViewName: names.get(id) ?? null }));
 }

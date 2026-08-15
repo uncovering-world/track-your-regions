@@ -69,7 +69,7 @@ what goes stale when a route is added to the row below (it has already happened 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state` |
 
 A re-match deletes every `region_members` row for a world view and then spends
 20–130s re-resolving them. The endpoint already answers 409 while one is running,
@@ -106,6 +106,21 @@ The ones that remain — `/:id/state`, `/:id/accept-source`, `/:id/decline-sourc
 with nothing after its `client.release()`. `/:id/decline-source` is the plainest of
 them: it writes one small row per field and does not touch the experience at all,
 because the value it refuses had already won every run.
+
+`POST /api/experiences/locations/:locationId/state` — a curator's verdict on one
+point of an object (ADR-0026) — carries `authenticatedLimiter`, and it is worth
+saying why the obvious reading is wrong, because the first draft of this section
+took it. The endpoint looks like `/:id/state`: one locked row, one `UPDATE`, one
+audit row, and an answer that leaves the point where it was is exactly that. An answer
+that **changes what a reader sees** is not, in either direction — and both directions
+are reachable, because **a withdrawn point holds no `auto` region rows**: the run that
+marked it re-placed the experience, and placement takes offered points only
+([ADR-0022](../decisions/0022-locations-are-marked-not-deleted.md)). Measured on the
+live row before this was written: 0 region rows against the offered point's 3. So
+revealing a point has to call `placeAfterRelease` after committing — the same
+post-commit placement `/:id/publish` is limited for — or it puts a pin on the map that
+counts in no region; and hiding one has to call it too, or a region goes on counting a
+place nobody is shown. The criterion decides per branch, again.
 
 `PUT /api/admin/sync/categories/:categoryId/curation-gate` — the switch that holds
 a source's content for review — stays exempt too, and CodeQL flags it, so the

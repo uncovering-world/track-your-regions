@@ -358,7 +358,21 @@ export const reviewQueueQuerySchema = z.object({
   contentsOffset: z.coerce.number().int().min(0).default(0),
 });
 
-export const experienceStateBodySchema = z.object({
+/**
+ * A lifecycle verdict, for an object or for one point inside it.
+ *
+ * One schema for both endpoints because it is one question — delisted, gone, or
+ * never gone — asked about two rows that carry the same two axes in the same words
+ * (ADR-0026). What the two verdicts *do* differs, and that difference lives in the
+ * controllers rather than in the body: on an experience every answer clears
+ * `missing_since`, on a location only the false alarm does, because there the flag
+ * is one of the two terms that keep a point off the map — `former` is held by the
+ * flag, `lost` by its own axis whatever the flag says (ADR-0026 decision 7). So the
+ * false alarm is the only answer that clears the flag, though not the only one that
+ * can reveal a point: taking a `lost` verdict back on a row whose flag is already
+ * clear reveals it too.
+ */
+export const lifecycleStateBodySchema = z.object({
   membership: z.enum(['present', 'former']).optional(),
   existence: z.enum(['extant', 'lost']).optional(),
   note: z.string().max(1000).optional(),

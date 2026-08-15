@@ -601,8 +601,10 @@ describe('a point has verdict columns in both schema homes', () => {
       'location_marked_former', 'location_marked_lost',
       'location_state_restored', 'location_missing_dismissed',
     ]) {
-      expect(schema.match(new RegExp(`'${action}'`, 'g')) ?? [])
-        .toHaveLength(2);
+      // Counted by splitting rather than with a built regex: a non-literal pattern
+      // is what `security/detect-non-literal-regexp` objects to, and a guard about
+      // the schema has no business being the exception.
+      expect(schema.split(`'${action}'`)).toHaveLength(3);
       expect(locationVerdictMigration).toContain(`'${action}'`);
     }
   });

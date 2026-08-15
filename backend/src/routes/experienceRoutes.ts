@@ -27,6 +27,7 @@ import {
   getReviewQueue,
   setExperienceAdmission,
   setExperienceState,
+  setLocationState,
   acceptSourceValue,
   declineSourceValue,
   publishExperience,
@@ -49,7 +50,8 @@ import {
   reviewQueueQuerySchema,
   experienceAdmissionBodySchema,
   newBadgesSeenBodySchema,
-  experienceStateBodySchema,
+  lifecycleStateBodySchema,
+  locationIdParamSchema,
   acceptSourceBodySchema,
   declineSourceBodySchema,
   publishExperienceBodySchema,
@@ -133,7 +135,19 @@ router.post('/new-badges/seen', authenticatedLimiter, requireAuth, validate(newB
 // stopped listing is delisted, destroyed, or was never gone, and whether a
 // value the source proposed should displace a curator's edit.
 router.get('/review/queue', requireAuth, requireCurator, validate(reviewQueueQuerySchema, 'query'), getReviewQueue);
-router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceStateBodySchema), setExperienceState);
+router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(lifecycleStateBodySchema), setExperienceState);
+// The same question about one point inside the object (ADR-0026, #541). Three
+// segments, so it cannot collide with `/:id/state` above.
+//
+// Rate-limited where its object-level twin is not, and on the criterion rather than
+// on resemblance (`docs/tech/rate-limiting.md` § 5): an answer that changes what a
+// reader sees re-places the point, in either direction. A withdrawn point holds no
+// `auto` region rows — the run that marked it re-placed the experience, and placement
+// takes offered points only — so revealing one has to place it, and hiding one has to
+// stop it counting toward a region. Either way the call is `placeAfterRelease` after
+// committing, exactly as a publication releasing a withdrawal does, and it costs the
+// same regardless of who sends it.
+router.post('/locations/:locationId/state', authenticatedLimiter, validate(locationIdParamSchema, 'params'), requireAuth, requireCurator, validate(lifecycleStateBodySchema), setLocationState);
 // Rate-limited for the same reason `/:id/publish` below is, and it is the same
 // branch rather than a similar one: overriding a refusal on a gated arrival
 // publishes its contents through the shared `publishContents`, so it can release
