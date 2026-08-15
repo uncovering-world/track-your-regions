@@ -405,6 +405,9 @@ export function publishOutcomeFor(
   const failedOne = failed?.length === 1 && failed[0].id !== null;
   return `${outcome} Its regions were not recomputed in ${worldViewList(data.placementFailedWorldViews)} — only an admin can `
     + `run a re-assignment, so tell one this object and ${failedOne ? 'that world view' : 'those world views'}; `
-    + 'until then it is placed by the point it no longer has.';
+    // Counted rather than left singular: one publish can release several withdrawals — the
+    // same number this sentence has already printed as "no longer shown" — and placement is
+    // reached only when at least one was, so there is always a number to give.
+    + `until then it is placed by ${plural(data.withdrawalsReleased, 'point')} it no longer has.`;
 }
 
