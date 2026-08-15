@@ -315,11 +315,21 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
     conditions.push(`significance = $${params.length}`);
   }
   // "Significant" means "worth a reviewer's attention", which is not the same as
-  // significance = 'major': created, missing, returned, conflict and failed rows
-  // carry no significance at all, and hiding them would empty the view of
-  // everything a run is actually reporting. Only minor field edits drop out.
+  // significance = 'major': created, missing, returned, conflict, contents and failed
+  // rows carry no significance at all — `changeSet.ts` leaves it null when nothing was
+  // weighed, and a contents row is the clearest case, since what moved was not a field
+  // — and hiding them would empty the view of
+  // everything a run is actually reporting. What drops out is a minor field edit that
+  // moved nothing else.
+  //
+  // A contents delta is not a field edit and `significance` never weighs one
+  // (`changeSet.ts` weighs `changedFields`, `curatedConflicts` and `heldFields`), so
+  // without the third term a row is dropped exactly when a component arrived *beside*
+  // a minor edit — UNESCO 1239 gaining Waldsiedlung Zehlendorf in a run that also
+  // rewrote its `nameLocal` — and that row is the only record anywhere that the
+  // component arrived (ADR-0026).
   if (significantOnly === 'true') {
-    conditions.push(`(significance = 'major' OR change_type <> 'updated')`);
+    conditions.push(`(significance = 'major' OR change_type <> 'updated' OR contents IS NOT NULL)`);
   }
   // Assembled from literal fragments only; every value travels as a parameter.
   const where = conditions.join(' AND ');
@@ -330,13 +340,20 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
   );
 
   const rowsResult = await pool.query(
+    // `contents` travels with the rest: a `contents` row carries no `changed_fields`
+    // at all — every field of the object came through — so without this column the
+    // report would name an object and give no reason it is in the list (ADR-0026).
     `SELECT id, experience_id, external_id, name_snapshot, change_type,
-            changed_fields, significance, error
+            changed_fields, contents, significance, error
      FROM experience_sync_changes
      WHERE ${where}
      ORDER BY CASE
                 WHEN significance = 'major' THEN 0
                 WHEN change_type <> 'updated' THEN 1
+                -- Beside the other kinds a reviewer came for, not with the routine
+                -- edits: a contents delta is the row's news, and under
+                -- significantOnly it is the only reason the row is in the list at all.
+                WHEN contents IS NOT NULL THEN 1
                 ELSE 2
               END, change_type, external_id
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,

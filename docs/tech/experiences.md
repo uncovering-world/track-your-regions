@@ -271,11 +271,12 @@ Every run records what it did to each object in `experience_sync_changes`: one r
 object created, changed, in conflict, held, missing, returned, failed, or filtered, with a
 per-field diff in `changed_fields`. Rows that came through **unchanged are counted on the log, never stored** —
 a UNESCO run would otherwise write 1247 rows of noise around the few dozen that carry
-information. Three kinds of unchanged row are stored anyway, because each carries news the
+information. Four kinds of unchanged row are stored anyway, because each carries news the
 counters cannot: `conflict`, where `curated_fields` refused the source's edit and the two now
-disagree; `held`, where the category's gate refused it (below); and `returned`, where an object
+disagree; `held`, where the category's gate refused it (below); `returned`, where an object
 flagged `missing_since` is listed again — typically unmodified, after a transient source gap,
-which is precisely when a field-change requirement would have hidden it.
+which is precisely when a field-change requirement would have hidden it; and one whose own fields
+all came through while **what it holds** moved (next section).
 
 `changed_fields` holds the value the source proposed for a field **even when the run refused to
 write it**, and each entry says which of the two refusals it was: `curatedConflict` for a field a
@@ -285,6 +286,54 @@ source" for the first, publishing for the second — and without it the proposed
 nowhere. The two are never both true of one field: they are answered by different endpoints, so a
 field carrying both would raise two contradictory cards over one value, and where both apply the
 claim wins as the narrower and separately answerable reason.
+
+### What a run did to an object's contents ([ADR-0026](../decisions/0026-a-run-records-what-a-container-holds.md))
+
+An experience is a container: it has fields of its own, and it holds **contents** of two kinds —
+points (`experience_locations`) and works (`experience_treasures`). `changed_fields` covers the
+fields; `contents` covers the rest, keyed by kind:
+
+```json
+{"locations": {"added": [{"name": "Waldsiedlung Zehlendorf", "ref": "1239-006"}],
+               "withdrawn": [], "returned": []},
+ "treasures": {"added": [{"name": "The Night Watch", "ref": "Q219831"}],
+               "withdrawn": [], "returned": []}}
+```
+
+Keyed rather than a column per kind, so a third kind of contents costs no migration. A kind the run
+did nothing to is **absent**, and a run that moved nothing writes SQL `NULL` — not `{}`, and not a
+jsonb `null`, either of which would read as "asked and found nothing".
+
+Items are **named, never identified by id**: the record has to stay legible after the row it names
+is renamed, the same reason each row keeps `name_snapshot`. Both halves are nullable, because most
+UNESCO components carry a reference and no name of their own.
+
+Where the numbers come from: `writeExperienceLocations` and `upsertMuseumTreasures` each already
+computed their delta and discarded it — the location writer returned ids for region placement, the
+museum writer reduced its `RETURNING treasure_id` to a boolean for retiring a curator's pass. Both
+now return it, read off the same statements that perform the writes, so the record and the write
+cannot disagree.
+
+Three things it deliberately does not say:
+
+- **A held withdrawal is absent.** Where the gate is holding a withdrawal until its replacement is
+  published, the point is still on the map with `missing_since IS NULL`; the run performed no
+  withdrawal, and reporting one would tell a curator the opposite of what a reader sees. Same rule
+  `unoffered` follows.
+- **A withdrawn work never appears.** Nothing unlinks a work, because no contents coverage floor
+  exists for treasures — sync run 42 fetched 291 artworks where the run before it fetched 1906 and
+  reported `success`. A museum row with no `withdrawn` entries is therefore *not* evidence that
+  nothing left.
+- **`NULL` is not "nothing moved".** Every row written before the column existed carries `NULL`,
+  and nothing can be backfilled: `experience_locations.created_at` was overwritten wholesale on
+  2026-08-04 by the delete-and-reinsert this code has since removed (6548 of 6680 rows).
+
+A single-point venue reports a moved point as a withdrawal plus an arrival, because identity is the
+point together with the source's reference ([ADR-0022](../decisions/0022-locations-are-marked-not-deleted.md)).
+That is worth recording even where the object's own `lon`/`lat` diff says the same thing: the row
+was replaced, and a reader's tick did not follow it. It is not a churn risk — one point has been
+withdrawn in the catalogue's whole history, and the writer's exact-geometry fast path matches 1235
+of 1272 UNESCO rows per run.
 
 **A gated source may not overwrite what a reader can already see.** Contents arriving from a gated
 source are written invisible rather than withheld ([ADR-0025](../decisions/0025-per-source-curation-gate.md)),
@@ -331,8 +380,10 @@ claimed the field, so the stored value won on purpose and nothing is waiting, wh
 waiting on a verdict nobody has given (#519). A row carrying both is `held`, because the held half
 is the part still unanswered. Counted as `unchanged`, exactly as a `conflict` row is — there is no
 per-run held counter yet (#523), and the changeset rows are the record; the run report's default
-view keeps them regardless of significance, since it drops only minor rows of type `updated`, which
-is a denylist naming one type rather than a list of the types worth showing.
+view keeps them regardless of significance, since what it drops is a minor `updated` row that moved
+nothing else — a denylist naming one case rather than a list of the cases worth showing. A row whose
+*contents* moved stays even when its only field edit was minor, because `significance` weighs fields
+alone and that row is the only record anywhere that a component arrived.
 
 The same reasoning holds against `returned`: a row can come back from missing while a hold from
 this very run is still sitting on it, and the hold is again the half nobody has answered.

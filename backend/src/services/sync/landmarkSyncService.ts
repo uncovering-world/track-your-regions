@@ -7,7 +7,7 @@
  */
 
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
-import type { SyncProgress, WikidataLandmark, ErrorDetail } from './types.js';
+import type { SyncProgress, WikidataLandmark, ErrorDetail, ContentsByKind } from './types.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import {
@@ -201,11 +201,17 @@ async function upsertLandmarkExperience(
     metadata,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 
+  let contents: ContentsByKind | undefined;
   if (!context.dryRun) {
     const written = await upsertSingleLocation(experienceId, landmark.qid, landmark.lon, landmark.lat);
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
+    // One point per landmark, so this reports a source that moved it — a
+    // withdrawal and an arrival, since identity is the point itself (ADR-0022).
+    // Worth recording even where the object's own `lon`/`lat` diff says the same:
+    // the row was replaced, and a reader's tick did not follow it.
+    contents = { locations: written.delta };
   }
 
   return {
@@ -216,6 +222,7 @@ async function upsertLandmarkExperience(
     nameSnapshot,
     changeSet,
     returnedFromMissing,
+    contents,
   };
 }
 

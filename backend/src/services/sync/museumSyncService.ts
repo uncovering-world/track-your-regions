@@ -104,7 +104,7 @@ async function upsertMuseumExperience(
   museum: CollectedMuseum,
   context: SyncRunContext,
 ): Promise<{ experienceId: number; changeSet: ChangeSetResult; nameSnapshot: string;
-             returnedFromMissing: boolean }> {
+             returnedFromMissing: boolean; locations?: ContentsDelta }> {
   const details = museum.details!;
 
   // Total sitelinks across all artworks as a ranking metric
@@ -140,6 +140,10 @@ async function upsertMuseumExperience(
     metadata,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 
+  // Undefined on a preview, which writes no point and so has none to report — as
+  // against an empty delta, which says the question was asked (ADR-0026).
+  let locations: ContentsDelta | undefined;
+
   if (!context.dryRun) {
     // Every museum admitted here holds a work above the iconic threshold, so the flag is a
     // property of belonging to this category rather than a field the source proposes — which is
@@ -164,9 +168,10 @@ async function upsertMuseumExperience(
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
+    locations = written.delta;
   }
 
-  return { experienceId, changeSet, nameSnapshot, returnedFromMissing };
+  return { experienceId, changeSet, nameSnapshot, returnedFromMissing, locations };
 }
 
 /**
@@ -280,12 +285,13 @@ async function processMuseum(
   _progress: SyncProgress,
   context: SyncRunContext,
 ): Promise<ProcessItemResult> {
-  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } =
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing, locations } =
     await upsertMuseumExperience(museum, context);
 
   // Treasures hang off a row a preview never wrote.
+  let treasures: ContentsDelta | undefined;
   if (!context.dryRun) {
-    await upsertMuseumTreasures(experienceId, museum.artworks);
+    treasures = await upsertMuseumTreasures(experienceId, museum.artworks);
   }
 
   return {
@@ -296,6 +302,10 @@ async function processMuseum(
     nameSnapshot,
     changeSet,
     returnedFromMissing,
+    // Both kinds a museum holds, from the two writers that touched them. The
+    // recorder drops whichever did nothing, so a venue that only gained a
+    // painting carries no points key at all.
+    contents: { locations, treasures },
   };
 }
 

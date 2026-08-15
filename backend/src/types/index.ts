@@ -334,9 +334,9 @@ export const startSyncBodySchema = z.object({
 });
 
 /**
- * The queue's seven kinds page independently, which is why there are seven offsets.
+ * The queue's eight kinds page independently, which is why there are eight offsets.
  *
- * One shared offset was the defect: the kinds are seven separate queries with seven
+ * One shared offset was the defect: the kinds are eight separate queries with eight
  * separate LIMITs, so "next" moved all of them at once and a kind whose page was full had
  * a page 2 no control could ask for. Nothing was unreachable while the largest kind held 19
  * against a limit of 25 — but the first gated round is measured at 139 cards, and at that
@@ -510,7 +510,7 @@ export const publishExperienceBodySchema = z.object({
 );
 
 export const syncChangesQuerySchema = z.object({
-  type: z.enum(['created', 'updated', 'conflict', 'held', 'missing', 'returned', 'failed', 'filtered']).optional(),
+  type: z.enum(['created', 'updated', 'conflict', 'held', 'contents', 'missing', 'returned', 'failed', 'filtered']).optional(),
   significance: z.enum(['major', 'minor']).optional(),
   // Not z.coerce.boolean(): that is Boolean(input), so 'false' would enable it
   significantOnly: z.enum(['true', 'false']).optional(),

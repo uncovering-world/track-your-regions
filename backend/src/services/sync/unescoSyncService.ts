@@ -20,6 +20,7 @@ import type {
   UnescoApiResponse,
   ProcessedExperience,
   ParsedLocation,
+  ContentsByKind,
 } from './types.js';
 
 const UNESCO_CATEGORY_ID = 1; // Seeded in migration
@@ -371,11 +372,16 @@ async function upsertExperience(
 
   // A preview writes nothing downstream either: locations would belong to a row
   // that was never touched.
+  let contents: ContentsByKind | undefined;
   if (!context.dryRun) {
     const written = await upsertExperienceLocations(experienceId, exp);
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
+    // The serial sites are here — 485 objects hold more than one point, and a
+    // component arriving or leaving is often the only thing a run changed about
+    // one of them (ADR-0026).
+    contents = { locations: written.delta };
   }
 
   return {
@@ -386,6 +392,7 @@ async function upsertExperience(
     nameSnapshot,
     changeSet,
     returnedFromMissing,
+    contents,
   };
 }
 

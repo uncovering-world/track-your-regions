@@ -166,6 +166,9 @@ export async function flagMissingExperiences(
     nameSnapshot: row.name,
     changeType: 'missing' as const,
     changedFields: null,
+    // The object itself went missing, so what it holds is not the news and was
+    // never compared: this pass reads the ids a run saw, not any contents.
+    contents: null,
     significance: null,
     error: null,
   }));

@@ -1923,7 +1923,7 @@ CREATE TABLE IF NOT EXISTS experience_sync_changes (
     experience_id  INTEGER REFERENCES experiences(id) ON DELETE SET NULL,
     external_id    VARCHAR(255) NOT NULL,
     name_snapshot  VARCHAR(500),
-    change_type    VARCHAR(20) NOT NULL CHECK (change_type IN ('created', 'updated', 'conflict', 'held', 'missing', 'returned', 'failed', 'filtered')),
+    change_type    VARCHAR(20) NOT NULL CHECK (change_type IN ('created', 'updated', 'conflict', 'held', 'contents', 'missing', 'returned', 'failed', 'filtered')),
     changed_fields JSONB,
     contents       JSONB,
     significance   VARCHAR(10) CHECK (significance IN ('major', 'minor')),
@@ -1948,7 +1948,7 @@ COMMENT ON COLUMN experience_sync_changes.changed_fields IS 'Array of {field, ol
 -- leave an older database rejecting the newer change types.
 ALTER TABLE experience_sync_changes DROP CONSTRAINT IF EXISTS experience_sync_changes_change_type_check;
 ALTER TABLE experience_sync_changes ADD CONSTRAINT experience_sync_changes_change_type_check
-    CHECK (change_type IN ('created', 'updated', 'conflict', 'held', 'missing', 'returned', 'failed', 'filtered'));
+    CHECK (change_type IN ('created', 'updated', 'conflict', 'held', 'contents', 'missing', 'returned', 'failed', 'filtered'));
 
 CREATE INDEX IF NOT EXISTS idx_sync_changes_log ON experience_sync_changes(sync_log_id);
 CREATE INDEX IF NOT EXISTS idx_sync_changes_exp ON experience_sync_changes(experience_id);

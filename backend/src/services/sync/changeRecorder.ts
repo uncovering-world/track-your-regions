@@ -9,6 +9,7 @@
 
 import { pool } from '../../db/index.js';
 import type { FieldChange, FieldSignificance } from './changeSet.js';
+import type { ContentsByKind } from './types.js';
 
 export interface ChangeRecord {
   syncLogId: number;
@@ -23,9 +24,22 @@ export interface ChangeRecord {
    * out of a row a reader can already see — nobody has looked yet, and a verdict
    * is waiting (#519). Reporting a held row as `updated` told a curator the
    * proposal was already live.
+   *
+   * `contents` is the third word for an untouched row, and it is about the object
+   * rather than about a refusal: every field came through and what the object
+   * *holds* moved (ADR-0026). It exists because the alternative was the value
+   * `conflict`, which would have reported a disagreement with a curator that never
+   * happened — and the admin report's `?type=conflict` filter would have handed it
+   * back as one.
    */
-  changeType: 'created' | 'updated' | 'conflict' | 'held' | 'missing' | 'returned' | 'failed' | 'filtered';
+  changeType: 'created' | 'updated' | 'conflict' | 'held' | 'contents' | 'missing' | 'returned' | 'failed' | 'filtered';
   changedFields: FieldChange[] | null;
+  /**
+   * What the run did to the object's contents, by kind, or `null` where it moved
+   * none (ADR-0026). Independent of `changedFields`: a run can rewrite a
+   * description and drop a point in the same pass.
+   */
+  contents: ContentsByKind | null;
   significance: FieldSignificance | null;
   error: string | null;
 }
@@ -33,10 +47,10 @@ export interface ChangeRecord {
 /** `experience_sync_changes.name_snapshot` is VARCHAR(500). */
 const NAME_SNAPSHOT_LIMIT = 500;
 
-/** Postgres caps a statement at 65535 parameters; 500 rows × 8 stays far below. */
+/** Postgres caps a statement at 65535 parameters; 500 rows × 9 stays far below. */
 export const CHANGE_INSERT_BATCH_SIZE = 500;
 
-const COLUMNS_PER_ROW = 8;
+const COLUMNS_PER_ROW = 9;
 
 async function insertBatch(batch: ChangeRecord[]): Promise<void> {
   const values: unknown[] = [];
@@ -49,15 +63,19 @@ async function insertBatch(batch: ChangeRecord[]): Promise<void> {
       record.nameSnapshot?.slice(0, NAME_SNAPSHOT_LIMIT) ?? null,
       record.changeType,
       record.changedFields ? JSON.stringify(record.changedFields) : null,
+      // `null` rather than `JSON.stringify(null)`, which is the string 'null' and
+      // which `::jsonb` stores as a jsonb null — a value `IS NULL` does not find
+      // and a reader cannot tell from a recorded delta.
+      record.contents ? JSON.stringify(record.contents) : null,
       record.significance,
       record.error,
     );
-    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}::jsonb, $${base + 7}, $${base + 8})`;
+    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}::jsonb, $${base + 7}::jsonb, $${base + 8}, $${base + 9})`;
   });
 
   await pool.query(
     `INSERT INTO experience_sync_changes
-       (sync_log_id, experience_id, external_id, name_snapshot, change_type, changed_fields, significance, error)
+       (sync_log_id, experience_id, external_id, name_snapshot, change_type, changed_fields, contents, significance, error)
      VALUES ${tuples.join(', ')}`,
     values
   );

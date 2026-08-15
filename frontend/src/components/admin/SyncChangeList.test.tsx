@@ -14,7 +14,7 @@ vi.mock('../../api/admin', () => ({
 }));
 
 import { getSyncLogChanges } from '../../api/admin';
-import { SyncChangeList } from './SyncChangeList';
+import { SyncChangeList, contentsLines } from './SyncChangeList';
 
 const mockedGet = getSyncLogChanges as unknown as ReturnType<typeof vi.fn>;
 
@@ -27,6 +27,7 @@ const MAJOR_CHANGE = {
   changed_fields: [
     { field: 'metadata.inDanger', old: false, new: true, significance: 'major' as const, curatedConflict: false },
   ],
+  contents: null,
   significance: 'major' as const,
   error: null,
 };
@@ -227,6 +228,56 @@ describe('SyncChangeList', () => {
     const reason = await screen.findByText(/a collection rather than a museum/i);
     // MUI maps color="error" to this class; a filter working is not a failure
     expect(reason.className).not.toMatch(/colorError/);
+  });
+
+  it('names what a contents row gained, since it has no field rows at all', async () => {
+    // Every field of the object came through, so `changed_fields` is empty and the
+    // row would otherwise be a name and a chip. Which component arrived is the thing
+    // the column exists to keep (ADR-0026).
+    mockedGet.mockResolvedValue({
+      changes: [{
+        ...MAJOR_CHANGE,
+        change_type: 'contents' as const,
+        changed_fields: [],
+        significance: null,
+        contents: {
+          locations: {
+            added: [{ name: 'Waldsiedlung Zehlendorf', ref: '1239-006' }],
+            withdrawn: [{ name: null, ref: 'Q127064' }],
+            returned: [],
+          },
+        },
+      }],
+      total: 1, limit: 50, offset: 0,
+    });
+    renderList();
+
+    // The nameless one falls back to its reference, which is what most components
+    // carry — and a line reading "lost" with nothing after it says less than nothing.
+    expect(await screen.findByText(/places: gained Waldsiedlung Zehlendorf; lost Q127064/))
+      .toBeInTheDocument();
+  });
+
+  it('names each kind of contents and gives a return its own word', () => {
+    // Direct rather than through a render, which is why the function is exported: the
+    // integration case above drives `locations` only, and `treasures` is the kind whose
+    // whole observable output is `gained` — the museum path documents `withdrawn` and
+    // `returned` as unreachable for works until a coverage floor exists, so nothing
+    // else in this suite would ever ask `kindName` for that key. Dropping it renders
+    // the raw `treasures:` and still looks like a line.
+    const lines = contentsLines({
+      locations: {
+        added: [], withdrawn: [], returned: [{ name: 'Hansaviertel', ref: 'Q1568081' }],
+      },
+      treasures: {
+        added: [{ name: 'Las Meninas', ref: 'Q166257' }], withdrawn: [], returned: [],
+      },
+    });
+
+    // `offered again` and not `gained`: the row and the visit hanging off it are the
+    // ones from before (ADR-0022), which is the distinction the word carries.
+    expect(lines).toContain('places: offered again: Hansaviertel');
+    expect(lines).toContain('works: gained Las Meninas');
   });
 
   it('says the filter emptied the list, not that the run recorded nothing', async () => {
