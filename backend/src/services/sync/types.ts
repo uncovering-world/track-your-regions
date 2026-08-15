@@ -208,3 +208,34 @@ export interface ErrorDetail {
   error?: string;
   [key: string]: unknown;
 }
+
+/**
+ * One thing an experience holds, as the record names it (ADR-0026 decision 4).
+ *
+ * Never a database id: the record has to stay legible after the row it names is
+ * renamed, which is the same reason the changeset keeps `name_snapshot` per
+ * object. Both halves are nullable because both are nullable in the tables —
+ * most UNESCO components carry a reference and no name of their own.
+ */
+export interface ContentItem {
+  name: string | null;
+  ref: string | null;
+}
+
+/**
+ * What a run did to one kind of contents of one experience.
+ *
+ * `returned` is separate from `added` because the row, its id, and the visit
+ * record on it are the same ones as before (ADR-0022) — reported as an arrival
+ * it would read as a component the object never had.
+ *
+ * A writer reports only what it actually performed. A withdrawal the gate is
+ * holding until its replacement is published is absent: the point is still on
+ * the map, and saying it had gone would be telling a curator the opposite of
+ * what a reader sees.
+ */
+export interface ContentsDelta {
+  added: ContentItem[];
+  withdrawn: ContentItem[];
+  returned: ContentItem[];
+}

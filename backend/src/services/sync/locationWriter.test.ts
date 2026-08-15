@@ -82,7 +82,12 @@ describe('writeExperienceLocations', () => {
     // No transaction at all: the common case must not cost writes, or the
     // churn this exists to remove returns in another form.
     expect(mockedConnect).not.toHaveBeenCalled();
-    expect(result).toEqual({ unchanged: [7, 8], needsAssignment: [], unoffered: 0 });
+    expect(result).toEqual({
+      unchanged: [7, 8],
+      needsAssignment: [],
+      unoffered: 0,
+      delta: { added: [], withdrawn: [], returned: [] },
+    });
   });
 
   it('deletes no location at all, whether or not the source still offers it', async () => {
@@ -676,5 +681,111 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
     // arrival's job here and not the held row's.
     expect(result.unoffered).toBe(0);
     expect(result.needsAssignment).toEqual([12]);
+  });
+});
+
+/**
+ * What the run did to the object's set of points, named rather than counted, so
+ * the changeset can record it and a curator can be shown it (ADR-0026).
+ *
+ * Names and references, never ids: the record has to stay legible after the row
+ * it names has been renamed, which is the same reason the changeset keeps
+ * `name_snapshot` per object.
+ */
+describe('writeExperienceLocations — the delta it reports', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedConnect.mockReset();
+  });
+
+  it('reports nothing when the stored rows already say exactly this', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '2', matched: '2', ids: [7, 8] }] });
+
+    const result = await writeExperienceLocations(1, [A, B]);
+
+    expect(result.delta).toEqual({ added: [], withdrawn: [], returned: [] });
+  });
+
+  it('names both the point it added and the point it withdrew', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '2', matched: '1', ids: [7, 8] }] });
+    const { client } = fakeClient([
+      [INSERT, { rows: [{ id: 12, curation_state: 'auto', name: 'B', external_ref: 'r2' }] }],
+      [MARK, { rows: [{ id: 7, name: 'A', external_ref: 'r1' }], rowCount: 1 }],
+    ]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [B]);
+
+    expect(result.delta.added).toEqual([{ name: 'B', ref: 'r2' }]);
+    expect(result.delta.withdrawn).toEqual([{ name: 'A', ref: 'r1' }]);
+  });
+
+  it('reports a point the source offers again as returned, not as added', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '0', matched: '0', ids: null }] });
+    const { client } = fakeClient([
+      [RESURRECT, { rows: [{ id: 7, name: 'A', external_ref: 'r1' }] }],
+    ]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [A]);
+
+    // The same row, the same id, the same visit record on it. Reported as an
+    // arrival it would read as a component the object never had.
+    expect(result.delta.returned).toEqual([{ name: 'A', ref: 'r1' }]);
+    expect(result.delta.added).toEqual([]);
+  });
+
+  it('reads a moved point as one withdrawal and one arrival', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const moved = { name: 'A', externalRef: 'r1', lon: 10.5, lat: 20.5 };
+    const { client } = fakeClient([
+      [INSERT, { rows: [{ id: 12, curation_state: 'auto', name: 'A', external_ref: 'r1' }] }],
+      [MARK, { rows: [{ id: 7, name: 'A', external_ref: 'r1' }], rowCount: 1 }],
+    ]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [moved]);
+
+    // Identity is the point together with the source's reference (ADR-0022), so
+    // a corrected coordinate is not one row changing — it is a row leaving and
+    // another arriving, and the delta says exactly that rather than inventing a
+    // "moved" the writer never performed.
+    expect(result.delta.added).toEqual([{ name: 'A', ref: 'r1' }]);
+    expect(result.delta.withdrawn).toEqual([{ name: 'A', ref: 'r1' }]);
+  });
+
+  it('does not report a held withdrawal, because the run did not perform one', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client } = fakeClient([
+      [INSERT, { rows: [{ id: 12, curation_state: 'pending', name: 'B', external_ref: 'r2' }] }],
+      [HOLD, { rowCount: 1 }],
+      [MARK, { rows: [], rowCount: 0 }],
+    ]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [B]);
+
+    // The held point is still on the map and still `missing_since IS NULL`: the
+    // run wrote nothing about its departure, and a delta claiming otherwise
+    // would tell a curator a point had gone while a reader can still see it.
+    expect(result.delta.withdrawn).toEqual([]);
+    expect(result.delta.added).toEqual([{ name: 'B', ref: 'r2' }]);
+  });
+
+  it('carries a nameless point by its reference alone', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '0', matched: '0', ids: null }] });
+    const { client } = fakeClient([
+      [INSERT, { rows: [{ id: 12, curation_state: 'auto', name: null, external_ref: 'r9' }] }],
+    ]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [
+      { name: null, externalRef: 'r9', lon: 1, lat: 2 },
+    ]);
+
+    // Both halves are nullable in the table, and most UNESCO components carry a
+    // reference and no name of their own. Dropping such an entry would make the
+    // delta silently disagree with what the writer did.
+    expect(result.delta.added).toEqual([{ name: null, ref: 'r9' }]);
   });
 });
