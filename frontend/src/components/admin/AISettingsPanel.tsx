@@ -29,6 +29,7 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { plural } from '../../utils/plural';
 import {
   getAISettings,
   updateAISetting,
@@ -143,7 +144,7 @@ export function AISettingsPanel() {
     mutationFn: updatePricing,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
-      setSnackbar({ open: true, message: `Pricing reloaded: ${data.reloaded} model${data.reloaded === 1 ? '' : 's'}`, severity: 'success' });
+      setSnackbar({ open: true, message: `Pricing reloaded: ${plural(data.reloaded, 'model')}`, severity: 'success' });
     },
     onError: (err: Error) => {
       setSnackbar({ open: true, message: `Failed to update pricing: ${err.message}`, severity: 'error' });

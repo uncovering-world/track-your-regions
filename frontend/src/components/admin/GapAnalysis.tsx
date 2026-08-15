@@ -27,6 +27,7 @@ import { searchRegions } from '../../api/regions';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
+import { plural } from '../../utils/plural';
 
 // Inlined here instead of importing from ImportTreeDialogs — that module
 // re-imports GapDivisionTree + GapContextMap from this file, so sharing the
@@ -654,7 +655,7 @@ export function GapDivisionTree({ gapDivisions, parentRegionId: _parentRegionId,
   return (
     <>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        {gapDivisions.length} gap division{gapDivisions.length === 1 ? '' : 's'}.
+        {plural(gapDivisions.length, 'gap division')}.
         Assigning a parent also handles its children.
       </Typography>
       {roots.map(gap => renderGapRow(gap, 0))}
