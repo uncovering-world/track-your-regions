@@ -162,3 +162,67 @@ describe('new works retire the pass that covered the museum', () => {
     expect(mockedRetire).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * The same `RETURNING` clause, read as news rather than as a trigger.
+ *
+ * It already knows which works the museum gained; until now it reduced them to a
+ * boolean and the names went nowhere, so a run that hung a new Rembrandt in the
+ * Rijksmuseum recorded nothing about it (ADR-0026).
+ */
+describe('the works delta a museum run reports', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedRetire.mockReset();
+  });
+
+  it('names the work the museum gained', async () => {
+    scriptWorks('new');
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    expect(delta.added).toEqual([{ name: 'Mona Lisa', ref: 'Q12418' }]);
+  });
+
+  it('names only the works that actually arrived', async () => {
+    scriptWorks('new', 'already linked', 'new');
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [
+      artwork(),
+      artwork({ externalId: 'Q45585', name: 'The Night Watch' }),
+      artwork({ externalId: 'Q19911', name: 'The Starry Night' }),
+    ]);
+
+    // A run that re-lists what is already on show adds nothing to the record,
+    // the same distinction the retirement above turns on.
+    expect(delta.added).toEqual([
+      { name: 'Mona Lisa', ref: 'Q12418' },
+      { name: 'The Starry Night', ref: 'Q19911' },
+    ]);
+  });
+
+  it('reports nothing when every work was already on show', async () => {
+    scriptWorks('already linked', 'already linked');
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [
+      artwork(),
+      artwork({ externalId: 'Q45585' }),
+    ]);
+
+    expect(delta).toEqual({ added: [], withdrawn: [], returned: [] });
+  });
+
+  it('never reports a withdrawn work, because nothing unlinks one yet', async () => {
+    scriptWorks('new');
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    // ADR-0026 decision 5: the shape admits a withdrawal and this path must not
+    // produce one until a contents coverage floor exists. Run 42 returned 291
+    // artworks where the run before it returned 1906 and reported success — with
+    // unlinking in place that run would have taken two thirds of the catalogue's
+    // works off the walls.
+    expect(delta.withdrawn).toEqual([]);
+    expect(delta.returned).toEqual([]);
+  });
+});
