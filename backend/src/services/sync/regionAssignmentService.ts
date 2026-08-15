@@ -81,7 +81,11 @@ async function assignDirect(
     CROSS JOIN regions r
     WHERE r.world_view_id = $1
       AND r.geom IS NOT NULL
-      AND el.missing_since IS NULL
+      -- The controllers' offeredLocationSql fragment, repeated as a literal for the reason
+      -- given there. Both terms: a point a curator declared gone from the world must
+      -- contribute no region membership either, or a region would count a place
+      -- nobody is shown (ADR-0026).
+      AND el.missing_since IS NULL AND el.existence <> 'lost'
       AND r.geom && el.location
       AND ST_Contains(r.geom, el.location)
       ${categoryId ? 'AND e.category_id = $2' : ''}
@@ -354,7 +358,8 @@ export async function assignRegionsForExperiences(
       CROSS JOIN regions r
       WHERE r.world_view_id = $1 AND r.geom IS NOT NULL
         AND el.experience_id = ANY($2::int[])
-        AND el.missing_since IS NULL
+        -- The same fragment again, same reason as above.
+        AND el.missing_since IS NULL AND el.existence <> 'lost'
         AND r.geom && el.location AND ST_Contains(r.geom, el.location)
       ON CONFLICT (location_id, region_id) DO NOTHING
     `, params);

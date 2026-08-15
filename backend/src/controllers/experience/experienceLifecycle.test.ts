@@ -30,6 +30,23 @@ describe('offeredLocationSql', () => {
   it('comes bare, like its neighbour, since callers append it either way', () => {
     expect(offeredLocationSql().trimStart()).not.toMatch(/^AND/);
   });
+
+  it('hides a point a curator declared gone from the world, whatever the source now lists', () => {
+    // Without this the run's `returned` arm — which clears `missing_since` when the
+    // source offers the point again — would put a demolished component back on the
+    // map. Not hypothetical: the flapping point of #543 is the catalogue's only
+    // withdrawal, and it left and came back.
+    expect(offeredLocationSql()).toContain("el.existence <> 'lost'");
+    expect(offeredLocationSql('loc')).toContain("loc.existence <> 'lost'");
+  });
+
+  it('does not hide a point on the membership axis, only the world one', () => {
+    // `former` says the source stopped listing it, and a curator's reading of a list
+    // must not remove a place that is still standing — what keeps such a point off the
+    // map is its `missing_since`, which the verdict leaves standing. Same split an
+    // experience has: `hideLostSql` exists, and there is no `hideFormerSql`.
+    expect(offeredLocationSql()).not.toContain('source_membership');
+  });
 });
 
 describe('hideLostSql', () => {

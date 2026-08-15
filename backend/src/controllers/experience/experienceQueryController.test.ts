@@ -367,7 +367,13 @@ describe('lifecycle visibility across the read paths', () => {
       makeRes() as never);
 
     const all = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
-    expect(all).not.toContain("existence <> 'lost'");
+    // Anchored on the experience alias, because a *point's* own `existence` is
+    // filtered here whatever the reader asked: "show what is gone" is an affordance
+    // about objects, and a component a curator declared gone is never put back on the
+    // map — `offeredLocationSql` carries `el.existence <> 'lost'` beside the
+    // withdrawal flag (ADR-0026). Unanchored, this would read that as the reader's
+    // request being ignored.
+    expect(all).not.toContain("e.existence <> 'lost'");
   });
 
   it('says how many it is holding back, so the page can offer to show them', async () => {

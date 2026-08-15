@@ -405,11 +405,15 @@ export async function publishUnderLock(
 
     // Placement runs here and nowhere else in this endpoint, and only for a
     // publish that released a withdrawal. Every other one changes nothing about
-    // where the object is, and not by oversight: placement's insert predicate is
-    // `el.missing_since IS NULL` and nothing else — it filters neither
-    // `curation_state` nor `admission` nor `existence` — so a `pending` location
-    // was already placed by the run that wrote it, and flipping it to `verified`
-    // moves no geometry, no point and no membership. Publishing a held content
+    // where the object is, and not by oversight: placement's insert predicate is the
+    // `offeredLocationSql` pair — `el.missing_since IS NULL AND el.existence <>
+    // 'lost'` — and nothing else, so it filters neither `curation_state` nor
+    // `admission`, and a `pending` location was already placed by the run that wrote
+    // it. Flipping it to `verified` moves no geometry, no point and no membership. The
+    // `existence` term joined the predicate with the location verdicts (ADR-0026) and
+    // changes nothing here, because publishing touches `curation_state` alone; what it
+    // does change is that a curator's verdict on a point is itself a placement event,
+    // which is why `POST /locations/:locationId/state` places and this does not. Publishing a held content
     // field cannot move it either: placement reads
     // `experience_locations.location`, never `experiences.location`, and no
     // trigger connects the two.

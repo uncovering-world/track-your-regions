@@ -328,7 +328,13 @@ describe('publishing an arrival', () => {
     // run that offers it again, which clears `missing_since` and leaves
     // `curation_state` alone: the coordinate then appears on the map marked as
     // one a curator passed, having been on no card at any point.
-    expect(only(queries, 'UPDATE experience_locations SET curation_state').sql).toContain('missing_since IS NULL');
+    // Both terms of `offeredLocationSql`, because one of them is satisfied by the
+    // bare predicate this used to carry: asserting `missing_since IS NULL` alone stays
+    // green if the existence term is reverted, and the invariant this test names — the
+    // same predicate the `contents` card carries — would silently stop holding.
+    const publishSql = only(queries, 'UPDATE experience_locations SET curation_state').sql;
+    expect(publishSql).toContain('missing_since IS NULL');
+    expect(publishSql).toContain("existence <> 'lost'");
   });
 });
 
@@ -981,8 +987,9 @@ describe('publishing does not re-place the object', () => {
 
     await publish({}, client);
 
-    // Placement's insert predicate is `el.missing_since IS NULL` and nothing
-    // else, so a `pending` location was already placed by the run that wrote it
+    // Placement's insert predicate is the `offeredLocationSql` pair — the withdrawal
+    // flag and the `lost` verdict — and nothing else, so a `pending` location was
+    // already placed by the run that wrote it
     // and flipping it to `verified` moves nothing. This guards an addition
     // rather than a deletion: "publish places" reads as the obvious symmetry,
     // and doing it would delete and reinsert region rows across every world view
@@ -1100,7 +1107,7 @@ describe('publishing releases the withdrawal that was waiting on it', () => {
     const res = await publish({}, client);
 
     // The one publish that genuinely moves geometry. Placement's insert carries
-    // `el.missing_since IS NULL` while its clear does not, so the released
+    // the `offeredLocationSql` pair while its clear does not, so the released
     // point's region rows have to go — and only a full re-place can recompute
     // the experience-level union they fed.
     expect(mockedPlace).toHaveBeenCalledWith([5], 1);
@@ -1271,7 +1278,11 @@ describe('publishing releases the withdrawal that was waiting on it', () => {
     // A point published while withdrawn reappears on the map already `verified`
     // the next time a run offers it, having been on no card at any point.
     const locations = only(queries, 'UPDATE experience_locations SET curation_state');
+    // Both terms of the fragment, for the reason the "all" path's assertion gives:
+    // one of them is satisfied by the narrower predicate this replaced, so pinning it
+    // alone would leave a revert green on both paths.
     expect(locations.sql).toContain('missing_since IS NULL');
+    expect(locations.sql).toContain("existence <> 'lost'");
     expect(locations.sql).toContain('AND id = ANY($2::int[])');
     expect(locations.params[1]).toEqual([11]);
   });

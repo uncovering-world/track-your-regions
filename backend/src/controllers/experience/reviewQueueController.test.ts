@@ -518,12 +518,14 @@ describe('getReviewQueue', () => {
     );
   });
 
-  it('does not count a withdrawn pending point as unread', async () => {
-    // A point the source has stopped offering is not "unread" in any sense a
-    // reader would notice: every reader-facing location read already carries
-    // offeredLocationSql(), so publishing it changes nothing on screen.
+  it('does not count a withdrawn or lost pending point as unread', async () => {
+    // Neither a point the source has stopped offering nor one a curator has
+    // declared gone from the world is "unread" in any sense a reader would
+    // notice: every reader-facing location read carries the same fragment, so
+    // publishing either changes nothing on screen. Both terms asserted, because
+    // the count that drops one of them would still pass on the other.
     const sql = await capturedQueueSql('contents');
-    expect(sql).toContain('el.missing_since IS NULL');
+    expect(sql).toContain("el.missing_since IS NULL AND el.existence <> 'lost'");
   });
 
   it('counts a treasure held by either its link or the work itself', async () => {

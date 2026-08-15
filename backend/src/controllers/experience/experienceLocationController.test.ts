@@ -436,9 +436,16 @@ describe('the by-id reads and a refused row', () => {
     await getExperienceVisitedStatus(
       { params: { id: '6205' }, user: { id: 5 } } as never, makeRes() as never);
 
-    // Same choice as the read one segment up, for the same reason: `existence`
-    // predates the admission axis and closing it is a separate decision.
-    expect(locationRead()).not.toMatch(/existence <> 'lost'/);
+    // Same choice as the read one segment up, for the same reason: the
+    // *experience's* `existence` predates the admission axis and closing it is a
+    // separate decision. Anchored on the alias, like the assertions above it: a
+    // point's own `existence` does appear here, and legitimately — `el.existence <>
+    // 'lost'` rides in `offeredLocationSql`, so a component a curator declared gone
+    // stays out of a progress denominator even while the source keeps offering it
+    // (ADR-0026). Unanchored, this assertion would have read that as the container's
+    // axis being closed.
+    expect(locationRead()).not.toMatch(/e\.existence <> 'lost'/);
+    expect(locationRead()).toMatch(/el\.existence <> 'lost'/);
   });
 
   it('keeps an unread museum out of a progress denominator, with no curator relaxation', async () => {

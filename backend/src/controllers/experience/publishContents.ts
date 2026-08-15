@@ -16,6 +16,7 @@ import { pool } from '../../db/index.js';
 import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
+import { offeredLocationSql } from './experienceLifecycle.js';
 
 /**
  * Publish the unread points and works — the named ones, or all of them.
@@ -54,11 +55,14 @@ export async function publishContents(
   let locationsPublished = 0;
   if (locationIds !== undefined || !anyNamed) {
     const named = locationIds !== undefined;
-    // `missing_since IS NULL` matches the `contents` card exactly
-    // (`reviewQueueController.ts`'s query carries it on the same table), and the
-    // two have to move together: the card is what asks the question this
-    // statement answers, so a row the card never showed must not be something
-    // this can publish, and a row it shows must be something this reaches.
+    // The predicate matches the `contents` card exactly — that query takes it from
+    // `offeredLocationSql` on the same table — and the two have to move together:
+    // the card is what asks the question this statement answers, so a row the card
+    // never showed must not be something this can publish, and a row it shows must
+    // be something this reaches. Both terms, therefore: since ADR-0026 the fragment
+    // also hides a point a curator declared gone from the world, and publishing one
+    // would record a curator as having passed a component another curator called
+    // demolished.
     //
     // Not merely cosmetic, and not "publishing it changes nothing on screen"
     // either — that is true only for as long as the point stays withdrawn.
@@ -69,7 +73,7 @@ export async function publishContents(
     const result = await client.query(
       `UPDATE experience_locations SET curation_state = 'verified'
         WHERE experience_id = $1 AND curation_state = 'pending'
-          AND missing_since IS NULL
+          AND ${offeredLocationSql('experience_locations')}
         ${named ? 'AND id = ANY($2::int[])' : ''}`,
       named ? [experienceId, locationIds] : [experienceId],
     );
@@ -183,10 +187,11 @@ export async function publishContents(
  * Place the object again, because one of its points stopped being offered.
  *
  * The one publish that genuinely moves geometry — see the note after the COMMIT
- * for why every other one does not. Placement's insert carries
- * `el.missing_since IS NULL` while its clear is unfiltered, so the released
- * point's `experience_location_regions` rows have to go, and only a re-place can
- * recompute the experience-level union they fed.
+ * for why every other one does not. Placement's insert carries the
+ * `offeredLocationSql` pair — `el.missing_since IS NULL AND el.existence <> 'lost'`
+ * — while its clear is unfiltered, so the released point's
+ * `experience_location_regions` rows have to go, and only a re-place can recompute
+ * the experience-level union they fed.
  *
  * Reports failure rather than throwing, the way `recordPlacementFailure`
  * downgrades a run to `partial`: by the time this runs the publication is

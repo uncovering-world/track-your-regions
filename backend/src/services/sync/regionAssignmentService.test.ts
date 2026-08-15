@@ -48,7 +48,12 @@ describe('assignRegionsForExperiences', () => {
 
     const containment = statements.find(s => /ST_Contains/.test(s));
     expect(containment).toBeDefined();
-    expect(containment).toMatch(/el\.missing_since IS NULL/);
+    // Both terms of the controllers' `offeredLocationSql`, repeated here as a literal
+    // (the service cannot import a controller). Pinning the flag alone leaves a revert
+    // of the existence term green, and that term is load-bearing in two directions
+    // now: a point a curator declared gone must stop voting, and the verdict endpoint
+    // calls placement *because* of it.
+    expect(containment).toMatch(/el\.missing_since IS NULL AND el\.existence <> 'lost'/);
   });
 
   it('still clears the auto rows of a withdrawn point, so it stops voting', async () => {
@@ -82,6 +87,8 @@ describe('assignExperiencesToRegions', () => {
     const sent = mockedQuery.mock.calls.map(call => String(call[0]));
     const containment = sent.find(s => /ST_Contains/.test(s));
     expect(containment).toBeDefined();
-    expect(containment).toMatch(/el\.missing_since IS NULL/);
+    // Both terms on the full-rebuild path too, for the reason above: the two inserts
+    // are separate statements and a revert of either would otherwise stay green.
+    expect(containment).toMatch(/el\.missing_since IS NULL AND el\.existence <> 'lost'/);
   });
 });

@@ -392,8 +392,9 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
       await publishArrivalContents(client, experienceId, publishes));
 
     // No placement for the admission columns themselves. Placement's insert
-    // predicate is `el.missing_since IS NULL` and nothing else — it filters
-    // neither `curation_state` nor `admission` — so a refused row was placed
+    // predicate is the `offeredLocationSql` pair — `el.missing_since IS NULL AND
+    // el.existence <> 'lost'` (ADR-0026) — and nothing else: it filters
+    // neither `curation_state` nor `admission`, so a refused row was placed
     // exactly like any other one the moment its location landed, and
     // un-refusing it moves no geometry, no point and no membership by itself.
     // Verified on 2026-08-11 against a same-day clone of the live

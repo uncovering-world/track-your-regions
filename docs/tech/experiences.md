@@ -138,11 +138,27 @@ of the marker batch, the experience's own location list, `location_count`, the p
 status, "mark all locations visited", the visit a viewed treasure records for its venue, and
 region placement. The controllers take it from one fragment, `offeredLocationSql()`
 (`experienceLifecycle.ts`); `regionAssignmentService.ts` writes it out, since a service
-importing a controller module would be the first such import in the codebase. The rule is not "visits are exempt" but a line between two kinds of
-statement. **What a reader asked for, exactly as they asked** — recording a visit, removing
-one, and the lookup of which experience it belonged to — is unfiltered: the first because they
-are acting on what they were just shown, the second because a record on an invisible point
-could otherwise never be cleared. **What the system decides on their behalf** carries the
+importing a controller module would be the first such import in the codebase.
+
+Since [ADR-0026](../decisions/0026-a-run-records-what-a-container-holds.md) that fragment carries a
+second term, `existence <> 'lost'`, and it is the location half of the pair an experience has
+always had. A curator can now answer for a point, and one of the answers is that the component is
+gone from the world; the source may go on listing it, and the run's `returned` arm clears
+`missing_since` when it does — so without the term a demolished component comes back on the map.
+Not a hypothetical: the catalogue's one withdrawal is a point that left and returned (#543).
+`source_membership` is deliberately absent from the fragment, exactly as it is from an experience's
+reads: `former` says the source stopped listing the point, and hiding on that would let a curator's
+reading of a list remove a place that is still standing. What keeps a `former` point off the map is
+its `missing_since`, which the verdict leaves standing. The "show what is gone" affordance is about
+objects only — a reader who asks for lost experiences still gets no lost *points*, because a
+withdrawn point has never been something a reader is shown. The rule is not "visits are exempt" but a line between two kinds of
+statement. **Removing what a reader asked to remove** — clearing a visit, and the lookup of which
+experience it belonged to — is unfiltered, because a record on a point they can no longer see could
+otherwise never be cleared. **Recording** one is not, and stopped being so at ADR-0025: an id can be
+guessed, and under a gate the thing being hidden is the row's existence, so "they were shown it"
+became something the server has to check rather than assume. `markLocationVisited` resolves the row
+through `offeredToReaderSql()`, which composes this fragment — so both of its terms bind there too,
+and a curator's `lost` verdict makes a point unrecordable as well as unshown. **What the system decides on their behalf** carries the
 filter: every read that puts a point on screen, the per-experience progress view included, and
 equally the count that infers from what remains whether the experience-level visit record
 should go with the last visible tick. So both unmark handlers hold an unfiltered DELETE beside
@@ -150,10 +166,17 @@ a filtered count, which is that one line drawn through a single handler.
 That view counts offered points only because identity is the point together with the source's
 reference: an edit to either — a corrected coordinate, a renumbered component — is a withdrawal
 plus an insert, and the reader would otherwise meet the same place twice.
-`getVisitedLocationIds` is the third unfiltered read and stays that way *for `missing_since`*:
-every consumer uses it as a set-membership test over a list that is already filtered, so it draws
-no pin and inflates no count. The visit row is untouched either way; what a withdrawn point means
-is a curator's verdict, and until there is one it is simply not shown.
+`getVisitedLocationIds` is not one of the unfiltered reads, and the argument that it could be — every
+consumer uses it as a set-membership test over a list that is already filtered, so it draws no pin
+and inflates no count — is not the one the code makes. It carries all four predicates: the curation
+gate, the content gate, `admission`, and both terms of the offered fragment. It has to, because it
+supplies the ticks a client draws while `getExperienceVisitedStatus` supplies the "n of m" a badge
+reads: filter the two differently and they disagree about one traveller's own record, which a reader
+meets as **3 of 2**. The consequence, which nothing else states, is that a tick on a component a
+curator declared `lost` leaves this map. The
+visit row itself is untouched by any of it, and the traveller's history is not lost either:
+`visited-experiences` carries no lifecycle predicate at all, deliberately, and a record of somewhere
+that has since left the catalogue belongs there.
 
 **`curation_state` does not get the same exemption, on the read or on the writers beside it, and
 getting that wrong once is the reason this paragraph exists.** Issue #520 argued the opposite —

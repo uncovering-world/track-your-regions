@@ -2002,6 +2002,12 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_location ON experience_locat
 -- Every read of an experience's current points carries `missing_since IS NULL`,
 -- and the sync's fast path counts them per experience on every object of every
 -- run. Partial, because no read ever asks for the marked rows alone.
+--
+-- Those reads also carry `existence <> 'lost'` since ADR-0026, and this index
+-- deliberately does not: the term is a curator's verdict on a component, true of
+-- almost no row, so narrowing the index by it would buy nothing while making it
+-- unusable for the fast path, which asks only about offered rows. A query with the
+-- extra AND still uses this index.
 CREATE INDEX IF NOT EXISTS idx_experience_locations_offered
     ON experience_locations(experience_id) WHERE missing_since IS NULL;
 
@@ -2031,6 +2037,53 @@ COMMENT ON COLUMN experience_locations.withdrawal_deferred_for_location_id IS 'S
 -- Postgres does not create one for a referencing column, so without it every
 -- delete of a location scans this table.
 CREATE INDEX IF NOT EXISTS idx_experience_locations_deferred_withdrawal ON experience_locations(withdrawal_deferred_for_location_id) WHERE withdrawal_deferred_for_location_id IS NOT NULL;
+
+-- A curator's verdict on a point the source stopped offering (ADR-0026, #541).
+-- The same two axes an experience has carried since ADR-0020, and deliberately
+-- the same words: `former` is the source's list, `lost` is the world.
+-- ADR-0022 held these back until they had consumers -- its rejected alternatives say
+-- so in as many words, "nothing would write or read either yet" -- which is the
+-- withdrawal card and the endpoint behind it.
+--
+-- What differs from the experience-level verdict is `missing_since`. There, every
+-- answer clears it, because nothing a reader sees is keyed on it. Here it is one of
+-- the two terms a reader-facing read carries — `offeredLocationSql` is
+-- `missing_since IS NULL AND existence <> 'lost'` — and each verdict is held by a
+-- different one: `former` by the flag, so clearing it would put the pin back on the
+-- map for a place the source no longer lists; `lost` by its own axis, whatever the
+-- flag says, which is what makes that verdict outlive a run (the writer clears the
+-- flag when the source offers the point again) and what lets it hide a point readers
+-- could see. Only "the source blinked" clears the flag, and leaving it standing is
+-- what takes an answered row out of the queue without any read learning a predicate
+-- for the queue's sake.
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS source_membership VARCHAR(10) NOT NULL DEFAULT 'present';
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS existence VARCHAR(10) NOT NULL DEFAULT 'extant';
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS state_decided_by INTEGER REFERENCES users(id);
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS state_decided_at TIMESTAMPTZ;
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS state_note TEXT;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_locations_source_membership_check') THEN
+        ALTER TABLE experience_locations ADD CONSTRAINT experience_locations_source_membership_check
+            CHECK (source_membership IN ('present', 'former'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experience_locations_existence_check') THEN
+        ALTER TABLE experience_locations ADD CONSTRAINT experience_locations_existence_check
+            CHECK (existence IN ('extant', 'lost'));
+    END IF;
+END $$;
+
+COMMENT ON COLUMN experience_locations.source_membership IS 'present or former. Only a curator sets former: it means the source really did stop offering this point, and the row keeps its missing_since, so every read already hides it and the queue stops asking. A sync that lists the point again sets it back to present, wherever that point is - every arm that matches an offered row, and the fast path counts such a row as unmatched so one of them is reached (ADR-0026 decision 6). It only ever moves toward visibility, and moves nothing on its own: what a reader sees also needs existence <> lost, so a point a curator declared gone stays hidden through the restore (decision 7). Without the restore the point would return visible while recorded as delisted, and its next departure would raise no card at all.';
+COMMENT ON COLUMN experience_locations.existence IS 'extant or lost, set by a curator only. lost = the component itself is gone — a demolished building of a serial site. Independent of whether the source still lists it.';
+
+-- The queue asks about points still waiting for that verdict, so it reads the
+-- two axes together with the flag. Partial on the same reasoning as the
+-- experience-level pair: answered rows are the rare ones, and no read asks for
+-- them alone.
+CREATE INDEX IF NOT EXISTS idx_experience_locations_undecided
+    ON experience_locations(experience_id)
+    WHERE missing_since IS NOT NULL AND source_membership = 'present' AND existence = 'extant';
 
 -- User visited locations (tracks visits to individual locations)
 CREATE TABLE IF NOT EXISTS user_visited_locations (
@@ -2235,7 +2288,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     curator_id INTEGER NOT NULL REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -2253,7 +2306,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- is why widening it is a schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed'));
 
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);
