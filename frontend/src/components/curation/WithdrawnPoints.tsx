@@ -2,8 +2,26 @@
  * The parts of an object the source stopped offering, one verdict each.
  *
  * A withdrawn point has been recorded since ADR-0022 and asked about nowhere: the row
- * carries `missing_since`, every reader-facing read hides it, and no screen said so.
- * One point has been waiting since 2026-08-10.
+ * carries `missing_since`, every reader-facing read hides it, and no screen said so. The
+ * catalogue's first one was marked on 2026-08-10 and had no screen to be answered on
+ * until this card — which is the gap, rather than the count.
+ *
+ * The count was zero on the database this was written against, and the reason is worth
+ * knowing before reading a card here: that first withdrawal was a false positive, a
+ * coordinate rewritten 1.2 cm more precisely (#543), and ADR-0027 absorbs the class from
+ * now on. What it does not do is guarantee that every card here is a real departure —
+ * `db/migrations/026` collapses the pairs already written, but deliberately leaves
+ * standing any whose old row carries a visit or a region assignment, since re-pointing a
+ * traveller's record by migration would be a second guess about where they stood. Those
+ * reach this card with a distance anywhere up to ten metres — the band the writer now
+ * forgives — which is what `withdrawalStory`'s "same place written more precisely"
+ * sentence is for, and why it splits at ten rather than at one. A pair three metres apart
+ * that a visit kept standing is a rewrite, not a move, and a card calling it a move would
+ * be wrong about the only thing it is for. Nor is such a card only about pairs written in
+ * the past: answering one "false alarm" clears `missing_since` and leaves two visible rows
+ * a centimetre apart under one reference, so the next run pairs one and withdraws the
+ * other, and the card returns. Honest each time and unsettleable here — settling it means
+ * deciding which row a traveller's record belongs to, which is #544's surface.
  *
  * Those two are not the whole list, and the list is not the thing to memorise: the backend
  * comment above the subquery filling `replacedMetres` enumerates every route a short
@@ -63,6 +81,18 @@ function distanceLabel(metres: number): string {
 }
 
 /**
+ * The distance inside which a rewrite is the same place, not a move (ADR-0027 decision 2).
+ *
+ * The backend's `LOCATION_UNCHANGED_METERS`, repeated rather than imported because the
+ * frontend cannot reach `backend/src`. It has to track that number: this card's whole job
+ * is to tell a corrected coordinate from a real move, and a card splitting at a different
+ * distance from the writer would call a rewrite the writer forgave a move.
+ *
+ * Inclusive, matching the `ST_DWithin` the writer and migration 026 both use.
+ */
+const SAME_POINT_METRES = 10;
+
+/**
  * What happened, in the words a curator can act on.
  *
  * Three cases, and the first two are the reason this is a distance rather than a flag.
@@ -74,7 +104,7 @@ function distanceLabel(metres: number): string {
  */
 export function withdrawalStory(point: WithdrawnPoint, offeredLocations: number): string {
   const metres = point.replacedMetres;
-  if (metres !== null && metres < 1) {
+  if (metres !== null && metres <= SAME_POINT_METRES) {
     return `The source still lists this part, ${distanceLabel(metres)} from here — that is the `
       + 'same place written more precisely, not a move. Readers never lost it.';
   }
@@ -193,8 +223,11 @@ function PointVerdict({ item, point, onDone }: {
       {hasPoint && (
         // Opened here rather than navigated to, for the reason `ObjectContext` gives: the
         // app takes no positioning parameters, so a link would drop the curator out of the
-        // queue and land nowhere near the place. "Where was it" is most of this decision —
-        // a part that moved 40 m is a corrected coordinate, one that moved 400 km is not.
+        // queue and land nowhere near the place. "Where was it" is most of this decision,
+        // and the band the button serves starts above the tolerance: a part the source now
+        // lists 40 m away has moved across a square, one 400 km away has moved to another
+        // region entirely, and only a map tells those apart. Below ten metres the sentence
+        // has already answered it and there is nothing to look at.
         <PointPreviewDialog
           open={showMap}
           onClose={() => setShowMap(false)}
