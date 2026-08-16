@@ -111,14 +111,38 @@ describe('withdrawalStory', () => {
   });
 
   it('gives a move of tens of metres in metres, beside the kilometre case', () => {
-    // The arm the map button exists for: 40 m is a corrected coordinate, 400 km is not,
-    // and both come through here. Asserted beside the 1200 and 0.01 cases because those
-    // two satisfy the other arms — without this one, deleting the metres line rounds 40
-    // to "0 km" and the card says a part that moved 40 m went nowhere.
+    // The arm the map button exists for: 40 m is a move a curator has to answer, 400 km
+    // is another, and both come through here. Asserted beside the 1200 and 0.01 cases
+    // because those two satisfy the other arms — without this one, deleting the metres
+    // line rounds 40 to "0 km" and the card says a part that moved 40 m went nowhere.
     const story = withdrawalStory(point({ replacedMetres: 40 }), 1);
     expect(story).toMatch(/40 m away now/);
     expect(story).toMatch(/moved rather than/);
     expect(story).not.toMatch(/0 km/);
+  });
+
+  it('reads metres inside the tolerance as a rewrite, not a move', () => {
+    // The band this card actually receives. `026` collapses the pairs the old comparison
+    // wrote, but leaves standing any whose old row carries a visit — anywhere up to ten
+    // metres, not only Bilbao's centimetre. A source that nudged a pin three metres
+    // before the fix produced exactly this, and splitting at one metre told the curator
+    // "it moved rather than went" about a rewrite the writer itself now forgives.
+    const story = withdrawalStory(point({ replacedMetres: 3 }), 1);
+    expect(story).toMatch(/3 m from here/);
+    expect(story).toMatch(/not a move/);
+    expect(story).not.toMatch(/moved rather than/);
+  });
+
+  it('reads the tolerance boundary itself as a rewrite, because ST_DWithin includes it', () => {
+    // Ten exactly, which the three-metre case above cannot pin: it survives `<=` turning
+    // into `<`, and this does not. The number has to be inclusive on both sides of the
+    // product — the writer and migration 026 both ask `ST_DWithin(…, 10)`, which is
+    // inclusive — or a pair at exactly ten metres is absorbed by one and called a move
+    // by the other.
+    const story = withdrawalStory(point({ replacedMetres: 10 }), 1);
+    expect(story).toMatch(/10 m from here/);
+    expect(story).toMatch(/not a move/);
+    expect(story).not.toMatch(/moved rather than/);
   });
 
   it('says the list is shorter when nothing replaced it', () => {
