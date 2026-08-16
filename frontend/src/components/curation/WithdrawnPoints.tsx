@@ -5,6 +5,12 @@
  * carries `missing_since`, every reader-facing read hides it, and no screen said so.
  * One point has been waiting since 2026-08-10.
  *
+ * Those two are not the whole list, and the list is not the thing to memorise: the backend
+ * comment above the subquery filling `replacedMetres` enumerates every route a short
+ * distance takes to get here, and it has grown twice as the writer changed. What holds
+ * regardless is the rule this card is built on — inside ten metres the source is describing
+ * the same place, so the card says so, whatever brought the pair about.
+ *
  * Grouped by object because the queue is a list of objects and a serial site can lose
  * two parts in one run; answered per point because that is what the verdict is about.
  *

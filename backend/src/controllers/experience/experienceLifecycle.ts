@@ -122,10 +122,10 @@ export function hideRefusedSql(alias = 'e'): string {
  *   unfiltered DELETE and a filtered count, which is not an inconsistency but
  *   this line drawn through one handler.
  *
- * The per-user visited status is the case that shows why: a corrected
- * coordinate is a withdrawal plus an insert, so leaving withdrawn rows in
- * would put the same place on screen twice and disagree with every other count
- * of it.
+ * The per-user visited status is the case that shows why: a component the source
+ * moved is a withdrawal plus an insert — a coordinate merely rewritten inside ten
+ * metres is not, since ADR-0027 — so leaving withdrawn rows in would put the same
+ * place on screen twice and disagree with every other count of it.
  *
  * Region placement applies the same predicate as a literal
  * (`regionAssignmentService.ts`) rather than calling this. It is in the service

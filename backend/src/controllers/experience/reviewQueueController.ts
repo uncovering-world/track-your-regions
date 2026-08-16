@@ -649,9 +649,32 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
              'visited', EXISTS (SELECT 1 FROM user_visited_locations v WHERE v.location_id = el.id),
              -- How far away the source now offers this same component, or NULL where
              -- it offers it nowhere. Identity is the point together with the
-             -- reference, so a rewritten coordinate is a withdrawal plus an arrival,
-             -- and this is the difference between "the component is gone" and "the
-             -- source moved it".
+             -- reference, so a coordinate rewritten far enough is a withdrawal plus an
+             -- arrival, and this is the difference between "the component is gone" and
+             -- "the source moved it". Since ADR-0027 "far enough" is ten metres: a
+             -- rewrite inside that is absorbed by the writer and raises no card at all.
+             -- So a distance up to ten metres reaching here is not a contradiction, and it
+             -- is worth knowing which of three ways it got in rather than assuming one.
+             -- Migration 026 left the pair standing, on either of its carve-outs: a visit
+             -- on the marked row, or a region assignment on it -- the second needing no
+             -- visit anywhere near it, because placement only ever deletes auto rows, so a
+             -- curator's manual assignment outlives the withdrawal. Or the database has
+             -- not had 026 applied, nothing recording which migrations it has seen. Or,
+             -- **on an ungated source only**, the pairing was greedy and this row lost it:
+             -- ADR-0027 decision 5a-i, where the loser is marked while a row is inserted
+             -- for the ordinal it lost, both within ten metres of one incoming point by
+             -- construction and sharing the reference this subquery joins on. Ungated
+             -- only because the deferral is what decides it -- see the note further down.
+             --
+             -- Or the deferral ran short: two points of one reference dropped against a
+             -- single unread arrival, one held and the other marked at once. That one has
+             -- nothing to do with the tolerance and predates it; what the tolerance
+             -- changed is that its distance can land in the band the card reads as a
+             -- rewrite. The subquery below stops measuring against the held row, so this
+             -- route no longer reaches the card as a short distance -- and it is left
+             -- named rather than deleted, because that is the route a reader will
+             -- otherwise re-derive from the note further down. Up to ten, not under one: the card that
+             -- reads this splits at the same number the writer uses.
              --
              -- A distance rather than a flag, because the flag was not enough to
              -- decide with: Bilbao's replacement is **1.2 cm** away — the stored
@@ -666,9 +689,44 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                SELECT round(MIN(ST_Distance(el.location::geography, moved.location::geography))::numeric, 2)
                FROM experience_locations moved
                WHERE moved.experience_id = e.id
-                 -- The same fragment: a replacement a reader cannot see is no
-                 -- replacement, and the card's whole sentence turns on this distance.
+                 -- The same fragment, and worth stating what it does *not* carry: it is
+                 -- missing_since IS NULL AND existence <> 'lost', with no curation_state
+                 -- term, so a pending arrival counts as a replacement
+                 -- here. That is right for the question the distance answers -- whether
+                 -- the source still lists this part, and where -- and it is why the card's
+                 -- sentences about what readers see are true of every pair reachable
+                 -- today rather than of every pair in principle. A gated arrival is
+                 -- invisible, and a row can be marked beside one whenever the deferral
+                 -- runs short: two rows withdrawn under one reference against a single
+                 -- arrival, where the pairing by position gives the slot to one and the
+                 -- other is marked at once. That is the documented min(withdrawals,
+                 -- arrivals) behaviour and older than the tolerance; what changed is that
+                 -- the distance can now land in the band the card reads as a rewrite.
+                 --
+                 -- Not the greedy pairing's loser, and here the gate is what decides it,
+                 -- which is why route 3 above says "ungated only". Under a gate the insert
+                 -- lands pending, so the deferral statement runs, the loser satisfies its
+                 -- withdrawn set, the row inserted for the ordinal it lost shares its
+                 -- reference and pairs with it, and the mark passes it over: held, never
+                 -- marked, never on this card. Ungated, every insert is auto, the deferral
+                 -- statement is skipped for want of an unread arrival, and the mark marks
+                 -- the loser at once -- with a *visible* replacement metres away, which is
+                 -- the case route 3 names (ADR-0027 decision 5a-i).
                  AND ${offeredLocationSql('moved')}
+                 -- And not a row whose own withdrawal is merely waiting its turn. A
+                 -- deferral holds one departure per unread arrival, so where a run drops
+                 -- two points of one reference and offers a single arrival, the second
+                 -- stays visible with an arrival pointing at it -- offered by this
+                 -- predicate, metres away, and about to go. Measured as a replacement it
+                 -- makes the card say "the source still lists this part, 5 m from here,
+                 -- readers never lost it" about a part the source stopped listing and a
+                 -- pin that is leaving. It is the same departure paused, not a
+                 -- replacement.
+                 AND NOT EXISTS (
+                   SELECT 1 FROM experience_locations pausing
+                   WHERE pausing.experience_id = e.id
+                     AND pausing.withdrawal_deferred_for_location_id = moved.id
+                 )
                  AND moved.external_ref IS NOT DISTINCT FROM el.external_ref
              )
            ) ORDER BY el.missing_since DESC, el.id) AS withdrawn_points,

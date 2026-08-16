@@ -647,6 +647,21 @@ describe('getReviewQueue', () => {
     expect(sql).toContain('el.withdrawal_deferred_for_location_id');
   });
 
+  it('does not offer a point that is itself on its way out as the replacement', async () => {
+    const sql = await capturedQueueSql('withdrawn');
+
+    // `replacedMetres` is the difference between "gone" and "moved", and the card turns
+    // its whole sentence on it — including "readers never lost it". A deferral holds one
+    // departure per unread arrival, so a run that drops two points of one reference and
+    // offers a single arrival leaves the second one visible with an arrival pointing at
+    // it: offered by `offeredLocationSql`, metres away, and about to go. Measured as a
+    // replacement it makes the card promise a part the source stopped listing is still
+    // listed. It is the same departure paused.
+    const moved = sql.slice(sql.indexOf("'replacedMetres'"), sql.indexOf('ORDER BY el.missing_since'));
+    expect(moved).toContain('pausing.withdrawal_deferred_for_location_id = moved.id');
+    expect(moved).toContain('NOT EXISTS');
+  });
+
   it('says how much the object holds, on every kind', async () => {
     // "A point of Berlin Modernism Housing Estates is gone" reads differently at one
     // part of seven and at the only part there was — and so does a proposed

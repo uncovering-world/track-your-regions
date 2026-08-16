@@ -546,8 +546,20 @@ export interface ReviewQueueItem {
      * How far away the source now offers this same part, in metres — `null` where it
      * offers it nowhere.
      *
-     * Identity is the point together with the source's reference, so a rewritten
-     * coordinate arrives as a withdrawal plus an arrival. A distance rather than a
+     * Identity is the point together with the source's reference, so a coordinate
+     * rewritten more than ten metres away arrives as a withdrawal plus an arrival, and
+     * within that the writer reads it as the same place and raises no *new* card
+     * (ADR-0027). Short distances still arrive here, though, by more than one route — the
+     * backend comment above the subquery that fills this field enumerates them, and it is
+     * worth reading which rather than assuming one, the count having moved twice as the
+     * writer changed. `db/migrations/026` leaves a pair standing
+     * where the marked row carries a visit or a region assignment; a database may not have
+     * had 026 applied at all, nothing recording which files it has seen; and the pairing is
+     * greedy, so it can mark a row while inserting one for the ordinal it lost, both within
+     * ten metres of the same incoming point (decision 5a-i, #549). The last is a *new* card
+     * rather than an inherited one. So anything up to ten metres can reach this field, which
+     * is the band `withdrawalStory` answers with "the same place written more
+     * precisely". A distance rather than a
      * flag because the flag could not be decided with: Bilbao's replacement is 1.2 cm
      * away — this field carries it as `0.01`, the query rounding to two decimals — the
      * stored latitude having been rounded before a later run wrote the source's full

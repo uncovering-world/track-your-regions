@@ -46,6 +46,60 @@ no later run can rebuild. A source that offers the point again finds the same ro
 `(point, external_ref)` identity, clears `missing_since`, restores its ordinal, and sends it
 for placement; the visit and any manual assignment were never touched.
 
+**Identity's point half carries a ten-metre tolerance, and only inside a matching reference**
+([ADR-0027](../decisions/0027-a-point-rewritten-more-precisely-is-the-same-point.md)). The writer
+compared the geometry exactly until 2026-08-16, so a coordinate rewritten in its last float digits
+was a different place — a withdrawal, an arrival, a pin off every reader-facing read and a card with
+no true answer, for a point that never moved. It is the World Heritage list's own shape that makes
+this a catalogue-scale risk rather than a curiosity: coordinates are published as degrees, minutes
+and seconds, the conversion lands on six decimals, and **1642 of 6680 stored points sit on exactly
+such a rounded value** — so one re-publication at full precision would have withdrawn a quarter of
+the pins in a single run. The tolerance is `LOCATION_UNCHANGED_METERS`, the same ten metres the
+experience's own coordinate already uses in `changeSet.ts`, and it is deliberately below the width of
+the thing being pointed at: a source re-centring a park by two kilometres still reads as a move and
+still raises a card, because that is editorial judgement about a place. The reference travels with
+it — a tolerance alone would be a nearest-point search over an object's own points, and 4172 pairs of
+points of one experience lie within a kilometre of each other, many at 0.000 m, since what separates
+two rock-art shelters in one cliff is the component number rather than the metres. Where an incoming
+point carries no reference the comparison stays exact, there being nothing to hold the tolerance to
+one component. `samePointSql()` is the one fragment every site that asks composes, and only two do —
+the relation the pairing is built from and the fast path's `matched` term. Everything else reads the
+pairing — every statement after the one that decides it, which is the five arms that keep, resurrect,
+insert, withdraw and hold, the statement that lets go of a spent pairing, and the lookup that decides
+which point an arrival replaces. The lookup asks it for a reason of its own — the set it withdraws
+from has to cover every row the mark will mark that a reader can see, or a run applies one it should
+have held, and under a gate that takes a visible pin off the map with only an invisible arrival to
+replace it. Cover the visible ones rather than equal the set: the lookup deliberately keeps a row whose
+holding arrival the run is itself withdrawing — or a point moved twice before anyone published loses
+the handle its replacement needs — and deliberately draws only on the rows a reader is actually
+offered, which is all three of `missing_since IS NULL`, `existence <> 'lost'` and
+`curation_state <> 'pending'` where the mark asks the first alone. A slot spent on a row nobody can
+see leaves a visible pin unheld, and the `existence` term is the one easily missed: a point a curator
+answered "no longer exists" on, offered again by the source, comes back with `missing_since` cleared
+and that verdict deliberately untouched.
+So a point cannot match for one statement and not another. The pairing is decided once per run and
+materialised, not restated as a CTE by each arm: the keeping arm's own write moves a row off the
+points it was near, so a re-decided pairing would change under the arms that follow it and leave a
+row on the negative ordinal the parking step gave it, to collide with the next run. Because
+the tolerance gave away the injectivity the exact comparison had for free, the arms read a pairing
+made one row per point and one point per row, preferring the row that is not marked and then the
+nearer one — which under a gate is not the same as preferring the row a reader can see, since a
+`pending` arrival sitting on the source's own coordinate ties on the first term and wins on the
+second. A row the slow path keeps adopts the source's coordinate; a row whose object changed in no
+other way is matched by the fast path and keeps the value it has, so the catalogue goes on serving a
+coordinate the source retired — within ten metres of the published one, which is a distance no
+traveller can stand in the wrong place at, and cheaper than a transaction per object to chase the
+last digits. A row the arm *did* move goes back for region placement whatever the distance, because a
+region's edge is a line and a rewrite of a centimetre across one is a different country — and nothing
+would revisit the row afterwards, the fast path matching its new coordinate on every later run. The
+pairing is greedy, so where a source lists two points of one reference between ten and twenty metres
+apart it can miss a pairing that exists, costing one withdrawal that did not happen (#549); no source
+in the catalogue is shaped that way, its nine multi-reference points standing either a centimetre or
+14 km apart. `db/migrations/026` collapses the pairs the old comparison
+already wrote and names any pair it leaves standing: it deletes the marked row where no visit and no
+region assignment hang off it, and the held pending arrival where no visit does — that row's `auto`
+placements are spent knowingly, being recomputable and on no reader-facing read.
+
 **A point that moved is a withdrawal plus an insert, and under a gated source the two halves
 become visible at different moments** — so the withdrawal waits for the insert
 ([ADR-0025](../decisions/0025-per-source-curation-gate.md) decision 5). The insert lands
@@ -164,8 +218,8 @@ equally the count that infers from what remains whether the experience-level vis
 should go with the last visible tick. So both unmark handlers hold an unfiltered DELETE beside
 a filtered count, which is that one line drawn through a single handler.
 That view counts offered points only because identity is the point together with the source's
-reference: an edit to either — a corrected coordinate, a renumbered component — is a withdrawal
-plus an insert, and the reader would otherwise meet the same place twice.
+reference: an edit to either — a component moved more than ten metres, a renumbered one — is a
+withdrawal plus an insert, and the reader would otherwise meet the same place twice.
 `getVisitedLocationIds` is not one of the unfiltered reads, and the argument that it could be — every
 consumer uses it as a set-membership test over a list that is already filtered, so it draws no pin
 and inflates no count — is not the one the code makes. It carries all four predicates: the curation
@@ -354,9 +408,22 @@ Three things it deliberately does not say:
 A single-point venue reports a moved point as a withdrawal plus an arrival, because identity is the
 point together with the source's reference ([ADR-0022](../decisions/0022-locations-are-marked-not-deleted.md)).
 That is worth recording even where the object's own `lon`/`lat` diff says the same thing: the row
-was replaced, and a reader's tick did not follow it. It is not a churn risk — one point has been
-withdrawn in the catalogue's whole history, and the writer's exact-geometry fast path matches 1235
-of 1272 UNESCO rows per run.
+was replaced, and a reader's tick did not follow it. Nor is it a churn risk, though the reason has
+changed: the one point withdrawn in the catalogue's whole history turned out to be a coordinate
+rewritten 1.2 cm more precisely (#543), which is what ADR-0027's tolerance now absorbs — so the
+writer raises no card for a rewrite inside ten metres, and its fast path still matches 1235 of 1272
+UNESCO rows per run.
+
+That is not the same as "every card from here on is a real departure", and two shapes still record a
+withdrawal for a point that never moved. One is the greedy pairing's loser (ADR-0027 decision 5a-i,
+#549), which needs a source to list two points of one reference between ten and twenty metres apart —
+nothing in the catalogue does. The other is the pair migration 026 declines to touch. Where a visit or a manual region assignment keeps such a pair standing, the card
+tells the curator truthfully that nothing moved, and the only honest button — "false alarm" — clears
+`missing_since` and leaves the object with two visible rows a centimetre apart under one reference.
+The next run pairs the one sitting on the source's coordinate and withdraws the other, so the same
+card comes back. It is not data loss: the visit is what kept the pair standing. It is a question the
+queue cannot settle, because settling it means deciding which row a traveller's record belongs to,
+and that is the surface #544 is about.
 
 **A gated source may not overwrite what a reader can already see.** Contents arriving from a gated
 source are written invisible rather than withheld ([ADR-0025](../decisions/0025-per-source-curation-gate.md)),
