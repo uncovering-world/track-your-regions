@@ -207,8 +207,11 @@ async function upsertLandmarkExperience(
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
-    // One point per landmark, so this reports a source that moved it — a
-    // withdrawal and an arrival, since identity is the point itself (ADR-0022).
+    // One point per landmark, so this reports a source that moved it — a withdrawal
+    // and an arrival, since identity is the point together with the source's reference
+    // (ADR-0022), and a coordinate rewritten more than ten metres away is a different
+    // point (ADR-0027). Inside that the writer reads it as the same place and nothing
+    // is reported at all.
     // Worth recording even where the object's own `lon`/`lat` diff says the same:
     // the row was replaced, and a reader's tick did not follow it.
     contents = { locations: written.delta };

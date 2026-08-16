@@ -669,8 +669,8 @@ export async function getExperienceVisitedStatus(req: AuthenticatedRequest, res:
       -- An earlier version also returned a withdrawn point this reader had
       -- visited, to keep their record of it in view. That is wrong here, and a
       -- replaced point shows why: identity is the point together with the
-      -- source's reference, so an edit to either — a corrected coordinate, a
-      -- renumbered component — is a withdrawal plus an insert, and the reader
+      -- source's reference, so an edit to either — a component moved to a new place, a
+      -- renumbered one — is a withdrawal plus an insert, and the reader
       -- would meet the same place twice, once ticked and once not, with this
       -- denominator
       -- disagreeing with the location_count every list shows. The visit row is
