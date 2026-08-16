@@ -72,7 +72,9 @@
  * the withdrawal `UPDATE` does not report the ids it marked, so no caller could
  * reconstruct "old point X moved to new point Y" afterwards. The definition
  * available is the reference: `external_ref` is populated on 6679 of 6680 stored
- * locations, and a move is *the same reference at a different point*. For museums
+ * locations, and a move is *the same reference at a point more than ten metres
+ * away* — the tolerance being ADR-0027's, because within it the source is writing
+ * the same place more precisely rather than moving it. For museums
  * and landmarks it is the experience's own Wikidata id, so it cannot change while
  * the experience stays the same; for UNESCO it names a component.
  *
@@ -82,8 +84,12 @@
  * all while it is still in every list.
  *
  * - Nine `(experience_id, external_ref)` pairs are duplicated, across nine
- *   objects — a component crossing a border is listed once per country under one
- *   reference. Withdrawals and arrivals are numbered within a reference and
+ *   objects — usually a component extended across a border and listed once per
+ *   country under one number (`354rev-001` is Waterton Glacier in the US and in
+ *   Canada; `749ter-001` holds three, for Benin, Burkina Faso and Niger), though
+ *   one is a single country with two parts of one city (`412-003`, the historic
+ *   centre of Mexico City *and* Xochimilco). Withdrawals and arrivals are numbered
+ *   within a reference and
  *   matched by position, so each arrival holds one withdrawal and no two arrivals
  *   claim the same one.
  * - One location carries no reference at all (8754, "Routes of Santiago de
@@ -112,7 +118,48 @@
 
 import { pool } from '../../db/index.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
+import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
 import type { ContentItem, ContentsDelta } from './types.js';
+
+/**
+ * When a stored row is the point the source is offering (ADR-0027).
+ *
+ * One fragment for both halves of the question, because they are one rule and
+ * separating them is the way it gets broken: **the reference decides which row is
+ * a candidate, and the geometry decides whether the source means the same place.**
+ * A tolerance applied without the reference would be a nearest-point search over
+ * an object's own points, and 4172 pairs of points of one experience lie within a
+ * kilometre of each other — many at 0.000 m, because what distinguishes two
+ * rock-art shelters in one cliff is the component number, not the metres between
+ * them. Every site that asks this question composes this, so no site can ask half
+ * of it.
+ *
+ * Ten metres, from `changeSet.ts`, where it already answers the same question
+ * about the experience's own coordinate. Below the width of the thing being
+ * pointed at — a museum's door against its centroid — so a source re-centring a
+ * park still reads as a move and still raises a card; what it absorbs is
+ * arithmetic. 1642 of 6680 stored points sit on a coordinate rounded to six
+ * decimals, which is what the World Heritage list's degrees-minutes-seconds
+ * become, so a single re-publication at full precision would otherwise withdraw a
+ * quarter of the catalogue's pins in one run.
+ *
+ * Exact where the incoming point carries no reference: without one there is
+ * nothing to be a candidate *of*, so the tolerance would have nothing to hold it
+ * to one component.
+ *
+ * `LOCATION_UNCHANGED_METERS` is interpolated rather than parameterised because it
+ * is a module constant and never reaches here from a request; the coordinates
+ * beside it are parameters, as everywhere in this file.
+ */
+function samePointSql(alias: string): string {
+  return `${alias}.external_ref IS NOT DISTINCT FROM i.external_ref
+        AND (CASE WHEN i.external_ref IS NULL
+                  THEN ${alias}.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+                  ELSE ST_DWithin(${alias}.location::geography,
+                                  ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)::geography,
+                                  ${LOCATION_UNCHANGED_METERS})
+             END)`;
+}
 
 /** An empty delta, for the paths on which the writer performed nothing. */
 const NO_CHANGE: ContentsDelta = { added: [], withdrawn: [], returned: [] };
@@ -131,7 +178,14 @@ export interface IncomingLocation {
 
 /** Which rows the write touched, so assignment can be limited to them. */
 export interface LocationWriteResult {
-  /** Rows that already held this point. Their assignments are still valid. */
+  /**
+   * Rows that already held this point, at this coordinate. Assignments still valid.
+   *
+   * "At this coordinate" is the part ADR-0027 had to add: the keeping arm now adopts
+   * the source's value, so matching no longer implies standing still, and a row that
+   * moved inside the tolerance belongs in `needsAssignment` instead. The distinction
+   * is not cosmetic even at a centimetre — see the `RETURNING` clause of that arm.
+   */
   unchanged: number[];
   /** Rows inserted, moved, or offered again. These need region assignment. */
   needsAssignment: number[];
@@ -169,12 +223,13 @@ function incomingCte(count: number): string {
 }
 
 /**
- * Drop repeats of the same (point, reference) pair, keeping the first.
+ * Drop repeats of the same place under the same reference, keeping the first.
  *
- * Two entries with the same point *and* the same reference carry no information
- * to tell them apart, so collapsing them is the only reading available. That is
- * a different case from the shared coordinates above: those components differ
- * by reference and stay separate rows.
+ * Two entries with the same reference at the same point — or, since ADR-0027,
+ * within the ten metres that make it the same point — carry no information to
+ * tell them apart, so collapsing them is the only reading available. That is a
+ * different case from the shared coordinates above: those components differ by
+ * reference and stay separate rows, however close they sit.
  *
  * It matters because a repeated pair would make the join below many-to-many —
  * both stored rows could take the same incoming ordinal, and the write would die
@@ -186,6 +241,7 @@ function incomingCte(count: number): string {
  */
 export function dedupeByIdentity(incoming: IncomingLocation[]): IncomingLocation[] {
   const seen = new Set<string>();
+  const kept: IncomingLocation[] = [];
   return incoming.filter(loc => {
     // JSON rather than a joined string: `null` and `''` are different
     // references to `IS NOT DISTINCT FROM`, and a key that flattened them would
@@ -193,9 +249,61 @@ export function dedupeByIdentity(incoming: IncomingLocation[]): IncomingLocation
     // survivor's stored row and hide a point the source still offers.
     const key = JSON.stringify([loc.lon, loc.lat, loc.externalRef]);
     if (seen.has(key)) return false;
+    // And the same question the matcher asks, or the promise above is only true of
+    // exact repeats: two entries carrying one reference nine metres apart are both
+    // within the tolerance of one stored row. What that costs is not silence — the
+    // pairing is one-to-one, so the lower ordinal takes the row and the other is
+    // *inserted*, deterministically. It costs the run creating a second row nine
+    // metres from the first under one reference: exactly the pair ADR-0027 exists to
+    // remove and migration 026 exists to repair, manufactured fresh, for the next run
+    // to pair one of them and mark the other. With no stored row yet they both insert
+    // and reach the same place. Deduping is cheaper than either.
+    //
+    // Two such entries are indistinguishable to every rule this file has: the
+    // reference is the same and the geometry says one place. So one place is
+    // what they become, which is the existing rule widened rather than a new
+    // one — and points that really are apart stay apart, the catalogue's
+    // multi-point references standing 14 km and more from each other.
+    if (loc.externalRef !== null && loc.externalRef !== undefined
+      && kept.some(other => other.externalRef === loc.externalRef
+        && metresBetween(other, loc) <= LOCATION_UNCHANGED_METERS)) return false;
     seen.add(key);
+    kept.push(loc);
     return true;
   });
+}
+
+/**
+ * Metres between two incoming points, near enough for a ten-metre question.
+ *
+ * The one place in this file that measures in JavaScript, and it is allowed here
+ * for the reason the rest is not: this compares two entries of the *source's own
+ * list* to decide which of two indistinguishable ones to carry, and writes
+ * nothing to the database on its answer. Every comparison against a stored row
+ * still happens in PostGIS, where a rounding error would cost a region
+ * assignment.
+ *
+ * Equirectangular rather than haversine: over ten metres the two agree to well
+ * under a millimetre at any latitude this catalogue holds, and the cosine keeps
+ * a degree of longitude honest at 78°N, where it is a quarter of what it is at
+ * the equator.
+ *
+ * The haversine it replaces was antimeridian-safe for free — `sin(dLon/2)` reads
+ * 360° − ε as ε — and a raw subtraction is not, so the difference is normalised
+ * to (−180, 180]. Without it, two entries either side of the line and a metre
+ * apart measure 40 000 km, both survive the dedupe, both answer the tolerance
+ * against one stored row, and the object gains a second row for one place under
+ * one reference. Latent rather than live: the catalogue's Pacific sites all sit
+ * clear of the line. It is the repo's standing rule regardless (CLAUDE.md
+ * § Antimeridian Handling), and this is the file's only distance in JavaScript.
+ */
+function metresBetween(a: IncomingLocation, b: IncomingLocation): number {
+  const R = 6371008.8;
+  const toRad = Math.PI / 180;
+  const dLon = ((b.lon - a.lon + 540) % 360) - 180;
+  const x = dLon * toRad * Math.cos((a.lat + b.lat) / 2 * toRad);
+  const y = (b.lat - a.lat) * toRad;
+  return Math.sqrt(x * x + y * y) * R;
 }
 
 function bindParams(experienceId: number, incoming: IncomingLocation[]): unknown[] {
@@ -217,6 +325,66 @@ export async function writeExperienceLocations(
 ): Promise<LocationWriteResult> {
   const incoming = dedupeByIdentity(offered);
   const cte = incomingCte(incoming.length);
+
+  /**
+   * One stored row per incoming point, and one incoming point per stored row.
+   *
+   * The exact comparison was injective for free: two rows cannot share a coordinate
+   * *and* a reference, so at most one could match. A tolerance gives that away, and
+   * what it costs is not cosmetic. Two rows within ten metres under one reference —
+   * a marked row and its offered replacement, or the two an ungated run inserts —
+   * both satisfy the predicate for one incoming point, so the keeping and
+   * resurrection arms would each write `ordinal = i.ordinal` on a different row and
+   * `UNIQUE(experience_id, ordinal)` would abort the write. Not once: on every run
+   * after, for that experience, until someone repairs the rows by hand.
+   *
+   * So the arms stop asking the predicate and read a decided pairing instead.
+   * `DISTINCT ON` twice makes it one-to-one from both directions, and the order
+   * inside it is the product decision: **prefer the row that is not marked**, then
+   * the nearer one. Not "the row a reader can see" — under a gate those come apart,
+   * and the difference is load-bearing. In the held shape both rows carry
+   * `missing_since NULL`, so the first term ties and `metres` gives the pairing to
+   * the `pending` arrival sitting on the source's own coordinate rather than to the
+   * visible row a centimetre off it. Which is right: what keeps the visible row
+   * visible is the arrival's pointer at it, not the pairing. A tie reaching
+   * `location_id` is two rows equidistant under one reference, where nothing
+   * distinguishes them and any choice is the same choice.
+   *
+   * What loses is withdrawn, and *because* it lost rather than on any merits of its
+   * own. The withdrawal and hold arms ask membership of this relation for the reason
+   * a nearness test cannot serve them: a row that lost the pairing is by
+   * construction near the incoming point, so nearness would exclude it from every
+   * arm at once and strand it with the negative ordinal the parking step gave it. An
+   * unmatched marked row stays marked; an unmatched offered row reaches the
+   * withdrawal arm. Degrading to "the point stays where it was" is the only failure
+   * mode that keeps a reader's map and a curator's queue answering the same
+   * catalogue.
+   *
+   * Greedy, and knowingly: the first pass commits an ordinal before the second
+   * learns two of them chose one row, so a complete pairing inside the tolerance can
+   * go unfound where a source lists two points of one reference between ten and
+   * twenty metres apart. No source does; ADR-0027 decision 5a-i states the cost and
+   * #549 holds the maximum matching.
+   */
+  const paired = `${cte},
+     candidate AS (
+       SELECT i.ordinal, el.id AS location_id, el.missing_since,
+              ST_Distance(el.location::geography,
+                          ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)::geography) AS metres
+       FROM incoming i
+       JOIN experience_locations el
+         ON el.experience_id = $1 AND ${samePointSql('el')}
+     ),
+     best_row AS (
+       SELECT DISTINCT ON (ordinal) ordinal, location_id, metres
+       FROM candidate
+       ORDER BY ordinal, (missing_since IS NULL) DESC, metres, location_id
+     ),
+     paired AS (
+       SELECT DISTINCT ON (location_id) ordinal, location_id, metres
+       FROM best_row
+       ORDER BY location_id, ordinal
+     )`;
   const params = bindParams(experienceId, incoming);
 
   // Fast path, and the reason this is cheap to call on every object of every
@@ -237,8 +405,7 @@ export async function writeExperienceLocations(
                JOIN experience_locations el
                  ON el.experience_id = $1
                 AND el.missing_since IS NULL
-                AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-                AND el.external_ref IS NOT DISTINCT FROM i.external_ref
+                AND ${samePointSql('el')}
                 AND el.ordinal = i.ordinal
                 AND el.name IS NOT DISTINCT FROM i.name
                 -- A row the source lists while recorded as delisted is *not* matched:
@@ -278,6 +445,36 @@ export async function writeExperienceLocations(
       [experienceId],
     );
 
+    // **Decided once, here, and read as a table by every arm below.**
+    //
+    // As a CTE it was decided six times, and the arms disagreed — because the first of
+    // them changes the state the next one would decide from. `kept` adopts the source's
+    // coordinate, which moves a stored row *off* every other incoming point it had been
+    // near, so an ordinal that lost the pairing to that row can win it back from a second
+    // row afterwards. Every later arm then agrees the pair exists and skips it: nothing
+    // inserts the point, nothing withdraws the row, and nothing writes the row's ordinal —
+    // leaving it visible on the negative ordinal the parking step gave it, which collides
+    // with the parking of the next run and aborts that experience's write for good.
+    //
+    // Only reachable in the shape ADR-0027 decision 5a-i already describes, two points of
+    // one reference between ten and twenty metres apart. But 5a-i was accepted on a cost —
+    // one withdrawal that did not happen, settling next run — that this made untrue, and a
+    // relation has to mean the same thing to everything that reads it regardless.
+    //
+    // Which is *every statement below this one* — stated as a class rather than a count,
+    // because the count has been wrong twice on this branch as statements moved onto the
+    // pairing one at a time. The five arms read it, the unpairing statement reads it, and
+    // so does the deferral's `withdrawn`, which asks it for a reason of its own.
+    //
+    // `ON COMMIT DROP` rather than an explicit drop: it goes on COMMIT and on ROLLBACK
+    // alike, so no path can leave it behind on a pooled connection.
+    await client.query(
+      `CREATE TEMP TABLE paired_rows ON COMMIT DROP AS
+       WITH ${paired}
+       SELECT ordinal, location_id, metres FROM paired`,
+      params,
+    );
+
     // Survivors keep their id. At most one incoming entry can match, since the
     // incoming list is deduped by identity above.
     //
@@ -298,13 +495,36 @@ export async function writeExperienceLocations(
       `WITH ${cte}
        UPDATE experience_locations el
        SET ordinal = i.ordinal, external_ref = i.external_ref, name = i.name,
-           source_membership = 'present'
-       FROM incoming i
+           source_membership = 'present',
+           -- The coordinate the source is offering, on the runs that reach this arm.
+           -- The source's value is the more precise of the two by construction — it is
+           -- what the rounding lost (ADR-0027 decision 4).
+           --
+           -- Worth knowing what this does *not* buy: an object whose only change is a
+           -- rewritten coordinate now passes the fast path and returns before any arm
+           -- runs, so its stored value stays as it was. That is the common case rather
+           -- than the corner — 1235 of 1272 UNESCO rows take the fast path per run —
+           -- so the catalogue keeps serving a coordinate the source retired, within
+           -- ten metres of the one it now publishes. Accepted rather than hidden: a
+           -- traveller cannot stand ten metres from a component and be in the wrong
+           -- place, and paying a transaction per object to chase the last digits would
+           -- rebuild the churn this writer exists to remove.
+           location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+       FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal
+       -- Scoped to the experience as well as to the pairing. The pairing holds this
+       -- object's rows only, so this narrows nothing -- but with the pairing now a table
+       -- rather than a CTE, it is the last mention of $1 in the statement, and without it
+       -- Postgres cannot infer that parameter's type and refuses the whole query.
        WHERE el.experience_id = $1
+         AND el.id = p.location_id
          AND el.missing_since IS NULL
-         AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-           AND el.external_ref IS NOT DISTINCT FROM i.external_ref
-       RETURNING el.id`,
+       -- The distance decides whether this row still holds the place it was assigned
+       -- to. A traveller cannot be in the wrong place ten metres out, but a region
+       -- polygon can: its edge is a line, so a rewrite of a centimetre across it is two
+       -- different countries for a row that keeps the assignment of the one it left.
+       -- Nothing revisits it either -- the fast path matches the new coordinate on every
+       -- run afterwards -- so this is the one number that has to leave the statement.
+       RETURNING el.id, p.metres`,
       params,
     );
 
@@ -328,12 +548,17 @@ export async function writeExperienceLocations(
        UPDATE experience_locations el
        SET ordinal = i.ordinal, external_ref = i.external_ref, name = i.name,
            missing_since = NULL,
-           source_membership = 'present'
-       FROM incoming i
+           source_membership = 'present',
+           -- Adopted here too, for the keeping arm's reason: a point coming back within
+           -- the tolerance is the same point written differently, and the row that
+           -- carries the visit should carry the source's coordinate.
+           location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+       FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal
+       -- Scoped to the experience for the reason given on the arm above: the pairing
+       -- already narrows it, and $1 has to appear or Postgres cannot type the parameter.
        WHERE el.experience_id = $1
+         AND el.id = p.location_id
          AND el.missing_since IS NOT NULL
-         AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-           AND el.external_ref IS NOT DISTINCT FROM i.external_ref
        RETURNING el.id, el.name, el.external_ref`,
       params,
     );
@@ -344,7 +569,8 @@ export async function writeExperienceLocations(
     // that row be inserted a second time — two rows for one place, and the
     // visit record pointing at whichever of them the reader is not shown.
     const inserted = await client.query(
-      `WITH ${cte}
+      `WITH ${cte},
+       ins AS (
        INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location, curation_state)
        SELECT $1, i.name, i.external_ref, i.ordinal,
               ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326),
@@ -363,13 +589,31 @@ export async function writeExperienceLocations(
                           WHERE e.id = $1)
                    THEN 'pending' ELSE 'auto' END
        FROM incoming i
-       WHERE NOT EXISTS (
-         SELECT 1 FROM experience_locations el
-         WHERE el.experience_id = $1
-           AND el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-           AND el.external_ref IS NOT DISTINCT FROM i.external_ref
+       -- Read from the same decided pairing the keeping arms use, not from the
+       -- predicate again: a point that matches for keeping and does not match here
+       -- inserts a second row beside the row it just updated, and one that matches
+       -- here and loses the pairing above inserts a row for a place the run also
+       -- kept. Both halves therefore ask the one relation (ADR-0027 decision 5).
+       WHERE NOT EXISTS (SELECT 1 FROM paired_rows p WHERE p.ordinal = i.ordinal)
+       RETURNING id, ordinal, curation_state, name, external_ref
+       ),
+       -- **The rows this just created join the pairing, in the same statement.**
+       --
+       -- Deciding the pairing once fixed the arms disagreeing about it; it also meant the
+       -- table predates every row the insert writes, and the withdrawal arm's only test of
+       -- whether a source still offers a row is membership of it. A new row would be
+       -- inserted and marked missing by the next statement but one -- reported as added and
+       -- withdrawn by the same run, hidden from every reader, and under a gate left
+       -- pending *and* marked, which no publish can ever release.
+       --
+       -- At nought metres by construction: the row was written on the incoming point.
+       -- Nothing reads the distance after the keeping arm, but a lie there would be a lie
+       -- waiting for the next reader of this table.
+       joined AS (
+         INSERT INTO paired_rows (ordinal, location_id, metres)
+         SELECT ordinal, id, 0 FROM ins
        )
-       RETURNING id, curation_state, name, external_ref`,
+       SELECT id, curation_state, name, external_ref FROM ins`,
       params,
     );
 
@@ -405,19 +649,70 @@ export async function writeExperienceLocations(
               -- one-point site, one of them a coordinate the source retired two
               -- runs ago, recoverable only by hand-written SQL.
               --
-              -- With this predicate the chain cannot form: the arrival pairs with
-              -- the visible row, and the invisible intermediate is withdrawn in the
-              -- same run.
+              -- With the curation_state term the chain cannot form: the arrival
+              -- pairs with the visible row, and the invisible intermediate is withdrawn
+              -- in the same run. That holds only while the visible row stays *available*
+              -- to be paired with, which is why the held-row term below is narrowed to
+              -- arrivals the run keeps rather than written as the mark has it.
+              --
+              -- Membership of the pairing, not nearness, and the two are no longer the
+              -- same set. Before the tolerance they were one predicate, which is what
+              -- made the count above a derivation instead of a hope: this CTE was
+              -- exactly the set the mark would mark. Nearness is now the broader
+              -- question by one row -- the pairing's loser, which *is* near an incoming
+              -- point -- so asking it here would leave that row out of the deferral
+              -- while the mark marks it anyway: a visible pin withdrawn with a pending,
+              -- invisible arrival beside it, which is the one thing the deferral exists
+              -- to prevent. Every other row the run touched is in the pairing by now,
+              -- kept, resurrected or inserted, so none of them can reach this.
               withdrawn AS (
                 SELECT el.id, el.external_ref
                 FROM experience_locations el
                 WHERE el.experience_id = $1
+                  -- Rows a reader can *see*, which is what a deferral slot is scarce for:
+                  -- one per arrival, and spending one on a row nobody is looking at leaves
+                  -- a visible pin unheld. So all three terms of that, not one:
+                  -- offeredLocationSql (experienceLifecycle.ts) is
+                  -- missing_since IS NULL AND existence <> 'lost', and the gate adds
+                  -- pending on top -- repeated rather than imported, no service here
+                  -- depending on a controller, and it has to track that definition.
+                  --
+                  -- The existence term is not decoration. A curator answers "no longer
+                  -- exists" on a withdrawn point; the source offers it again, so the
+                  -- resurrection arm clears missing_since and deliberately leaves
+                  -- existence alone; a later run drops it again. That row is invisible,
+                  -- unpaired and not pending -- and without this it would take the slot
+                  -- from a point a reader really can see.
                   AND el.missing_since IS NULL
+                  AND el.existence <> 'lost'
                   AND el.curation_state <> 'pending'
                   AND NOT EXISTS (
-                    SELECT 1 FROM incoming i
-                    WHERE el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-                    AND el.external_ref IS NOT DISTINCT FROM i.external_ref
+                    SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
+                  )
+                  -- Held by an arrival **this run keeps** -- which is the mark's term
+                  -- narrowed, and both halves of the narrowing are load-bearing.
+                  --
+                  -- The term at all, because covering the *visible* rows the mark will mark
+                  -- is the promise and membership alone is one term short of it: a row held by
+                  -- an earlier run stays unpaired for ever, so without this it comes
+                  -- back as a candidate on every later run and takes a deferral slot
+                  -- from a withdrawal the run really is performing -- leaving a row the
+                  -- source did drop unheld and marked at once, a reader's pin gone with
+                  -- only an invisible arrival to replace it.
+                  --
+                  -- And only for a surviving arrival, or a point moved twice before
+                  -- anyone publishes loses its handle: the first arrival is itself
+                  -- unoffered now, so this statement marks it and clears its pointer,
+                  -- and the visible row it was holding would end up with no pointer on
+                  -- it at all -- two pins on a one-point site until the next run, which
+                  -- is exactly the chain the note above says cannot form.
+                  AND NOT EXISTS (
+                    SELECT 1 FROM experience_locations waiting
+                    WHERE waiting.experience_id = $1
+                      AND waiting.withdrawal_deferred_for_location_id = el.id
+                      AND EXISTS (
+                        SELECT 1 FROM paired_rows p WHERE p.location_id = waiting.id
+                      )
                   )
               ),
               arrived AS (
@@ -498,9 +793,7 @@ export async function writeExperienceLocations(
          AND old.experience_id = $1
          AND n.withdrawal_deferred_for_location_id = old.id
          AND EXISTS (
-           SELECT 1 FROM incoming i
-           WHERE old.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-           AND old.external_ref IS NOT DISTINCT FROM i.external_ref
+           SELECT 1 FROM paired_rows p WHERE p.location_id = old.id
          )`,
       params,
     );
@@ -528,9 +821,7 @@ export async function writeExperienceLocations(
        WHERE el.experience_id = $1
          AND el.missing_since IS NULL
          AND NOT EXISTS (
-           SELECT 1 FROM incoming i
-           WHERE el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-           AND el.external_ref IS NOT DISTINCT FROM i.external_ref
+           SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
          )
          AND NOT EXISTS (
            SELECT 1 FROM experience_locations waiting
@@ -563,9 +854,7 @@ export async function writeExperienceLocations(
          AND el.missing_since IS NULL
          AND el.ordinal IS NOT NULL
          AND NOT EXISTS (
-           SELECT 1 FROM incoming i
-           WHERE el.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-           AND el.external_ref IS NOT DISTINCT FROM i.external_ref
+           SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
          )
          AND EXISTS (
            SELECT 1 FROM experience_locations waiting
@@ -582,11 +871,21 @@ export async function writeExperienceLocations(
 
     await client.query('COMMIT');
 
+    // The keeping arm splits on whether the coordinate actually moved, which is what
+    // makes `unchanged`'s promise below true again now that the arm adopts geometry.
+    // Any non-zero distance counts: a region boundary is a line, so there is no
+    // distance small enough to be safe near one, and the row's `experience_location_regions`
+    // rows are the thing being answered for — not what a reader can see.
+    const moved = (r: { metres?: number }) => Number(r.metres) > 0;
+    const keptMoved = kept.rows.filter(moved);
+    const keptStill = kept.rows.filter(r => !moved(r));
+
     return {
-      unchanged: kept.rows.map(r => r.id as number),
+      unchanged: keptStill.map(r => r.id as number),
       needsAssignment: [
         ...inserted.rows.map(r => r.id as number),
         ...returned.rows.map(r => r.id as number),
+        ...keptMoved.map(r => r.id as number),
       ],
       // A held point is not counted: `unoffered` answers "how many stored points
       // this run was the first to find missing", and this run wrote nothing of
