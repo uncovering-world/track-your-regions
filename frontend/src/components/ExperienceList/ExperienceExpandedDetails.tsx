@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   Box,
   Typography,
@@ -23,15 +23,14 @@ import {
   LinkOff as RemoveFromRegionIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
+import { cardImageUrl, isImagePreloaded, preloadImage } from '../../utils/imagePreload';
 import { useAuth } from '../../hooks/useAuth';
 import {
-  fetchExperience,
-  fetchExperienceTreasures,
   type Experience,
   type ExperienceLocation,
   type VisitedStatus,
 } from '../../api/experiences';
+import { experienceContentsQuery, experienceDetailsQuery } from '../../api/experienceCardQueries';
 import { VISITED_GREEN } from '../../utils/categoryColors';
 import { ArtworksList } from './ArtworksList';
 import { VisitedStatusButton } from './VisitedStatusButton';
@@ -58,6 +57,14 @@ export interface ExperienceExpandedDetailsProps {
   onCurate?: () => void;
   onUnreject?: () => void;
   onRemoveFromRegion?: () => void;
+  /**
+   * Called in the layout phase whenever something inside this card changes its
+   * height — the works list growing, the out-of-region points unfolding — so the
+   * virtualiser hears about it before the browser paints. The card opening is
+   * reported by the row; everything that happens inside an open one is reported
+   * from here, because this state is not visible above.
+   */
+  onHeightChange?: () => void;
   isRejected?: boolean;
 }
 
@@ -76,23 +83,17 @@ export function ExperienceExpandedDetails({
   onCurate,
   onUnreject,
   onRemoveFromRegion,
+  onHeightChange,
   isRejected,
 }: ExperienceExpandedDetailsProps) {
   const { isAuthenticated } = useAuth();
 
-  // Fetch full details
-  const { data: details } = useQuery({
-    queryKey: ['experience', experience.id],
-    queryFn: () => fetchExperience(experience.id),
-    staleTime: 300000,
-  });
-
-  // Fetch contents (artworks) - only if experience has contents
-  const { data: contentsData } = useQuery({
-    queryKey: ['experience-contents', experience.id],
-    queryFn: () => fetchExperienceTreasures(experience.id),
-    staleTime: 300000,
-  });
+  // These two decide part of the card's height, so the card is not mounted until
+  // they have answered — `useExperienceCardReady` waits on the same keys, which is
+  // why the definitions live in one place (`experienceCardQueries`). By the time
+  // this renders they are in cache; issuing them here is what starts them.
+  const { data: details } = useQuery(experienceDetailsQuery(experience.id));
+  const { data: contentsData } = useQuery(experienceContentsQuery(experience.id));
 
   // Use batch locations from parent + global isLocationVisited
   const totalLocations = locations?.length ?? (experience.location_count ?? 0);
@@ -158,7 +159,52 @@ export function ExperienceExpandedDetails({
   const visitedLocations = locationsWithRegionInfo.filter(l => l.isVisited).length;
   const visitedStatus: VisitedStatus = computeVisitedStatus(visitedLocations, totalLocations);
 
-  const imageUrl = extractImageUrl(experience.image_url);
+  // Resolved once, by the same helper the row's hover preload calls, so the two
+  // cannot ask for different files. It answers with an empty string for a remote
+  // host the thumbnail proxy does not trust, and an empty `src` is not nothing:
+  // the browser resolves it against the current document, so the page would fetch
+  // its own HTML and draw it as a broken picture.
+  const thumbnailUrl = cardImageUrl(experience.image_url);
+
+  // The box is given its 250 px only once the bytes are actually here, because
+  // most of these pictures never arrive. Measured against the live data: of 1604
+  // experiences, 1260 carry `whc.unesco.org/document/<id>` as their image, which
+  // answers 403 at the source and 404 through the thumbnail proxy, and only the
+  // 330 Wikimedia `Special:FilePath` urls resolve (#557). Reserving space for all
+  // of them and taking it back on failure moved the rows below on four cards in
+  // five — exactly the shuffling this was meant to end.
+  //
+  // Usually the answer is already known, because hovering the row started the
+  // fetch (`imagePreload.ts`), and hovering is what precedes opening. Then this
+  // renders at its final size in the first frame and nothing moves afterwards. A
+  // card opened without a hover — keyboard, touch, a marker click — falls back to
+  // waiting, which is a late 250 px rather than a wrong 250 px.
+  // Derived from the url in hand, never stored as a bare yes — the same shape
+  // `useExperienceCardReady` uses, and for the same reason. A card whose picture is
+  // edited to another one arrives here with a new url while a stored yes still says
+  // ready, so the render before the effect corrects it would draw the *new* file
+  // under the old permission: a 250 px box holding nothing, then emptied when the
+  // effect runs, then filled when the bytes land. Three movements of every row
+  // below, from a value that was true of a different picture.
+  const [readyUrl, setReadyUrl] = useState<string | null>(null);
+  const imageReady = !!thumbnailUrl && (readyUrl === thumbnailUrl || isImagePreloaded(thumbnailUrl));
+  useEffect(() => {
+    if (!thumbnailUrl || isImagePreloaded(thumbnailUrl)) return;
+    let cancelled = false;
+    preloadImage(thumbnailUrl).then(ok => { if (ok && !cancelled) setReadyUrl(thumbnailUrl); });
+    return () => { cancelled = true; };
+  }, [thumbnailUrl]);
+  // Everything in this card that changes its height, reported before paint. The row
+  // cannot do it: both are state of this component, so React re-renders from here
+  // downward and nothing above is asked to measure. The picture is the larger of
+  // them at 266 px, and it moves on two paths the gate does not cover: a card
+  // opened by the cap with the bytes still in flight, and a curator editing an open
+  // card's picture, where `capReached` short-circuits ahead of the image term so
+  // the card cannot close to be re-gated.
+  useLayoutEffect(() => {
+    onHeightChange?.();
+  }, [outOfRegionExpanded, imageReady, onHeightChange]);
+
   const isMultiLocation = totalLocations > 1;
 
   const categoryColorMap: Record<string, { bg: string; text: string }> = {
@@ -171,6 +217,10 @@ export function ExperienceExpandedDetails({
 
   return (
     <Box
+      // A stable handle for the layout smoke spec, which has to tell "the card is
+      // open" from "the row is merely tall": a wrapped title is 85 px and an opened
+      // fixture card is 81.
+      data-experience-card=""
       sx={{
         pl: 2,
         pr: 2,
@@ -178,24 +228,46 @@ export function ExperienceExpandedDetails({
         bgcolor: 'grey.50',
         borderBottom: '1px solid',
         borderColor: 'divider',
+        // No entrance animation, deliberately, and it was tried twice.
+        //
+        // A card opens at its final height with its content already loaded, so
+        // anything that fades or wipes that content in leaves the space it will
+        // occupy standing empty first. Frame-by-frame at 60 fps on a 600 px card,
+        // a 260 ms `clip-path` reveal reads as the panel blinking: rows below drop
+        // away, a large pale area stands there for four frames, then the picture
+        // slides down into it. What looks graceful slowed down eight times is a
+        // flash at speed, because the eye reads "large area changed" long before
+        // it reads "content arriving".
+        //
+        // Height cannot be animated either — the row's height is measured, so
+        // every intermediate value repositions every row below it, which is where
+        // this started (five heights in 290 ms, stepping at about 17 fps).
+        //
+        // So the card is simply there, complete, in the frame it appears. The only
+        // motion left is the rows below moving down once to make room for it.
       }}
     >
       {/* Image */}
-      {imageUrl && (
+      {thumbnailUrl && imageReady && (
         <Box
           component="img"
-          src={toThumbnailUrl(imageUrl, 330)}
+          src={thumbnailUrl}
           alt={experience.name}
           sx={{
             width: '100%',
-            maxHeight: 250,
+            // A fixed height, not a maximum: by the time this renders the bytes
+            // are already in cache, so the box takes its size in the frame it
+            // appears and never changes it again. Measured before the picture was
+            // loaded first, the row grew 282 px some 80 ms after opening, and a
+            // measured row growing means every row below it moves — the reader
+            // watched the list settle twice. `contain` letterboxes a wide picture
+            // against the grey rather than cropping it, which is what this
+            // background colour was always for.
+            height: 250,
             objectFit: 'contain',
             borderRadius: 1,
             mb: 2,
             bgcolor: 'grey.100',
-          }}
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
           }}
         />
       )}

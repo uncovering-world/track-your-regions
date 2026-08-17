@@ -22,6 +22,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | `categoryColors.ts` | Category color mapping, `VISITED_GREEN` (`#22c55e`), `PARTIAL_AMBER` (`#F59E0B`) |
 | `dateFormat.ts` | `formatRelativeTime()`, `formatDuration(start, end)` |
 | `imageUrl.ts` | `toThumbnailUrl()`, `extractImageUrl()` |
+| `imagePreload.ts` | `cardImageUrl(rawImageUrl)` — the thumbnail an expanded experience card renders, so a preloader and the card cannot ask for different files; `preloadCardImage(rawImageUrl)`, `preloadImage(url)` — fetch it early and remember the answer for the session, failures included, so a url that 404s is never asked twice; `isImagePreloaded(url)` — *can I draw this picture?* (loaded); `isImageSettled(url)` — *is the answer known?* (loaded **or** refused). Ask the second when deciding whether something may be shown at its final size: four of these urls in five never resolve, and reading a known refusal as "still coming" makes a card wait for nothing |
 | `queryInvalidation.ts` | `invalidateExperiences(queryClient, opts?)`, `invalidateAfterBatchPublication(queryClient)`, `invalidateVisitedStatus(queryClient)` |
 | `scrollUtils.ts` | `scrollToCenter(container, el)`, `scrollToTop(container, el)` |
 | `locationLabel.ts` | `locationLabel(location)` — what to call one of an experience's points. Use it instead of `` `Location ${loc.ordinal + 1}` ``: `ordinal` is nullable (a point whose replacement is waiting to be published has no place in the source's list), and `null + 1` is `1`, which is the label a curator-created first point already carries |
@@ -38,6 +39,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | Need | Use this | Instead of |
 |------|----------|------------|
 | Loading spinner | `<LoadingSpinner />` | Inline `<Box sx={{display:'flex', justifyContent:'center'}}><CircularProgress /></Box>` |
+| Preload a card's picture | `preloadCardImage(exp.image_url)` | `new Image()` on `extractImageUrl(exp.image_url)` — that is the *original*, which no surface renders (every one uses a `toThumbnailUrl()` size), and it neither remembers failures nor knows that four urls in five answer 403 |
 | Empty state message | `<EmptyState message="..." />` | Inline `<Typography color="text.secondary">No items.</Typography>` |
 | Visited green color | `VISITED_GREEN` constant | Hardcoded `'#22c55e'` or `'#10B981'` |
 | Partial/amber color | `PARTIAL_AMBER` constant | Hardcoded `'#F59E0B'` |

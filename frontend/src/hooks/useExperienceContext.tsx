@@ -5,41 +5,18 @@
  * - experiences: fetched when regionId changes
  * - hoveredExperienceId: shared hover state between list and markers (bidirectional)
  * - selectedExperienceId: currently expanded/selected experience (shows details in list)
- * - Image preloading for faster tooltip/detail display
+ *
+ * Pictures are not preloaded here any more; the block where that used to happen
+ * records why, and where it happens instead.
  */
 
-import { createContext, useContext, useState, useMemo, useCallback, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useMemo, useCallback, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchExperiencesByRegion, WHOLE_REGION_LIMIT, type Experience } from '../api/experiences';
 
 // Re-export image utilities from their canonical location for backward compatibility
 export { toThumbnailUrl, extractImageUrl } from '../utils/imageUrl';
 
-import { extractImageUrl as extractImageUrlUtil } from '../utils/imageUrl';
-
-/**
- * Preload images in the background for faster display
- * Returns a cleanup function to cancel pending loads
- */
-function preloadImages(experiences: Experience[]): () => void {
-  const images: HTMLImageElement[] = [];
-
-  experiences.forEach((exp) => {
-    const url = extractImageUrlUtil(exp.image_url);
-    if (url) {
-      const img = new Image();
-      img.src = url;
-      images.push(img);
-    }
-  });
-
-  // Return cleanup function to cancel pending loads
-  return () => {
-    images.forEach((img) => {
-      img.src = ''; // Cancel loading
-    });
-  };
-}
 
 interface ExperienceContextType {
   // Experiences for current region
@@ -172,17 +149,18 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // Zero for almost every region; the list offers the toggle only above zero.
   const lostHidden = data?.lostHidden ?? 0;
 
-  // Preload images only when exploring - cancel on region change or exploration close
-  useEffect(() => {
-    if (!isExploring || experiences.length === 0) {
-      return;
-    }
-
-    const cancelPreload = preloadImages(experiences);
-
-    // Cleanup: cancel pending image loads when region changes or exploration closes
-    return cancelPreload;
-  }, [experiences, isExploring]);
+  // Nothing preloads a region's pictures here any more, and removing it cost
+  // nothing because it warmed bytes no view ever asks for. It fetched
+  // `extractImageUrl(exp.image_url)` — the original — for every experience the
+  // moment a region was explored: about 670 requests for Europe, of which roughly
+  // four in five answer 403 (#557) and the rest are full-size files. Every surface
+  // renders a `toThumbnailUrl()` variant instead (120, 250, 330, 500, 720, 960),
+  // so not one of those downloads was ever displayed.
+  //
+  // A card's picture is warmed where it is about to be needed instead: the row
+  // fetches the exact thumbnail it will render once the pointer rests on it, and a
+  // card will not open until its picture has settled — see `imagePreload.ts` and
+  // `useExperienceCardReady.ts`.
 
   const getExperienceById = useCallback((id: number) => {
     return experiences.find(exp => exp.id === id);

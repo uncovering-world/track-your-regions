@@ -17,6 +17,10 @@ export function ArtworksList({ contents, total, experienceId }: ArtworksListProp
   const { setPreviewImageUrl } = useExperienceContext();
   const { isAuthenticated } = useAuth();
   const { viewedIds, viewedCount, markViewed, unmarkViewed } = useViewedTreasures(experienceId);
+  // Showing every work does not change the row's height, and so reports nothing:
+  // this list is a 300 px scroller, and the link that reveals the rest only exists
+  // once there are more than ten of them — which already overflows it. The box is
+  // at its cap before the click and at its cap after.
   const [showAll, setShowAll] = useState(false);
   const displayContents = showAll ? contents : contents.slice(0, ARTWORKS_INITIAL_LIMIT);
   const hasMore = total > ARTWORKS_INITIAL_LIMIT;
