@@ -151,8 +151,12 @@ function ExperienceListItemComponent({
         }
       }}
     >
-      {/* Main list item */}
+      {/* Main list item. A `div`, not the `li` MUI defaults to: the row is placed
+          inside one already — by the virtualiser in the region list, and by the
+          Rejected section below it — and an `li` inside an `li` is one item too
+          many for anything reading the list aloud. */}
       <ListItem
+        component="div"
         sx={{
           pl: 2,
           cursor: 'pointer',

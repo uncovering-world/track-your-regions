@@ -10,7 +10,11 @@
  */
 
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { ownedHoveredLocationId, lostHiddenLabel } from './ExperienceList/utils';
+import {
+  ownedHoveredLocationId, lostHiddenLabel,
+  flattenGroups, rowIndexByExperienceId, experienceIdsInVisibleRange,
+  type ExperienceGroupLike,
+} from './ExperienceList/utils';
 import {
   Box,
   Typography,
@@ -50,6 +54,16 @@ import { scrollToCenter, scrollToTop } from '../utils/scrollUtils';
 import { invalidateExperiences } from '../utils/queryInvalidation';
 import { LoadingSpinner } from './shared/LoadingSpinner';
 import { ExperienceListItem } from './ExperienceList/ExperienceListItem';
+import { useVirtualizer } from '@tanstack/react-virtual';
+
+/**
+ * How often, at most, the rows the window has held are reported as seen.
+ *
+ * Long enough that a scroll through a freshly published region is a handful of
+ * requests rather than one per render, short enough that a reader who glances
+ * and leaves has still been counted.
+ */
+const SEEN_FLUSH_MS = 800;
 
 interface ExperienceGroup {
   categoryName: string;
@@ -144,6 +158,13 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // Track which groups are expanded
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // Which experiences the reader's window has held, for the New-badge impression
+  // below. Accumulated across scrolling and reset per region.
+  const [seenExperienceIds, setSeenExperienceIds] = useState<Set<number>>(() => new Set());
+  // Rows seen since the last flush, and the flush itself. Declared here because
+  // the region-change block below clears them, and that block runs during render.
+  const pendingSeen = useRef<Set<number>>(new Set());
+  const seenFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs for scrolling to items (experiences and locations)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -190,6 +211,14 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     setTrackedRegionId(regionId);
     hasAutoExpanded.current = false;
     setExpandedGroups(new Set());
+    // What the reader has laid eyes on belongs to the region they were in. Reset
+    // here rather than in an effect for the same reason the rest of this block is
+    // here: one render carrying region B's rows against A's seen-set would report
+    // impressions for rows nobody has seen, and the server keeps the first one.
+    // The rows still waiting to be flushed go with it, or region A's would be
+    // reported once the timer came round against region B's list.
+    setSeenExperienceIds(new Set());
+    pendingSeen.current = new Set();
   }
 
   // The parent's copy stays in an effect — setting another component's state
@@ -213,6 +242,68 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     }
   }, [groups, setExpandedCategoryNames]);
 
+  // ── One flat list, so the rows can be windowed ──
+  //
+  // Grouped rendering and windowing do not compose: a virtualiser counts rows
+  // and a group is not a row. So headers and the experiences of expanded groups
+  // become one sequence, and a collapsed group contributes its header alone —
+  // which is what `unmountOnExit` did before, arrived at differently.
+  //
+  // Measured on Europe, where the largest category holds 467: rendering them all
+  // blocked the main thread for 2.5 s in one task, and 2.9 s of the 3.8 s that
+  // opening a region cost was these rows (#552).
+  const flatRows = useMemo(() => flattenGroups(groups, expandedGroups), [groups, expandedGroups]);
+
+  // Where each experience sits, so the two scroll effects below can ask the
+  // virtualiser for a row that has no element yet — the whole point of windowing
+  // is that most rows do not.
+  //
+  // Read through a ref, the way `selectedIdRef` below already is, and deliberately
+  // absent from those effects' dependencies. The map is rebuilt whenever the rows
+  // change, and a change of rows is not a change of selection: depending on it
+  // would scroll the reader back to the selected row every time a group is
+  // expanded or the region's experiences are refetched.
+  const rowIndexByExperience = useMemo(() => rowIndexByExperienceId(flatRows), [flatRows]);
+  const rowIndexRef = useRef(rowIndexByExperience);
+  rowIndexRef.current = rowIndexByExperience;
+
+  // A row's identity, not its position. Measured heights are cached under this
+  // key, and the default key is the index — which is exactly what is unstable
+  // here: collapsing a group shifts every row below it, so a height measured for
+  // "row 40" would be handed to whatever row moved into slot 40, and the
+  // scrollbar would stay wrong until each of them happened to re-render.
+  const getRowKey = useCallback(
+    (index: number) => {
+      const row = flatRows[index];
+      if (!row) return index;
+      return row.kind === 'header' ? `h:${row.group.categoryName}` : `e:${row.exp.id}`;
+    },
+    [flatRows],
+  );
+
+  const virtualizer = useVirtualizer({
+    count: flatRows.length,
+    getScrollElement: () => scrollContainerRef.current,
+    // A guess, corrected by `measureElement` on every row that renders: a
+    // collapsed experience is one line, an expanded one carries its locations
+    // underneath and can be ten times taller. Without measurement the scrollbar
+    // would jump as the reader expands rows.
+    estimateSize: (i) => (flatRows[i]?.kind === 'header' ? 56 : 72),
+    getItemKey: getRowKey,
+    // No `scrollMargin` here, deliberately, and it is not free: the list is not
+    // the first thing in the scroll container — a curator gets the "add a
+    // category" box above it — so the virtualiser's origin is the container's
+    // rather than the list's and its range is off by that distance, masked in
+    // practice by `overscan`. The documented remedy is the list's `offsetTop`,
+    // and here that reads 102 px where the true distance is 47: `offsetTop` counts
+    // from the nearest positioned ancestor, and the scroll container
+    // (`RegionDescriptionSection.tsx:54`) is `position: static`, so the count
+    // starts somewhere else entirely. A wrong margin shifts the range for every
+    // reader, where no margin shifts it only where the box appears — #556 makes
+    // the container the origin and measures it.
+    overscan: 8,
+  });
+
   // Scroll to item only when hovered from map marker (not from list hover)
   // Use manual scrolling to avoid affecting page scroll
   // If hoveredLocationId is set and the location is visible, scroll to it; otherwise scroll to the experience
@@ -220,21 +311,37 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     if (hoveredExperienceId && hoverSource === 'marker' && scrollContainerRef.current) {
       const container = scrollContainerRef.current;
 
-      // Try to get the location element first (if expanded), then fall back to experience
-      let element: HTMLDivElement | undefined;
-      if (hoveredLocationId) {
-        element = locationRefs.current.get(hoveredLocationId);
-      }
-      // Fall back to experience item if location ref not found (not expanded)
-      if (!element) {
-        element = itemRefs.current.get(hoveredExperienceId);
+      // A location element exists only inside a row that is both expanded and
+      // rendered; prefer it, because it is the precise thing being hovered.
+      const locationElement = hoveredLocationId
+        ? locationRefs.current.get(hoveredLocationId)
+        : undefined;
+      if (locationElement) {
+        scrollToCenter(container, locationElement);
+        return;
       }
 
-      if (element) {
-        scrollToCenter(container, element);
+      // Otherwise ask the virtualiser rather than the DOM. This is the case
+      // windowing creates: the row the marker points at is usually not rendered,
+      // so `itemRefs` has nothing for it, and before this the hover silently
+      // scrolled nowhere for every row outside the window.
+      const index = rowIndexRef.current.get(hoveredExperienceId);
+      if (index != null) {
+        // `behavior` stays the virtualiser's default. The helpers this replaced
+        // glided (`scrollUtils.ts` passes `smooth`), but TanStack documents smooth
+        // scrolling as unsupported alongside the dynamic measurement the rows
+        // need, and a jump to the right row beats a glide to a stale offset.
+        virtualizer.scrollToIndex(index, { align: 'center' });
+        return;
       }
+
+      // Rendered but absent from the flat list, which is what a rejected row is:
+      // those render outside the virtualiser, so they have an element and no
+      // index. Keep the element path for them.
+      const element = itemRefs.current.get(hoveredExperienceId);
+      if (element) scrollToCenter(container, element);
     }
-  }, [hoveredExperienceId, hoveredLocationId, hoverSource, scrollContainerRef]);
+  }, [hoveredExperienceId, hoveredLocationId, hoverSource, scrollContainerRef, virtualizer]);
 
   // Scroll selected item to TOP when clicked so description is visible
   // Wait for Collapse animation to complete before scrolling
@@ -242,17 +349,23 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     if (selectedExperienceId && scrollContainerRef.current) {
       const container = scrollContainerRef.current;
 
-      // Wait for Collapse animation to finish (MUI default is ~300ms)
+      // The delay outlives the group animation it was written for: selecting a
+      // row now expands it in place, and the row grows over a frame or two while
+      // its locations mount and are measured. Scrolling before that lands on the
+      // old height.
       const timeoutId = setTimeout(() => {
-        const element = itemRefs.current.get(selectedExperienceId);
-        if (element && container) {
-          scrollToTop(container, element);
+        const index = rowIndexRef.current.get(selectedExperienceId);
+        if (index != null) {
+          virtualizer.scrollToIndex(index, { align: 'start' });
+          return;
         }
+        const element = itemRefs.current.get(selectedExperienceId);
+        if (element && container) scrollToTop(container, element);
       }, 350);
 
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedExperienceId, scrollContainerRef]);
+  }, [selectedExperienceId, scrollContainerRef, virtualizer]);
 
   const toggleGroup = (categoryName: string) => {
     setExpandedGroups((prev) => {
@@ -326,15 +439,60 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     if (regionId) removeFromRegion({ experienceId: exp.id, rId: regionId });
   }, [regionId, removeFromRegion]);
 
-  // Only the groups the reader has open. The list is grouped by category and
-  // each group renders inside `unmountOnExit`, so a collapsed one's chips are
-  // never on screen — and reporting them would be unrecoverable, since the
-  // server keeps only the first impression. A reader who opens a region once
-  // and never expands Museums would spend their week on rows they never saw,
-  // which is precisely what the personal window exists to prevent.
+  // Rows the reader's window has actually held, accumulated. Windowing is what
+  // makes this answerable: before it, expanding a group of 467 stamped all 467 as
+  // seen while the reader had passed ten, and the server keeps the *first*
+  // impression — so those rows spent the reader's personal week unseen, which is
+  // precisely what that week exists to prevent. Accumulated rather than "in view
+  // now", because scrolling away does not unsee a row.
+  //
+  // State rather than a ref, so the memo below has something real to depend on:
+  // a ref mutated in place tells React nothing, and the impressions call would
+  // keep reporting the previous set.
+  //
+  // Flushed on a timer rather than per render, which is what windowing costs
+  // here: the set used to change once per region and now changes as the reader
+  // scrolls, and each change is a request. `authenticatedLimiter` allows 60 a
+  // minute per IP across every authenticated call, and a curator publishing a
+  // sync's arrivals in one go is precisely how a region comes to hold hundreds
+  // of rows carrying the mark. Ids accumulate between flushes, so this bounds
+  // how often the rows are reported, never which of them are.
+  const virtualItems = virtualizer.getVirtualItems();
+  // What the viewport intersects, which is not what is mounted: `virtualItems`
+  // carries the `overscan` rows on either side, deliberately below the fold. Read
+  // after `getVirtualItems()` so the range belongs to this render.
+  const visibleRange = virtualizer.range;
+  useEffect(() => {
+    const fresh = experienceIdsInVisibleRange(flatRows, visibleRange)
+      .filter(id => !seenExperienceIds.has(id) && !pendingSeen.current.has(id));
+    for (const id of fresh) pendingSeen.current.add(id);
+    if (pendingSeen.current.size === 0 || seenFlushTimer.current) return;
+    seenFlushTimer.current = setTimeout(() => {
+      seenFlushTimer.current = null;
+      const batch = pendingSeen.current;
+      pendingSeen.current = new Set();
+      // Empty when a region change cleared the pending set while this was in
+      // flight; setting state anyway would report the new region's list against
+      // a set that gained nothing.
+      if (batch.size === 0) return;
+      setSeenExperienceIds(prev => {
+        const next = new Set(prev);
+        for (const id of batch) next.add(id);
+        return next;
+      });
+    }, SEEN_FLUSH_MS);
+  }, [visibleRange, flatRows, seenExperienceIds]);
+
+  // A flush landing after the list is gone belongs to nobody.
+  useEffect(() => () => {
+    if (seenFlushTimer.current) clearTimeout(seenFlushTimer.current);
+    seenFlushTimer.current = null;
+    pendingSeen.current = new Set();
+  }, []);
+
   const shownExperiences = useMemo(
-    () => groups.filter(g => expandedGroups.has(g.categoryName)).flatMap(g => g.experiences),
-    [groups, expandedGroups],
+    () => activeExperiences.filter(exp => seenExperienceIds.has(exp.id)),
+    [activeExperiences, seenExperienceIds],
   );
   useNewBadgeImpressions(shownExperiences, isAuthenticated, user?.id);
 
@@ -374,6 +532,45 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       </Box>
     );
   }
+
+  // Takes the narrower shape: a header draws a name and a count and has no use
+  // for the priority the sort above needs.
+  const renderGroupHeader = (group: ExperienceGroupLike) => (
+    <ListItem
+      component="div"
+      onClick={() => toggleGroup(group.categoryName)}
+      sx={{
+        bgcolor: 'grey.100',
+        cursor: 'pointer',
+        '&:hover': { bgcolor: 'grey.200' },
+      }}
+    >
+      <ListItemText
+        primary={
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+            {group.categoryName} ({group.experiences.length})
+          </Typography>
+        }
+      />
+      {/* Per-source "+" button to create a new experience under this source */}
+      {hasCuratorScope && regionId && (
+        <Tooltip title={`Add new ${group.categoryName.toLowerCase().replace(/^top /, '')}`}>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              const categoryId = categoryNameToId.get(group.categoryName);
+              setAddDialogState({ open: true, defaultCategoryId: categoryId, defaultTab: 0 });
+            }}
+            sx={{ mr: 0.5 }}
+          >
+            <AddIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
+      {expandedGroups.has(group.categoryName) ? <ExpandLess /> : <ExpandMore />}
+    </ListItem>
+  );
 
   const renderExperienceItem = (exp: Experience, rejected = false) => (
     <ExperienceListItem
@@ -421,53 +618,42 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
         </Box>
       )}
 
-      <List disablePadding>
-        {groups.map((group) => (
-        <Box key={group.categoryName}>
-          {/* Group Header */}
-          <ListItem
-            component="div"
-            onClick={() => toggleGroup(group.categoryName)}
-            sx={{
-              bgcolor: 'grey.100',
-              cursor: 'pointer',
-              '&:hover': { bgcolor: 'grey.200' },
-            }}
-          >
-            <ListItemText
-              primary={
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  {group.categoryName} ({group.experiences.length})
-                </Typography>
-              }
-            />
-            {/* Per-source "+" button to create a new experience under this source */}
-            {hasCuratorScope && regionId && (
-              <Tooltip title={`Add new ${group.categoryName.toLowerCase().replace(/^top /, '')}`}>
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const categoryId = categoryNameToId.get(group.categoryName);
-                    setAddDialogState({ open: true, defaultCategoryId: categoryId, defaultTab: 0 });
-                  }}
-                  sx={{ mr: 0.5 }}
-                >
-                  <AddIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-            {expandedGroups.has(group.categoryName) ? <ExpandLess /> : <ExpandMore />}
-          </ListItem>
-
-          {/* Group Items */}
-          <Collapse in={expandedGroups.has(group.categoryName)} timeout="auto" unmountOnExit>
-            <List disablePadding>
-              {group.experiences.map((exp) => renderExperienceItem(exp))}
-            </List>
-          </Collapse>
-        </Box>
-      ))}
+      {/* The windowed list. Its height is the virtualiser's estimate of the whole
+          sequence, so the scrollbar means what it always did, while only the rows
+          in view — plus `overscan` — are mounted. Still a `List`, and each row is
+          one `li` of it: the row's own content renders as `div`s, so a reader
+          using a screen reader hears one item per row rather than a list whose
+          items are nested inside anonymous boxes. */}
+      <List
+        disablePadding
+        sx={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}
+      >
+        {virtualItems.map((virtualRow) => {
+          const row = flatRows[virtualRow.index];
+          if (!row) return null;
+          return (
+            <Box
+              component="li"
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              // Measured rather than assumed: a row's height changes when the
+              // reader expands it, and `estimateSize` is only the first guess.
+              ref={virtualizer.measureElement}
+              sx={{
+                listStyle: 'none',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              {row.kind === 'header'
+                ? renderGroupHeader(row.group)
+                : renderExperienceItem(row.exp)}
+            </Box>
+          );
+        })}
       </List>
 
       {/* Rejected Section (curator only) */}
@@ -498,7 +684,14 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
           </ListItem>
           <Collapse in={rejectedSectionOpen} timeout="auto" unmountOnExit>
             <List disablePadding>
-              {rejectedExperiences.map((exp) => renderExperienceItem(exp, true))}
+              {/* One `li` per row here too. These rows are not windowed — they
+                  are few, and they are the one path that reaches the scroll
+                  effects' element fallback, having an element but no row index. */}
+              {rejectedExperiences.map((exp) => (
+                <Box component="li" key={exp.id} sx={{ listStyle: 'none' }}>
+                  {renderExperienceItem(exp, true)}
+                </Box>
+              ))}
             </List>
           </Collapse>
         </Box>

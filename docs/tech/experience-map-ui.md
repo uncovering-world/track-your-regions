@@ -73,6 +73,31 @@ Discover Mode still uses clustering (cluster circles, count labels, multi-locati
 - Click marker -> toggle selected experience
 - Multi-location selected -> fit bounds to all selected in-region points, or to all of them when none is in region — the same qualifier the marker and highlight rules carry, so a list click and a map click frame the same experience the same way
 
+## The list renders the rows in view
+
+The list reads as groups and renders as one sequence. `flattenGroups()` in `ExperienceList/utils.ts` turns the category groups and the experiences of the expanded ones into a flat `FlatRow[]`, and `useVirtualizer` from `@tanstack/react-virtual` mounts only the rows the scroll window covers. A collapsed group contributes its header alone, which is what `unmountOnExit` did before, arrived at differently.
+
+Rows here are of unequal height — a header is one line, an expanded experience carries its locations — so the sizes are measured rather than assumed, via `measureElement` and a `getItemKey` that keys the measurement cache by the row's identity instead of its index. `admin/WorldViewImportTree.tsx:393,613` is the prior art for that; `RegionList.tsx:238` also virtualises but with a fixed `estimateSize: () => 48`, and needs none of it.
+
+The region is still read whole (`WHOLE_REGION_LIMIT`, see above) and every marker is still built: windowing is about what the DOM holds, not about what was fetched. The scrollbar covers the region, so this is not paging under another name.
+
+Measured on Europe, whose UNESCO category holds 467 rows, from selecting the region to the list settling — dev build, so `StrictMode` doubles the renders:
+
+| | rows mounted | DOM nodes | mean FPS | worst frame | blocked total | longest single task |
+|---|---|---|---|---|---|---|
+| before | 467 | 9474 | 36.1 | 567 ms | 3839 ms | 2571 ms |
+| after | 18 | 2639 | 47.8 | 350 ms | 1638 ms | 626 ms |
+
+The longest single task is the number that was felt: one 2.5 s block is a frozen tab, where the same total spread across shorter tasks is a slow tab. What remains is a ~890 ms floor with zero rows mounted — map layers, the locations derivation and the impressions pass — which windowing cannot reach; `buildExperienceMarkers()` is not in it (1.8 ms at 3679 points).
+
+Three consequences of rows no longer having elements:
+
+- **Scrolling to a row asks for an index, not an element.** `rowIndexByExperienceId()` gives the two scroll effects (hovered from the map, selected) a position for `virtualizer.scrollToIndex()`. The row a marker points at is usually outside the window, so `itemRefs` holds nothing for it and the element path alone would scroll nowhere without a sound; that path now serves the rejected rows, which render outside the virtualiser and so have an element and no index. Verified live: clicking a Danish pin selected *Jelling Mounds, Runic Stones and Church* and moved the list from row 487 to a window centred on row ~202. The map is read through a ref and is deliberately absent from both effects' dependencies — it is rebuilt whenever the rows change, and expanding a group is not a change of selection. The scroll no longer glides: `scrollToIndex` jumps, where the helpers it replaced passed `behavior: 'smooth'`, because TanStack documents smooth scrolling as unsupported alongside dynamic measurement — a jump to the right row beats a glide to a stale offset.
+- **Category headers are rows too.** The header of a group below the window is not in the document — anything looking for one has to scroll to it first.
+- **A New-badge impression reports what the viewport intersects.** `experienceIdsInVisibleRange()` reads `virtualizer.range`, not the mounted rows: `getVirtualItems()` includes the eight `overscan` rows on either side, which are mounted precisely because they are *not* in view. The server keeps the *first* impression, so reporting an expanded group's 467 experiences spent 467 personal "new" windows on rows the reader had not reached — and reporting the overscan would be the same mistake eight rows at a time. Verified live: scrolling to *Lemnian Athena* sent `{"experienceIds":[6940]}` — that row and no other. The reports are also flushed on a timer (`SEEN_FLUSH_MS`), because the seen-set now changes as the reader scrolls and `authenticatedLimiter` allows 60 requests a minute per IP across every authenticated call; ids accumulate between flushes, so this bounds how often rows are reported, never which of them are.
+
+Separately — and true of any virtualiser here, fixed-height rows included — the virtualiser does not know where the list starts. Row offsets begin at zero while the scroll container's do not: a curator has the "add a category" box above the list, putting it 47 px down, so the computed range is off by that much where `overscan` does not cover it. `scrollMargin` is the remedy, but the documented way to measure it — the list's `offsetTop` — reads 102 px here, because the scroll container is `position: static` and so is not the offset parent. A wrong margin shifts the range for every reader where none shifts it only for curators, so the margin is deliberately absent; #556 carries the fix and the verification it needs.
+
 ## Hover preview card placement
 
 Both Map mode and Discover mode render hover cards as React `<Box>` overlays positioned absolutely over the map container — not as MapLibre native popups. This allows consistent styling, image loading, and animation across both surfaces.
