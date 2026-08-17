@@ -54,6 +54,7 @@ import { scrollToCenter, scrollToTop } from '../utils/scrollUtils';
 import { invalidateExperiences } from '../utils/queryInvalidation';
 import { LoadingSpinner } from './shared/LoadingSpinner';
 import { ExperienceListItem } from './ExperienceList/ExperienceListItem';
+import { VirtualRow } from './ExperienceList/VirtualRow';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 /**
@@ -284,11 +285,19 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const virtualizer = useVirtualizer({
     count: flatRows.length,
     getScrollElement: () => scrollContainerRef.current,
-    // A guess, corrected by `measureElement` on every row that renders: a
-    // collapsed experience is one line, an expanded one carries its locations
-    // underneath and can be ten times taller. Without measurement the scrollbar
-    // would jump as the reader expands rows.
-    estimateSize: (i) => (flatRows[i]?.kind === 'header' ? 56 : 72),
+    // Measured, not guessed, because in a 467-row list the guess decides where a
+    // scroll lands: only the rows a reader has already passed carry a real height,
+    // and every other one is this number. At 72 against a real 59 the list carried
+    // some 6000 px of height that does not exist, so `scrollToIndex` aimed past its
+    // row, and the total shrank as rows arrived and were measured — which moves the
+    // content under a reader who is not scrolling, and shows an empty panel when the
+    // position ends up beyond the shrunken end.
+    //
+    // Measured live on Europe: a header is 46 px, a collapsed row 59 px (65 or 85
+    // where the title wraps to two or three lines). `measureElement` still corrects
+    // each row as it renders, and an expanded row is five to fifteen times taller —
+    // no estimate could cover both, which is what the measuring is for.
+    estimateSize: (i) => (flatRows[i]?.kind === 'header' ? 46 : 62),
     getItemKey: getRowKey,
     // No `scrollMargin` here, deliberately, and it is not free: the list is not
     // the first thing in the scroll container — a curator gets the "add a
@@ -343,29 +352,103 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     }
   }, [hoveredExperienceId, hoveredLocationId, hoverSource, scrollContainerRef, virtualizer]);
 
-  // Scroll selected item to TOP when clicked so description is visible
-  // Wait for Collapse animation to complete before scrolling
+  // Scroll the selected row to the top, so its description is what the reader
+  // faces — but only once its card has opened, never at the click.
+  //
+  // The two are not the same moment: a card waits for the things that decide its
+  // size, which took 315 ms and 1025 ms on two measured rows. Scrolling at the
+  // click took the reader to a row that was still collapsed and still waiting, and
+  // then the card opened and moved everything again — the list appearing to drift
+  // on its own, which is exactly what this was meant to stop.
+  //
+  // Selection is exclusive, so choosing this row also collapses whichever was
+  // open; by the time the new card is ready that collapse has long been measured,
+  // which the old 64 ms delay existed to wait for.
+  // Which selection the list has already moved for. Reset during render rather
+  // than in an effect: the row's effect fires before this component's own, so a
+  // reset that ran afterwards would clear the mark for the selection that had
+  // just used it, and the next remount would scroll again.
+  const scrolledForSelection = useRef<number | null>(null);
+  const [trackedSelection, setTrackedSelection] = useState(selectedExperienceId);
+  if (selectedExperienceId !== trackedSelection) {
+    setTrackedSelection(selectedExperienceId);
+    scrolledForSelection.current = null;
+  }
+
+  // A row that is not mounted cannot open, so a selection made from the map —
+  // a marker click on a row far outside the window — is brought into the window
+  // first. Its own alignment comes later, from `handleCardOpened`.
   useEffect(() => {
-    if (selectedExperienceId && scrollContainerRef.current) {
-      const container = scrollContainerRef.current;
+    if (!selectedExperienceId || itemRefs.current.has(selectedExperienceId)) return;
+    const index = rowIndexRef.current.get(selectedExperienceId);
+    if (index != null) virtualizer.scrollToIndex(index, { align: 'center' });
+  }, [selectedExperienceId, virtualizer]);
 
-      // The delay outlives the group animation it was written for: selecting a
-      // row now expands it in place, and the row grows over a frame or two while
-      // its locations mount and are measured. Scrolling before that lands on the
-      // old height.
-      const timeoutId = setTimeout(() => {
-        const index = rowIndexRef.current.get(selectedExperienceId);
-        if (index != null) {
-          virtualizer.scrollToIndex(index, { align: 'start' });
-          return;
-        }
-        const element = itemRefs.current.get(selectedExperienceId);
-        if (element && container) scrollToTop(container, element);
-      }, 350);
+  // Hands the virtualiser this row's height in the layout phase of the commit
+  // that changed it — before paint, and therefore before the rows below are drawn
+  // at offsets computed for the old one. `VirtualRow` cannot do this: it has no
+  // state, so it does not re-render when a card opens.
+  //
+  // This is enough only because the card is mounted straight into the row: with a
+  // `Collapse` around it the height arrived a task later, in a commit where nothing
+  // measured, and no amount of flushing here reached it. Tried and dropped:
+  // `flushSync` around this call, which the frame-by-frame spec shows is not needed
+  // and which costs a forced render per opening. If that spec ever reports a frame
+  // again, it is the first thing to reach for.
+  const measureRow = useCallback((experienceId: number) => {
+    const row = itemRefs.current.get(experienceId)?.closest('li');
+    // The attribute is the virtualiser's only way back to an index; without it the
+    // library logs a missing-attribute warning and measures nothing. Rejected rows
+    // render outside the window and legitimately have none.
+    if (!row || !row.hasAttribute('data-index')) return;
+    virtualizer.measureElement(row as HTMLElement);
+  }, [virtualizer]);
 
-      return () => clearTimeout(timeoutId);
-    }
-  }, [selectedExperienceId, scrollContainerRef, virtualizer]);
+  // Scroll to the selected row when its card has opened, and only then. The row
+  // is what knows: readiness is decided per row, and a second gate kept here
+  // started its patience at a different moment, so it could call a card open
+  // while the row still had it closed — a scroll to a row that is still waiting,
+  // which is the drift this exists to remove.
+  const handleCardOpened = useCallback((experienceId: number) => {
+    const container = scrollContainerRef.current;
+    if (!container || experienceId !== selectedIdRef.current) return;
+    // Once per selection, because the row reports on mount rather than on a
+    // transition and a windowed row mounts afresh every time the reader scrolls
+    // back to it. Without this, returning to an open card scrolls the list to
+    // that card while the reader is the one scrolling — their gesture fighting a
+    // `scrollTop` assignment, repeated on every re-entry. The row cannot tell the
+    // difference itself: a marker click on a distant row mounts with its card
+    // already open, so there is no transition there to observe either.
+    if (scrolledForSelection.current === experienceId) return;
+    scrolledForSelection.current = experienceId;
+
+    // One frame, so the card that just mounted is measured before its row is
+    // aimed at: `scrollToIndex` reads the sizes the virtualiser holds now.
+    requestAnimationFrame(() => {
+      const index = rowIndexRef.current.get(experienceId);
+      if (index == null) {
+        const element = itemRefs.current.get(experienceId);
+        if (element) scrollToTop(container, element);
+        return;
+      }
+
+      // Move as little as the reader can be shown the card with. A list that
+      // jumps when it did not have to is the complaint this whole change exists
+      // to answer, and a card opened in the middle of the viewport usually needs
+      // no movement at all.
+      const row = itemRefs.current.get(experienceId)?.closest('li');
+      const view = container.getBoundingClientRect();
+      if (row) {
+        const rect = row.getBoundingClientRect();
+        if (rect.top >= view.top - 1 && rect.bottom <= view.bottom + 1) return;
+        // A card taller than the viewport is read from its top; a shorter one
+        // only needs bringing into view, which `auto` does by the smallest amount.
+        virtualizer.scrollToIndex(index, { align: rect.height >= view.height ? 'start' : 'auto' });
+        return;
+      }
+      virtualizer.scrollToIndex(index, { align: 'start' });
+    });
+  }, [scrollContainerRef, virtualizer]);
 
   const toggleGroup = (categoryName: string) => {
     setExpandedGroups((prev) => {
@@ -599,6 +682,10 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       onCurate={hasCuratorScope ? handleCurate : undefined}
       onUnreject={hasCuratorScope && rejected && regionId ? handleUnreject : undefined}
       onRemoveFromRegion={hasCuratorScope && rejected && regionId ? handleRemoveFromRegion : undefined}
+      onCardOpened={handleCardOpened}
+      // Rejected rows render outside the virtualiser and carry no `data-index`,
+      // so there is nothing for it to measure them against.
+      onCardLayout={rejected ? undefined : measureRow}
     />
   );
 
@@ -632,26 +719,16 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
           const row = flatRows[virtualRow.index];
           if (!row) return null;
           return (
-            <Box
-              component="li"
+            <VirtualRow
               key={virtualRow.key}
-              data-index={virtualRow.index}
-              // Measured rather than assumed: a row's height changes when the
-              // reader expands it, and `estimateSize` is only the first guess.
-              ref={virtualizer.measureElement}
-              sx={{
-                listStyle: 'none',
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
+              virtualizer={virtualizer}
+              index={virtualRow.index}
+              start={virtualRow.start}
             >
               {row.kind === 'header'
                 ? renderGroupHeader(row.group)
                 : renderExperienceItem(row.exp)}
-            </Box>
+            </VirtualRow>
           );
         })}
       </List>

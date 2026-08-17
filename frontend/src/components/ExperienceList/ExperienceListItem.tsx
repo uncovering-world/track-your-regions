@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -6,10 +6,10 @@ import {
   ListItemText,
   ListItemIcon,
   Checkbox,
-  Collapse,
   IconButton,
   Chip,
   Tooltip,
+  CircularProgress,
 } from '@mui/material';
 import {
   ExpandLess,
@@ -24,6 +24,16 @@ import type {
 } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
 import { getCategoryPrimaryColor, VISITED_GREEN, PARTIAL_AMBER } from '../../utils/categoryColors';
+import { preloadCardImage } from '../../utils/imagePreload';
+import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
+
+/**
+ * How long the pointer must rest on a row before its card is warmed.
+ *
+ * Long enough that sweeping a list does not fetch, short enough that it is done
+ * by the time a reader who meant to click has clicked.
+ */
+const HOVER_INTENT_MS = 140;
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
 import { resolveRowBgColor } from './utils';
 
@@ -58,6 +68,22 @@ export interface ExperienceListItemProps {
   onCurate?: (experience: Experience) => void;
   onUnreject?: (experience: Experience) => void;
   onRemoveFromRegion?: (experience: Experience) => void;
+  /**
+   * Called when this row's card has opened — the moment the list may scroll to
+   * it, and the only place that knows it. Readiness is per row, and a second
+   * opinion kept elsewhere drifts: two gates start their patience at different
+   * moments, so the other one can call a card open while this row still has it
+   * closed, which is a scroll to a row that is still waiting.
+   */
+  onCardOpened?: (experienceId: number) => void;
+  /**
+   * Called in the layout phase of the commit that opens or closes this card, so
+   * the virtualiser learns the row's new height before the browser paints. It has
+   * to be driven from here: this row's readiness is state of this component, so
+   * the ancestors that place it do not re-render in that commit and cannot
+   * measure it in time.
+   */
+  onCardLayout?: (experienceId: number) => void;
   isRejected?: boolean;
 }
 
@@ -94,8 +120,41 @@ function ExperienceListItemComponent({
   onCurate,
   onUnreject,
   onRemoveFromRegion,
+  onCardOpened,
+  onCardLayout,
   isRejected,
 }: ExperienceListItemProps) {
+  const warmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A windowed row leaves the document without a `mouseleave`: the virtualiser
+  // recycles it on a fast scroll, a group above it collapses, the region refetches.
+  // A timer that outlives the row would fetch for something nobody is looking at.
+  useEffect(() => () => {
+    if (warmTimer.current) clearTimeout(warmTimer.current);
+    warmTimer.current = null;
+  }, []);
+  // False until the card's size is decided. A hovered row shortens that wait to
+  // whatever its two queries take, having already fetched the picture below.
+  const cardReady = useExperienceCardReady(experience.id, experience.image_url, isSelected, locationsResolved);
+
+  const cardOpen = isSelected && cardReady;
+  useLayoutEffect(() => {
+    onCardLayout?.(experience.id);
+  }, [cardOpen, experience.id, onCardLayout]);
+  // The same measurement, for the things inside an open card that change its
+  // height from state this component cannot see.
+  const reportHeightChange = useCallback(() => onCardLayout?.(experience.id), [onCardLayout, experience.id]);
+  useEffect(() => {
+    if (cardOpen) onCardOpened?.(experience.id);
+  }, [cardOpen, experience.id, onCardOpened]);
+
+  // Waiting is shown where the chevron already is, so a card being fetched moves
+  // nothing at all — the row keeps its size until it can open at its final one.
+  let expandIndicator = <ExpandMore fontSize="small" />;
+  if (isSelected && !cardReady) {
+    expandIndicator = <CircularProgress size={16} thickness={5} sx={{ color: 'text.disabled' }} />;
+  } else if (isSelected) {
+    expandIndicator = <ExpandLess fontSize="small" />;
+  }
   const color = getCategoryPrimaryColor(experience.category);
 
   // Use batch locations from parent (shared hook) — no per-item fetch
@@ -167,8 +226,35 @@ function ExperienceListItemComponent({
           borderBottom: isSelected ? 0 : '1px solid',
           borderBottomColor: 'divider',
         }}
-        onMouseEnter={() => onHover(experience)}
-        onMouseLeave={onLeave}
+        onMouseEnter={() => {
+          onHover(experience);
+          // Fetch the picture, because this is the moment before the card is
+          // opened and the picture is the slow part: measured at 1.3 s, against
+          // ~150 ms for the card's two queries. A card cannot open until its size
+          // is known, so warming this is what turns a second of spinner into none.
+          //
+          // The queries are deliberately not warmed. They belong to
+          // `publicReadLimiter`, and so do the reads that draw the list itself —
+          // `by-region`, its locations batch, the region counts. Two requests per
+          // rested row against that pot means a reader who pauses over thirty rows
+          // in a minute can have the list itself refused; a spinner for 150 ms is
+          // the cheaper end of that trade. The picture costs nothing there: it goes
+          // to the thumbnail proxy, not to us.
+          //
+          // Still only once the pointer has rested. Sweeping a 467-row list crosses
+          // dozens of rows, and most of these urls answer 404 (#557) — someone
+          // else's bandwidth, spent to learn nothing.
+          if (warmTimer.current) clearTimeout(warmTimer.current);
+          warmTimer.current = setTimeout(() => {
+            warmTimer.current = null;
+            preloadCardImage(experience.image_url);
+          }, HOVER_INTENT_MS);
+        }}
+        onMouseLeave={() => {
+          if (warmTimer.current) clearTimeout(warmTimer.current);
+          warmTimer.current = null;
+          onLeave();
+        }}
         onClick={() => onClick(experience)}
       >
         {/* Checkbox for visited status + batch buttons when partial.
@@ -280,12 +366,27 @@ function ExperienceListItemComponent({
           }
         />
 
-        {/* Expand indicator */}
-        {isSelected ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+        {/* Expand indicator, and the whole of what a reader sees while a card is
+            being fetched. It sits inside the row that already exists, at the size
+            the chevron already occupied, so waiting costs no movement at all —
+            which is the point: the card opens once, at its final size, rather than
+            opening early and growing three times underneath the reader. */}
+        {expandIndicator}
       </ListItem>
 
-      {/* Expanded details */}
-      <Collapse in={isSelected} timeout="auto" unmountOnExit>
+      {/* Rendered directly, with no `Collapse` around it. There is no animation to
+          run — the height cannot be animated because it is measured, and the
+          content is not either (see `ExperienceExpandedDetails`) — and the wrapper
+          was not free: MUI sets the wrapper's height through its transition
+          machinery, a task later than the commit that inserted the card. The row
+          therefore grew in a commit where nothing re-rendered to measure it, and
+          the rows below were painted once at offsets for a collapsed row: the row
+          under an opening card drawn inside it, for one frame, every time.
+          Mounting the content straight into the row puts the insertion, the new
+          height and the layout effect that reports it in one commit.
+          Mounted only once everything that decides its size is here — see
+          `useExperienceCardReady`. */}
+      {cardOpen && (
         <ExperienceExpandedDetails
           experience={experience}
           locations={locations}
@@ -301,9 +402,10 @@ function ExperienceListItemComponent({
           onCurate={onCurate && (() => onCurate(experience))}
           onUnreject={onUnreject && (() => onUnreject(experience))}
           onRemoveFromRegion={onRemoveFromRegion && (() => onRemoveFromRegion(experience))}
+          onHeightChange={reportHeightChange}
           isRejected={isRejected}
         />
-      </Collapse>
+      )}
     </Box>
   );
 }
