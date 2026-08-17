@@ -38,6 +38,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0025](0025-per-source-curation-gate.md) | A source is trusted or it is not, and the product says which | Accepted | 2026-08-10 |
 | [0026](0026-a-run-records-what-a-container-holds.md) | A run records what a container's contents did, per kind of contents | Accepted | 2026-08-15 |
 | [0027](0027-a-point-rewritten-more-precisely-is-the-same-point.md) | A point the source rewrites more precisely is the same point | Accepted | 2026-08-16 |
+| [0028](0028-a-reader-is-positioned-by-places-they-can-go-to.md) | A reader is positioned by places they can go to, never by a point that names the whole | Accepted | 2026-08-17 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
