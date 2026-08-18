@@ -16,6 +16,7 @@ import {
   lifecycleSelectSql,
   offeredLocationSql,
   publishedContentSql,
+  readerPositionSql,
 } from './experienceLifecycle.js';
 import { isNewSql } from './experienceNewBadge.js';
 
@@ -111,8 +112,7 @@ export function buildRegionQueries(opts: {
         e.country_names,
         e.image_url,
         e.created_at,
-        ST_X(e.location) as longitude,
-        ST_Y(e.location) as latitude,
+      ${readerPositionSql('e')},
         e.metadata->>'inDanger' as in_danger,
         -- Unconditional, and with no curator relaxation, unlike the count of
         -- an experience in this same read: this is a per-object number a
@@ -173,8 +173,7 @@ export function buildRegionQueries(opts: {
         e.country_names,
         e.image_url,
         e.created_at,
-        ST_X(e.location) as longitude,
-        ST_Y(e.location) as latitude,
+      ${readerPositionSql('e')},
         e.metadata->>'inDanger' as in_danger,
         -- Unconditional, and with no curator relaxation, unlike the count of
         -- an experience in this same read: this is a per-object number a

@@ -320,7 +320,10 @@ describe('lifecycle visibility across the read paths', () => {
     await listExperiences({ query: { includeLost: 'true' } } as never, makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
-    expect(sql).not.toContain("existence <> 'lost'");
+    // Aliased: `readerPositionSql` filters *locations* on existence, so that a
+    // row is never positioned at a place this same caller cannot see. The claim
+    // here is about the experience.
+    expect(sql).not.toContain("e.existence <> 'lost'");
     expect(sql).toContain("admission <> 'refused'");
   });
 
@@ -467,5 +470,92 @@ describe('lifecycle visibility across the read paths', () => {
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     expect(String(mockedQuery.mock.calls[0][0])).toContain('e.source_membership');
+  });
+});
+
+/**
+ * A box asks where an object is, and the answer has to be the one the row
+ * carries. Filtering on `experiences.location` while the select list answers
+ * with the nearest place made the two disagree for the 222 objects whose own
+ * coordinate is not any of their places — a box around 144.97,-15.65 matched
+ * Wet Tropics of Queensland and answered with a pin 191 km away, and a box
+ * around Lake Barrin, the part a reader is actually shown, matched nothing.
+ * Verified through the running API both ways round: the first box now answers
+ * with nothing, the second with Wet Tropics at 145.637, -17.250.
+ */
+describe('the bbox filter', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValue({ rows: [{ count: '0', total: 0 }] });
+  });
+
+  const listWithBbox = () => listExperiences(
+    { query: { bbox: '5,44,12,48' } } as never, makeRes() as never);
+
+  it('matches a place rather than the coordinate the source published', async () => {
+    await listWithBbox();
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    const exists = sql.slice(sql.indexOf('EXISTS (SELECT 1 FROM experience_locations'));
+    expect(exists).toContain('ST_Intersects(el.location, ST_MakeEnvelope');
+  });
+
+  it('considers the same places the position rule does', async () => {
+    // Or a box could match a point its source withdrew, one a curator recorded
+    // as gone, or one nobody has passed yet — none of which this caller is
+    // shown anywhere else on the row.
+    await listWithBbox();
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    const clause = sql.slice(sql.indexOf('EXISTS (SELECT 1 FROM experience_locations'));
+    expect(clause).toContain('el.missing_since IS NULL');
+    expect(clause).toContain("el.existence <> 'lost'");
+    expect(clause).toContain("el.curation_state <> 'pending'");
+  });
+
+  it('falls back to the object’s own coordinate only where it has no visible place', async () => {
+    // The same fallback `readerPositionSql` makes, and guarded the same way: an
+    // unconditional `OR ST_Intersects(e.location, ...)` would put the old
+    // mismatch back, matching an object on an anchor whose pin is elsewhere.
+    await listWithBbox();
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    const fallback = sql.slice(sql.indexOf('NOT EXISTS (SELECT 1 FROM experience_locations'));
+    expect(fallback).toContain('AND (ST_Intersects(e.location, ST_MakeEnvelope');
+    // The anchor is reachable only through that guard: an unguarded arm would
+    // appear before the `NOT EXISTS`, not after it.
+    expect(sql.indexOf('ST_Intersects(e.location')).toBeGreaterThan(sql.indexOf('NOT EXISTS'));
+  });
+
+  it('binds the four numbers once, though the envelope is written twice', async () => {
+    await listWithBbox();
+
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    expect(params.slice(0, 4)).toEqual([5, 44, 12, 48]);
+    // Two envelopes, one set of placeholders: pushing them again would shift
+    // every later parameter and bind the limit into a longitude.
+    expect(sql.match(/ST_MakeEnvelope\(\$1, \$2, \$3, \$4, 4326\)/g)).toHaveLength(2);
+  });
+
+  it('splits a box drawn across the antimeridian into its two halves', async () => {
+    // `ST_MakeEnvelope(170, -10, -170, 10)` does not fail — it normalises to
+    // xmin -170 / xmax 170, which is the whole planet except the strip asked
+    // for. Measured on the catalogue: that box would match 290 places between
+    // 10°S and 10°N where exactly one is in it. `west > east` is the same
+    // crossing convention `focus_bbox` uses.
+    await listExperiences({ query: { bbox: '170,-10,-170,10' } } as never, makeRes() as never);
+
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('ST_MakeEnvelope($1, $2, 180, $4, 4326)');
+    expect(sql).toContain('ST_MakeEnvelope(-180, $2, $3, $4, 4326)');
+    // Still four numbers, and still in the caller's order: the two halves reuse
+    // them rather than binding 180 and -180 as parameters of their own.
+    expect(params.slice(0, 4)).toEqual([170, -10, -170, 10]);
+  });
+
+  it('ignores a box it cannot parse rather than filtering on NaN', async () => {
+    await listExperiences({ query: { bbox: 'north-of-here' } } as never, makeRes() as never);
+
+    expect(String(mockedQuery.mock.calls[0][0])).not.toContain('ST_MakeEnvelope');
   });
 });

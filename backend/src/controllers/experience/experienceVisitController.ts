@@ -6,7 +6,7 @@
 
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
-import { experienceOfferedToReaderSql, hidePendingSql, lifecycleSelectSql } from './experienceLifecycle.js';
+import { experienceOfferedToReaderSql, hidePendingSql, lifecycleSelectSql, readerPositionSql } from './experienceLifecycle.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -36,8 +36,7 @@ export async function getVisitedExperiences(req: AuthenticatedRequest, res: Resp
       e.category,
       e.country_names,
       e.image_url,
-      ST_X(e.location) as longitude,
-      ST_Y(e.location) as latitude,
+      ${readerPositionSql('e')},
       s.name as category_name,
       ${lifecycleSelectSql()}
     FROM user_visited_experiences uve
