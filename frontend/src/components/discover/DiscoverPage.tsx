@@ -58,6 +58,7 @@ export function DiscoverPage() {
     selectedExperienceId,
     setSelectedExperienceId,
     selectedExperienceLocations,
+    selectedLocationsResolved,
   } = useDiscoverExperiences();
 
   const { isCurator, isAdmin } = useAuth();
@@ -269,6 +270,7 @@ export function DiscoverPage() {
           onSelectExperience={setSelectedExperienceId}
           selectedExperienceId={selectedExperienceId}
           selectedExperienceLocations={selectedExperienceLocations}
+          selectedLocationsResolved={selectedLocationsResolved}
           externalHoverCoords={hoveredLocationCoords}
           onHoverHighlightLocation={setHoveredLocationId}
         />

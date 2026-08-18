@@ -122,7 +122,7 @@ export function useDiscoverExperiences() {
   );
 
   // Fetch locations for the selected experience (for map display)
-  const { data: selectedLocationsData } = useQuery({
+  const { data: selectedLocationsData, isPending: selectedLocationsPending } = useQuery({
     queryKey: ['experience-locations', selectedExperienceId],
     queryFn: () => fetchExperienceLocations(selectedExperienceId!),
     enabled: !!selectedExperienceId,
@@ -252,5 +252,18 @@ export function useDiscoverExperiences() {
     selectedExperienceId,
     setSelectedExperienceId,
     selectedExperienceLocations,
+    /**
+     * The selected object's own location fetch has *settled* — so
+     * `selectedExperienceLocations` is as good as it will get, rather than the
+     * one-point fallback, which is indistinguishable from a genuine single place.
+     * The map waits for this before framing a selection, or it frames the
+     * fallback point and then frames again when the places arrive.
+     *
+     * Settled rather than "has data", deliberately: a failed fetch never gets
+     * data, and gating on presence would mean a list click that opens a panel and
+     * a map that never moves. The fallback point is a worse frame than the places
+     * and a better one than none.
+     */
+    selectedLocationsResolved: !selectedExperienceId || !selectedLocationsPending,
   };
 }

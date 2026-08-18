@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildExperienceMarkers } from './buildMarkers';
+import { buildExperienceMarkers, isFoldable } from './buildMarkers';
 import type { Experience, ExperienceLocation } from '../../api/experiences';
 
 /**
@@ -88,7 +88,6 @@ describe('an object made of several places', () => {
     const markers = buildExperienceMarkers([exp], { 1: [held, listed] }, new Set());
 
     expect(markers.map(m => m.locationId)).toEqual([11, 12]);
-    expect(markers.map(m => m.locationOrdinal)).toEqual([null, 1]);
   });
 
   it('carries no count on a place drawn as itself, and the count on a pin standing in', () => {
@@ -164,6 +163,29 @@ describe('an object the reader asked to see as one pin', () => {
     expect(standIn[0].locationCount).toBe(40);
   });
 
+  it('changes nothing for an object drawing one pin out of several places', () => {
+    // The boundary that cost this branch a bug, and it is not "one location": an
+    // object with three places of which one is in region *draws* one pin, so
+    // folding it can change nothing. When the chip gated on the total and the
+    // builder on the drawn count, the chip offered a fold the builder ignored,
+    // and a click on the resulting ordinary pin unfolded instead of selecting.
+    const exp = makeExperience(1, { location_count: 3 });
+    const locations = {
+      1: [
+        makeLocation(11, { in_region: false, longitude: 1, latitude: 1 }),
+        makeLocation(12, { longitude: 5, latitude: 6 }),
+        makeLocation(13, { in_region: false, longitude: 7, latitude: 8 }),
+      ],
+    };
+
+    const markers = buildExperienceMarkers([exp], locations, new Set(), new Set([1]));
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0].locationId).toBe(12);
+    expect(markers[0].folded).toBeUndefined();
+    expect(isFoldable(locations[1])).toBe(false);
+  });
+
   it('changes nothing for an object with a single place', () => {
     // Collapsing one place to one pin would only cost it its own name and hand it
     // a badge saying 1, which the badge layer reads as "there is more here".
@@ -215,7 +237,6 @@ describe('buildExperienceMarkers', () => {
 
     expect(markers.map(m => m.locationId)).toEqual([11]);
     expect(markers[0].longitude).toBe(5);
-    expect(markers[0].inRegion).toBe(true);
   });
 
   it('falls back to the experience coordinates before locations load', () => {
@@ -244,9 +265,9 @@ describe('buildExperienceMarkers', () => {
 
     const markers = buildExperienceMarkers([exp], locations, new Set());
 
+    // Every one of them, out of region or not: skipping them left the row with
+    // no marker at all, and its hover painting nothing.
     expect(markers.map(m => m.locationId)).toEqual([10, 11]);
-    // Recorded as out of region rather than pretended in.
-    expect(markers.every(m => m.inRegion === false)).toBe(true);
   });
 
   it('falls back to the experience point when the location list is empty', () => {

@@ -2,8 +2,10 @@
  * The location batch is the cache most easily forgotten, because nothing about
  * it looks like a list: it answers "where are the pins", not "what is here".
  * But it answers for exactly the rows the list is showing, so anything that
- * changes that set leaves it wrong — and its key carries `includeLost`, so
- * there are two entries to reach rather than one.
+ * changes that set leaves it wrong — and its key carries `includeLost` and
+ * `includeChildren`, so there are several entries to reach rather than one —
+ * three with call sites today, and the prefix must not depend on which
+ * combinations happen to have them.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -29,36 +31,46 @@ describe('invalidateExperiences', () => {
     expect(keys).toContainEqual(['region-locations', 7]);
   });
 
-  it('stops at the region, so both lost variants of the key are covered', () => {
+  it('stops at the region, so every variant of the key is covered', () => {
     const { client, keys } = makeClient();
 
     invalidateExperiences(client as never, { regionId: 7 });
 
-    // The full key is ['region-locations', regionId, includeLost]. A key naming
-    // the third element would invalidate one entry and leave its sibling to
-    // answer the next question from the pre-correction set.
+    // The full key is ['region-locations', regionId, includeLost, includeChildren]
+    // — Map mode reads a region without its descendants under either
+    // `includeLost`, Discover reads it with them. A key naming any of those
+    // elements would invalidate one entry and leave the rest to answer the next
+    // question from the pre-correction set.
     const batch = keys.find(k => k[0] === 'region-locations');
     expect(batch).toHaveLength(2);
   });
 
-  it('marks both variants stale for real, and leaves another region alone', () => {
+  it('marks every variant stale for real, and leaves another region alone', () => {
     // The assertion above proves the *shape* of the key we send. It cannot prove
     // the effect, because a captured call is not an invalidated cache — and the
     // effect is the whole point: the key stops at the region precisely to lean on
     // prefix matching. Asserted against a real client, so the guarantee is the
     // library's actual behaviour rather than our reading of it.
     const client = new QueryClient();
-    client.setQueryData(['region-locations', 7, false], ['pin']);
-    client.setQueryData(['region-locations', 7, true], ['pin', 'lost pin']);
-    client.setQueryData(['region-locations', 8, false], ['another region']);
+    // The three the app writes: Map mode's two `includeLost` variants without
+    // descendants, and Discover's descendant-recursive one, which hardcodes
+    // `includeLost: false`. The fourth combination is seeded too, because a
+    // prefix must not depend on which combinations happen to have call sites.
+    client.setQueryData(['region-locations', 7, false, false], ['pin']);
+    client.setQueryData(['region-locations', 7, true, false], ['pin', 'lost pin']);
+    client.setQueryData(['region-locations', 7, false, true], ['pin', 'descendant pin']);
+    client.setQueryData(['region-locations', 7, true, true], ['pin', 'lost pin', 'descendant pin']);
+    client.setQueryData(['region-locations', 8, false, false], ['another region']);
 
     invalidateExperiences(client, { regionId: 7 });
 
-    expect(client.getQueryState(['region-locations', 7, false])?.isInvalidated).toBe(true);
-    expect(client.getQueryState(['region-locations', 7, true])?.isInvalidated).toBe(true);
-    // The other half of "prefix": broad enough to catch both variants, narrow
+    expect(client.getQueryState(['region-locations', 7, false, false])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['region-locations', 7, true, false])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['region-locations', 7, false, true])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['region-locations', 7, true, true])?.isInvalidated).toBe(true);
+    // The other half of "prefix": broad enough to catch every variant, narrow
     // enough that one region's edit does not refetch every region's pins.
-    expect(client.getQueryState(['region-locations', 8, false])?.isInvalidated).toBe(false);
+    expect(client.getQueryState(['region-locations', 8, false, false])?.isInvalidated).toBe(false);
   });
 
   it("reaches the object's own points and works, which a publication is about", () => {

@@ -27,6 +27,13 @@ import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import maplibregl from 'maplibre-gl';
 import type { Experience } from '../../api/experiences';
 import type { ActiveView } from '../../hooks/useDiscoverExperiences';
+import { useRegionLocations } from '../../hooks/useRegionLocations';
+import { useCollapsedExperiences } from '../../hooks/useCollapsedExperiences';
+import { buildExperienceMarkers, representablePlaces } from '../experienceMarkers/buildMarkers';
+import { FoldPlacesControl } from '../experienceMarkers/FoldPlacesControl';
+
+/** Discover shows one category at a time, so the builder's filter has nothing to do. */
+const NO_CATEGORY_FILTER: Set<string> = new Set();
 import { ExperienceCard } from './ExperienceCard';
 import { useAuth } from '../../hooks/useAuth';
 import { useNewBadgeImpressions } from '../../hooks/useNewBadgeImpressions';
@@ -43,9 +50,51 @@ import { isWebGLAvailable } from '../../utils/webgl';
 // impression effect keys off the array it is given.
 const EMPTY_EXPERIENCES: Experience[] = [];
 
-const SOURCE_ID = 'experience-markers';
-const HIGHLIGHT_SOURCE_ID = 'highlight-markers';
-const HOVER_SOURCE_ID = 'hover-marker';
+import {
+  addDiscoverMapLayers, clusterRadiusFor, SOURCE_ID, HIGHLIGHT_SOURCE_ID, HOVER_SOURCE_ID,
+} from './discoverMapLayers';
+
+
+/**
+ * Rings for the places of an object that the map is currently drawing as pins.
+ *
+ * One query for the whole layer, not one per place: an object has hundreds of
+ * places now — the Rock Art has 734 — and this runs in a `mouseenter` with no
+ * hover-intent delay, so probing per place meant up to 1468 `queryRenderedFeatures`
+ * calls for one row, each of which walks every loaded tile's feature index.
+ *
+ * Only pins. A place inside a cluster is not ringed here, because a bubble is
+ * painted at its members' centroid and a member can sit 50 px away
+ * (`clusterRadius` in `discoverMapLayers.ts`) — there is nothing at the place's
+ * own position to ring. The caller rings the bubbles instead, by asking the
+ * source which clusters hold this object.
+ */
+function pinRingsFor(map: maplibregl.Map, expId: number): GeoJSON.Feature<GeoJSON.Point>[] {
+  // Deduplicated by coordinate: a point inside two tiles' buffers is returned
+  // once per tile, and this source carries no feature id to tell the copies apart
+  // (`promoteId` is deliberately absent, see `discoverMapLayers.ts`). Counting the
+  // copies would make an object look fully drawn and skip the cluster pass below.
+  const byPosition = new Map<string, GeoJSON.Feature<GeoJSON.Point>>();
+  for (const f of map.queryRenderedFeatures({ layers: ['unclustered-point'] })) {
+    if (f.properties?.id !== expId) continue;
+    const point = f.geometry as GeoJSON.Point;
+    const key = point.coordinates.map(c => c.toFixed(6)).join(',');
+    if (!byPosition.has(key)) {
+      byPosition.set(key, { type: 'Feature', geometry: point, properties: {} });
+    }
+  }
+  return [...byPosition.values()];
+}
+
+/** A ring sized to sit just outside a cluster bubble of `pointCount` points. */
+function clusterRing(cluster: maplibregl.MapGeoJSONFeature): GeoJSON.Feature<GeoJSON.Point> {
+  const radius = clusterRadiusFor((cluster.properties?.point_count as number) ?? 0);
+  return {
+    type: 'Feature',
+    geometry: cluster.geometry as GeoJSON.Point,
+    properties: { hoverRadius: radius + 10, ringRadius: radius + 4 },
+  };
+}
 
 interface DiscoverExperienceViewProps {
   activeView: ActiveView | null;
@@ -56,6 +105,8 @@ interface DiscoverExperienceViewProps {
   selectedExperienceId: number | null;
   /** Locations of the selected experience, for map fly-to */
   selectedExperienceLocations: { id?: number; lng: number; lat: number; name?: string }[] | null;
+  /** That fetch has answered, so the set above is real rather than the fallback. */
+  selectedLocationsResolved: boolean;
   /** External hover coordinates (e.g. from detail panel location list) */
   externalHoverCoords?: { lng: number; lat: number } | null;
   /** Called when hovering a highlight dot (red location marker) on the map */
@@ -70,9 +121,125 @@ export function DiscoverExperienceView({
   onSelectExperience,
   selectedExperienceId,
   selectedExperienceLocations,
+  selectedLocationsResolved,
   externalHoverCoords,
   onHoverHighlightLocation,
 }: DiscoverExperienceViewProps) {
+  // A batch of its own, and deliberately: `includeChildren` is part of the query
+  // key, and Map mode passes `false`, so this is a second, larger answer rather
+  // than the one already in cache. It has to be — Discover reads a region *and
+  // its descendants* (`useDiscoverExperiences`), and a batch fetched without them
+  // leaves every object assigned to a descendant region, which is what a curator's
+  // hand assignment writes, with no places at all: drawn as the single stand-in
+  // pin this whole change exists to remove.
+  const { locationsByExperience, locationsResolved } =
+    useRegionLocations(activeView?.regionId ?? null, false, true);
+  // Discover holds its own folds: it is a separate reading of the region, and a
+  // fold is about what this reader is looking at now rather than a preference.
+  const { collapsedExperienceIds, toggleCollapsedExperience } =
+    useCollapsedExperiences(activeView?.regionId ?? null);
+
+  /** Set when the reader themself moved the map — see the fit below. */
+  const movedByReaderRef = useRef(false);
+  /**
+   * The object whose selection came from a click on the map rather than the list.
+   *
+   * An id rather than a flag, because this effect runs twice for one map click —
+   * the fallback point first, the real places when the per-id fetch resolves — and
+   * a boolean is consumed by whichever timer fires first. Slower than 350 ms and
+   * the first timer ate the flag while the second framed all forty places; faster,
+   * and a stale `true` swallowed the next list click, which is the one that must
+   * re-frame.
+   */
+  const selectedFromMapIdRef = useRef<number | null>(null);
+  /** The object this map last flew to, so a redraw of the same one does not. */
+  const flownForRef = useRef<number | null>(null);
+  /**
+   * Bumped by every card hover and every leave, so an answer that arrives late
+   * can tell whether the hover it belongs to is still the current one.
+   */
+  const hoverGenerationRef = useRef(0);
+  /** The selection those two marks were made for — see the effect that clears them. */
+  const flySelectionRef = useRef<number | null>(null);
+  /** The current folded selection, read by the once-created hover callback. */
+  const foldedSelectionRef = useRef<{ longitude: number; latitude: number } | null>(null);
+
+  /**
+   * What the fold control offers to fold: the places this surface draws for the
+   * selected object — which is not the same set the marker source uses.
+   *
+   * Discover draws a selected object from its own per-experience fetch, every
+   * location it has, unfiltered by region; the marker source draws the region
+   * batch's representable places. Counting the batch here would have offered no
+   * control at all for an object with forty places of which one falls in this
+   * region — the reader looking at forty dots, which is exactly the sprawl the
+   * fold exists for — and said "Show all 12 places" where unfolding draws 40.
+   */
+  const drawnPlacesOfSelected = selectedExperienceLocations && selectedExperienceLocations.length > 0
+    ? selectedExperienceLocations.length
+    : representablePlaces(locationsByExperience[selectedExperienceId ?? -1]).length;
+  const placesOfSelected = selectedExperienceId == null ? 0 : drawnPlacesOfSelected;
+
+  /**
+   * Where an object is drawn, for the hover ring: its places, or the one point it
+   * is drawn as when folded or when the batch holds none of them. Held in a ref
+   * because `handleCardMouseEnter` is a long-lived callback and a fold taken a
+   * moment ago must be what it rings.
+   */
+  const drawnCoordsRef = useRef((_expId: number): [number, number][] => []);
+  drawnCoordsRef.current = (expId: number): [number, number][] => {
+    const exp = experiences.find(e => e.id === expId);
+    const own: [number, number][] = exp ? [[exp.longitude, exp.latitude]] : [];
+    // A selected object is not drawn from the region batch here — it leaves the
+    // marker source and the highlight layer draws it from the per-experience
+    // fetch, every place it has. Ringing the batch's set for it would mark one of
+    // forty dots, which is the thing this ring exists to stop. Folded, that layer
+    // draws the object's own coordinate, so the ring has to go there too: the
+    // batch would answer with the in-region place, which for an object whose
+    // places are mostly elsewhere is a different point entirely.
+    if (expId === selectedExpIdRef.current && selectedExperienceLocations
+        && selectedExperienceLocations.length > 0) {
+      if (foldedSelectionRef.current) return own;
+      return selectedExperienceLocations.map(loc => [loc.lng, loc.lat] as [number, number]);
+    }
+    const representable = representablePlaces(locationsByExperience[expId]);
+    // Folded only counts where folding is a question: one drawn place is one pin
+    // either way, and the marker source would keep drawing it there.
+    if (representable.length > 1 && collapsedExperienceIds.has(expId)) return own;
+    if (representable.length === 0) return own;
+    return representable.map(loc => [loc.longitude, loc.latitude] as [number, number]);
+  };
+
+  /**
+   * The selected object when this reader has folded it — the one point it is
+   * then drawn at, which is the coordinate the catalogue answers with (ADR-0028
+   * decision 2) rather than a centre derived here.
+   */
+  const foldedSelection = useMemo(() => {
+    if (selectedExperienceId == null || !collapsedExperienceIds.has(selectedExperienceId)) return null;
+    // The same test the control applies, on the same set it counts: one drawn
+    // place is one pin either way, and folding it would say something the map
+    // cannot show.
+    if (placesOfSelected < 2) return null;
+    const exp = experiences.find(e => e.id === selectedExperienceId);
+    return exp ? { longitude: exp.longitude, latitude: exp.latitude, name: exp.name } : null;
+  }, [selectedExperienceId, collapsedExperienceIds, experiences, placesOfSelected]);
+  foldedSelectionRef.current = foldedSelection;
+
+  /** The experiences array this map last framed, so a redraw does not re-frame. */
+  const fittedForRef = useRef<Experience[] | null>(null);
+  /** What was selected on the previous run, to tell a deselection from a redraw. */
+  const lastSelectedRef = useRef<number | null>(null);
+  /** Whether the frame this map is holding was drawn with the places in hand. */
+  const fittedWithPlacesRef = useRef(false);
+  /** The current selection, for the card-hover callback that is created once. */
+  const selectedExpIdRef = useRef<number | null>(selectedExperienceId);
+  selectedExpIdRef.current = selectedExperienceId;
+
+  // Read by the map's long-lived click handler, which is registered once.
+  const toggleCollapsedRef = useRef(toggleCollapsedExperience);
+  toggleCollapsedRef.current = toggleCollapsedExperience;
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const { isAuthenticated, isCurator, user } = useAuth();
@@ -210,176 +377,12 @@ export function DiscoverExperienceView({
     // Hover preview handled by React overlay (hoverPreview state)
 
     // Track which feature is hovered on the map (local to this closure)
-    let mapCurrentHoveredId: number | null = null;
+    // Keyed by place rather than object — see the hover handler below.
+    let mapCurrentHoveredKey: string | null = null;
 
     map.on('load', () => {
       // ── Sources ──
-      map.addSource(SOURCE_ID, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-        cluster: true,
-        clusterMaxZoom: 12,
-        clusterRadius: 50,
-        promoteId: 'id',
-      });
-
-      map.addSource(HIGHLIGHT_SOURCE_ID, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-
-      map.addSource(HOVER_SOURCE_ID, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-
-      // ── Layers (order matters: bottom → top) ──
-
-      // Cluster circles
-      map.addLayer({
-        id: 'clusters',
-        type: 'circle',
-        source: SOURCE_ID,
-        filter: ['has', 'point_count'],
-        paint: {
-          'circle-color': [
-            'step', ['get', 'point_count'],
-            '#7dd3c8', 10, '#5ab8aa', 30, '#3d9d8f', 100, '#2a7d72',
-          ],
-          'circle-radius': [
-            'step', ['get', 'point_count'],
-            14, 10, 18, 30, 22, 100, 26,
-          ],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 0.9,
-        },
-      });
-
-      // Cluster count labels
-      map.addLayer({
-        id: 'cluster-count',
-        type: 'symbol',
-        source: SOURCE_ID,
-        filter: ['has', 'point_count'],
-        layout: {
-          'text-field': ['get', 'point_count_abbreviated'],
-          'text-size': 11,
-          'text-font': ['Open Sans Bold'],
-        },
-        paint: { 'text-color': '#ffffff' },
-      });
-
-      // Individual markers
-      map.addLayer({
-        id: 'unclustered-point',
-        type: 'circle',
-        source: SOURCE_ID,
-        filter: ['!', ['has', 'point_count']],
-        paint: {
-          'circle-color': [
-            'match', ['get', 'category'],
-            'cultural', '#8B5CF6',
-            // Museums, named rather than left to the fallback below — which is also
-            // what public art takes, and the two must not share a pin colour.
-            'art', '#2563EB',
-            'natural', '#10B981',
-            'mixed', '#F59E0B',
-            '#0d9488',
-          ],
-          'circle-radius': 6,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
-        },
-      });
-
-      // Multi-location badge background (shows total locations behind marker)
-      map.addLayer({
-        id: 'unclustered-count-badge-bg',
-        type: 'circle',
-        source: SOURCE_ID,
-        filter: ['all', ['!', ['has', 'point_count']], ['>', ['coalesce', ['get', 'locationCount'], 1], 1]],
-        paint: {
-          'circle-color': '#0f172a',
-          'circle-radius': 8,
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': '#ffffff',
-          'circle-translate': [8, -8],
-          'circle-translate-anchor': 'viewport',
-        },
-      });
-
-      map.addLayer({
-        id: 'unclustered-count-badge-text',
-        type: 'symbol',
-        source: SOURCE_ID,
-        filter: ['all', ['!', ['has', 'point_count']], ['>', ['coalesce', ['get', 'locationCount'], 1], 1]],
-        layout: {
-          'text-field': ['to-string', ['get', 'locationCount']],
-          'text-size': 9,
-          'text-font': ['Open Sans Bold'],
-          'text-offset': [0.88, -0.88],
-          'text-anchor': 'center',
-          'text-allow-overlap': true,
-        },
-        paint: {
-          'text-color': '#ffffff',
-          'text-halo-color': '#0f172a',
-          'text-halo-width': 0.2,
-        },
-      });
-
-      // Hover glow (soft orange fill behind the ring — visible even on clusters)
-      map.addLayer({
-        id: 'hover-glow',
-        type: 'circle',
-        source: HOVER_SOURCE_ID,
-        paint: {
-          'circle-color': '#f97316',
-          'circle-radius': ['coalesce', ['get', 'hoverRadius'], 24],
-          'circle-opacity': 0.18,
-          'circle-blur': 0.6,
-        },
-      });
-
-      // Hover ring (bright orange, prominent)
-      map.addLayer({
-        id: 'hover-ring',
-        type: 'circle',
-        source: HOVER_SOURCE_ID,
-        paint: {
-          'circle-color': 'transparent',
-          'circle-radius': ['coalesce', ['get', 'ringRadius'], 18],
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#f97316',
-          'circle-stroke-opacity': 1,
-        },
-      });
-
-      // Highlight markers (red ring for selected experience locations)
-      map.addLayer({
-        id: 'highlight-ring',
-        type: 'circle',
-        source: HIGHLIGHT_SOURCE_ID,
-        paint: {
-          'circle-color': 'transparent',
-          'circle-radius': 14,
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#ef4444',
-          'circle-stroke-opacity': 0.8,
-        },
-      });
-      map.addLayer({
-        id: 'highlight-point',
-        type: 'circle',
-        source: HIGHLIGHT_SOURCE_ID,
-        paint: {
-          'circle-color': '#ef4444',
-          'circle-radius': 6,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
-        },
-      });
+      addDiscoverMapLayers(map);
 
       // ── Cluster click → zoom ──
       map.on('click', 'clusters', async (e) => {
@@ -388,6 +391,12 @@ export function DiscoverExperienceView({
         const clusterId = features[0].properties.cluster_id;
         const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource;
         const zoom = await source.getClusterExpansionZoom(clusterId);
+        // The reader asked for this view, even though the camera move is ours:
+        // `easeTo` fires a `movestart` with no `originalEvent`, so the listener
+        // below cannot tell it from a fit. Without this, zooming into a cluster
+        // while the location batch is still in flight is answered by the
+        // places-refit throwing the map back out to the whole region.
+        movedByReaderRef.current = true;
         map.easeTo({
           center: (features[0].geometry as GeoJSON.Point).coordinates as [number, number],
           zoom,
@@ -397,15 +406,34 @@ export function DiscoverExperienceView({
       // ── Marker click → select experience ──
       const interactiveMarkerLayers = ['unclustered-point', 'unclustered-count-badge-bg', 'unclustered-count-badge-text'];
       const onMarkerClick = (e: maplibregl.MapLayerMouseEvent) => {
+        // The gate the delegated listeners had: naming a layer the style does not
+        // hold makes `queryRenderedFeatures` fire an ErrorEvent and log.
+        if (!map.getLayer('unclustered-point')) return;
         const features = map.queryRenderedFeatures(e.point, { layers: interactiveMarkerLayers });
-        if (features.length > 0) {
-          const id = features[0].properties?.id;
-          if (id != null) onSelectExperience(id);
+        if (features.length === 0) return;
+        const id = features[0].properties?.id;
+        if (id == null) return;
+
+        // A folded pin unfolds, exactly as in Map mode — the badge is what says
+        // there is something folded there, and this is the only action that pin
+        // can offer. The builder says which pins those are: this surface counts a
+        // different set for the control (see `drawnPlacesOfSelected`), so an
+        // object can be in the folded set while its pin is a stand-in, and
+        // inferring "folded" from the pin's shape would swallow that click.
+        if (features[0].properties?.folded === true) {
+          toggleCollapsedRef.current(id);
+          return;
         }
+
+        selectedFromMapIdRef.current = id;
+        onSelectExperience(id);
       };
-      map.on('click', 'unclustered-point', onMarkerClick);
-      map.on('click', 'unclustered-count-badge-bg', onMarkerClick);
-      map.on('click', 'unclustered-count-badge-text', onMarkerClick);
+      // Once, not once per layer: maplibre creates a delegated listener per
+      // registration, so a click on the badge — whose circle and glyph occupy the
+      // same 8 px — ran this twice and undid itself, which on a folded pin meant
+      // its badge click did nothing. The handler queries the three layers itself.
+      // See `docs/tech/maplibre-patterns.md` § One listener per registration.
+      map.on('click', onMarkerClick);
 
       // ── Marker hover (mousemove for precise tracking with nearby points) ──
       const onMarkerMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
@@ -416,8 +444,12 @@ export function DiscoverExperienceView({
           const id = feature.properties?.id as number;
           const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
 
-          if (id !== mapCurrentHoveredId) {
-            mapCurrentHoveredId = id;
+          // Keyed by the place: an object is many pins now, and keying on the
+          // object left the ring and the list scroll on the first part the
+          // pointer touched while it crossed the rest.
+          const hoverKey = `${id}:${feature.properties?.locationId ?? ''}`;
+          if (hoverKey !== mapCurrentHoveredKey) {
+            mapCurrentHoveredKey = hoverKey;
 
             // Update hover ring on map
             const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
@@ -441,9 +473,15 @@ export function DiscoverExperienceView({
       map.on('mousemove', 'unclustered-count-badge-bg', onMarkerMouseMove);
       map.on('mousemove', 'unclustered-count-badge-text', onMarkerMouseMove);
 
+      // A move the reader made themself carries an `originalEvent`; the ones this
+      // component makes (`fitBounds`, `flyTo`) do not.
+      map.on('movestart', (e: maplibregl.MapLibreEvent & { originalEvent?: unknown }) => {
+        if (e.originalEvent) movedByReaderRef.current = true;
+      });
+
       const onMarkerMouseLeave = () => {
         map.getCanvas().style.cursor = '';
-        mapCurrentHoveredId = null;
+        mapCurrentHoveredKey = null;
 
         // Clear hover ring
         const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
@@ -525,6 +563,15 @@ export function DiscoverExperienceView({
       // After resize settles, re-center on selected experience locations
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
+        // A folded object is one point here as well. This is the fifth path that
+        // moves the camera for a selection, and framing every place of an object
+        // the reader asked to see as one pin would answer a window resize by
+        // spreading it back across three provinces.
+        const folded = foldedSelectionRef.current;
+        if (folded) {
+          map.easeTo({ center: [folded.longitude, folded.latitude], duration: 400 });
+          return;
+        }
         const locs = selectedLocsRef.current;
         if (locs && locs.length > 0) {
           if (locs.length === 1) {
@@ -559,22 +606,70 @@ export function DiscoverExperienceView({
         !exp.is_rejected && (selectedExperienceId == null || exp.id !== selectedExperienceId)
       );
 
-      const features: GeoJSON.Feature<GeoJSON.Point>[] = visibleExperiences.map((exp) => ({
+      // One point per place a reader may go to, through the same builder Map mode
+      // uses so the two surfaces cannot disagree about what an object is
+      // (ADR-0028 decision 1, #558). Clusters of places are the honest thing to
+      // cluster: a cluster of property locators counted sites nobody could visit.
+      const markers = buildExperienceMarkers(
+        visibleExperiences, locationsByExperience, NO_CATEGORY_FILTER, collapsedExperienceIds);
+
+      // No feature-level `id`: it used to be the experience's, which now repeats
+      // across every one of its places, and nothing here reads it — clustering
+      // does not need one, and the handlers below resolve an object through
+      // `properties.id`.
+      const features: GeoJSON.Feature<GeoJSON.Point>[] = markers.map((m) => ({
         type: 'Feature',
-        id: exp.id,
-        geometry: { type: 'Point', coordinates: [exp.longitude, exp.latitude] },
+        geometry: { type: 'Point', coordinates: [m.longitude, m.latitude] },
         properties: {
-          id: exp.id,
-          name: exp.name,
-          category: exp.category || '',
-          locationCount: Math.max(1, exp.location_count ?? 1),
+          id: m.experienceId,
+          locationId: m.locationId,
+          // No `name` here: nothing on this surface reads it. The hover card
+          // resolves the object through `properties.id`, and the layer
+          // expressions read `category`, `locationCount` and `point_count`.
+          // `id` stays the object's, which is what the handlers ask for.
+          category: m.experience.category || '',
+          // 1 for a place drawn as itself, the count only for a pin standing in
+          // for places it does not draw — which is what the badge means.
+          locationCount: m.locationCount,
+          // Whether this pin was drawn folded, which the click handler needs and
+          // cannot infer: a stand-in pin looks the same from the outside.
+          folded: m.folded === true,
         },
       }));
 
       source.setData({ type: 'FeatureCollection', features });
 
-      // Fit bounds only if no experience is selected (to not interrupt detail view)
-      if (features.length > 0 && !selectedExperienceId) {
+      // Fit to a *new* set, not to every rebuild of one. The fold rebuilds these
+      // markers, and unfolding by clicking a folded pin selects nothing — so a
+      // fit gated only on "nothing selected" answered that click by animating out
+      // to the whole region: a reader zoomed into Aragón to look at the rock art
+      // clicked the pin to see its parts and was thrown back to Europe. The batch
+      // arriving is the milder version, two 800 ms animations where one belongs.
+      //
+      // The batch is not waited on, because `locationsResolved` is `data != null`
+      // — false while it is pending and false *forever* if it fails, which would
+      // leave a region's pins as specks at the initial world view with no way
+      // back. So the set is framed as soon as it is drawn, and framed once more
+      // when the places arrive: two animations on first load of a view rather
+      // than a map that may never frame at all.
+      //
+      // Closing a detail panel still re-frames the region, which is the one other
+      // thing this fit was doing: that is a reader saying "show me the set again",
+      // and dropping it with the fold would have been collateral.
+      const isNewSet = fittedForRef.current !== experiences;
+      // The second fit waits on a separate, slower query, and the map is fully
+      // interactive meanwhile — so it loses to a reader who has already moved it.
+      // A new set still frames: that is a new region, and nothing on screen is
+      // theirs to keep.
+      const firstWithPlaces = !isNewSet && locationsResolved
+        && !fittedWithPlacesRef.current && !movedByReaderRef.current;
+      const justDeselected = lastSelectedRef.current != null && selectedExperienceId == null;
+      lastSelectedRef.current = selectedExperienceId;
+      if (features.length > 0 && !selectedExperienceId
+          && (isNewSet || firstWithPlaces || justDeselected)) {
+        fittedForRef.current = experiences;
+        fittedWithPlacesRef.current = locationsResolved;
+        movedByReaderRef.current = false;
         const bounds = new maplibregl.LngLatBounds();
         for (const f of features) {
           bounds.extend(f.geometry.coordinates as [number, number]);
@@ -585,19 +680,54 @@ export function DiscoverExperienceView({
 
     if (map.getSource(SOURCE_ID)) {
       updateData();
-    } else {
-      map.on('load', updateData);
+      return;
     }
-  }, [experiences, selectedExperienceId]);
+    // Removed on cleanup, which matters now that this effect re-runs on four
+    // more things than it used to: every arrival before the map has loaded — the
+    // experiences query, the location batch, a fold taken early — used to leave
+    // another closure attached, and on `load` they all ran in turn, each with its
+    // own snapshot and each evaluating the fit.
+    map.on('load', updateData);
+    return () => { map.off('load', updateData); };
+  }, [experiences, selectedExperienceId, locationsByExperience, collapsedExperienceIds, locationsResolved]);
 
   // ── Update highlight markers + delayed flyTo ──
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
+      // Both marks belong to one selection, and a reader moves between selections
+    // without passing through none: the cards stay clickable while a panel is
+    // open. Cleared on every change of selection, not only on closing — otherwise
+    // pin B → card A → card B is swallowed by a stale map mark, and card A → pin B
+    // → card A by a stale flown mark.
+    if (flySelectionRef.current !== selectedExperienceId) {
+      flySelectionRef.current = selectedExperienceId;
+      flownForRef.current = null;
+      if (selectedFromMapIdRef.current !== selectedExperienceId) {
+        selectedFromMapIdRef.current = null;
+      }
+    }
+
     const updateHighlight = () => {
       const source = map.getSource(HIGHLIGHT_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
       if (!source) return;
+
+      // A folded object is one point here too. The selected object is drawn by
+      // this layer rather than from the marker source, so a fold that stopped at
+      // the source would be undone by the act of selecting the row — which is
+      // exactly when a reader is looking at it.
+      if (foldedSelection) {
+        source.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [foldedSelection.longitude, foldedSelection.latitude] },
+            properties: { name: foldedSelection.name, locationId: null },
+          }],
+        });
+        return;
+      }
 
       if (selectedExperienceLocations && selectedExperienceLocations.length > 0) {
         const features: GeoJSON.Feature<GeoJSON.Point>[] = selectedExperienceLocations.map((loc, i) => ({
@@ -616,10 +746,36 @@ export function DiscoverExperienceView({
     } else {
       map.on('load', updateHighlight);
     }
+    // The cleanup below removes this too — same reason as the marker effect.
 
-    // Delayed flyTo — waits for panel CSS transition to complete before centering
+    // Delayed flyTo — waits for panel CSS transition to complete before centering.
+    //
+    // Skipped when the selection came from a click on the map: the reader is
+    // already looking at one of this object's places, and framing all of them
+    // takes the one they clicked off the screen — with its own pin gone from the
+    // marker source in the same commit, there is nothing to click back to.
+    //
+    // And skipped when the selection has not changed, which is what keeps a fold
+    // from moving the camera: folding the selected object, or folding an
+    // unrelated one, re-runs this effect — the memo returns a new object with the
+    // same values — and Map mode's chip moves nothing at all.
     const flyTimer = setTimeout(() => {
-      if (selectedExperienceLocations && selectedExperienceLocations.length > 0) {
+      // Nothing to fly to yet: the set on hand is the one-point fallback, which
+      // is indistinguishable from a genuine single place. Flying now frames that
+      // point and the next run frames the real places — two animations decided by
+      // how long the fetch took. "Settled" rather than "has data", so a failed
+      // fetch still frames the fallback instead of leaving the map still.
+      if (!selectedLocationsResolved) return;
+      if (selectedFromMapIdRef.current === selectedExperienceId) return;
+      if (flownForRef.current === selectedExperienceId) return;
+      flownForRef.current = selectedExperienceId;
+      if (foldedSelection) {
+        map.flyTo({
+          center: [foldedSelection.longitude, foldedSelection.latitude],
+          zoom: Math.max(map.getZoom(), 8),
+          duration: 800,
+        });
+      } else if (selectedExperienceLocations && selectedExperienceLocations.length > 0) {
         if (selectedExperienceLocations.length === 1) {
           map.flyTo({
             center: [selectedExperienceLocations[0].lng, selectedExperienceLocations[0].lat],
@@ -634,8 +790,11 @@ export function DiscoverExperienceView({
       }
     }, 350);
 
-    return () => clearTimeout(flyTimer);
-  }, [selectedExperienceLocations]);
+    return () => {
+      clearTimeout(flyTimer);
+      map.off('load', updateHighlight);
+    };
+  }, [selectedExperienceLocations, foldedSelection, selectedExperienceId, selectedLocationsResolved]);
 
   // ── Map hover → auto-scroll list ──
   useEffect(() => {
@@ -686,84 +845,114 @@ export function DiscoverExperienceView({
     const exp = experiencesRef.current.find(e => e.id === expId);
     if (!exp) return;
 
-    const coords: [number, number] = [exp.longitude, exp.latitude];
+    // Every point the object is drawn at, because that is what the card stands
+    // for now — a serial site is its parts, and ringing one of thirteen left the
+    // other twelve unmarked. A folded object, and one whose places this region's
+    // batch does not hold, is one point: its own (ADR-0028 decision 2).
+    const drawn = drawnCoordsRef.current(expId);
+    const coords: [number, number] = drawn[0];
 
-    // Check if the point is visible as an unclustered marker
-    const screenPoint = map.project(coords);
-    const nearby = map.queryRenderedFeatures(
-      [
-        [screenPoint.x - 5, screenPoint.y - 5],
-        [screenPoint.x + 5, screenPoint.y + 5],
-      ],
-      { layers: ['unclustered-point'] },
-    );
-    const isUnclustered = nearby.some(f => f.properties?.id === expId);
-
-    if (isUnclustered) {
-      // Point is visible — highlight at its location
+    // A selected object has no feature in the marker source at all — it is
+    // excluded there and drawn by the highlight layer — so neither the
+    // unclustered test below nor the cluster search can find it, and both would
+    // fall back to a single point. Its dots are always drawn, so ring them.
+    // Through a ref, because this callback is created once and the map handlers
+    // registered with it must see the current selection rather than the first.
+    if (expId === selectedExpIdRef.current) {
       hoverSource.setData({
         type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: coords },
+        features: drawn.map(c => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: c },
           properties: {},
-        }],
+        })),
       });
-    } else {
-      // Point is inside a cluster — find it and highlight the cluster
-      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-      if (!source) return;
+      return;
+    }
 
-      const clusterFeatures = map.queryRenderedFeatures(undefined, { layers: ['clusters'] });
+    // Every pin of this object that is drawn, in one query over the layer.
+    const pinRings = pinRingsFor(map, expId);
+    if (pinRings.length > 0) {
+      hoverSource.setData({ type: 'FeatureCollection', features: pinRings });
+    }
 
-      // Search clusters for the one containing our experience
-      let found = false;
-      let remaining = clusterFeatures.length;
-      if (remaining === 0) {
-        // No clusters visible — fall back to raw coords
+    // Its remaining places are inside clusters, and a bubble sits at its members'
+    // centroid rather than at any of them — so which bubbles hold this object is a
+    // question only the source can answer. Every one of them is ringed, not the
+    // first: at continental zoom the Rock Art is several clusters across three
+    // provinces, and ringing one left the rest of the row unmarked.
+    //
+    // Compared against the places *in view*, because that is the population the
+    // pins were counted from: measured against every place the object has, a row
+    // with anything off screen would take this path on every hover — and this one
+    // has no hover-intent delay, while `getClusterLeaves` materialises a feature
+    // per member of every visible cluster.
+    const inView = map.getBounds();
+    const onScreen = drawn.filter(([lng, lat]) => inView.contains([lng, lat]));
+    if (pinRings.length >= onScreen.length) return;
+
+    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    const clusterFeatures = map.queryRenderedFeatures({ layers: ['clusters'] });
+    if (clusterFeatures.length === 0) {
+      if (pinRings.length === 0) {
+        // Nothing of this object is on screen at all: ring where it says it is.
         hoverSource.setData({
           type: 'FeatureCollection',
           features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: {} }],
         });
-        return;
       }
+      return;
+    }
 
-      for (const cluster of clusterFeatures) {
-        const clusterId = cluster.properties.cluster_id;
-        const pointCount = cluster.properties.point_count;
-        source.getClusterLeaves(clusterId, pointCount, 0).then(leaves => {
-          if (!found && leaves.some(leaf => leaf.properties?.id === expId)) {
-            found = true;
-            const clusterCoords = (cluster.geometry as GeoJSON.Point).coordinates;
-            // Compute visual radius from the cluster's rendered size
-            let clusterRadius = 26;
-            if (pointCount < 10) clusterRadius = 14;
-            else if (pointCount < 30) clusterRadius = 18;
-            else if (pointCount < 100) clusterRadius = 22;
-            hoverSource.setData({
-              type: 'FeatureCollection',
-              features: [{
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: clusterCoords },
-                properties: { hoverRadius: clusterRadius + 10, ringRadius: clusterRadius + 4 },
-              }],
-            });
-          }
+    const rings = [...pinRings];
+    let remaining = clusterFeatures.length;
+    // `getClusterLeaves` answers after the pointer may have moved on, and this
+    // path is taken on most hovers now — any object with places off screen has
+    // fewer rendered pins than places. Without an ownership check the last promise
+    // of a row paints its rings with nothing hovered, or over the row the reader
+    // moved to. Map mode could delete its ownership machinery when clustering
+    // left; this surface still clusters, so it needs one. (A generation rather
+    // than a token because the timing-attack lint rule reads any `token`
+    // comparison as a comparison of secrets.)
+    const generation = ++hoverGenerationRef.current;
+    for (const cluster of clusterFeatures) {
+      const clusterId = cluster.properties.cluster_id as number;
+      const pointCount = cluster.properties.point_count as number;
+      source.getClusterLeaves(clusterId, pointCount, 0)
+        .then(leaves => {
+          if (generation !== hoverGenerationRef.current) return;
+          if (leaves.some(leaf => leaf.properties?.id === expId)) rings.push(clusterRing(cluster));
+        })
+        // supercluster throws "No cluster with the specified id" once the index
+        // is rebuilt, and `source.setData` rebuilds it — which this view now does
+        // on five things, including the batch arriving and a fold. Such a bubble
+        // simply contributes no ring; the alternative is an unhandled rejection.
+        .catch(() => {})
+        // Counted here rather than in `then`, or a rejection would leave
+        // `remaining` above zero for good and the paint below would never run —
+        // for an object with no pins drawn, that is a hover that shows nothing at
+        // all, after the previous row's ring has already been cleared.
+        .finally(() => {
+          if (generation !== hoverGenerationRef.current) return;
           remaining--;
-          if (remaining === 0 && !found) {
-            // Experience not found in any cluster — fall back to raw coords
+          if (remaining > 0) return;
+          if (rings.length > 0) {
+            hoverSource.setData({ type: 'FeatureCollection', features: rings });
+          } else {
+            // In no cluster and drawn nowhere — ring the coordinate it claims.
             hoverSource.setData({
               type: 'FeatureCollection',
               features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: {} }],
             });
           }
         });
-      }
     }
   }, []);
 
   const handleCardMouseLeave = useCallback(() => {
     if (hoverSourceRef.current !== 'list') return;
+    hoverGenerationRef.current++;
     hoverSourceRef.current = null;
     setHoveredExperienceId(null);
 
@@ -792,7 +981,18 @@ export function DiscoverExperienceView({
       {/* Map — always visible, takes remaining height */}
       <Box sx={{ flex: activeView ? '0 0 45%' : 1, minHeight: 200, position: 'relative' }}>
         {isWebGLAvailable() ? (
-          <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+          <>
+            <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+
+            {/* The same fold the list offers, for a reader working on the map (#558) */}
+            {selectedExperienceId != null && (
+              <FoldPlacesControl
+                places={placesOfSelected}
+                folded={collapsedExperienceIds.has(selectedExperienceId)}
+                onToggle={() => toggleCollapsedExperience(selectedExperienceId)}
+              />
+            )}
+          </>
         ) : (
           <MapUnavailable detail="The experiences below are the same ones the map would pin, and stay fully browsable." />
         )}

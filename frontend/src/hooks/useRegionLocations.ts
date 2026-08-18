@@ -2,7 +2,9 @@
  * Shared hook for batch-fetching all experience locations in a region.
  *
  * Replaces N+1 individual fetchExperienceLocations calls with a single
- * batch request. Used by both ExperienceMarkers (map) and ExperienceList.
+ * batch request. Four consumers share it: ExperienceMarkers and ExperienceList
+ * on the map, SelectedObjectFoldControl beside them, and DiscoverExperienceView —
+ * which reads a different set, see `includeChildren` below.
  */
 
 import { useMemo } from 'react';
@@ -24,13 +26,24 @@ import {
  * aborted navigation — produces the same misleading chip unless the caller can
  * tell "no locations here" from "no answer yet".
  */
-export function useRegionLocations(regionId: number | null, includeLost = false) {
+export function useRegionLocations(
+  regionId: number | null,
+  includeLost = false,
+  /**
+   * Must match the list the caller draws. Map mode reads a region without its
+   * descendants and so defaults to `false`; Discover reads a region *and* its
+   * descendants, and a batch fetched without them leaves every object assigned to
+   * a descendant — which is what a curator's hand assignment writes — with no
+   * places at all, drawn as a single stand-in pin.
+   */
+  includeChildren = false,
+) {
   const { data } = useQuery({
-    // `includeLost` is part of the key: the two answers are different sets, and
-    // sharing a cache entry would leave a revealed row without its markers
-    // until the batch happened to be refetched.
-    queryKey: ['region-locations', regionId, includeLost],
-    queryFn: () => fetchRegionExperienceLocations(regionId!, { includeChildren: false, includeLost }),
+    // `includeLost` and `includeChildren` are part of the key: each pair of
+    // answers is a different set, and sharing a cache entry would leave a row
+    // without its markers until the batch happened to be refetched.
+    queryKey: ['region-locations', regionId, includeLost, includeChildren],
+    queryFn: () => fetchRegionExperienceLocations(regionId!, { includeChildren, includeLost }),
     enabled: regionId != null,
     staleTime: 300_000, // 5 min — locations don't change often
   });
