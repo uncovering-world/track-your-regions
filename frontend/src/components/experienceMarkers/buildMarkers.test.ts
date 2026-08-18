@@ -107,6 +107,77 @@ describe('an object made of several places', () => {
   });
 });
 
+describe('an object the reader asked to see as one pin', () => {
+  it('draws one pin, at the coordinate the catalogue answers with', () => {
+    // ADR-0028 decision 2: the place nearest the object's own published point,
+    // which is what the row and Discover already show. Collapsing must not invent
+    // a centre — a centroid of scattered parts can land in open water, which is
+    // why `resolveMainPoint` rejected one for the anchor in the first place.
+    const exp = makeExperience(1, { longitude: 7.5, latitude: 45.5, location_count: 3 });
+    const locations = {
+      1: [makeLocation(11, { longitude: 1, latitude: 1 }), makeLocation(12), makeLocation(13)],
+    };
+
+    const markers = buildExperienceMarkers([exp], locations, new Set(), new Set([1]));
+
+    expect(markers).toHaveLength(1);
+    expect([markers[0].longitude, markers[0].latitude]).toEqual([7.5, 45.5]);
+    // The badge, which is the only thing telling this from a single-placed object.
+    expect(markers[0].locationCount).toBe(3);
+    expect(markers[0].locationId).toBeNull();
+  });
+
+  it('leaves every other object alone', () => {
+    // Per object, never a mode: a reader looking at forty parts of one site wants
+    // that site as one pin and the rest of the region untouched.
+    const collapsed = makeExperience(1, { location_count: 2 });
+    const other = makeExperience(2, { location_count: 2 });
+    const locations = {
+      1: [makeLocation(11), makeLocation(12)],
+      2: [makeLocation(21), makeLocation(22)],
+    };
+
+    const markers = buildExperienceMarkers([collapsed, other], locations, new Set(), new Set([1]));
+
+    expect(markers.filter(m => m.experienceId === 1)).toHaveLength(1);
+    expect(markers.filter(m => m.experienceId === 2)).toHaveLength(2);
+  });
+
+  it('says so on the pin, rather than leaving it to be inferred', () => {
+    // "No locationId and a count above one" also describes a *stand-in* pin — an
+    // object whose places the batch does not hold because they are all lost, all
+    // pending for a curator, or simply not fetched yet. A surface that counts a
+    // different set can put such an object in the folded set, and a click that
+    // unfolded it would drop the fold, select nothing and visibly do nothing.
+    const folded = buildExperienceMarkers(
+      [makeExperience(1, { location_count: 2 })],
+      { 1: [makeLocation(11), makeLocation(12)] },
+      new Set(), new Set([1]),
+    );
+    const standIn = buildExperienceMarkers(
+      [makeExperience(2, { location_count: 40 })], {}, new Set(), new Set([2]));
+
+    expect(folded[0].folded).toBe(true);
+    expect(standIn[0].folded).toBeUndefined();
+    // The two are otherwise the same shape, which is the point.
+    expect(standIn[0].locationId).toBeNull();
+    expect(standIn[0].locationCount).toBe(40);
+  });
+
+  it('changes nothing for an object with a single place', () => {
+    // Collapsing one place to one pin would only cost it its own name and hand it
+    // a badge saying 1, which the badge layer reads as "there is more here".
+    const exp = makeExperience(1);
+    const markers = buildExperienceMarkers([exp], { 1: [makeLocation(11, { name: 'The place' })] },
+      new Set(), new Set([1]));
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0].locationId).toBe(11);
+    expect(markers[0].locationCount).toBe(1);
+    expect(markers[0].locationName).toBe('The place');
+  });
+});
+
 describe('buildExperienceMarkers', () => {
   it('builds a marker for every experience, past the hundredth', () => {
     // The regression: `experiences.slice(0, 100)`. Europe carries 200 in the

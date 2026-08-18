@@ -93,6 +93,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     triggerFlyTo,
     triggerFitRegion,
     setExpandedCategoryNames,
+    collapsedExperienceIds,
+    toggleCollapsedExperience,
   } = useExperienceContext();
   const { isAuthenticated, isCurator, user } = useAuth();
   const { selectedRegion } = useNavigation();
@@ -670,6 +672,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       hoveredLocationId={ownedHoveredLocationId(locationsByExperience[exp.id], hoveredLocationId)}
       locationRefs={locationRefs}
       itemRefs={itemRefs}
+      isCollapsed={collapsedExperienceIds.has(exp.id)}
+      onToggleCollapse={toggleCollapsedExperience}
       showCheckbox={isAuthenticated}
       isLoading={isMutating}
       onHover={handleHover}

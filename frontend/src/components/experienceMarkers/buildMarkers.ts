@@ -5,12 +5,16 @@
  * *places* are rather than where their objects were pinned.
  *
  * A module of its own so it can be exercised without a map. The marker set is a
- * pure function of the experiences, their locations and which category groups
- * are expanded, and it is what the list-to-map hover resolves an experience
- * against — a marker that is not built is a row whose hover does nothing.
+ * pure function of the experiences, their locations, which category groups are
+ * expanded and which objects this reader folded, and it is what the list-to-map
+ * hover resolves an experience against — a marker that is not built is a row
+ * whose hover does nothing.
  */
 
 import type { Experience, ExperienceLocation } from '../../api/experiences';
+
+/** Shared empty set, so a caller with nothing collapsed allocates nothing. */
+const EMPTY_COLLAPSED: ReadonlySet<number> = new Set<number>();
 
 /**
  * The places an object is drawn as: the ones in this region, or all of them when
@@ -65,12 +69,92 @@ export interface MarkerData {
   /** Null where the source no longer lists this point — see `locationLabel`. */
   locationOrdinal: number | null;
   inRegion: boolean;
+  /**
+   * This pin is one the reader folded, and a click on it unfolds.
+   *
+   * Stated rather than inferred. "No `locationId` and a count above one" also
+   * describes a stand-in pin — an object whose places the batch does not hold,
+   * because they are all lost, all pending for a curator, or simply not fetched
+   * yet — and a surface that counts a different set can put such an object in the
+   * folded set. A click would then unfold something that was never drawn folded:
+   * the fold drops, nothing is selected, and the click visibly does nothing.
+   */
+  folded?: boolean;
+}
+
+/**
+ * One pin for an object whose places the region's batch does not hold — not
+ * loaded yet, or loaded and empty for this row. `[]` is not `undefined`, so a
+ * guard on `!locations` alone dropped such a row with no marker and no error,
+ * which is a row whose hover does nothing. It carries the object's own count
+ * because it genuinely stands in for places it is not drawing.
+ */
+function standInMarker(exp: Experience): MarkerData {
+  return {
+    id: String(exp.id),
+    experienceId: exp.id,
+    locationId: null,
+    experience: exp,
+    longitude: exp.longitude,
+    latitude: exp.latitude,
+    locationName: null,
+    locationCount: exp.location_count ?? 1,
+    locationOrdinal: 0,
+    inRegion: true,
+  };
+}
+
+/**
+ * One pin for an object this reader asked to see as one, at the coordinate the
+ * catalogue answers with — the place nearest the object's own published point
+ * (ADR-0028 decision 2), which is what the row, the card and Discover already
+ * use. Collapsing therefore moves the object to a place it is already said to be
+ * at rather than inventing a centre for it, and the badge is what tells this pin
+ * apart from an object that simply has one place.
+ */
+function collapsedMarker(exp: Experience, places: number, inRegion: boolean): MarkerData {
+  return {
+    id: `${exp.id}-collapsed`,
+    experienceId: exp.id,
+    locationId: null,
+    experience: exp,
+    longitude: exp.longitude,
+    latitude: exp.latitude,
+    locationName: null,
+    locationCount: places,
+    locationOrdinal: null,
+    inRegion,
+    folded: true,
+  };
+}
+
+/**
+ * A pin per place, which is what an object is (ADR-0028 decision 1). Drawing one
+ * of them made Gondwana's forty components a single dot a reader had to click to
+ * learn anything from, and which dot that was — the lowest-ordinal in-region
+ * place — was a question the builder had to answer and nobody could see. Each
+ * pin stands for itself alone, so none carries a count.
+ */
+function placeMarkers(exp: Experience, places: ExperienceLocation[], inRegion: boolean): MarkerData[] {
+  return places.map(loc => ({
+    id: `${exp.id}-${loc.id}`,
+    experienceId: exp.id,
+    locationId: loc.id,
+    experience: exp,
+    longitude: loc.longitude,
+    latitude: loc.latitude,
+    locationName: loc.name,
+    locationCount: 1,
+    locationOrdinal: loc.ordinal,
+    inRegion,
+  }));
 }
 
 export function buildExperienceMarkers(
   experiences: Experience[],
   locationsByExperience: Record<number, ExperienceLocation[]>,
   expandedCategoryNames: Set<string>,
+  collapsedExperienceIds: ReadonlySet<number> = EMPTY_COLLAPSED,
 ): MarkerData[] {
   const result: MarkerData[] = [];
 
@@ -80,58 +164,26 @@ export function buildExperienceMarkers(
   // the first hundred rows and doing nothing at all for the rest.
   //
   // The heatmap is what makes the full set affordable to *render* below its
-  // threshold; above it every experience is drawn as its own marker. Hover costs
-  // one lookup in this array either way — it resolves the marker directly rather
-  // than searching what the map currently draws.
+  // threshold; above it every place is drawn as its own marker. Hover costs one
+  // scan of this array either way — it resolves markers directly rather than
+  // searching what the map currently draws.
   for (const exp of experiences) {
     const categoryName = exp.category_name || 'Experiences';
     if (expandedCategoryNames.size > 0 && !expandedCategoryNames.has(categoryName)) continue;
 
     const locations = locationsByExperience[exp.id];
+    if (!locations || locations.length === 0) {
+      result.push(standInMarker(exp));
+      continue;
+    }
 
-    if (locations && locations.length > 0) {
-      const representable = representablePlaces(locations);
-      const inRegion = locations.some(loc => loc.in_region !== false);
-      // Every one of them, not the first: a serial site *is* its parts (ADR-0028
-      // decision 1), and drawing one of them made Gondwana's forty components a
-      // single dot the reader had to click to learn anything from. Which one that
-      // dot was is no longer a question anybody has to answer, so the ordinal
-      // preference this used to carry — a held point sorts last, so it was picked
-      // only when alone — has nothing left to decide.
-      for (const loc of representable) {
-        result.push({
-          id: `${exp.id}-${loc.id}`,
-          experienceId: exp.id,
-          locationId: loc.id,
-          experience: exp,
-          longitude: loc.longitude,
-          latitude: loc.latitude,
-          locationName: loc.name,
-          // A place drawn as itself stands for itself alone, so no badge.
-          locationCount: 1,
-          locationOrdinal: loc.ordinal,
-          inRegion,
-        });
-      }
+    const representable = representablePlaces(locations);
+    const inRegion = locations.some(loc => loc.in_region !== false);
+
+    if (collapsedExperienceIds.has(exp.id) && representable.length > 1) {
+      result.push(collapsedMarker(exp, representable.length, inRegion));
     } else {
-      // No usable location: either not loaded yet, or loaded and empty. `[]` is
-      // not `undefined`, so an `else if (!locations)` here would drop the row
-      // silently — the same shape as the out-of-region skip above, and with the
-      // same consequence: hover cannot resolve it through markersRef.
-      result.push({
-        id: String(exp.id),
-        experienceId: exp.id,
-        locationId: null,
-        experience: exp,
-        longitude: exp.longitude,
-        latitude: exp.latitude,
-        locationName: null,
-        // This one *is* standing in for places it does not draw — the region's
-        // batch holds none of them — so it keeps the badge saying how many.
-        locationCount: exp.location_count ?? 1,
-        locationOrdinal: 0,
-        inRegion: true,
-      });
+      result.push(...placeMarkers(exp, representable, inRegion));
     }
   }
 

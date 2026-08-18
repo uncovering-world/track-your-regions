@@ -63,6 +63,10 @@ interface ExperienceContextType {
   expandedCategoryNames: Set<string>;
   setExpandedCategoryNames: (names: Set<string>) => void;
 
+  /** Objects this reader asked to see as a single pin rather than as their places. */
+  collapsedExperienceIds: ReadonlySet<number>;
+  toggleCollapsedExperience: (id: number) => void;
+
   // Artwork preview image (shown as overlay on map)
   previewImageUrl: string | null;
   setPreviewImageUrl: (url: string | null) => void;
@@ -93,6 +97,13 @@ interface ExperienceContextType {
 }
 
 const ExperienceContext = createContext<ExperienceContextType | null>(null);
+
+/**
+ * One frozen empty set for every region nobody has collapsed anything in, which
+ * is nearly all of them. A fresh `new Set()` per render is a new identity, and
+ * the marker builder is memoised on this.
+ */
+const EMPTY_COLLAPSED: ReadonlySet<number> = new Set<number>();
 
 interface ExperienceProviderProps {
   regionId: number | null;
@@ -134,6 +145,26 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     (show: boolean) => setLostShownFor(show ? regionId ?? null : null),
     [regionId],
   );
+
+  // A reader looking at forty parts of one site may want *that* site shown as a
+  // single pin while everything else keeps its places, so the ask is per object
+  // and never a mode. It is held for the region it was made in, the way
+  // `showLost` above is and for the same reason: it answers "this object, here",
+  // and deriving it rather than resetting it in an effect means a region change
+  // cannot leave one region's collapses applied to another's rows for a render.
+  const [collapsedFor, setCollapsedFor] = useState<{ regionId: number | null; ids: ReadonlySet<number> }>(
+    { regionId: null, ids: EMPTY_COLLAPSED },
+  );
+  const collapsedExperienceIds = collapsedFor.regionId === regionId && regionId !== null
+    ? collapsedFor.ids
+    : EMPTY_COLLAPSED;
+  const toggleCollapsedExperience = useCallback((id: number) => {
+    setCollapsedFor((prev) => {
+      const ids = new Set(prev.regionId === regionId ? prev.ids : EMPTY_COLLAPSED);
+      if (!ids.delete(id)) ids.add(id);
+      return { regionId, ids };
+    });
+  }, [regionId]);
 
   // Fetch experiences for the selected region
   const { data, isLoading } = useQuery({
@@ -230,11 +261,13 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     getExperienceById,
     expandedCategoryNames,
     setExpandedCategoryNames,
+    collapsedExperienceIds,
+    toggleCollapsedExperience,
     previewImageUrl,
     setPreviewImageUrl,
     hoverPreview,
     setHoverPreview,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, hoveredExperienceId, hoveredLocationId, hoverSource, setHoveredFromMarker, setHoveredFromList, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, previewImageUrl, hoverPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, hoveredExperienceId, hoveredLocationId, hoverSource, setHoveredFromMarker, setHoveredFromList, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, previewImageUrl, hoverPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>
