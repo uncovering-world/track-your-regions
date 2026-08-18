@@ -355,6 +355,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     clearFitRegion,
     getExperienceById,
     expandedCategoryNames,
+    collapsedExperienceIds,
     setHoverPreview,
     showLost,
   } = useExperienceContext();
@@ -379,8 +380,9 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   // ── One marker per experience (its primary location, in-region when it has one) ──
   // Multi-location experiences show all locations via the highlight layer when selected.
   const markers = useMemo(
-    () => buildExperienceMarkers(experiences, locationsByExperience, expandedCategoryNames),
-    [experiences, locationsByExperience, expandedCategoryNames],
+    () => buildExperienceMarkers(
+      experiences, locationsByExperience, expandedCategoryNames, collapsedExperienceIds),
+    [experiences, locationsByExperience, expandedCategoryNames, collapsedExperienceIds],
   );
 
   // Keep a ref so map callbacks can access the latest markers

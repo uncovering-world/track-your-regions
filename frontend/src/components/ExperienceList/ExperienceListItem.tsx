@@ -36,6 +36,55 @@ import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
 const HOVER_INTENT_MS = 140;
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
 import { resolveRowBgColor } from './utils';
+import { isFoldable } from '../experienceMarkers/buildMarkers';
+
+/**
+ * What the count chip says it will do. Not a control at all where folding is not
+ * a question — the chip still carries the count, because "this object has five
+ * places" is true whether or not the map draws five pins for it here.
+ */
+function foldLabel(foldable: boolean, folded: boolean, drawn: number, total: number): string {
+  if (!foldable) return `${total} places`;
+  return folded ? `Show all ${drawn} places on the map` : 'Show as a single pin on the map';
+}
+
+/**
+ * The count of an object's places, and — where folding is a question — the
+ * control that folds them. The two are one chip because they are one fact: this
+ * object has several places, and you may ask for them as a single pin.
+ */
+function PlacesCountChip({ label, tooltip, foldable, folded, onToggle }: {
+  label: string;
+  tooltip: string;
+  foldable: boolean;
+  folded: boolean;
+  onToggle: () => void;
+}) {
+  // The row's own click opens the card, and a reader folding a site did not ask
+  // for that too.
+  const handleClick = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    onToggle();
+  };
+
+  return (
+    <Tooltip title={tooltip}>
+      <Chip
+        label={label}
+        size="small"
+        onClick={foldable ? handleClick : undefined}
+        sx={{
+          height: 18,
+          fontSize: '0.65rem',
+          cursor: foldable ? 'pointer' : 'default',
+          '& .MuiChip-label': { px: 0.75 },
+        }}
+        variant={folded && foldable ? 'filled' : 'outlined'}
+        color="info"
+      />
+    </Tooltip>
+  );
+}
 
 export interface ExperienceListItemProps {
   experience: Experience;
@@ -65,6 +114,14 @@ export interface ExperienceListItemProps {
   onLocationVisitedToggle: (locationId: number, isVisited: boolean) => void;
   onToggleAllLocations: (experienceId: number, markAsVisited: boolean) => void;
   onLocationHover: (experienceId: number, locationId: number | null) => void;
+  /** This object is drawn as a single pin because the reader asked for that. */
+  isCollapsed: boolean;
+  /**
+   * Ask for the opposite of `isCollapsed`. Per object, never a mode: a reader
+   * looking at forty parts of one site wants that site as one pin and everything
+   * else left alone.
+   */
+  onToggleCollapse: (experienceId: number) => void;
   onCurate?: (experience: Experience) => void;
   onUnreject?: (experience: Experience) => void;
   onRemoveFromRegion?: (experience: Experience) => void;
@@ -117,6 +174,8 @@ function ExperienceListItemComponent({
   onLocationVisitedToggle,
   onToggleAllLocations,
   onLocationHover,
+  isCollapsed,
+  onToggleCollapse,
   onCurate,
   onUnreject,
   onRemoveFromRegion,
@@ -165,6 +224,12 @@ function ExperienceListItemComponent({
   }, [locations]);
   const inRegionCount = inRegionLocations.length;
   const isMultiLocation = totalLocations > 1;
+  // Folding is only a question for an object that *draws* more than one pin: a
+  // site with five places of which one is in region is already one pin, and a
+  // chip offering to fold it would leave the map unchanged while a click on that
+  // ordinary pin unfolded instead of selecting.
+  const foldable = isFoldable(locations);
+  const foldTooltip = foldLabel(foldable, isCollapsed, inRegionCount || totalLocations, totalLocations);
 
   // Compute IN-REGION visited status using global isLocationVisited
   const inRegionVisitedStatus = useMemo((): 'not_visited' | 'partial' | 'visited' => {
@@ -348,18 +413,19 @@ function ExperienceListItemComponent({
                   ratio it cannot know yet — `inRegionCount` would be 0 against
                   a denominator that arrived from somewhere else. */}
               {isMultiLocation && (
-                <Chip
+                // The count is also the control: it is the one thing on the row
+                // that is about the object having several places, so the ask to
+                // draw them as one pin belongs on it rather than in a menu. The
+                // click is stopped here — the row's own click opens the card, and
+                // a reader collapsing a site did not ask for that too.
+                <PlacesCountChip
                   label={!locationsResolved || inRegionCount === totalLocations
-                    ? totalLocations
+                    ? String(totalLocations)
                     : `${inRegionCount}/${totalLocations}`}
-                  size="small"
-                  sx={{
-                    height: 18,
-                    fontSize: '0.65rem',
-                    '& .MuiChip-label': { px: 0.75 },
-                  }}
-                  variant="outlined"
-                  color="info"
+                  tooltip={foldTooltip}
+                  foldable={foldable}
+                  folded={isCollapsed}
+                  onToggle={() => onToggleCollapse(experience.id)}
                 />
               )}
             </Box>
