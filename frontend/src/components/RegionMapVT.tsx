@@ -26,6 +26,7 @@ import { useVisitedRegions } from '../hooks/useVisitedRegions';
 import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { ExperienceMarkers } from './ExperienceMarkers';
+import { FoldPlacesControl } from './experienceMarkers/FoldPlacesControl';
 import { MapUnavailable } from './shared/MapUnavailable';
 import { isWebGLAvailable } from '../utils/webgl';
 import { MAP_STYLE } from '../constants/mapStyles';
@@ -466,6 +467,11 @@ export function RegionMapVT() {
             }}
           />
         </Box>
+      )}
+
+      {/* The map's own way to fold one object back into a single pin (#558) */}
+      {isExploring && isCustomWorldView && selectedRegion && (
+        <FoldPlacesControl regionId={selectedRegion.id} />
       )}
 
       {/* Experience/location hover preview (explore mode) */}

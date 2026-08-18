@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { useMap, Source, Layer } from 'react-map-gl/maplibre';
 import maplibregl from 'maplibre-gl';
 import type { LayerProps } from 'react-map-gl/maplibre';
-import { buildExperienceMarkers } from './experienceMarkers/buildMarkers';
+import { buildExperienceMarkers, representablePlaces } from './experienceMarkers/buildMarkers';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { useNavigation } from '../hooks/useNavigation';
 import { useRegionLocations } from '../hooks/useRegionLocations';
@@ -356,6 +356,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     getExperienceById,
     expandedCategoryNames,
     collapsedExperienceIds,
+    toggleCollapsedExperience,
     setHoverPreview,
     showLost,
   } = useExperienceContext();
@@ -373,12 +374,16 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   setHoveredRef.current = setHoveredFromMarker;
   const selectedExpIdRef = useRef(selectedExperienceId);
   selectedExpIdRef.current = selectedExperienceId;
+  const toggleCollapsedRef = useRef(toggleCollapsedExperience);
+  toggleCollapsedRef.current = toggleCollapsedExperience;
 
   // Popup ref for cleanup
   const popupRef = useRef<maplibregl.Popup | null>(null);
 
-  // ── One marker per experience (its primary location, in-region when it has one) ──
-  // Multi-location experiences show all locations via the highlight layer when selected.
+  // ── One marker per place a reader may go to (ADR-0028 decision 1, #558) ──
+  // An object folded by this reader is one marker instead, at the coordinate the
+  // catalogue answers with; a selected object leaves this set and is drawn by the
+  // highlight layer below, which follows the same rule.
   const markers = useMemo(
     () => buildExperienceMarkers(
       experiences, locationsByExperience, expandedCategoryNames, collapsedExperienceIds),
@@ -414,23 +419,41 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
           experienceName: m.experience.name,
           category: m.experience.category || '',
           locationCount: m.locationCount,
+          folded: m.folded === true,
         },
       })),
     };
   }, [markers, selectedExperienceId]);
 
-  // Highlight source data (in-region locations of selected experience)
+  /**
+   * The places an object shows on the map, or `null` for "draw its own point".
+   *
+   * `null` covers two cases that want the same answer. An object whose places the
+   * region batch does not hold — the common one in a continent fetched without
+   * descendants — has nothing else to draw. And an object this reader folded has
+   * places, deliberately undrawn: folding that stopped at the marker source would
+   * be undone by selecting the row, since a selected object is drawn by the
+   * highlight layer instead. Both land on the coordinate the catalogue answers
+   * with (ADR-0028 decision 2), which is where the folded pin already sits.
+   *
+   * The in-region preference is the marker builder's, for the same reason: an
+   * experience assigned by hand has no in-region place, and filtering to none
+   * would leave the row with a marker until it was clicked and nothing after.
+   */
+  const shownPlacesFor = useCallback((experienceId: number): ExperienceLocation[] | null => {
+    const locations = locationsByExperience[experienceId];
+    const representable = representablePlaces(locations);
+    if (representable.length === 0) return null;
+    if (collapsedExperienceIds.has(experienceId) && representable.length > 1) return null;
+    return representable as ExperienceLocation[];
+  }, [locationsByExperience, collapsedExperienceIds]);
+
+  // Highlight source data (the places of the selected experience)
   const highlightGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
     if (selectedExperienceId == null) return EMPTY_FC;
 
-    const locations = locationsByExperience[selectedExperienceId];
-
-    // No locations loaded for this one — draw its own point rather than nothing.
-    // The batch fetch is per region without descendants, so most experiences in
-    // a continent have none, and the selected experience is removed from the
-    // marker source by the memo above: returning empty here made it disappear
-    // from the map entirely at the moment of being selected.
-    if (!locations || locations.length === 0) {
+    const shown = shownPlacesFor(selectedExperienceId);
+    if (!shown) {
       const exp = getExperienceById(selectedExperienceId);
       if (!exp) return EMPTY_FC;
       return {
@@ -443,12 +466,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       };
     }
 
-    // Same fallback as the marker builder, and for the same reason: an
-    // experience assigned by hand has no in-region location, and filtering to
-    // none would empty this collection — the row would carry a marker until it
-    // was clicked and then have nothing drawn for it at all.
-    const inRegion = locations.filter(loc => loc.in_region !== false);
-    const shown = inRegion.length > 0 ? inRegion : locations;
     return {
       type: 'FeatureCollection',
       features: shown.map((loc) => ({
@@ -460,7 +477,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         },
       })),
     };
-  }, [selectedExperienceId, locationsByExperience, getExperienceById]);
+  }, [selectedExperienceId, shownPlacesFor, getExperienceById]);
 
   // ── Imperative event handlers (registered on map via useEffect) ──
   useEffect(() => {
@@ -491,13 +508,37 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     };
 
     const onMarkerClick = (e: maplibregl.MapMouseEvent) => {
+      // What the per-layer registrations gave for free: MapLibre's delegated
+      // listener checks `getLayer(id)` before querying, and this component
+      // unmounts its sources while a region loads, with this effect still
+      // attached. Naming a missing layer makes `queryRenderedFeatures` fire an
+      // ErrorEvent and log, on the ordinary path of clicking the map mid-load.
+      if (!map.getLayer(LAYER_MARKERS)) return;
       const features = map.queryRenderedFeatures(e.point, {
         layers: [LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT],
       });
-      if (features.length > 0) {
-        const experienceId = features[0].properties?.experienceId;
-        if (experienceId != null) toggleSelectedRef.current(experienceId);
+      if (features.length === 0) return;
+      const experienceId = features[0].properties?.experienceId;
+      if (experienceId == null) return;
+
+      // A pin the reader folded is unfolded by clicking it, which is the way back
+      // from the only action the map offers on a folded object — and the badge is
+      // what says there is something to unfold. Selection is what a click means
+      // everywhere else, including on the badge of a pin standing in for places
+      // the region's batch has not loaded: there is nothing folded to unfold
+      // there, and selecting is what loads them.
+      //
+      // The test is the pin's own answer, not the id and not a shape that
+      // resembles a folded pin: `buildExperienceMarkers` says which pins it drew
+      // folded, and a stand-in pin — an object whose places the batch does not
+      // hold — has the same null `locationId` and count above one without being
+      // one. A click that unfolded that would visibly do nothing.
+      if (features[0].properties?.folded === true) {
+        toggleCollapsedRef.current(experienceId);
+        return;
       }
+
+      toggleSelectedRef.current(experienceId);
     };
 
     const onMarkerMouseMove = (e: maplibregl.MapMouseEvent) => {
@@ -620,9 +661,17 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       ) {
         return false;
       }
-      map.on('click', LAYER_MARKERS, onMarkerClick);
-      map.on('click', LAYER_MARKER_COUNT_BADGE_BG, onMarkerClick);
-      map.on('click', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerClick);
+      // Once on the map, not once per layer: a delegated listener is created per
+      // registration, so a click landing on two of these — which a badge click
+      // does, its circle and its glyph sitting on the same 8 px — ran this body
+      // twice and undid itself. On a folded pin that meant toggling the fold off
+      // and on again, so clicking the badge that says "folded" did nothing at
+      // all. The handler queries the three layers itself and returns when none
+      // answers, which is what makes one registration enough. The `mousemove` and
+      // `mouseleave` registrations below stay per layer, which is safe only
+      // because painting a ring twice is painting it once — see
+      // `docs/tech/maplibre-patterns.md` § One listener per registration.
+      map.on('click', onMarkerClick);
       map.on('mousemove', LAYER_MARKERS, onMarkerMouseMove);
       map.on('mousemove', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseMove);
       map.on('mousemove', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseMove);
@@ -650,9 +699,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       popup.remove();
       popupRef.current = null;
       setHoverPreview(null);
-      map.off('click', LAYER_MARKERS, onMarkerClick);
-      map.off('click', LAYER_MARKER_COUNT_BADGE_BG, onMarkerClick);
-      map.off('click', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerClick);
+      map.off('click', onMarkerClick);
       map.off('mousemove', LAYER_MARKERS, onMarkerMouseMove);
       map.off('mousemove', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseMove);
       map.off('mousemove', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseMove);
@@ -683,7 +730,13 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     // Specific location (from an expanded experience): the point lives on the
     // highlight layer rather than in the markers source, so the ring goes on
     // that location rather than on the experience's primary marker.
-    if (locId != null
+    //
+    // Not when the object is folded, though: the card's location list stays open
+    // and keeps reporting hovers, while the map is drawing one dot at the object's
+    // own coordinate — ringing the row's own place would put an orange ring on
+    // empty map. `shownPlacesFor` answering `null` is exactly that state, and the
+    // object-level branch below rings what is drawn.
+    if (locId != null && shownPlacesFor(expId) !== null
       && tryHoverSpecificLocation(expId, locId, locationsByExpRef.current, getExperienceById, setHoverPreview, setHoverData)) {
       return;
     }
@@ -724,7 +777,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         properties: {},
       })),
     });
-  }, [getExperienceById, setHoverPreview]);
+  }, [getExperienceById, setHoverPreview, shownPlacesFor]);
 
   // Watch hoveredExperienceId + hoverSource to drive list → map hover
   useEffect(() => {
@@ -751,17 +804,11 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     if (flyToExperienceId && mapRef) {
       const map = mapRef.getMap();
 
-      // Use locationsByExperience for accurate multi-location bounds
-      const locations = locationsByExperience[flyToExperienceId];
-      // Same fallback as the highlight layer; a map click frames nothing at all
-      // now, see the comment above this effect. Without it
-      // a hand-assigned experience takes the "not loaded yet" branch below and
-      // flies to the experience's own point — which for a serial site can be
-      // nowhere near the locations that are the only thing drawn for it, and
-      // leaves the list click framing it differently from a click on the map.
-      const allLocs = locations ?? [];
-      const inRegion = allLocs.filter(loc => loc.in_region !== false);
-      const flyLocs = inRegion.length > 0 ? inRegion : allLocs;
+      // The same rule the highlight layer uses, so what a list click frames is
+      // what the map is drawing — including a folded object, which is flown to as
+      // the single point it is drawn as rather than to bounds around parts nobody
+      // can see. A map click frames nothing; see the comment above this effect.
+      const flyLocs = shownPlacesFor(flyToExperienceId) ?? [];
 
       if (flyLocs.length > 1) {
         const lngs = flyLocs.map(loc => loc.longitude);
@@ -789,7 +836,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       }
       clearFlyTo();
     }
-  }, [flyToExperienceId, mapRef, locationsByExperience, getExperienceById, clearFlyTo]);
+  }, [flyToExperienceId, mapRef, shownPlacesFor, getExperienceById, clearFlyTo]);
 
   // ── Fit to region bounds when closing expanded item ──
   useEffect(() => {
