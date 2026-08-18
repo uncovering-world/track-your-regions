@@ -238,7 +238,7 @@ Hooks in `frontend/src/hooks/` are app-wide concerns shared across many componen
 | `useVisitedRegions` | Region visit tracking |
 | `useVisitedExperiences` | Experience visit tracking, mutations |
 | `useDiscoverExperiences` | Discover mode queries |
-| `useRegionLocations` | Batch location fetching; takes `includeLost` so the markers follow the list |
+| `useRegionLocations` | Batch location fetching; takes `includeLost` and `includeChildren` so the markers follow the list they belong to — both are part of the query key |
 | `useNewBadgeImpressions` | Reports which "New" chips actually rendered, so the reader's personal window starts from a real impression |
 
 **Don't put component-specific hooks here.** A hook that only serves one component (like `useMapFeatureState`) stays co-located with that component.

@@ -54,6 +54,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | Name the world views a placement failed for | `worldViewList(failed)` | An inline `.map()` over `placementFailedWorldViews` — which renders "world view null" for the shape that means listing them failed, in the sentence a curator hands to an admin |
 | Show which words differ between two versions of a text | `wordDiff(before, after)` | Truncating either side, or rendering them plain and leaving the reader to spot the change — which is what made a 200-character edit against 511 characters of source text unanswerable |
 | Format duration | `formatDuration(start, end)` | Inline ms-to-seconds/minutes conversion |
+| Fold an object's places to one pin | `useCollapsedExperiences(regionId)` + `<FoldPlacesControl />` | Local `useState` in a surface, or an effect that clears the set when the region changes — an effect runs after render, which leaves a commit where the new region's rows are drawn against the old region's folds |
 | Rendering any map | `GuardedMap` (aliased to your local name), or an early return on `isWebGLAvailable()` where overlays sit over the map | Importing `Map` straight from `react-map-gl/maplibre`, or a bare `new maplibregl.Map` — both throw without WebGL, and there is no error boundary to catch it |
 
 ## Maintaining This Doc

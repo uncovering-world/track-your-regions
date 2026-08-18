@@ -26,6 +26,38 @@ const id = preferred.properties?.region_id;
 
 This applies beyond context layers — any time two interactive fill layers overlap (e.g., island fills over region fills, or root overlay over leaf tiles), the handlers must establish a preference order.
 
+## One listener per registration, not per handler
+
+### The problem
+
+`map.on(type, layerId, fn)` creates an **independent delegated listener** for each call. Registering the same handler over three overlapping layers gives three listeners, each of which queries its own layer and calls `fn` — so a click that lands on two of them runs the body **twice**.
+
+Overlap is easy to build without noticing. Map Mode's count badge is a circle at `circle-translate: [8,-8]` with its number at `text-offset: [0.88,-0.88]`: the two sit on the same eight pixels, so a click on the badge hits both badge layers.
+
+### The consequence
+
+A handler that is not idempotent undoes itself. `onMarkerClick` toggles the per-object fold (#558), so a badge click folded and unfolded in the same gesture and the pin did not move — while a click on the marker dot, which hits one layer only, worked. Nothing throws, nothing logs, and the affordance simply does not respond.
+
+### The fix
+
+Register once on the map and let the handler decide, since it already asks which layers were hit:
+
+```ts
+// One listener; returns early when the query yields nothing
+map.on('click', onMarkerClick);
+map.off('click', onMarkerClick);   // cleanup takes the same shape
+```
+
+### The rule
+
+**One handler, one registration.** Registering the same handler across layers that can overlap is what runs it twice — a single-layer registration is one listener whatever the handler does, which is why `map.on('click', 'clusters', …)` navigating on its own layer is fine. Where layers do overlap, only idempotent handlers may stay per layer: `mousemove` and `mouseleave` may, because painting the same ring twice is painting it once. Anything that toggles, counts, navigates or mutates must be registered once, on the map.
+
+A global registration gives up one thing the delegated form did for free: MapLibre checks `getLayer(layerId)` before querying, so a click while those layers are absent did nothing. Naming a missing layer in `queryRenderedFeatures` fires an `ErrorEvent` and logs — and layers do go absent, since a component that returns `null` while its data loads unmounts its `<Source>`/`<Layer>` tree while the handler effect stays attached. Open the handler with the same check:
+
+```ts
+if (!map.getLayer(LAYER_MARKERS)) return;
+```
+
 ## MVT tiles expose a column subset
 
 ### The problem
