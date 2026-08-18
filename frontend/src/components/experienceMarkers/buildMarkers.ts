@@ -1,7 +1,8 @@
 /**
- * Builds the marker set the map renders — one point per experience, at its
- * primary location, in-region when it has one. Below the heatmap threshold the
- * same set is what the density is computed from.
+ * Builds the marker set the map renders — one point per place a reader may go
+ * to, in-region when the object has any there. Below the heatmap threshold the
+ * same set is what the density is computed from, so the heat now says where the
+ * *places* are rather than where their objects were pinned.
  *
  * A module of its own so it can be exercised without a map. The marker set is a
  * pure function of the experiences, their locations and which category groups
@@ -11,6 +12,40 @@
 
 import type { Experience, ExperienceLocation } from '../../api/experiences';
 
+/**
+ * The places an object is drawn as: the ones in this region, or all of them when
+ * none is.
+ *
+ * Every surface asks this — the builder, the highlight layer, the fold control,
+ * the list's chip — and each answering it privately is how they drift apart. An
+ * object with five places of which one is in region draws one pin; a chip that
+ * counted five would offer to fold a single pin into a single pin, and the
+ * builder would ignore the fold while the highlight honoured it.
+ *
+ * Everything out of region is what a curator's hand assignment looks like:
+ * `assignExperienceToRegion` writes `experience_regions` and nothing else, and
+ * the reason to assign by hand is that spatial containment missed the point.
+ * Drawing nothing for those left the row without a marker, so hovering it painted
+ * nothing and left the previous row's ring standing in for it.
+ */
+export function representablePlaces(
+  locations: ExperienceLocation[] | undefined,
+): ExperienceLocation[] {
+  if (!locations || locations.length === 0) return [];
+  const inRegion = locations.filter(loc => loc.in_region !== false);
+  return inRegion.length > 0 ? inRegion : locations;
+}
+
+/**
+ * Whether folding is a question for this object at all. One drawn place folds to
+ * one pin, which is the pin it already is — offering it would be a control that
+ * does nothing, and a click on the resulting ordinary pin would unfold rather
+ * than select.
+ */
+export function isFoldable(locations: ExperienceLocation[] | undefined): boolean {
+  return representablePlaces(locations).length > 1;
+}
+
 export interface MarkerData {
   id: string;
   experienceId: number;
@@ -19,36 +54,17 @@ export interface MarkerData {
   longitude: number;
   latitude: number;
   locationName: string | null;
+  /**
+   * How many places this pin stands for — 1 for a place drawn as itself, and the
+   * whole count only for a pin standing in for places it does not draw. That is
+   * what the count badge is filtered on (`locationCount > 1`), so the badge says
+   * "there is more here than this dot" rather than repeating an object's total
+   * on every one of its parts.
+   */
   locationCount: number;
-  isMultiLocation: boolean;
   /** Null where the source no longer lists this point — see `locationLabel`. */
   locationOrdinal: number | null;
   inRegion: boolean;
-}
-
-/**
- * The one point that stands for a whole row on hover.
- *
- * Prefers a point the source still lists. A point whose replacement is waiting to
- * be published keeps its row and loses its `ordinal` (ADR-0025 decision 5), and
- * the reads that feed this sort `ORDER BY ordinal` with nulls last — so such a
- * point is picked here only when it is the sole candidate, which is exactly when
- * it should be. Without the preference a single-point venue mid-hold would still
- * resolve, but a site whose held point sorted first for any other reason would
- * hand its hover ring to a place about to disappear.
- *
- * What no ordering can preserve: when the held point *was* the primary, the ring
- * moves to the next listed component for the length of the hold. There is no
- * number left to keep it in place, and inventing one would collide with a real
- * component's.
- */
-function primaryLocation(representable: ExperienceLocation[]): ExperienceLocation | undefined {
-  // `== null`, matching `locationLabel`: a payload that omits `ordinal` arrives
-  // as `undefined`, and `undefined !== null` is true — so a strict check would
-  // read a point whose ordinal is merely missing as a *listed* one and could hand
-  // it the hover ring, which is the case this function exists to prevent.
-  const listed = representable.filter(loc => loc.ordinal != null);
-  return (listed.length > 0 ? listed : representable)[0];
 }
 
 export function buildExperienceMarkers(
@@ -74,30 +90,27 @@ export function buildExperienceMarkers(
     const locations = locationsByExperience[exp.id];
 
     if (locations && locations.length > 0) {
-      // Prefer an in-region location; fall back to any of them when none is.
-      // Every location being out of region is what a curator's manual assignment
-      // looks like — `assignExperienceToRegion` writes experience_regions and
-      // nothing else, and the reason to assign by hand is that spatial
-      // containment missed the point. Skipping those left the row with no marker
-      // at all, so hovering it painted nothing and left the previous row's ring
-      // lit in its place. `ExperienceMarkers` already falls back this way when
-      // fitting the map to an experience.
-      const inRegionLocations = locations.filter(loc => loc.in_region !== false);
-      const representable = inRegionLocations.length > 0 ? inRegionLocations : locations;
-      const primaryLoc = primaryLocation(representable);
-      if (primaryLoc) {
+      const representable = representablePlaces(locations);
+      const inRegion = locations.some(loc => loc.in_region !== false);
+      // Every one of them, not the first: a serial site *is* its parts (ADR-0028
+      // decision 1), and drawing one of them made Gondwana's forty components a
+      // single dot the reader had to click to learn anything from. Which one that
+      // dot was is no longer a question anybody has to answer, so the ordinal
+      // preference this used to carry — a held point sorts last, so it was picked
+      // only when alone — has nothing left to decide.
+      for (const loc of representable) {
         result.push({
-          id: `${exp.id}-${primaryLoc.id}`,
+          id: `${exp.id}-${loc.id}`,
           experienceId: exp.id,
-          locationId: primaryLoc.id,
+          locationId: loc.id,
           experience: exp,
-          longitude: primaryLoc.longitude,
-          latitude: primaryLoc.latitude,
-          locationName: primaryLoc.name,
-          locationCount: representable.length,
-          isMultiLocation: locations.length > 1,
-          locationOrdinal: primaryLoc.ordinal,
-          inRegion: inRegionLocations.length > 0,
+          longitude: loc.longitude,
+          latitude: loc.latitude,
+          locationName: loc.name,
+          // A place drawn as itself stands for itself alone, so no badge.
+          locationCount: 1,
+          locationOrdinal: loc.ordinal,
+          inRegion,
         });
       }
     } else {
@@ -113,8 +126,9 @@ export function buildExperienceMarkers(
         longitude: exp.longitude,
         latitude: exp.latitude,
         locationName: null,
+        // This one *is* standing in for places it does not draw — the region's
+        // batch holds none of them — so it keeps the badge saying how many.
         locationCount: exp.location_count ?? 1,
-        isMultiLocation: false,
         locationOrdinal: 0,
         inRegion: true,
       });
