@@ -375,7 +375,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
   // Popup ref for cleanup
   const popupRef = useRef<maplibregl.Popup | null>(null);
-  const pendingMarkerFitExperienceIdRef = useRef<number | null>(null);
 
   // ── One marker per experience (its primary location, in-region when it has one) ──
   // Multi-location experiences show all locations via the highlight layer when selected.
@@ -400,7 +399,10 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       type: 'FeatureCollection',
       features: visibleMarkers.map((m) => ({
         type: 'Feature' as const,
-        id: m.experienceId,
+        // The object's id would now repeat across every one of its places, and a
+        // source whose features share an id cannot tell them apart — `id` is what
+        // MapLibre keys a feature by. `m.id` is `${experienceId}-${locationId}`.
+        id: m.id,
         geometry: { type: 'Point' as const, coordinates: [m.longitude, m.latitude] },
         properties: {
           id: m.id,
@@ -472,12 +474,15 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     });
     popupRef.current = popup;
 
-    let mapCurrentHoveredId: number | null = null;
+    // Keyed by the place, not the object: an object is many pins now, and
+    // deduping on the object alone left the ring and the popup on the first part
+    // the pointer touched while it moved across the other thirty-nine.
+    let mapCurrentHoveredKey: string | null = null;
 
     const clearHoverState = () => {
       map.getCanvas().style.cursor = '';
       popup.remove();
-      mapCurrentHoveredId = null;
+      mapCurrentHoveredKey = null;
       setHoverData(EMPTY_FC);
       setHoveredRef.current(null, null);
       setHoverPreview(null);
@@ -489,11 +494,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       });
       if (features.length > 0) {
         const experienceId = features[0].properties?.experienceId;
-        if (experienceId != null) {
-          const willSelect = selectedExpIdRef.current !== experienceId;
-          toggleSelectedRef.current(experienceId);
-          pendingMarkerFitExperienceIdRef.current = willSelect ? experienceId : null;
-        }
+        if (experienceId != null) toggleSelectedRef.current(experienceId);
       }
     };
 
@@ -508,8 +509,9 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         const locationId = feature.properties?.locationId as number | undefined;
         const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
 
-        if (experienceId !== mapCurrentHoveredId) {
-          mapCurrentHoveredId = experienceId;
+        const hoveredKey = `${experienceId}:${locationId ?? ''}`;
+        if (hoveredKey !== mapCurrentHoveredKey) {
+          mapCurrentHoveredKey = hoveredKey;
 
           // Update hover ring via state
           setHoverData({
@@ -530,7 +532,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
           // Notify React context
           setHoveredRef.current(experienceId, locationId ?? null);
-          const marker = markersRef.current.find(m => m.experienceId === experienceId);
+          const marker = markersRef.current.find(
+            m => m.experienceId === experienceId && (locationId == null || m.locationId === locationId));
           if (marker) {
             setHoverPreview({
               experienceId: marker.experienceId,
@@ -560,9 +563,12 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
         const name = feature.properties?.name || '';
 
-        const hoverKey = locationId ?? -1;
-        if (hoverKey !== mapCurrentHoveredId) {
-          mapCurrentHoveredId = hoverKey;
+        // Same key space as the marker layer's, so moving between the two
+        // cannot look like staying on one thing: the highlight draws the
+        // selected object's places, and its own id is what tells them apart.
+        const hoverKey = `highlight:${locationId ?? ''}`;
+        if (hoverKey !== mapCurrentHoveredKey) {
+          mapCurrentHoveredKey = hoverKey;
 
           setHoverData({
             type: 'FeatureCollection',
@@ -680,8 +686,11 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       return;
     }
 
-    // Experience-level hover — find the primary marker
-    const marker = markersRef.current.find(m => m.experienceId === expId);
+    // Experience-level hover — every place of the object, because that is what
+    // the row stands for. Ringing one of them was the old shape, when one of them
+    // was all the map drew.
+    const objectMarkers = markersRef.current.filter(m => m.experienceId === expId);
+    const marker = objectMarkers[0];
     if (!marker) {
       // Nothing to show. Returning bare would leave the previous row's ring and
       // card up, where they read as this row's — worse than showing none. Both
@@ -701,11 +710,18 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       longitude: marker.longitude,
       latitude: marker.latitude,
     });
-    // Straight onto the marker's own point. With the source unclustered there is
-    // no aggregate standing in for it and nothing to resolve asynchronously, so
-    // the ring lands where the marker is whether or not it is currently drawn —
-    // below HEATMAP_MAX_ZOOM the heat is what shows there instead.
-    setHoverData(buildPointHoverData([marker.longitude, marker.latitude]));
+    // Straight onto the object's own points. With the source unclustered there is
+    // no aggregate standing in for them and nothing to resolve asynchronously, so
+    // the rings land where the markers are whether or not they are currently
+    // drawn — below HEATMAP_MAX_ZOOM the heat is what shows there instead.
+    setHoverData({
+      type: 'FeatureCollection',
+      features: objectMarkers.map(m => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [m.longitude, m.latitude] },
+        properties: {},
+      })),
+    });
   }, [getExperienceById, setHoverPreview]);
 
   // Watch hoveredExperienceId + hoverSource to drive list → map hover
@@ -718,31 +734,15 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     }
   }, [hoveredExperienceId, hoveredLocationId, hoverSource, updateHoverFromList]);
 
-  // ── Marker click auto-fit: wait for locations to load, then fit selected experience bounds ──
-  useEffect(() => {
-    if (!mapRef) return;
-
-    const pendingId = pendingMarkerFitExperienceIdRef.current;
-    if (!pendingId || selectedExperienceId !== pendingId) return;
-
-    const locations = locationsByExperience[pendingId];
-    if (!locations || locations.length === 0) return;
-
-    const map = mapRef.getMap();
-    const inRegionLocs = locations.filter(loc => loc.in_region !== false);
-    const fitLocs = inRegionLocs.length > 0 ? inRegionLocs : locations;
-
-    if (fitLocs.length > 1) {
-      const lngs = fitLocs.map(loc => loc.longitude);
-      const lats = fitLocs.map(loc => loc.latitude);
-      map.fitBounds(
-        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-        { padding: 80, duration: 800, maxZoom: 12 }
-      );
-    }
-
-    pendingMarkerFitExperienceIdRef.current = null;
-  }, [mapRef, selectedExperienceId, locationsByExperience]);
+  // No auto-fit on a marker click any more. It framed every place of the object
+  // clicked, which was the whole content of that click while an object was one
+  // dot: "show me this". A pin is one named place now, and framing all of them
+  // takes the place the reader clicked off the screen — at zoom 12 over Aragón,
+  // clicking one of the Rock Art's 734 shelters threw the view out across three
+  // provinces, and that shelter's own pin left `exp-markers` in the same commit,
+  // so there was nothing to click back to. A click on the map means "this one,
+  // here"; a click in the list still means "take me to it", and that fly-to
+  // below is unchanged.
 
   // ── Fly to experience when triggered from list click ──
   useEffect(() => {
@@ -751,7 +751,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
       // Use locationsByExperience for accurate multi-location bounds
       const locations = locationsByExperience[flyToExperienceId];
-      // Same fallback as the highlight layer and the marker-click fit. Without it
+      // Same fallback as the highlight layer; a map click frames nothing at all
+      // now, see the comment above this effect. Without it
       // a hand-assigned experience takes the "not loaded yet" branch below and
       // flies to the experience's own point — which for a serial site can be
       // nowhere near the locations that are the only thing drawn for it, and

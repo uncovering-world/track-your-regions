@@ -4,10 +4,19 @@ import type { Experience, ExperienceLocation } from '../../api/experiences';
 
 /**
  * The marker set is what the list-to-map hover resolves an experience against:
- * `markersRef.current.find(m => m.experienceId === expId)` returns undefined for
+ * `markersRef.current.filter(m => m.experienceId === expId)` returns nothing for
  * anything not built, and the hover handler then returns silently. So a marker
  * missing is not a marker missing — it is a row whose hover does nothing, with
  * no error and no clue.
+ *
+ * Since #558 the set holds one marker per *place* rather than one per object.
+ * Measured on Europe with the UNESCO category expanded, the set both surfaces
+ * were reading: its 467 objects drew 467 markers and now draw 3463. The region as
+ * a whole holds 661 offered objects over 3725 visible places in the database, of
+ * which 3531 are UNESCO's — the app draws fewer than the raw count because an
+ * object with any in-region place draws only those. The Rock Art of the
+ * Mediterranean Basin contributes 734 of the 3463 and the Frontiers of the Roman
+ * Empire 420: the two rows the per-object fold exists for.
  */
 function makeExperience(id: number, overrides: Partial<Experience> = {}): Experience {
   return {
@@ -33,34 +42,68 @@ function makeLocation(id: number, overrides: Partial<ExperienceLocation> = {}): 
   } as ExperienceLocation;
 }
 
-describe('the point that stands for the row', () => {
-  it('prefers one the source still lists over one waiting to be replaced', () => {
-    // A point whose replacement is waiting to be published keeps its row and loses
-    // its `ordinal` (ADR-0025 decision 5), and readers still see it. It must not
-    // become the row's hover marker while a listed component is available: the ring
-    // would sit on a place that disappears the moment a curator publishes.
+describe('an object made of several places', () => {
+  it('draws every one of them', () => {
+    // ADR-0028 decision 1: a surface that can draw more than one point draws the
+    // object's places. Before this, forty components of Gondwana were one dot a
+    // reader had to click to learn there was anything else.
+    const exp = makeExperience(1, { location_count: 3 });
+    const locations = {
+      1: [
+        makeLocation(11, { longitude: 1, latitude: 1 }),
+        makeLocation(12, { longitude: 2, latitude: 2 }),
+        makeLocation(13, { longitude: 3, latitude: 3 }),
+      ],
+    };
+
+    const markers = buildExperienceMarkers([exp], locations, new Set());
+
+    expect(markers.map(m => m.locationId)).toEqual([11, 12, 13]);
+    expect(markers.map(m => m.longitude)).toEqual([1, 2, 3]);
+    // Every marker still names its object, which is what the hover resolves and
+    // what makes forty pins one row rather than forty.
+    expect(markers.every(m => m.experienceId === 1)).toBe(true);
+  });
+
+  it('gives each place its own identity, so no two features share an id', () => {
+    // The map keys features by this: two markers carrying one id is a source
+    // whose points cannot be told apart by anything reading a rendered feature.
+    const exp = makeExperience(1);
+    const markers = buildExperienceMarkers(
+      [exp], { 1: [makeLocation(11), makeLocation(12)] }, new Set());
+
+    expect(new Set(markers.map(m => m.id)).size).toBe(2);
+  });
+
+  it('draws a point waiting to be replaced beside the one that will replace it', () => {
+    // A point whose replacement is waiting to be published keeps its row and
+    // loses its `ordinal` (ADR-0025 decision 5), and readers still see it. It
+    // used to be *excluded* from standing for the row, because one dot could only
+    // be one place and a dot about to disappear was the wrong one. Drawing every
+    // place removes that choice: both are shown, each as itself.
     const exp = makeExperience(1, { location_count: 2 });
     const held = makeLocation(11, { ordinal: null, longitude: 1, latitude: 1 });
     const listed = makeLocation(12, { ordinal: 1, longitude: 2, latitude: 2 });
 
     const markers = buildExperienceMarkers([exp], { 1: [held, listed] }, new Set());
 
-    expect(markers).toHaveLength(1);
-    expect(markers[0].locationId).toBe(12);
+    expect(markers.map(m => m.locationId)).toEqual([11, 12]);
+    expect(markers.map(m => m.locationOrdinal)).toEqual([null, 1]);
   });
 
-  it('still resolves a venue whose only point is waiting to be replaced', () => {
-    // 1119 of 1604 experiences hold exactly one point, so mid-hold this is the
-    // common shape. Preferring listed points must not mean building no marker —
-    // that is a row whose hover does nothing, silently.
-    const exp = makeExperience(2);
-    const held = makeLocation(21, { ordinal: null });
+  it('carries no count on a place drawn as itself, and the count on a pin standing in', () => {
+    // What the badge means, and it is the one thing that tells a collapsed object
+    // from a single-placed one: this pin stands for more than the dot you see.
+    const drawn = buildExperienceMarkers(
+      [makeExperience(1, { location_count: 2 })],
+      { 1: [makeLocation(11), makeLocation(12)] },
+      new Set(),
+    );
+    const standingIn = buildExperienceMarkers(
+      [makeExperience(2, { location_count: 40 })], {}, new Set());
 
-    const markers = buildExperienceMarkers([exp], { 2: [held] }, new Set());
-
-    expect(markers).toHaveLength(1);
-    expect(markers[0].locationId).toBe(21);
-    expect(markers[0].locationOrdinal).toBeNull();
+    expect(drawn.map(m => m.locationCount)).toEqual([1, 1]);
+    expect(standingIn[0].locationCount).toBe(40);
   });
 });
 
@@ -88,8 +131,8 @@ describe('buildExperienceMarkers', () => {
     expect(unreachable).toEqual([]);
   });
 
-  it('places a marker at the first in-region location when locations are loaded', () => {
-    const exp = makeExperience(1);
+  it('draws the places in this region and leaves the ones outside it out', () => {
+    const exp = makeExperience(1, { location_count: 2 });
     const locations = {
       1: [
         makeLocation(10, { in_region: false, longitude: 1, latitude: 1 }),
@@ -97,12 +140,11 @@ describe('buildExperienceMarkers', () => {
       ],
     };
 
-    const [marker] = buildExperienceMarkers([exp], locations, new Set());
+    const markers = buildExperienceMarkers([exp], locations, new Set());
 
-    expect(marker.locationId).toBe(11);
-    expect(marker.longitude).toBe(5);
-    expect(marker.latitude).toBe(6);
-    expect(marker.isMultiLocation).toBe(true);
+    expect(markers.map(m => m.locationId)).toEqual([11]);
+    expect(markers[0].longitude).toBe(5);
+    expect(markers[0].inRegion).toBe(true);
   });
 
   it('falls back to the experience coordinates before locations load', () => {
@@ -115,41 +157,25 @@ describe('buildExperienceMarkers', () => {
     expect(marker.latitude).toBe(30);
   });
 
-  it('still builds a marker when every location is out of region', () => {
+  it('still draws an experience whose every place is out of region', () => {
     // What a curator's manual assignment looks like: the experience is in the
     // region because someone put it there, and none of its locations are, which
     // is why they had to. Skipped, the row had no marker — so hovering it
     // painted nothing and left the previously hovered row's ring standing in
     // for it.
-    const exp = makeExperience(1);
+    const exp = makeExperience(1, { location_count: 2 });
     const locations = {
       1: [
         makeLocation(10, { in_region: false, longitude: 3, latitude: 4 }),
-        makeLocation(11, { in_region: false }),
+        makeLocation(11, { in_region: false, longitude: 7, latitude: 8 }),
       ],
     };
 
-    const [marker, ...rest] = buildExperienceMarkers([exp], locations, new Set());
+    const markers = buildExperienceMarkers([exp], locations, new Set());
 
-    expect(rest).toHaveLength(0);
-    expect(marker.experienceId).toBe(1);
-    expect(marker.locationId).toBe(10);
-    expect(marker.longitude).toBe(3);
+    expect(markers.map(m => m.locationId)).toEqual([10, 11]);
     // Recorded as out of region rather than pretended in.
-    expect(marker.inRegion).toBe(false);
-  });
-
-  it('prefers an in-region location when there is one', () => {
-    const exp = makeExperience(1);
-    const locations = {
-      1: [makeLocation(10, { in_region: false }), makeLocation(11, { longitude: 9 })],
-    };
-
-    const [marker] = buildExperienceMarkers([exp], locations, new Set());
-
-    expect(marker.locationId).toBe(11);
-    expect(marker.inRegion).toBe(true);
-    expect(marker.locationCount).toBe(1);
+    expect(markers.every(m => m.inRegion === false)).toBe(true);
   });
 
   it('falls back to the experience point when the location list is empty', () => {
@@ -170,26 +196,10 @@ describe('buildExperienceMarkers', () => {
     const shown = makeExperience(1, { category_name: 'Top Museums' });
     const hidden = makeExperience(2, { category_name: 'Public Art' });
 
-    const markers = buildExperienceMarkers([shown, hidden], {}, new Set(['Top Museums']));
+    const markers = buildExperienceMarkers([shown, hidden], {}, new Set());
+    const filtered = buildExperienceMarkers([shown, hidden], {}, new Set(['Top Museums']));
 
-    expect(markers.map(m => m.experienceId)).toEqual([1]);
-  });
-
-  it('treats a point whose ordinal the payload omitted as unlisted, like the label does', () => {
-    // Copilot's suppressed note, and it is a real case: `undefined !== null` is
-    // true, so a strict check would read a missing ordinal as a listed component
-    // and could hand a held point the hover ring — the thing this preference
-    // exists to prevent. `locationLabel` has always used `== null`; this now
-    // agrees with it.
-    const markers = buildExperienceMarkers(
-      [{ id: 1, name: 'Site', category_name: 'UNESCO World Heritage Sites' } as never],
-      { 1: [
-        { id: 10, experience_id: 1, longitude: 1, latitude: 1 } as never,
-        { id: 11, experience_id: 1, ordinal: 2, longitude: 2, latitude: 2 } as never,
-      ] },
-      new Set(),
-    );
-
-    expect(markers.find(m => m.experienceId === 1)?.locationId).toBe(11);
+    expect(markers.map(m => m.experienceId)).toEqual([1, 2]);
+    expect(filtered.map(m => m.experienceId)).toEqual([1]);
   });
 });
