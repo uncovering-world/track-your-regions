@@ -6,7 +6,10 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
-import { hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost } from './experienceLifecycle.js';
+import {
+  hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost,
+  offeredLocationSql, publishedContentSql, readerPositionSql,
+} from './experienceLifecycle.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -59,9 +62,44 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
   if (query.bbox) {
     const [west, south, east, north] = String(query.bbox).split(',').map(Number);
     if ([west, south, east, north].every(n => !isNaN(n))) {
-      conditions.push(
-        `ST_Intersects(e.location, ST_MakeEnvelope($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 4326))`,
-      );
+      // A box asks where an object is, and this catalogue answers that with
+      // places: region membership is derived from `experience_location_regions`
+      // rather than from the object's own coordinate, and ADR-0028 says the same
+      // of a pin. So the box matches a place this caller may see, and falls back
+      // to the object's own coordinate only where no such place exists -- which
+      // is `readerPositionSql`'s COALESCE asked as a filter instead of a column.
+      //
+      // Matching the anchor was the contradiction: 222 objects have one that is
+      // not any of their places, so a box around 144.97,-15.65 matched Wet
+      // Tropics of Queensland and answered with a pin 191 km away at Lake
+      // Barrin, while a box drawn around Lake Barrin -- the part a reader is
+      // actually shown -- did not match it at all.
+      //
+      // What one coordinate per row still cannot say: a serial site matched on a
+      // part inside the box is answered with the part nearest its anchor, which
+      // can be outside it -- four of the 47 objects an Alps-sized box holds, the
+      // starkest being the Ancient and Primeval Beech Forests, matched on a part
+      // in the Alps and answered at 22.19, 48.92 in the Carpathians. Drawing
+      // every part is #558's question, not a filter's.
+      const [w, s, e, n] = [paramIndex++, paramIndex++, paramIndex++, paramIndex++];
+      // `west > east` is a box drawn across the antimeridian, the convention
+      // `focus_bbox` already uses (CLAUDE.md § Antimeridian Handling). One
+      // envelope cannot hold it: `ST_MakeEnvelope(170, -10, -170, 10)` does not
+      // fail, it silently normalises to xmin -170 / xmax 170 — the whole planet
+      // *except* the strip asked for. Measured on the catalogue: that box matches
+      // 290 places between 10°S and 10°N where one is truly in it. So the two
+      // halves are drawn as two envelopes, meeting at the line.
+      const envelopes = west > east
+        ? [`ST_MakeEnvelope($${w}, $${s}, 180, $${n}, 4326)`,
+          `ST_MakeEnvelope(-180, $${s}, $${e}, $${n}, 4326)`]
+        : [`ST_MakeEnvelope($${w}, $${s}, $${e}, $${n}, 4326)`];
+      const inBox = (column: string) =>
+        envelopes.map(envelope => `ST_Intersects(${column}, ${envelope})`).join(' OR ');
+      const visiblePlaces = `SELECT 1 FROM experience_locations el
+        WHERE el.experience_id = e.id
+          AND ${offeredLocationSql()} AND ${publishedContentSql('el')}`;
+      conditions.push(`(EXISTS (${visiblePlaces} AND (${inBox('el.location')}))
+        OR (NOT EXISTS (${visiblePlaces}) AND (${inBox('e.location')})))`);
       params.push(west, south, east, north);
     }
   }
@@ -102,8 +140,7 @@ export async function listExperiences(req: Request, res: Response): Promise<void
       e.image_url,
       e.metadata->>'dateInscribed' as date_inscribed,
       e.metadata->>'inDanger' as in_danger,
-      ST_X(e.location) as longitude,
-      ST_Y(e.location) as latitude,
+      ${readerPositionSql('e')},
       s.name as category_name,
       s.display_priority as category_priority
     FROM experiences e
@@ -167,8 +204,7 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
       e.created_at,
       e.updated_at,
       ${lifecycleSelectSql()},
-      ST_X(e.location) as longitude,
-      ST_Y(e.location) as latitude,
+      ${readerPositionSql('e', '$2')},
       ST_AsGeoJSON(e.boundary)::json as boundary_geojson,
       e.area_km2,
       s.name as category_name,
@@ -186,7 +222,9 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
       AND ${hideRefusedSql()}
       -- Unread stays hidden for everyone except a curator or admin whose scope
       -- reaches this experience (ADR-0025) -- the one relaxation this predicate
-      -- gets, and the only reason $2 exists on this query.
+      -- gets. $2 is read twice: here, and by the position rule in the select
+      -- list, so the places a curator is positioned by are the same rows this
+      -- gate let them have.
       AND ($2::boolean OR ${hidePendingSql()})
   `, [id, maySeeUnread]);
 
@@ -343,8 +381,7 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
       e.category,
       e.country_names,
       e.image_url,
-      ST_X(e.location) as longitude,
-      ST_Y(e.location) as latitude,
+      ${readerPositionSql('e')},
       similarity(e.name, $1) as relevance
     FROM experiences e
     -- The two name matches are alternatives to each other, not to the

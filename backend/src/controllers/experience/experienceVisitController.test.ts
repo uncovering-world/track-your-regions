@@ -112,9 +112,13 @@ describe('getVisitedExperiences', () => {
     // carries `existence`/`missing_since` as columns to label the row with
     // (`lifecycleSelectSql`), which is not the same as filtering on them.
     for (const sql of [listSql, countSql]) {
-      expect(sql).not.toContain("existence <> 'lost'");
+      // Aliased, because the reader's position subquery (`readerPositionSql`)
+      // legitimately filters *locations* on the same three columns: an object is
+      // never positioned at a place the reader cannot be shown. What must not
+      // appear is the filter on the experience itself.
+      expect(sql).not.toContain("e.existence <> 'lost'");
       expect(sql).not.toContain("admission <> 'refused'");
-      expect(sql).not.toContain('missing_since IS NULL');
+      expect(sql).not.toContain('e.missing_since IS NULL');
     }
   });
 

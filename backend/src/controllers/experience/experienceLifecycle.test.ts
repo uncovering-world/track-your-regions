@@ -15,6 +15,7 @@ import {
   offeredLocationSql,
   hidePendingSql,
   publishedContentSql,
+  readerPositionSql,
 } from './experienceLifecycle.js';
 
 describe('offeredLocationSql', () => {
@@ -152,5 +153,84 @@ describe('includeLost', () => {
   it('accepts the query-string and the parsed form', () => {
     expect(includeLost({ includeLost: 'true' })).toBe(true);
     expect(includeLost({ includeLost: true })).toBe(true);
+  });
+});
+
+describe('readerPositionSql', () => {
+  // ADR-0028 decision 2. The rule is one line of SQL and five ways to get it
+  // wrong, and each of them shows a reader a place that is not there.
+  it('positions an object at the place nearest its own published coordinate', () => {
+    const sql = readerPositionSql('e');
+    // Nearest, by the object's own coordinate — not the first place, not a
+    // centroid, and not a rule with a tolerance in it: a tolerance made the
+    // answer discontinuous, moving Mountain Railways of India 2068 km because
+    // UNESCO's point misses the Nilgiri line by 454 m.
+    expect(sql).toContain('ORDER BY el.location::geography <-> e.location::geography');
+    expect(sql).toContain('LIMIT 1');
+  });
+
+  it('measures nearest in metres, never in degrees', () => {
+    // `<->` on `geometry(Point,4326)` is planar: it counts a degree of longitude
+    // the same as a degree of latitude, and 42 multi-place objects in this
+    // catalogue sit above 60°, Struve Geodetic Arc's 34 points reaching 70.7°N.
+    // Measured against the live catalogue, degree ordering picks a different
+    // place for six objects and sends the reader *further* in every one — 13.6 km
+    // rather than 12.7 for the Pico Island vineyards. The cast is also what keeps
+    // a site spanning 180° from measuring 358° wide.
+    const orderBy = readerPositionSql('e').split('ORDER BY')[1].split('LIMIT')[0];
+    // Both operands, because a cast on one side only reverts to degrees quietly.
+    expect(orderBy.match(/::geography/g)).toHaveLength(2);
+  });
+
+  it('breaks a distance tie by id, so one place answers both axes', () => {
+    // The fragment is interpolated once per axis and each is its own SubPlan, so
+    // without a total order a tie can answer with one place's longitude and
+    // another's latitude — a coordinate at neither of them, which is the failure
+    // this rule exists to remove. Seven objects tie today, the Pico Island
+    // vineyards' two places 12719.095 m from their anchor and Iwami Ginzan's six
+    // at 657.137 m among them; in all seven the tied places share a coordinate, so
+    // the key is what keeps a source that ties two *different* points from
+    // answering with neither, and what keeps a position still between two reads.
+    expect(readerPositionSql('e')).toContain('<-> e.location::geography, el.id');
+  });
+
+  it('considers only the places the same reader may see', () => {
+    // An object positioned at a point its source withdrew, at one a curator
+    // recorded as gone, or at one nobody has passed yet would be positioned
+    // where that reader is not allowed to be shown anything at all.
+    const sql = readerPositionSql('e');
+    expect(sql).toContain("el.missing_since IS NULL");
+    expect(sql).toContain("el.existence <> 'lost'");
+    expect(sql).toContain("el.curation_state <> 'pending'");
+  });
+
+  it('lets a caller that relaxes pending for a curator relax it here too', () => {
+    // `getExperience` shows a curator whose scope reaches the row an object the
+    // queue has not passed yet (ADR-0025). A curator deciding that object's
+    // coordinate has to preview where publishing will put the pin; with the gate
+    // hard-coded every place is filtered out and the preview falls back to the
+    // anchor — the one value they are deciding against. Withdrawn and lost points
+    // stay excluded for everyone, curator or not.
+    const relaxed = readerPositionSql('e', '$2');
+    expect(relaxed).toContain("($2::boolean OR el.curation_state <> 'pending')");
+    expect(relaxed).toContain("el.missing_since IS NULL");
+    expect(relaxed).toContain("el.existence <> 'lost'");
+    // And unrelaxed by default: every other caller gates pending at the
+    // experience level, so the places must be gated the same way.
+    expect(readerPositionSql('e')).not.toContain('::boolean');
+  });
+
+  it('leaves an object with no visible place where its source put it', () => {
+    // The fallback is the object's own coordinate rather than null: losing a
+    // position outright would drop the row off the map, which is a heavier
+    // answer than "where the source said" for a question nobody can answer
+    // better. Argument order is the assertion — reversed, `COALESCE` would
+    // always answer with the anchor and turn the rule off silently.
+    expect(readerPositionSql('e')).toMatch(/COALESCE\(\(SELECT[\s\S]*?LIMIT 1\), e\.location\)/);
+  });
+
+  it('takes the alias it is given, so a query with another name for the table is not silently wrong', () => {
+    expect(readerPositionSql('x')).toContain('el.experience_id = x.id');
+    expect(readerPositionSql('x')).toContain('ORDER BY el.location::geography <-> x.location::geography');
   });
 });

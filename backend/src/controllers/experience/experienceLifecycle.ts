@@ -153,6 +153,94 @@ export function offeredLocationSql(alias = 'el'): string {
 }
 
 /**
+ * Where a reader is told an object is: the place nearest its own published
+ * coordinate (ADR-0028 decision 2).
+ *
+ * An object carries a coordinate of its own and its places carry theirs, and the
+ * two are independent answers to "where is this". #502 measured them disagreeing
+ * by more than a kilometre for 106 objects and by up to 191 km, so a list row and
+ * a map pin named different countries for the same site. This is the one rule
+ * both now read, which is what makes them agree.
+ *
+ * Why the nearest place rather than the coordinate itself: the coordinate is often
+ * a locator for a whole property rather than a place anyone can go to — UNESCO
+ * leaves it empty on serial nominations and publishes a site point elsewhere — and
+ * a reader planning a trip needs somewhere to arrive. Where the object's own
+ * coordinate *is* one of its places, which is 1382 of 1604, the distance is zero
+ * and this returns it unchanged.
+ *
+ * Why not "the coordinate when it matches a place within ADR-0027's ten metres,
+ * and the medoid otherwise", which ADR-0028 first proposed: that rule is
+ * discontinuous, and it was measured moving eight objects over 100 km because
+ * their coordinate missed a place by a few hundred metres. UNESCO's point for
+ * Mountain Railways of India sits 454 m from the Nilgiri line — plainly that
+ * railway — and the tolerance called it a miss and sent the reader 2068 km to
+ * Darjeeling.
+ *
+ * **Nearest in metres, on `geography`, never in degrees.** `<->` on
+ * `geometry(Point,4326)` is planar: a degree of longitude counts the same as a
+ * degree of latitude, and this catalogue holds 42 multi-place objects above 60°,
+ * among them Struve Geodetic Arc's 34 points reaching 70.7°N, where a degree of
+ * longitude is a third of a degree of latitude. Measured: degree ordering picks a
+ * different place for six objects and in every one of them sends the reader
+ * *further* — 13.6 km instead of 12.7 for the Pico Island vineyards, 2.1 instead
+ * of 1.5 for the Churches of Chiloé. It is also the rule the rest of the
+ * repository already follows (`locationWriter`'s `metresBetween`, and the medoid in
+ * `resolveMainPoint`, which scales longitude by cos(lat) for this same reason), and
+ * the cast is what makes the answer dateline-safe rather than 358° wrong.
+ *
+ * **`el.id` breaks ties, because the two subqueries below are two evaluations.**
+ * The fragment is interpolated twice, once per axis, and each is its own SubPlan —
+ * so without a total order two places equidistant from the anchor could give the
+ * longitude of one and the latitude of the other, a coordinate at neither of them.
+ * Ties themselves are ordinary: seven objects have one today — the Pico Island
+ * vineyards' two places 12719.095 m from their anchor, Iwami Ginzan's six at
+ * 657.137 m, the Western Ghats' six at zero. In all seven the tied places share a
+ * coordinate, a source having listed one point under several names, so either row
+ * answers with the same position and nothing is wrong yet. What the key buys is
+ * that a source tying two *different* points cannot answer with a coordinate at
+ * neither, and that a position cannot move between two reads of the same row.
+ *
+ * The places considered are the ones this caller may see, which is why the gate on
+ * unread rows is a parameter rather than a constant: the caller names the
+ * placeholder its own query binds `maySeeUnread` to, which is how
+ * `experienceLocationController` already gates this same table for this same
+ * reader. `getExperience` relaxes `curation_state` for a curator whose scope
+ * reaches the row (ADR-0025), and a curator previewing a pending object has to be
+ * shown where publishing will put it — that preview is the whole point of the
+ * queue in ADR-0028 decision 3, and with the gate hard-coded every place would be
+ * filtered out and the preview would fall back to the anchor: the one value the
+ * curator is deciding against. A point
+ * its source stopped offering or one a curator recorded as gone stays excluded for
+ * everyone.
+ *
+ * Every object in the catalogue has a coordinate of its own, so the `COALESCE` is
+ * for the object with no visible places rather than a missing anchor: it stays
+ * where its source put it rather than losing its position.
+ *
+ * Costs 25 ms on a whole-region read: Europe's 683 experiences and the 3747
+ * places under them go from 19 ms to 44 ms, of which the `geography` cast is
+ * 16 ms — the price of a distance in metres, paid once per region and cached for
+ * five minutes by the reader's query. Two scalar subqueries rather than a lateral
+ * join because the two shapes measured 44 ms and 42 ms, and this one drops into a
+ * select list without touching a caller's FROM or GROUP BY. Not because the
+ * planner merges the two evaluations: it does not, which is what the tiebreaker
+ * above is for.
+ */
+export function readerPositionSql(alias = 'e', maySeeUnreadParam?: string): string {
+  const unreadGate = maySeeUnreadParam
+    ? `(${maySeeUnreadParam}::boolean OR ${publishedContentSql('el')})`
+    : publishedContentSql('el');
+  const nearestPlace = `(SELECT el.location FROM experience_locations el
+      WHERE el.experience_id = ${alias}.id
+        AND ${offeredLocationSql()} AND ${unreadGate}
+      ORDER BY el.location::geography <-> ${alias}.location::geography, el.id
+      LIMIT 1)`;
+  return `ST_X(COALESCE(${nearestPlace}, ${alias}.location)) as longitude,
+      ST_Y(COALESCE(${nearestPlace}, ${alias}.location)) as latitude`;
+}
+
+/**
  * Columns a card needs to label what it is showing.
  *
  * `existence` travels even where `lost` rows are filtered out: the same select
