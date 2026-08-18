@@ -20,9 +20,12 @@ export function invalidateExperiences(
     queryClient.invalidateQueries({ queryKey: ['experiences', 'by-region', opts.regionId] });
     // The location batch answers for the rows the list is showing, so anything
     // that changes which rows those are — a rejection, a lifecycle verdict or
-    // its correction — leaves it stale. Keyed by region *and* by whether lost
-    // rows were asked for, and a prefix match reaches both entries: dropping
-    // one would leave the other to answer the next question with the old set.
+    // its correction — leaves it stale. The full key is region, `includeLost`
+    // and `includeChildren` — three entries today, since Map mode reads a region
+    // without its descendants under either `includeLost` and Discover reads it
+    // with them and without lost rows — and this prefix match
+    // reaches every one of them: naming more of the key would clear one and
+    // leave the rest to answer the next question with the old set.
     queryClient.invalidateQueries({ queryKey: ['region-locations', opts.regionId] });
   }
   queryClient.invalidateQueries({ queryKey: ['discover-experiences'] });
@@ -47,7 +50,7 @@ export function invalidateExperiences(
     // Without this the two caches disagree in the way that shows: `['experiences']`
     // above prefix-matches the by-region list, so the list refetches and the
     // just-published museum appears in it, while the batch that draws its pin is
-    // held for five minutes (`useRegionLocations.ts:35`) — an object in the list
+    // held for five minutes (the `staleTime` in `useRegionLocations.ts`) — an object in the list
     // with nothing on the map and the `0 locations` count that hook's own
     // docblock warns about.
     if (!opts.regionId) queryClient.invalidateQueries({ queryKey: ['region-locations'] });

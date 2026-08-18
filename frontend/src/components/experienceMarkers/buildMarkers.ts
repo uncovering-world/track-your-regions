@@ -66,9 +66,6 @@ export interface MarkerData {
    * on every one of its parts.
    */
   locationCount: number;
-  /** Null where the source no longer lists this point — see `locationLabel`. */
-  locationOrdinal: number | null;
-  inRegion: boolean;
   /**
    * This pin is one the reader folded, and a click on it unfolds.
    *
@@ -99,8 +96,6 @@ function standInMarker(exp: Experience): MarkerData {
     latitude: exp.latitude,
     locationName: null,
     locationCount: exp.location_count ?? 1,
-    locationOrdinal: 0,
-    inRegion: true,
   };
 }
 
@@ -112,7 +107,7 @@ function standInMarker(exp: Experience): MarkerData {
  * at rather than inventing a centre for it, and the badge is what tells this pin
  * apart from an object that simply has one place.
  */
-function collapsedMarker(exp: Experience, places: number, inRegion: boolean): MarkerData {
+function collapsedMarker(exp: Experience, places: number): MarkerData {
   return {
     id: `${exp.id}-collapsed`,
     experienceId: exp.id,
@@ -122,8 +117,6 @@ function collapsedMarker(exp: Experience, places: number, inRegion: boolean): Ma
     latitude: exp.latitude,
     locationName: null,
     locationCount: places,
-    locationOrdinal: null,
-    inRegion,
     folded: true,
   };
 }
@@ -135,7 +128,7 @@ function collapsedMarker(exp: Experience, places: number, inRegion: boolean): Ma
  * place — was a question the builder had to answer and nobody could see. Each
  * pin stands for itself alone, so none carries a count.
  */
-function placeMarkers(exp: Experience, places: ExperienceLocation[], inRegion: boolean): MarkerData[] {
+function placeMarkers(exp: Experience, places: ExperienceLocation[]): MarkerData[] {
   return places.map(loc => ({
     id: `${exp.id}-${loc.id}`,
     experienceId: exp.id,
@@ -145,8 +138,6 @@ function placeMarkers(exp: Experience, places: ExperienceLocation[], inRegion: b
     latitude: loc.latitude,
     locationName: loc.name,
     locationCount: 1,
-    locationOrdinal: loc.ordinal,
-    inRegion,
   }));
 }
 
@@ -178,12 +169,11 @@ export function buildExperienceMarkers(
     }
 
     const representable = representablePlaces(locations);
-    const inRegion = locations.some(loc => loc.in_region !== false);
 
     if (collapsedExperienceIds.has(exp.id) && representable.length > 1) {
-      result.push(collapsedMarker(exp, representable.length, inRegion));
+      result.push(collapsedMarker(exp, representable.length));
     } else {
-      result.push(...placeMarkers(exp, representable, inRegion));
+      result.push(...placeMarkers(exp, representable));
     }
   }
 
