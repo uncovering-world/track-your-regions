@@ -15,6 +15,7 @@
  * `experience-list-layout.smoke.spec.ts` samples every frame to keep it honest.
  */
 
+import { useCallback } from 'react';
 import { Box } from '@mui/material';
 import type { Virtualizer } from '@tanstack/react-virtual';
 
@@ -33,13 +34,30 @@ interface VirtualRowProps {
  * for why it cannot be done here.
  */
 export function VirtualRow({ virtualizer, index, start, children }: VirtualRowProps) {
+  /**
+   * Stable, and that is the whole point.
+   *
+   * Written inline, this is a new function on every render, so React detaches and
+   * reattaches the ref each time — calling `measureElement(null)` and then
+   * `measureElement(el)`, and that second call reads `getBoundingClientRect()`.
+   * Every mounted row therefore forced a synchronous layout on every render of
+   * the list, including the open card, which is the tallest thing on the page.
+   *
+   * Measured in the browser on the Historic Centre of Saint Petersburg: hovering
+   * its places blocked the main thread for **600-860 ms per hover**, which is the
+   * stutter the list was reported for. A unit test could not see it — jsdom has
+   * no layout, so `getBoundingClientRect` there is free, and the same hover
+   * measured 10 ms.
+   */
+  const measure = useCallback((el: HTMLLIElement | null) => {
+    virtualizer.measureElement(el);
+  }, [virtualizer]);
+
   return (
     <Box
       component="li"
       data-index={index}
-      ref={(el: HTMLLIElement | null) => {
-        virtualizer.measureElement(el);
-      }}
+      ref={measure}
       sx={{
         listStyle: 'none',
         position: 'absolute',
