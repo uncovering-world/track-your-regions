@@ -32,6 +32,7 @@ import {
   hoverGlowLayer, hoverRingLayer, highlightRingLayer, highlightPointLayer,
 } from './experienceMarkers/layers';
 import { useExperienceContext } from '../hooks/useExperienceContext';
+import { subscribeToHoverTarget, useHoverActions } from '../hooks/useHoverContext';
 import { useNavigation } from '../hooks/useNavigation';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience } from '../api/experiences';
@@ -127,10 +128,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   const {
     experiences,
     experiencesLoading,
-    hoveredExperienceId,
-    hoveredLocationId,
-    hoverSource,
-    setHoveredFromMarker,
     selectedExperienceId,
     toggleSelectedExperience,
     flyToExperienceId,
@@ -141,9 +138,12 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     expandedCategoryNames,
     collapsedExperienceIds,
     toggleCollapsedExperience,
-    setHoverPreview,
     showLost,
   } = useExperienceContext();
+  // Only the setters and the store. This component draws the markers, so a
+  // re-render here reconciles every `<Source>` and `<Layer>` react-map-gl holds;
+  // it reacts to a hover in an effect instead, and never renders for one.
+  const { store: hoverStore, setHoveredFromMarker, setHoverPreview } = useHoverActions();
 
   // Batch-fetch all locations for all experiences in the region (single request)
   const { locationsByExperience } = useRegionLocations(regionId, showLost);
@@ -566,15 +566,24 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     });
   }, [getExperienceById, setHoverPreview, shownPlacesFor]);
 
-  // Watch hoveredExperienceId + hoverSource to drive list → map hover
-  useEffect(() => {
+  // Drive list → map hover, straight from the store. Subscribed rather than
+  // depended on: the values change on every mouse move across the list, and
+  // reading them in the render is what used to rebuild this whole component —
+  // and with it the map's sources — per move.
+  //
+  // To the *target* only. `updateHoverFromList` writes the preview card, and a
+  // subscriber that heard that write would answer it by writing again — see
+  // `subscribeToHoverTarget`.
+  useEffect(() => subscribeToHoverTarget(hoverStore, (
+    { hoveredExperienceId, hoveredLocationId, hoverSource },
+  ) => {
     if (hoverSource === 'list') {
       updateHoverFromList(hoveredExperienceId, hoveredLocationId);
     }
     if (hoverSource === null && hoveredExperienceId === null) {
       updateHoverFromList(null, null);
     }
-  }, [hoveredExperienceId, hoveredLocationId, hoverSource, updateHoverFromList]);
+  }), [hoverStore, updateHoverFromList]);
 
   // No auto-fit on a marker click any more. It framed every place of the object
   // clicked, which was the whole content of that click while an object was one

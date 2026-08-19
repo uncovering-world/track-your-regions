@@ -1,41 +1,35 @@
 import { describe, it, expect } from 'vitest';
-import { ownedHoveredLocationId, lostHiddenLabel, outsideViewLabel } from './utils';
+import { hoverRevealsCappedPlace, lostHiddenLabel, outsideViewLabel } from './utils';
 import { ExperienceListItem } from './ExperienceListItem';
-import type { ExperienceLocation } from '../../api/experiences';
+import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
+import { LocationRow } from './LocationRow';
 
-const loc = (id: number) => ({ id, name: `L${id}`, longitude: 0, latitude: 0, ordinal: 0 } as ExperienceLocation);
+const isMemo = (component: unknown) =>
+  (component as { $$typeof: symbol }).$$typeof === Symbol.for('react.memo');
 
 /**
- * Both halves of what keeps a hover from re-rendering the whole region's list.
- * Measured before this: one hover cost a 2460 ms frame at 200 rows; after, 15 ms.
- * Neither is something a test can assert directly, so these guard the two
- * mechanisms the measurement rests on.
+ * The three wrappers that keep a hover from re-rendering the whole region's list.
+ *
+ * Which value each of them reads is guarded by `hooks/hoverStore.test.tsx`;
+ * these guard the memos that make reading it locally worth anything. Unwrap any
+ * one of them and the hover reaches everything below it again — measured at 200
+ * rows, one hover cost a 2460 ms frame — while every test in this suite still
+ * passes, because the rendered output is identical either way.
  */
 describe('hover isolation in the experience list', () => {
-  describe('ownedHoveredLocationId', () => {
-    it('passes the id through to the row that owns the location', () => {
-      expect(ownedHoveredLocationId([loc(1), loc(2)], 2)).toBe(2);
-    });
-
-    it('gives every other row null, so their props do not move', () => {
-      // The point of the helper: without it each row receives the same changing
-      // id and the memo lapses for the entire list on any location hover.
-      expect(ownedHoveredLocationId([loc(1), loc(2)], 99)).toBeNull();
-    });
-
-    it('is null when nothing is hovered, or the row has no locations yet', () => {
-      expect(ownedHoveredLocationId([loc(1)], null)).toBeNull();
-      expect(ownedHoveredLocationId(undefined, 1)).toBeNull();
-    });
+  it('memoises the row, so a hover elsewhere does not re-render it', () => {
+    expect(isMemo(ExperienceListItem)).toBe(true);
   });
 
-  describe('ExperienceListItem', () => {
-    it('is memoised', () => {
-      // Guards the wrapper itself: unwrapping it restores the 2460 ms hover, and
-      // nothing else in the suite would notice.
-      expect((ExperienceListItem as unknown as { $$typeof: symbol }).$$typeof)
-        .toBe(Symbol.for('react.memo'));
-    });
+  it('memoises the open card, the tallest thing the list draws', () => {
+    // 1749 px on the Historic Centre of Saint Petersburg. Its row re-renders
+    // whenever the pointer enters or leaves it, and without this the card was
+    // rebuilt with it — picture, chips, works list and every place inside.
+    expect(isMemo(ExperienceExpandedDetails)).toBe(true);
+  });
+
+  it('memoises the place row, of which one card holds up to 112', () => {
+    expect(isMemo(LocationRow)).toBe(true);
   });
 });
 
@@ -55,5 +49,41 @@ describe('outsideViewLabel', () => {
     // that is the form an eye checks. Both are pinned, so it goes red next time.
     expect(outsideViewLabel(1)).toBe('1 more in this region — show it');
     expect(outsideViewLabel(12)).toBe('12 more in this region — show them all');
+  });
+});
+
+/**
+ * The cap on an open card's places, and the one hover it must not cost.
+ *
+ * A card shows twenty of an object's in-region places until asked. The reader
+ * cannot tell — until the hover comes from the *map*, which names a place
+ * rather than an object: the place's row is what draws that hover, and a row
+ * past the cap was never mounted. Hovering the marker for the fiftieth of the
+ * Historic Centre's ninety-three places highlighted nothing at all, and the
+ * list centred the object's row instead of the place.
+ */
+describe('hoverRevealsCappedPlace', () => {
+  const ids = Array.from({ length: 93 }, (_, i) => 1000 + i);
+
+  it('opens the rest for a marker hover on a place past the cap', () => {
+    expect(hoverRevealsCappedPlace(ids, ids[49], 'marker')).toBe(true);
+  });
+
+  it('leaves it closed for a place the card is already showing', () => {
+    expect(hoverRevealsCappedPlace(ids, ids[5], 'marker')).toBe(false);
+    // The boundary both ways: twenty shown means indices 0..19.
+    expect(hoverRevealsCappedPlace(ids, ids[19], 'marker')).toBe(false);
+    expect(hoverRevealsCappedPlace(ids, ids[20], 'marker')).toBe(true);
+  });
+
+  it('leaves it closed for a hover that came from the list', () => {
+    // A list hover can only have come from a row already on the page, so this
+    // would be the card unfolding itself for a reader who did not ask.
+    expect(hoverRevealsCappedPlace(ids, ids[49], 'list')).toBe(false);
+  });
+
+  it('leaves it closed for no hover, and for a place this object does not have', () => {
+    expect(hoverRevealsCappedPlace(ids, null, 'marker')).toBe(false);
+    expect(hoverRevealsCappedPlace(ids, 999_999, 'marker')).toBe(false);
   });
 });

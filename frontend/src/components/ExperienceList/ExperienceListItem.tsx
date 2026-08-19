@@ -26,6 +26,7 @@ import { LifecycleChip } from '../shared/LifecycleChip';
 import { getCategoryPrimaryColor, VISITED_GREEN, PARTIAL_AMBER } from '../../utils/categoryColors';
 import { preloadCardImage } from '../../utils/imagePreload';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
+import { useHoverSelector } from '../../hooks/useHoverContext';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -92,10 +93,8 @@ export interface ExperienceListItemProps {
   /** The batch settled — an in-region count derived from `locations` is meaningful. */
   locationsResolved: boolean;
   isLocationVisited: (locationId: number) => boolean;
-  isHovered: boolean;
   isSelected: boolean;
-  hoveredLocationId: number | null;
-  locationRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
+  locationRefs: React.MutableRefObject<Map<number, HTMLElement>>;
   /**
    * Registered by the row itself. The parent used to wrap each row in a `<Box>`
    * carrying this ref, which put one unmemoised MUI component per experience
@@ -152,18 +151,16 @@ export interface ExperienceListItemProps {
  * to MuiPaperRoot alone.
  *
  * The memo only holds while every prop is referentially stable across a parent
- * render — see the callback signatures above, and `hoveredLocationId`, which the
- * parent narrows to this experience's own locations so a location hover
- * elsewhere does not invalidate every row.
+ * render — see the callback signatures above. Hover is not a prop at all: this
+ * row subscribes to the one boolean it draws with, so a pointer crossing the
+ * list does not re-render the list to hand new props to every row in it.
  */
 function ExperienceListItemComponent({
   experience,
   locations,
   locationsResolved,
   isLocationVisited,
-  isHovered,
   isSelected,
-  hoveredLocationId,
   locationRefs,
   itemRefs,
   showCheckbox,
@@ -183,6 +180,11 @@ function ExperienceListItemComponent({
   onCardLayout,
   isRejected,
 }: ExperienceListItemProps) {
+  // One boolean out of the hover store, so this row re-renders when the pointer
+  // enters or leaves *it* and for no other row's hover. The places inside an open
+  // card subscribe on their own account (`LocationRow`), which is why moving
+  // between them re-renders two small rows rather than this whole card.
+  const isHovered = useHoverSelector(s => s.hoveredExperienceId === experience.id);
   const warmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A windowed row leaves the document without a `mouseleave`: the virtualiser
   // recycles it on a fast scroll, a group above it collapses, the region refetches.
@@ -245,6 +247,39 @@ function ExperienceListItemComponent({
   // Derive checkbox state from in-region locations
   const isPartiallyVisited = inRegionVisitedStatus === 'partial';
   const isFullyVisited = inRegionVisitedStatus === 'visited';
+
+  /**
+   * The card's hover handler, bound to this experience once rather than per render.
+   *
+   * Written inline as `(locationId) => onLocationHover(experience.id, locationId)`
+   * it was a new function every time this row rendered — and this row renders on
+   * every hover, because the hovered place is its prop. That new function reached
+   * every `LocationRow` as `onHover`, which is a changed prop, which is a memo that
+   * cannot hold: all of an open card's places re-rendered with their MUI subtrees
+   * on each move of the pointer. Profiled in the browser on the Historic Centre of
+   * Saint Petersburg, that was 23 rows and about 1500 fibers per hover.
+   */
+  const handleLocationHover = useCallback((locationId: number | null) => {
+    onLocationHover(experience.id, locationId);
+  }, [onLocationHover, experience.id]);
+
+  // The card's three curator actions, bound once for the same reason: the card
+  // is memoised, and `onCurate && (() => onCurate(experience))` written inline
+  // was a fresh function on every render of this row — which happens whenever
+  // the pointer enters or leaves it. `undefined` when the caller passes none, so
+  // the card still reads the absence as "this reader cannot curate".
+  const handleCurate = useMemo(
+    () => (onCurate ? () => onCurate(experience) : undefined),
+    [onCurate, experience],
+  );
+  const handleUnreject = useMemo(
+    () => (onUnreject ? () => onUnreject(experience) : undefined),
+    [onUnreject, experience],
+  );
+  const handleRemoveFromRegion = useMemo(
+    () => (onRemoveFromRegion ? () => onRemoveFromRegion(experience) : undefined),
+    [onRemoveFromRegion, experience],
+  );
 
   // Handle root checkbox click - always use batch operation (works for single and multi-location)
   const handleRootCheckboxClick = (e: React.MouseEvent) => {
@@ -459,15 +494,14 @@ function ExperienceListItemComponent({
           locationsResolved={locationsResolved}
           isLocationVisited={isLocationVisited}
           isFullyVisited={isFullyVisited}
-          hoveredLocationId={hoveredLocationId}
           locationRefs={locationRefs}
           showCheckbox={showCheckbox}
           onToggleAllLocations={onToggleAllLocations}
           onLocationVisitedToggle={onLocationVisitedToggle}
-          onLocationHover={(locationId) => onLocationHover(experience.id, locationId)}
-          onCurate={onCurate && (() => onCurate(experience))}
-          onUnreject={onUnreject && (() => onUnreject(experience))}
-          onRemoveFromRegion={onRemoveFromRegion && (() => onRemoveFromRegion(experience))}
+          onLocationHover={handleLocationHover}
+          onCurate={handleCurate}
+          onUnreject={handleUnreject}
+          onRemoveFromRegion={handleRemoveFromRegion}
           onHeightChange={reportHeightChange}
           isRejected={isRejected}
         />

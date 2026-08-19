@@ -3,8 +3,13 @@
  *
  * Provides:
  * - experiences: fetched when regionId changes
- * - hoveredExperienceId: shared hover state between list and markers (bidirectional)
  * - selectedExperienceId: currently expanded/selected experience (shows details in list)
+ * - what the map is showing, so the list can answer about the view (#553)
+ *
+ * Hover is deliberately *not* here: what the pointer is over changes on every
+ * mouse move, and a context value is one object, so keeping it here re-rendered
+ * every consumer — the map included — for each event. It lives in
+ * `useHoverContext`, whose provider this one nests.
  *
  * Pictures are not preloaded here any more; the block where that used to happen
  * records why, and where it happens instead.
@@ -14,6 +19,7 @@ import { createContext, useContext, useState, useMemo, useCallback, type ReactNo
 import { useQuery } from '@tanstack/react-query';
 import { fetchExperiencesByRegion, WHOLE_REGION_LIMIT, type Experience } from '../api/experiences';
 import { useCollapsedExperiences } from './useCollapsedExperiences';
+import { HoverProvider } from './useHoverContext';
 import type { ViewBounds } from '../utils/viewBounds';
 
 // Re-export image utilities from their canonical location for backward compatibility
@@ -47,13 +53,6 @@ interface ExperienceContextType {
   viewBounds: ViewBounds | null;
   setViewBounds: (bounds: ViewBounds | null) => void;
 
-  // Hover state (shared between list and markers - bidirectional)
-  hoveredExperienceId: number | null;
-  hoveredLocationId: number | null; // For multi-location experiences
-  hoverSource: 'marker' | 'list' | null;
-  setHoveredFromMarker: (experienceId: number | null, locationId?: number | null) => void;
-  setHoveredFromList: (experienceId: number | null, locationId?: number | null) => void;
-
   // Selected/expanded experience (shows inline details in list)
   selectedExperienceId: number | null;
   setSelectedExperienceId: (id: number | null) => void;
@@ -83,30 +82,6 @@ interface ExperienceContextType {
   // Artwork preview image (shown as overlay on map)
   previewImageUrl: string | null;
   setPreviewImageUrl: (url: string | null) => void;
-
-  // Hover preview card (shown on map when hovering markers/locations)
-  hoverPreview: {
-    experienceId: number;
-    experienceName: string;
-    locationId: number | null;
-    locationName: string | null;
-    categoryName: string | null;
-    category: string | null;
-    imageUrl: string | null;
-    longitude: number;
-    latitude: number;
-  } | null;
-  setHoverPreview: (preview: {
-    experienceId: number;
-    experienceName: string;
-    locationId: number | null;
-    locationName: string | null;
-    categoryName: string | null;
-    category: string | null;
-    imageUrl: string | null;
-    longitude: number;
-    latitude: number;
-  } | null) => void;
 }
 
 const ExperienceContext = createContext<ExperienceContextType | null>(null);
@@ -119,9 +94,6 @@ interface ExperienceProviderProps {
 }
 
 export function ExperienceProvider({ regionId, isExploring, children }: ExperienceProviderProps) {
-  const [hoveredExperienceId, setHoveredExperienceId] = useState<number | null>(null);
-  const [hoveredLocationId, setHoveredLocationId] = useState<number | null>(null);
-  const [hoverSource, setHoverSource] = useState<'marker' | 'list' | null>(null);
   const [selectedExperienceId, setSelectedExperienceId] = useState<number | null>(null);
   const [flyToExperienceId, setFlyToExperienceId] = useState<number | null>(null);
   const [shouldFitRegion, setShouldFitRegion] = useState(false);
@@ -136,17 +108,6 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     (bounds: ViewBounds | null) => setBoundsFor(bounds ? { regionId, bounds } : null),
     [regionId],
   );
-  const [hoverPreview, setHoverPreview] = useState<{
-    experienceId: number;
-    experienceName: string;
-    locationId: number | null;
-    locationName: string | null;
-    categoryName: string | null;
-    category: string | null;
-    imageUrl: string | null;
-    longitude: number;
-    latitude: number;
-  } | null>(null);
 
   // Objects that no longer exist are off by default and come back only when
   // the reader asks. The ask belongs to the region — it answers "what else was
@@ -197,24 +158,6 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     return experiences.find(exp => exp.id === id);
   }, [experiences]);
 
-  const setHoveredFromMarker = useCallback((experienceId: number | null, locationId: number | null = null) => {
-    setHoveredExperienceId(experienceId);
-    setHoveredLocationId(locationId);
-    setHoverSource(experienceId ? 'marker' : null);
-    if (!experienceId) {
-      setHoverPreview(null);
-    }
-  }, []);
-
-  const setHoveredFromList = useCallback((experienceId: number | null, locationId: number | null = null) => {
-    setHoveredExperienceId(experienceId);
-    setHoveredLocationId(locationId);
-    setHoverSource(experienceId ? 'list' : null);
-    if (!experienceId) {
-      setHoverPreview(null);
-    }
-  }, []);
-
   const toggleSelectedExperience = useCallback((id: number) => {
     setSelectedExperienceId(prev => prev === id ? null : id);
   }, []);
@@ -246,11 +189,6 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     isExploring,
     viewBounds,
     setViewBounds,
-    hoveredExperienceId,
-    hoveredLocationId,
-    hoverSource,
-    setHoveredFromMarker,
-    setHoveredFromList,
     selectedExperienceId,
     setSelectedExperienceId,
     toggleSelectedExperience,
@@ -267,13 +205,11 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     toggleCollapsedExperience,
     previewImageUrl,
     setPreviewImageUrl,
-    hoverPreview,
-    setHoverPreview,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, hoveredExperienceId, hoveredLocationId, hoverSource, setHoveredFromMarker, setHoveredFromList, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, previewImageUrl, hoverPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, previewImageUrl]);
 
   return (
     <ExperienceContext.Provider value={value}>
-      {children}
+      <HoverProvider>{children}</HoverProvider>
     </ExperienceContext.Provider>
   );
 }

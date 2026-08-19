@@ -18,16 +18,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Virtualizer } from '@tanstack/react-virtual';
+import { subscribeToHoverTarget, type HoverStore } from '../../hooks/useHoverContext';
 import { scrollToCenter, scrollToTop } from '../../utils/scrollUtils';
 
 export interface ListScrollWiring {
-  hoveredExperienceId: number | null;
-  hoveredLocationId: number | null;
-  hoverSource: 'marker' | 'list' | null;
+  /**
+   * Subscribed to, never rendered from: only one of the four movements below
+   * answers a hover, and the list that owns this hook builds every row it has.
+   */
+  hoverStore: HoverStore;
   selectedExperienceId: number | null;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   itemRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
-  locationRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
+  locationRefs: React.MutableRefObject<Map<number, HTMLElement>>;
   virtualizer: Virtualizer<HTMLDivElement, Element>;
   /** Where each experience sits in the flat rows, rebuilt whenever they change. */
   rowIndexByExperience: Map<number, number>;
@@ -44,9 +47,7 @@ export interface ListScroll {
 }
 
 export function useListScrollAnchor({
-  hoveredExperienceId,
-  hoveredLocationId,
-  hoverSource,
+  hoverStore,
   selectedExperienceId,
   scrollContainerRef,
   itemRefs,
@@ -84,12 +85,49 @@ export function useListScrollAnchor({
   // Scroll to item only when hovered from map marker (not from list hover)
   // Use manual scrolling to avoid affecting page scroll
   // If hoveredLocationId is set and the location is visible, scroll to it; otherwise scroll to the experience
+  //
+  // Subscribed to the hover store rather than fed by props: a hover changes on
+  // every mouse move, and taking it as a dependency meant the list re-rendered
+  // for each one — which is what made hovering a 112-place card feel stuck. Only
+  // a hover *from the map* does anything here, and that is a rare event.
   useEffect(() => {
-    if (hoveredExperienceId && hoverSource === 'marker' && scrollContainerRef.current) {
+    // The one frame this hook ever waits, tracked so unmounting can take it
+    // back. The staleness check inside it cannot: it asks what is hovered, and
+    // a list that is going away does not change that — so the callback would
+    // wake in a torn-down list and scroll a detached container, or ask a
+    // virtualiser for a row that no longer exists.
+    let pendingFrame: number | null = null;
+    const unsubscribe = subscribeToHoverTarget(hoverStore, (
+      { hoveredExperienceId, hoveredLocationId, hoverSource },
+    ) => {
+      if (!hoveredExperienceId || hoverSource !== 'marker' || !scrollContainerRef.current) return;
       const container = scrollContainerRef.current;
 
-      // A location element exists only inside a row that is both expanded and
-      // rendered; prefer it, because it is the precise thing being hovered.
+      /** The object's row, for when its place is not the thing to aim at. */
+      const aimAtRow = () => {
+        // Ask the virtualiser rather than the DOM. This is the case windowing
+        // creates: the row the marker points at is usually not rendered, so
+        // `itemRefs` has nothing for it, and before this the hover silently
+        // scrolled nowhere for every row outside the window.
+        const index = rowIndexRef.current.get(hoveredExperienceId);
+        if (index != null) {
+          // `behavior` stays the virtualiser's default. The helpers this replaced
+          // glided (`scrollUtils.ts` passes `smooth`), but TanStack documents smooth
+          // scrolling as unsupported alongside the dynamic measurement the rows
+          // need, and a jump to the right row beats a glide to a stale offset.
+          virtualizer.scrollToIndex(index, { align: 'center' });
+          return;
+        }
+        // Rendered but absent from the flat list, which is what a rejected row is:
+        // those render outside the virtualiser, so they have an element and no
+        // index. Keep the element path for them.
+        const element = itemRefs.current.get(hoveredExperienceId);
+        if (element) scrollToCenter(container, element);
+      };
+
+      // The place, when it has an element — it is the precise thing being
+      // hovered. It has one only inside a row that is open, rendered, and
+      // showing that place; the block below is every other case.
       const locationElement = hoveredLocationId
         ? locationRefs.current.get(hoveredLocationId)
         : undefined;
@@ -97,31 +135,50 @@ export function useListScrollAnchor({
         scrollToCenter(container, locationElement);
         return;
       }
-
-      // Otherwise ask the virtualiser rather than the DOM. This is the case
-      // windowing creates: the row the marker points at is usually not rendered,
-      // so `itemRefs` has nothing for it, and before this the hover silently
-      // scrolled nowhere for every row outside the window.
-      const index = rowIndexRef.current.get(hoveredExperienceId);
-      if (index != null) {
-        // `behavior` stays the virtualiser's default. The helpers this replaced
-        // glided (`scrollUtils.ts` passes `smooth`), but TanStack documents smooth
-        // scrolling as unsupported alongside the dynamic measurement the rows
-        // need, and a jump to the right row beats a glide to a stale offset.
-        virtualizer.scrollToIndex(index, { align: 'center' });
+      if (!hoveredLocationId) {
+        aimAtRow();
         return;
       }
 
-      // Rendered but absent from the flat list, which is what a rejected row is:
-      // those render outside the virtualiser, so they have an element and no
-      // index. Keep the element path for them.
-      const element = itemRefs.current.get(hoveredExperienceId);
-      if (element) scrollToCenter(container, element);
-    }
+      // A place with no element yet, which an open card's cap is one cause of:
+      // it shows `IN_REGION_INITIAL` of them, and unfolds itself for exactly this
+      // hover (`CardLocationList`). Nothing brings us back here when it
+      // does — this listener answers a change of *what* is hovered, and unfolding
+      // is not one — so the second look is ours to take, one frame on, by which
+      // time the unfold has committed. Deciding between the place and the row is
+      // deferred with it: taken now, the row scroll would run for every capped
+      // place and the list would move twice for one hover.
+      if (pendingFrame != null) cancelAnimationFrame(pendingFrame);
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = null;
+        // The pointer can leave in the frame we waited: without this check the
+        // list is pulled back to the place the reader has just moved off, after
+        // it has already answered the pin they moved to. Asked of the store
+        // rather than remembered, so "they moved on" and "they stopped hovering"
+        // are the same check.
+        const now = hoverStore.getState();
+        if (now.hoverSource !== 'marker'
+          || now.hoveredExperienceId !== hoveredExperienceId
+          || now.hoveredLocationId !== hoveredLocationId) return;
+        const unfolded = locationRefs.current.get(hoveredLocationId);
+        if (unfolded && scrollContainerRef.current) {
+          scrollToCenter(scrollContainerRef.current, unfolded);
+          return;
+        }
+        // Still absent means the place is not in this card at all — a marker of
+        // an object whose row is not open — so the row is the precise answer.
+        aimAtRow();
+      });
+    });
+    return () => {
+      unsubscribe();
+      if (pendingFrame != null) cancelAnimationFrame(pendingFrame);
+    };
+  },
   // `itemRefs`/`locationRefs` are arguments now rather than locals, so the rule
-// cannot tell they are stable; a ref object never changes identity, so listing
-// them changes nothing about when this runs.
-}, [hoveredExperienceId, hoveredLocationId, hoverSource, scrollContainerRef, virtualizer, itemRefs, locationRefs]);
+  // cannot tell they are stable; a ref object never changes identity, so listing
+  // them changes nothing about when this runs.
+  [hoverStore, scrollContainerRef, virtualizer, itemRefs, locationRefs]);
 
   // Scroll the selected row to the top, so its description is what the reader
   // faces — but only once its card has opened, never at the click.
