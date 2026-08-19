@@ -11,28 +11,22 @@
 
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import {
-  ownedHoveredLocationId, lostHiddenLabel,
+  ownedHoveredLocationId, lostHiddenLabel, outsideViewLabel,
   flattenGroups, rowIndexByExperienceId, experienceIdsInVisibleRange,
   type ExperienceGroupLike,
 } from './ExperienceList/utils';
+import { useInViewFilter } from './ExperienceList/useInViewFilter';
+import { useListScrollAnchor } from './ExperienceList/useListScrollAnchor';
+import { GroupHeader } from './ExperienceList/GroupHeader';
+import { NoticeLink } from './ExperienceList/NoticeLink';
+import { RejectedSection } from './ExperienceList/RejectedSection';
 import {
   Box,
   Typography,
   List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Collapse,
-  IconButton,
   Button,
-  Tooltip,
-  Link,
 } from '@mui/material';
 import {
-  ExpandLess,
-  ExpandMore,
-  Add as AddIcon,
-  Block as RejectIcon,
   PlaylistAdd as AssignIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -50,7 +44,6 @@ import {
 import { useNavigation } from '../hooks/useNavigation';
 import { CurationDialog } from './shared/CurationDialog';
 import { AddExperienceDialog } from './shared/AddExperienceDialog';
-import { scrollToCenter, scrollToTop } from '../utils/scrollUtils';
 import { invalidateExperiences } from '../utils/queryInvalidation';
 import { LoadingSpinner } from './shared/LoadingSpinner';
 import { ExperienceListItem } from './ExperienceList/ExperienceListItem';
@@ -84,6 +77,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     showLost,
     setShowLost,
     regionId,
+    viewBounds,
     hoveredExperienceId,
     hoveredLocationId,
     hoverSource,
@@ -143,6 +137,20 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const activeExperiences = useMemo(() => experiences.filter((exp) => !exp.is_rejected), [experiences]);
   const rejectedExperiences = useMemo(() => experiences.filter((exp) => exp.is_rejected), [experiences]);
 
+  /**
+   * The list answers about the map's view rather than about the whole region
+   * (#553). Nothing keys on a zoom level: when the view holds every one of the
+   * region's objects the hidden count is zero and no control renders, which is
+   * what a reader zoomed out far enough gets without asking for it.
+   */
+  const {
+    listedExperiences, outsideView, isFiltered: groupsAreFiltered,
+    showWholeRegion, toggleWholeRegion, totalByCategory,
+  } = useInViewFilter(
+    activeExperiences, locationsByExperience, viewBounds, regionId, selectedExperienceId,
+    collapsedExperienceIds,
+  );
+
   const unrejectMutation = useMutation({
     mutationFn: ({ experienceId, rId }: { experienceId: number; rId: number }) =>
       unrejectExperience(experienceId, rId),
@@ -177,7 +185,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const groups = useMemo<ExperienceGroup[]>(() => {
     const groupMap = new Map<string, { experiences: Experience[]; priority: number }>();
 
-    for (const exp of activeExperiences) {
+    for (const exp of listedExperiences) {
       const categoryName = exp.category_name || 'Experiences';
       if (!groupMap.has(categoryName)) {
         groupMap.set(categoryName, { experiences: [], priority: exp.category_priority ?? 100 });
@@ -188,7 +196,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     return Array.from(groupMap.entries())
       .map(([categoryName, { experiences: exps, priority }]) => ({ categoryName, categoryPriority: priority, experiences: exps }))
       .sort((a, b) => a.categoryPriority - b.categoryPriority);
-  }, [activeExperiences]);
+  }, [listedExperiences]);
 
   // Reset when the region changes, during render rather than in an effect:
   // `shownExperiences` below pairs `expandedGroups` with `groups`, and an
@@ -257,18 +265,11 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // opening a region cost was these rows (#552).
   const flatRows = useMemo(() => flattenGroups(groups, expandedGroups), [groups, expandedGroups]);
 
-  // Where each experience sits, so the two scroll effects below can ask the
-  // virtualiser for a row that has no element yet — the whole point of windowing
-  // is that most rows do not.
-  //
-  // Read through a ref, the way `selectedIdRef` below already is, and deliberately
-  // absent from those effects' dependencies. The map is rebuilt whenever the rows
-  // change, and a change of rows is not a change of selection: depending on it
-  // would scroll the reader back to the selected row every time a group is
-  // expanded or the region's experiences are refetched.
+  // Where each experience sits, so the scroll hook can ask the virtualiser for a
+  // row that has no element yet — the whole point of windowing is that most rows
+  // do not. How it reads this map, and why most of its movements deliberately do
+  // not depend on it, is `useListScrollAnchor`'s own business.
   const rowIndexByExperience = useMemo(() => rowIndexByExperienceId(flatRows), [flatRows]);
-  const rowIndexRef = useRef(rowIndexByExperience);
-  rowIndexRef.current = rowIndexByExperience;
 
   // A row's identity, not its position. Measured heights are cached under this
   // key, and the default key is the index — which is exactly what is unstable
@@ -315,142 +316,12 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     overscan: 8,
   });
 
-  // Scroll to item only when hovered from map marker (not from list hover)
-  // Use manual scrolling to avoid affecting page scroll
-  // If hoveredLocationId is set and the location is visible, scroll to it; otherwise scroll to the experience
-  useEffect(() => {
-    if (hoveredExperienceId && hoverSource === 'marker' && scrollContainerRef.current) {
-      const container = scrollContainerRef.current;
-
-      // A location element exists only inside a row that is both expanded and
-      // rendered; prefer it, because it is the precise thing being hovered.
-      const locationElement = hoveredLocationId
-        ? locationRefs.current.get(hoveredLocationId)
-        : undefined;
-      if (locationElement) {
-        scrollToCenter(container, locationElement);
-        return;
-      }
-
-      // Otherwise ask the virtualiser rather than the DOM. This is the case
-      // windowing creates: the row the marker points at is usually not rendered,
-      // so `itemRefs` has nothing for it, and before this the hover silently
-      // scrolled nowhere for every row outside the window.
-      const index = rowIndexRef.current.get(hoveredExperienceId);
-      if (index != null) {
-        // `behavior` stays the virtualiser's default. The helpers this replaced
-        // glided (`scrollUtils.ts` passes `smooth`), but TanStack documents smooth
-        // scrolling as unsupported alongside the dynamic measurement the rows
-        // need, and a jump to the right row beats a glide to a stale offset.
-        virtualizer.scrollToIndex(index, { align: 'center' });
-        return;
-      }
-
-      // Rendered but absent from the flat list, which is what a rejected row is:
-      // those render outside the virtualiser, so they have an element and no
-      // index. Keep the element path for them.
-      const element = itemRefs.current.get(hoveredExperienceId);
-      if (element) scrollToCenter(container, element);
-    }
-  }, [hoveredExperienceId, hoveredLocationId, hoverSource, scrollContainerRef, virtualizer]);
-
-  // Scroll the selected row to the top, so its description is what the reader
-  // faces — but only once its card has opened, never at the click.
-  //
-  // The two are not the same moment: a card waits for the things that decide its
-  // size, which took 315 ms and 1025 ms on two measured rows. Scrolling at the
-  // click took the reader to a row that was still collapsed and still waiting, and
-  // then the card opened and moved everything again — the list appearing to drift
-  // on its own, which is exactly what this was meant to stop.
-  //
-  // Selection is exclusive, so choosing this row also collapses whichever was
-  // open; by the time the new card is ready that collapse has long been measured,
-  // which the old 64 ms delay existed to wait for.
-  // Which selection the list has already moved for. Reset during render rather
-  // than in an effect: the row's effect fires before this component's own, so a
-  // reset that ran afterwards would clear the mark for the selection that had
-  // just used it, and the next remount would scroll again.
-  const scrolledForSelection = useRef<number | null>(null);
-  const [trackedSelection, setTrackedSelection] = useState(selectedExperienceId);
-  if (selectedExperienceId !== trackedSelection) {
-    setTrackedSelection(selectedExperienceId);
-    scrolledForSelection.current = null;
-  }
-
-  // A row that is not mounted cannot open, so a selection made from the map —
-  // a marker click on a row far outside the window — is brought into the window
-  // first. Its own alignment comes later, from `handleCardOpened`.
-  useEffect(() => {
-    if (!selectedExperienceId || itemRefs.current.has(selectedExperienceId)) return;
-    const index = rowIndexRef.current.get(selectedExperienceId);
-    if (index != null) virtualizer.scrollToIndex(index, { align: 'center' });
-  }, [selectedExperienceId, virtualizer]);
-
-  // Hands the virtualiser this row's height in the layout phase of the commit
-  // that changed it — before paint, and therefore before the rows below are drawn
-  // at offsets computed for the old one. `VirtualRow` cannot do this: it has no
-  // state, so it does not re-render when a card opens.
-  //
-  // This is enough only because the card is mounted straight into the row: with a
-  // `Collapse` around it the height arrived a task later, in a commit where nothing
-  // measured, and no amount of flushing here reached it. Tried and dropped:
-  // `flushSync` around this call, which the frame-by-frame spec shows is not needed
-  // and which costs a forced render per opening. If that spec ever reports a frame
-  // again, it is the first thing to reach for.
-  const measureRow = useCallback((experienceId: number) => {
-    const row = itemRefs.current.get(experienceId)?.closest('li');
-    // The attribute is the virtualiser's only way back to an index; without it the
-    // library logs a missing-attribute warning and measures nothing. Rejected rows
-    // render outside the window and legitimately have none.
-    if (!row || !row.hasAttribute('data-index')) return;
-    virtualizer.measureElement(row as HTMLElement);
-  }, [virtualizer]);
-
-  // Scroll to the selected row when its card has opened, and only then. The row
-  // is what knows: readiness is decided per row, and a second gate kept here
-  // started its patience at a different moment, so it could call a card open
-  // while the row still had it closed — a scroll to a row that is still waiting,
-  // which is the drift this exists to remove.
-  const handleCardOpened = useCallback((experienceId: number) => {
-    const container = scrollContainerRef.current;
-    if (!container || experienceId !== selectedIdRef.current) return;
-    // Once per selection, because the row reports on mount rather than on a
-    // transition and a windowed row mounts afresh every time the reader scrolls
-    // back to it. Without this, returning to an open card scrolls the list to
-    // that card while the reader is the one scrolling — their gesture fighting a
-    // `scrollTop` assignment, repeated on every re-entry. The row cannot tell the
-    // difference itself: a marker click on a distant row mounts with its card
-    // already open, so there is no transition there to observe either.
-    if (scrolledForSelection.current === experienceId) return;
-    scrolledForSelection.current = experienceId;
-
-    // One frame, so the card that just mounted is measured before its row is
-    // aimed at: `scrollToIndex` reads the sizes the virtualiser holds now.
-    requestAnimationFrame(() => {
-      const index = rowIndexRef.current.get(experienceId);
-      if (index == null) {
-        const element = itemRefs.current.get(experienceId);
-        if (element) scrollToTop(container, element);
-        return;
-      }
-
-      // Move as little as the reader can be shown the card with. A list that
-      // jumps when it did not have to is the complaint this whole change exists
-      // to answer, and a card opened in the middle of the viewport usually needs
-      // no movement at all.
-      const row = itemRefs.current.get(experienceId)?.closest('li');
-      const view = container.getBoundingClientRect();
-      if (row) {
-        const rect = row.getBoundingClientRect();
-        if (rect.top >= view.top - 1 && rect.bottom <= view.bottom + 1) return;
-        // A card taller than the viewport is read from its top; a shorter one
-        // only needs bringing into view, which `auto` does by the smallest amount.
-        virtualizer.scrollToIndex(index, { align: rect.height >= view.height ? 'start' : 'auto' });
-        return;
-      }
-      virtualizer.scrollToIndex(index, { align: 'start' });
-    });
-  }, [scrollContainerRef, virtualizer]);
+  // Every movement of this list, and the reasons each one is narrower than it
+  // looks, live in one place — see the hook.
+  const { handleCardOpened, measureRow, expectFlight } = useListScrollAnchor({
+    hoveredExperienceId, hoveredLocationId, hoverSource, selectedExperienceId,
+    scrollContainerRef, itemRefs, locationRefs, virtualizer, rowIndexByExperience,
+  });
 
   const toggleGroup = (categoryName: string) => {
     setExpandedGroups((prev) => {
@@ -485,9 +356,12 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     if (isClosing) {
       triggerFitRegion();
     } else {
+      // Said before the flight so the list's re-aim knows the rows may move
+      // under the card that is about to open — see `useListScrollAnchor`.
+      expectFlight(exp.id);
       triggerFlyTo(exp.id);
     }
-  }, [toggleSelectedExperience, triggerFitRegion, triggerFlyTo]);
+  }, [toggleSelectedExperience, triggerFitRegion, triggerFlyTo, expectFlight]);
 
   const handleLocationVisitedToggle = useCallback((locationId: number, isVisited: boolean) => {
     if (isVisited) {
@@ -575,6 +449,12 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     pendingSeen.current = new Set();
   }, []);
 
+  // `activeExperiences`, deliberately not the rows the view leaves: membership in
+  // `seenExperienceIds` already means "this row rendered", since it is fed only
+  // from `experienceIdsInVisibleRange`. Narrowing it to what is listed *now*
+  // would drop rows the reader did see whose pins have left the view — and with
+  // the 800 ms flush that is one ordinary drag-drag, after which the server's
+  // first-impression rule means their week never starts (#553 review).
   const shownExperiences = useMemo(
     () => activeExperiences.filter(exp => seenExperienceIds.has(exp.id)),
     [activeExperiences, seenExperienceIds],
@@ -587,24 +467,21 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     return <LoadingSpinner size={24} />;
   }
 
-  // Offered only where there is something behind it. Almost no region holds a
-  // lost object, and a permanent control for a rare state is noise; a line that
-  // appears when the region has one explains itself.
-  const lostNoticeLabel = showLost
-    ? 'Hide places that no longer exist'
-    : lostHiddenLabel(lostHidden);
+  // Both notices follow the same rule — offered only where there is something
+  // behind them. Almost no region holds a lost object, and at low zoom the whole
+  // region is on screen, so neither line usually appears at all.
   const lostNotice = lostHidden > 0 || showLost ? (
-    <Box sx={{ px: 2, pb: 1 }}>
-      <Link
-        component="button"
-        variant="caption"
-        underline="hover"
-        onClick={() => setShowLost(!showLost)}
-        sx={{ color: 'text.secondary' }}
-      >
-        {lostNoticeLabel}
-      </Link>
-    </Box>
+    <NoticeLink
+      label={showLost ? 'Hide places that no longer exist' : lostHiddenLabel(lostHidden)}
+      onClick={() => setShowLost(!showLost)}
+    />
+  ) : null;
+
+  const viewNotice = outsideView > 0 ? (
+    <NoticeLink
+      label={showWholeRegion ? 'Show only what is on the map' : outsideViewLabel(outsideView)}
+      onClick={toggleWholeRegion}
+    />
   ) : null;
 
   if (activeExperiences.length === 0 && rejectedExperiences.length === 0) {
@@ -621,40 +498,18 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // Takes the narrower shape: a header draws a name and a count and has no use
   // for the priority the sort above needs.
   const renderGroupHeader = (group: ExperienceGroupLike) => (
-    <ListItem
-      component="div"
-      onClick={() => toggleGroup(group.categoryName)}
-      sx={{
-        bgcolor: 'grey.100',
-        cursor: 'pointer',
-        '&:hover': { bgcolor: 'grey.200' },
-      }}
-    >
-      <ListItemText
-        primary={
-          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-            {group.categoryName} ({group.experiences.length})
-          </Typography>
-        }
-      />
-      {/* Per-source "+" button to create a new experience under this source */}
-      {hasCuratorScope && regionId && (
-        <Tooltip title={`Add new ${group.categoryName.toLowerCase().replace(/^top /, '')}`}>
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              const categoryId = categoryNameToId.get(group.categoryName);
-              setAddDialogState({ open: true, defaultCategoryId: categoryId, defaultTab: 0 });
-            }}
-            sx={{ mr: 0.5 }}
-          >
-            <AddIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      )}
-      {expandedGroups.has(group.categoryName) ? <ExpandLess /> : <ExpandMore />}
-    </ListItem>
+    <GroupHeader
+      group={group}
+      expanded={expandedGroups.has(group.categoryName)}
+      onToggle={() => toggleGroup(group.categoryName)}
+      regionTotal={groupsAreFiltered ? totalByCategory.get(group.categoryName) ?? null : null}
+      canAdd={!!hasCuratorScope && !!regionId}
+      onAdd={() => setAddDialogState({
+        open: true,
+        defaultCategoryId: categoryNameToId.get(group.categoryName),
+        defaultTab: 0,
+      })}
+    />
   );
 
   const renderExperienceItem = (exp: Experience, rejected = false) => (
@@ -709,6 +564,18 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
         </Box>
       )}
 
+      {/* Panned away from everything. Said in words rather than left as blank
+          space, because an empty list under a region's name reads as "this region
+          is empty" — which is false, and the notice below carries the count and
+          the way back (#553). */}
+      {listedExperiences.length === 0 && activeExperiences.length > 0 && (
+        <Box sx={{ px: 2, py: 1.5 }}>
+          <Typography variant="body2" color="text.secondary">
+            Nothing in this view.
+          </Typography>
+        </Box>
+      )}
+
       {/* The windowed list. Its height is the virtualiser's estimate of the whole
           sequence, so the scrollbar means what it always did, while only the rows
           in view — plus `overscan` — are mounted. Still a `List`, and each row is
@@ -738,44 +605,13 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       </List>
 
       {/* Rejected Section (curator only) */}
-      {hasCuratorScope && rejectedExperiences.length > 0 && (
-        <Box>
-          <ListItem
-            component="div"
-            onClick={() => setRejectedSectionOpen(!rejectedSectionOpen)}
-            sx={{
-              bgcolor: 'error.50',
-              cursor: 'pointer',
-              '&:hover': { bgcolor: 'grey.200' },
-              borderTop: '2px solid',
-              borderColor: 'error.200',
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 32 }}>
-              <RejectIcon fontSize="small" color="error" />
-            </ListItemIcon>
-            <ListItemText
-              primary={
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'error.main' }}>
-                  Rejected ({rejectedExperiences.length})
-                </Typography>
-              }
-            />
-            {rejectedSectionOpen ? <ExpandLess /> : <ExpandMore />}
-          </ListItem>
-          <Collapse in={rejectedSectionOpen} timeout="auto" unmountOnExit>
-            <List disablePadding>
-              {/* One `li` per row here too. These rows are not windowed — they
-                  are few, and they are the one path that reaches the scroll
-                  effects' element fallback, having an element but no row index. */}
-              {rejectedExperiences.map((exp) => (
-                <Box component="li" key={exp.id} sx={{ listStyle: 'none' }}>
-                  {renderExperienceItem(exp, true)}
-                </Box>
-              ))}
-            </List>
-          </Collapse>
-        </Box>
+      {hasCuratorScope && (
+        <RejectedSection
+          experiences={rejectedExperiences}
+          open={rejectedSectionOpen}
+          onToggle={() => setRejectedSectionOpen(!rejectedSectionOpen)}
+          renderRow={(exp) => renderExperienceItem(exp, true)}
+        />
       )}
 
       {/* Curation Dialog (shared: edit, reject/unreject, take a verdict back) */}
@@ -798,6 +634,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       )}
       {/* Last, not first: it answers "what else was here", which is a
           question you ask after reading what is here. */}
+      {viewNotice}
       {lostNotice}
     </Box>
   );

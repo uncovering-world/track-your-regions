@@ -58,7 +58,7 @@ describe('the windowed experience list', () => {
 
   describe('rowIndexByExperienceId', () => {
     it('finds an experience by the row it occupies', () => {
-      // This is what the two scroll effects ask instead of the DOM. A marker's
+      // This is what the list's movements ask instead of the DOM. A marker's
       // row is usually outside the window, so `itemRefs` holds no element for
       // it — before windowing that path existed and worked; after it, a hover
       // from the map would silently scroll nowhere without this.

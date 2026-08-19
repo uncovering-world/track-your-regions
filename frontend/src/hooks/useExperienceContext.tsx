@@ -14,6 +14,7 @@ import { createContext, useContext, useState, useMemo, useCallback, type ReactNo
 import { useQuery } from '@tanstack/react-query';
 import { fetchExperiencesByRegion, WHOLE_REGION_LIMIT, type Experience } from '../api/experiences';
 import { useCollapsedExperiences } from './useCollapsedExperiences';
+import type { ViewBounds } from '../utils/viewBounds';
 
 // Re-export image utilities from their canonical location for backward compatibility
 export { toThumbnailUrl, extractImageUrl } from '../utils/imageUrl';
@@ -34,6 +35,17 @@ interface ExperienceContextType {
 
   // Exploration mode (right panel open)
   isExploring: boolean;
+
+  /**
+   * What the map is showing, published on `moveend` (#553).
+   *
+   * Null until the map has moved once, and null when there is no map at all —
+   * WebGL missing, or a surface that never mounts one. Null means "no view to
+   * answer about", which the list reads as the whole region rather than as an
+   * empty one: a reader without a map must not lose their list.
+   */
+  viewBounds: ViewBounds | null;
+  setViewBounds: (bounds: ViewBounds | null) => void;
 
   // Hover state (shared between list and markers - bidirectional)
   hoveredExperienceId: number | null;
@@ -115,6 +127,15 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   const [shouldFitRegion, setShouldFitRegion] = useState(false);
   const [expandedCategoryNames, setExpandedCategoryNames] = useState<Set<string>>(new Set());
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  // Held for the region it was measured in: a view belongs to the map that was
+  // showing that region, and carrying it into the next one would filter the new
+  // list by the old camera for the render before the map moves.
+  const [boundsFor, setBoundsFor] = useState<{ regionId: number | null; bounds: ViewBounds } | null>(null);
+  const viewBounds = boundsFor !== null && boundsFor.regionId === regionId ? boundsFor.bounds : null;
+  const setViewBounds = useCallback(
+    (bounds: ViewBounds | null) => setBoundsFor(bounds ? { regionId, bounds } : null),
+    [regionId],
+  );
   const [hoverPreview, setHoverPreview] = useState<{
     experienceId: number;
     experienceName: string;
@@ -223,6 +244,8 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     totalExperiences: data?.total || 0,
     regionId,
     isExploring,
+    viewBounds,
+    setViewBounds,
     hoveredExperienceId,
     hoveredLocationId,
     hoverSource,
@@ -246,7 +269,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     setPreviewImageUrl,
     hoverPreview,
     setHoverPreview,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, hoveredExperienceId, hoveredLocationId, hoverSource, setHoveredFromMarker, setHoveredFromList, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, previewImageUrl, hoverPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, hoveredExperienceId, hoveredLocationId, hoverSource, setHoveredFromMarker, setHoveredFromList, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, previewImageUrl, hoverPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>

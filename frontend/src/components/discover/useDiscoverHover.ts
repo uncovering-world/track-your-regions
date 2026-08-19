@@ -22,6 +22,7 @@ import maplibregl from 'maplibre-gl';
 import type { Experience } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { clusterRadiusFor, SOURCE_ID, HOVER_SOURCE_ID } from './discoverMapLayers';
+import { pointInView } from '../../utils/viewBounds';
 
 /**
  * Rings for the places of an object that the map is currently drawing as pins.
@@ -240,8 +241,15 @@ export function useDiscoverHover({
     // with anything off screen would take this path on every hover — and this one
     // has no hover-intent delay, while `getClusterLeaves` materialises a feature
     // per member of every visible cluster.
-    const inView = map.getBounds();
-    const onScreen = drawn.filter(([lng, lat]) => inView.contains([lng, lat]));
+    // `pointInView` rather than `LngLatBounds.contains`: that method takes its
+    // wrapping branch only on `sw.lng > ne.lng`, a form `getBounds()` never
+    // produces — it assigns `Math.min`/`Math.max` on longitude and lets the
+    // values leave [-180, 180] instead. Over the dateline it therefore answers
+    // false for every real longitude, and this count would say nothing of the
+    // object is on screen (#553).
+    const b = map.getBounds();
+    const inView = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+    const onScreen = drawn.filter(([lng, lat]) => pointInView(lng, lat, inView));
     if (pinRings.length >= onScreen.length) return;
 
     const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;

@@ -195,7 +195,7 @@ export async function fetchExperience(id: number): Promise<ExperienceDetail> {
  * location endpoint, which already returns a region whole.
  *
  * Equal to the backend's own ceiling, so it asks for everything the route will
- * ever hand over — the largest region today holds 658.
+ * ever hand over — the largest region today holds 661.
  */
 export const WHOLE_REGION_LIMIT = 5000;
 

@@ -22,7 +22,9 @@ If similar functionality exists:
 
 **Keep files under ~500 lines.** When a file approaches this, split proactively. Files at 800+ lines are overdue for splitting.
 
-Exceptions: files with dense, non-decomposable JSX (like `ExperienceList.tsx` at ~1,300 lines with clear internal sub-components) can exceed the limit if splitting would only add prop-drilling overhead without clarity gain. Use judgment — if a file has distinct responsibilities, it should be split.
+Exceptions: files with dense, non-decomposable JSX can exceed the limit if splitting would only add prop-drilling overhead without clarity gain. Use judgment — if a file has distinct responsibilities, it should be split.
+
+`ExperienceList.tsx` used to stand here as that exception, at ~1,300 lines. It is comfortably under 700 now, and what moved out was never JSX depth: the windowed rows (#552), then the category header, the notice lines, the curator's rejected section and every movement of the list itself (#553). Each had a responsibility of its own, and the prop-drilling the exception warns about did not materialise — the pieces take what they render and the handlers they call. The exception stands; that file is no longer an example of it.
 
 ### 3. Keep Docs in Sync
 
@@ -155,7 +157,20 @@ Components live in `frontend/src/components/`, organized by feature:
 components/
 ├── MainDisplay.tsx           ← shell: map + navigation
 ├── RegionMapVT.tsx           ← map rendering (uses extracted hooks)
-├── ExperienceList.tsx        ← experience cards with inline sub-components
+├── ExperienceList.tsx        ← assembles the list: groups, filtering, curator actions
+├── ExperienceList/           ← what came out of it: rows, headers, notices, scroll
+│   ├── ExperienceListItem.tsx
+│   ├── ExperienceExpandedDetails.tsx
+│   ├── ArtworksList.tsx
+│   ├── GroupHeader.tsx
+│   ├── NoticeLink.tsx
+│   ├── RejectedSection.tsx
+│   ├── VirtualRow.tsx
+│   ├── VisitedStatusButton.tsx
+│   ├── useInViewFilter.ts    ← which rows the map's view leaves
+│   ├── useListScrollAnchor.ts ← every movement of the list
+│   ├── inView.ts
+│   └── utils.ts
 ├── regionMap/                ← extracted hooks for RegionMapVT
 │   ├── layerStyles.ts
 │   ├── useRegionMetadata.ts

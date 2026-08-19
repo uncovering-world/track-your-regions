@@ -32,6 +32,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | `worldViewList.ts` | `worldViewList(failed)` — the world views a re-placement failed for, named for the curator and numbered for the admin. Handles the `id: null` shape that means listing them failed |
 | `wordDiff.ts` | `wordDiff(before, after)` — which words differ between two versions of a text, as parts that reassemble into each side exactly. Refuses values past 400 words (`capped`) rather than freezing the tab; marks nothing that would change a decision, since both values render in full either way |
 | `webgl.ts` | `isWebGLAvailable()` — ask before constructing any map; see `maplibre-patterns.md` |
+| `viewBounds.ts` | `ViewBounds`, `pointInView(lng, lat, bounds)` — is this place on screen? Reads the box in its own frame, so it answers both MapLibre's unwrapped `getBounds()` shape (`{west: 175, east: 185}` over the dateline) and this repository's `west > east` one (`focus_bbox`, the `bbox` parameter) |
 | `fetchUtils.ts` | `ensureFreshToken()` — proactive JWT refresh before SSE connections |
 
 ## Pattern Table: Use This, Not That
@@ -56,6 +57,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | Format duration | `formatDuration(start, end)` | Inline ms-to-seconds/minutes conversion |
 | Fold an object's places to one pin | `useCollapsedExperiences(regionId)` + `<FoldPlacesControl />` | Local `useState` in a surface, or an effect that clears the set when the region changes — an effect runs after render, which leaves a commit where the new region's rows are drawn against the old region's folds |
 | Rendering any map | `GuardedMap` (aliased to your local name), or an early return on `isWebGLAvailable()` where overlays sit over the map | Importing `Map` straight from `react-map-gl/maplibre`, or a bare `new maplibregl.Map` — both throw without WebGL, and there is no error boundary to catch it |
+| Ask whether a place is inside the map's view | `pointInView(lng, lat, bounds)` | `bounds.contains([lng, lat])`, or a literal `west <= lng && lng <= east` — `LngLatBounds.contains` takes its wrapping branch only on `sw.lng > ne.lng`, which `getBounds()` never produces, so both drop every real longitude over the dateline |
 
 ## Maintaining This Doc
 

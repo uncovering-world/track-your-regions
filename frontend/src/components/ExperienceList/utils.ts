@@ -42,11 +42,33 @@ export function ownedHoveredLocationId(
   return locations.some(loc => loc.id === hoveredLocationId) ? hoveredLocationId : null;
 }
 
-/** "3 here no longer exist — show them", with the singular English wants. */
+/**
+ * "3 in this region no longer exist — show them", with the singular English wants.
+ *
+ * "In this region", not "here": the count is the region's, from the same read
+ * that fetched the rows, while the list beside it answers about the map's view
+ * (#553). Said as "here" it promised rows the view then filtered out — a reader
+ * zoomed into Prague clicking it for three lost objects in Rome saw nothing
+ * appear. The way to them is the other notice, which now counts them too.
+ */
 export function lostHiddenLabel(count: number): string {
   const verb = count === 1 ? 'exists' : 'exist';
   const them = count === 1 ? 'it' : 'them';
-  return `${count} here no longer ${verb} — show ${them}`;
+  return `${count} in this region no longer ${verb} — show ${them}`;
+}
+
+/**
+ * "12 more in this region — show them all", the way back from a filtered list (#553).
+ *
+ * The count is what the view is hiding, not what it holds: a reader who has
+ * panned away from every object sees an empty list, and without a number saying
+ * the region still has 47 of them that reads as "this region is empty" — which
+ * contradicts the whole-region promise the product makes.
+ */
+export function outsideViewLabel(count: number): string {
+  // Not `plural()`: "more" is invariant, and the helper would render "12 mores".
+  // The singular is the only form an eye checks, which is how that got through.
+  return `${count} more in this region — show ${count === 1 ? 'it' : 'them all'}`;
 }
 
 /**
@@ -89,9 +111,12 @@ export function flattenGroups(
 /**
  * Where each experience sits in the flat list.
  *
- * The two scroll effects need this because windowing means the row a map marker
- * points at usually has no element: `itemRefs` holds nothing for it, so the
- * virtualiser has to be asked for an index instead.
+ * Every movement of the list needs it — they live in `useListScrollAnchor` —
+ * because windowing means the row a map marker points at usually has no element:
+ * `itemRefs` holds nothing for it, so the virtualiser has to be asked for an
+ * index instead. Three of the four read it through a ref rather than as a
+ * dependency; the re-aim after a click is the one that depends on it, and gates
+ * itself on that click's flight so a group toggled does not reach it.
  */
 export function rowIndexByExperienceId(rows: FlatRow[]): Map<number, number> {
   const m = new Map<number, number>();

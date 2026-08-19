@@ -263,7 +263,7 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
   const includeChildren = req.query.includeChildren !== 'false';
   // Ceiling raised to match `listExperiences` above. At 500 a region's list was
   // silently truncated rather than paginated: the ordering is `e.name`, so the
-  // cut fell mid-alphabet and simply removed everything after it — 658 in Europe
+  // cut fell mid-alphabet and simply removed everything after it — 661 in Europe
   // meant no museum past "G", and the map builds its markers from this same
   // array, so those pins vanished too. Callers that want a page still get one by
   // passing `limit`; the default of 100 is unchanged.
