@@ -218,7 +218,7 @@ export function offeredLocationSql(alias = 'el'): string {
  * for the object with no visible places rather than a missing anchor: it stays
  * where its source put it rather than losing its position.
  *
- * Costs 25 ms on a whole-region read: Europe's 683 experiences and the 3747
+ * Costs 25 ms on a whole-region read: Europe's 661 experiences and the 3725
  * places under them go from 19 ms to 44 ms, of which the `geography` cast is
  * 16 ms — the price of a distance in metres, paid once per region and cached for
  * five minutes by the reader's query. Two scalar subqueries rather than a lateral

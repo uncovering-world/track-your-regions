@@ -95,7 +95,7 @@ export function useDiscoverExperiences() {
     queryKey: ['discover-experiences', activeView?.regionId],
     // The category filter runs in `select` below, on what came back — so a
     // truncated response is filtered, not a filtered response truncated. At 500
-    // that lost the smaller categories first: Europe holds 76 museums among 658
+    // that lost the smaller categories first: Europe holds 69 museums among 661
     // experiences, and `Museo del Prado` sorts past the cut.
     queryFn: () => fetchExperiencesByRegion(activeView!.regionId, {
       includeChildren: true,

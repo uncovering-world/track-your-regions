@@ -75,7 +75,7 @@ export function RegionMapVT() {
   const { visitedLocationIds } = useVisitedLocations();
 
   // Check if in exploration mode (right panel open with experiences)
-  const { previewImageUrl, isExploring } = useExperienceContext();
+  const { previewImageUrl, isExploring, setViewBounds } = useExperienceContext();
 
   // Determine what parent we're viewing subdivisions of (GADM)
   let viewingParentId: number | 'root';
@@ -138,9 +138,32 @@ export function RegionMapVT() {
     contextLayerCount: contextLayers.length,
   });
 
+  /**
+   * Tell the list what the map is showing (#553).
+   *
+   * `moveend`, never `move`: recomputing during a pan gesture re-sorts the rows
+   * under the reader's eye while they are in the middle of reading them. The
+   * camera settling is the moment the question "what is here" has a new answer.
+   *
+   * The box is passed on exactly as MapLibre reports it, which is *not* this
+   * repository's `west > east` convention: `getBounds()` keeps `west <= east`
+   * and lets the values leave `[-180, 180]` instead. Normalising here would
+   * throw away the only thing that says where the view actually is —
+   * `pointInView` reads the box in its own frame and handles both shapes.
+   */
+  const publishViewBounds = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const b = map.getBounds();
+    setViewBounds({ west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() });
+  }, [setViewBounds]);
+
   const handleMapLoad = useCallback(() => {
     setMapLoaded(true);
-  }, []);
+    // The first view, before any gesture: without it the list answers about the
+    // whole region until the reader happens to move the map.
+    publishViewBounds();
+  }, [publishViewBounds]);
 
   // Asked before `<Map>` is mounted, not after it fails. react-map-gl builds
   // the map inside its own effect, where MapLibre's `Failed to initialize
@@ -291,6 +314,7 @@ export function RegionMapVT() {
         onClick={handleMapClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        onMoveEnd={publishViewBounds}
         onLoad={handleMapLoad}
         interactiveLayerIds={interactiveLayerIds}
       >

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ownedHoveredLocationId, lostHiddenLabel } from './utils';
+import { ownedHoveredLocationId, lostHiddenLabel, outsideViewLabel } from './utils';
 import { ExperienceListItem } from './ExperienceListItem';
 import type { ExperienceLocation } from '../../api/experiences';
 
@@ -41,7 +41,19 @@ describe('hover isolation in the experience list', () => {
 
 describe('lostHiddenLabel', () => {
   it('uses the singular English actually wants', () => {
-    expect(lostHiddenLabel(1)).toBe('1 here no longer exists — show it');
-    expect(lostHiddenLabel(3)).toBe('3 here no longer exist — show them');
+    expect(lostHiddenLabel(1)).toBe('1 in this region no longer exists — show it');
+    expect(lostHiddenLabel(3)).toBe('3 in this region no longer exist — show them');
+  });
+});
+
+describe('outsideViewLabel', () => {
+  it('counts without pluralising "more"', () => {
+    // The trap is `plural(n, noun)`, this repository's shared helper — #546 is a
+    // standing push to use it at the 28 sites that still inline a suffix, and it
+    // renders "12 mores" here, because "more" does not take one. The first
+    // revision of this label did exactly that, and the singular hid it, since
+    // that is the form an eye checks. Both are pinned, so it goes red next time.
+    expect(outsideViewLabel(1)).toBe('1 more in this region — show it');
+    expect(outsideViewLabel(12)).toBe('12 more in this region — show them all');
   });
 });

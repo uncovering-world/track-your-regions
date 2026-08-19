@@ -99,15 +99,16 @@ Pattern:
 
 **Action:** Add `formatDate()` and `formatDuration()` to `frontend/src/utils/dateFormat.ts`.
 
-### 7. Scroll-to-Element Logic
-Duplicated scroll calculations in:
-- `ExperienceList.tsx` (2 implementations)
-- `discover/useDiscoverHover.ts`
-- `ExperienceDetailPanel.tsx`
+### 7. Scroll-to-Element Logic — mostly done
+`frontend/src/utils/scrollUtils.ts` exists and carries `scrollToCenter()` / `scrollToTop()`; Map mode's
+movements call it from `ExperienceList/useListScrollAnchor.ts`, and `ExperienceDetailPanel` no longer
+computes its own.
 
-Pattern: calculate element position relative to container, center in viewport.
+What is left is one site, and it is a different mechanism rather than a copy of this one:
+`discover/useDiscoverHover.ts` uses the browser's `scrollIntoView({ block: 'center' })` for the
+map-hover scroll.
 
-**Action:** Create `frontend/src/utils/scrollUtils.ts` with `scrollToCenter(container, element)`.
+**Action:** decide whether that one should share the helper, and close this item either way.
 
 ## Completed: Large File Splits
 
@@ -119,7 +120,7 @@ Pattern: calculate element position relative to container, center in viewport.
 ### Skipped
 | File | Lines | Reason |
 |------|-------|--------|
-| `ExperienceList.tsx` | ~1,301 | Already well-structured with clear internal sub-components. Revisit if it grows beyond ~1,500 lines. |
+| `ExperienceList.tsx` | under 700 | Skipped at ~1,301 as well-structured. Split since anyway, by the work that needed it: the windowed rows (#552), then the category header, the notice lines, the rejected section and every movement of the list (#553). |
 
 ## Implementation Notes
 
