@@ -150,7 +150,7 @@ Reusable UI components live in `frontend/src/components/shared/`. Check shared c
 
 - Symbol layers with broken glyph URLs can silently stall GeoJSON source rendering
 - Glyph server: `fonts.openmaptiles.org`; supported family is Open Sans (regular/bold/semibold), not Noto Sans
-- `frontend/src/components/discover/DiscoverExperienceView.tsx` has its own inline map style with a separate glyph URL from shared `MAP_STYLE`
+- Discover has its own inline map style with a separate glyph URL from shared `MAP_STYLE`, in `frontend/src/components/discover/useDiscoverMap.ts`
 - `ExperienceMarkers.tsx` uses 3 declarative `<Source>` blocks (clustered markers, highlight, hover) with circle and symbol layers
 
 ## Documentation

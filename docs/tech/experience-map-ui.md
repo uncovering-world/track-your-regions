@@ -3,7 +3,10 @@
 This document describes how experience markers work in both map surfaces:
 
 - Map Mode: `frontend/src/components/RegionMapVT.tsx` + `frontend/src/components/ExperienceMarkers.tsx`
-- Discover Mode: `frontend/src/components/discover/DiscoverExperienceView.tsx`
+- Discover Mode: `frontend/src/components/discover/DiscoverExperienceView.tsx`, which owns the
+  selection and the camera and delegates the rest to one file each: `useDiscoverMap.ts` (the map
+  instance and every listener on it), `useDiscoverHover.ts` (hover, in both directions),
+  `discoverMapLayers.ts` (sources and paint) and `DiscoverExperienceList.tsx` (the rows)
 - Shared interaction state: `frontend/src/hooks/useExperienceContext.tsx`
 
 ## Shared state model
@@ -162,7 +165,7 @@ Both Map mode and Discover mode render hover cards as React `<Box>` overlays pos
 
 Map mode (`RegionMapVT`): positioned by marker screen location (left/right and top/bottom) to avoid covering the hovered marker.
 
-Discover mode (`DiscoverExperienceView`): positioned in the bottom-left corner of the map — which is why the fold chip sits at the top centre (`FoldPlacesControl`), since the card would otherwise paint over it. On marker hover, the component looks up the experience in the `experiences` array by feature ID to get image URL and source name. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
+Discover mode (`DiscoverExperienceView`): positioned in the bottom-left corner of the map — which is why the fold chip sits at the top centre (`FoldPlacesControl`), since the card would otherwise paint over it. On marker hover, `useDiscoverHover` looks up the experience in the `experiences` array by feature ID to get its image URL and category name. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
 
 ## Region visual feedback
 

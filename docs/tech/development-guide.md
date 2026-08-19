@@ -287,7 +287,7 @@ When adding a new endpoint:
 **Fonts and symbols:**
 - Symbol layers with broken glyph URLs silently stall the entire GeoJSON source rendering pipeline.
 - Glyph server: `fonts.openmaptiles.org` — supports `Open Sans Regular/Bold/Semibold` only (NOT Noto Sans).
-- `DiscoverExperienceView.tsx` has its own inline map style with glyphs URL (separate from shared `MAP_STYLE`) — update both when changing fonts.
+- Discover has its own inline map style with glyphs URL (separate from shared `MAP_STYLE`), in `discover/useDiscoverMap.ts` — update both when changing fonts.
 
 **Overlapping interactive layers — prefer main tiles:**
 - When multiple interactive layers overlap at the same point (e.g., ancestor context layers behind main children tiles), `event.features` returns features from ALL layers — and the first element is NOT guaranteed to be from the topmost visible layer.

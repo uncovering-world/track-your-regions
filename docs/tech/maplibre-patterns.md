@@ -212,7 +212,7 @@ If a symbol layer references a font that doesn't exist on the glyph server, MapL
 
 ### Multiple map instances
 
-`DiscoverExperienceView.tsx` creates its own `maplibregl.Map()` with an inline style object (separate from the shared `MAP_STYLE` constant). When changing glyph URLs or fonts, update BOTH the shared style and the inline style.
+Discover creates its own `maplibregl.Map()` with an inline style object (separate from the shared `MAP_STYLE` constant), in `discover/useDiscoverMap.ts`. When changing glyph URLs or fonts, update BOTH the shared style and the inline style.
 
 ## Paint expression priority
 
