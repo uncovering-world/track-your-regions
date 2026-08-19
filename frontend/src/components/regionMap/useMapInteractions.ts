@@ -6,7 +6,7 @@ import { useRef, useEffect, useCallback, useMemo } from 'react';
 import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';
 import { useNavigation } from '../../hooks/useNavigation';
-import { extractImageUrl, toThumbnailUrl, useExperienceContext } from '../../hooks/useExperienceContext';
+import { useExperienceContext } from '../../hooks/useExperienceContext';
 import { fetchDivision, fetchDivisionGeometry } from '../../api';
 import { smartFitBounds } from '../../utils/mapUtils';
 import type { Region } from '../../types';
@@ -122,7 +122,7 @@ export function useMapInteractions({
     regionBreadcrumbs,
   } = useNavigation();
 
-  const { isExploring, hoverPreview } = useExperienceContext();
+  const { isExploring } = useExperienceContext();
 
   // Track if the last selection was from a map click (to avoid double fly-to)
   const lastMapClickIdRef = useRef<number | null>(null);
@@ -417,27 +417,6 @@ export function useMapInteractions({
     return null;
   }, [hoveredRegionId, metadataById, mapRef, sourceLayerName, contextLayerCount]);
 
-  const hoverPreviewImage = useMemo(() => {
-    if (!hoverPreview) return null;
-    const imageUrl = extractImageUrl(hoverPreview.imageUrl);
-    if (!imageUrl) return null;
-    return toThumbnailUrl(imageUrl, 720);
-  }, [hoverPreview]);
-
-  const hoverCardPlacement = useMemo(() => {
-    const fallback = { left: 16, bottom: 16 } as const;
-    if (!hoverPreview || !mapRef.current || !mapLoaded) return fallback;
-    const map = mapRef.current.getMap();
-    const canvas = map.getCanvas();
-    const point = map.project([hoverPreview.longitude, hoverPreview.latitude]);
-    const placeLeft = point.x >= canvas.clientWidth / 2;
-    const placeBottom = point.y < canvas.clientHeight / 2;
-    return {
-      ...(placeLeft ? { left: 16 } : { right: 16 }),
-      ...(placeBottom ? { bottom: 16 } : { top: 86 }),
-    };
-  }, [hoverPreview, mapLoaded, mapRef]);
-
   // Interactive layer IDs
   const interactiveLayerIds = useMemo(() => {
     const layers = ['region-fill', 'region-hull'];
@@ -456,9 +435,6 @@ export function useMapInteractions({
     handleMouseLeave,
     handleGoToParent,
     hoveredRegionName,
-    hoverPreview,
-    hoverPreviewImage,
-    hoverCardPlacement,
     interactiveLayerIds,
     selectedRegion,
     selectedDivision,

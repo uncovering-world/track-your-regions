@@ -7,18 +7,52 @@ This document describes how experience markers work in both map surfaces:
   selection and the camera and delegates the rest to one file each: `useDiscoverMap.ts` (the map
   instance and every listener on it), `useDiscoverHover.ts` (hover, in both directions),
   `discoverMapLayers.ts` (sources and paint) and `DiscoverExperienceList.tsx` (the rows)
-- Shared interaction state: `frontend/src/hooks/useExperienceContext.tsx`
+- Shared interaction state: `frontend/src/hooks/useExperienceContext.tsx`, and hover alone in
+  `frontend/src/hooks/useHoverContext.tsx` — see § What a hover is allowed to re-render
 
 ## Shared state model
 
 `ExperienceProvider` is the source of truth for region exploration state:
 
 - Fetches region experiences with `includeChildren=false` and `limit=WHOLE_REGION_LIMIT` — a region is read whole, never paged. "Whole" is bounded: `WHOLE_REGION_LIMIT` is 5000, equal to the route's ceiling, so a region holding more than that is returned incompletely and neither surface has a paging path to fetch the rest. The largest today holds 661, and `total` is a real count, so crossing that line is detectable rather than silent — but it is a ceiling, not an absence of one. Neither this list nor Discover has a "load more", and the rows come back `ORDER BY e.name`, so a limit under the region's size truncated alphabetically rather than paging: at 200, Europe's 661 ended after "G". The markers are built from this same array, so the cut removed pins as well as rows
-- Stores hover state (`hoveredExperienceId`, `hoveredLocationId`, `hoverSource`)
 - Stores selection state (`selectedExperienceId`) and map triggers (`flyToExperienceId`, `shouldFitRegion`)
-- Stores hover preview payload (image/title/location/source)
 
-This lets list and map stay synchronized without prop drilling.
+This lets list and map stay synchronized without prop drilling. Hover is **not** here — it moved
+out, for the reason below.
+
+## What a hover is allowed to re-render
+
+Hover state — the hovered object, the hovered place, where the hover came from, and the preview
+card's contents — lives in `useHoverContext.tsx`, outside React, in a small store. The context
+carries the store and its setters and nothing else, so its value never changes identity and reading
+it never costs a render.
+
+It is not a preference. A context value is one object, so hover as React state re-rendered every
+consumer on every mouse move: the map, the list's chrome, both dialogs, and the whole of an open
+card. Profiled in the browser on the Historic Centre of Saint Petersburg, whose card lists 112
+places, one hover re-rendered **1489 fibers** and blocked the main thread for **600-860 ms** — the
+highlighted row trailed the pointer by three to five rows and the map's ring answered seconds late.
+The same hover after: **109 fibers**, and that number no longer grows with the card's size.
+
+Three rules follow, and each is load-bearing:
+
+- **Read the one value you draw with.** `useHoverSelector(s => …)` must return a primitive or a
+  reference the store holds — `useSyncExternalStore` compares with `Object.is`, so a selector that
+  builds an object re-renders on every read. `LocationRow` selects "am I the hovered place";
+  `ExperienceListItem` selects "am I the hovered object"; `HoverPreviewCard` selects the preview.
+- **React in an effect where you do not draw.** `ExperienceMarkers` and `useListScrollAnchor`
+  subscribe rather than render: the first reconciles every `<Source>` and `<Layer>` when it
+  renders, and the second belongs to the component that builds every row.
+- **A listener that answers a hover by writing must not listen to what it writes.**
+  `ExperienceMarkers` answers a hover by setting the preview, so subscribed to the whole state it
+  woke itself — the first hover of a place recursed until the stack ran out and every marker on the
+  map went dark. `subscribeToHoverTarget()` is the narrow subscription that fixes it, and
+  `hooks/hoverStore.test.tsx` pins all of the above by counting renders.
+
+The memos are the other half: `ExperienceListItem`, `ExperienceExpandedDetails` and `LocationRow`
+are each wrapped in `memo`, and their props are chosen so it holds. Unwrap any one and the hover
+reaches everything below it again while every test still passes — which is how it regressed before
+(`hoverIsolation.test.tsx` guards the wrappers).
 
 ## Batch location data
 
@@ -84,7 +118,7 @@ Discover Mode still uses clustering (cluster circles, count labels, fold badge, 
 ## Interaction behavior
 
 - Hover map marker -> popup + hover ring + list highlight
-- Hover list card -> hover ring on the marker's own point, whether or not it is currently drawn (below the heatmap threshold the heat is what shows there instead). The row is memoised and its props are held stable so this costs one row's render rather than the region's: the handlers are declared once in `ExperienceList` rather than per row, the shared hovered-location id is narrowed by `ownedHoveredLocationId()` to the row that owns it, and each row registers its own scroll ref instead of being wrapped in a `<Box>` the parent rebuilds. Measured at 200 experiences: 2460 ms per hover before, 15 ms after
+- Hover list card -> hover ring on the marker's own point, whether or not it is currently drawn (below the heatmap threshold the heat is what shows there instead). The row is memoised and its props are held stable so this costs one row's render rather than the region's: the handlers are declared once in `ExperienceList` rather than per row, each row registers its own scroll ref instead of being wrapped in a `<Box>` the parent rebuilds, and the hover itself is read where it is drawn rather than passed down — see § What a hover is allowed to re-render. Measured at 200 experiences: 2460 ms per hover before, 15 ms after
 - Click marker -> toggle selected experience, and **keep the view** — except a *folded* pin, whose click unfolds the object and selects nothing: the pin is one named place now, so framing all of the object's places would take the one the reader clicked off the screen
 - Multi-location selected **from the list** -> fit bounds to all its shown points, or to all of them when none is in region — the same qualifier the marker and highlight rules carry. A list click means "take me to it" and a map click means "this one, here", which is why only one of them re-frames
 
@@ -113,7 +147,7 @@ The list reads as groups and renders as one sequence. `flattenGroups()` in `Expe
 
 And the card is rendered directly rather than through a `Collapse`. There is no animation to run, and the wrapper was not free: MUI sets the wrapper's height through its transition machinery, a task later than the commit that inserted the card, so the row grew where nothing re-rendered to measure it. With the content mounted straight in, the insertion, the new height and the layout effect that reports it all land in one commit.
 
-The same reporting covers what happens *inside* an open card — the picture arriving in a card the cap opened without it (266 px), and the points outside the region unfolding — because that state belongs to the card, which re-renders without the row and so cannot be measured from above. Each reports its own height change in a layout effect, and both land on the one measurement. The works list does not report, and does not need to: it is a 300 px scroller whose "show all" link only appears once its contents already overflow it, so the row's height is the same before and after.
+The same reporting covers what happens *inside* an open card — the picture arriving in a card the cap opened without it (266 px), the places inside the region unfolding past their own cap (73 rows on the Historic Centre's ninety-three), and the points outside the region unfolding — because none of that state is visible to the row, which does not re-render with the card and so cannot measure it from above. The picture is the card's own state and reports from `ExperienceExpandedDetails`; both caps belong to `CardLocationList` and report from there. Each reports its own height change in a layout effect, and all three land on the one measurement. The works list does not report, and does not need to: it is a 300 px scroller whose "show all" link only appears once its contents already overflow it, so the row's height is the same before and after.
 
 `experience-list-layout.smoke.spec.ts` keeps the opening honest by sampling **every animation frame** rather than polling: the fault it guards against lasted a single frame, and a 50 ms poll steps straight over it. It caught this one when a pre-paint measurement placed in the wrong component looked correct and did nothing.
 
@@ -135,6 +169,16 @@ Three consequences of rows no longer having elements:
 - **Scrolling to a row asks for an index, not an element.** `rowIndexByExperienceId()` gives the list's movements (hovered from the map, selected, the card opening, the re-aim after a click) a position for `virtualizer.scrollToIndex()`. The row a marker points at is usually outside the window, so `itemRefs` holds nothing for it and the element path alone would scroll nowhere without a sound; that path now serves the rejected rows, which render outside the virtualiser and so have an element and no index. Verified live: clicking a Danish pin selected *Jelling Mounds, Runic Stones and Church* and moved the list from row 487 to a window centred on row ~202. That row-index map is read through a ref and is deliberately absent from those effects' dependencies (`virtualizer` stays, being stable across renders) — the index map is rebuilt whenever the rows change, and expanding a group is not a change of selection. One movement does depend on it, and pays for the privilege with a window: the re-aim after a list click, described under § The list answers about the view, fires only while the flight that click started can still be moving the rows. All four movements live in `ExperienceList/useListScrollAnchor.ts`. The scroll no longer glides: `scrollToIndex` jumps, where the helpers it replaced passed `behavior: 'smooth'`, because TanStack documents smooth scrolling as unsupported alongside dynamic measurement — a jump to the right row beats a glide to a stale offset.
 - **Category headers are rows too.** The header of a group below the window is not in the document — anything looking for one has to scroll to it first.
 - **A New-badge impression reports what the viewport intersects.** `experienceIdsInVisibleRange()` reads `virtualizer.range`, not the mounted rows: `getVirtualItems()` includes the eight `overscan` rows on either side, which are mounted precisely because they are *not* in view. The server keeps the *first* impression, so reporting an expanded group's 467 experiences spent 467 personal "new" windows on rows the reader had not reached — and reporting the overscan would be the same mistake eight rows at a time. Verified live: scrolling to *Lemnian Athena* sent `{"experienceIds":[6940]}` — that row and no other. The reports are also flushed on a timer (`SEEN_FLUSH_MS`), because the seen-set now changes as the reader scrolls and `authenticatedLimiter` allows 60 requests a minute per IP across every authenticated call; ids accumulate between flushes, so this bounds how often rows are reported, never which of them are.
+
+**An open card caps its in-region places at twenty, and a marker hover lifts the cap.** A serial
+site mounts every one of its places into the card — 112 for the Historic Centre of Saint Petersburg,
+measured at 432 ms before the card could appear — so the card shows `IN_REGION_INITIAL` of them with
+a "Show all N places" control, the shape the out-of-region list has always had. The cap costs nothing
+a reader can see until the hover comes *from the map*: that hover names a place, the place's row is
+what draws it, and a row that was never mounted draws nothing — the highlight would vanish and
+`useListScrollAnchor` would centre the object's row instead of the place. So `CardLocationList`
+unfolds itself when a marker names a place past the cap, and only for a marker: a hover from the
+list can only have come from a row already on the page.
 
 Separately — and true of any virtualiser here, fixed-height rows included — the virtualiser does not know where the list starts. Row offsets begin at zero while the scroll container's do not: a curator has the "add a category" box above the list, putting it 47 px down, so the computed range is off by that much where `overscan` does not cover it. `scrollMargin` is the remedy, but the documented way to measure it — the list's `offsetTop` — reads 102 px here, because the scroll container is `position: static` and so is not the offset parent. A wrong margin shifts the range for every reader where none shifts it only for curators, so the margin is deliberately absent and the gap is tracked as #556.
 
@@ -178,7 +222,7 @@ A card that opens because everything settled has nothing left to append: the que
 
 Both Map mode and Discover mode render hover cards as React `<Box>` overlays positioned absolutely over the map container — not as MapLibre native popups. This allows consistent styling, image loading, and animation across both surfaces.
 
-Map mode (`RegionMapVT`): positioned by marker screen location (left/right and top/bottom) to avoid covering the hovered marker.
+Map mode (`regionMap/HoverPreviewCard.tsx`): positioned by marker screen location (left/right and top/bottom) to avoid covering the hovered marker. Its own component and its own subscriber to the hover store, so the map is not one: `RegionMapVT` used to read the preview and render this inline, which meant a mouse move across a list of places re-rendered the whole map. It still needs the map — only the map can say where on screen the described point currently is — and takes `mapRef`/`mapLoaded` as props for that.
 
 Discover mode (`DiscoverExperienceView`): positioned in the bottom-left corner of the map — which is why the fold chip sits at the top centre (`FoldPlacesControl`), since the card would otherwise paint over it. On marker hover, `useDiscoverHover` looks up the experience in the `experiences` array by feature ID to get its image URL and category name. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
 

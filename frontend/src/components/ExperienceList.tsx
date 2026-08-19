@@ -11,7 +11,7 @@
 
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import {
-  ownedHoveredLocationId, lostHiddenLabel, outsideViewLabel,
+  lostHiddenLabel, outsideViewLabel,
   flattenGroups, rowIndexByExperienceId, experienceIdsInVisibleRange,
   type ExperienceGroupLike,
 } from './ExperienceList/utils';
@@ -31,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useExperienceContext } from '../hooks/useExperienceContext';
+import { useHoverActions } from '../hooks/useHoverContext';
 import { useAuth } from '../hooks/useAuth';
 import { useNewBadgeImpressions } from '../hooks/useNewBadgeImpressions';
 import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
@@ -78,10 +79,6 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     setShowLost,
     regionId,
     viewBounds,
-    hoveredExperienceId,
-    hoveredLocationId,
-    hoverSource,
-    setHoveredFromList,
     selectedExperienceId,
     toggleSelectedExperience,
     triggerFlyTo,
@@ -90,6 +87,12 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     collapsedExperienceIds,
     toggleCollapsedExperience,
   } = useExperienceContext();
+  // Hover is a store, not state, and this component reads none of its values:
+  // they change on every mouse move, and this render builds the whole list —
+  // every group header, both dialogs, and any open card. What a hover changes is
+  // read where it is drawn (the row, the place, the map's preview card), and
+  // reacted to in an effect where it moves the list (`useListScrollAnchor`).
+  const { store: hoverStore, setHoveredFromList } = useHoverActions();
   const { isAuthenticated, isCurator, user } = useAuth();
   const { selectedRegion } = useNavigation();
   const queryClient = useQueryClient();
@@ -179,7 +182,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // Refs for scrolling to items (experiences and locations)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const locationRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  // `HTMLElement`, not `HTMLDivElement`: a place row is the `li` its `List`
+  // parent expects — see `LocationRow`.
+  const locationRefs = useRef<Map<number, HTMLElement>>(new Map());
 
   // Group active experiences by category_name, sorted by display_priority
   const groups = useMemo<ExperienceGroup[]>(() => {
@@ -319,7 +324,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // Every movement of this list, and the reasons each one is narrower than it
   // looks, live in one place — see the hook.
   const { handleCardOpened, measureRow, expectFlight } = useListScrollAnchor({
-    hoveredExperienceId, hoveredLocationId, hoverSource, selectedExperienceId,
+    hoverStore, selectedExperienceId,
     scrollContainerRef, itemRefs, locationRefs, virtualizer, rowIndexByExperience,
   });
 
@@ -519,12 +524,10 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       locations={locationsByExperience[exp.id]}
       locationsResolved={locationsResolved}
       isLocationVisited={isLocationVisited}
-      isHovered={hoveredExperienceId === exp.id}
+      // Hover is not passed down. It arrives at the row and at the place from
+      // the store, each subscribing to its own boolean, so a mouse move does not
+      // re-render this list to hand a new prop to every row it holds.
       isSelected={selectedExperienceId === exp.id}
-      // Narrowed to this experience's own locations. Passed whole, a hover on
-      // any location anywhere would change this prop for every row and undo
-      // the memo for the entire list.
-      hoveredLocationId={ownedHoveredLocationId(locationsByExperience[exp.id], hoveredLocationId)}
       locationRefs={locationRefs}
       itemRefs={itemRefs}
       isCollapsed={collapsedExperienceIds.has(exp.id)}

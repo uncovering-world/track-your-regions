@@ -162,6 +162,7 @@ components/
 │   ├── ExperienceListItem.tsx
 │   ├── ExperienceExpandedDetails.tsx
 │   ├── ArtworksList.tsx
+│   ├── CardLocationList.tsx  ← the open card's two lists of places, and their caps
 │   ├── GroupHeader.tsx
 │   ├── NoticeLink.tsx
 │   ├── RejectedSection.tsx
@@ -171,7 +172,8 @@ components/
 │   ├── useListScrollAnchor.ts ← every movement of the list
 │   ├── inView.ts
 │   └── utils.ts
-├── regionMap/                ← extracted hooks for RegionMapVT
+├── regionMap/                ← what came out of RegionMapVT: hooks, and the hover card
+│   ├── HoverPreviewCard.tsx  ← names what the pointer is over, over the map
 │   ├── layerStyles.ts
 │   ├── useRegionMetadata.ts
 │   ├── useTileUrls.ts
@@ -249,7 +251,8 @@ Hooks in `frontend/src/hooks/` are app-wide concerns shared across many componen
 |------|---------|
 | `useNavigation` | World views, divisions, breadcrumbs, tile version |
 | `useAuth` | Authentication state, login/logout |
-| `useExperienceContext` | Experiences, hover sync, selection |
+| `useExperienceContext` | Experiences, selection, what the map is showing |
+| `useHoverContext` | What the pointer is over — a store, not state, and read where it is drawn |
 | `useVisitedRegions` | Region visit tracking |
 | `useVisitedExperiences` | Experience visit tracking, mutations |
 | `useDiscoverExperiences` | Discover mode queries |

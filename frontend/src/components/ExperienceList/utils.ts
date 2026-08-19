@@ -2,15 +2,45 @@
  * Shared constants and helpers for the ExperienceList components.
  */
 
-import type { Experience, ExperienceLocation, VisitedStatus } from '../../api/experiences';
+import type { Experience, VisitedStatus } from '../../api/experiences';
 
 export const OUT_OF_REGION_INITIAL = 3;
+
+/**
+ * How many of an object's in-region places an open card mounts before asking.
+ *
+ * Twenty is more than any card a reader meets in one look and far below the
+ * serial sites that made this necessary: the Historic Centre of Saint Petersburg
+ * carries 112 places, and mounting them all cost 432 ms and left the card's
+ * hover trailing the pointer by several rows. Discover's panel virtualises the
+ * same list; here the card's height is measured by the list's own virtualiser,
+ * so a cap with a way past it is the shape that fits.
+ */
+export const IN_REGION_INITIAL = 20;
 export const ARTWORKS_INITIAL_LIMIT = 10;
 
 export function resolveRowBgColor(isHovered: boolean, isSelected: boolean): string {
   if (isHovered) return 'action.hover';
   if (isSelected) return 'primary.50';
   return 'transparent';
+}
+
+/**
+ * Whether a hover names an in-region place the cap is currently hiding.
+ *
+ * Only a hover from the *map* can: it names a place, the place's row is what
+ * draws it, and a row past `IN_REGION_INITIAL` was never mounted — so without
+ * this the marker for the fiftieth of the Historic Centre's ninety-three places
+ * highlighted nothing, and the list centred the object's row instead of the
+ * place. A hover from the list can only have come from a row already on screen.
+ */
+export function hoverRevealsCappedPlace(
+  inRegionIds: readonly number[],
+  hoveredLocationId: number | null,
+  hoverSource: 'marker' | 'list' | null,
+): boolean {
+  if (hoverSource !== 'marker' || hoveredLocationId === null) return false;
+  return inRegionIds.indexOf(hoveredLocationId) >= IN_REGION_INITIAL;
 }
 
 export function resolveLocationColor(isLocationHovered: boolean, isVisited: boolean): string {
@@ -23,23 +53,6 @@ export function computeVisitedStatus(visitedLocations: number, totalLocations: n
   if (visitedLocations === 0) return 'not_visited';
   if (visitedLocations >= totalLocations) return 'visited';
   return 'partial';
-}
-
-/**
- * The hovered location id, but only for the row that owns it.
- *
- * The list holds one hovered-location id for the whole region, and every row
- * reads it. Passed through unchanged it would differ on every row whenever any
- * location anywhere is hovered, which invalidates the memo on all of them at
- * once — the rows that do not own the location have nothing to draw with it
- * anyway, so they get null and stay put.
- */
-export function ownedHoveredLocationId(
-  locations: ExperienceLocation[] | undefined,
-  hoveredLocationId: number | null,
-): number | null {
-  if (hoveredLocationId === null || !locations) return null;
-  return locations.some(loc => loc.id === hoveredLocationId) ? hoveredLocationId : null;
 }
 
 /**

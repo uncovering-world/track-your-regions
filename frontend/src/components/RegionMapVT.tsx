@@ -25,6 +25,7 @@ import { useNavigation } from '../hooks/useNavigation';
 import { useVisitedRegions } from '../hooks/useVisitedRegions';
 import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
 import { useExperienceContext } from '../hooks/useExperienceContext';
+import { HoverPreviewCard } from './regionMap/HoverPreviewCard';
 import { ExperienceMarkers } from './ExperienceMarkers';
 import { SelectedObjectFoldControl } from './experienceMarkers/FoldPlacesControl';
 import { MapUnavailable } from './shared/MapUnavailable';
@@ -125,9 +126,6 @@ export function RegionMapVT() {
     handleMouseLeave,
     handleGoToParent,
     hoveredRegionName,
-    hoverPreview,
-    hoverPreviewImage,
-    hoverCardPlacement,
     interactiveLayerIds,
   } = useMapInteractions({
     mapRef,
@@ -498,61 +496,10 @@ export function RegionMapVT() {
         <SelectedObjectFoldControl regionId={selectedRegion.id} />
       )}
 
-      {/* Experience/location hover preview (explore mode) */}
-      {isExploring && hoverPreview && (
-        <Box
-          sx={{
-            position: 'absolute',
-            ...hoverCardPlacement,
-            zIndex: 3,
-            width: 260,
-            maxWidth: 'calc(100% - 32px)',
-            backgroundColor: 'rgba(255,255,255,0.97)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(0,0,0,0.08)',
-            borderRadius: 2,
-            overflow: 'hidden',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.20)',
-            pointerEvents: 'none',
-            animation: 'tyrHoverCardIn 170ms cubic-bezier(0.2, 0.8, 0.2, 1)',
-          }}
-        >
-          {hoverPreviewImage && (
-            <Box
-              component="img"
-              src={hoverPreviewImage}
-              alt={hoverPreview.experienceName}
-              sx={{
-                width: '100%',
-                maxHeight: 180,
-                objectFit: 'contain',
-                display: 'block',
-                backgroundColor: 'grey.100',
-              }}
-            />
-          )}
-          <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
-              {hoverPreview.experienceName}
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }} noWrap>
-              {hoverPreview.locationName || 'Primary location'}
-            </Typography>
-            {hoverPreview.categoryName && (
-              <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
-                {hoverPreview.categoryName}
-              </Typography>
-            )}
-          </Box>
-        </Box>
-      )}
-
-      <style>{`
-        @keyframes tyrHoverCardIn {
-          from { opacity: 0; transform: translateY(8px) scale(0.98); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-      `}</style>
+      {/* Experience/location hover preview (explore mode). Its own subscriber to
+          the hover context, so a mouse move over a list of places does not
+          re-render this map — see the component. */}
+      {isExploring && <HoverPreviewCard mapRef={mapRef} mapLoaded={mapLoaded} />}
 
       {/* Current region info */}
       {selectedRegion && (
