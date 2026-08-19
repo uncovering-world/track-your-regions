@@ -15,7 +15,7 @@
  * (DiscoverExperienceView).
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { memo, useState, useRef, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -112,7 +112,7 @@ interface AddExperienceDialogProps {
   defaultTab?: 0 | 1;
 }
 
-export function AddExperienceDialog({ open, onClose, regionId, regionName, defaultCategoryId, defaultTab }: AddExperienceDialogProps) {
+function AddExperienceDialogComponent({ open, onClose, regionId, regionName, defaultCategoryId, defaultTab }: AddExperienceDialogProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(defaultTab ?? 0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -691,3 +691,6 @@ export function AddExperienceDialog({ open, onClose, regionId, regionName, defau
     </Dialog>
   );
 }
+
+/** Memoised for the reason given on `CurationDialog`: mounted while closed. */
+export const AddExperienceDialog = memo(AddExperienceDialogComponent);

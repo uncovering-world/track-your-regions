@@ -172,6 +172,12 @@ components/
 │   ├── useListScrollAnchor.ts ← every movement of the list
 │   ├── inView.ts
 │   └── utils.ts
+├── ExperienceMarkers.tsx     ← the markers themselves: sources, layers, list→map hover
+├── experienceMarkers/        ← what came out of ExperienceMarkers: the pins and the pointer
+│   ├── buildMarkers.ts       ← one marker per place a reader may go to
+│   ├── FoldPlacesControl.tsx
+│   ├── layers.ts
+│   └── useMarkerInteractions.ts ← the map's own listeners: popup, ring, click
 ├── regionMap/                ← what came out of RegionMapVT: hooks, and the hover card
 │   ├── HoverPreviewCard.tsx  ← names what the pointer is over, over the map
 │   ├── layerStyles.ts

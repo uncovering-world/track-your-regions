@@ -19,12 +19,6 @@ export const OUT_OF_REGION_INITIAL = 3;
 export const IN_REGION_INITIAL = 20;
 export const ARTWORKS_INITIAL_LIMIT = 10;
 
-export function resolveRowBgColor(isHovered: boolean, isSelected: boolean): string {
-  if (isHovered) return 'action.hover';
-  if (isSelected) return 'primary.50';
-  return 'transparent';
-}
-
 /**
  * Whether a hover names an in-region place the cap is currently hiding.
  *

@@ -63,11 +63,6 @@ interface ExperienceContextType {
   triggerFlyTo: (id: number) => void;
   clearFlyTo: () => void;
 
-  // Trigger to fit region bounds (when closing expanded item)
-  shouldFitRegion: boolean;
-  triggerFitRegion: () => void;
-  clearFitRegion: () => void;
-
   // Helper to get experience by ID
   getExperienceById: (id: number) => Experience | undefined;
 
@@ -96,7 +91,6 @@ interface ExperienceProviderProps {
 export function ExperienceProvider({ regionId, isExploring, children }: ExperienceProviderProps) {
   const [selectedExperienceId, setSelectedExperienceId] = useState<number | null>(null);
   const [flyToExperienceId, setFlyToExperienceId] = useState<number | null>(null);
-  const [shouldFitRegion, setShouldFitRegion] = useState(false);
   const [expandedCategoryNames, setExpandedCategoryNames] = useState<Set<string>>(new Set());
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   // Held for the region it was measured in: a view belongs to the map that was
@@ -170,14 +164,6 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     setFlyToExperienceId(null);
   }, []);
 
-  const triggerFitRegion = useCallback(() => {
-    setShouldFitRegion(true);
-  }, []);
-
-  const clearFitRegion = useCallback(() => {
-    setShouldFitRegion(false);
-  }, []);
-
   const value = useMemo<ExperienceContextType>(() => ({
     experiences,
     experiencesLoading: isLoading,
@@ -195,9 +181,6 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     flyToExperienceId,
     triggerFlyTo,
     clearFlyTo,
-    shouldFitRegion,
-    triggerFitRegion,
-    clearFitRegion,
     getExperienceById,
     expandedCategoryNames,
     setExpandedCategoryNames,
@@ -205,7 +188,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     toggleCollapsedExperience,
     previewImageUrl,
     setPreviewImageUrl,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, shouldFitRegion, triggerFitRegion, clearFitRegion, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, previewImageUrl]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, previewImageUrl]);
 
   return (
     <ExperienceContext.Provider value={value}>

@@ -82,7 +82,6 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     selectedExperienceId,
     toggleSelectedExperience,
     triggerFlyTo,
-    triggerFitRegion,
     setExpandedCategoryNames,
     collapsedExperienceIds,
     toggleCollapsedExperience,
@@ -358,15 +357,19 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const handleClick = useCallback((exp: Experience) => {
     const isClosing = selectedIdRef.current === exp.id;
     toggleSelectedExperience(exp.id);
-    if (isClosing) {
-      triggerFitRegion();
-    } else {
+    // Closing a card moves no camera. It used to fly back to the whole region,
+    // on the theory that opening had flown you in — but by then the reader has
+    // usually panned or zoomed for themselves, and throwing that away is the
+    // list moving under them, which is the complaint every movement here is
+    // narrowed to avoid. It also fought #553: refitting the region republishes
+    // the view, so closing one card silently changed which rows are listed.
+    if (!isClosing) {
       // Said before the flight so the list's re-aim knows the rows may move
       // under the card that is about to open — see `useListScrollAnchor`.
       expectFlight(exp.id);
       triggerFlyTo(exp.id);
     }
-  }, [toggleSelectedExperience, triggerFitRegion, triggerFlyTo, expectFlight]);
+  }, [toggleSelectedExperience, triggerFlyTo, expectFlight]);
 
   const handleLocationVisitedToggle = useCallback((locationId: number, isVisited: boolean) => {
     if (isVisited) {
@@ -389,6 +392,11 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   }, [setHoveredFromList]);
 
   const handleCurate = useCallback((exp: Experience) => setCurationTarget(exp), []);
+  // Stable, so the two dialogs below — mounted for as long as this list is,
+  // whether or not anyone has opened them — can hold their memo while the list
+  // re-renders on every scroll of it.
+  const closeCuration = useCallback(() => setCurationTarget(null), []);
+  const closeAddDialog = useCallback(() => setAddDialogState({ open: false }), []);
   // Keyed on `.mutate`, not on the mutation. TanStack Query v5 returns a fresh
   // result object every render, so depending on the whole thing would rebuild
   // these on each one and drop the memo for every row in the Rejected section.
@@ -621,14 +629,14 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       <CurationDialog
         experience={curationTarget}
         regionId={regionId}
-        onClose={() => setCurationTarget(null)}
+        onClose={closeCuration}
       />
 
       {/* Add Experience to Region Dialog */}
       {regionId && (
         <AddExperienceDialog
           open={addDialogState.open}
-          onClose={() => setAddDialogState({ open: false })}
+          onClose={closeAddDialog}
           regionId={regionId}
           regionName={selectedRegion?.name}
           defaultCategoryId={addDialogState.defaultCategoryId}

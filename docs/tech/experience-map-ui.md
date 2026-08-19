@@ -3,6 +3,9 @@
 This document describes how experience markers work in both map surfaces:
 
 - Map Mode: `frontend/src/components/RegionMapVT.tsx` + `frontend/src/components/ExperienceMarkers.tsx`
+  (the sources, the layers and the list→map hover), with every MapLibre listener on the markers —
+  the popup, the hover ring, the click that folds or selects — in
+  `frontend/src/components/experienceMarkers/useMarkerInteractions.ts`
 - Discover Mode: `frontend/src/components/discover/DiscoverExperienceView.tsx`, which owns the
   selection and the camera and delegates the rest to one file each: `useDiscoverMap.ts` (the map
   instance and every listener on it), `useDiscoverHover.ts` (hover, in both directions),
@@ -15,7 +18,12 @@ This document describes how experience markers work in both map surfaces:
 `ExperienceProvider` is the source of truth for region exploration state:
 
 - Fetches region experiences with `includeChildren=false` and `limit=WHOLE_REGION_LIMIT` — a region is read whole, never paged. "Whole" is bounded: `WHOLE_REGION_LIMIT` is 5000, equal to the route's ceiling, so a region holding more than that is returned incompletely and neither surface has a paging path to fetch the rest. The largest today holds 661, and `total` is a real count, so crossing that line is detectable rather than silent — but it is a ceiling, not an absence of one. Neither this list nor Discover has a "load more", and the rows come back `ORDER BY e.name`, so a limit under the region's size truncated alphabetically rather than paging: at 200, Europe's 661 ended after "G". The markers are built from this same array, so the cut removed pins as well as rows
-- Stores selection state (`selectedExperienceId`) and map triggers (`flyToExperienceId`, `shouldFitRegion`)
+- Stores selection state (`selectedExperienceId`) and the map's one trigger, `flyToExperienceId`.
+  There used to be a second, `shouldFitRegion`: closing a card flew the camera back to the whole
+  region, on the theory that opening it had flown you in. It is gone. By the time a reader closes
+  a card they have usually panned or zoomed for themselves, and refitting threw that away — and
+  since #553 it did more than move the camera, because republishing the view changes which rows
+  are listed, so closing one card quietly re-filtered the list
 
 This lets list and map stay synchronized without prop drilling. Hover is **not** here — it moved
 out, for the reason below.
@@ -34,15 +42,25 @@ places, one hover re-rendered **1489 fibers** and blocked the main thread for **
 highlighted row trailed the pointer by three to five rows and the map's ring answered seconds late.
 The same hover after: **109 fibers**, and that number no longer grows with the card's size.
 
-Three rules follow, and each is load-bearing:
+Four rules follow, and each is load-bearing:
 
 - **Read the one value you draw with.** `useHoverSelector(s => …)` must return a primitive or a
   reference the store holds — `useSyncExternalStore` compares with `Object.is`, so a selector that
   builds an object re-renders on every read. `LocationRow` selects "am I the hovered place";
-  `ExperienceListItem` selects "am I the hovered object"; `HoverPreviewCard` selects the preview.
+  `HoverPreviewCard` selects the preview.
 - **React in an effect where you do not draw.** `ExperienceMarkers` and `useListScrollAnchor`
   subscribe rather than render: the first reconciles every `<Source>` and `<Layer>` when it
   renders, and the second belongs to the component that builds every row.
+- **Where a hover changes one CSS property, do not render at all.** Two of them do. The map's
+  hover ring is written straight to its source (`getSource(SOURCE_HOVER).setData()`), the way
+  Discover's map has always drawn it — as React state it re-rendered the component that *is* the
+  map's sources, and an object rings all of its places where a place rings one. And an experience
+  row marks itself with `data-hovered` from its own subscription, styled by `&[data-hovered]`:
+  the pointer's own case was already pure CSS (`&:hover`), so React was carrying only the
+  map→list direction, and paying two rows' MUI subtrees for it. Both are still theme tokens and
+  both still answer a hover that started on the map. Measured on Northwestern Federal District:
+  hovering an object's row cost 437 fibers over two commits, then 296, and now **109 in one** —
+  the same as hovering a place, and the only thing rendering is the preview card.
 - **A listener that answers a hover by writing must not listen to what it writes.**
   `ExperienceMarkers` answers a hover by setting the preview, so subscribed to the whole state it
   woke itself — the first hover of a place recursed until the stack ran out and every marker on the

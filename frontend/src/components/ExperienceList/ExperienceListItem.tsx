@@ -26,7 +26,7 @@ import { LifecycleChip } from '../shared/LifecycleChip';
 import { getCategoryPrimaryColor, VISITED_GREEN, PARTIAL_AMBER } from '../../utils/categoryColors';
 import { preloadCardImage } from '../../utils/imagePreload';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
-import { useHoverSelector } from '../../hooks/useHoverContext';
+import { subscribeToHoverTarget, useHoverActions } from '../../hooks/useHoverContext';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -36,7 +36,6 @@ import { useHoverSelector } from '../../hooks/useHoverContext';
  */
 const HOVER_INTENT_MS = 140;
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
-import { resolveRowBgColor } from './utils';
 import { isFoldable } from '../experienceMarkers/buildMarkers';
 
 /**
@@ -180,11 +179,25 @@ function ExperienceListItemComponent({
   onCardLayout,
   isRejected,
 }: ExperienceListItemProps) {
-  // One boolean out of the hover store, so this row re-renders when the pointer
-  // enters or leaves *it* and for no other row's hover. The places inside an open
-  // card subscribe on their own account (`LocationRow`), which is why moving
-  // between them re-renders two small rows rather than this whole card.
-  const isHovered = useHoverSelector(s => s.hoveredExperienceId === experience.id);
+  /**
+   * The hovered row is marked on its element, not re-rendered.
+   *
+   * What a hover changes about a row is one background colour, and the pointer's
+   * own case is already pure CSS (`&:hover` below). React was needed only for the
+   * other direction — hovering a *marker* highlights its row — and paying a
+   * render for it meant two rows rebuilding their MUI subtrees on every move of
+   * the pointer: 296 fibers per hover, measured on Northwestern Federal District.
+   * An attribute on the row costs two attribute writes and no render at all, and
+   * `&[data-hovered]` keeps the colour a theme token rather than a literal.
+   */
+  const { store: hoverStore } = useHoverActions();
+  const rowElRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => subscribeToHoverTarget(hoverStore, ({ hoveredExperienceId }) => {
+    const el = rowElRef.current;
+    if (!el) return;
+    if (hoveredExperienceId === experience.id) el.setAttribute('data-hovered', 'true');
+    else el.removeAttribute('data-hovered');
+  }), [hoverStore, experience.id]);
   const warmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A windowed row leaves the document without a `mouseleave`: the virtualiser
   // recycles it on a fast scroll, a group above it collapses, the region refetches.
@@ -316,10 +329,14 @@ function ExperienceListItemComponent({
           many for anything reading the list aloud. */}
       <ListItem
         component="div"
+        ref={rowElRef}
         sx={{
           pl: 2,
           cursor: 'pointer',
-          bgcolor: resolveRowBgColor(isHovered, isSelected),
+          bgcolor: isSelected ? 'primary.50' : 'transparent',
+          // Both hovers, and both above the selected colour, which is the order
+          // the row has always drawn them in.
+          '&[data-hovered="true"]': { bgcolor: 'action.hover' },
           borderLeft: isSelected ? 4 : 0,
           borderColor: 'primary.main',
           '&:hover': { bgcolor: 'action.hover' },
