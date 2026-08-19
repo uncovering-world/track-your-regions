@@ -5,25 +5,18 @@
  * When a source is selected, it shows markers for those experiences.
  * When a specific experience is selected, the map zooms to its locations.
  *
- * Hover sync: hovering a card highlights the marker on the map (teal ring).
- * Hovering a marker on the map auto-scrolls the list to center that card.
+ * What is left here after the split (#562) is what only this component can hold:
+ * what the map is *showing* — the marker data it feeds the source, and every
+ * camera move, which is the one thing a reader can undo by moving the map
+ * themselves and so needs the guards that live beside it. The parts that answer
+ * to something other than the selection live one file each: `useDiscoverMap` owns
+ * the instance and its listeners, `useDiscoverHover` the hover in both directions,
+ * `discoverMapLayers` the sources and paint, `DiscoverExperienceList` the rows.
  */
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
-import {
-  Box,
-  Typography,
-  IconButton,
-  Button,
-  CircularProgress,
-  TextField,
-  InputAdornment,
-} from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import SearchIcon from '@mui/icons-material/Search';
-import ClearIcon from '@mui/icons-material/Clear';
+import { Box, Typography, CircularProgress } from '@mui/material';
 import ExploreIcon from '@mui/icons-material/Explore';
-import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import maplibregl from 'maplibre-gl';
 import type { Experience } from '../../api/experiences';
 import type { ActiveView } from '../../hooks/useDiscoverExperiences';
@@ -31,70 +24,25 @@ import { useRegionLocations } from '../../hooks/useRegionLocations';
 import { useCollapsedExperiences } from '../../hooks/useCollapsedExperiences';
 import { buildExperienceMarkers, representablePlaces } from '../experienceMarkers/buildMarkers';
 import { FoldPlacesControl } from '../experienceMarkers/FoldPlacesControl';
-
-/** Discover shows one category at a time, so the builder's filter has nothing to do. */
-const NO_CATEGORY_FILTER: Set<string> = new Set();
-import { ExperienceCard } from './ExperienceCard';
+import { DiscoverExperienceList } from './DiscoverExperienceList';
 import { useAuth } from '../../hooks/useAuth';
 import { useNewBadgeImpressions } from '../../hooks/useNewBadgeImpressions';
 import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
-import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { CurationDialog } from '../shared/CurationDialog';
 import { AddExperienceDialog } from '../shared/AddExperienceDialog';
-import { LoadingSpinner } from '../shared/LoadingSpinner';
-import { EmptyState } from '../shared/EmptyState';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
+import { SOURCE_ID, HIGHLIGHT_SOURCE_ID } from './discoverMapLayers';
+import { useDiscoverMap } from './useDiscoverMap';
+import { useDiscoverHover } from './useDiscoverHover';
+
+/** Discover shows one category at a time, so the builder's filter has nothing to do. */
+const NO_CATEGORY_FILTER: Set<string> = new Set();
 
 // Stable identity: an inline [] would be a new array every render, and the
 // impression effect keys off the array it is given.
 const EMPTY_EXPERIENCES: Experience[] = [];
 
-import {
-  addDiscoverMapLayers, clusterRadiusFor, SOURCE_ID, HIGHLIGHT_SOURCE_ID, HOVER_SOURCE_ID,
-} from './discoverMapLayers';
-
-
-/**
- * Rings for the places of an object that the map is currently drawing as pins.
- *
- * One query for the whole layer, not one per place: an object has hundreds of
- * places now — the Rock Art has 734 — and this runs in a `mouseenter` with no
- * hover-intent delay, so probing per place meant up to 1468 `queryRenderedFeatures`
- * calls for one row, each of which walks every loaded tile's feature index.
- *
- * Only pins. A place inside a cluster is not ringed here, because a bubble is
- * painted at its members' centroid and a member can sit 50 px away
- * (`clusterRadius` in `discoverMapLayers.ts`) — there is nothing at the place's
- * own position to ring. The caller rings the bubbles instead, by asking the
- * source which clusters hold this object.
- */
-function pinRingsFor(map: maplibregl.Map, expId: number): GeoJSON.Feature<GeoJSON.Point>[] {
-  // Deduplicated by coordinate: a point inside two tiles' buffers is returned
-  // once per tile, and this source carries no feature id to tell the copies apart
-  // (`promoteId` is deliberately absent, see `discoverMapLayers.ts`). Counting the
-  // copies would make an object look fully drawn and skip the cluster pass below.
-  const byPosition = new Map<string, GeoJSON.Feature<GeoJSON.Point>>();
-  for (const f of map.queryRenderedFeatures({ layers: ['unclustered-point'] })) {
-    if (f.properties?.id !== expId) continue;
-    const point = f.geometry as GeoJSON.Point;
-    const key = point.coordinates.map(c => c.toFixed(6)).join(',');
-    if (!byPosition.has(key)) {
-      byPosition.set(key, { type: 'Feature', geometry: point, properties: {} });
-    }
-  }
-  return [...byPosition.values()];
-}
-
-/** A ring sized to sit just outside a cluster bubble of `pointCount` points. */
-function clusterRing(cluster: maplibregl.MapGeoJSONFeature): GeoJSON.Feature<GeoJSON.Point> {
-  const radius = clusterRadiusFor((cluster.properties?.point_count as number) ?? 0);
-  return {
-    type: 'Feature',
-    geometry: cluster.geometry as GeoJSON.Point,
-    properties: { hoverRadius: radius + 10, ringRadius: radius + 4 },
-  };
-}
 
 interface DiscoverExperienceViewProps {
   activeView: ActiveView | null;
@@ -154,11 +102,6 @@ export function DiscoverExperienceView({
   const selectedFromMapIdRef = useRef<number | null>(null);
   /** The object this map last flew to, so a redraw of the same one does not. */
   const flownForRef = useRef<number | null>(null);
-  /**
-   * Bumped by every card hover and every leave, so an answer that arrives late
-   * can tell whether the hover it belongs to is still the current one.
-   */
-  const hoverGenerationRef = useRef(0);
   /** The selection those two marks were made for — see the effect that clears them. */
   const flySelectionRef = useRef<number | null>(null);
   /** The current folded selection, read by the once-created hover callback. */
@@ -259,47 +202,19 @@ export function DiscoverExperienceView({
     [experiences],
   );
 
-  // ── Hover sync state ──
-  const [hoveredExperienceId, setHoveredExperienceId] = useState<number | null>(null);
-  const [hoverPreview, setHoverPreview] = useState<{
-    name: string; imageUrl: string | null; categoryName: string;
-  } | null>(null);
-  const hoverSourceRef = useRef<'list' | 'map' | null>(null);
-  const isAutoScrollingRef = useRef(false);
-  const cardRefsMap = useRef<Map<number, HTMLDivElement>>(new Map());
-  const listContainerRef = useRef<HTMLDivElement>(null);
+  // Hover is one mechanism across the map and the list, so it lives in one place
+  // rather than as two halves of this component — see the hook.
+  const {
+    hoveredExperienceId, hoverPreview, cardRefsMap, listContainerRef,
+    mapHoverCallbackRef, highlightHoverCallbackRef, onCardMouseEnter, onCardMouseLeave,
+  } = useDiscoverHover({
+    mapRef, experiences, drawnCoordsRef, selectedExpIdRef,
+    externalHoverCoords, onHoverHighlightLocation,
+  });
 
-  // Refs for accessing latest values in long-lived callbacks
+  // The selected object's places, for the fit effect's long-lived callbacks.
   const selectedLocsRef = useRef(selectedExperienceLocations);
   selectedLocsRef.current = selectedExperienceLocations;
-  const experiencesRef = useRef(experiences);
-  experiencesRef.current = experiences;
-
-  // Ref callback for map hover → React state (used inside map init effect)
-  const mapHoverCallbackRef = useRef<(id: number | null) => void>(() => {});
-  mapHoverCallbackRef.current = (id: number | null) => {
-    hoverSourceRef.current = id != null ? 'map' : null;
-    setHoveredExperienceId(id);
-    if (id != null) {
-      const exp = experiencesRef.current.find(e => e.id === id);
-      if (exp) {
-        const rawImg = extractImageUrl(exp.image_url);
-        setHoverPreview({
-          name: exp.name,
-          imageUrl: rawImg ? toThumbnailUrl(rawImg, 250) : null,
-          categoryName: exp.category_name || '',
-        });
-      }
-    } else {
-      setHoverPreview(null);
-    }
-  };
-
-  // Ref callback for highlight-point hover → location list scroll
-  const highlightHoverCallbackRef = useRef<(locationId: number | null) => void>(() => {});
-  highlightHoverCallbackRef.current = (locationId: number | null) => {
-    onHoverHighlightLocation?.(locationId);
-  };
 
   // Not `utils/categoryColors.shortSourceName`: this heading has room for
   // "Public Art" where a chip does not, and the shared one shortens that to
@@ -344,212 +259,17 @@ export function DiscoverExperienceView({
   }, [activeView?.regionId, activeView?.categoryId]);
 
   // ── Map init (once) ──
-  useEffect(() => {
-    if (!mapContainerRef.current) return;
-    // `new maplibregl.Map` throws without a WebGL context, and this effect is
-    // the one place in Discover where that throw is not caught by anything —
-    // it unwinds through React and takes the whole page with it, list and all.
-    // Every later effect here already guards on a null `mapRef`, so declining
-    // to build the map leaves the rest of the view working.
-    if (!isWebGLAvailable()) return;
+  useDiscoverMap({
+    mapContainerRef,
+    mapRef,
+    toggleCollapsedRef,
+    selectedFromMapIdRef,
+    movedByReaderRef,
+    mapHoverCallbackRef,
+    highlightHoverCallbackRef,
+    onSelectExperience,
+  });
 
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: {
-        version: 8,
-        glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
-        sources: {
-          osm: {
-            type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-          },
-        },
-        layers: [{ id: 'osm-tiles', type: 'raster', source: 'osm' }],
-      },
-      center: [15, 30],
-      zoom: 2,
-      attributionControl: false,
-    });
-
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
-
-    // Hover preview handled by React overlay (hoverPreview state)
-
-    // Track which feature is hovered on the map (local to this closure)
-    // Keyed by place rather than object — see the hover handler below.
-    let mapCurrentHoveredKey: string | null = null;
-
-    map.on('load', () => {
-      // ── Sources ──
-      addDiscoverMapLayers(map);
-
-      // ── Cluster click → zoom ──
-      map.on('click', 'clusters', async (e) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
-        if (!features.length) return;
-        const clusterId = features[0].properties.cluster_id;
-        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource;
-        const zoom = await source.getClusterExpansionZoom(clusterId);
-        // The reader asked for this view, even though the camera move is ours:
-        // `easeTo` fires a `movestart` with no `originalEvent`, so the listener
-        // below cannot tell it from a fit. Without this, zooming into a cluster
-        // while the location batch is still in flight is answered by the
-        // places-refit throwing the map back out to the whole region.
-        movedByReaderRef.current = true;
-        map.easeTo({
-          center: (features[0].geometry as GeoJSON.Point).coordinates as [number, number],
-          zoom,
-        });
-      });
-
-      // ── Marker click → select experience ──
-      const interactiveMarkerLayers = ['unclustered-point', 'unclustered-count-badge-bg', 'unclustered-count-badge-text'];
-      const onMarkerClick = (e: maplibregl.MapLayerMouseEvent) => {
-        // The gate the delegated listeners had: naming a layer the style does not
-        // hold makes `queryRenderedFeatures` fire an ErrorEvent and log.
-        if (!map.getLayer('unclustered-point')) return;
-        const features = map.queryRenderedFeatures(e.point, { layers: interactiveMarkerLayers });
-        if (features.length === 0) return;
-        const id = features[0].properties?.id;
-        if (id == null) return;
-
-        // A folded pin unfolds, exactly as in Map mode — the badge is what says
-        // there is something folded there, and this is the only action that pin
-        // can offer. The builder says which pins those are: this surface counts a
-        // different set for the control (see `drawnPlacesOfSelected`), so an
-        // object can be in the folded set while its pin is a stand-in, and
-        // inferring "folded" from the pin's shape would swallow that click.
-        if (features[0].properties?.folded === true) {
-          toggleCollapsedRef.current(id);
-          return;
-        }
-
-        selectedFromMapIdRef.current = id;
-        onSelectExperience(id);
-      };
-      // Once, not once per layer: maplibre creates a delegated listener per
-      // registration, so a click on the badge — whose circle and glyph occupy the
-      // same 8 px — ran this twice and undid itself, which on a folded pin meant
-      // its badge click did nothing. The handler queries the three layers itself.
-      // See `docs/tech/maplibre-patterns.md` § One listener per registration.
-      map.on('click', onMarkerClick);
-
-      // ── Marker hover (mousemove for precise tracking with nearby points) ──
-      const onMarkerMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
-        map.getCanvas().style.cursor = 'pointer';
-        const features = map.queryRenderedFeatures(e.point, { layers: interactiveMarkerLayers });
-        if (features.length > 0) {
-          const feature = features[0];
-          const id = feature.properties?.id as number;
-          const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
-
-          // Keyed by the place: an object is many pins now, and keying on the
-          // object left the ring and the list scroll on the first part the
-          // pointer touched while it crossed the rest.
-          const hoverKey = `${id}:${feature.properties?.locationId ?? ''}`;
-          if (hoverKey !== mapCurrentHoveredKey) {
-            mapCurrentHoveredKey = hoverKey;
-
-            // Update hover ring on map
-            const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
-            if (hoverSource) {
-              hoverSource.setData({
-                type: 'FeatureCollection',
-                features: [{
-                  type: 'Feature',
-                  geometry: { type: 'Point', coordinates: coords },
-                  properties: {},
-                }],
-              });
-            }
-
-            // Notify React (triggers list auto-scroll + card highlight + hover card)
-            mapHoverCallbackRef.current?.(id);
-          }
-        }
-      };
-      map.on('mousemove', 'unclustered-point', onMarkerMouseMove);
-      map.on('mousemove', 'unclustered-count-badge-bg', onMarkerMouseMove);
-      map.on('mousemove', 'unclustered-count-badge-text', onMarkerMouseMove);
-
-      // A move the reader made themself carries an `originalEvent`; the ones this
-      // component makes (`fitBounds`, `flyTo`) do not.
-      map.on('movestart', (e: maplibregl.MapLibreEvent & { originalEvent?: unknown }) => {
-        if (e.originalEvent) movedByReaderRef.current = true;
-      });
-
-      const onMarkerMouseLeave = () => {
-        map.getCanvas().style.cursor = '';
-        mapCurrentHoveredKey = null;
-
-        // Clear hover ring
-        const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
-        if (hoverSource) {
-          hoverSource.setData({ type: 'FeatureCollection', features: [] });
-        }
-
-        mapHoverCallbackRef.current?.(null);
-      };
-      map.on('mouseleave', 'unclustered-point', onMarkerMouseLeave);
-      map.on('mouseleave', 'unclustered-count-badge-bg', onMarkerMouseLeave);
-      map.on('mouseleave', 'unclustered-count-badge-text', onMarkerMouseLeave);
-
-      map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
-
-      // ── Highlight-point hover → location list scroll ──
-      let mapCurrentHighlightLocId: number | null = null;
-
-      map.on('mousemove', 'highlight-point', (e) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: ['highlight-point'] });
-        if (features.length > 0) {
-          const locId = features[0].properties?.locationId as number | undefined;
-          if (locId != null && locId !== mapCurrentHighlightLocId) {
-            mapCurrentHighlightLocId = locId;
-            map.getCanvas().style.cursor = 'pointer';
-
-            // Show hover ring at this location
-            const coords = (features[0].geometry as GeoJSON.Point).coordinates as [number, number];
-            const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
-            if (hoverSource) {
-              hoverSource.setData({
-                type: 'FeatureCollection',
-                features: [{
-                  type: 'Feature',
-                  geometry: { type: 'Point', coordinates: coords },
-                  properties: {},
-                }],
-              });
-            }
-
-            highlightHoverCallbackRef.current?.(locId);
-          }
-        }
-      });
-
-      map.on('mouseleave', 'highlight-point', () => {
-        mapCurrentHighlightLocId = null;
-        map.getCanvas().style.cursor = '';
-
-        // Clear hover ring (unless internal hover is active)
-        const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
-        if (hoverSource) {
-          hoverSource.setData({ type: 'FeatureCollection', features: [] });
-        }
-
-        highlightHoverCallbackRef.current?.(null);
-      });
-    });
-
-    mapRef.current = map;
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- map init is mount-only; recreating on dep change would destroy/recreate the MapLibre instance every render
-  }, []);
 
   // ── ResizeObserver: call map.resize() when container changes ──
   useEffect(() => {
@@ -796,173 +516,6 @@ export function DiscoverExperienceView({
     };
   }, [selectedExperienceLocations, foldedSelection, selectedExperienceId, selectedLocationsResolved]);
 
-  // ── Map hover → auto-scroll list ──
-  useEffect(() => {
-    if (hoverSourceRef.current !== 'map' || hoveredExperienceId == null) return;
-    const card = cardRefsMap.current.get(hoveredExperienceId);
-    if (card && listContainerRef.current) {
-      isAutoScrollingRef.current = true;
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Clear auto-scroll flag after animation
-      const timer = setTimeout(() => { isAutoScrollingRef.current = false; }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [hoveredExperienceId]);
-
-  // ── External hover (from detail panel location list) → update map hover ring ──
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (!hoverSource) return;
-
-    if (externalHoverCoords) {
-      hoverSource.setData({
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [externalHoverCoords.lng, externalHoverCoords.lat] },
-          properties: {},
-        }],
-      });
-    } else if (hoverSourceRef.current !== 'list' && hoverSourceRef.current !== 'map') {
-      // Only clear if no internal hover is active
-      hoverSource.setData({ type: 'FeatureCollection', features: [] });
-    }
-  }, [externalHoverCoords]);
-
-  // ── List hover → update map hover ring (cluster-aware) ──
-  const handleCardMouseEnter = useCallback((expId: number) => {
-    if (hoverSourceRef.current === 'map' || isAutoScrollingRef.current) return;
-    hoverSourceRef.current = 'list';
-    setHoveredExperienceId(expId);
-
-    const map = mapRef.current;
-    if (!map) return;
-    const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (!hoverSource) return;
-
-    const exp = experiencesRef.current.find(e => e.id === expId);
-    if (!exp) return;
-
-    // Every point the object is drawn at, because that is what the card stands
-    // for now — a serial site is its parts, and ringing one of thirteen left the
-    // other twelve unmarked. A folded object, and one whose places this region's
-    // batch does not hold, is one point: its own (ADR-0028 decision 2).
-    const drawn = drawnCoordsRef.current(expId);
-    const coords: [number, number] = drawn[0];
-
-    // A selected object has no feature in the marker source at all — it is
-    // excluded there and drawn by the highlight layer — so neither the
-    // unclustered test below nor the cluster search can find it, and both would
-    // fall back to a single point. Its dots are always drawn, so ring them.
-    // Through a ref, because this callback is created once and the map handlers
-    // registered with it must see the current selection rather than the first.
-    if (expId === selectedExpIdRef.current) {
-      hoverSource.setData({
-        type: 'FeatureCollection',
-        features: drawn.map(c => ({
-          type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: c },
-          properties: {},
-        })),
-      });
-      return;
-    }
-
-    // Every pin of this object that is drawn, in one query over the layer.
-    const pinRings = pinRingsFor(map, expId);
-    if (pinRings.length > 0) {
-      hoverSource.setData({ type: 'FeatureCollection', features: pinRings });
-    }
-
-    // Its remaining places are inside clusters, and a bubble sits at its members'
-    // centroid rather than at any of them — so which bubbles hold this object is a
-    // question only the source can answer. Every one of them is ringed, not the
-    // first: at continental zoom the Rock Art is several clusters across three
-    // provinces, and ringing one left the rest of the row unmarked.
-    //
-    // Compared against the places *in view*, because that is the population the
-    // pins were counted from: measured against every place the object has, a row
-    // with anything off screen would take this path on every hover — and this one
-    // has no hover-intent delay, while `getClusterLeaves` materialises a feature
-    // per member of every visible cluster.
-    const inView = map.getBounds();
-    const onScreen = drawn.filter(([lng, lat]) => inView.contains([lng, lat]));
-    if (pinRings.length >= onScreen.length) return;
-
-    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (!source) return;
-    const clusterFeatures = map.queryRenderedFeatures({ layers: ['clusters'] });
-    if (clusterFeatures.length === 0) {
-      if (pinRings.length === 0) {
-        // Nothing of this object is on screen at all: ring where it says it is.
-        hoverSource.setData({
-          type: 'FeatureCollection',
-          features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: {} }],
-        });
-      }
-      return;
-    }
-
-    const rings = [...pinRings];
-    let remaining = clusterFeatures.length;
-    // `getClusterLeaves` answers after the pointer may have moved on, and this
-    // path is taken on most hovers now — any object with places off screen has
-    // fewer rendered pins than places. Without an ownership check the last promise
-    // of a row paints its rings with nothing hovered, or over the row the reader
-    // moved to. Map mode could delete its ownership machinery when clustering
-    // left; this surface still clusters, so it needs one. (A generation rather
-    // than a token because the timing-attack lint rule reads any `token`
-    // comparison as a comparison of secrets.)
-    const generation = ++hoverGenerationRef.current;
-    for (const cluster of clusterFeatures) {
-      const clusterId = cluster.properties.cluster_id as number;
-      const pointCount = cluster.properties.point_count as number;
-      source.getClusterLeaves(clusterId, pointCount, 0)
-        .then(leaves => {
-          if (generation !== hoverGenerationRef.current) return;
-          if (leaves.some(leaf => leaf.properties?.id === expId)) rings.push(clusterRing(cluster));
-        })
-        // supercluster throws "No cluster with the specified id" once the index
-        // is rebuilt, and `source.setData` rebuilds it — which this view now does
-        // on five things, including the batch arriving and a fold. Such a bubble
-        // simply contributes no ring; the alternative is an unhandled rejection.
-        .catch(() => {})
-        // Counted here rather than in `then`, or a rejection would leave
-        // `remaining` above zero for good and the paint below would never run —
-        // for an object with no pins drawn, that is a hover that shows nothing at
-        // all, after the previous row's ring has already been cleared.
-        .finally(() => {
-          if (generation !== hoverGenerationRef.current) return;
-          remaining--;
-          if (remaining > 0) return;
-          if (rings.length > 0) {
-            hoverSource.setData({ type: 'FeatureCollection', features: rings });
-          } else {
-            // In no cluster and drawn nowhere — ring the coordinate it claims.
-            hoverSource.setData({
-              type: 'FeatureCollection',
-              features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: {} }],
-            });
-          }
-        });
-    }
-  }, []);
-
-  const handleCardMouseLeave = useCallback(() => {
-    if (hoverSourceRef.current !== 'list') return;
-    hoverGenerationRef.current++;
-    hoverSourceRef.current = null;
-    setHoveredExperienceId(null);
-
-    const map = mapRef.current;
-    if (!map) return;
-    const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (hoverSource) {
-      hoverSource.setData({ type: 'FeatureCollection', features: [] });
-    }
-  }, []);
 
   const handleVisitedToggle = useCallback(
     (experienceId: number, isVisited: boolean, e: React.MouseEvent) => {
@@ -1086,109 +639,30 @@ export function DiscoverExperienceView({
 
       {/* Experience list (below map, only when active view) */}
       {activeView && (
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', borderTop: '1px solid', borderColor: 'divider', minHeight: 0 }}>
-          {/* List header with back button */}
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              px: 1.5,
-              py: 0.75,
-              borderBottom: '1px solid',
-              borderColor: 'divider',
-              flexShrink: 0,
-            }}
-          >
-            <IconButton size="small" onClick={onBack}>
-              <ArrowBackIcon fontSize="small" />
-            </IconButton>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="subtitle2" noWrap sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                {shortSourceName} in {activeView.regionName}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {(() => {
-                  if (isLoading) return 'Loading...';
-                  const ofTotal = search ? ` of ${experiences.length}` : '';
-                  return `${filteredExperiences.length}${ofTotal} experiences`;
-                })()}
-                {hasCuratorScope && rejectedCount > 0 && (
-                  <Typography component="span" variant="caption" color="error.main">
-                    {' '}({rejectedCount} rejected)
-                  </Typography>
-                )}
-              </Typography>
-            </Box>
-            {hasCuratorScope && activeView?.regionId && (
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<PlaylistAddIcon />}
-                onClick={() => setAddDialogOpen(true)}
-                sx={{ flexShrink: 0, mr: 0.5 }}
-              >
-                Add
-              </Button>
-            )}
-          </Box>
-
-          {/* Search (only for 15+ experiences) */}
-          {experiences.length > 15 && (
-            <Box sx={{ px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
-              <TextField
-                size="small"
-                placeholder="Filter by name or country..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                fullWidth
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                    endAdornment: search ? (
-                      <InputAdornment position="end">
-                        <IconButton size="small" onClick={() => setSearch('')}>
-                          <ClearIcon fontSize="small" />
-                        </IconButton>
-                      </InputAdornment>
-                    ) : null,
-                  },
-                }}
-              />
-            </Box>
-          )}
-
-          {/* Scrollable experience list */}
-          <Box ref={listContainerRef} sx={{ flex: 1, overflowY: 'auto' }}>
-            {isLoading && <LoadingSpinner size={24} padding="16px 0" />}
-            {!isLoading && filteredExperiences.length === 0 && (
-              <EmptyState message={search ? 'No experiences match your filter.' : 'No experiences found.'} />
-            )}
-            {!isLoading && filteredExperiences.length > 0 && filteredExperiences.map((exp) => (
-              <ExperienceCard
-                key={exp.id}
-                ref={(el) => {
-                  if (el) cardRefsMap.current.set(exp.id, el);
-                  else cardRefsMap.current.delete(exp.id);
-                }}
-                experience={exp}
-                isVisited={visitedIds.has(exp.id)}
-                isHovered={hoveredExperienceId === exp.id}
-                isSelected={selectedExperienceId === exp.id}
-                onClick={() => onSelectExperience(exp.id)}
-                onMouseEnter={() => handleCardMouseEnter(exp.id)}
-                onMouseLeave={handleCardMouseLeave}
-                onVisitedToggle={(e) => handleVisitedToggle(exp.id, visitedIds.has(exp.id), e)}
-                showCheckbox={isAuthenticated}
-                onCurate={hasCuratorScope ? () => setCurationTarget(exp) : undefined}
-              />
-            ))}
-          </Box>
-        </Box>
+        <DiscoverExperienceList
+          activeView={activeView}
+          experiences={experiences}
+          filteredExperiences={filteredExperiences}
+          isLoading={isLoading}
+          search={search}
+          setSearch={setSearch}
+          shortSourceName={shortSourceName}
+          rejectedCount={rejectedCount}
+          hasCuratorScope={hasCuratorScope}
+          isAuthenticated={isAuthenticated}
+          visitedIds={visitedIds}
+          hoveredExperienceId={hoveredExperienceId}
+          selectedExperienceId={selectedExperienceId}
+          listContainerRef={listContainerRef}
+          cardRefsMap={cardRefsMap}
+          onBack={onBack}
+          onSelectExperience={onSelectExperience}
+          onCardMouseEnter={onCardMouseEnter}
+          onCardMouseLeave={onCardMouseLeave}
+          onVisitedToggle={handleVisitedToggle}
+          onCurate={setCurationTarget}
+          onAdd={() => setAddDialogOpen(true)}
+        />
       )}
       {/* Curation Dialog */}
       <CurationDialog

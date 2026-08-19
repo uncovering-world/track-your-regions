@@ -102,7 +102,7 @@ Pattern:
 ### 7. Scroll-to-Element Logic
 Duplicated scroll calculations in:
 - `ExperienceList.tsx` (2 implementations)
-- `DiscoverExperienceView.tsx`
+- `discover/useDiscoverHover.ts`
 - `ExperienceDetailPanel.tsx`
 
 Pattern: calculate element position relative to container, center in viewport.

@@ -54,8 +54,8 @@
 | `MAP-06` | `WF-04` | Marker click selection with fit/fly behavior | `ExperienceMarkers`, `useExperienceContext` |
 | `MAP-07` | `WF-04` | Hover preview card with dynamic placement | `RegionMapVT` |
 | `DISC-01` | `WF-05` | Region source-count tree navigation | `DiscoverRegionList`, `useDiscoverExperiences` |
-| `DISC-02` | `WF-05` | Discover map markers and clustering | `DiscoverExperienceView` |
-| `DISC-03` | `WF-05` | Discover list/map hover sync + detail panel sync | `DiscoverExperienceView`, `ExperienceDetailPanel` |
+| `DISC-02` | `WF-05` | Discover map markers and clustering | `DiscoverExperienceView`, `useDiscoverMap` |
+| `DISC-03` | `WF-05` | Discover list/map hover sync + detail panel sync | `useDiscoverHover`, `ExperienceDetailPanel` |
 | `DISC-04` | `WF-05` | Selected experience location highlight/fly-to | `DiscoverExperienceView` |
 | `VIS-01` | `WF-06` | Toggle visited regions per world view | `useVisitedRegions`, `/api/users/me/visited-regions*` |
 | `VIS-02` | `WF-07` | Toggle visited experiences | `useVisitedExperiences`, `/api/users/me/visited-experiences*` |
