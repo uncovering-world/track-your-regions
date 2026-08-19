@@ -13,7 +13,7 @@
  *                   its own point when it is folded or none has loaded (red dots)
  *   exp-hover      — hover ring/glow (orange)
  *
- * Interaction model (imperative via useMap()):
+ * Interaction model (imperative via useMap(), in `useMarkerInteractions`):
  *   - Hover marker on map  → popup + orange ring + highlight list item
  *   - Hover card in list   → orange ring on map
  *   - Click marker         → toggle selected experience in list, and keep the
@@ -21,54 +21,27 @@
  *   - Click list item      → fly-to marker location(s)
  */
 
-import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
+import { useEffect, useMemo, useRef, useCallback } from 'react';
 import { useMap, Source, Layer } from 'react-map-gl/maplibre';
 import maplibregl from 'maplibre-gl';
 import { buildExperienceMarkers, representablePlaces } from './experienceMarkers/buildMarkers';
 import {
-  SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER,
-  LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT, LAYER_HIGHLIGHT_POINT,
+  SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER, EMPTY_FC, buildPointHoverData, buildPointsHoverData,
   heatmapLayer, markerLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
   hoverGlowLayer, hoverRingLayer, highlightRingLayer, highlightPointLayer,
 } from './experienceMarkers/layers';
+import { useMarkerInteractions } from './experienceMarkers/useMarkerInteractions';
 import { useExperienceContext } from '../hooks/useExperienceContext';
-import { subscribeToHoverTarget, useHoverActions } from '../hooks/useHoverContext';
-import { useNavigation } from '../hooks/useNavigation';
+import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../hooks/useHoverContext';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience } from '../api/experiences';
 import { locationLabel } from '../utils/locationLabel';
-
-// The one collection every empty source starts from
-const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
-
-function buildPointHoverData(coords: [number, number]): GeoJSON.FeatureCollection {
-  return {
-    type: 'FeatureCollection',
-    features: [{
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: coords },
-      properties: {},
-    }],
-  };
-}
 
 interface ExperienceLocation {
   id: number;
   name?: string | null;
   /** Nullable, for the reason given on the API's `ExperienceLocation.ordinal`. */
   ordinal: number | null;
-  longitude: number;
-  latitude: number;
-}
-
-interface HoverPreview {
-  experienceId: number;
-  experienceName: string;
-  locationId: number | null;
-  locationName: string | null;
-  categoryName: string | null;
-  category: string | null;
-  imageUrl: string | null;
   longitude: number;
   latitude: number;
 }
@@ -103,28 +76,10 @@ function tryHoverSpecificLocation(
 
 interface ExperienceMarkersProps {
   regionId: number | null;
-  visitedIds?: Set<number>;
-  visitedLocationIds?: Set<number>;
-}
-
-/**
- * Popup body for a marker: the name as text, never as markup.
- *
- * `setHTML` would interpolate it raw, and the name is not ours — sources ship
- * markup in it (20 rows in a development database carry tags such as
- * `<em>Stato da Terra</em>`) and curators can edit it, which makes anything
- * stored there executable. Built as a DOM node so the browser cannot read it as
- * anything but text.
- */
-function buildPopupContent(name: string): HTMLElement {
-  const strong = document.createElement('strong');
-  strong.textContent = name;
-  return strong;
 }
 
 export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   const { current: mapRef } = useMap();
-  const { selectedRegion } = useNavigation();
   const {
     experiences,
     experiencesLoading,
@@ -132,8 +87,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     toggleSelectedExperience,
     flyToExperienceId,
     clearFlyTo,
-    shouldFitRegion,
-    clearFitRegion,
     getExperienceById,
     expandedCategoryNames,
     collapsedExperienceIds,
@@ -148,21 +101,34 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   // Batch-fetch all locations for all experiences in the region (single request)
   const { locationsByExperience } = useRegionLocations(regionId, showLost);
 
-  // Hover source data (updated by event handlers and list hover)
-  const [hoverData, setHoverData] = useState<GeoJSON.FeatureCollection>(EMPTY_FC);
-
-  // Refs for accessing latest values in long-lived map callbacks
-  const toggleSelectedRef = useRef(toggleSelectedExperience);
-  toggleSelectedRef.current = toggleSelectedExperience;
-  const setHoveredRef = useRef(setHoveredFromMarker);
-  setHoveredRef.current = setHoveredFromMarker;
-  const selectedExpIdRef = useRef(selectedExperienceId);
-  selectedExpIdRef.current = selectedExperienceId;
-  const toggleCollapsedRef = useRef(toggleCollapsedExperience);
-  toggleCollapsedRef.current = toggleCollapsedExperience;
-
-  // Popup ref for cleanup
-  const popupRef = useRef<maplibregl.Popup | null>(null);
+  /**
+   * The hover ring, written straight to the map rather than held as state.
+   *
+   * It was `useState`, which made every hover a re-render of this component —
+   * and this component is the map's sources and layers, so react-map-gl
+   * reconciled all of them on every mouse move across the list. Profiled on
+   * Europe's 661 experiences, hovering an object's row cost 320 fibers against
+   * a place's 109, and the difference was this: a place rings one point while
+   * an object rings all of its places (93 for the Historic Centre of Saint
+   * Petersburg), and the object's path also came back through React.
+   *
+   * Discover's map has always drawn its ring this way (`useDiscoverHover`).
+   * The ref is what the `<Source>` renders from, so a re-render for some other
+   * reason recreates the source with the ring that is currently drawn rather
+   * than with an empty collection.
+   */
+  const hoverDataRef = useRef<GeoJSON.FeatureCollection>(EMPTY_FC);
+  const mapRefLatest = useRef(mapRef);
+  mapRefLatest.current = mapRef;
+  const setHoverData = useCallback((data: GeoJSON.FeatureCollection) => {
+    hoverDataRef.current = data;
+    const source = mapRefLatest.current?.getMap().getSource(SOURCE_HOVER) as
+      maplibregl.GeoJSONSource | undefined;
+    // Absent while the map is still loading, or between regions: this component
+    // unmounts its sources while a region loads. The ref keeps the value, and
+    // the source is created with it.
+    source?.setData(data);
+  }, []);
 
   // ── One marker per place a reader may go to (ADR-0028 decision 1, #558) ──
   // An object folded by this reader is one marker instead, at the coordinate the
@@ -266,237 +232,18 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     };
   }, [selectedExperienceId, shownPlacesFor, getExperienceById]);
 
-  // ── Imperative event handlers (registered on map via useEffect) ──
-  useEffect(() => {
-    if (!mapRef) return;
-    const map = mapRef.getMap();
-    if (!map) return;
-
-    const popup = new maplibregl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 12,
-      className: 'exp-marker-popup',
-    });
-    popupRef.current = popup;
-
-    // Keyed by the place, not the object: an object is many pins now, and
-    // deduping on the object alone left the ring and the popup on the first part
-    // the pointer touched while it moved across the other thirty-nine.
-    let mapCurrentHoveredKey: string | null = null;
-
-    const clearHoverState = () => {
-      map.getCanvas().style.cursor = '';
-      popup.remove();
-      mapCurrentHoveredKey = null;
-      setHoverData(EMPTY_FC);
-      setHoveredRef.current(null, null);
-      setHoverPreview(null);
-    };
-
-    const onMarkerClick = (e: maplibregl.MapMouseEvent) => {
-      // What the per-layer registrations gave for free: MapLibre's delegated
-      // listener checks `getLayer(id)` before querying, and this component
-      // unmounts its sources while a region loads, with this effect still
-      // attached. Naming a missing layer makes `queryRenderedFeatures` fire an
-      // ErrorEvent and log, on the ordinary path of clicking the map mid-load.
-      if (!map.getLayer(LAYER_MARKERS)) return;
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: [LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT],
-      });
-      if (features.length === 0) return;
-      const experienceId = features[0].properties?.experienceId;
-      if (experienceId == null) return;
-
-      // A pin the reader folded is unfolded by clicking it, which is the way back
-      // from the only action the map offers on a folded object — and the badge is
-      // what says there is something to unfold. Selection is what a click means
-      // everywhere else, including on the badge of a pin standing in for places
-      // the region's batch has not loaded: there is nothing folded to unfold
-      // there, and selecting is what loads them.
-      //
-      // The test is the pin's own answer, not the id and not a shape that
-      // resembles a folded pin: `buildExperienceMarkers` says which pins it drew
-      // folded, and a stand-in pin — an object whose places the batch does not
-      // hold — has the same null `locationId` and count above one without being
-      // one. A click that unfolded that would visibly do nothing.
-      if (features[0].properties?.folded === true) {
-        toggleCollapsedRef.current(experienceId);
-        return;
-      }
-
-      toggleSelectedRef.current(experienceId);
-    };
-
-    const onMarkerMouseMove = (e: maplibregl.MapMouseEvent) => {
-      map.getCanvas().style.cursor = 'pointer';
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: [LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT],
-      });
-      if (features.length > 0) {
-        const feature = features[0];
-        const experienceId = feature.properties?.experienceId as number;
-        const locationId = feature.properties?.locationId as number | undefined;
-        const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
-
-        const hoveredKey = `${experienceId}:${locationId ?? ''}`;
-        if (hoveredKey !== mapCurrentHoveredKey) {
-          mapCurrentHoveredKey = hoveredKey;
-
-          // Update hover ring via state
-          setHoverData({
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: coords },
-              properties: {},
-            }],
-          });
-
-          // Show popup
-          popup
-            .setLngLat(coords)
-            .setDOMContent(buildPopupContent(
-              String(feature.properties?.experienceName || feature.properties?.name || '')))
-            .addTo(map);
-
-          // Notify React context
-          setHoveredRef.current(experienceId, locationId ?? null);
-          const marker = markersRef.current.find(
-            m => m.experienceId === experienceId && (locationId == null || m.locationId === locationId));
-          if (marker) {
-            setHoverPreview({
-              experienceId: marker.experienceId,
-              experienceName: marker.experience.name,
-              locationId: marker.locationId,
-              locationName: marker.locationName,
-              categoryName: marker.experience.category_name ?? null,
-              category: marker.experience.category ?? null,
-              imageUrl: marker.experience.image_url,
-              longitude: marker.longitude,
-              latitude: marker.latitude,
-            });
-          }
-        }
-      }
-    };
-
-    const onMarkerMouseLeave = () => clearHoverState();
-
-    // Highlight layer (red dots) hover — shows popup + orange ring + scrolls list
-    const onHighlightMouseMove = (e: maplibregl.MapMouseEvent) => {
-      map.getCanvas().style.cursor = 'pointer';
-      const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_HIGHLIGHT_POINT] });
-      if (features.length > 0) {
-        const feature = features[0];
-        const locationId = feature.properties?.locationId as number | undefined;
-        const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
-        const name = feature.properties?.name || '';
-
-        // Same key space as the marker layer's, so moving between the two
-        // cannot look like staying on one thing: the highlight draws the
-        // selected object's places, and its own id is what tells them apart.
-        const hoverKey = `highlight:${locationId ?? ''}`;
-        if (hoverKey !== mapCurrentHoveredKey) {
-          mapCurrentHoveredKey = hoverKey;
-
-          setHoverData({
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: coords },
-              properties: {},
-            }],
-          });
-
-          popup
-            .setLngLat(coords)
-            .setDOMContent(buildPopupContent(name))
-            .addTo(map);
-
-          // Notify context — highlight layer is for the selected experience
-          const selExpId = selectedExpIdRef.current;
-          if (selExpId != null) {
-            setHoveredRef.current(selExpId, locationId ?? null);
-            const exp = getExperienceById(selExpId);
-            if (exp) {
-              setHoverPreview({
-                experienceId: exp.id,
-                experienceName: exp.name,
-                locationId: locationId ?? null,
-                locationName: (feature.properties?.name as string | null | undefined) ?? null,
-                categoryName: exp.category_name ?? null,
-                category: exp.category ?? null,
-                imageUrl: exp.image_url,
-                longitude: coords[0],
-                latitude: coords[1],
-              });
-            }
-          }
-        }
-      }
-    };
-
-    const onHighlightMouseLeave = () => clearHoverState();
-
-    // Wait for layers to exist before attaching handlers
-    const attachHandlers = () => {
-      if (
-        !map.getLayer(LAYER_MARKERS) ||
-        !map.getLayer(LAYER_MARKER_COUNT_BADGE_BG) ||
-        !map.getLayer(LAYER_MARKER_COUNT_BADGE_TEXT)
-      ) {
-        return false;
-      }
-      // Once on the map, not once per layer: a delegated listener is created per
-      // registration, so a click landing on two of these — which a badge click
-      // does, its circle and its glyph sitting on the same 8 px — ran this body
-      // twice and undid itself. On a folded pin that meant toggling the fold off
-      // and on again, so clicking the badge that says "folded" did nothing at
-      // all. The handler queries the three layers itself and returns when none
-      // answers, which is what makes one registration enough. The `mousemove` and
-      // `mouseleave` registrations below stay per layer, which is safe only
-      // because painting a ring twice is painting it once — see
-      // `docs/tech/maplibre-patterns.md` § One listener per registration.
-      map.on('click', onMarkerClick);
-      map.on('mousemove', LAYER_MARKERS, onMarkerMouseMove);
-      map.on('mousemove', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseMove);
-      map.on('mousemove', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseMove);
-      map.on('mouseleave', LAYER_MARKERS, onMarkerMouseLeave);
-      map.on('mouseleave', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseLeave);
-      map.on('mouseleave', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseLeave);
-      map.on('mousemove', LAYER_HIGHLIGHT_POINT, onHighlightMouseMove);
-      map.on('mouseleave', LAYER_HIGHLIGHT_POINT, onHighlightMouseLeave);
-      return true;
-    };
-
-    // Layers might not exist yet (declarative rendering is async), so retry
-    let retryInterval: ReturnType<typeof setInterval> | null = null;
-    if (!attachHandlers()) {
-      retryInterval = setInterval(() => {
-        if (attachHandlers()) {
-          clearInterval(retryInterval!);
-          retryInterval = null;
-        }
-      }, 200);
-    }
-
-    return () => {
-      if (retryInterval) clearInterval(retryInterval);
-      popup.remove();
-      popupRef.current = null;
-      setHoverPreview(null);
-      map.off('click', onMarkerClick);
-      map.off('mousemove', LAYER_MARKERS, onMarkerMouseMove);
-      map.off('mousemove', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseMove);
-      map.off('mousemove', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseMove);
-      map.off('mouseleave', LAYER_MARKERS, onMarkerMouseLeave);
-      map.off('mouseleave', LAYER_MARKER_COUNT_BADGE_BG, onMarkerMouseLeave);
-      map.off('mouseleave', LAYER_MARKER_COUNT_BADGE_TEXT, onMarkerMouseLeave);
-      map.off('mousemove', LAYER_HIGHLIGHT_POINT, onHighlightMouseMove);
-      map.off('mouseleave', LAYER_HIGHLIGHT_POINT, onHighlightMouseLeave);
-    };
-  }, [mapRef, getExperienceById, setHoverPreview]);
+  // ── Imperative event handlers (registered on the map, not rendered) ──
+  useMarkerInteractions({
+    mapRef,
+    markersRef,
+    selectedExperienceId,
+    getExperienceById,
+    toggleSelectedExperience,
+    toggleCollapsedExperience,
+    setHoveredFromMarker,
+    setHoverPreview,
+    setHoverData,
+  });
 
   // ── List hover → hover ring on map ──
   const locationsByExpRef = useRef(locationsByExperience);
@@ -556,15 +303,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     // no aggregate standing in for them and nothing to resolve asynchronously, so
     // the rings land where the markers are whether or not they are currently
     // drawn — below HEATMAP_MAX_ZOOM the heat is what shows there instead.
-    setHoverData({
-      type: 'FeatureCollection',
-      features: objectMarkers.map(m => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [m.longitude, m.latitude] },
-        properties: {},
-      })),
-    });
-  }, [getExperienceById, setHoverPreview, shownPlacesFor]);
+    setHoverData(buildPointsHoverData(objectMarkers.map(m => [m.longitude, m.latitude])));
+  }, [getExperienceById, setHoverPreview, shownPlacesFor, setHoverData]);
 
   // Drive list → map hover, straight from the store. Subscribed rather than
   // depended on: the values change on every mouse move across the list, and
@@ -634,19 +374,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     }
   }, [flyToExperienceId, mapRef, shownPlacesFor, getExperienceById, clearFlyTo]);
 
-  // ── Fit to region bounds when closing expanded item ──
-  useEffect(() => {
-    if (shouldFitRegion && mapRef && selectedRegion?.focusBbox) {
-      const map = mapRef.getMap();
-      const [west, south, east, north] = selectedRegion.focusBbox;
-      map.fitBounds(
-        [[west, south], [east, north]],
-        { padding: 50, duration: 1000 }
-      );
-      clearFitRegion();
-    }
-  }, [shouldFitRegion, mapRef, selectedRegion, clearFitRegion]);
-
   // Don't render any DOM if no region or still loading
   if (!regionId || experiencesLoading) {
     return null;
@@ -673,7 +400,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       </Source>
 
       {/* Hover source — orange ring/glow on the hovered marker */}
-      <Source id={SOURCE_HOVER} type="geojson" data={hoverData}>
+      <Source id={SOURCE_HOVER} type="geojson" data={hoverDataRef.current}>
         <Layer {...hoverGlowLayer} />
         <Layer {...hoverRingLayer} />
       </Source>

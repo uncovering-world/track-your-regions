@@ -10,7 +10,7 @@
  * (ExperienceCard, ExperienceDetailPanel).
  */
 
-import { useState, useEffect } from 'react';
+import { memo, useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -95,7 +95,7 @@ function formatLogDetails(entry: CurationLogEntry): string | null {
   return null;
 }
 
-export function CurationDialog({ experience, regionId, onClose }: CurationDialogProps) {
+function CurationDialogComponent({ experience, regionId, onClose }: CurationDialogProps) {
   const queryClient = useQueryClient();
 
   // Edit fields
@@ -606,3 +606,11 @@ export function CurationDialog({ experience, regionId, onClose }: CurationDialog
     </Dialog>
   );
 }
+
+/**
+ * Memoised because it is mounted for as long as the list is, closed or not, and
+ * the list re-renders on every scroll of it. Measured on Europe's 661 rows, one
+ * wheel scroll spent 14 ms re-rendering a dialog nobody had opened. Kept mounted
+ * rather than gated on `experience` so that closing it still fades out.
+ */
+export const CurationDialog = memo(CurationDialogComponent);

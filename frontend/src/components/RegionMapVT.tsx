@@ -23,7 +23,6 @@ import { Paper, Box, CircularProgress, Typography, IconButton, Tooltip } from '@
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import { useNavigation } from '../hooks/useNavigation';
 import { useVisitedRegions } from '../hooks/useVisitedRegions';
-import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { HoverPreviewCard } from './regionMap/HoverPreviewCard';
 import { ExperienceMarkers } from './ExperienceMarkers';
@@ -70,10 +69,6 @@ export function RegionMapVT() {
   const { visitedRegionIds } = useVisitedRegions(
     isCustomWorldView ? selectedWorldView?.id : undefined
   );
-
-  // Visited experiences tracking (for UNESCO markers)
-  const { visitedIds: visitedExperienceIds } = useVisitedExperiences();
-  const { visitedLocationIds } = useVisitedLocations();
 
   // Check if in exploration mode (right panel open with experiences)
   const { previewImageUrl, isExploring, setViewBounds } = useExperienceContext();
@@ -428,8 +423,6 @@ export function RegionMapVT() {
         {isCustomWorldView && selectedRegion && isExploring && (
           <ExperienceMarkers
             regionId={selectedRegion.id}
-            visitedIds={visitedExperienceIds}
-            visitedLocationIds={visitedLocationIds}
           />
         )}
       </Map>

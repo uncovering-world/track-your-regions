@@ -31,10 +31,49 @@ const MARKER_FADE_START = HEATMAP_MAX_ZOOM - 0.5;
 export const SOURCE_HIGHLIGHT = 'exp-highlight';
 export const SOURCE_HOVER = 'exp-hover';
 
+/**
+ * What every hover source starts from, and what it goes back to when the
+ * pointer leaves. One collection, shared: both files that write to
+ * `SOURCE_HOVER` clear it, and two identical literals are two things to keep
+ * in step for no gain.
+ */
+export const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+
+/**
+ * The ring's payload: points, no properties — the hover layers paint by geometry
+ * alone. Every writer goes through here (a marker hovered, a highlight dot
+ * hovered, a place row, an object row ringing all of its places), so a property
+ * the layers start reading is added once rather than at four literals the
+ * compiler cannot connect.
+ */
+export function buildPointsHoverData(coords: [number, number][]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: coords.map(c => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: c },
+      properties: {},
+    })),
+  };
+}
+
+/** The single-point case, which is three of the four writers. */
+export function buildPointHoverData(coords: [number, number]): GeoJSON.FeatureCollection {
+  return buildPointsHoverData([coords]);
+}
+
 // Layer IDs
 export const LAYER_MARKERS = 'exp-markers-points';
 export const LAYER_MARKER_COUNT_BADGE_BG = 'exp-marker-count-badge-bg';
 export const LAYER_MARKER_COUNT_BADGE_TEXT = 'exp-marker-count-badge-text';
+/**
+ * The three layers one pin is drawn with: its point, and the badge that says how
+ * many places it stands for. Queried together, because a pointer over any of
+ * them is a pointer over the same pin.
+ */
+export const MARKER_LAYERS = [
+  LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT,
+] as const;
 const LAYER_HOVER_GLOW = 'exp-hover-glow';
 const LAYER_HOVER_RING = 'exp-hover-ring';
 const LAYER_HIGHLIGHT_RING = 'exp-highlight-ring';
