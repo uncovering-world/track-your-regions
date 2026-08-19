@@ -1,20 +1,15 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import {
   Box,
-  Typography,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Checkbox,
-  IconButton,
   Chip,
+  ListItemText,
+  IconButton,
   Tooltip,
   CircularProgress,
 } from '@mui/material';
 import {
   ExpandLess,
   ExpandMore,
-  Place as PlaceIcon,
   Add as AddIcon,
   Remove as RemoveIcon,
 } from '@mui/icons-material';
@@ -23,10 +18,16 @@ import type {
   ExperienceLocation,
 } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
-import { getCategoryPrimaryColor, VISITED_GREEN, PARTIAL_AMBER } from '../../utils/categoryColors';
+import { getCategoryPrimaryColor } from '../../utils/categoryColors';
 import { preloadCardImage } from '../../utils/imagePreload';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
 import { subscribeToHoverTarget, useHoverActions } from '../../hooks/useHoverContext';
+import {
+  CategoryIcon, PlacePin, RowItem, TitleRow, TitleText, VisitCheckbox, VisitIcon,
+} from './ExperienceListItem.styles';
+import { PlacesCountChip, foldLabel } from './PlacesCountChip';
+import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
+import { isFoldable } from '../experienceMarkers/buildMarkers';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -35,56 +36,7 @@ import { subscribeToHoverTarget, useHoverActions } from '../../hooks/useHoverCon
  * by the time a reader who meant to click has clicked.
  */
 const HOVER_INTENT_MS = 140;
-import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
-import { isFoldable } from '../experienceMarkers/buildMarkers';
 
-/**
- * What the count chip says it will do. Not a control at all where folding is not
- * a question — the chip still carries the count, because "this object has five
- * places" is true whether or not the map draws five pins for it here.
- */
-function foldLabel(foldable: boolean, folded: boolean, drawn: number, total: number): string {
-  if (!foldable) return `${total} places`;
-  return folded ? `Show all ${drawn} places on the map` : 'Show as a single pin on the map';
-}
-
-/**
- * The count of an object's places, and — where folding is a question — the
- * control that folds them. The two are one chip because they are one fact: this
- * object has several places, and you may ask for them as a single pin.
- */
-function PlacesCountChip({ label, tooltip, foldable, folded, onToggle }: {
-  label: string;
-  tooltip: string;
-  foldable: boolean;
-  folded: boolean;
-  onToggle: () => void;
-}) {
-  // The row's own click opens the card, and a reader folding a site did not ask
-  // for that too.
-  const handleClick = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    onToggle();
-  };
-
-  return (
-    <Tooltip title={tooltip}>
-      <Chip
-        label={label}
-        size="small"
-        onClick={foldable ? handleClick : undefined}
-        sx={{
-          height: 18,
-          fontSize: '0.65rem',
-          cursor: foldable ? 'pointer' : 'default',
-          '& .MuiChip-label': { px: 0.75 },
-        }}
-        variant={folded && foldable ? 'filled' : 'outlined'}
-        color="info"
-      />
-    </Tooltip>
-  );
-}
 
 export interface ExperienceListItemProps {
   experience: Experience;
@@ -191,7 +143,7 @@ function ExperienceListItemComponent({
    * `&[data-hovered]` keeps the colour a theme token rather than a literal.
    */
   const { store: hoverStore } = useHoverActions();
-  const rowElRef = useRef<HTMLDivElement | null>(null);
+  const rowElRef = useRef<HTMLElement | null>(null);
   useEffect(() => subscribeToHoverTarget(hoverStore, ({ hoveredExperienceId }) => {
     const el = rowElRef.current;
     if (!el) return;
@@ -327,22 +279,14 @@ function ExperienceListItemComponent({
           inside one already — by the virtualiser in the region list, and by the
           Rejected section below it — and an `li` inside an `li` is one item too
           many for anything reading the list aloud. */}
-      <ListItem
+      <RowItem
         component="div"
-        ref={rowElRef}
-        sx={{
-          pl: 2,
-          cursor: 'pointer',
-          bgcolor: isSelected ? 'primary.50' : 'transparent',
-          // Both hovers, and both above the selected colour, which is the order
-          // the row has always drawn them in.
-          '&[data-hovered="true"]': { bgcolor: 'action.hover' },
-          borderLeft: isSelected ? 4 : 0,
-          borderColor: 'primary.main',
-          '&:hover': { bgcolor: 'action.hover' },
-          borderBottom: isSelected ? 0 : '1px solid',
-          borderBottomColor: 'divider',
-        }}
+        // `styled(ListItem)` types its ref as the `li` it defaults to; this one
+        // renders a `div` (see the note below), which is what the cast says.
+        ref={rowElRef as React.RefObject<HTMLLIElement>}
+        data-selected={isSelected}
+        // The one thing that differs per row, as a variable the classes read.
+        style={{ '--tyr-row-color': color } as React.CSSProperties}
         onMouseEnter={() => {
           onHover(experience);
           // Fetch the picture, because this is the moment before the card is
@@ -385,18 +329,18 @@ function ExperienceListItemComponent({
             so a fully-visited experience could be re-marked but never unmarked
             and the click would look like it did nothing. */}
         {showCheckbox && (
-          <ListItemIcon sx={{ minWidth: isPartiallyVisited ? 72 : 36, display: 'flex', alignItems: 'center' }}>
-            <Checkbox
+          <VisitIcon data-partial={isPartiallyVisited}>
+            <VisitCheckbox
               edge="start"
+              // No ripple in a list row. MUI mounts `TouchRipple` for every
+              // `ButtonBase` a render after the button itself, so each row's
+              // checkbox cost a second render and a subtree — for nothing a
+              // reader scrolling past it will ever see.
+              disableRipple
               checked={isFullyVisited}
               indeterminate={isPartiallyVisited}
               disabled={isLoading || !locationsResolved}
               onClick={handleRootCheckboxClick}
-              sx={{
-                color: color,
-                '&.Mui-checked': { color: VISITED_GREEN },
-                '&.MuiCheckbox-indeterminate': { color: PARTIAL_AMBER }, // Amber for partial
-              }}
             />
             {/* Batch buttons when partial - mark all / unmark all */}
             {isPartiallyVisited && (
@@ -423,29 +367,25 @@ function ExperienceListItemComponent({
                 </Tooltip>
               </Box>
             )}
-          </ListItemIcon>
+          </VisitIcon>
         )}
 
         {/* Category color indicator */}
-        <ListItemIcon sx={{ minWidth: 32 }}>
-          <PlaceIcon sx={{ color, fontSize: 20 }} />
-        </ListItemIcon>
+        <CategoryIcon>
+          <PlacePin />
+        </CategoryIcon>
 
         {/* Experience name */}
         <ListItemText
           primary={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography
+            <TitleRow>
+              <TitleText
                 variant="body2"
-                sx={{
-                  fontWeight: isSelected ? 600 : 500,
-                  textDecoration: isFullyVisited ? 'line-through' : 'none',
-                  color: isFullyVisited ? 'text.secondary' : 'text.primary',
-                  flex: 1,
-                }}
+                data-selected={isSelected}
+                data-visited={isFullyVisited}
               >
                 {experience.name}
-              </Typography>
+              </TitleText>
               <LifecycleChip state={experience} />
               {experience.is_new && (
                 <Chip
@@ -480,7 +420,7 @@ function ExperienceListItemComponent({
                   onToggle={() => onToggleCollapse(experience.id)}
                 />
               )}
-            </Box>
+            </TitleRow>
           }
         />
 
@@ -490,7 +430,7 @@ function ExperienceListItemComponent({
             which is the point: the card opens once, at its final size, rather than
             opening early and growing three times underneath the reader. */}
         {expandIndicator}
-      </ListItem>
+      </RowItem>
 
       {/* Rendered directly, with no `Collapse` around it. There is no animation to
           run — the height cannot be animated because it is measured, and the

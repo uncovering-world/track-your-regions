@@ -160,11 +160,14 @@ components/
 ├── ExperienceList.tsx        ← assembles the list: groups, filtering, curator actions
 ├── ExperienceList/           ← what came out of it: rows, headers, notices, scroll
 │   ├── ExperienceListItem.tsx
+│   ├── ExperienceListItem.styles.ts ← the row's chrome as classes made once
 │   ├── ExperienceExpandedDetails.tsx
 │   ├── ArtworksList.tsx
 │   ├── CardLocationList.tsx  ← the open card's two lists of places, and their caps
 │   ├── GroupHeader.tsx
+│   ├── LocationRow.tsx       ← one place inside an open card
 │   ├── NoticeLink.tsx
+│   ├── PlacesCountChip.tsx   ← the count, and the fold it offers
 │   ├── RejectedSection.tsx
 │   ├── VirtualRow.tsx
 │   ├── VisitedStatusButton.tsx

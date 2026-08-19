@@ -198,6 +198,24 @@ what draws it, and a row that was never mounted draws nothing — the highlight 
 unfolds itself when a marker names a place past the cap, and only for a marker: a hover from the
 list can only have come from a row already on the page.
 
+**What a windowed list costs is mounting, so the row is styled with classes rather than `sx`.**
+Virtualisation was never the slow part — measured over a scroll of Europe's 661 rows,
+`getBoundingClientRect` is called zero times, so the measuring is not it either. The cost is that
+sliding the window mounts twenty-odd rows at once, and each carried fifteen `sx` objects: `sx` is
+emotion at runtime, serialised per render and inserted per mount. `ExperienceListItem` now builds
+its chrome with `styled()` at module scope — one class per element, computed when the file loads —
+with the per-row category colour passed as a CSS variable (`--tyr-row-color`, a plain inline style,
+which also keeps it from outranking the `.Mui-checked` rule) and per-state variation as data
+attributes. Its checkbox also asks for `disableRipple`, because MUI mounts `TouchRipple` a render
+after each `ButtonBase`, for an animation nobody scrolling past will see. One wheel flick, dev
+build: **1833 ms of blocked main thread before, 650-830 ms after**, with no visual change.
+
+Two things tried and rejected, both worth knowing. `useDeferredValue` on `getVirtualItems()` is the
+textbook answer to "a fast scroll mounts every intermediate batch", and it does cut the longest
+task from 453 ms to 105 ms — but a stale virtual window means *nothing where the reader is looking*,
+and a fast scroll left the panel blank for about a second. And `overscan` cannot be lowered to mount
+fewer rows: it is what currently masks the origin gap below (#556).
+
 Separately — and true of any virtualiser here, fixed-height rows included — the virtualiser does not know where the list starts. Row offsets begin at zero while the scroll container's do not: a curator has the "add a category" box above the list, putting it 47 px down, so the computed range is off by that much where `overscan` does not cover it. `scrollMargin` is the remedy, but the documented way to measure it — the list's `offsetTop` — reads 102 px here, because the scroll container is `position: static` and so is not the offset parent. A wrong margin shifts the range for every reader where none shifts it only for curators, so the margin is deliberately absent and the gap is tracked as #556.
 
 ### A card opens at a size it keeps
