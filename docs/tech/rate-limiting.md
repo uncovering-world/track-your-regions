@@ -69,7 +69,7 @@ what goes stale when a route is added to the row below (it has already happened 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit` |
 
 A re-match deletes every `region_members` row for a world view and then spends
 20–130s re-resolving them. The endpoint already answers 409 while one is running,
@@ -121,6 +121,15 @@ revealing a point has to call `placeAfterRelease` after committing — the same
 post-commit placement `/:id/publish` is limited for — or it puts a pin on the map that
 counts in no region; and hiding one has to call it too, or a region goes on counting a
 place nobody is shown. The criterion decides per branch, again.
+
+`PATCH /api/experiences/locations/:locationId/edit` — a curator's correction to one
+point (ADR-0029) — carries the same limiter, and it is the plainest case of the
+criterion because there is no branch to decide. Its sibling above has an answer that
+costs one locked row; this one does not: a coordinate a curator moved may fall in a
+different region, so every correction that touches the coordinate calls
+`placeAfterRelease` after committing, which is the same post-commit placement
+`/:id/publish` is limited for. A rename is the one shape that places nothing — a label
+is not a place — and it is not worth a second limiter to separate them.
 
 `PUT /api/admin/sync/categories/:categoryId/curation-gate` — the switch that holds
 a source's content for review — stays exempt too, and CodeQL flags it, so the

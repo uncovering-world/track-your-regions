@@ -773,7 +773,18 @@ export async function acceptSourceValue(
   experienceId: number,
   fields: string[],
   expectedSyncLogId: number,
-): Promise<{ experienceId: number; applied: string[]; released: string[]; fromSyncLogId: number }> {
+): Promise<{
+  experienceId: number;
+  applied: string[];
+  released: string[];
+  /**
+   * The points whose own claim on the coordinate was released with the object's.
+   * Accepting `location` hands back the correction at both levels, because the
+   * object's coordinate and its one visible point's are the same fact.
+   */
+  releasedPoints: number[];
+  fromSyncLogId: number;
+}> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/accept-source`, {
     method: 'POST',
     body: JSON.stringify({ fields, expectedSyncLogId }),
