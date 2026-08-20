@@ -29,6 +29,20 @@ describe('pointChanges', () => {
     expect(changes[0]).toMatchObject({ field: 'name', significance: 'minor' });
   });
 
+  it('says nothing when a claimed name meets a source that offers none', () => {
+    // `upsertSingleLocation` writes `name: null` for the one point of every museum
+    // and every landmark — a venue's point has no name of its own — so this is not
+    // a proposal to blank the label, it is silence about it. Reported, a curator
+    // who names such a point gets "renamed, kept over the source" on every run for
+    // ever, about something Wikidata never said.
+    const named = { name: 'Main entrance', lon: 4.0, lat: 49.0 };
+    expect(pointChanges(named, { ...named, name: null }, ['name'])).toEqual([]);
+
+    // Unclaimed, the same null still reports: there the writer really does blank
+    // the stored name, and a record that hid it would describe a different run.
+    expect(pointChanges(named, { ...named, name: null })).toHaveLength(1);
+  });
+
   it('ignores a coordinate rewritten more precisely', () => {
     // ADR-0027's ten metres, asked of a component instead of an object — one
     // arithmetic for both, or a site and its parts disagree about what a move is.

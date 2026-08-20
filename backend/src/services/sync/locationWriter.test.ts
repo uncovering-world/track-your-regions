@@ -87,7 +87,7 @@ describe('writeExperienceLocations', () => {
       unchanged: [7, 8],
       needsAssignment: [],
       unoffered: 0,
-      delta: { added: [], withdrawn: [], returned: [] },
+      delta: { added: [], withdrawn: [], returned: [], changed: [] },
     });
   });
 
@@ -809,7 +809,79 @@ describe('writeExperienceLocations — the delta it reports', () => {
 
     const result = await writeExperienceLocations(1, [A, B]);
 
-    expect(result.delta).toEqual({ added: [], withdrawn: [], returned: [] });
+    expect(result.delta).toEqual({ added: [], withdrawn: [], returned: [], changed: [] });
+  });
+
+  it('reports what it rewrote about a point it kept, and stays quiet about typesetting', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '2', matched: '0', ids: [7, 8] }] });
+    const { client } = fakeClient([
+      // The resurrection arm first and empty: it opens `SET ordinal = i.ordinal`
+      // too, so a bare KEEP pattern answers for both and the ids arrive twice —
+      // reported as unchanged and as needing assignment at once, which is the
+      // state the arms' own ordering exists to prevent.
+      [RESURRECT, { rows: [] }],
+      [KEEP, {
+        rows: [
+          // A point a curator corrected, with the source still offering its own
+          // coordinate 2.0 km away. This is the *only* way a kept row can be far
+          // from what the source offers: `samePointSql` bounds the pairing at ten
+          // metres, and `claimedPointSql` is what keeps a corrected row in it at
+          // any distance. An unclaimed move that big is a withdrawal and an
+          // arrival under ADR-0027's identity rule, and is reported as those —
+          // a fixture without the claim would assert a row this writer cannot
+          // produce, which is coverage for a path that does not exist.
+          {
+            id: 7, metres: 2000, external_ref: '1465-001',
+            old_name: 'Coteaux', old_lon: 4.0, old_lat: 49.0,
+            old_curated_fields: ['location'],
+            new_name: 'Coteaux', new_lon: 4.0, new_lat: 49.018,
+          },
+          // And the other real rename of that fortnight: a hyphen became an en dash.
+          {
+            id: 8, metres: 0, external_ref: '1808',
+            old_name: 'Boma-Badingilo', old_lon: 31.5, old_lat: 6.1, old_curated_fields: [],
+            new_name: 'Boma–Badingilo', new_lon: 31.5, new_lat: 6.1,
+          },
+        ],
+      }],
+    ]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [A, B]);
+
+    // One entry, not two: a queue that asks a curator to rule on typesetting is a
+    // queue people learn to skim.
+    expect(result.delta.changed).toHaveLength(1);
+    expect(result.delta.changed[0].item).toEqual({ name: 'Coteaux', ref: '1465-001' });
+    expect(result.delta.changed[0].fields[0]).toMatchObject({
+      field: 'location', significance: 'major', curatedConflict: true,
+    });
+  });
+
+  it('still reports a change the curator\'s claim refused', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client } = fakeClient([
+      // Empty, and first, for the reason above: `RESURRECT` and `KEEP` open with
+      // the same `SET ordinal = i.ordinal`.
+      [RESURRECT, { rows: [] }],
+      [KEEP, {
+        rows: [{
+          id: 7, metres: 0, external_ref: 'r1',
+          old_name: 'A', old_lon: 4.0, old_lat: 49.0, old_curated_fields: ['location'],
+          new_name: 'A', new_lon: 4.0, new_lat: 49.018,
+        }],
+      }],
+    ]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [A]);
+
+    // The guard kept the curator's coordinate, and that is exactly what has to be
+    // reported: a source arguing with a decision is the thing a curator needs to
+    // see, and a run that swallowed it would leave them believing it had stopped.
+    expect(result.delta.changed[0].fields[0]).toMatchObject({
+      field: 'location', curatedConflict: true,
+    });
   });
 
   it('does not re-place a corrected point the run left exactly where it was', async () => {

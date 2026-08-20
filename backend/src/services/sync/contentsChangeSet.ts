@@ -95,7 +95,17 @@ export function pointChanges(
 ): FieldChange[] {
   const changes: FieldChange[] = [];
 
-  if (!sameLabel(before.name, after.name)) {
+  // A source that offers a point without a name has said nothing about its
+  // label, and a claimed name must not be reported as an argument with silence.
+  // The shape is not hypothetical: `upsertSingleLocation` writes `name: null` for
+  // the single point of every museum and every landmark, because a venue's point
+  // has no name of its own — so a curator who names one would otherwise produce
+  // `renamed (1 kept over the source, claimed)` on every run for ever, about a
+  // proposal Wikidata never made. Unclaimed, an incoming null still reports:
+  // there the writer really does blank the stored name, and a record that hid it
+  // would describe a run that did something else.
+  const noNameOffered = (after.name ?? '') === '' && curatedFields.includes('name');
+  if (!noNameOffered && !sameLabel(before.name, after.name)) {
     changes.push(plain('name', before.name, after.name, 'minor'));
   }
 

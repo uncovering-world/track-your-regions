@@ -60,17 +60,38 @@ function artwork(overrides: Partial<ProcessedContent> = {}): ProcessedContent {
  * returns an id, and the link returns a row only when it was really inserted —
  * `DO NOTHING` returns none.
  */
-function scriptWorks(...links: Array<'new' | 'already linked'>) {
-  links.forEach((kind, index) => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900 + index }] });
+type ScriptedWork = 'new' | 'already linked' | { link: 'new' | 'already linked'; name: string };
+
+function scriptWorks(...links: ScriptedWork[]) {
+  scriptStored([]);
+  links.forEach((entry, index) => {
+    const kind = typeof entry === 'string' ? entry : entry.link;
+    const name = typeof entry === 'string' ? 'Mona Lisa' : entry.name;
+    mockedQuery.mockResolvedValueOnce({
+      // The row the statement wrote. It names the link in `added` — on a claimed
+      // field that is the stored value rather than the source's — and nothing
+      // else: what the run *compares* is the snapshot above against the source's
+      // own offer, which is what lets a refusal read as one.
+      // Two columns, because `RETURNING id, name` is two: a fixture carrying the
+      // four the clause used to return would let a regression widening it back
+      // pass unnoticed.
+      rows: [{ id: 900 + index, name }],
+    });
     mockedQuery.mockResolvedValueOnce({
       rows: kind === 'new' ? [{ treasure_id: 900 + index }] : [],
     });
   });
 }
 
-const treasureCall = () => mockedQuery.mock.calls[0];
-const linkCall = () => mockedQuery.mock.calls[1];
+/** What the museum's works looked like before the run, read once for all of them. */
+function scriptStored(rows: unknown[]) {
+  mockedQuery.mockResolvedValueOnce({ rows });
+}
+
+// One past the snapshot read that now opens the call, so these still name the
+// two statements each work sends.
+const treasureCall = () => mockedQuery.mock.calls[1];
+const linkCall = () => mockedQuery.mock.calls[2];
 
 describe('a work arrives marked as unread', () => {
   beforeEach(() => {
@@ -204,7 +225,11 @@ describe('the works delta a museum run reports', () => {
   });
 
   it('names only the works that actually arrived', async () => {
-    scriptWorks('new', 'already linked', 'new');
+    scriptWorks(
+      'new',
+      { link: 'already linked', name: 'The Night Watch' },
+      { link: 'new', name: 'The Starry Night' },
+    );
 
     const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [
       artwork(),
@@ -220,6 +245,60 @@ describe('the works delta a museum run reports', () => {
     ]);
   });
 
+  it('reports what the run rewrote about a work the museum already held', async () => {
+    // The "before" the upsert cannot answer for itself: it is one
+    // `INSERT … ON CONFLICT` and `RETURNING` gives back the new values.
+    scriptStored([{
+      external_id: 'Q12418', name: 'La Gioconda', artist: 'Leonardo',
+      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      curated_fields: [],
+    }]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    // Named by what it was called before the run, the way every contents record
+    // names an item — so the entry stays legible beside a rename.
+    expect(delta.changed).toEqual([{
+      item: { name: 'La Gioconda', ref: 'Q12418' },
+      fields: [
+        expect.objectContaining({ field: 'name', old: 'La Gioconda', new: 'Mona Lisa' }),
+        expect.objectContaining({ field: 'artist', old: 'Leonardo', new: 'Leonardo da Vinci' }),
+      ],
+    }]);
+    // An attribution is the one field here a traveller plans around.
+    expect(delta.changed[0].fields.find(f => f.field === 'artist')?.significance).toBe('major');
+  });
+
+  it('names a claimed work by what the catalogue calls it, not by the source', async () => {
+    scriptStored([{
+      external_id: 'Q12418', name: 'La Gioconda', artist: 'Leonardo da Vinci',
+      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      curated_fields: ['name'],
+    }]);
+    // The claim held, so the statement wrote the stored name back over itself.
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'La Gioconda' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ treasure_id: 900 }] });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    // Reporting the source's title for a link to a work the catalogue calls
+    // something else names a work nobody can find.
+    expect(delta.added).toEqual([{ name: 'La Gioconda', ref: 'Q12418' }]);
+    // And the refusal itself is what a curator is entitled to see rather than a
+    // silence: the entry carries the claim that kept the source out. Compared
+    // against the source's offer rather than the row the statement wrote — the
+    // written row *is* the stored value wherever a claim holds, so comparing
+    // against it would report agreement on exactly the fields in dispute.
+    expect(delta.changed).toEqual([{
+      item: { name: 'La Gioconda', ref: 'Q12418' },
+      fields: [expect.objectContaining({
+        field: 'name', old: 'La Gioconda', new: 'Mona Lisa', curatedConflict: true,
+      })],
+    }]);
+  });
+
   it('reports nothing when every work was already on show', async () => {
     scriptWorks('already linked', 'already linked');
 
@@ -228,7 +307,7 @@ describe('the works delta a museum run reports', () => {
       artwork({ externalId: 'Q45585' }),
     ]);
 
-    expect(delta).toEqual({ added: [], withdrawn: [], returned: [] });
+    expect(delta).toEqual({ added: [], withdrawn: [], returned: [], changed: [] });
   });
 
   it('never reports a withdrawn work, because nothing unlinks one yet', async () => {

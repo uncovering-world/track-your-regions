@@ -388,10 +388,34 @@ fields; `contents` covers the rest, keyed by kind:
 
 ```json
 {"locations": {"added": [{"name": "Waldsiedlung Zehlendorf", "ref": "1239-006"}],
-               "withdrawn": [], "returned": []},
+               "withdrawn": [], "returned": [],
+               "changed": [{"item": {"name": "Coteaux", "ref": "1465-001"},
+                            "fields": [{"field": "location", "significance": "major",
+                                        "curatedConflict": true, "held": false,
+                                        "old": {"lon": 4.0, "lat": 49.0},
+                                        "new": {"lon": 4.0, "lat": 49.018}}]}]},
  "treasures": {"added": [{"name": "The Night Watch", "ref": "Q219831"}],
-               "withdrawn": [], "returned": []}}
+               "withdrawn": [], "returned": [], "changed": []}}
 ```
+
+The fourth key is newer than the other three (ADR-0029 decision 7, narrowing ADR-0026's shape).
+It answers a different question from them: those say what a container holds, and `changed` says
+that something it already held is not what it was — a point that moved, a component renamed. Its
+entries carry the object's own `FieldChange`, `significance` and `curatedConflict` included, which
+ADR-0026 decision 2 could rule out while contents carried no claims and cannot now that they do.
+What reaches it is narrower than it looks: a kept row is a paired row, and pairing is bounded at
+ten metres except for a claimed one, so a `location` entry is a curator's corrected point with the
+source still arguing about it, while an unclaimed move beyond the tolerance is a withdrawal and an
+arrival. Works fill it the same way and are expected to fill it rarely: 120 works re-asked of
+Wikidata eleven days after import differed in name, artist, year and image exactly zero times, which
+says how often a card will appear rather than whether the run should be able to raise one. The
+measurement is why the read is one query per museum rather than one per work — `museumSyncService`
+takes the snapshot of every work it is about to write before writing any of them, and compares it
+against **what the source offered**, which is the pair the location writer's kept arm uses too
+(`i.name`, `i.lon`, `i.lat`, not the row it wrote). Compared against the written row instead, a
+claimed field would equal itself — the upsert's own `CASE` put the stored value back — and the one
+case worth reporting would be the one that disappeared. Against the offer it reads as the refusal
+it is, and carries `curatedConflict`.
 
 Keyed rather than a column per kind, so a third kind of contents costs no migration. A kind the run
 did nothing to is **absent**, and a run that moved nothing writes SQL `NULL` — not `{}`, and not a
@@ -404,8 +428,13 @@ UNESCO components carry a reference and no name of their own.
 Where the numbers come from: `writeExperienceLocations` and `upsertMuseumTreasures` each already
 computed their delta and discarded it — the location writer returned ids for region placement, the
 museum writer reduced its `RETURNING treasure_id` to a boolean for retiring a curator's pass. Both
-now return it, read off the same statements that perform the writes, so the record and the write
-cannot disagree.
+now return it. `added`, `withdrawn` and `returned` are read off the statements that perform the
+writes, so what the record says arrived is what arrived. `changed` cannot be and must not be: it is
+the difference between what was stored and what the source offered, which is a comparison no writing
+statement makes — the museum's comes from a snapshot query and the source's list, the location
+writer's from the pairing's carried `old_*` against the incoming values. Where a claim holds, the
+record and the write are *supposed* to disagree, and that disagreement is the whole content of the
+entry.
 
 Three things it deliberately does not say:
 

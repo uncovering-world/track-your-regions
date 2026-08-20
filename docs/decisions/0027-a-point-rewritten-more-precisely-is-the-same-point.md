@@ -128,14 +128,7 @@ distance is then nought.
 
 **5. Every site that asks the question composes one fragment, and the writing arms read one
 decided pairing.** `samePointSql()` is the fragment, and **two** sites compose it: the `candidate`
-relation the pairing is built from, and the fast path's `matched` term.
-
-> **Narrowed by ADR-0029.** The `candidate` relation now composes `samePointSql OR
-> claimedPointSql`, so a point a curator has claimed pairs on its reference alone, without the
-> geometry term of decision 1. The fast path still composes `samePointSql` by itself and so refuses
-> to match such a row — deliberately, since the slow path is where the run reports that the source
-> is still arguing with the correction. The two sites therefore no longer ask the same question, and
-> the difference is what makes a claim survive a correction larger than the tolerance. Everything else reads the
+relation the pairing is built from, and the fast path's `matched` term. Everything else reads the
 *pairing* — the arms that keep, resurrect and insert, the arms that withdraw and hold, the statement
 that lets go of a spent pairing, and the withdrawal-to-arrival lookup that decides which point each
 arrival replaces. Which is every statement after the one that decides it, stated that way rather than
