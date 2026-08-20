@@ -3,6 +3,14 @@
  * statement-rank bug silently admitted a museum nobody visits for the Syndics, and fixing that
  * silently dropped Tate Britain along with Ophelia. Neither was caught by a test; both were
  * caught by this diff.
+ *
+ * **Both sides are placements, and anything that later diffs contents for a curator must be too.**
+ * Measured 2026-08-20: read as raw statements, this source has withdrawn 138 links, 113 of them the
+ * Louvre's — because Wikidata now files those works under curatorial departments and rooms rather
+ * than under the museum. Resolved, the number is zero and nothing has moved. A queue card built on
+ * the first number tells a curator the Louvre has lost the Venus de Milo and offers them a button
+ * that acts on it. `placement.test.ts` § "a work filed under a department and a room" pins both
+ * halves.
  */
 export interface PlacementDiff {
   moved: { work: string; from: string[]; to: string[] }[];

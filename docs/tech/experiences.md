@@ -313,6 +313,16 @@ Treasures are independently trackable things inside venue experiences. Currently
 - `experience_treasures`: many-to-many junction linking treasures to venue experiences
 - `user_viewed_treasures`: per-user treasure tracking
 
+**Which venue a work belongs to is decided, not read.** A source names whatever holds the work —
+often a curatorial department or an exhibition room, neither of which is a venue this catalogue
+shows. `resolveVenue` walks `P361` to the nearest ancestor that passes the venue test, and
+`placeArtwork` then decides between what ownership and location each say. Measured 2026-08-20, the
+Louvre is the case that makes this load-bearing: for 113 of the 122 works shown there, no statement
+names the museum at all — ownership names *Department of Paintings*, location names *Room 702* —
+and read literally, those works have left the building. **So anything that compares one run's
+contents against the last must compare placements, never statements.** Across the source that is
+the difference between 138 withdrawn links and none.
+
 ### Curation support
 
 - `curator_assignments`: scoped permissions (`global`, `region`, `category`)

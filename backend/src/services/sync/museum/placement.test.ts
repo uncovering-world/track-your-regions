@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { placeArtwork, type VenueStatement } from './placement.js';
+import { resolveVenue } from './resolveVenue.js';
+import type { VenueFacts } from './venueTest.js';
 
 // Resolution is stubbed: a room and an umbrella resolve to nothing, museums to themselves.
 const RESOLVES: Record<string, string | null> = {
@@ -132,5 +134,78 @@ describe('placeArtwork', () => {
     // change it only alongside a deliberate decision about which side should win.
     expect(placeArtwork([s('nationalGallery', 'P195'), s('tateBritain', 'P276')], resolve, ancestorsOf))
       .toEqual(['nationalGallery']);
+  });
+});
+
+/**
+ * The two modules composed, on the shape the Louvre actually has today.
+ *
+ * Each is covered on its own above and in `resolveVenue.test.ts`, and their
+ * composition is what the catalogue's largest museum rests on: measured
+ * 2026-08-20, Wikidata names *no statement at all* that points straight at the
+ * Louvre for 113 of the 122 works this catalogue shows there. Ownership names a
+ * curatorial department, location names a room, and neither is a venue. Read as
+ * statements those 113 works have left the building — the Venus de Milo, the
+ * Raft of the Medusa, Liberty Leading the People. Resolved, none of them has
+ * moved.
+ *
+ * Which is the constraint on anything that later diffs contents: **the delta is
+ * computed from placements, never from statements.** The number a statement-level
+ * diff produces is 138 withdrawals across the source, and a curator offered
+ * "publish all" over that card empties the Louvre.
+ */
+describe('a work filed under a department and a room (the Louvre, 2026)', () => {
+  const ART_MUSEUM = new Set(['Q207694']);
+  // The real graph, fetched the day this test was written. A room reaches the
+  // Louvre *Palace* rather than the museum, which is a building and no venue —
+  // so the location side resolves to nothing and the department carries it.
+  const world: Record<string, VenueFacts & { parents: string[] }> = {
+    Q19675: { qid: 'Q19675', classes: ['Q207694'], lat: 48.86, lon: 2.34, dissolved: null, parents: [] },
+    Q3044768: { qid: 'Q3044768', classes: ['Q11681271'], lat: null, lon: null, dissolved: null, parents: ['Q19675'] },
+    Q4032340: { qid: 'Q4032340', classes: ['Q667276'], lat: null, lon: null, dissolved: null, parents: ['Q14619172'] },
+    Q14619172: { qid: 'Q14619172', classes: ['Q667276'], lat: null, lon: null, dissolved: null, parents: ['Q1075988'] },
+    Q1075988: { qid: 'Q1075988', classes: ['Q16560'], lat: 48.86, lon: 2.33, dissolved: null, parents: [] },
+  };
+  const facts = (q: string) => world[q];
+  const parentsOf = (q: string) => world[q]?.parents ?? [];
+  const resolveThroughAncestry = (q: string) => {
+    const answer = resolveVenue(q, facts, parentsOf, ART_MUSEUM);
+    return 'venue' in answer ? answer.venue : null;
+  };
+  const ancestryOf = (q: string): ReadonlySet<string> => {
+    const seen = new Set<string>();
+    let frontier = parentsOf(q);
+    while (frontier.length) {
+      const next: string[] = [];
+      for (const p of frontier) {
+        if (p !== q && !seen.has(p)) {
+          seen.add(p);
+          next.push(...parentsOf(p));
+        }
+      }
+      frontier = next;
+    }
+    return seen;
+  };
+
+  it('stays in the museum that shows it', () => {
+    const statements = [s('Q3044768', 'P195'), s('Q4032340', 'P276', 'preferred')];
+
+    expect(placeArtwork(statements, resolveThroughAncestry, ancestryOf)).toEqual(['Q19675']);
+
+    // And the other half of the claim, so this test carries its own proof: a
+    // resolution that only recognises what it is handed — which is what diffing
+    // statements amounts to — places the work nowhere at all.
+    const identityOnly = (q: string) => (q === 'Q19675' ? q : null);
+    expect(placeArtwork(statements, identityOnly, ancestryOf)).toEqual([]);
+  });
+
+  it('stays there when the room is the only thing named', () => {
+    // Room 345 is P361 of the museum itself rather than of the palace, so this
+    // one resolves on the location side — the same answer by the other road.
+    world.Q19060517 = {
+      qid: 'Q19060517', classes: ['Q667276'], lat: null, lon: null, dissolved: null, parents: ['Q19675'],
+    };
+    expect(placeArtwork([s('Q19060517', 'P276')], resolveThroughAncestry, ancestryOf)).toEqual(['Q19675']);
   });
 });
