@@ -289,7 +289,18 @@ describe('getReviewQueue', () => {
     // *column* name — so the lookup goes through the same map the claim does.
     // Reading it by the changeset's own name would find nothing for
     // `shortDescription`, and the card would say "a curator" about every edit.
+    // Both actions that can put a key in `curated_fields`, not just the object's
+    // own edit: a correction to a single-point object's point claims `location`
+    // on the experience and records `location_edited` (ADR-0029), and matching
+    // one of them left exactly that claim unattributed — on the ordinary path,
+    // since a corrected site raises a conflict card on every run afterwards.
     expect(conflictSql).toContain("log.action = 'edited'");
+    // And the point-level act only where it really claimed the object's field: a
+    // point rename writes a `name` key and claims nothing on the experience, so
+    // on the action alone the newest rename outranked the edit that claimed the
+    // museum's name and the card named a curator who never claimed it.
+    expect(conflictSql).toContain("log.action = 'location_edited'");
+    expect(conflictSql).toContain("(log.details->>'anchorMoved')::boolean");
     expect(conflictSql).toMatch(/log\.details \? COALESCE\(\s*\$\d+::jsonb->>\(f->>'field'\), f->>'field'\)/);
     // Newest wins, and `created_at` alone does not decide it: two edits in one
     // request share a timestamp, so the id breaks the tie the way it does

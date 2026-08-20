@@ -150,6 +150,25 @@ export const treasureIdParamSchema = z.object({
   treasureId: z.coerce.number().int().positive(),
 });
 
+/**
+ * A curator's correction to one point: what it is called, or where it is.
+ *
+ * The coordinate arrives as a pair or not at all. Half a move is not a place —
+ * a latitude written against the old longitude names somewhere nobody chose,
+ * and on a single-point object that is where the object itself would go.
+ */
+export const editLocationBodySchema = z.object({
+  name: z.string().min(1).max(500).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+}).refine(
+  body => (body.latitude === undefined) === (body.longitude === undefined),
+  { message: 'Pass latitude and longitude together, or neither' },
+).refine(
+  body => body.name !== undefined || body.latitude !== undefined,
+  { message: 'Nothing to change: pass a name, a coordinate, or both' },
+);
+
 export const markTreasureViewedBodySchema = z.object({
   experienceId: z.number().int().positive().optional(),
 });

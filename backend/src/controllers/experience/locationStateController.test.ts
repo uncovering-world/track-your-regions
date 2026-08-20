@@ -123,6 +123,27 @@ describe('setLocationState', () => {
     expect(mockedConnect).not.toHaveBeenCalled();
   });
 
+  it('locks the object before the point, as the other three writers do', async () => {
+    foundAndPermitted();
+    const { client, queries } = makeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await setLocationState(
+      { params: { locationId: '13211' }, body: { membership: 'former', expected: WAITING }, user: CURATOR } as never,
+      makeRes() as never,
+    );
+
+    // This handler reaches the parent row whether or not it says so: the audit
+    // INSERT references `experiences`, which takes `FOR KEY SHARE` on it, and that
+    // conflicts with the `FOR UPDATE` `editLocation` and `accept-source` hold while
+    // they wait for this point. Two curators on one point closed that cycle and
+    // Postgres broke it with a deadlock — a 500 for one of them.
+    const locks = queries.filter(q => q.sql.includes('FOR UPDATE')).map(q => q.sql);
+    expect(locks).toHaveLength(2);
+    expect(locks[0]).toContain('FROM experiences');
+    expect(locks[1]).toContain('FROM experience_locations');
+  });
+
   it('leaves the flag standing on a verdict of former, so the point stays off the map', async () => {
     foundAndPermitted();
     const { client, queries } = makeClient();

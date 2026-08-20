@@ -63,7 +63,7 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     res.status(409).json(outcome.refusal);
     return;
   }
-  const { applied, released, fromSyncLogId } = outcome;
+  const { applied, released, releasedPoints, fromSyncLogId } = outcome;
 
   res.json({
     experienceId,
@@ -71,6 +71,10 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     // Fields this endpoint cannot write: the claim is gone, so the next run
     // applies the source's value through the ordinary upsert.
     released,
+    // The points whose own claim on `location` went with the object's, named
+    // rather than counted: a curator who corrected a pin is entitled to know
+    // which pin they just handed back.
+    releasedPoints,
     fromSyncLogId,
   });
 }
@@ -80,12 +84,11 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
  *
  * Releasing the claim is the point, and it is the whole of the answer for
  * fields this endpoint cannot write. A curator who lets the source have the
- * coordinates cannot type them in — `editExperience` does not offer location at
- * all, and every path that writes `curated_fields` other than this one only
- * ever adds to it. So releasing is what lets the *next run* apply the source's
- * value through the ordinary upsert, and it is the only thing that takes such
- * an item off the queue. For the five writable fields the value is additionally
- * applied now, which is the only difference between the two cases.
+ * coordinates cannot type them in through `editExperience`, which does not
+ * offer location at all. So releasing is what lets the *next run* apply the
+ * source's value through the ordinary upsert, and it is the only thing that
+ * takes such an item off the queue. For the five writable fields the value is
+ * additionally applied now, which is the only difference between the two cases.
  *
  * Everything the decision rests on is read inside the transaction that writes,
  * under the row lock: `curated_fields`, and the proposal itself. Resolving the
@@ -106,6 +109,7 @@ async function applyProposedFields(
 ): Promise<{
   applied: string[];
   released: string[];
+  releasedPoints: number[];
   fromSyncLogId: number;
   refusal?: { error: string; fromSyncLogId?: number };
 }> {
@@ -146,7 +150,10 @@ async function applyProposedFields(
     // line has run.
     const refuse = async (error: string, fromSyncLogId?: number) => {
       unusable = await rollbackQuietly(client);
-      return { applied: [], released: [], fromSyncLogId: fromSyncLogId ?? 0, refusal: { error, fromSyncLogId } };
+      return {
+        applied: [], released: [], releasedPoints: [],
+        fromSyncLogId: fromSyncLogId ?? 0, refusal: { error, fromSyncLogId },
+      };
     };
 
     if (proposal.rows.length === 0) {
@@ -183,6 +190,41 @@ async function applyProposedFields(
        WHERE id = $1`,
       [experienceId, ...values, JSON.stringify(remaining)],
     );
+    // **A point's claim on the coordinate goes with the object's.**
+    //
+    // The object's coordinate and its points' are one fact seen at two levels:
+    // ADR-0028 positions a reader at a place they can go to, and the only path
+    // that claims `location` on an *experience* is `editLocation`, which claims
+    // it on the point in the same transaction and only where that point is the
+    // object's one visible place. Releasing the object's half alone would leave
+    // the next run writing the source's coordinate to `experiences.location`
+    // while the point keeps the curator's — the object positioned by the source
+    // and its only pin by the curator, which is #550 exactly, produced by the
+    // pair of endpoints written to close it. Nothing would report it either: the
+    // card that was answered is about the object and says nothing about a point
+    // that will not follow.
+    //
+    // Releasing both is what the curator asked for, read honestly: the whole
+    // content of the claim is "this coordinate is mine, not the source's", and
+    // "take the source's" withdraws it. Refusing instead would be worse than
+    // wrong — contents claims have no other release path (ADR-0029), so the card
+    // would be unanswerable, which is the "button that lies" `acceptableFields`
+    // exists to prevent.
+    //
+    // Written for every claiming point rather than the one the count implies, so
+    // that a second path to the object-level claim cannot quietly leave a point
+    // behind; today the guard in `editLocation` makes those the same row.
+    const pointRelease = open.some(p => claimKeyFor(p.field) === 'location')
+      ? await client.query(
+        `UPDATE experience_locations
+            SET curated_fields = curated_fields - 'location'
+          WHERE experience_id = $1 AND curated_fields ? 'location'
+          RETURNING id`,
+        [experienceId],
+      )
+      : { rows: [] as Array<{ id: number }> };
+    const releasedPoints = pointRelease.rows.map(r => r.id);
+
     // Any standing refusal of these fields goes with the claim it belonged to. A
     // refusal answers "the source may not have this field *while I hold it*", and
     // accepting hands the field back — so leaving the row behind would silence the
@@ -203,11 +245,15 @@ async function applyProposedFields(
         applied: columnFor(p.field) !== null ? p.new : undefined,
         appliesAtNextSync: columnFor(p.field) === null || undefined,
       })),
+      // Only when there were any, so the trail of every other accepted field
+      // reads as it did before this rule existed.
+      releasedPoints: releasedPoints.length > 0 ? releasedPoints : undefined,
     })]);
     await client.query('COMMIT');
     return {
       applied: writable.map(p => p.field),
       released: open.filter(p => columnFor(p.field) === null).map(p => p.field),
+      releasedPoints,
       fromSyncLogId,
     };
   } catch (error) {

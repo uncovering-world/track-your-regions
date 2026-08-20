@@ -331,9 +331,31 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                        -- Who claimed this field and when, so the button stops
                        -- saying "my edit" about another curator's work. The
                        -- claim itself is a set membership in curated_fields and
-                       -- carries no author; the act that put it there is an
-                       -- 'edited' log entry keyed by the *column* name, which is
-                       -- what the same map above translates to.
+                       -- carries no author; the act that put it there is a log
+                       -- entry keyed by the *column* name, which is what the same
+                       -- map above translates to.
+                       --
+                       -- Two actions can put a key there, not one. A correction
+                       -- to a single-point object's own point claims location on
+                       -- the experience and records location_edited
+                       -- (ADR-0029 decision 6), so matching edited alone left
+                       -- exactly that claim unattributed — and it is the ordinary
+                       -- path, not a corner: one corrected UNESCO site raises a
+                       -- conflict card on every run afterwards. That card would
+                       -- then ask a curator to choose between two coordinates
+                       -- without saying whose the standing one is, which is the
+                       -- state this subquery exists to end.
+                       --
+                       -- But narrowly, because a key in the details is not a
+                       -- claim on the *object*. A point rename writes a name key
+                       -- and claims nothing here — the anchor branch is the only
+                       -- writer of experiences.curated_fields in that endpoint
+                       -- and only ever adds location — so a widening on the
+                       -- action alone let the newest point rename outrank the
+                       -- edit that really claimed the museum's name, and the card
+                       -- would name a curator who never made that claim. The
+                       -- anchorMoved flag is exactly "this act put location into
+                       -- the experience's claim set", which is the question.
                        'claim', (
                          SELECT jsonb_build_object(
                                   'by', COALESCE(u.display_name, 'a curator'),
@@ -341,7 +363,10 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
                            FROM experience_curation_log log
                            JOIN users u ON u.id = log.curator_id
                           WHERE log.experience_id = e.id
-                            AND log.action = 'edited'
+                            AND (log.action = 'edited'
+                              OR (log.action = 'location_edited'
+                                  AND f->>'field' = 'location'
+                                  AND (log.details->>'anchorMoved')::boolean))
                             AND log.details ? COALESCE(
                                   $${keyMapIdx}::jsonb->>(f->>'field'), f->>'field')
                             AND ${logScopeFilter}
@@ -532,10 +557,10 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
 
   // contents: a visible experience holding unread points or works of its own
   // (ADR-0025 decision 2 — the gate is on the content row, not only on its
-  // container). Counted rather than listed: nobody approves 758 coordinates
-  // one at a time, and for a large site the count plus the anchor's movement
-  // is the whole judgement. The expandable row list is a separate, per-item
-  // read — this endpoint only says that unread contents exist.
+  // container). Counted *and* listed: the count is the whole number and the list
+  // is its first `CONTENTS_ROWS_SHOWN` rows, because neither alone is a card a
+  // curator can answer — a count asks them to approve twelve works they cannot
+  // see (#524), and an unbounded list turns a 758-point site into 758 rows.
   //
   // `offeredLocationSql()` alongside `el.curation_state = 'pending'`, and both of
   // its terms carry: a point the source has withdrawn, or one a curator has declared
@@ -549,15 +574,14 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // `getExperienceTreasures` gates both separately (three predicates, not
   // one) and this count has to ask the same two questions or it would miss a
   // treasure whose link was already reviewed while the work itself was not
-  // (a treasure shared across venues is exactly this shape). `et`/`t` are
-  // joined unfiltered and the pending check moves to `WHERE`/`FILTER`,
-  // because `t.curation_state` is not visible from inside `et`'s own JOIN
-  // condition.
+  // (a treasure shared across venues is exactly this shape). Both questions sit
+  // in the works lateral's own `WHERE`, which is where they can be asked at all:
+  // `t.curation_state` is not visible from inside `et`'s JOIN condition.
   //
-  // `::int` on both counts, wrapping the whole aggregate because `FILTER` binds
-  // to it: `COUNT(*)` is `bigint`, which `pg` hands to JavaScript as a *string*
-  // to keep values above 2^53 exact. No count here can reach that — 758
-  // locations is the catalogue's largest — so the cast costs nothing and stops
+  // `::int` on both counts: `COUNT(*)` is `bigint`, which `pg` hands to
+  // JavaScript as a *string* to keep values above 2^53 exact. No count here can
+  // reach that — 758 locations is the catalogue's largest — so the cast costs
+  // nothing and stops
   // `"12"` reaching a client. It matters beyond arithmetic, where coercion would
   // cover for it: a plural rule compares against 1, and `'1' === 1` is false, so
   // an uncast count reads "1 points" on the queue page. Every other count in

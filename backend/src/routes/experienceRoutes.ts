@@ -28,6 +28,7 @@ import {
   setExperienceAdmission,
   setExperienceState,
   setLocationState,
+  editLocation,
   acceptSourceValue,
   declineSourceValue,
   publishExperience,
@@ -51,6 +52,7 @@ import {
   experienceAdmissionBodySchema,
   newBadgesSeenBodySchema,
   lifecycleStateBodySchema,
+  editLocationBodySchema,
   locationIdParamSchema,
   acceptSourceBodySchema,
   declineSourceBodySchema,
@@ -148,6 +150,10 @@ router.post('/:id/state', validate(idParamSchema, 'params'), requireAuth, requir
 // committing, exactly as a publication releasing a withdrawal does, and it costs the
 // same regardless of who sends it.
 router.post('/locations/:locationId/state', authenticatedLimiter, validate(locationIdParamSchema, 'params'), requireAuth, requireCurator, validate(lifecycleStateBodySchema), setLocationState);
+// The correction beside the verdict, and rate-limited with it: it writes a claim,
+// moves the object's anchor where the object is one point, and re-places the
+// experience into regions afterwards — the same shape of work as the line above.
+router.patch('/locations/:locationId/edit', authenticatedLimiter, validate(locationIdParamSchema, 'params'), requireAuth, requireCurator, validate(editLocationBodySchema), editLocation);
 // Rate-limited for the same reason `/:id/publish` below is, and it is the same
 // branch rather than a similar one: overriding a refusal on a gated arrival
 // publishes its contents through the shared `publishContents`, so it can release

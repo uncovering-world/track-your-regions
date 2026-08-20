@@ -1791,14 +1791,22 @@ that experience rolls back. `db/migrations/README.md` records nothing about whic
 has already seen (#435), so both are hand-applications to remember, not something the code can
 detect.
 
-**Three shapes, all explicit, none of them inferred from the others' absence.** An empty body
+**Four shapes, all explicit, none of them inferred from the others' absence.** An empty body
 publishes the object: its held fields, `curation_state = 'verified'`, and every unread point and
 work it holds. `{ contentsOnly: true }` publishes every pending content row and leaves the
 experience's own row alone — a visible museum that gained three checked paintings has not thereby
 been read. `{ locationIds }` / `{ treasureIds }` (or both) do the same for exactly those rows.
-The schema's `.refine`s make the three mutually exclusive: `contentsOnly` beside a named array says
-"contents only" twice, and any contents publish beside `expectedSyncLogId` answers a question it
-is not asking. An empty array is a 400 rather than either reading, since it would mean "publish
+`{ fieldsOnly: true }` is the mirror of the second (#524): the held fields land and every unread
+point and work stays where it is, so declining one proposed sentence stops holding back twelve
+checked paintings. It answers **409 on a row nobody has passed yet** — an arrival has no held
+fields to publish on their own, and publishing it this way would put an object in front of readers
+with nothing on the map, which is what the writer's deferral machinery exists to prevent. The trail
+records which of the three acts it was — `scope`, one of `object`, `contents` or `fields` — because
+an object publish over a row holding no unread contents writes the same zeros as a fields-only one.
+The schema's `.refine`s make the four mutually exclusive: `contentsOnly` beside a named array says
+"contents only" twice, any contents publish beside `expectedSyncLogId` answers a question it
+is not asking, and `fieldsOnly` beside any contents shape asks for the object publish an empty body
+already means. An empty array is a 400 rather than either reading, since it would mean "publish
 nothing and do not publish the object either". A named work publishes two rows, its link
 (`experience_treasures`) and the work itself (`treasures`), because a reader's treasure list gates
 both and a work is passed once globally while its link is passed as being *here*; both writes are

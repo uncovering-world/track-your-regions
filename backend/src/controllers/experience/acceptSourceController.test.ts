@@ -44,7 +44,7 @@ const ADMIN = { id: 1, role: 'admin' as const };
  * here — the lifecycle axes belong to the verdict handlers and their mock, in
  * `lifecycleController.test.ts`.
  */
-function makeClient(claimed?: string[], proposal?: unknown[]) {
+function makeClient(claimed?: string[], proposal?: unknown[], claimingPoints: number[] = []) {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   return {
     queries,
@@ -52,6 +52,9 @@ function makeClient(claimed?: string[], proposal?: unknown[]) {
       query: vi.fn(async (sql: string, params?: unknown[]) => {
         queries.push({ sql, params: params ?? [] });
         if (sql.includes('experience_sync_changes')) return { rows: proposal ?? [] };
+        // Before the lock read: the release of the points' own claim is also an
+        // UPDATE, and it is the one that names `experience_locations`.
+        if (sql.includes('UPDATE experience_locations')) return { rows: claimingPoints.map(id => ({ id })) };
         if (sql.includes('FOR UPDATE')) return { rows: [{ curated_fields: claimed ?? [] }] };
         return { rows: [] };
       }),
@@ -263,6 +266,56 @@ describe('acceptSourceValue', () => {
     expect(update?.sql).not.toContain('tags =');
     expect(update?.params).toContain(JSON.stringify(['name']));
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ applied: [], released: ['tags'] }));
+  });
+
+  it('releases the coordinate on the object and on its pin together', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    const PROPOSAL = [{
+      sync_log_id: 9,
+      changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
+    }];
+    const { client, queries } = makeClient(['location'], PROPOSAL, [41]);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    // The object's claim on `location` exists only because `editLocation` made
+    // it, on the object's one visible point, in the same transaction as that
+    // point's own. Releasing the object's half alone leaves the next run writing
+    // the source's coordinate to `experiences.location` while the pin keeps the
+    // curator's — the object positioned by the source and its only place by the
+    // curator, which is #550 made by the endpoints written to close it.
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    const release = queries.find(q => q.sql.includes('UPDATE experience_locations'));
+    expect(release?.sql).toContain("curated_fields - 'location'");
+    expect(release?.params).toEqual([5]);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      released: ['location'], releasedPoints: [41],
+    }));
+    const log = queries.find(q => q.sql.includes('experience_curation_log'));
+    expect(String(log?.params[3])).toContain('"releasedPoints":[41]');
+  });
+
+  it('leaves the points alone when the accepted field is not the coordinate', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
+    const { client, queries } = makeClient(['name', 'location'], PROPOSAL, [41]);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    // A claimed pin is not an answer about the object's name, and the object's
+    // own `location` claim is left standing here too — this request was about
+    // one field, and `open` is what the release follows.
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    expect(queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ releasedPoints: [] }));
   });
 
   it('reads the claim it is about to rewrite under the same lock', async () => {

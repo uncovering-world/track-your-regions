@@ -338,6 +338,11 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // same reason an experience's does.
     'location_marked_former', 'location_marked_lost',
     'location_state_restored', 'location_missing_dismissed',
+    // A correction to the point itself rather than a verdict about its standing:
+    // the name it is listed under, or where it actually is. It could not exist
+    // before contents carried claims (migration 027), because until then the next
+    // run took the correction back and there was nothing to record.
+    'location_edited',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
