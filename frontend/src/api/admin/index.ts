@@ -122,6 +122,17 @@ export interface SyncChange {
     added: Array<{ name: string | null; ref: string | null }>;
     withdrawn: Array<{ name: string | null; ref: string | null }>;
     returned: Array<{ name: string | null; ref: string | null }>;
+    /**
+     * Rows the run kept and rewrote: a point that moved, a component renamed.
+     *
+     * The three above say what the object holds; this says that something it
+     * already held is not what it was — the fortnight a site's coordinates were
+     * re-surveyed, membership had not changed and the record was empty.
+     */
+    changed?: Array<{
+      item: { name: string | null; ref: string | null };
+      fields: SyncFieldChange[];
+    }>;
   }>> | null;
   significance: 'major' | 'minor' | null;
   error: string | null;

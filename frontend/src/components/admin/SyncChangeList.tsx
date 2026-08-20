@@ -42,6 +42,44 @@ function itemLabel(item: { name: string | null; ref: string | null }): string {
 }
 
 /**
+ * What a rewrite was, in the fewest words that still answer it.
+ *
+ * Grouped by cause and counted, never listed. A site whose points a curator has
+ * corrected raises one of these per run while the source keeps offering its own
+ * coordinates, and six lines saying "a point moved" are six questions nobody can
+ * answer separately, while "6 moved" is one fact about the site that a person can
+ * act on. The listing that does belong per row is on the curator's card, where
+ * the decision is.
+ *
+ * A claim is counted apart because it is a different event: the source proposed
+ * something and did not get it, so the number is how often it is still arguing
+ * with a curator rather than how often anything changed.
+ */
+function rewriteSummary(
+  changed: Array<{ fields: SyncFieldChange[] }>,
+): string | null {
+  if (changed.length === 0) return null;
+  const verbs: Record<string, string> = {
+    location: 'moved',
+    name: 'renamed',
+    artist: 're-attributed',
+    year: 'redated',
+    image_url: 'repictured',
+  };
+  const counts = new Map<string, number>();
+  let claimed = 0;
+  for (const row of changed) {
+    for (const field of row.fields) {
+      const verb = verbs[field.field] ?? `changed ${field.field}`;
+      counts.set(verb, (counts.get(verb) ?? 0) + 1);
+      if (field.curatedConflict) claimed += 1;
+    }
+  }
+  const said = [...counts].map(([verb, count]) => `${count} ${verb}`).join(', ');
+  return claimed > 0 ? `${said} (${claimed} kept over the source, claimed)` : said;
+}
+
+/**
  * One line per kind of contents the run moved, in words rather than as JSON.
  *
  * Exported for its test: the shape is a nested record and the line it produces is
@@ -60,6 +98,8 @@ export function contentsLines(
     // Its own word, because the row and everything hanging off it are the same ones
     // as before — a visit on that point was never touched (ADR-0022).
     if (delta.returned.length > 0) parts.push(`offered again: ${delta.returned.map(itemLabel).join(', ')}`);
+    const rewritten = rewriteSummary(delta.changed ?? []);
+    if (rewritten) parts.push(rewritten);
     return parts.length > 0 ? [`${kindName[kind] ?? kind}: ${parts.join('; ')}`] : [];
   });
 }

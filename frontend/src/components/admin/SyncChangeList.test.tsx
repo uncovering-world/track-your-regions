@@ -258,6 +258,60 @@ describe('SyncChangeList', () => {
       .toBeInTheDocument();
   });
 
+  it('counts what a run rewrote by cause, instead of listing every row', () => {
+    // Three points of one site whose coordinates a curator had corrected, and a
+    // source still offering its own — the only way a run rewrites a point it
+    // keeps, since an unclaimed move beyond ten metres is a withdrawal and an
+    // arrival (ADR-0027). Three lines saying "a point moved" are three questions
+    // nobody can answer separately; "3 moved" is one fact about the site.
+    const moved = (ref: string) => ({
+      item: { name: null, ref },
+      fields: [{
+        field: 'location',
+        old: { lon: 4.0, lat: 49.0 },
+        new: { lon: 4.0, lat: 49.02 },
+        significance: 'major' as const,
+        curatedConflict: false,
+      }],
+    });
+    const lines = contentsLines({
+      locations: {
+        added: [], withdrawn: [], returned: [],
+        changed: [
+          ...['1465-001', '1465-002', '1465-006'].map(moved),
+          {
+            item: { name: 'Boma', ref: '1808' },
+            fields: [{
+              field: 'name', old: 'Boma-Badingilo', new: 'Boma–Badingilo',
+              significance: 'minor' as const, curatedConflict: false,
+            }],
+          },
+        ],
+      },
+    });
+
+    expect(lines).toEqual(['places: 3 moved, 1 renamed']);
+  });
+
+  it('counts a change a curator\'s claim refused apart from the rest', () => {
+    // A different event: the source proposed something and did not get it, so the
+    // number says how often it is still arguing rather than how often anything moved.
+    const lines = contentsLines({
+      locations: {
+        added: [], withdrawn: [], returned: [],
+        changed: [{
+          item: { name: 'The east wing', ref: 'r1' },
+          fields: [{
+            field: 'location', old: { lon: 1, lat: 1 }, new: { lon: 2, lat: 2 },
+            significance: 'major' as const, curatedConflict: true,
+          }],
+        }],
+      },
+    });
+
+    expect(lines).toEqual(['places: 1 moved (1 kept over the source, claimed)']);
+  });
+
   it('names each kind of contents and gives a return its own word', () => {
     // Direct rather than through a render, which is why the function is exported: the
     // integration case above drives `locations` only, and `treasures` is the kind whose
