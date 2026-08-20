@@ -107,6 +107,25 @@ describe('a work arrives marked as unread', () => {
     expect(onUpdate).not.toContain('curation_state');
   });
 
+  it('keeps the fields a curator claimed, and follows the source everywhere else', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    // The same guard an experience's columns carry (#488), a level down: without
+    // it a curator who corrects an attribution has it back the source's way after
+    // the next run, and nothing anywhere says so happened.
+    const onUpdate = String(treasureCall()[0]).slice(String(treasureCall()[0]).indexOf('DO UPDATE SET'));
+    for (const column of ['name', 'artist', 'year', 'image_url']) {
+      expect(onUpdate).toContain(`CASE WHEN treasures.curated_fields ? '${column}'`);
+    }
+    // A count and the threshold read off it are a measurement rather than a
+    // judgement, so they stay the source's on every run.
+    expect(onUpdate).toContain('sitelinks_count = EXCLUDED.sitelinks_count');
+    expect(onUpdate).not.toContain("curated_fields ? 'sitelinks_count'");
+    expect(onUpdate).not.toContain("curated_fields ? 'is_iconic'");
+  });
+
   it('reads a link\'s gate through the experience the work is shown in', async () => {
     scriptWorks('new');
 

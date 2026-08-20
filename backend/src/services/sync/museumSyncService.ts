@@ -212,11 +212,18 @@ export async function upsertMuseumTreasures(
              THEN 'pending' ELSE 'auto' END,
         NOW(), NOW())
       ON CONFLICT (external_id) DO UPDATE SET
-        name = EXCLUDED.name,
+        -- Four of these are things a curator can be right about, and the guard is
+        -- the one an experience's columns have carried since #488: a claimed field
+        -- keeps what was decided, and everything else still follows the source.
+        -- sitelinks_count and is_iconic are outside it deliberately -- a count and a
+        -- threshold on that count are a measurement, not a judgement -- and so is
+        -- external_id, which is identity and is the conflict target above.
+        name = CASE WHEN treasures.curated_fields ? 'name' THEN treasures.name ELSE EXCLUDED.name END,
         treasure_type = EXCLUDED.treasure_type,
-        artist = EXCLUDED.artist,
-        year = EXCLUDED.year,
-        image_url = EXCLUDED.image_url,
+        artist = CASE WHEN treasures.curated_fields ? 'artist' THEN treasures.artist ELSE EXCLUDED.artist END,
+        year = CASE WHEN treasures.curated_fields ? 'year' THEN treasures.year ELSE EXCLUDED.year END,
+        image_url = CASE WHEN treasures.curated_fields ? 'image_url'
+                         THEN treasures.image_url ELSE EXCLUDED.image_url END,
         sitelinks_count = EXCLUDED.sitelinks_count,
         is_iconic = CASE
           WHEN EXCLUDED.sitelinks_count >= $10 THEN true

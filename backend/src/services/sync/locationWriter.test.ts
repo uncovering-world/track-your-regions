@@ -793,6 +793,67 @@ describe('writeExperienceLocations — the delta it reports', () => {
     expect(result.delta).toEqual({ added: [], withdrawn: [], returned: [] });
   });
 
+  it('does not re-place a corrected point the run left exactly where it was', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '2', matched: '0', ids: [7, 8] }] });
+    const { client } = fakeClient([
+      // The resurrection arm first and empty: it opens `SET ordinal = i.ordinal`
+      // too, so a bare KEEP pattern answers for both and the ids arrive twice.
+      [RESURRECT, { rows: [] }],
+      [KEEP, {
+        rows: [
+          // Claimed: the arm kept `el.location`, so nothing moved. `metres` is the
+          // pairing distance to the point the source is still offering.
+          {
+            id: 7, metres: 2000, external_ref: 'r1',
+            old_name: 'A', old_lon: 4.0, old_lat: 49.0, old_curated_fields: ['location'],
+            new_name: 'A', new_lon: 4.0, new_lat: 49.018,
+          },
+          // Unclaimed and genuinely rewritten within the tolerance: this one is
+          // placed again, because a region boundary is a line and no distance near
+          // one is small enough to be safe.
+          {
+            id: 8, metres: 4, external_ref: 'r2',
+            old_name: 'B', old_lon: 31.5, old_lat: 6.1, old_curated_fields: [],
+            new_name: 'B', new_lon: 31.50004, new_lat: 6.1,
+          },
+        ],
+      }],
+    ]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [A, B]);
+
+    // Otherwise every run deletes and reinserts this experience's `auto` region
+    // rows for as long as the correction stands — nothing lost, since a manual
+    // assignment is never touched, but exactly the churn the fast path exists to
+    // remove, and it grows with how much curation has happened.
+    expect(result.needsAssignment).toEqual([8]);
+    expect(result.unchanged).toEqual([7]);
+  });
+
+  it('keeps a corrected point paired however far the source has moved on', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    // The claim would otherwise hold for exactly the corrections too small to need
+    // it: a curator moves a pin off the wrong building — the motivating case is
+    // 2.0 km — and the row falls out of a pairing bounded at ten metres, so the
+    // source's point is inserted as a new row and the corrected one is marked
+    // withdrawn. Paired by reference alone, it reaches the arm that protects it.
+    const pairing = String(statements.find(s => s.includes('CREATE TEMP TABLE paired_rows')));
+    expect(pairing).toContain("el.curated_fields ? 'location'");
+    // Null-safe on purpose, and the fragment's docblock argues it: made strict,
+    // this excludes the one row it most needs to cover, since `samePointSql`
+    // falls back to exact coordinate equality when there is no reference — so a
+    // corrected referenceless point would match nothing and be withdrawn. One
+    // catalogue row has no reference (site 868), and it is its only point, so its
+    // anchor moved with the correction too.
+    expect(pairing).toContain('el.external_ref IS NOT DISTINCT FROM i.external_ref');
+  });
+
   it('names both the point it added and the point it withdrew', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ stored: '2', matched: '1', ids: [7, 8] }] });
     const { client } = fakeClient([
@@ -1039,9 +1100,38 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     // the text passes whether or not anything is written — which is how this assertion
     // read before a mutation check caught it.
     const setOf = (sql: string) => sql.slice(sql.indexOf('SET'), sql.indexOf('FROM paired'));
-    const write = 'location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)';
+    // The write is the ELSE of a claim guard since #488 reached the contents: a
+    // curator's coordinate survives the run, and every other row still converges.
+    const write = 'ELSE ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326) END';
     expect(setOf(String(statements.find(s => KEEP.test(s) && !RESURRECT.test(s))))).toContain(write);
     expect(setOf(String(statements.find(s => RESURRECT.test(s))))).toContain(write);
+  });
+
+  it('keeps a name and a coordinate a curator claimed, on both arms', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    // A point is a thing a curator can be right about — a pin in the wrong place is
+    // a traveller in the wrong place — and before this the next run took it back.
+    // Both arms, because a point that goes away and returns is the same point.
+    const setOf = (sql: string) => sql.slice(sql.indexOf('SET'), sql.indexOf('FROM paired'));
+    for (const arm of [KEEP, RESURRECT]) {
+      const sql = setOf(String(statements.find(s => (arm === KEEP
+        ? KEEP.test(s) && !RESURRECT.test(s)
+        : RESURRECT.test(s)))));
+      expect(sql).toContain("CASE WHEN el.curated_fields ? 'name' THEN el.name");
+      expect(sql).toContain("CASE WHEN el.curated_fields ? 'location' THEN el.location");
+    }
+
+    // And not on the source's handle: `external_ref` and `ordinal` are what the
+    // pairing reads to tell a moved point from a replaced one, so a claim there
+    // would not protect a judgement — it would blind the writer to its own row.
+    const kept = setOf(String(statements.find(s => KEEP.test(s) && !RESURRECT.test(s))));
+    expect(kept).toContain('external_ref = i.external_ref');
+    expect(kept).toContain('ordinal = i.ordinal');
   });
 
   it('sends a row it moved back for placement, however small the move', async () => {
