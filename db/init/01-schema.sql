@@ -2014,6 +2014,15 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_offered
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS curation_state VARCHAR(10) NOT NULL DEFAULT 'auto';
 COMMENT ON COLUMN experience_locations.curation_state IS 'A pending point is written, indexed and placed into regions like any other; keeping it off reader-facing reads is the job of one predicate rather than a reason to withhold the row (ADR-0025).';
 
+-- What a curator decided about this point, kept from the next run. Every arm of
+-- `locationWriter` writes the source's name and coordinate over whatever is
+-- stored, so before this the answer to "that pin is in the wrong place" lasted
+-- until the source was asked again. Same shape as `experiences.curated_fields`
+-- (#488), NOT NULL for the reason given on `treasures.curated_fields`. See
+-- db/migrations/027.
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
+COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location. Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
+
 -- A moved point is a withdrawal plus an insert, and under a gated source the two
 -- halves become visible at different moments: the insert lands `pending`, so
 -- applying the withdrawal at once would take the old pin off the map while the
@@ -2187,6 +2196,15 @@ CREATE INDEX IF NOT EXISTS idx_treasures_iconic ON treasures(is_iconic) WHERE is
 -- that changes as works are sold, moved and lent.
 ALTER TABLE treasures ADD COLUMN IF NOT EXISTS curation_state VARCHAR(10) NOT NULL DEFAULT 'auto';
 COMMENT ON COLUMN treasures.curation_state IS 'Whether this work has been passed by a curator — checked once, globally (ADR-0025).';
+
+-- A verdict on a work needs somewhere to survive: the upsert sets every column
+-- from EXCLUDED, so before this a curator's correction lasted until the next
+-- run. Same shape and same reading as `experiences.curated_fields` (#488), and
+-- NOT NULL because the guard is SQL — `jsonb ? 'name'` on a NULL is NULL, not
+-- false, which would take the source's value on every unclaimed row. See
+-- db/migrations/027.
+ALTER TABLE treasures ADD COLUMN IF NOT EXISTS curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
+COMMENT ON COLUMN treasures.curated_fields IS 'Column names a curator has claimed on this work: name, artist, year, image_url. Not sitelinks_count or is_iconic, which are a measurement and a threshold rather than a judgement, and not external_id, which is identity.';
 
 -- Junction table: many-to-many between experiences and treasures
 CREATE TABLE IF NOT EXISTS experience_treasures (

@@ -161,6 +161,67 @@ function samePointSql(alias: string): string {
              END)`;
 }
 
+/**
+ * The pairing a claimed coordinate needs, and the reason the tolerance cannot
+ * serve it.
+ *
+ * Identity is the point together with the reference, and the point half is a ten
+ * metre window (ADR-0027). A curator's correction is the opposite of a rewrite
+ * inside that window — the motivating case is 2.0 km — so a corrected row falls
+ * out of `samePointSql` against the coordinate the source keeps offering. Out of
+ * the pairing it is out of every arm that could protect it: the source's point is
+ * inserted as a new row, the curator's is marked withdrawn, and the guard below
+ * never runs. The claim would then hold for exactly the corrections too small to
+ * need it.
+ *
+ * So a claimed row pairs on the reference alone. It keeps its real `metres`, so
+ * where another stored row sits on the source's coordinate that row still wins
+ * the pairing — a claim buys the corrected point its place in the list, not
+ * priority over a better match.
+ *
+ * `IS NOT DISTINCT FROM`, so a referenceless row is covered too, and the reason
+ * is worth stating because the null-safe form usually deserves suspicion. Made
+ * strict, this fragment excludes exactly the row it most needs to protect: with
+ * no reference `samePointSql` falls back to *exact* coordinate equality, so a
+ * corrected referenceless point matches nothing, is withdrawn, and the source's
+ * pin returns — the defect this whole branch exists to close, on the one row the
+ * strict form declines to cover. And because that row is its experience's only
+ * point, the anchor moved with the correction, so the object would end with its
+ * coordinate on the curator's point and its only visible point on the source's:
+ * #550, made by the endpoint written to close it.
+ *
+ * What the null-safe form costs is bounded by the data and by the pairing.
+ * Measured 2026-08-21: the catalogue holds exactly one location with no
+ * reference (Routes of Santiago de Compostela in France, 868) and no object holds
+ * two, so "any referenceless incoming point" is one point. Were there two, the
+ * second `DISTINCT ON` still makes the pairing one-to-one, and it breaks that
+ * collision by `ordinal` — the source's own order, distance unread, the greedy
+ * rule stated below — so the first-listed point takes the claimed row and the
+ * other arrives as new.
+ */
+function claimedPointSql(alias: string): string {
+  return `${alias}.curated_fields ? 'location'
+        AND ${alias}.external_ref IS NOT DISTINCT FROM i.external_ref`;
+}
+
+/**
+ * The opening of a `CASE` that keeps a stored value a curator has claimed.
+ *
+ * The same guard `syncUtils` puts on an experience's columns (#488), one level
+ * down: a point is a thing a curator can be right about, and before this every
+ * arm below wrote the source's name and coordinate over whatever they had
+ * decided, on the next run, silently.
+ *
+ * Only `name` and `location` are ever claimed. `external_ref` is the source's
+ * handle on the row and `ordinal` is its place in the source's list — both are
+ * what the pairing above reads to decide whether a point moved or was replaced,
+ * so a claim on either would not protect a judgement, it would make the writer
+ * unable to recognise the row it is holding.
+ */
+function claimed(column: 'name' | 'location'): string {
+  return `CASE WHEN el.curated_fields ? '${column}'`;
+}
+
 /** An empty delta, for the paths on which the writer performed nothing. */
 const NO_CHANGE: ContentsDelta = { added: [], withdrawn: [], returned: [] };
 
@@ -373,7 +434,8 @@ export async function writeExperienceLocations(
                           ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)::geography) AS metres
        FROM incoming i
        JOIN experience_locations el
-         ON el.experience_id = $1 AND ${samePointSql('el')}
+         ON el.experience_id = $1
+        AND (${samePointSql('el')} OR ${claimedPointSql('el')})
      ),
      best_row AS (
        SELECT DISTINCT ON (ordinal) ordinal, location_id, metres
@@ -494,7 +556,8 @@ export async function writeExperienceLocations(
     const kept = await client.query(
       `WITH ${cte}
        UPDATE experience_locations el
-       SET ordinal = i.ordinal, external_ref = i.external_ref, name = i.name,
+       SET ordinal = i.ordinal, external_ref = i.external_ref,
+           name = ${claimed('name')} THEN el.name ELSE i.name END,
            source_membership = 'present',
            -- The coordinate the source is offering, on the runs that reach this arm.
            -- The source's value is the more precise of the two by construction — it is
@@ -509,7 +572,8 @@ export async function writeExperienceLocations(
            -- traveller cannot stand ten metres from a component and be in the wrong
            -- place, and paying a transaction per object to chase the last digits would
            -- rebuild the churn this writer exists to remove.
-           location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+           location = ${claimed('location')} THEN el.location
+                      ELSE ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326) END
        FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal
        -- Scoped to the experience as well as to the pairing. The pairing holds this
        -- object's rows only, so this narrows nothing -- but with the pairing now a table
@@ -546,13 +610,15 @@ export async function writeExperienceLocations(
     const returned = await client.query(
       `WITH ${cte}
        UPDATE experience_locations el
-       SET ordinal = i.ordinal, external_ref = i.external_ref, name = i.name,
+       SET ordinal = i.ordinal, external_ref = i.external_ref,
+           name = ${claimed('name')} THEN el.name ELSE i.name END,
            missing_since = NULL,
            source_membership = 'present',
            -- Adopted here too, for the keeping arm's reason: a point coming back within
            -- the tolerance is the same point written differently, and the row that
            -- carries the visit should carry the source's coordinate.
-           location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
+           location = ${claimed('location')} THEN el.location
+                      ELSE ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326) END
        FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal
        -- Scoped to the experience for the reason given on the arm above: the pairing
        -- already narrows it, and $1 has to appear or Postgres cannot type the parameter.
@@ -876,7 +942,18 @@ export async function writeExperienceLocations(
     // Any non-zero distance counts: a region boundary is a line, so there is no
     // distance small enough to be safe near one, and the row's `experience_location_regions`
     // rows are the thing being answered for — not what a reader can see.
-    const moved = (r: { metres?: number }) => Number(r.metres) > 0;
+    //
+    // A claimed row is the exception, and it is the reason this predicate cannot be
+    // `metres` alone any more. `metres` is the *pairing* distance — how far the
+    // source's point is from the stored one — and for a claimed row the arm above
+    // deliberately wrote nothing, so 2000 metres there means "the source is still
+    // offering somewhere else", not "this point moved". Placed on it, the run would
+    // delete and reinsert that experience's `auto` region rows on every run for as
+    // long as the correction stands: nothing lost, since a manual assignment is
+    // never touched, but exactly the churn this writer's fast path exists to remove,
+    // growing with how much curation has happened.
+    const moved = (r: { metres?: number; old_curated_fields?: string[] | null }) =>
+      Number(r.metres) > 0 && !(r.old_curated_fields ?? []).includes('location');
     const keptMoved = kept.rows.filter(moved);
     const keptStill = kept.rows.filter(r => !moved(r));
 
