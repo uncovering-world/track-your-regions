@@ -507,6 +507,37 @@ export interface ReviewQueueItem {
   pending_locations?: number;
   /** Unread works under a row readers already see. `contents` items only. */
   pending_treasures?: number;
+  /**
+   * The unread points themselves, in the source's own order. `contents` items only.
+   *
+   * At most the first `CONTENTS_ROWS_SHOWN` of `pending_locations`, which stays the
+   * whole number — the catalogue's largest serial nomination holds 758 points, and a
+   * card is not a place to answer 758 questions. So a list shorter than the count is
+   * a cap and the card says so, rather than a list that quietly stands for the rest.
+   */
+  pending_points?: Array<{
+    id: number;
+    name: string | null;
+    externalRef: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  }>;
+  /**
+   * The unread works, most famous first. `contents` items only, capped like the
+   * points above.
+   *
+   * Ordered by sitelinks rather than by name or arrival, because that is the order a
+   * curator judges in: a museum that gained the Venus de Milo and eleven studies has
+   * one row worth reading first.
+   */
+  pending_works?: Array<{
+    id: number;
+    name: string | null;
+    artist: string | null;
+    year: number | null;
+    imageUrl: string | null;
+    iconic: boolean;
+  }>;
   /** Whether anyone has passed the row. `arrival` items only, where it is `pending`. */
   curation_state?: string;
   /**

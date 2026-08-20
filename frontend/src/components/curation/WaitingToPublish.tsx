@@ -176,14 +176,36 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                 {plural(points, 'new point')} waiting — readers are shown the rest of this object
                 without them.
               </Typography>
+              <ContentsList
+                total={points}
+                shown={contents?.pending_points?.length ?? 0}
+                noun="point"
+                items={(contents?.pending_points ?? []).map(point => ({
+                  id: point.id,
+                  primary: point.name ?? point.externalRef ?? 'Unnamed point',
+                  secondary: point.latitude != null && point.longitude != null
+                    ? `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`
+                    : null,
+                }))}
+              />
             </GatedRow>
           )}
 
           {works > 0 && (
             <GatedRow label="works">
               <Typography variant="body2">
-                {plural(works, 'new work')} waiting, counted rather than listed.
+                {plural(works, 'new work')} waiting — the museum itself is on show already.
               </Typography>
+              <ContentsList
+                total={works}
+                shown={contents?.pending_works?.length ?? 0}
+                noun="work"
+                items={(contents?.pending_works ?? []).map(work => ({
+                  id: work.id,
+                  primary: work.name ?? 'Untitled',
+                  secondary: [work.artist, work.year].filter(Boolean).join(', ') || null,
+                }))}
+              />
             </GatedRow>
           )}
         </Stack>
@@ -254,6 +276,44 @@ function runNote({ arrival, held }: GatedGroup): string {
 }
 
 /** A label and what it is about, per § 4.2: grouped by container, listed by row. */
+/**
+ * The rows behind a count, and the truth about how many of them there are.
+ *
+ * A count alone is what #524 is about — "12 new works waiting, counted rather than
+ * listed" asks a curator to decide about twelve things they cannot see. A list
+ * alone would be worse on the other end: the catalogue's largest serial nomination
+ * holds 758 points, and a card is not a place to read 758 of anything.
+ *
+ * So the server caps the list and keeps the count whole, and this says which is
+ * which. A cap that went unsaid would read as "these are all of them", which is
+ * exactly the silent truncation that makes a queue untrustworthy.
+ */
+function ContentsList({ items, total, shown, noun }: {
+  items: Array<{ id: number; primary: string; secondary: string | null }>;
+  total: number;
+  shown: number;
+  noun: string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <Stack component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }} spacing={0.25}>
+        {items.map(item => (
+          <Typography key={item.id} component="li" variant="caption" color="text.secondary">
+            {item.primary}
+            {item.secondary && <span> — {item.secondary}</span>}
+          </Typography>
+        ))}
+      </Stack>
+      {shown < total && (
+        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+          {`showing ${shown} of ${total} ${noun}s`}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
 function GatedRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <Stack direction="row" spacing={2} alignItems="flex-start">
@@ -270,10 +330,15 @@ function GatedRow({ label, children }: { label: string; children: React.ReactNod
  *
  * One button rather than one per row, because publishing an object is one act at
  * the endpoint: naming no contents applies the held fields, marks the row read
- * *and* releases every unread point and work under it. Offering a separate
- * "publish the points" would need their ids, which this queue counts rather than
- * lists — so a second button would either send the same request under a
- * different promise or 409.
+ * *and* releases every unread point and work under it.
+ *
+ * The ids a per-row publish needs are here now — the queue lists them beside each
+ * count — and `POST /:id/publish` has always accepted `locationIds`/`treasureIds`.
+ * What is still missing is the other half of #524: a *fields-only* publish, so
+ * that declining one held sentence does not also hold back twelve checked
+ * paintings. Until that exists a second button would promise a narrower act than
+ * the endpoint performs, which is the failure this comment used to describe from
+ * the other side.
  */
 function publishLabel(group: GatedGroup): string {
   if (group.arrival) return 'Publish — readers may see it';

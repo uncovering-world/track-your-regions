@@ -22,6 +22,17 @@ import { ACCEPTABLE_FIELDS } from './acceptableFields.js';
 const QUEUE_PAGE_SIZE = 25;
 
 /**
+ * How many unread points or works one `contents` card lists.
+ *
+ * The count beside the list is always the whole number, so this caps what is
+ * shown and never what is said. Set to the page size on purpose: a card is a
+ * page's worth of rows at most, and beyond that the answer a curator needs is
+ * the object's, not each row's — the catalogue's largest serial nomination holds
+ * 758 points, and a list of 758 is a wall rather than a question.
+ */
+const CONTENTS_ROWS_SHOWN = QUEUE_PAGE_SIZE;
+
+/**
  * What the object *is*, for a card that asks a question about it.
  *
  * Every kind here asks a curator to judge something — whether a site is gone, whether a
@@ -142,7 +153,10 @@ function countedWorksSelectSql(alias = 'e'): string {
  *   person. A later run proposing nothing clears it too, on its own.
  * - **a visible row is holding unread contents** — its points or its works
  *   arrived `pending` while the experience itself was already published.
- *   Counted, not listed: the expandable detail is a separate read.
+ *   Counted *and* listed: the count is the whole number and the list is its first
+ *   `CONTENTS_ROWS_SHOWN` rows, so a card can be decided on without asking a
+ *   curator to approve twelve things they cannot see (#524) and without turning a
+ *   758-point site into 758 rows.
  * - **the object lost places it is made of** — a run stopped offering them and
  *   marked them (ADR-0022), so readers lost those pins the moment it noticed, and
  *   nobody has said what any of it means (ADR-0026). The row carries every such
@@ -588,41 +602,79 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // this codebase casts for the same reason (`missingDetection.ts`,
   // `admission.ts`, `experienceRegionQuery.ts`).
   //
-  // `COUNT(DISTINCT ...)` is load-bearing, not decoration: `el` and `et` are
-  // independent one-to-many joins on the same experience, so their combined
-  // row count is a product, not a sum — 3 pending points and 12 pending
-  // works join to 36 raw rows for one experience, and a plain `COUNT(...)`
-  // without `DISTINCT` would report 36 for a treasure count that is actually
-  // 12 (and 36 again for a location count that is actually 3).
+  // Two lateral subqueries rather than two joins, and it is the joins' own
+  // problem that decides it: `el` and `et` are independent one-to-many on the
+  // same experience, so their combined rows are a product — 3 pending points and
+  // 12 pending works make 36. `COUNT(DISTINCT ...)` survived that; `jsonb_agg`
+  // would not, listing each point twelve times. Aggregated apart, each side also
+  // gets to carry its own `LIMIT`, which is what keeps a serial nomination's 93
+  // unread components from arriving as 93 rows nobody asked for.
+  //
+  // The counts stay beside the lists deliberately: they are the *whole* number,
+  // and the list is the first `CONTENTS_ROWS_SHOWN` of it. A card saying "12 new
+  // works" over a list of 25 of 93 points is telling the truth twice rather than
+  // once, and a list without its total is a silent cap.
   const contents = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'contents' AS kind,
-           -- No FILTER, unlike the treasures below: the join above already
-           -- restricts el to pending, offered rows, so repeating it here would
-           -- state the rule twice and leave the fragment appearing twice in one
-           -- statement — which is what made two tests on this branch pass while
-           -- the clause they were about had been deleted. The treasure count
-           -- keeps its FILTER because et and t are joined unfiltered.
-           COUNT(DISTINCT el.id)::int AS pending_locations,
-           (COUNT(DISTINCT et.treasure_id)
-             FILTER (WHERE et.curation_state = 'pending' OR t.curation_state = 'pending'))::int AS pending_treasures,
+           points.total AS pending_locations,
+           works.total AS pending_treasures,
+           points.items AS pending_points,
+           works.items AS pending_works,
            NULL::jsonb AS proposed
     FROM experiences e
     JOIN experience_categories c ON c.id = e.category_id
-    LEFT JOIN experience_locations el
-           -- The shared fragment rather than the predicate spelled out, because
-           -- contentsWaitingSql composes it and the two are written to count the same
-           -- rows: spelled out here, this join missed the existence term when the
-           -- fragment gained it, so the badge and the card would have disagreed about
-           -- an object holding one unread point a curator had declared gone.
-           ON el.experience_id = e.id AND el.curation_state = 'pending'
+    CROSS JOIN LATERAL (
+      SELECT COUNT(*)::int AS total,
+             COALESCE(jsonb_agg(jsonb_build_object(
+               'id', id,
+               'name', name,
+               'externalRef', external_ref,
+               'latitude', lat,
+               'longitude', lon
+             ) ORDER BY ordinal) FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
+      FROM (
+        SELECT el.id, el.name, el.external_ref, el.ordinal,
+               ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
+               row_number() OVER (ORDER BY el.ordinal) AS rn
+        -- The shared fragment rather than the predicate spelled out, because
+        -- contentsWaitingSql composes it and the two are written to count the same
+        -- rows: spelled out here, this join missed the existence term when the
+        -- fragment gained it, so the badge and the card would have disagreed about
+        -- an object holding one unread point a curator had declared gone.
+        FROM experience_locations el
+        WHERE el.experience_id = e.id AND el.curation_state = 'pending'
           AND ${offeredLocationSql('el')}
-    LEFT JOIN experience_treasures et ON et.experience_id = e.id
-    LEFT JOIN treasures t ON t.id = et.treasure_id
+      ) el
+    ) points
+    CROSS JOIN LATERAL (
+      SELECT COUNT(*)::int AS total,
+             COALESCE(jsonb_agg(jsonb_build_object(
+               'id', id,
+               'name', name,
+               'artist', artist,
+               'year', year,
+               'imageUrl', image_url,
+               'iconic', is_iconic
+             ) ORDER BY sitelinks_count DESC NULLS LAST, id)
+               FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
+      FROM (
+        -- Both axes, the way every reader-facing treasure read asks them: the link
+        -- says the work is here, the work says it is a work, and either being unread
+        -- is a question. A work turned down globally leaves every venue at once,
+        -- which is why the two are separate columns (ADR-0025).
+        SELECT t.id, t.name, t.artist, t.year, t.image_url, t.is_iconic, t.sitelinks_count,
+               row_number() OVER (ORDER BY t.sitelinks_count DESC NULLS LAST, t.id) AS rn
+        FROM experience_treasures et
+        JOIN treasures t ON t.id = et.treasure_id
+        WHERE et.experience_id = e.id
+          AND (et.curation_state = 'pending' OR t.curation_state = 'pending')
+      ) t
+    ) works
     WHERE ${hidePendingSql()}            -- an unread experience is an arrival, not this
       AND ${hideRefusedSql()}
-      AND (el.id IS NOT NULL OR et.curation_state = 'pending' OR t.curation_state = 'pending')
+      AND (points.total > 0 OR works.total > 0)
       -- Withdrawn rows belong to the 'missing' card, like an arrival and like a
       -- held proposal: the same row under two headings would ask two questions
       -- whose answers contradict each other. "May readers see these twelve
@@ -630,7 +682,6 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
       -- publishing the works would not put them anywhere a reader looks anyway.
       AND e.missing_since IS NULL
       AND ${scopeFilter} ${categoryFilter}
-    GROUP BY e.id, e.external_id, e.name, e.category_id, c.name
     ORDER BY e.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
   `, [...params, pageSize, offsets.contents]);
