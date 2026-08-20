@@ -869,6 +869,35 @@ export interface PublishResult {
 }
 
 /**
+ * The four shapes the endpoint accepts, as four shapes rather than six optional
+ * fields.
+ *
+ * A union because the server's own schema is one: `publishExperienceBodySchema`
+ * refuses `fieldsOnly` beside `contentsOnly` or either id array, and refuses
+ * `expectedSyncLogId` on any contents publish. Typed as a bag of optionals, a
+ * caller could write the combination that 400s and find out at runtime; typed as
+ * this, the compiler refuses it at the call site — which is where the card is
+ * being written and the intent is still legible.
+ *
+ * Exported so the screens share it instead of each narrowing a local copy: a
+ * component-local union agrees with the server until the day the server gains a
+ * shape, and then agrees with nothing.
+ */
+export type PublishRequest =
+  /** The object: its held fields, its own state, and every unread row under it. */
+  | { locationIds?: undefined; treasureIds?: undefined; contentsOnly?: undefined;
+      fieldsOnly?: undefined; expectedSyncLogId?: number }
+  /** Every pending content row, the object's own state left alone. */
+  | { contentsOnly: true; locationIds?: undefined; treasureIds?: undefined;
+      fieldsOnly?: undefined; expectedSyncLogId?: undefined }
+  /** Exactly these rows, and nothing else. */
+  | { locationIds?: number[]; treasureIds?: number[]; contentsOnly?: undefined;
+      fieldsOnly?: undefined; expectedSyncLogId?: undefined }
+  /** The object's held fields, and none of its unread contents (#524). */
+  | { fieldsOnly: true; locationIds?: undefined; treasureIds?: undefined;
+      contentsOnly?: undefined; expectedSyncLogId?: number };
+
+/**
  * Say that a reader may see this — the only endpoint that applies a gate-held
  * field (ADR-0025).
  *
@@ -884,12 +913,16 @@ export interface PublishResult {
  * — an absent body means the opposite (the object too), which is exactly the
  * inference a contents-only card must not make, since the object may already be
  * verified by a person who never looked at what just arrived under it.
+ *
+ * `fieldsOnly: true` is the mirror, and the reason it exists is #524: a museum
+ * whose label is held *and* which gained twelve paintings could only be answered
+ * as one act, so declining the label kept the paintings invisible. It is
+ * exclusive with all three contents shapes — a body naming both halves is asking
+ * for the object publish it could have asked for by naming nothing.
  */
 export async function publishExperience(
   experienceId: number,
-  body: {
-    locationIds?: number[]; treasureIds?: number[]; contentsOnly?: true; expectedSyncLogId?: number;
-  } = {},
+  body: PublishRequest = {},
 ): Promise<PublishResult> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/publish`, {
     method: 'POST',

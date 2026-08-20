@@ -499,15 +499,34 @@ export const publishExperienceBodySchema = z.object({
    * say with this field — that is what leaving it absent already means — so a
    * caller either sends it true or does not send it.
    *
-   * Three shapes for what a body can mean, spelled out because "absent means
+   * Four shapes for what a body can mean, spelled out because "absent means
    * all of it" is exactly the inference that produced the defect above:
    * - absent, with no ids: an object publish — the experience and every
    *   pending content row it holds. The arrival case.
    * - `{ contentsOnly: true }`: every pending content row, object untouched.
    * - `{ locationIds }` / `{ treasureIds }` (or both): those ids only, object
    *   untouched.
+   * - `{ fieldsOnly: true }`: the object's held fields and none of its unread
+   *   contents — the field below, and the mirror of `contentsOnly`.
    */
   contentsOnly: z.literal(true).optional(),
+  /**
+   * The fourth shape, and the mirror of the one above: apply what the run
+   * proposed for the object's own fields and leave every unread point and work
+   * where it is.
+   *
+   * What #524 asked for, in the words of the case that raised it: a museum whose
+   * label is held *and* which gained twelve paintings could be answered only as
+   * one act, so declining the label held back the paintings — one doubtful field
+   * freezing twelve works, which is the failure ADR-0025's queue section named
+   * from the other direction.
+   *
+   * `true` only, for the reason `contentsOnly` is: absent already means "and the
+   * contents with it". Exclusive with the three contents shapes, since a body
+   * that named both would be asking for the object publish it could have asked
+   * for by naming nothing.
+   */
+  fieldsOnly: z.literal(true).optional(),
   /**
    * The run whose held proposal the caller was looking at.
    *
@@ -524,6 +543,15 @@ export const publishExperienceBodySchema = z.object({
    */
   expectedSyncLogId: z.number().int().positive().max(2147483647).optional(),
 }).refine(
+  b => !(b.fieldsOnly === true
+    && (b.contentsOnly === true || b.locationIds !== undefined || b.treasureIds !== undefined)),
+  {
+    // The two halves of one object, asked for together, are the object publish a
+    // body says by naming neither. Refused rather than resolved, on the same
+    // ground as the ambiguity below it.
+    message: 'fieldsOnly and a contents publish are the two halves of an object publish; send neither to ask for both',
+  },
+).refine(
   b => !(b.contentsOnly === true && (b.locationIds !== undefined || b.treasureIds !== undefined)),
   {
     // Two ways of saying "contents only" in the same body say nothing a

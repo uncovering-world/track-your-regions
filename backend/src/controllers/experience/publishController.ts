@@ -42,17 +42,82 @@ import { heldFieldWrites, publicationAssignments } from './publishHeldFields.js'
 /**
  * What the curator asked to be published.
  *
- * Three shapes, and each names its own intent rather than leaving one
+ * Four shapes, and each names its own intent rather than leaving one
  * inferred from what is missing — see `publishExperienceBodySchema` for why:
  * absent everything is an object publish, `contentsOnly` is every pending
- * content row with the object untouched, and `locationIds`/`treasureIds` name
- * exactly which rows with the object untouched the same way.
+ * content row with the object untouched, `locationIds`/`treasureIds` name
+ * exactly which rows with the object untouched the same way, and `fieldsOnly`
+ * is the mirror — the object's held fields with its contents untouched.
  */
 interface PublishRequest {
   locationIds?: number[];
   treasureIds?: number[];
   contentsOnly?: true;
+  /** The object's held fields, and none of its unread contents (#524). */
+  fieldsOnly?: true;
   expectedSyncLogId?: number;
+}
+
+/**
+ * Why this row cannot be published at all, before a single value is read off it.
+ *
+ * Both answers are about the row rather than the request, and both are 409 —
+ * "the state of the world says no", not "your body was wrong".
+ */
+function refusedBeforeWriting(
+  row: { admission: string; curationState: string },
+  { fieldsOnly }: { fieldsOnly?: true },
+): string | null {
+  // ADR-0025 decision 4, "Admission is asked before publication": whether an
+  // object belongs in this catalogue at all is a question a category's own rule
+  // answers (ADR-0024), and whether anyone has looked at it yet is a different
+  // question, "asked only once the first has been answered yes". Publishing a
+  // refused row asks the second first — which is what the review queue refuses
+  // to do from the other side, where each of the gate's three kinds carries
+  // `hideRefusedSql()`.
+  //
+  // Left unrefused this is not a tidiness problem: the row would leave
+  // `arrivals` for ever — nothing returns a `verified` row to `pending` — so a
+  // later `override` on the refusal would put it in front of readers with nobody
+  // having reviewed its contents, and the New-chip window would start ticking
+  // while nothing could see it. The way through is the other order: answer the
+  // refusal at `POST /:id/admission`, where an `override` publishes in the same
+  // transaction. Refused for a contents publish too, and for the same reason: a
+  // refused museum's unread paintings raise no `contents` card either.
+  if (row.admission === 'refused') {
+    return 'This row was turned down by its category — answer the refusal first, and putting it back publishes it';
+  }
+
+  // A `fieldsOnly` publish over an arrival would put an object in front of
+  // readers with every one of its points and works still `pending` — "an object
+  // still in every list with nothing on the map", the failure `locationWriter`'s
+  // deferral machinery exists to prevent, arriving by the one door that skips
+  // `publishContents`. `publicationAssignments` stamps `verified` and
+  // `published_at` regardless, so nothing downstream would catch it. An arrival
+  // holds no proposal either — its fields were never refused, they simply have
+  // not been seen — so there is nothing this shape could usefully apply here.
+  //
+  // Unreachable from the card, whose button needs a held pointer; refused
+  // because the endpoint is open to any curator and the API table promises the
+  // opposite of what this would do.
+  if (fieldsOnly && row.curationState === 'pending') {
+    return 'Nobody has passed this object yet, so there are no held fields to publish on their own — publish it and what arrived with it';
+  }
+
+  return null;
+}
+
+/**
+ * Which of the three publishes this was, for the trail.
+ *
+ * Said rather than inferred from which counts came out zero: publishing an object
+ * that happened to hold no unread contents, publishing named contents that were
+ * all published already, and publishing only the fields of an object that is
+ * still holding twelve works look identical from the numbers.
+ */
+function scopeOf({ contentsOnly, fieldsOnly }: { contentsOnly: boolean; fieldsOnly?: true }): string {
+  if (fieldsOnly) return 'fields';
+  return contentsOnly ? 'contents' : 'object';
 }
 
 interface PublishResult {
@@ -100,14 +165,17 @@ interface PublishRefusal {
 /**
  * Publish an experience, every one of its unread contents, or a named subset.
  * POST /api/experiences/:id/publish
- * Body: { contentsOnly?: true, locationIds?: number[], treasureIds?: number[], expectedSyncLogId?: number }
+ * Body: { contentsOnly?: true, fieldsOnly?: true, locationIds?: number[], treasureIds?: number[], expectedSyncLogId?: number }
  *
  * An empty body publishes the object: its held fields, its own state, and
  * every unread point and work it holds — the arrival case. `contentsOnly` or
  * naming either id array makes this a contents publish instead — those rows
  * (all of them, or the named ones) and nothing else, because a visible museum
  * that gained three checked paintings has not thereby been read (ADR-0025
- * § 4.4). See `publishExperienceBodySchema` for why the three shapes are
+ * § 4.4). `fieldsOnly` is the mirror: the held fields alone, so one doubtful
+ * sentence stops holding back twelve checked works (#524) — and on a `pending`
+ * row it answers 409, because a row nobody has read has no fields to publish
+ * on their own. See `publishExperienceBodySchema` for why the four shapes are
  * asked for explicitly rather than one of them inferred from the others being
  * absent — that inference is what let a contents-only card publish the object
  * by accident.
@@ -224,7 +292,7 @@ export async function publishUnderLock(
   logRegionId: number | null,
   body: PublishRequest,
 ): Promise<{ result?: PublishResult; refusal?: PublishRefusal }> {
-  const { locationIds, treasureIds, contentsOnly: bareContentsOnly, expectedSyncLogId } = body;
+  const { locationIds, treasureIds, contentsOnly: bareContentsOnly, fieldsOnly, expectedSyncLogId } = body;
   // Three ways a body can ask for contents only, all mutually exclusive by the
   // schema's `.refine` — the bare flag for "every pending row, object
   // untouched", or naming either array. Object and contents publish are one
@@ -260,30 +328,14 @@ export async function publishUnderLock(
     // true answer is 404.
     if (!before) return await refuse(404, 'Experience not found');
 
-    // ADR-0025 decision 4, "Admission is asked before publication": whether an
-    // object belongs in this catalogue at all is a question a category's own
-    // rule answers (ADR-0024), and whether anyone has looked at it yet is a
-    // different question, "asked only once the first has been answered yes".
-    // Publishing a refused row asks the second question first — which is
-    // exactly what the review queue refuses to do from the other side, where
-    // every one of the gate's three kinds carries `hideRefusedSql()` so a
-    // refused row raises no card asking whether a reader may see it.
-    //
-    // Left unrefused this is not a tidiness problem. The row would leave
-    // `arrivals` for ever — nothing returns a `verified` row to `pending` — so a
-    // later `override` on the refusal would put it in front of readers with
-    // nobody having reviewed its contents, and the New-chip window would start
-    // ticking while nothing could see it. The way through is the other order:
-    // answer the refusal at `POST /:id/admission`, where an `override` publishes
-    // in the same transaction.
-    //
-    // Refused for a contents publish too, and for the same reason: a refused
-    // museum's unread paintings raise no `contents` card either, because that
-    // query carries `hideRefusedSql()` on the container.
-    if (before.admission === 'refused') {
-      return await refuse(409,
-        'This row was turned down by its category — answer the refusal first, and putting it back publishes it');
-    }
+    // The two refusals this row earns before anything is written, in one place
+    // rather than as two branches of a function the linter already reads as
+    // dense — and both are about the row, not about the request.
+    const refusal = refusedBeforeWriting(
+      { admission: before.admission as string, curationState: before.curation_state as string },
+      { fieldsOnly },
+    );
+    if (refusal) return await refuse(409, refusal);
 
     const claimed: string[] = before.curated_fields ?? [];
     let applied: string[] = [];
@@ -377,18 +429,21 @@ export async function publishUnderLock(
       );
     }
 
+    // A fields-only publish leaves every unread point and work exactly where it
+    // is: the whole point of #524 is that answering a held sentence must stop
+    // being the same act as releasing twelve checked paintings. Nothing else in
+    // the transaction changes — the object's state, its pointer and its trail are
+    // written the same way, because what was answered *was* the object.
     const { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
-      await publishContents(client, experienceId, locationIds, treasureIds);
+      fieldsOnly
+        ? { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0 }
+        : await publishContents(client, experienceId, locationIds, treasureIds);
 
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
       VALUES ($1, $2, 'published', $3, $4)
     `, [experienceId, userId, logRegionId, JSON.stringify({
-      // Which of the two publishes this was, said in the log rather than
-      // inferred from which counts are zero: publishing an object that happens
-      // to hold no unread contents and publishing named contents that were all
-      // published already look identical from the numbers.
-      scope: contentsOnly ? 'contents' : 'object',
+      scope: scopeOf({ contentsOnly, fieldsOnly }),
       fields: applied,
       claimedFieldsSkipped,
       fromSyncLogId: heldFrom,

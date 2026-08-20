@@ -28,6 +28,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchExperience,
   publishExperience,
+  type PublishRequest,
   type PublishResult,
   type ReviewQueueItem,
 } from '../../api/experiences';
@@ -103,7 +104,7 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   const works = count(contents?.pending_treasures);
 
   const publish = useMutation({
-    mutationFn: () => publishExperience(group.id, publishBodyFor(group)),
+    mutationFn: (body?: PublishRequest) => publishExperience(group.id, body ?? publishBodyFor(group)),
     // Say what landed. The refetch takes the card away, so this is the only
     // place a released withdrawal or a failed re-placement can be reported —
     // and a publication whose regions went stale must not read as an
@@ -214,10 +215,25 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
           <Button
             variant="outlined"
             disabled={publish.isPending}
-            onClick={() => publish.mutate()}
+            onClick={() => publish.mutate(undefined)}
           >
             {publishLabel(group)}
           </Button>
+          {/* Only where both halves are open, because that is the only case in
+              which the one button above does two things at once. The card of a
+              museum holding twelve unread paintings and a proposed label used to
+              force those together: answering the label released the paintings,
+              so a curator who doubted one sentence held back twelve works
+              (#524). */}
+          {held && contents && (
+            <Button
+              variant="text"
+              disabled={publish.isPending}
+              onClick={() => publish.mutate({ fieldsOnly: true, expectedSyncLogId: held.sync_log_id })}
+            >
+              Publish the change only
+            </Button>
+          )}
           <Button variant="text" onClick={() => setShowObject(v => !v)}>
             {showObject ? 'Hide the object' : 'Look at the object'}
           </Button>
@@ -248,10 +264,12 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
  * `expectedSyncLogId`. An arrival has neither a held half nor a published
  * object underneath it, so `{}` — the object publish — is the one case it is
  * right for: there is no earlier verified state to misreport.
+ *
+ * The fourth shape, `fieldsOnly`, is not built here: it is not what a card *is*,
+ * it is a second thing a curator can ask of a card that is both — so the button
+ * that offers it builds it, and only where both halves are open.
  */
-function publishBodyFor(
-  { held, contents }: GatedGroup,
-): { expectedSyncLogId?: number } | { contentsOnly: true } | Record<string, never> {
+function publishBodyFor({ held, contents }: GatedGroup): PublishRequest {
   if (held) return { expectedSyncLogId: held.sync_log_id };
   if (contents) return { contentsOnly: true };
   return {};
@@ -275,7 +293,6 @@ function runNote({ arrival, held }: GatedGroup): string {
   return 'Arrived under this object';
 }
 
-/** A label and what it is about, per § 4.2: grouped by container, listed by row. */
 /**
  * The rows behind a count, and the truth about how many of them there are.
  *
@@ -314,6 +331,7 @@ function ContentsList({ items, total, shown, noun }: {
   );
 }
 
+/** A label and what it is about, per § 4.2: grouped by container, listed by row. */
 function GatedRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <Stack direction="row" spacing={2} alignItems="flex-start">
@@ -334,11 +352,12 @@ function GatedRow({ label, children }: { label: string; children: React.ReactNod
  *
  * The ids a per-row publish needs are here now — the queue lists them beside each
  * count — and `POST /:id/publish` has always accepted `locationIds`/`treasureIds`.
- * What is still missing is the other half of #524: a *fields-only* publish, so
- * that declining one held sentence does not also hold back twelve checked
- * paintings. Until that exists a second button would promise a narrower act than
- * the endpoint performs, which is the failure this comment used to describe from
- * the other side.
+ * The narrower act has its own button now — `fieldsOnly`, offered only where both
+ * halves are open, since that is the only case in which this one does two things
+ * at once. What is still missing of #524 is per-row publishing: the ids are here
+ * beside each count and the endpoint has always accepted them, but nothing on the
+ * card lets a curator choose among them, so a third button would promise a
+ * precision the screen cannot express.
  */
 function publishLabel(group: GatedGroup): string {
   if (group.arrival) return 'Publish — readers may see it';
