@@ -712,6 +712,42 @@ describe('ReviewQueue', () => {
       expect(screen.getByText(/12 new works/)).toBeInTheDocument();
     });
 
+    it('lists what is waiting, and says so when it is showing only some of it', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [],
+        contents: [{
+          ...CONTENTS,
+          pending_locations: 93,
+          pending_treasures: 2,
+          // What the server sends for a serial nomination: the first of them, and
+          // the count above saying how many there really are.
+          pending_points: Array.from({ length: 25 }, (_, i) => ({
+            id: 500 + i, name: `Component ${i + 1}`, externalRef: `874-0${i}`,
+            latitude: 38.5, longitude: -6.1,
+          })),
+          pending_works: [
+            { id: 9, name: 'Venus de Milo', artist: 'Alexandros of Antioch', year: -100, imageUrl: null, iconic: true },
+            { id: 10, name: 'Study of a head', artist: null, year: null, imageUrl: null, iconic: false },
+          ],
+        }],
+        limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      // The rows themselves, which is what #524 is about: twelve works "counted
+      // rather than listed" asks a curator to decide about things they cannot see.
+      expect(await screen.findByText(/Venus de Milo/)).toBeInTheDocument();
+      // The last of the twenty-five, whose number no other row's contains.
+      expect(screen.getByText(/Component 25/)).toBeInTheDocument();
+
+      // And the cap said out loud. A list shorter than its count that keeps quiet
+      // reads as "these are all of them", which is the silent truncation that
+      // makes a queue untrustworthy — 25 of 93 here.
+      expect(screen.getByText(/showing 25 of 93 points/)).toBeInTheDocument();
+      // Nothing is capped on the works side, so nothing is claimed about it.
+      expect(screen.queryByText(/showing 2 of 2 works/)).not.toBeInTheDocument();
+    });
+
     it('publishes through the one endpoint that can apply a held field', async () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [], held: [HELD], contents: [], limit: 25, offset: 0,

@@ -522,25 +522,17 @@ describe('getReviewQueue', () => {
   it('counts a visible experience holding unread locations, and only unread ones', async () => {
     const sql = await capturedQueueSql('contents');
     expect(sql).toContain("e.curation_state <> 'pending'"); // an arrival is the other card
-    // Anchored on the JOIN clause itself. The predicate used to appear twice in
-    // this statement — here and in a FILTER on the count — and a `.toContain` on
-    // the text alone stayed green with this copy deleted, which is the trap the
-    // previous task's review found. The FILTER is gone now (the join makes it
-    // redundant), so one occurrence is left; the anchor stays on the clause
-    // rather than the fragment, because that is what this test is about.
-    // The predicate now arrives from `offeredLocationSql` rather than spelled out, so
-    // the anchor takes both of its terms in the order the fragment emits them —
-    // spelled out, this join missed the existence term when the fragment gained it,
-    // and `contentsWaitingSql` (which composes the fragment) would have counted rows
-    // the card does not show.
-    // Sliced rather than matched with a nested quantifier: the comment lines between
-    // the JOIN and its ON clause would need `(?:…)*`, which is what
-    // `security/detect-unsafe-regex` objects to — fairly, in a file whose other
-    // guards say a check about safety must not itself be the backtracking risk.
-    const join = sql.slice(sql.indexOf('LEFT JOIN experience_locations el'));
-    const onClause = join.slice(0, join.indexOf('LEFT JOIN experience_treasures'));
-    expect(onClause).toContain("ON el.experience_id = e.id AND el.curation_state = 'pending'");
-    expect(onClause).toContain("AND el.missing_since IS NULL AND el.existence <> 'lost'");
+    // Anchored inside the points subquery rather than on the statement, because the
+    // same fragment is legitimately elsewhere in it: `offeredLocationSql` is what
+    // `contentsWaitingSql` composes too, and a `.toContain` over the whole text
+    // stayed green once already with the clause it was about deleted. Sliced rather
+    // than matched with a nested quantifier — the comment lines inside the subquery
+    // would need `(?:…)*`, which `security/detect-unsafe-regex` objects to, fairly,
+    // in a file whose other guards say a safety check must not itself backtrack.
+    const points = sql.slice(sql.indexOf('FROM experience_locations el'));
+    const where = points.slice(0, points.indexOf(') el'));
+    expect(where).toContain("WHERE el.experience_id = e.id AND el.curation_state = 'pending'");
+    expect(where).toContain("AND el.missing_since IS NULL AND el.existence <> 'lost'");
   });
 
   it('does not count a withdrawn or lost pending point as unread', async () => {
@@ -560,15 +552,8 @@ describe('getReviewQueue', () => {
     // ask the same two questions or a treasure whose link was reviewed while
     // the shared work was not would be invisible and unasked-about forever.
     const sql = await capturedQueueSql('contents');
-    expect(sql).toContain('LEFT JOIN treasures t ON t.id = et.treasure_id');
-    // Anchored on the FILTER clause specifically, not the predicate text
-    // alone — the identical fragment also appears in the row-inclusion
-    // WHERE, which would otherwise let this pass even with the FILTER's own
-    // copy deleted (the same trap the JOIN-anchored location test guards
-    // against, one clause over).
-    expect(sql).toContain(
-      "FILTER (WHERE et.curation_state = 'pending' OR t.curation_state = 'pending'))::int AS pending_treasures",
-    );
+    expect(sql).toContain('JOIN treasures t ON t.id = et.treasure_id');
+    expect(sql).toContain("WHERE et.experience_id = e.id\n          AND (et.curation_state = 'pending' OR t.curation_state = 'pending')");
   });
 
   it('hands both counts over as numbers, not as bigint strings', async () => {
@@ -577,18 +562,26 @@ describe('getReviewQueue', () => {
     // rule, which compares against 1 — and `'1' === 1` is false, so the queue
     // page would read "1 points" to the curator it is asking.
     const sql = await capturedQueueSql('contents');
-    expect(sql).toContain('COUNT(DISTINCT el.id)::int AS pending_locations');
-    expect(sql).toContain('))::int AS pending_treasures');
+    // Twice, one per lateral: the two counts are computed in separate subqueries
+    // now, so a cast dropped from either is a cast dropped from a card.
+    expect(sql.split('COUNT(*)::int AS total')).toHaveLength(3);
   });
 
-  it('counts locations and treasures distinctly, not as their cross product', async () => {
-    // el and et are independent one-to-many joins on the same experience, so
-    // their combined row count is a product: 3 pending points and 12
-    // pending works join to 36 raw rows, and a plain COUNT without DISTINCT
-    // would report 36 for a treasure count that is really 12.
+  it('cannot multiply locations by treasures, because neither is joined to the other', async () => {
+    // They are independent one-to-many on the same experience, so joined side by
+    // side their rows are a product — 3 pending points and 12 pending works make
+    // 36. `COUNT(DISTINCT ...)` used to absorb that; a list cannot, and would show
+    // each point twelve times. Aggregated in their own laterals the product has
+    // nowhere to form, which is a stronger promise than counting distinctly and is
+    // asserted as such: no top-level join to either table.
     const sql = await capturedQueueSql('contents');
-    expect(sql).toContain('COUNT(DISTINCT el.id)');
-    expect(sql).toContain('COUNT(DISTINCT et.treasure_id)');
+    // Every join type, not only the one the old query used: a plain `JOIN` forms
+    // the same product, and an assertion naming `LEFT JOIN` would have watched
+    // the wrong keyword. Neither table is joined at all here — each is read
+    // inside its own lateral — so the strings themselves must be absent.
+    expect(sql).not.toContain('JOIN experience_locations');
+    expect(sql).not.toContain('JOIN experience_treasures');
+    expect(sql.split('CROSS JOIN LATERAL')).toHaveLength(3);
   });
 
   it('excludes a refused row from the contents card', async () => {
