@@ -2,6 +2,8 @@
  * Types for experience sync services
  */
 
+import type { FieldChange } from './changeSet.js';
+
 /**
  * Progress tracking for background sync operations
  */
@@ -238,6 +240,25 @@ export interface ContentsDelta {
   added: ContentItem[];
   withdrawn: ContentItem[];
   returned: ContentItem[];
+  /**
+   * Rows the run kept and rewrote — a point that moved, a component renamed.
+   *
+   * Separate from the three above because it is a different question: those say
+   * what a container holds now, and this says that something it already held is
+   * not what it was. A queue reading only membership shows a site nothing has
+   * happened to on the fortnight its coordinates were re-surveyed.
+   *
+   * Each carries the item as the record names it (never an id — see
+   * `ContentItem`) and the fields `contentsChangeSet` found, in the object's own
+   * `FieldChange` vocabulary.
+   */
+  changed: ContentItemChange[];
+}
+
+/** One item a run rewrote, and what it rewrote about it. */
+export interface ContentItemChange {
+  item: ContentItem;
+  fields: FieldChange[];
 }
 
 /**
@@ -260,7 +281,8 @@ export type ContentsByKind = Partial<Record<ContentKind, ContentsDelta>>;
 /** Whether a delta says anything happened. */
 function moved(delta: ContentsDelta | undefined): boolean {
   if (!delta) return false;
-  return delta.added.length > 0 || delta.withdrawn.length > 0 || delta.returned.length > 0;
+  return delta.added.length > 0 || delta.withdrawn.length > 0
+    || delta.returned.length > 0 || delta.changed.length > 0;
 }
 
 /**

@@ -1,7 +1,7 @@
 # ADR-0026: A run records what a container's contents did, per kind of contents
 
 **Date:** 2026-08-15
-**Status:** Accepted
+**Status:** Accepted — decisions 1 and 2 narrowed by ADR-0029
 
 ---
 

@@ -660,7 +660,7 @@ describe('orchestrateSync changeset recording', () => {
   it('records a row whose only change is what it holds', async () => {
     const gained = processed('unchanged');
     gained.contents = {
-      locations: { added: [{ name: 'Waldsiedlung Zehlendorf', ref: '1239-006' }], withdrawn: [], returned: [] },
+      locations: { added: [{ name: 'Waldsiedlung Zehlendorf', ref: '1239-006' }], withdrawn: [], returned: [], changed: [] },
     };
     const config = makeConfig({
       processItem: vi.fn().mockResolvedValueOnce(gained).mockResolvedValueOnce(processed('unchanged')),
@@ -686,7 +686,7 @@ describe('orchestrateSync changeset recording', () => {
     both.changeSet.curatedConflicts = [
       { field: 'name', old: 'ours', new: 'theirs', significance: 'major', curatedConflict: true, held: false },
     ];
-    both.contents = { locations: { added: [{ name: 'A new part', ref: '1239-008' }], withdrawn: [], returned: [] } };
+    both.contents = { locations: { added: [{ name: 'A new part', ref: '1239-008' }], withdrawn: [], returned: [], changed: [] } };
     const config = makeConfig({
       processItem: vi.fn().mockResolvedValueOnce(both).mockResolvedValueOnce(processed('unchanged')),
     });
@@ -703,7 +703,7 @@ describe('orchestrateSync changeset recording', () => {
   it('calls a row that returned and gained a part returned, not a contents row', async () => {
     const both = processed('unchanged');
     both.returnedFromMissing = true;
-    both.contents = { treasures: { added: [{ name: 'The Night Watch', ref: 'Q219831' }], withdrawn: [], returned: [] } };
+    both.contents = { treasures: { added: [{ name: 'The Night Watch', ref: 'Q219831' }], withdrawn: [], returned: [], changed: [] } };
     const config = makeConfig({
       processItem: vi.fn().mockResolvedValueOnce(both).mockResolvedValueOnce(processed('unchanged')),
     });
@@ -718,7 +718,7 @@ describe('orchestrateSync changeset recording', () => {
 
   it('leaves an unchanged row unrecorded when its contents did not move either', async () => {
     const quiet = processed('unchanged');
-    quiet.contents = { locations: { added: [], withdrawn: [], returned: [] } };
+    quiet.contents = { locations: { added: [], withdrawn: [], returned: [] , changed: [] } };
     const config = makeConfig({
       processItem: vi.fn().mockResolvedValueOnce(quiet).mockResolvedValueOnce(processed('unchanged')),
     });
@@ -734,7 +734,7 @@ describe('orchestrateSync changeset recording', () => {
 
   it('counts a contents-only change as unchanged, because nothing about the row changed', async () => {
     const gained = processed('unchanged');
-    gained.contents = { treasures: { added: [{ name: 'The Night Watch', ref: 'Q219831' }], withdrawn: [], returned: [] } };
+    gained.contents = { treasures: { added: [{ name: 'The Night Watch', ref: 'Q219831' }], withdrawn: [], returned: [], changed: [] } };
     const config = makeConfig({
       processItem: vi.fn().mockResolvedValueOnce(gained).mockResolvedValueOnce(processed('unchanged')),
     });
@@ -753,7 +753,7 @@ describe('orchestrateSync changeset recording', () => {
   it('carries the contents delta on a row it was already recording', async () => {
     const changed = processed('updated');
     changed.contents = {
-      locations: { added: [], withdrawn: [{ name: 'Bilbao Fine Arts Museum', ref: 'Q127064' }], returned: [] },
+      locations: { added: [], withdrawn: [{ name: 'Bilbao Fine Arts Museum', ref: 'Q127064' }], returned: [], changed: [] },
     };
     const config = makeConfig({
       processItem: vi.fn().mockResolvedValueOnce(changed).mockResolvedValueOnce(processed('unchanged')),

@@ -119,7 +119,8 @@
 import { pool } from '../../db/index.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
-import type { ContentItem, ContentsDelta } from './types.js';
+import type { ContentItem, ContentItemChange, ContentsDelta } from './types.js';
+import { pointChanges } from './contentsChangeSet.js';
 
 /**
  * When a stored row is the point the source is offering (ADR-0027).
@@ -223,7 +224,44 @@ function claimed(column: 'name' | 'location'): string {
 }
 
 /** An empty delta, for the paths on which the writer performed nothing. */
-const NO_CHANGE: ContentsDelta = { added: [], withdrawn: [], returned: [] };
+const NO_CHANGE: ContentsDelta = { added: [], withdrawn: [], returned: [], changed: [] };
+
+/** One row of the keeping arm, which returns both sides of what it wrote. */
+interface KeptRow {
+  old_name: string | null;
+  old_lon: number;
+  old_lat: number;
+  old_curated_fields: string[] | null;
+  new_name: string | null;
+  new_lon: number;
+  new_lat: number;
+  external_ref: string | null;
+}
+
+/**
+ * What the run rewrote about the points it kept.
+ *
+ * A claimed column is reported rather than hidden: the guard kept the curator's
+ * value, and `curatedConflict` is how the object's diff says exactly that — the
+ * source proposed something and did not get it. A run that quietly dropped those
+ * would leave a curator unable to see that their point is still being argued with.
+ */
+function keptChanges(rows: KeptRow[]): ContentItemChange[] {
+  const out: ContentItemChange[] = [];
+  for (const row of rows) {
+    const fields = pointChanges(
+      { name: row.old_name, lon: Number(row.old_lon), lat: Number(row.old_lat) },
+      { name: row.new_name, lon: Number(row.new_lon), lat: Number(row.new_lat) },
+      row.old_curated_fields ?? [],
+    );
+    if (fields.length > 0) {
+      // Named by what it was called before the run rewrote it, like every other
+      // item in the record: the name a curator saw is the one they can find.
+      out.push({ item: { name: row.old_name, ref: row.external_ref }, fields });
+    }
+  }
+  return out;
+}
 
 /** Name a row the way the record names it: what the source calls it, not its id. */
 function named(rows: Array<{ name?: string | null; external_ref?: string | null }>): ContentItem[] {
@@ -550,7 +588,16 @@ export async function writeExperienceLocations(
     await client.query(
       `CREATE TEMP TABLE paired_rows ON COMMIT DROP AS
        WITH ${paired}
-       SELECT ordinal, location_id, metres FROM paired`,
+       -- The stored row's own values ride along, and this is the only moment they
+       -- can: the arms below overwrite them, and RETURNING answers with what was
+       -- written. Read here, they are what the run found -- the "before" side of
+       -- every change it is about to report (contentsChangeSet.ts).
+       SELECT p.ordinal, p.location_id, p.metres,
+              el.name AS old_name,
+              ST_X(el.location::geometry) AS old_lon,
+              ST_Y(el.location::geometry) AS old_lat,
+              el.curated_fields AS old_curated_fields
+       FROM paired p JOIN experience_locations el ON el.id = p.location_id`,
       params,
     );
 
@@ -605,7 +652,10 @@ export async function writeExperienceLocations(
        -- different countries for a row that keeps the assignment of the one it left.
        -- Nothing revisits it either -- the fast path matches the new coordinate on every
        -- run afterwards -- so this is the one number that has to leave the statement.
-       RETURNING el.id, p.metres`,
+       RETURNING el.id, p.metres,
+                 p.old_name, p.old_lon, p.old_lat, p.old_curated_fields,
+                 i.name AS new_name, i.lon AS new_lon, i.lat AS new_lat,
+                 el.external_ref`,
       params,
     );
 
@@ -994,6 +1044,11 @@ export async function writeExperienceLocations(
         added: named(inserted.rows),
         withdrawn: named(marked.rows),
         returned: named(returned.rows),
+        // What the run rewrote about points it kept. Computed from the values the
+        // pairing carried in, since the arm above has already replaced them: a
+        // point that moved 1.2 km and one whose name gained an en dash both reach
+        // here, and only the first survives `contentsChangeSet`'s normalisation.
+        changed: keptChanges(kept.rows),
       },
     };
   } catch (err) {

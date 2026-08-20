@@ -21,8 +21,10 @@ import type {
   ProcessedContent,
   CollectedMuseum,
   ContentItem,
+  ContentItemChange,
   ContentsDelta,
 } from './types.js';
+import { workChanges } from './contentsChangeSet.js';
 import { isTerminalSyncStatus, runningSyncs } from './types.js';
 import { collectTier1Museums } from './museum/pipeline.js';
 import { fetchEntityDetails, isQid } from './museum/queries.js';
@@ -181,10 +183,18 @@ async function upsertMuseumExperience(
  * only leaves below `ICONIC_RELEASE`, so the badge does not flicker on and off as Wikipedia
  * grows. Selection upstream uses the single threshold; only the stored flag has hysteresis.
  *
- * Returns what the museum gained, named (ADR-0026). `withdrawn` and `returned`
- * are always empty and that is the decision, not an omission: nothing unlinks a
- * work, because no contents coverage floor exists for treasures and a run that
- * under-fetched would take real works off the walls and report success.
+ * Returns what the museum gained and what the run rewrote about what it already
+ * held, named (ADR-0026). `withdrawn` and `returned` are always empty and that is
+ * the decision, not an omission: nothing unlinks a work, because no contents
+ * coverage floor exists for treasures and a run that under-fetched would take
+ * real works off the walls and report success.
+ *
+ * `changed` is the one arm computed per work, and its contract is the part a
+ * caller cannot see: the "after" side is the **source's offer**, not the row the
+ * upsert wrote. That is what makes `curatedConflict` reachable for a work at all
+ * — the upsert's own `CASE` writes a claimed value back over itself, so against
+ * the written row a claimed field equals itself and the refusal disappears. The
+ * comparison is argued where it happens, in the loop below.
  *
  * Exported for its test as well as for the sync: one of its promises lives in a
  * parameter number, which no caller can observe.
@@ -194,6 +204,33 @@ export async function upsertMuseumTreasures(
   artworks: ProcessedContent[]
 ): Promise<ContentsDelta> {
   const added: ContentItem[] = [];
+  const changed: ContentItemChange[] = [];
+
+  // What the run is about to write over, read once for the whole museum rather
+  // than once per work. The upsert cannot answer this itself — it is a single
+  // `INSERT … ON CONFLICT` and `RETURNING` gives back the new values — and
+  // without a "before" there is nothing to compare, so a source rewriting a
+  // title or an attribution would land silently on a work a curator has already
+  // passed. The claim set comes with it, because a field the source proposed and
+  // the guard above refused is the *reason* to report rather than a case to skip.
+  const refs = artworks.map(a => a.externalId);
+  const before = new Map<string, {
+    name: string | null; artist: string | null; year: number | null;
+    imageUrl: string | null; curatedFields: string[];
+  }>();
+  if (refs.length > 0) {
+    const stored = await pool.query(
+      `SELECT external_id, name, artist, year, image_url, curated_fields
+         FROM treasures WHERE external_id = ANY($1::text[])`,
+      [refs],
+    );
+    for (const row of stored.rows) {
+      before.set(row.external_id, {
+        name: row.name, artist: row.artist, year: row.year,
+        imageUrl: row.image_url, curatedFields: row.curated_fields ?? [],
+      });
+    }
+  }
 
   for (const artwork of artworks) {
     // Step 1: Upsert into treasures (globally unique by external_id)
@@ -232,7 +269,12 @@ export async function upsertMuseumTreasures(
         END,
         metadata = EXCLUDED.metadata,
         updated_at = NOW()
-      RETURNING id`,
+      -- The name beside the id because a link is named by what the catalogue
+      -- calls the work, which on a claimed field is not what the source sent.
+      -- Nothing else off this row: the comparison that reports a rewrite reads
+      -- the pre-run snapshot instead, and taking its claim set from here would be
+      -- taking it from the statement that already honoured it.
+      RETURNING id, name`,
       [
         artwork.externalId,
         artwork.name,
@@ -249,7 +291,30 @@ export async function upsertMuseumTreasures(
       ]
     );
 
-    const treasureId = treasureResult.rows[0].id;
+    const stored = treasureResult.rows[0];
+    const treasureId = stored.id;
+
+    // What this run did to a work it already held, or tried to.
+    //
+    // **The "after" is the source's offer, not the row the statement wrote** —
+    // the same pair `keptChanges` compares for a point, and for the same reason.
+    // The upsert's own `CASE` keeps the stored value wherever a claim holds, so a
+    // claimed field written back over itself compares equal: read from the
+    // written row, exactly the refusals worth reporting are the ones that
+    // disappear, and `curatedConflict` could never be true for a work. Read from
+    // the offer, a claim marks the entry rather than erasing it.
+    //
+    // A work the run has just inserted has no "before" and is an arrival, which
+    // `added` below carries.
+    const was = before.get(artwork.externalId);
+    if (was) {
+      const fields = workChanges(was, {
+        name: artwork.name, artist: artwork.artist, year: artwork.year, imageUrl: artwork.imageUrl,
+      }, was.curatedFields);
+      if (fields.length > 0) {
+        changed.push({ item: { name: was.name, ref: artwork.externalId }, fields });
+      }
+    }
 
     // Step 2: Link treasure to experience via junction table. Unlike the
     // treasure above, a link does have an experience to read the gate through,
@@ -270,10 +335,12 @@ export async function upsertMuseumTreasures(
     // `DO NOTHING` returns no row when the link was already there, so this is
     // "the museum gained a work", not "the run mentioned one".
     //
-    // Named from the artwork in hand rather than from a further read: the same
-    // record the insert was built from, so the name stored and the name reported
-    // cannot disagree.
-    if (link.rows.length > 0) added.push({ name: artwork.name, ref: artwork.externalId });
+    // Named from the row the statement wrote, not from the artwork in hand: on a
+    // work whose name a curator has claimed those are different strings, and the
+    // one a reader will see is the stored one. Reporting the source's title for a
+    // link to a work the catalogue calls something else names a work nobody can
+    // find.
+    if (link.rows.length > 0) added.push({ name: stored.name, ref: artwork.externalId });
   }
 
   // Once for the museum rather than once per painting: the fact is that a
@@ -281,7 +348,14 @@ export async function upsertMuseumTreasures(
   // whether one work arrived or twelve.
   if (added.length > 0) await retirePassAfterNewContent(pool, experienceId);
 
-  return { added, withdrawn: [], returned: [] };
+  // `changed` is expected to be empty most runs and is still computed: 120 works
+  // re-asked of Wikidata on 2026-08-20, eleven days after import, differed in
+  // name, artist, year and image exactly zero times. That measurement says how
+  // often a card will appear, not whether the run should be able to raise one —
+  // the axis that moves for a work is which venue holds it, and the day a source
+  // does rewrite an attribution is the day a curator needs to hear about it
+  // rather than the day we discover the run could not say.
+  return { added, withdrawn: [], returned: [], changed };
 }
 
 /**

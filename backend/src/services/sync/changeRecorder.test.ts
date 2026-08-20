@@ -91,7 +91,7 @@ describe('recordSyncChanges', () => {
 
   it('serialises the contents delta as JSON, keyed by kind', async () => {
     await recordSyncChanges([record({
-      contents: { locations: { added: [{ name: 'Zehlendorf', ref: '1239-006' }], withdrawn: [], returned: [] } },
+      contents: { locations: { added: [{ name: 'Zehlendorf', ref: '1239-006' }], withdrawn: [], returned: [], changed: [] } },
     })]);
 
     const params = mockedQuery.mock.calls[0][1] as unknown[];
