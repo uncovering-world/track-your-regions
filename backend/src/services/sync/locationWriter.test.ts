@@ -150,6 +150,25 @@ describe('writeExperienceLocations', () => {
     expect(String(sql)).toMatch(/el\.source_membership = 'present'\) AS matched/);
   });
 
+  it('lets the fast path forgive a claimed name the source never offers', async () => {
+    // `upsertSingleLocation` synthesises a null name for every museum's and every
+    // landmark's one point, so without this term a curator who names such a point
+    // buys the slow path for ever — and buys nothing with it, since `noNameOffered`
+    // suppresses the only change that run could have reported.
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '1', ids: [7] }] });
+
+    await writeExperienceLocations(1, [A]);
+
+    const [sql] = mockedQuery.mock.calls[0];
+    // The same question `noNameOffered` asks, `COALESCE` included: that guard folds
+    // the empty string the UNESCO parser makes of a malformed `name:`, and a term
+    // written `IS NULL` would leave exactly that row paying for a silent report.
+    expect(String(sql)).toMatch(/el\.curated_fields \? 'name' AND COALESCE\(i\.name, ''\) = ''/);
+    // Only where the source offers nothing: a name it does offer is a conflict the
+    // keeping arm has to compute, which is what ADR-0029 decision 5 keeps it for.
+    expect(String(sql)).toMatch(/el\.name IS NOT DISTINCT FROM i\.name/);
+  });
+
   it('takes back a curator’s delisting when the source offers a withdrawn point again', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ stored: '0', matched: '0', ids: null }] });
     const { client, statements } = fakeClient();
