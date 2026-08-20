@@ -142,6 +142,40 @@ export function useDiscoverMap({
       // See `docs/tech/maplibre-patterns.md` § One listener per registration.
       map.on('click', onMarkerClick);
 
+      // Two trackers, one ring: each hover dedupes on its own, so a handler that
+      // ends one of them must hand the ring to the other rather than keep it.
+      let mapCurrentHighlightLocId: number | null = null;
+
+      /**
+       * The one writer of the hover ring's source *here*; `null` takes it off.
+       *
+       * `useDiscoverHover` writes the same source on three other paths, and one
+       * of them rings every point an object is drawn at — a shape this cannot
+       * express, deliberately, because nothing on this side rings more than one.
+       */
+      const setHoverRing = (coords: [number, number] | null) => {
+        const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
+        if (!hoverSource) return;
+        hoverSource.setData(coords
+          ? {
+            type: 'FeatureCollection',
+            features: [{
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: coords },
+              properties: {},
+            }],
+          }
+          : { type: 'FeatureCollection', features: [] });
+      };
+
+      /** Where a queried feature is. */
+      const pointOf = (feature: maplibregl.MapGeoJSONFeature): [number, number] =>
+        (feature.geometry as GeoJSON.Point).coordinates as [number, number];
+
+      /** The one key space `mapCurrentHoveredKey` is written and read in. */
+      const keyOf = (feature: maplibregl.MapGeoJSONFeature): string =>
+        `${feature.properties?.id}:${feature.properties?.locationId ?? ''}`;
+
       // ── Marker hover (mousemove for precise tracking with nearby points) ──
       const onMarkerMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
         map.getCanvas().style.cursor = 'pointer';
@@ -149,27 +183,19 @@ export function useDiscoverMap({
         if (features.length > 0) {
           const feature = features[0];
           const id = feature.properties?.id as number;
-          const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
+          const coords = pointOf(feature);
 
           // Keyed by the place: an object is many pins now, and keying on the
           // object left the ring and the list scroll on the first part the
-          // pointer touched while it crossed the rest.
-          const hoverKey = `${id}:${feature.properties?.locationId ?? ''}`;
+          // pointer touched while it crossed the rest. Through `keyOf`, which is
+          // what the leave compares against — a key space stated twice is a key
+          // space that can drift, silently, into a leave that never returns.
+          const hoverKey = keyOf(feature);
           if (hoverKey !== mapCurrentHoveredKey) {
             mapCurrentHoveredKey = hoverKey;
 
             // Update hover ring on map
-            const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
-            if (hoverSource) {
-              hoverSource.setData({
-                type: 'FeatureCollection',
-                features: [{
-                  type: 'Feature',
-                  geometry: { type: 'Point', coordinates: coords },
-                  properties: {},
-                }],
-              });
-            }
+            setHoverRing(coords);
 
             // Notify React (triggers list auto-scroll + card highlight + hover card)
             mapHoverCallbackRef.current?.(id);
@@ -186,14 +212,61 @@ export function useDiscoverMap({
         if (e.originalEvent) movedByReaderRef.current = true;
       });
 
-      const onMarkerMouseLeave = () => {
-        map.getCanvas().style.cursor = '';
+      /** The pin under a point, if one is there. */
+      const markerAt = (point: maplibregl.Point): maplibregl.MapGeoJSONFeature | null => {
+        if (!map.getLayer('unclustered-point')) return null;
+        const under = map.queryRenderedFeatures(point, { layers: interactiveMarkerLayers });
+        return under[0] ?? null;
+      };
+
+      /**
+       * Whether a cluster is under a point. Clusters set the pointer cursor from
+       * a one-shot `mouseenter`, so a leave on any layer over one must not reset
+       * what nothing will set again until the pointer leaves the cluster too.
+       */
+      const onACluster = (point: maplibregl.Point): boolean =>
+        !!map.getLayer('clusters')
+        && map.queryRenderedFeatures(point, { layers: ['clusters'] }).length > 0;
+
+      /** The place of the selected object under a point, if one is there. */
+      const highlightDotAt = (point: maplibregl.Point): maplibregl.MapGeoJSONFeature | null => {
+        if (!map.getLayer('highlight-point')) return null;
+        return map.queryRenderedFeatures(point, { layers: ['highlight-point'] })[0] ?? null;
+      };
+
+      // The badge is drawn `circle-translate: [8, -8]` over a point of radius 6,
+      // so a pin and its badge overlap only in part: moving from one onto the
+      // other makes MapLibre report a leave for the layer walked off, and
+      // clearing there takes the ring, the list highlight and the hover card off
+      // a pin the pointer is still on — the badge being exactly what a reader
+      // aims at to see what a fold is hiding. Only a leave delivered by a move
+      // may be trusted with its point: the other path is `mouseout`, which
+      // carries the point the pointer left *from*. Map Mode's
+      // `useMarkerInteractions` and `docs/tech/maplibre-patterns.md` § The rule
+      // carry the same check and the reasoning behind it.
+      const onMarkerMouseLeave = (e: maplibregl.MapLayerMouseEvent) => {
+        const fromAMove = e.originalEvent?.type === 'mousemove';
+        const pin = fromAMove ? markerAt(e.point) : null;
+        if (pin && keyOf(pin) === mapCurrentHoveredKey) return;
         mapCurrentHoveredKey = null;
 
-        // Clear hover ring
-        const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
-        if (hoverSource) {
-          hoverSource.setData({ type: 'FeatureCollection', features: [] });
+        // The object's hover has ended, but the ring may not be this handler's
+        // to take: the dots of the selected object share the source and overlap
+        // these pins in pixels. Handed over rather than kept — the dot's own
+        // `mousemove` dedupes on a dot that has not changed, so leaving the ring
+        // as it is would leave it on the pin the pointer has just left.
+        const dot = fromAMove ? highlightDotAt(e.point) : null;
+        if (dot) {
+          // The ring, and not the dot's key: `mapCurrentHighlightLocId` is what
+          // the dot's own `mousemove` dedupes on, and that delegate is
+          // registered after this leave, so it runs later in the same move.
+          // Writing the key here would leave the hand-over half done — ring on
+          // the dot, and the panel never told which place it is, because the
+          // move that would have said so found nothing to do.
+          setHoverRing(pointOf(dot));
+        } else {
+          if (!fromAMove || !onACluster(e.point)) map.getCanvas().style.cursor = '';
+          setHoverRing(null);
         }
 
         mapHoverCallbackRef.current?.(null);
@@ -203,10 +276,20 @@ export function useDiscoverMap({
       map.on('mouseleave', 'unclustered-count-badge-text', onMarkerMouseLeave);
 
       map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
+      // The cursor is shared with the pins and the dots a bubble covers — a dot
+      // is drawn above it and stays hoverable — and neither gets it back from
+      // this move: the dots' `mousemove` sets it inside a dedupe, so on a dot
+      // the arrow stays until the pointer enters something else, and the pins'
+      // sets it unconditionally but is registered ahead of this leave, so the
+      // reset lands after it and holds for a frame. Ask, like the two leaves
+      // above do about clusters.
+      map.on('mouseleave', 'clusters', (e: maplibregl.MapLayerMouseEvent) => {
+        const fromAMove = e.originalEvent?.type === 'mousemove';
+        if (fromAMove && (markerAt(e.point) || highlightDotAt(e.point))) return;
+        map.getCanvas().style.cursor = '';
+      });
 
       // ── Highlight-point hover → location list scroll ──
-      let mapCurrentHighlightLocId: number | null = null;
 
       map.on('mousemove', 'highlight-point', (e) => {
         const features = map.queryRenderedFeatures(e.point, { layers: ['highlight-point'] });
@@ -217,32 +300,34 @@ export function useDiscoverMap({
             map.getCanvas().style.cursor = 'pointer';
 
             // Show hover ring at this location
-            const coords = (features[0].geometry as GeoJSON.Point).coordinates as [number, number];
-            const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
-            if (hoverSource) {
-              hoverSource.setData({
-                type: 'FeatureCollection',
-                features: [{
-                  type: 'Feature',
-                  geometry: { type: 'Point', coordinates: coords },
-                  properties: {},
-                }],
-              });
-            }
+            setHoverRing(pointOf(features[0]));
 
             highlightHoverCallbackRef.current?.(locId);
           }
         }
       });
 
-      map.on('mouseleave', 'highlight-point', () => {
+      map.on('mouseleave', 'highlight-point', (e) => {
         mapCurrentHighlightLocId = null;
-        map.getCanvas().style.cursor = '';
 
-        // Clear hover ring (unless internal hover is active)
-        const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource;
-        if (hoverSource) {
-          hoverSource.setData({ type: 'FeatureCollection', features: [] });
+        // The mirror of the case above. These dots overlap the pins of every
+        // other object in pixels and never in meaning, and the marker handlers
+        // are registered ahead of this one — so crossing from a dot onto a pin
+        // drew the ring on the pin and erased it here a step later, with the
+        // marker handler deduping on an unchanged key and never redrawing it.
+        // The ring goes to the pin the pointer is on, not away.
+        const fromAMove = e.originalEvent?.type === 'mousemove';
+        const pin = fromAMove ? markerAt(e.point) : null;
+        if (pin) {
+          // The ring, and not the pin's key, for the reason the mirror above
+          // gives: `mapCurrentHoveredKey` belongs to the marker `mousemove`,
+          // which is registered ahead of this leave and has already set it in
+          // this same move. Writing it here is dead today and the same trap
+          // tomorrow, the moment those registrations change order.
+          setHoverRing(pointOf(pin));
+        } else {
+          if (!fromAMove || !onACluster(e.point)) map.getCanvas().style.cursor = '';
+          setHoverRing(null);
         }
 
         highlightHoverCallbackRef.current?.(null);
