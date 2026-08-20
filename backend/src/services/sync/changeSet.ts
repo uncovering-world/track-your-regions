@@ -160,8 +160,15 @@ function jsonEquals(a: unknown, b: unknown): boolean {
   return false;
 }
 
-/** Great-circle distance in metres. */
-function distanceMeters(lon1: number, lat1: number, lon2: number, lat2: number): number {
+/**
+ * Great-circle distance in metres.
+ *
+ * Exported for `contentsChangeSet.ts`, which asks the same question one level
+ * down — did this point move, and far enough to matter — and must ask it with
+ * the same arithmetic, or a component and its object would disagree about what
+ * ten metres means.
+ */
+export function distanceMeters(lon1: number, lat1: number, lon2: number, lat2: number): number {
   const earthRadiusMeters = 6371000;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);

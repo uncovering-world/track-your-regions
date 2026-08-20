@@ -469,7 +469,24 @@ export async function writeExperienceLocations(
                 AND el.missing_since IS NULL
                 AND ${samePointSql('el')}
                 AND el.ordinal = i.ordinal
-                AND el.name IS NOT DISTINCT FROM i.name
+                -- A claimed name against a source that offers none is matched, and
+                -- it is the one claim this comparison forgives. upsertSingleLocation
+                -- synthesises a null name for every museum's and every landmark's
+                -- single point, so a curator who names such a point would fail this
+                -- term on every run for ever — and the slow path it buys can only
+                -- publish silence, because noNameOffered suppresses the rename the
+                -- run would otherwise report against a name nobody offered. ADR-0029
+                -- decision 5 keeps the path narrow so a claimed field reaches the
+                -- keeping arm that computes its conflict; there is no conflict to
+                -- compute where the source proposes nothing. A source that starts
+                -- offering a name fails this term again, which is when there is.
+                -- COALESCE rather than IS NULL, so this is the same question
+                -- noNameOffered asks: it folds the empty string, which the UNESCO
+                -- parser produces from a malformed "name:" with nothing after it.
+                -- Written differently, the two would disagree on exactly that row —
+                -- a transaction every run, recording nothing.
+                AND (el.name IS NOT DISTINCT FROM i.name
+                     OR (el.curated_fields ? 'name' AND COALESCE(i.name, '') = ''))
                 -- A row the source lists while recorded as delisted is *not* matched:
                 -- it needs the one-direction restore below, and this comparison is how
                 -- the writer decides there is nothing to do. Without the term the fast

@@ -69,6 +69,19 @@ keeping arm is the only place a `curatedConflict` can be computed, and a fast pa
 a row would publish silence instead. ADR-0027 decisions 1 and 5 are narrowed to that extent and
 marked accordingly; the rest of that decision stands.
 
+One shape is exempt, and only because there is nothing there to make visible: a claimed **name** on a
+point the source offers **no** name for. `upsertSingleLocation` synthesises a null name for every
+museum's and every landmark's single point, so that term would fail for ever on any such point a
+curator names — and the slow path it buys publishes silence anyway, since the run has no proposed
+name to disagree with and the rename it would otherwise report is suppressed as a false one. The
+exemption asks the same question the suppression asks — `curated_fields ? 'name' AND
+COALESCE(i.name, '') = ''`, where the `COALESCE` is what makes it the same question, since
+`noNameOffered` folds the empty string and the UNESCO parser produces one from a malformed `name:`
+with nothing after it. Written as `IS NULL` the two would disagree on exactly that row, which is a
+transaction every run recording nothing — the shape this exemption exists to remove, arriving through
+the gap the parity is claimed to close. The day a source starts offering a name, the term fails again
+and the conflict is computed where the rest of this decision says it must be.
+
 **6. Correcting a point moves the object's anchor, where the object holds exactly one point a reader
 is positioned over — offered, published, and the one being corrected,** and claims it there too. With several points the anchor is a fact about the object, and
 nothing in a single correction says which of them the object should be pinned to. The two claims are
@@ -100,7 +113,7 @@ members' own changes are field-shaped; the set's arrival and departure are not.
 | Move the anchor on every correction, whatever the object holds | For a serial nomination that is a guess about which of forty places the object is, made by whoever happened to fix a coordinate |
 | Never move the anchor | Leaves #550's disagreement in place for the 1119 single-point objects, where there is no ambiguity to protect |
 | Widen the tolerance instead of exempting claimed rows | The tolerance answers "did the source rewrite this point more precisely" (ADR-0027). A number large enough to hold a 2 km correction would pair unrelated components of a serial site with each other |
-| Exempt a claimed row from the fast path's `matched` term too | Cheaper per run, and it would silence the report: the keeping arm is where `curatedConflict` is computed, so the object would take no transaction and the source's disagreement would never be recorded |
+| Exempt a claimed row from the fast path's `matched` term too | Cheaper per run, and it would silence the report: the keeping arm is where `curatedConflict` is computed, so the object would take no transaction and the source's disagreement would never be recorded. Taken only for the one shape with no disagreement to record — a claimed name against a source offering none — see decision 5 |
 
 ## Consequences
 
