@@ -624,6 +624,69 @@ describe('publishing a held proposal', () => {
 });
 
 /**
+ * `{ fieldsOnly: true }` — the mirror, and what #524 asked for.
+ *
+ * A museum whose label is held *and* which gained twelve paintings could be
+ * answered only as one act, so declining the label held back the paintings: one
+ * doubtful field freezing twelve works, which is the failure ADR-0025's queue
+ * section named from the other direction.
+ */
+describe('publishing only the object\'s held fields ({ fieldsOnly: true })', () => {
+  it('applies the held fields and leaves every unread point and work alone', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53, curated_fields: [] },
+      // `held: true` is what makes a proposed field one the gate refused and a
+      // publication can apply; without it there is nothing here to publish.
+      proposal: [{ field: 'name', new: 'Museo Nacional del Prado', held: true }],
+      rowCounts: { 'UPDATE experience_locations SET curation_state': 2, 'UPDATE experience_treasures': 12 },
+    });
+
+    const res = await publish({ fieldsOnly: true, expectedSyncLogId: 53 }, client);
+
+    // The object's own row is written — that is what was answered — and the two
+    // contents statements are never sent, so the counts are zero rather than
+    // whatever those rowCounts would have made them.
+    expect(only(queries, 'UPDATE experiences').sql).toContain('name');
+    expect(none(queries, 'UPDATE experience_locations SET curation_state')).toBe(true);
+    expect(none(queries, 'UPDATE experience_treasures')).toBe(true);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      appliedFields: ['name'],
+      locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0,
+    }));
+  });
+
+  it('refuses to publish only the fields of an object nobody has passed', async () => {
+    grantScope();
+    const { client, queries } = makeClient({ row: { curation_state: 'pending' } });
+
+    const res = await publish({ fieldsOnly: true }, client);
+
+    // Otherwise the arrival reaches readers with every point and work still
+    // `pending` — an object in every list with nothing on the map, which is the
+    // failure the writer's deferral machinery exists to prevent, arriving through
+    // the one shape that skips `publishContents`.
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(none(queries, 'UPDATE experiences')).toBe(true);
+  });
+
+  it('records which of the three publishes it was, since the numbers cannot say', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53, curated_fields: [] },
+      proposal: [{ field: 'name', new: 'X', held: true }],
+    });
+
+    await publish({ fieldsOnly: true, expectedSyncLogId: 53 }, client);
+
+    // An object publish that happened to hold no unread contents writes the same
+    // zeros as this does, so the trail says which act it was in words.
+    const log = only(queries, 'experience_curation_log');
+    expect(JSON.parse(String(log.params[3])).scope).toBe('fields');
+  });
+});
+
+/**
  * `{ contentsOnly: true }` — the shape for a card that names no ids at all,
  * because it reports counts rather than the ids behind them. Everything
  * named-contents publishing does for a named subset, this does for every

@@ -748,6 +748,35 @@ describe('ReviewQueue', () => {
       expect(screen.queryByText(/showing 2 of 2 works/)).not.toBeInTheDocument();
     });
 
+    it('offers the change alone when a card holds both halves', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [],
+        held: [HELD], contents: [CONTENTS],
+        limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /Publish the change only/ }));
+
+      // #524's case, from the curator's side: doubting one proposed sentence
+      // must stop meaning twelve checked paintings stay invisible.
+      await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(
+        7, { fieldsOnly: true, expectedSyncLogId: 47 },
+      ));
+    });
+
+    it('does not offer it where there is only one half to publish', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], contents: [CONTENTS], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      // The one button already means exactly one thing here, and a second saying
+      // "only" beside it would be a distinction without a difference.
+      await screen.findByText(/12 new works/);
+      expect(screen.queryByRole('button', { name: /Publish the change only/ })).not.toBeInTheDocument();
+    });
+
     it('publishes through the one endpoint that can apply a held field', async () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [], held: [HELD], contents: [], limit: 25, offset: 0,
