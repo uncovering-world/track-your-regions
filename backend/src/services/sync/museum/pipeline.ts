@@ -29,7 +29,7 @@ import {
 import {
   fetchSubclasses,
   fetchMuseumClasses,
-  fetchAnchoredPool,
+  fetchBroadPool,
   fetchClassPool,
   fetchVenueStatements,
   chunk,
@@ -45,11 +45,11 @@ import type { CollectedMuseum, ProcessedContent } from '../types.js';
 const LOG_PREFIX = '[Museum Sync]';
 
 /**
- * The three classes broad enough to need an anchor — `painting` alone has half a million
- * instances, and requiring an owner or a location is what keeps one query answerable. Their
- * labels double as the treasure type a reader sees.
+ * The three classes broad enough that no single query can hold them — `painting` alone has half
+ * a million instances — so each is asked in fame bands instead. Their labels double as the
+ * treasure type a reader sees.
  */
-const ANCHORED_ROOTS = [
+const BROAD_ROOTS = [
   { qid: 'Q3305213', type: 'painting' },
   { qid: 'Q860861', type: 'sculpture' },
   { qid: 'Q179700', type: 'statue' },
@@ -63,8 +63,9 @@ const ANCHORED_ROOTS = [
  * holds **zero** prints, engravings, drawings, mosaics and tapestries, and Japanese printmaking
  * is absent as a class. That is not a boundary anyone drew.
  *
- * Unanchored: taken whole with no ownership requirement, because losing a work on the way in
- * is worse than deciding later that it has no placeable venue.
+ * Taken whole in one query each batch, because they are narrow enough to scan directly — no
+ * bands, and no ownership requirement: losing a work on the way in is worse than deciding later
+ * that it has no placeable venue.
  */
 const WHOLE_ROOTS = [
   { qid: 'Q93184', type: 'drawing' },
@@ -73,7 +74,7 @@ const WHOLE_ROOTS = [
   { qid: 'Q184296', type: 'tapestry' },
 ];
 
-const ARTWORK_ROOTS = [...ANCHORED_ROOTS, ...WHOLE_ROOTS];
+const ARTWORK_ROOTS = [...BROAD_ROOTS, ...WHOLE_ROOTS];
 
 /**
  * Classes no closure can reach, because they are not kinds of work.
@@ -208,16 +209,13 @@ async function collectPool(run: QueryRunner, classes: string[]): Promise<Map<str
     }
   };
 
-  for (const root of ANCHORED_ROOTS) {
-    for (const anchor of ['P195', 'P276'] as const) {
-      run.phase(`Fetching ${root.type}s by ${anchor}...`);
-      await run.step();
-      add(await fetchAnchoredPool(run.sparql, root, anchor));
-    }
+  // Each broad root paces and reports its own bands: they are minutes apart, not seconds.
+  for (const root of BROAD_ROOTS) {
+    add(await fetchBroadPool(run, root));
   }
 
-  // Everything the anchored fetch did not already cover, the four whole roots included.
-  const narrow = classes.filter((c) => !ANCHORED_ROOTS.some((r) => r.qid === c));
+  // Everything the broad fetch did not already cover, the four whole roots included.
+  const narrow = classes.filter((c) => !BROAD_ROOTS.some((r) => r.qid === c));
   const batches = chunk(narrow, CLASS_BATCH);
   for (let i = 0; i < batches.length; i++) {
     run.phase(`Fetching narrow artwork classes ${i + 1}/${batches.length}...`);
