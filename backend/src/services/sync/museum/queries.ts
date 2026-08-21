@@ -15,8 +15,9 @@
  *   - `wdt:P170` (creator) needs the same blank-node filter the venue bindings get: 51 works in
  *     the pool carry a `.well-known/genid/…` artist today.
  *
- * Each exported fetcher sends exactly one query. Batching, pacing and cancellation belong to
- * the pipeline, which is the only place that knows how long a run is allowed to take.
+ * Each exported fetcher sends one query, with one exception: the broad pool is asked in fame
+ * bands, and takes the runner so that pacing and cancellation still happen between them. What
+ * else to batch is the pipeline's decision, since only it knows how long a run may take.
  */
 
 import { extractQid, parseWktPoint, type SparqlBinding } from '../wikidataUtils.js';
@@ -58,7 +59,6 @@ export function unique(values: string[]): string[] {
 /** Without `mul`, the National Gallery of Art comes back as the string `Q214867`. */
 export const LABEL_LANGS = 'en,mul,en-gb,de,fr,es,it,nl';
 
-const LOG_PREFIX = '[Museum Sync]';
 const ENTITY_PREFIX = 'http://www.wikidata.org/entity/';
 
 /**
@@ -76,7 +76,7 @@ export const MUSEUM_ROOT = 'Q33506';
  */
 export const POOL_MIN_SITELINKS = 10;
 
-/** No pool query has ever returned this many rows; a batch that does says so in the log. */
+/** No pool query has ever returned this many rows; one that does stops the run. */
 export const POOL_LIMIT = 3000;
 
 /** A QID, not a blank node (`.well-known/genid/…`) and not a literal. */
@@ -101,14 +101,25 @@ function values(qids: string[]): string {
 }
 
 /**
- * Say so when a query came back holding exactly as many rows as it was allowed to return.
- * Silence there reads as "we fetched everything", which is the one thing it cannot mean.
+ * A truncated *pool* query stops the run.
+ *
+ * The pool decides which museums this category admits (ADR-0024), so a pool cut
+ * off at its LIMIT withdraws real museums and reports success — the one failure
+ * the admission axis exists to prevent, and the reason ADR-0030 makes a *failed*
+ * band fatal. A *truncated* band is the same short pool arrived at more quietly,
+ * so it is fatal too. Worse, in fact: a banded query carries no `ORDER BY`, so
+ * the rows kept are an arbitrary subset rather than the most famous ones.
+ *
+ * The remedy belongs to a person, not to a retry: a band whose range holds more
+ * than the limit needs splitting, and the message says which one so that the
+ * next edit is obvious.
  */
-export function warnIfTruncated(rows: SparqlBinding[], limit: number, label: string): void {
+function failIfTruncated(rows: SparqlBinding[], limit: number, label: string): void {
   if (rows.length < limit) return;
-  console.warn(
-    `${LOG_PREFIX} ${label} returned exactly its LIMIT of ${limit} rows — `
-    + 'the tail beyond it was never fetched',
+  throw new Error(
+    `${label} returned exactly its LIMIT of ${limit} rows. The pool decides which museums `
+    + 'this category admits, so a short one would withdraw museums and call the run a success. '
+    + 'Split this band, or raise its limit.',
   );
 }
 
@@ -156,15 +167,110 @@ export interface PoolWork {
   typeQid: string | null;
 }
 
-function poolQuery(head: string, limit: number): string {
-  return `
-    SELECT ?w ?wLabel ?sl ?img ?creatorLabel (YEAR(?inception) AS ?year) ?cls ?clsLabel WHERE {
-      ${head}
-      FILTER(?sl >= ${POOL_MIN_SITELINKS})
+interface Band {
+  min: number;
+  /** Exclusive; `null` is the open top band. */
+  max: number | null;
+}
+
+/**
+ * How famous a work has to be to appear, sliced into bands.
+ *
+ * Only the three broad roots are asked this way, and the reason is the failure
+ * that motivated it: run 61 died asking for every instance of `painting` — half
+ * a million of them — with each one's sitelink count read and the lot sorted.
+ * Measured on 2026-08-21 against the live endpoint, that shape cannot be made to
+ * fit the sixty seconds the service allows: without the sort it still timed out,
+ * and stripped down to two columns it came back 502.
+ *
+ * What works is asking the *other* question first. `?w wikibase:sitelinks ?sl`
+ * with a range hint is an index scan over the entities in the band, and the
+ * class is then a probe on what that scan found rather than a scan of its own.
+ * Same answer, different order, and the top band went from a gateway error to
+ * seven seconds. The bands exist because that scan is proportional to the width
+ * of the range: 10–19 took 61 seconds, 10–11 took 33, so the bottom of the range
+ * is cut finer than the top, where far fewer entities live per sitelink.
+ *
+ * Each band is a separate question with its own cache entry, so a run that dies
+ * in the fourth band keeps the first three. The bands are open at the top and
+ * closed at the bottom, and they tile the range with no gap and no overlap,
+ * because a work appearing in two bands would be counted twice by anything
+ * downstream that trusts the pool's length.
+ */
+export const POOL_BANDS: Band[] = [
+  { min: 100, max: null },
+  { min: 50, max: 100 },
+  { min: 30, max: 50 },
+  { min: 20, max: 30 },
+  { min: 15, max: 20 },
+  { min: 12, max: 15 },
+  { min: POOL_MIN_SITELINKS, max: 12 },
+];
+
+/**
+ * Blazegraph's query hints, which is what makes a band affordable.
+ *
+ * `optimizer "None"` fixes the join order to the order written — without it the
+ * planner puts the class first again, which is the shape that times out — and
+ * `rangeSafe` lets the sitelink filter become an index range scan instead of a
+ * predicate applied to every row it could have matched.
+ */
+const HINT_PREFIX = 'PREFIX hint: <http://www.bigdata.com/queryHints#>';
+
+/** Everything about a work that is not why it was collected. */
+const POOL_DETAILS = `
       OPTIONAL { ?w wdt:P18 ?img }
       OPTIONAL { ?w wdt:P170 ?creator . FILTER(STRSTARTS(STR(?creator), "${ENTITY_PREFIX}Q")) }
       OPTIONAL { ?w wdt:P571 ?inception }
-      SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
+
+function bandFilter(band: Band): string {
+  return band.max === null
+    ? `FILTER(?sl >= ${band.min})`
+    : `FILTER(?sl >= ${band.min} && ?sl < ${band.max})`;
+}
+
+function bandLabel(band: Band): string {
+  return band.max === null ? `${band.min}+ sitelinks` : `${band.min}–${band.max - 1} sitelinks`;
+}
+
+/**
+ * One band of one broad class.
+ *
+ * No `ORDER BY`: a band is already a slice of fame, so sorting inside one buys
+ * nothing and costs the materialisation of every row. No anchor either — the
+ * ownership requirement that used to keep this query small is what made it
+ * unaffordable once the join order was fixed, and it cost the catalogue
+ * Sunflowers and the Burghers of Calais on the way. A work with nowhere to hang
+ * is simply homeless when placement runs, which is a thing the pipeline already
+ * counts and reports.
+ */
+function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
+  return `${HINT_PREFIX}
+    SELECT ?w ?wLabel ?sl ?img ?creatorLabel (YEAR(?inception) AS ?year) WHERE {
+      hint:Query hint:optimizer "None" .
+      ?w wikibase:sitelinks ?sl .
+      hint:Prior hint:rangeSafe true .
+      ${bandFilter(band)}
+      ?w wdt:P31 wd:${rootQid} .${POOL_DETAILS}
+    }
+    LIMIT ${limit}`;
+}
+
+/**
+ * A batch of narrow classes, whole.
+ *
+ * Left in the shape that has always answered: a class with a few thousand
+ * instances is cheap to scan, and the sort over what it finds is cheap too. The
+ * band treatment above is for the three roots big enough to need it, and
+ * applying it here would turn thirty affordable questions into two hundred.
+ */
+function classPoolQuery(classQids: string[], limit: number): string {
+  return `
+    SELECT ?w ?wLabel ?sl ?img ?creatorLabel (YEAR(?inception) AS ?year) ?cls ?clsLabel WHERE {
+      VALUES ?cls { ${values(classQids)} }
+      ?w wdt:P31 ?cls ; wikibase:sitelinks ?sl .
+      FILTER(?sl >= ${POOL_MIN_SITELINKS})${POOL_DETAILS}
     }
     ORDER BY DESC(?sl)
     LIMIT ${limit}`;
@@ -185,7 +291,7 @@ function typeOf(row: SparqlBinding, fallbackType: string): string {
 /**
  * The QID of the class a work was collected under.
  *
- * Unbound for the three anchored roots, whose head names the class literally
+ * Unbound for the three broad roots, whose banded query names the class literally
  * rather than binding it — the caller passes the root it asked for.
  */
 function typeQidOf(row: SparqlBinding, fallbackQid: string | null): string | null {
@@ -217,24 +323,43 @@ function parsePool(rows: SparqlBinding[], fallbackType: string, fallbackQid: str
 }
 
 /**
- * Works of one broad class, anchored by one of the two venue properties.
+ * Works of one broad class, band by band, merged into one pool.
  *
- * The anchor is what keeps `painting` — half a million instances — inside a single query, and
- * it is why the broad roots are fetched twice: requiring an owner (`P195`) is what hid
- * Sunflowers, which is a series nobody owns, and Rodin's Burghers of Calais.
+ * The runner rather than the bare door, because a band is now a unit of work a
+ * person can be told about and can interrupt: seven questions that each take
+ * tens of seconds are minutes in which Cancel has to mean something, and a phase
+ * message naming the band is the difference between a run that is working and a
+ * run that looks hung.
+ *
+ * Merged by QID rather than concatenated: the bands do not overlap, but the same
+ * work can arrive from a later class query, and `parsePool` only dedupes within
+ * one answer.
+ *
+ * A band that fails after its retries fails the run, exactly as the single query
+ * did. This is deliberate: the pool decides which museums this category admits
+ * (ADR-0024), so a quietly short pool would withdraw real museums and report
+ * success — the one failure mode the whole admission axis exists to prevent.
+ * What the bands buy is that each question is small enough to answer, and that a
+ * retry after a failure starts from the cached bands rather than from nothing.
  */
-export async function fetchAnchoredPool(
-  sparql: SparqlFn,
+export async function fetchBroadPool(
+  run: QueryRunner,
   root: { qid: string; type: string },
-  anchor: 'P195' | 'P276',
   limit = POOL_LIMIT,
 ): Promise<PoolWork[]> {
-  const rows = await sparql(
-    poolQuery(`?w wdt:P31 wd:${root.qid} ; wdt:${anchor} ?anchor ; wikibase:sitelinks ?sl .`, limit),
-    { kind: 'pool', label: `pool: ${root.type} anchored by ${anchor}` },
-  );
-  warnIfTruncated(rows, limit, `${root.type} anchored by ${anchor}`);
-  return parsePool(rows, root.type, root.qid);
+  const works = new Map<string, PoolWork>();
+  for (let i = 0; i < POOL_BANDS.length; i++) {
+    const band = POOL_BANDS[i];
+    run.phase(`Fetching ${root.type}s, ${bandLabel(band)} (band ${i + 1}/${POOL_BANDS.length})...`);
+    await run.step();
+    const rows = await run.sparql(
+      bandedPoolQuery(root.qid, band, limit),
+      { kind: 'pool', label: `pool: ${root.type}, ${bandLabel(band)}` },
+    );
+    failIfTruncated(rows, limit, `pool: ${root.type} (${bandLabel(band)})`);
+    for (const work of parsePool(rows, root.type, root.qid)) works.set(work.qid, work);
+  }
+  return [...works.values()];
 }
 
 /**
@@ -248,11 +373,10 @@ export async function fetchClassPool(
 ): Promise<PoolWork[]> {
   if (!classQids.length) return [];
   const rows = await sparql(
-    poolQuery(`VALUES ?cls { ${values(classQids)} }
-       ?w wdt:P31 ?cls ; wikibase:sitelinks ?sl .`, limit),
+    classPoolQuery(classQids, limit),
     { kind: 'pool', label: `pool: ${classQids.length} narrow classes` },
   );
-  warnIfTruncated(rows, limit, `${classQids.length} narrow classes`);
+  failIfTruncated(rows, limit, `pool: ${classQids.length} narrow classes`);
   return parsePool(rows, 'artwork', null);
 }
 

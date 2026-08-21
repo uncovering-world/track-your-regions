@@ -13,8 +13,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { collectTier1Museums } from './pipeline.js';
-import { fetchAnchoredPool } from './queries.js';
+import { fetchBroadPool, fetchClassPool, POOL_BANDS, type SparqlFn } from './queries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+
+const POOL_BAND_COUNT = POOL_BANDS.length;
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const RANK = 'http://wikiba.se/ontology#';
@@ -38,9 +40,8 @@ interface FixtureWork {
   /** The narrow class it answers a `VALUES ?cls` batch under, with the label that batch returns. */
   cls: string;
   clsLabel: string;
-  /** The broad root it answers an anchored query under. Those rows bind no class label. */
+  /** The broad root whose fame bands it answers under. Those rows bind no class label. */
   broadRoot?: string;
-  anchors: ('P195' | 'P276')[];
   artist?: string;
   year?: number;
   statements: { property: 'P195' | 'P276'; venue: string; rank?: 'preferred' | 'normal' }[];
@@ -97,7 +98,7 @@ const ENTITIES: Record<string, FixtureEntity> = {
 const WORKS: Record<string, FixtureWork> = {
   Q12418: {
     label: 'Mona Lisa', sitelinks: 146, cls: PAINTING, clsLabel: 'painting',
-    broadRoot: PAINTING, anchors: ['P195', 'P276'], artist: 'Leonardo da Vinci', year: 1503,
+    broadRoot: PAINTING, artist: 'Leonardo da Vinci', year: 1503,
     statements: [
       { property: 'P195', venue: 'Q3044768' },
       { property: 'P276', venue: 'Q10292830', rank: 'preferred' },
@@ -106,12 +107,12 @@ const WORKS: Record<string, FixtureWork> = {
   },
   // The work the hand-picked type list lost: a fresco, in a church, owned by nobody.
   Q207947: {
-    label: 'The Last Supper', sitelinks: 88, cls: FRESCO, clsLabel: 'fresco', anchors: [],
+    label: 'The Last Supper', sitelinks: 88, cls: FRESCO, clsLabel: 'fresco',
     statements: [{ property: 'P276', venue: 'Q1876' }],
   },
   Q900101: {
     label: 'Work of the Branch', sitelinks: 40, cls: PAINTING, clsLabel: 'painting',
-    broadRoot: PAINTING, anchors: ['P195', 'P276'],
+    broadRoot: PAINTING,
     statements: [
       { property: 'P195', venue: 'Q900003' },
       { property: 'P276', venue: 'Q900001' },
@@ -119,27 +120,26 @@ const WORKS: Record<string, FixtureWork> = {
   },
   Q900201: {
     label: 'Work in the Sala', sitelinks: 30, cls: PAINTING, clsLabel: 'painting',
-    broadRoot: PAINTING, anchors: ['P276'], statements: [{ property: 'P276', venue: 'Q900013' }],
+    broadRoot: PAINTING, statements: [{ property: 'P276', venue: 'Q900013' }],
   },
   Q900202: {
     label: 'Work in the Galleria', sitelinks: 28, cls: PAINTING, clsLabel: 'painting',
-    broadRoot: PAINTING, anchors: ['P276'], statements: [{ property: 'P276', venue: 'Q900012' }],
+    broadRoot: PAINTING, statements: [{ property: 'P276', venue: 'Q900012' }],
   },
-  // Fetched twice: as a painting by the anchored query, which names no class, and as a fresco
-  // by its narrow class. The narrower name is the one a reader wants on the treasure.
+  // Fetched twice: as a painting by a fame band, which names no class, and as a fresco by its
+  // narrow class. The narrower name is the one a reader wants on the treasure.
   Q900203: {
     label: 'Fresco in the Palazzo', sitelinks: 26, cls: FRESCO, clsLabel: 'fresco',
-    broadRoot: PAINTING, anchors: ['P276'], statements: [{ property: 'P276', venue: 'Q900011' }],
+    broadRoot: PAINTING, statements: [{ property: 'P276', venue: 'Q900011' }],
   },
   Q900204: {
     label: 'Cult Figurine in the Palazzo', sitelinks: 24, cls: LONG_CLASS, clsLabel: LONG_LABEL,
-    anchors: [], statements: [{ property: 'P276', venue: 'Q900011' }],
+    statements: [{ property: 'P276', venue: 'Q900011' }],
   },
   // An edition: three museums each hold a true impression. Under the blanket cap this admitted
   // nobody, which is what removed printmaking from the catalogue as a class.
   Q900250: {
     label: 'The Great Print', sitelinks: 63, cls: WOODBLOCK_PRINT, clsLabel: 'woodblock print',
-    anchors: [],
     statements: [
       { property: 'P195', venue: 'Q900401' },
       { property: 'P195', venue: 'Q900402' },
@@ -148,18 +148,18 @@ const WORKS: Record<string, FixtureWork> = {
   },
   Q900205: {
     label: 'Unlabelled Class in the Palazzo', sitelinks: 23, cls: UNLABELLED_CLASS,
-    clsLabel: UNLABELLED_CLASS, broadRoot: PAINTING, anchors: ['P276'],
+    clsLabel: UNLABELLED_CLASS, broadRoot: PAINTING,
     statements: [{ property: 'P276', venue: 'Q900011' }],
   },
   // 20 sitelinks: inside the hysteresis band, below the threshold that admits a museum.
   Q900402: {
     label: 'Work Below the Threshold', sitelinks: 20, cls: PAINTING, clsLabel: 'painting',
-    broadRoot: PAINTING, anchors: ['P276'], statements: [{ property: 'P276', venue: 'Q900311' }],
+    broadRoot: PAINTING, statements: [{ property: 'P276', venue: 'Q900311' }],
   },
   // Held by three venues at once, each of which owns it outright: the Great Wave shape.
   Q900401: {
     label: 'Work Claimed Three Times', sitelinks: 35, cls: PAINTING, clsLabel: 'painting',
-    broadRoot: PAINTING, anchors: ['P195'],
+    broadRoot: PAINTING,
     statements: [
       { property: 'P195', venue: 'Q900301' },
       { property: 'P195', venue: 'Q900302' },
@@ -235,6 +235,21 @@ function edgeRows(qids: string[]): SparqlBinding[] {
   return rows;
 }
 
+/**
+ * The fame band a pool query is asking about.
+ *
+ * Read from the query rather than counted off against a call index, for the reason the whole
+ * stub is shaped this way: a band that answered with works outside it would hide the one thing
+ * the bands have to get right, which is tiling the range without a gap or an overlap.
+ */
+function bandOf(query: string): { min: number; max: number | null } {
+  const bounded = /FILTER\(\?sl >= (\d+) && \?sl < (\d+)\)/.exec(query);
+  if (bounded) return { min: Number(bounded[1]), max: Number(bounded[2]) };
+  const open = /FILTER\(\?sl >= (\d+)\)/.exec(query);
+  if (!open) throw new Error(`pool query with no band: ${query}`);
+  return { min: Number(open[1]), max: null };
+}
+
 /** Answers on the shape of the query, so the pipeline is free to reorder its calls. */
 function stubSparql() {
   return vi.fn(async (query: string): Promise<SparqlBinding[]> => {
@@ -251,9 +266,10 @@ function stubSparql() {
         .map(([qid, w]) => poolRow(qid, w, w.clsLabel));
     }
     if (query.includes('?w wdt:P31 wd:')) {
-      const anchor = query.includes('wdt:P195 ?anchor') ? 'P195' : 'P276';
+      const band = bandOf(query);
       return Object.entries(WORKS)
-        .filter(([, w]) => w.broadRoot === qids[0] && w.anchors.includes(anchor))
+        .filter(([, w]) => w.broadRoot === qids[0]
+          && w.sitelinks >= band.min && (band.max === null || w.sitelinks < band.max))
         .map(([qid, w]) => poolRow(qid, w));
     }
     throw new Error(`unexpected query: ${query}`);
@@ -431,16 +447,90 @@ describe('pool truncation', () => {
       w: uri(`Q${1000 + i}`), wLabel: { value: `Work ${i}` }, sl: { value: '30' },
     }));
 
-  it('says so when a batch comes back holding exactly its LIMIT', async () => {
-    const sparql = vi.fn(async () => rows(2));
-    await fetchAnchoredPool(sparql, { qid: PAINTING, type: 'painting' }, 'P195', 2);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0][0])).toContain('LIMIT of 2');
+  /** A runner that counts its steps, which is where a cancelled run would throw. */
+  const runner = (sparql: SparqlFn) => {
+    const phases: string[] = [];
+    let steps = 0;
+    return {
+      run: { sparql, phase: (m: string) => { phases.push(m); }, step: async () => { steps += 1; } },
+      phases,
+      steps: () => steps,
+    };
+  };
+
+  it('stops the run when a band comes back holding exactly its LIMIT', async () => {
+    const { run } = runner(vi.fn(async () => rows(2)));
+
+    // Fatal, not a warning. The pool decides which museums this category admits
+    // (ADR-0024), so a pool cut off at its limit withdraws real museums and
+    // calls the run a success — and with no ORDER BY inside a band, the rows
+    // that survive are an arbitrary subset rather than the famous ones.
+    await expect(fetchBroadPool(run, { qid: PAINTING, type: 'painting' }, 2))
+      .rejects.toThrow(/LIMIT of 2/);
   });
 
-  it('stays quiet when the batch fits', async () => {
-    const sparql = vi.fn(async () => rows(1));
-    await fetchAnchoredPool(sparql, { qid: PAINTING, type: 'painting' }, 'P195', 2);
+  it('names the band it stopped on, so the next edit is obvious', async () => {
+    const { run } = runner(vi.fn(async () => rows(2)));
+
+    await expect(fetchBroadPool(run, { qid: PAINTING, type: 'painting' }, 2))
+      .rejects.toThrow(/100\+ sitelinks/);
+  });
+
+  it('stops a truncated narrow-class batch too', async () => {
+    const sparql = vi.fn(async () => rows(2));
+
+    await expect(fetchClassPool(sparql, ['Q1476300'], 2)).rejects.toThrow(/narrow classes/);
+  });
+
+  it('asks one question per fame band, and merges them by work', async () => {
+    // The same work in two answers is one work: bands do not overlap, but a class
+    // query can reach the same painting, and the merge is what stops the pool's
+    // own length lying to the admission rule that reads it.
+    const sparql = vi.fn(async (_query: string, _descriptor?: { label: string }) => rows(1));
+    const { run } = runner(sparql);
+
+    const works = await fetchBroadPool(run, { qid: PAINTING, type: 'painting' }, 2);
+
+    expect(sparql).toHaveBeenCalledTimes(POOL_BAND_COUNT);
+    const filters = sparql.mock.calls.map(call => String(call[0]));
+    expect(filters[0]).toContain('FILTER(?sl >= 100)');
+    expect(filters[1]).toContain('FILTER(?sl >= 50 && ?sl < 100)');
+    // The hint is the whole reason a band is answerable: without the fixed join
+    // order the planner scans the class again, which is what timed out.
+    expect(filters[0]).toContain('hint:optimizer "None"');
+    expect(filters[0]).toContain('hint:rangeSafe true');
+    // Every band is its own cached question, which is what lets a run that dies
+    // in the fourth band keep the first three.
+    const labels = sparql.mock.calls.map(call => call[1]?.label);
+    expect(new Set(labels).size).toBe(POOL_BAND_COUNT);
+    expect(works).toHaveLength(1);
+  });
+
+  it('paces and reports between bands, not only between roots', async () => {
+    const { run, phases, steps } = runner(vi.fn(async () => rows(1)));
+
+    await fetchBroadPool(run, { qid: PAINTING, type: 'painting' }, 2);
+
+    // Each band is tens of seconds of somebody's afternoon: a Cancel pressed in
+    // the middle of a root has to be acted on before the next band, and the
+    // phase message has to move, or the run reads as hung.
+    expect(steps()).toBe(POOL_BAND_COUNT);
+    expect(new Set(phases).size).toBe(POOL_BAND_COUNT);
+    expect(phases[0]).toContain('band 1/');
+  });
+
+  it('is content when the band fits', async () => {
+    const { run } = runner(vi.fn(async () => rows(1)));
+    await expect(fetchBroadPool(run, { qid: PAINTING, type: 'painting' }, 2)).resolves.toHaveLength(1);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('asks a batch of narrow classes once, without bands', async () => {
+    // Narrow classes were never the query that failed, and banding them would
+    // turn thirty affordable questions into two hundred.
+    const sparql = vi.fn(async (_query: string) => rows(1));
+    await fetchClassPool(sparql, ['Q1476300', 'Q93184'], 2);
+    expect(sparql).toHaveBeenCalledTimes(1);
+    expect(String(sparql.mock.calls[0][0])).toContain('VALUES ?cls');
   });
 });
