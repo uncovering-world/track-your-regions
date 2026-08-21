@@ -7,9 +7,9 @@
 
 import {
   writeExperienceLocations,
-  type IncomingLocation,
   type LocationWriteResult,
 } from './locationWriter.js';
+import type { IncomingLocation } from './locationIncoming.js';
 import { upsertExperienceRecord } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
