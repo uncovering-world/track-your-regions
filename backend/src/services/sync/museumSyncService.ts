@@ -33,6 +33,9 @@ import {
   sparqlQuery,
   delay,
   SPARQL_DELAY_MS,
+  SPARQL_MAX_RETRIES,
+  SPARQL_WAIT_BUDGET_MS,
+  type SparqlBinding,
 } from './wikidataUtils.js';
 // Museums use remote Wikimedia URLs, no local image storage
 
@@ -43,6 +46,31 @@ const LOG_PREFIX = '[Museum Sync]';
 
 /** One SPARQL door for the whole pipeline, so a test can close it. */
 const sparql = (query: string) => sparqlQuery(query, LOG_PREFIX);
+
+/**
+ * The same door, but it tells the screen when it is waiting for Wikidata.
+ *
+ * The collection phase has no denominator — nothing knows how many museums there
+ * are until the pool comes back — so the bar sits at zero for all of it, and a
+ * run waiting out a bad quarter-hour is indistinguishable from a run that has
+ * hung. Run 61 was exactly that: over a minute of backoff, visible only in a
+ * container log, and then a failure.
+ *
+ * The sentence is written for the person watching rather than for the log: what
+ * the service said, which attempt this is, how long until the next one, and how
+ * much of the budget is gone — so "it is stuck" becomes "it is waiting, and it
+ * will stop waiting at some point I can predict".
+ */
+function pacedSparql(progress: SyncProgress): (query: string) => Promise<SparqlBinding[]> {
+  return (query) => sparqlQuery(query, LOG_PREFIX, SPARQL_MAX_RETRIES, (wait) => {
+    const next = Math.round(wait.backoffMs / 1000);
+    const spent = Math.round((wait.waitedMs + wait.backoffMs) / 60000);
+    const budget = Math.round(SPARQL_WAIT_BUDGET_MS / 60000);
+    progress.statusMessage =
+      `Wikidata is not answering (${wait.reason}) — retrying in ${next}s, `
+      + `attempt ${wait.attempt}, about ${spent} of ${budget} min of waiting spent`;
+  });
+}
 
 // =============================================================================
 // Fetch
@@ -79,7 +107,9 @@ async function fetchMuseumItems(
   const previousPlacements = await readPreviousPlacements();
 
   const { items, fetched, filtered } = await collectTier1Museums({
-    sparql,
+    // The reporting door for the long half: everything in `collectTier1Museums`
+    // runs before the first museum is written, which is where a wait is invisible.
+    sparql: pacedSparql(progress),
     previousPlacements,
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {

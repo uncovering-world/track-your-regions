@@ -204,6 +204,12 @@ function SourceCard({ source }: SourceCardProps) {
 
   const isRunning = status?.running || isStarting;
   const progress = status?.percent || 0;
+  // Nothing knows how many museums there are until the source answers, so the
+  // whole collection phase reports zero — and a bar parked at zero is read as a
+  // hung run, which is what run 61 looked like while it was waiting out
+  // Wikidata's gateway errors. An indeterminate bar says the true thing: this is
+  // moving, and how much is left is not knowable yet.
+  const measurable = progress > 0;
 
   const getStatusChip = () => {
     if (isRunning) {
@@ -256,9 +262,12 @@ function SourceCard({ source }: SourceCardProps) {
           <Box sx={{ mb: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
               <Typography variant="body2">{status.statusMessage}</Typography>
-              <Typography variant="body2">{progress}%</Typography>
+              <Typography variant="body2">{measurable ? `${progress}%` : 'Collecting…'}</Typography>
             </Box>
-            <LinearProgress variant="determinate" value={progress} />
+            <LinearProgress
+              variant={measurable ? 'determinate' : 'indeterminate'}
+              value={measurable ? progress : undefined}
+            />
             {status.currentItem && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                 {status.currentItem}
