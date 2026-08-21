@@ -665,12 +665,22 @@ writable. It exists because the real sources make a poor
 inner loop and cannot be asked for "the same list, minus one object" — the case the delisting
 path needs.
 
-### UNESCO (`unescoSyncService.ts`)
+### UNESCO (`unescoSyncService.ts`, `unescoApi.ts`)
 
-- Fetches the full UNESCO World Heritage list via the UNESCO API
+- Fetches the full World Heritage list in **one** request to `data.unesco.org` — 1273 records in ~0.7 s, measured
 - Fetches English Wikipedia article URLs from Wikidata using property P757 (UNESCO World Heritage Site ID) via `schema:about` + `schema:isPartOf` SPARQL pattern, stored as `metadata.wikipediaUrl`. Fails open (sync proceeds without Wikipedia links if Wikidata is unavailable)
 - Multi-location support: serial nominations create multiple `experience_locations`
-- Images downloaded locally to `/data/images/`
+- Images are **not** downloaded: 1260 of the 1272 rows carry a `whc.unesco.org/document/<id>` URL that the reader's browser fetches from UNESCO directly, some of them full-resolution originals up to 40 MB ([#557](https://github.com/uncovering-world/track-your-regions/issues/557)). The `/data/images` machinery exists and holds none of them
+
+**Their rules, read from their own headers** (2026-08-21). `data.unesco.org` runs Opendatasoft's Explore API v2.1, which answers every request with `x-ratelimit-limit: 10000` (calls a day, anonymous), `x-ratelimit-remaining`, and `x-ratelimit-reset` at midnight UTC. `/records` is capped at 100 rows and at `offset + limit <= 10000`; `/exports` has no such cap and is what the platform documents for taking a dataset whole. So the import uses `/exports/json` — one call instead of thirteen paginated ones, and no `while (fetched < total)` loop that a page returning nothing could spin forever. `select=` names the 22 fields the importer reads, which took the answer from 24 MB to 3.7 MB: the descriptions in six languages and the video captions are most of that dataset by weight and none of them are used. The run logs what is left of the day's allowance once, and honours 429 + `Retry-After` through the shared retry.
+
+**Three fields the importer asked for wrongly, and a dry run that found them.** Naming the fields in `select` turned the first into a 400 that said `Unknown field: criteria` — that field does not exist in `whc001` and never did, so `buildUnescoTags` produced no criterion tag for any site: measured on the live database, **0 of 1272**. The real name is `criteria_txt` (`(i)(ii)(iii)(iv)` for the Bamiyan Valley), present on 1256 of 1273 records. The other two were found by previewing the fix: `danger` and `transboundary` are compared against the number `1`, and the portal sends the **strings** `"True"` / `"False"` — from either endpoint. So `metadata.inDanger` was false for all 1272 sites, 58 of which are listed in danger, and not one of the 51 transboundary sites carried its tag. The `in_danger` tag survived only because `danger_list` is a string and was tested beside the flag. `isSet` now reads a yes in any of the shapes a portal might send it, rather than the one shape seen today.
+
+**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata` on 1255 (the criteria string), `metadata.inDanger` on 58, `shortDescription` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false for all three categories in the seed (`db/init/01-schema.sql`), and gating one is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands.
+
+### Shared retry (`sourceRetry.ts`)
+
+Every source is somebody else's server, and all of them fail the same way. `withRetries` holds the loop — bounded by a `WaitBudget` the whole run shares rather than by a count, waking early when the run is cancelled, reporting each wait through `SourceWait` so a panel can say what is happening — and each client keeps only what its own errors *mean*, as a `classify` function. `sparqlQuery` and `fetchUnescoRecords` are both that loop with a different classifier; `abortOn` gives each attempt a deadline **and** a cancel hook on one signal.
 
 ### Top Art Museums (`museumSyncService.ts`, `museum/*.ts`)
 

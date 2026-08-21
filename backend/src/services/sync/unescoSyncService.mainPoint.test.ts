@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveMainPoint } from './unescoSyncService.js';
+import { resolveMainPoint, buildUnescoTags } from './unescoSyncService.js';
 import type { UnescoApiRecord, ParsedLocation } from './types.js';
 
 function record(overrides: Partial<UnescoApiRecord> = {}): UnescoApiRecord {
@@ -106,5 +106,41 @@ describe('resolveMainPoint', () => {
     );
 
     expect(point).toEqual({ lat: 10, lon: 20 });
+  });
+});
+
+describe('the tags a site carries', () => {
+  it('reads the criteria out of the field the dataset actually has', () => {
+    // `criteria_txt`. The importer asked for `criteria` until 2026-08-21, a name
+    // whc001 does not define, so every one of the 1272 imported sites carried no
+    // criterion tag — a whole facet missing with nothing anywhere saying so.
+    const tags = buildUnescoTags(record({ id_no: '208', criteria_txt: '(i)(ii)(iii)(iv)' }));
+
+    expect(tags).toEqual(['criterion_i', 'criterion_ii', 'criterion_iii', 'criterion_iv']);
+  });
+
+  it('reads the portal yes, which is the string "True"', () => {
+    // Not the number 1, which is what the code compared against: measured on
+    // the live data, 58 sites are in danger and 51 cross a border, and the
+    // database held 0 of each.
+    const tags = buildUnescoTags(record({ danger: 'True', transboundary: 'True' }));
+
+    expect(tags).toEqual(['in_danger', 'transboundary']);
+  });
+
+  it('takes a real boolean too, in case the portal ever sends one', () => {
+    expect(buildUnescoTags(record({ transboundary: true }))).toEqual(['transboundary']);
+    expect(buildUnescoTags(record({ transboundary: 1 }))).toEqual(['transboundary']);
+  });
+
+  it('does not read "False" as a yes', () => {
+    expect(buildUnescoTags(record({ danger: 'False', transboundary: 'False' }))).toEqual([]);
+  });
+
+  it('still calls a site listed in danger in danger, whatever the flag says', () => {
+    // `danger_list` is the dated record of it, and it is what kept the tag
+    // alive through the four years the flag was never read.
+    expect(buildUnescoTags(record({ danger: 'False', danger_list: 'Y 2003' })))
+      .toEqual(['in_danger']);
   });
 });
