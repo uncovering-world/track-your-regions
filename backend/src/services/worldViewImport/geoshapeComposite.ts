@@ -30,7 +30,7 @@ async function collectChildQidsFromSparql(
         { ?part wdt:P361 wd:${wikidataId} }
       }
     `;
-    const results = await sparqlQuery(query, '[GeoshapeComposite]', 1);
+    const results = await sparqlQuery(query, '[GeoshapeComposite]', { retries: 1 });
     for (const r of results) {
       const qid = extractQid(r.part?.value ?? '');
       if (qid.startsWith('Q')) childQidSet.add(qid);

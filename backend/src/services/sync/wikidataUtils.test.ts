@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { sparqlQuery } from './wikidataUtils.js';
+import { sparqlQuery, WaitBudget } from './wikidataUtils.js';
 
 const GOOD_BODY = JSON.stringify({
   results: { bindings: [{ w: { type: 'uri', value: 'http://www.wikidata.org/entity/Q19675' } }] },
@@ -89,7 +89,7 @@ describe('sparqlQuery', () => {
 
     // Not repaired, and not swallowed: if Wikidata really serves this every
     // time, the run must stop and the message must show the bytes.
-    await expect(runWithTimers(sparqlQuery('SELECT * {}', '[Test]', 1)))
+    await expect(runWithTimers(sparqlQuery('SELECT * {}', '[Test]', { retries: 1 })))
       .rejects.toThrow(/Mus\u00e9e/);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -105,7 +105,7 @@ describe('sparqlQuery', () => {
 
     // A plain substring, not a built RegExp: the length interpolates cleanly and
     // a constructed pattern trips the security lint for no benefit here.
-    await expect(runWithTimers(sparqlQuery('SELECT * {}', '[Test]', 0)))
+    await expect(runWithTimers(sparqlQuery('SELECT * {}', '[Test]', { retries: 0 })))
       .rejects.toThrow(`${bytes} bytes`);
   });
 
@@ -147,7 +147,7 @@ describe('sparqlQuery', () => {
       .mockResolvedValueOnce(ok(GOOD_BODY));
     const waits: Array<{ reason: string; attempt: number; backoffMs: number }> = [];
 
-    await runWithTimers(sparqlQuery('SELECT * {}', '[Test]', undefined, w => waits.push(w)));
+    await runWithTimers(sparqlQuery('SELECT * {}', '[Test]', { onWait: w => waits.push(w) }));
 
     // Run 61 spent over a minute in here and the only witness was a container
     // log: from the panel a waiting run and a hung run looked identical.
@@ -164,6 +164,43 @@ describe('sparqlQuery', () => {
     // riding out, "down" is not, and a count of retries cannot tell them apart
     // because the pauses grow.
     await expect(runWithTimers(sparqlQuery('SELECT * {}', '[Test]')))
-      .rejects.toThrow(/budget/);
+      .rejects.toThrow(/min of waiting is spent/);
+  });
+});
+
+describe('a run that is stopped while it waits', () => {
+  it('wakes out of a backoff instead of sleeping through the cancel', async () => {
+    fetchMock.mockResolvedValue(httpError(503));
+    let cancelled = false;
+
+    const query = sparqlQuery('SELECT * {}', '[Test]', {
+      isCancelled: () => cancelled,
+      // The first wait is the one under test: a backoff is minutes long now, and
+      // a Cancel honoured only when it ends is a button that does nothing for as
+      // long as the person is still watching the screen.
+      onWait: () => { cancelled = true; },
+    });
+
+    await expect(runWithTimers(query)).rejects.toThrow(/cancelled/i);
+    // One attempt: the wait was abandoned rather than ridden out, so the service
+    // was never asked a second time by a run that had already been stopped.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('spends one budget across the whole run, not one per query', async () => {
+    fetchMock.mockResolvedValue(httpError(503));
+    const budget = new WaitBudget(20000);
+
+    // Two questions, one patience. Per query, a collection sending a few hundred
+    // of them would wait for hours before anything said the source was down.
+    await expect(runWithTimers(sparqlQuery('SELECT 1 {}', '[Test]', { budget })))
+      .rejects.toThrow(/min of waiting is spent/);
+    const first = fetchMock.mock.calls.length;
+
+    await expect(runWithTimers(sparqlQuery('SELECT 2 {}', '[Test]', { budget })))
+      .rejects.toThrow(/min of waiting is spent/);
+    // The second question inherits what the first left, so it gives up sooner.
+    // With a budget of its own it would have retried exactly as long again.
+    expect(fetchMock.mock.calls.length - first).toBeLessThan(first);
   });
 });

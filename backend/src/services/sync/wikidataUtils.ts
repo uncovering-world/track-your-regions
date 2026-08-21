@@ -211,19 +211,35 @@ function classifySparqlException(
   return new Error(`Wikidata SPARQL request failed: ${message}`);
 }
 
+/**
+ * How often a cancelled run is noticed, both mid-request and mid-wait.
+ *
+ * A second is short enough that Cancel feels immediate and long enough that a
+ * three-minute backoff costs 180 wake-ups rather than a busy loop.
+ */
+const CANCEL_POLL_MS = 1000;
+
 async function attemptSparqlOnce(
   query: string,
   attempt: number,
   retries: number,
+  isCancelled?: () => boolean,
 ): Promise<SparqlBinding[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SPARQL_TIMEOUT_MS);
+  // A pool band can take most of a minute, and the run is over long before it
+  // answers. Aborting hands the socket back rather than waiting out a query
+  // whose result nobody will read.
+  const watch = isCancelled
+    ? setInterval(() => { if (isCancelled()) controller.abort(); }, CANCEL_POLL_MS)
+    : undefined;
   try {
     const response = await fetchSparqlResponse(query, controller.signal);
     if (!response.ok) await handleSparqlHttpError(response, attempt, retries);
     return await readSparqlBindings(response);
   } finally {
     clearTimeout(timeout);
+    if (watch) clearInterval(watch);
   }
 }
 
@@ -256,38 +272,100 @@ export interface SparqlWait {
  *
  * @param query - The SPARQL query string
  * @param logPrefix - Prefix for log messages (e.g., "[Museum Sync]")
- * @param retries - Number of retry attempts (default: SPARQL_MAX_RETRIES)
- * @param onWait - Called before each wait, for a caller that has somewhere to show it
+ * @param options - the reporter, the cancel check, and the run's shared wait budget
  */
+export interface SparqlOptions {
+  retries?: number;
+  /** Called before each wait, for a caller that has somewhere to show it. */
+  onWait?: (wait: SparqlWait) => void;
+  /**
+   * Whether the run has been cancelled.
+   *
+   * Checked before every attempt *and* while waiting, because a wait is now
+   * minutes rather than seconds: without it, Cancel sits unhonoured for as long
+   * as the current backoff, which from the panel is indistinguishable from a
+   * button that does nothing.
+   */
+  isCancelled?: () => boolean;
+  /**
+   * How much waiting the whole run has left, shared across its queries.
+   *
+   * Per run rather than per query, which is the shape the first version got
+   * wrong: a museum collection sends a few hundred queries, and fifteen minutes
+   * of patience each is arithmetically hours of a run nobody is watching. One
+   * budget spent by whichever queries need it says the true thing — this source
+   * is having a bad day, and we stop when we have waited as long as we said.
+   */
+  budget?: WaitBudget;
+}
+
+/** A run's remaining patience, in milliseconds, shared by every query it sends. */
+export class WaitBudget {
+  private spentMs = 0;
+
+  constructor(public readonly totalMs: number = SPARQL_WAIT_BUDGET_MS) {}
+
+  get remainingMs(): number {
+    return Math.max(0, this.totalMs - this.spentMs);
+  }
+
+  spend(ms: number): void {
+    this.spentMs += ms;
+  }
+}
+
+/**
+ * Wait, but wake early when the run is cancelled.
+ *
+ * Sliced rather than one timer, because `setTimeout` cannot be asked whether
+ * anything has changed. A second is short enough that a cancel feels immediate
+ * and long enough that a three-minute backoff costs 180 wake-ups.
+ */
+async function interruptibleDelay(ms: number, isCancelled?: () => boolean): Promise<void> {
+  const slice = 1000;
+  for (let waited = 0; waited < ms; waited += slice) {
+    if (isCancelled?.()) return;
+    await delay(Math.min(slice, ms - waited));
+  }
+}
+
 export async function sparqlQuery(
   query: string,
   logPrefix: string,
-  retries: number = SPARQL_MAX_RETRIES,
-  onWait?: (wait: SparqlWait) => void,
+  options: SparqlOptions = {},
 ): Promise<SparqlBinding[]> {
+  const { retries = SPARQL_MAX_RETRIES, onWait, isCancelled } = options;
+  const budget = options.budget ?? new WaitBudget();
   const maxAttempts = retries + 1;
-  let waitedMs = 0;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (isCancelled?.()) throw new Error('Sync cancelled');
     try {
-      return await attemptSparqlOnce(query, attempt, retries);
+      return await attemptSparqlOnce(query, attempt, retries, isCancelled);
     } catch (error) {
+      // Asked before the error is classified, because the abort a cancel causes
+      // is indistinguishable from a timeout — and retrying a run that has been
+      // stopped would wait out a backoff on its way to stopping anyway.
+      if (isCancelled?.()) throw new Error('Sync cancelled');
       const classified = classifySparqlException(error, attempt, retries);
       if (classified instanceof RetrySignal) {
         // The budget is checked before the wait rather than after it, so the run
         // never sleeps three minutes only to give up on waking.
-        if (waitedMs + classified.backoffMs > SPARQL_WAIT_BUDGET_MS) {
+        if (classified.backoffMs > budget.remainingMs) {
           throw new Error(
-            `${classified.label}, and the wait budget of ${Math.round(SPARQL_WAIT_BUDGET_MS / 60000)} min is spent`,
+            `${classified.label}, and this run's ${Math.round(budget.totalMs / 60000)} min of waiting is spent`,
           );
         }
         console.warn(
           `${logPrefix} ${classified.label}, retrying in ${Math.round(classified.backoffMs / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`,
         );
         onWait?.({
-          reason: classified.label, attempt: attempt + 1, backoffMs: classified.backoffMs, waitedMs,
+          reason: classified.label,
+          attempt: attempt + 1,
+          backoffMs: classified.backoffMs,
+          waitedMs: budget.totalMs - budget.remainingMs,
         });
-        waitedMs += classified.backoffMs;
-        await delay(classified.backoffMs);
+        budget.spend(classified.backoffMs);
+        await interruptibleDelay(classified.backoffMs, isCancelled);
         continue;
       }
       throw classified;
