@@ -23,11 +23,17 @@ import {
   getExperienceCountsByRegion,
 } from '../../services/sync/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import {
+  cacheSummary, clearCache, setCacheTtl, CACHED_KINDS_BY_CATEGORY, type CacheKind,
+} from '../../services/sync/wikidataCache.js';
 
 const MUSEUM_CATEGORY_ID = 2;
 
 /** Registry mapping category IDs to their sync functions */
-const syncRegistry: Record<number, (triggeredBy: number | null, options: { dryRun?: boolean }) => Promise<void>> = {
+const syncRegistry: Record<
+  number,
+  (triggeredBy: number | null, options: { dryRun?: boolean; refreshCache?: boolean }) => Promise<void>
+> = {
   1: syncUnescoSites,
   2: syncMuseums,
   3: syncLandmarks,
@@ -67,6 +73,10 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
   const triggeredBy = req.user?.id || null;
 
   const dryRun = req.body.dryRun === true;
+  // Asked for per run rather than configured per source: the reason to ignore
+  // the cache is always about *this* attempt — the source published something a
+  // moment ago, or a cached answer is suspected of being wrong.
+  const refreshCache = req.body.refreshCache === true;
 
   // Start sync based on source type
   const syncFn = syncRegistry[categoryId];
@@ -75,7 +85,7 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
     return;
   }
 
-  syncFn(triggeredBy, { dryRun }).catch((err) => {
+  syncFn(triggeredBy, { dryRun, refreshCache }).catch((err) => {
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- categoryId is a parseInt result, so it cannot carry a format specifier
     console.error(`[Sync Controller] Sync error for category ${categoryId}:`, err);
   });
@@ -85,15 +95,79 @@ export async function startSync(req: AuthenticatedRequest, res: Response): Promi
     categoryId,
     categoryName: source.rows[0].name,
     dryRun,
-    message: buildStartMessage({ dryRun }),
+    refreshCache,
+    message: buildStartMessage({ dryRun, refreshCache }),
   });
 }
 
-function buildStartMessage(mode: { dryRun: boolean }): string {
+function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean }): string {
+  // The cache half is said second and always, because it changes how long the
+  // run takes rather than what it writes: a curator who asked for fresh answers
+  // and sees the usual quarter-hour should know the two are connected.
+  const cache = mode.refreshCache
+    ? ' Cached answers from the source are ignored, so the collection runs at full length.'
+    : '';
   if (mode.dryRun) {
-    return 'Dry run started: the changeset will be recorded, experiences will not be written.';
+    return `Dry run started: the changeset will be recorded, experiences will not be written.${cache}`;
   }
-  return 'Sync started. Poll /status endpoint for progress.';
+  return `Sync started. Poll /status endpoint for progress.${cache}`;
+}
+
+/**
+ * What answers we are keeping from the source, and how old they are.
+ * GET /api/admin/sync/categories/:categoryId/cache
+ */
+export async function getWikidataCache(req: Request, res: Response): Promise<void> {
+  const categoryId = parseInt(String(req.params.categoryId));
+  res.json({ kinds: await cacheSummary(categoryId) });
+}
+
+/**
+ * Forget them — all, or one kind.
+ * DELETE /api/admin/sync/categories/:categoryId/cache?kind=classes
+ *
+ * A delete rather than an expiry stamp: an admin pressing this means "ask the
+ * source again", and a row marked expired reads the same as one that aged out.
+ */
+export async function clearWikidataCache(req: Request, res: Response): Promise<void> {
+  const categoryId = parseInt(String(req.params.categoryId));
+  const kind = typeof req.query.kind === 'string' ? req.query.kind : undefined;
+  const removed = await clearCache(categoryId, kind);
+  res.json({ removed, kind: kind ?? null });
+}
+
+/**
+ * Change how long one kind stays fresh.
+ * PUT /api/admin/sync/categories/:categoryId/cache/:kind/ttl  { hours }
+ *
+ * Answers with how many kept answers were re-stamped, because that is the part
+ * an admin cannot predict: shortening a lifetime can expire everything of that
+ * kind at once, and the number says whether the next run re-fetches five things
+ * or five hundred.
+ */
+export async function setWikidataCacheTtl(req: Request, res: Response): Promise<void> {
+  const categoryId = parseInt(String(req.params.categoryId));
+  const kind = String(req.params.kind);
+  const hours = Number((req.body as { hours: number }).hours);
+
+  // The hours are already bounded by Zod (a minute to a month), but the kind is
+  // any string the schema's length allows. An unknown one would write a policy
+  // row no collector ever reads — a lifetime in the table, nothing obeying it,
+  // and a panel that never shows it because the panel lists the kinds a source
+  // declares rather than the rows that exist. Refused by name, so the caller
+  // learns which kinds this source actually has.
+  const declared = CACHED_KINDS_BY_CATEGORY[categoryId] ?? [];
+  if (!declared.includes(kind as CacheKind)) {
+    res.status(400).json({
+      error: declared.length === 0
+        ? 'This source caches nothing, so it has no lifetimes to set'
+        : `Unknown cache kind "${kind}". This source caches: ${declared.join(', ')}`,
+    });
+    return;
+  }
+
+  const { restamped } = await setCacheTtl(categoryId, kind, Math.round(hours * 60 * 60 * 1000));
+  res.json({ kind, hours, restamped });
 }
 
 /**
@@ -444,6 +518,12 @@ export async function getCategories(req: Request, res: Response): Promise<void> 
     waiting: waiting === null
       ? null
       : waiting.get(source.id) ?? { arrivals: 0, held: 0, contents: 0 },
+    // Whether this source keeps anything between runs, which decides whether
+    // "Sync without cache" is a real offer. Only the museum collector describes
+    // its questions (ADR-0030 decision 4), so on the other two that button
+    // would promise to bypass something that does not exist — the same
+    // pretence the cache panel below it refuses to make.
+    caches: (CACHED_KINDS_BY_CATEGORY[source.id as number] ?? []).length > 0,
   })));
 }
 

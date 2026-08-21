@@ -2549,5 +2549,58 @@ CREATE INDEX IF NOT EXISTS idx_ai_learned_rules_feature ON ai_learned_rules(feat
 COMMENT ON TABLE ai_learned_rules IS 'User-provided rules injected into AI prompts to improve future extractions';
 
 -- =============================================================================
+-- Wikidata query cache (migration 029)
+-- =============================================================================
+
+-- Answers from query.wikidata.org, kept so a failed run resumes where it stopped
+-- rather than at the first phase, and so a repeated question costs their cluster
+-- nothing. Museum run 61 died having already paid for 1166 artwork classes and
+-- threw them away.
+--
+-- Keyed by the hash of the query text, because the query is the question: change
+-- a filter and it is a different question and must miss, rather than relying on
+-- somebody remembering to invalidate. Every row carries its own expiry, a run
+-- can be told to ignore the cache entirely, and the admin panel shows each
+-- kind's age with a button to drop it -- a cache that cannot be bypassed is a
+-- fork of reality rather than a cache.
+CREATE TABLE IF NOT EXISTS wikidata_query_cache (
+    id SERIAL PRIMARY KEY,
+    -- Whose run kept this: the store is shared, but every question an admin asks
+    -- about it is about one source, and lifetimes differ by source as much as by
+    -- kind.
+    category_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
+    query_hash TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL,
+    label TEXT NOT NULL,
+    query_text TEXT NOT NULL,
+    result JSONB NOT NULL,
+    row_count INTEGER NOT NULL DEFAULT 0,
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_wikidata_cache_kind ON wikidata_query_cache(kind);
+CREATE INDEX IF NOT EXISTS idx_wikidata_cache_expires ON wikidata_query_cache(expires_at);
+
+-- How long each kind is worth keeping, when an admin disagrees with the default.
+-- The defaults live in code because they are an argument about how fast the facts
+-- change; a row here means a person decided otherwise. Changing a lifetime
+-- re-stamps what is already kept, or the panel would show one rule and the
+-- reader honour another.
+CREATE TABLE IF NOT EXISTS wikidata_cache_policy (
+    category_id INTEGER NOT NULL REFERENCES experience_categories(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    ttl_ms BIGINT NOT NULL CHECK (ttl_ms > 0),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (category_id, kind)
+);
+
+COMMENT ON TABLE wikidata_cache_policy IS 'Per-kind overrides for how long a cached Wikidata answer stays fresh. Absent kind = the default in wikidataCache.ts, which states why that number and not another.';
+
+COMMENT ON TABLE wikidata_query_cache IS 'Answers from query.wikidata.org, kept so a failed run resumes where it stopped and a repeated question costs their cluster nothing. Never a source of truth: every row carries its own expiry, a run can be told to ignore the cache entirely, and the admin panel shows each kind''s age and expiry with a button to drop it.';
+COMMENT ON COLUMN wikidata_query_cache.query_hash IS 'SHA-256 of the exact query text. The query is the question, so a changed filter is a different key and misses by construction rather than by remembering to invalidate.';
+COMMENT ON COLUMN wikidata_query_cache.expires_at IS 'Stored rather than derived: the row keeps the rule that applied when it was written, and the panel shows the same expiry the reader honours.';
+
+-- =============================================================================
 -- Schema Complete
 -- =============================================================================

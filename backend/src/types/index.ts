@@ -350,6 +350,51 @@ export const userIdParamSchema = z.object({
 
 export const startSyncBodySchema = z.object({
   dryRun: z.boolean().optional(),
+  /**
+   * Ignore what we kept from the source and ask it everything again.
+   *
+   * Per run rather than per source, because the reason is always about this
+   * attempt: the source published something a moment ago, or a kept answer is
+   * suspected of being wrong. It costs the full collection — a quarter of an
+   * hour for museums — which is why it is a deliberate click and not a default.
+   */
+  refreshCache: z.boolean().optional(),
+});
+
+/**
+ * Which kind of kept answer to forget, or all of them when absent.
+ *
+ * A free string rather than an enum of the kinds: the reader deletes by
+ * equality, an unknown kind removes nothing, and pinning the list here would
+ * mean a new kind of question needs a schema change before it can be cleared.
+ */
+export const clearCacheQuerySchema = z.object({
+  kind: z.string().min(1).max(40).optional(),
+});
+
+/**
+ * Whose lifetime is being changed, and of which kind.
+ *
+ * **Both**, because `validate(..., 'params')` replaces `req.params` with what
+ * the schema parsed. Naming only `kind` left the handler reading
+ * `req.params.categoryId` off an object that no longer had it — `parseInt` of
+ * `undefined` is `NaN`, and the endpoint could not work at all.
+ */
+export const cacheKindParamSchema = z.object({
+  categoryId: z.coerce.number().int().positive(),
+  kind: z.string().min(1).max(40),
+});
+
+/**
+ * A new lifetime, in hours.
+ *
+ * Hours rather than milliseconds because that is the unit of the decision — "a
+ * pool is good for a day" — and bounded at both ends: under a minute is a cache
+ * that never hits, and beyond a month it is not a cache but a copy of Wikidata
+ * we forgot we made.
+ */
+export const cacheTtlBodySchema = z.object({
+  hours: z.number().min(0.02).max(24 * 31),
 });
 
 /**

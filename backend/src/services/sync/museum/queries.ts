@@ -20,8 +20,20 @@
  */
 
 import { extractQid, parseWktPoint, type SparqlBinding } from '../wikidataUtils.js';
+import type { CacheDescriptor } from '../wikidataCache.js';
 
-export type SparqlFn = (query: string) => Promise<SparqlBinding[]>;
+/**
+ * A door to the source, optionally told what the question is about.
+ *
+ * The descriptor is what the cache files an answer under, and it comes from the
+ * call site because only the call site knows: this `SELECT ?c` is the class
+ * closure, that one is a pool of works. A cache classifying by pattern-matching
+ * SPARQL would be one refactor away from filing a pool under `classes` and
+ * keeping it for a week. Omitting it means "do not keep this", which is the
+ * right default for a one-off.
+ */
+export type SparqlFn =
+  (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]>;
 
 /**
  * A paced, interruptible way to send them. `step` is awaited before every query: it is where a
@@ -109,13 +121,17 @@ export async function fetchSubclasses(sparql: SparqlFn, parents: string[]): Prom
   if (!parents.length) return [];
   const rows = await sparql(
     `SELECT DISTINCT ?c WHERE { VALUES ?p { ${values(parents)} } ?c wdt:P279 ?p }`,
+    { kind: 'classes', label: `subclasses of ${parents.length} class(es)` },
   );
   return qidsOf(rows, 'c');
 }
 
 /** The whole `P279*` tree under `museum`, which is what the venue test tests against. */
 export async function fetchMuseumClasses(sparql: SparqlFn): Promise<Set<string>> {
-  const rows = await sparql(`SELECT ?c WHERE { ?c wdt:P279* wd:${MUSEUM_ROOT} }`);
+  const rows = await sparql(
+    `SELECT ?c WHERE { ?c wdt:P279* wd:${MUSEUM_ROOT} }`,
+    { kind: 'classes', label: 'museum classes' },
+  );
   return new Set(qidsOf(rows, 'c'));
 }
 
@@ -213,10 +229,10 @@ export async function fetchAnchoredPool(
   anchor: 'P195' | 'P276',
   limit = POOL_LIMIT,
 ): Promise<PoolWork[]> {
-  const rows = await sparql(poolQuery(
-    `?w wdt:P31 wd:${root.qid} ; wdt:${anchor} ?anchor ; wikibase:sitelinks ?sl .`,
-    limit,
-  ));
+  const rows = await sparql(
+    poolQuery(`?w wdt:P31 wd:${root.qid} ; wdt:${anchor} ?anchor ; wikibase:sitelinks ?sl .`, limit),
+    { kind: 'pool', label: `pool: ${root.type} anchored by ${anchor}` },
+  );
   warnIfTruncated(rows, limit, `${root.type} anchored by ${anchor}`);
   return parsePool(rows, root.type, root.qid);
 }
@@ -231,11 +247,11 @@ export async function fetchClassPool(
   limit = POOL_LIMIT,
 ): Promise<PoolWork[]> {
   if (!classQids.length) return [];
-  const rows = await sparql(poolQuery(
-    `VALUES ?cls { ${values(classQids)} }
-       ?w wdt:P31 ?cls ; wikibase:sitelinks ?sl .`,
-    limit,
-  ));
+  const rows = await sparql(
+    poolQuery(`VALUES ?cls { ${values(classQids)} }
+       ?w wdt:P31 ?cls ; wikibase:sitelinks ?sl .`, limit),
+    { kind: 'pool', label: `pool: ${classQids.length} narrow classes` },
+  );
   warnIfTruncated(rows, limit, `${classQids.length} narrow classes`);
   return parsePool(rows, 'artwork', null);
 }
@@ -278,7 +294,7 @@ export async function fetchVenueStatements(
     SELECT ?w ?rel ?venue ?rank WHERE {
       VALUES ?w { ${values(workQids)} }
       ${statementBranch('P195')} UNION ${statementBranch('P276')}
-    }`);
+    }`, { kind: 'statements', label: `venue statements for ${workQids.length} works` });
 
   const out: RawStatement[] = [];
   for (const row of rows) {
@@ -342,7 +358,7 @@ export async function fetchEntityDetails(
       OPTIONAL { ?e wikibase:sitelinks ?sl }
       OPTIONAL { ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
-    }`);
+    }`, { kind: 'entities', label: `details for ${qids.length} entities` });
 
   // First row per entity wins: the OPTIONALs still cross-multiply when an entity carries two
   // images or two countries, and any of those rows answers the questions asked here.
@@ -379,7 +395,7 @@ export async function fetchEntityEdges(
     SELECT ?e ?cls ?parent WHERE {
       VALUES ?e { ${values(qids)} }
       { ?e wdt:P31 ?cls } UNION { ?e wdt:P361 ?parent }
-    }`);
+    }`, { kind: 'edges', label: `class and part-of edges for ${qids.length} entities` });
 
   for (const row of rows) {
     const qid = extractQid(row.e?.value ?? '');

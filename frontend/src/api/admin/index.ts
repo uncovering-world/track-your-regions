@@ -34,6 +34,15 @@ export interface ExperienceCategory {
   display_priority: number;
   created_at: string;
   /**
+   * Whether this source keeps anything between runs.
+   *
+   * False for the two whose collectors describe no questions (ADR-0030
+   * decision 4), and what decides whether "Sync without cache" is offered at
+   * all: on a source with no cache it would promise to bypass something that
+   * does not exist.
+   */
+  caches?: boolean;
+  /**
    * Three zeros for a source holding nothing — never an absent key, so a panel
    * deciding whether to show "nothing waiting" compares numbers — and `null` when the
    * server could not count. The counts are an addition to this endpoint and the source
@@ -181,12 +190,70 @@ export async function getCategories(): Promise<ExperienceCategory[]> {
  */
 export async function startSync(
   categoryId: number,
-  options: { dryRun?: boolean } = {},
-): Promise<{ started: boolean; message: string; dryRun?: boolean }> {
+  options: { dryRun?: boolean; refreshCache?: boolean } = {},
+): Promise<{ started: boolean; message: string; dryRun?: boolean; refreshCache?: boolean }> {
   return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dryRun: options.dryRun ?? false }),
+    body: JSON.stringify({
+      dryRun: options.dryRun ?? false,
+      refreshCache: options.refreshCache ?? false,
+    }),
+  });
+}
+
+/** One kind of question we keep the source's answer to. */
+export interface WikidataCacheKind {
+  kind: string;
+  entries: number;
+  rows: number;
+  /** How many are past their expiry and would be fetched again on the next run. */
+  expired: number;
+  /** The oldest answer of this kind — what "how stale is this" means. */
+  oldestFetchedAt: string | null;
+  /** When the soonest one stops being used. */
+  nextExpiresAt: string | null;
+  bytes: number;
+  /** A few of the questions themselves, so a kind is not just a word. */
+  labels: string[];
+  /** How long an answer of this kind stays fresh, in force right now. */
+  ttlMs: number;
+  /** Whether that is our default or somebody's decision. */
+  ttlSource: 'default' | 'set by an admin';
+}
+
+/**
+ * What we are keeping from the source, so an admin can see its age rather than
+ * discover it while debugging an answer from last week.
+ */
+export async function getWikidataCache(categoryId: number): Promise<{ kinds: WikidataCacheKind[] }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/cache`);
+}
+
+/** Forget one kind, or everything when `kind` is absent. */
+export async function clearWikidataCache(
+  categoryId: number, kind?: string,
+): Promise<{ removed: number }> {
+  const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+  return authFetchJson(
+    `${API_URL}/api/admin/sync/categories/${categoryId}/cache${query}`, { method: 'DELETE' },
+  );
+}
+
+/**
+ * Change how long one kind stays fresh.
+ *
+ * Answers with how many kept answers were re-stamped: shortening a lifetime can
+ * expire a whole kind at once, and the number is what says whether the next run
+ * re-fetches five things or five hundred.
+ */
+export async function setWikidataCacheTtl(
+  categoryId: number, kind: string, hours: number,
+): Promise<{ kind: string; hours: number; restamped: number }> {
+  return authFetchJson(`${API_URL}/api/admin/sync/categories/${categoryId}/cache/${encodeURIComponent(kind)}/ttl`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hours }),
   });
 }
 

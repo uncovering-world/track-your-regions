@@ -17,6 +17,9 @@ import {
   assignmentIdParamSchema,
   userIdParamSchema,
   startSyncBodySchema,
+  clearCacheQuerySchema,
+  cacheKindParamSchema,
+  cacheTtlBodySchema,
   reorderCategoriesBodySchema,
   curationGateBodySchema,
   startRegionAssignmentBodySchema,
@@ -77,6 +80,9 @@ import {
   cancelSync,
   fixImages,
   getSyncLogs,
+  getWikidataCache,
+  clearWikidataCache,
+  setWikidataCacheTtl,
   getSyncLogDetails,
   getSyncLogChanges,
   getCategories,
@@ -178,6 +184,30 @@ router.post('/sync/categories/:categoryId/cancel', validate(categoryIdParamSchem
 
 // Fix missing images for a source
 router.post('/sync/categories/:categoryId/fix-images', validate(categoryIdParamSchema, 'params'), fixImages);
+
+// What we are keeping from the source, per kind of question, with its age and
+// expiry — and the button that forgets it. Read and delete rather than a
+// mutation of the cache's own rules: an admin's only two questions here are
+// "how old is this" and "ask again".
+router.get(
+  '/sync/categories/:categoryId/cache',
+  validate(categoryIdParamSchema, 'params'),
+  getWikidataCache,
+);
+router.delete(
+  '/sync/categories/:categoryId/cache',
+  validate(categoryIdParamSchema, 'params'),
+  validate(clearCacheQuerySchema, 'query'),
+  clearWikidataCache,
+);
+// Changing a lifetime re-stamps what is already kept, so the panel and the
+// reader cannot disagree about when an answer stops being used.
+router.put(
+  '/sync/categories/:categoryId/cache/:kind/ttl',
+  validate(cacheKindParamSchema, 'params'),
+  validate(cacheTtlBodySchema),
+  setWikidataCacheTtl,
+);
 
 // Get sync history/logs
 router.get('/sync/logs', validate(syncLogsQuerySchema, 'query'), getSyncLogs);
