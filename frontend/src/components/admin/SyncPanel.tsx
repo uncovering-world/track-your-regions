@@ -15,6 +15,7 @@ import {
   LinearProgress,
   Chip,
   Alert,
+  Tooltip,
 } from '@mui/material';
 import {
   Sync as SyncIcon,
@@ -37,6 +38,7 @@ import {
 import { formatDateTime } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { CurationGateControls } from './CurationGateControls';
+import { WikidataCacheSection } from './WikidataCacheSection';
 
 export function SyncPanel() {
   const queryClient = useQueryClient();
@@ -114,6 +116,7 @@ export function SyncPanel() {
           </Box>
         ))}
       </Box>
+
     </Box>
   );
 }
@@ -147,9 +150,19 @@ function SourceCard({ source }: SourceCardProps) {
     onSuccess: () => setIsPolling(true),
   });
 
+  // The same run again, asking the source everything rather than reusing what it
+  // already told us. Its own button rather than a checkbox beside Start: it is a
+  // different decision with a different cost — the collection runs at full
+  // length — and the ordinary click should stay one click.
+  const refreshMutation = useMutation({
+    mutationFn: () => startSync(source.id, { refreshCache: true }),
+    onSuccess: () => setIsPolling(true),
+  });
+
   // A preview is a run: while one is starting the panel must look busy, or the
   // gap between the click and the first poll reads as nothing having happened.
-  const isStarting = startMutation.isPending || dryRunMutation.isPending;
+  const isStarting = startMutation.isPending || dryRunMutation.isPending
+    || refreshMutation.isPending;
 
   // Cancel sync mutation
   const cancelMutation = useMutation({
@@ -202,7 +215,12 @@ function SourceCard({ source }: SourceCardProps) {
     return () => clearInterval(interval);
   }, [isPolling, pollStatus]);
 
-  const isRunning = status?.running || isStarting;
+  // `isPolling` as well as the two above. Between `startSync` resolving and the
+  // first poll answering, `isStarting` is already false and `status.running` is
+  // still the previous run's — so the start controls came back for a moment, and
+  // a second click in that gap is answered 409 by a server that has just started
+  // the run the panel is not yet showing.
+  const isRunning = status?.running || isStarting || isPolling;
   const progress = status?.percent || 0;
   // Nothing knows how many museums there are until the source answers, so the
   // whole collection phase reports zero — and a bar parked at zero is read as a
@@ -291,6 +309,14 @@ function SourceCard({ source }: SourceCardProps) {
             Failed to start dry run: {(dryRunMutation.error as Error)?.message}
           </Alert>
         )}
+        {/* The third button's failure was the only silent one: it sets
+            `isStarting`, so the card looks busy for a moment and then simply
+            does not start, with nothing on screen saying why. */}
+        {refreshMutation.isError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Failed to start sync without cache: {(refreshMutation.error as Error)?.message}
+          </Alert>
+        )}
 
         {justCompleted && (
           <Alert
@@ -307,6 +333,11 @@ function SourceCard({ source }: SourceCardProps) {
           </Alert>
         )}
         <CurationGateControls source={source} />
+
+        {/* Inside the source's own card, closed: what a run remembers is a
+            property of that source, and it is a thing to open when a run
+            surprises you rather than something to read on every visit. */}
+        <WikidataCacheSection categoryId={source.id} />
       </CardContent>
 
       <CardActions sx={{ flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
@@ -316,7 +347,10 @@ function SourceCard({ source }: SourceCardProps) {
               <Button
                 startIcon={<SyncIcon />}
                 onClick={() => startMutation.mutate()}
-                disabled={!source.is_active || startMutation.isPending}
+                // `isStarting`, not this button's own mutation: while a preview
+                // or a no-cache run is being started, an ordinary Start would be
+                // a second run launched before the first has said it exists.
+                disabled={!source.is_active || isStarting}
                 variant="outlined"
                 color="primary"
               >
@@ -329,6 +363,30 @@ function SourceCard({ source }: SourceCardProps) {
               >
                 Dry run
               </Button>
+              {/* Only where there is a cache to ignore. Two of the three
+                  sources keep nothing between runs, and offering to bypass
+                  their cache would be the same pretence the panel below
+                  refuses when it says "This source caches nothing". */}
+              {source.caches && (
+              <>
+              {/* "Leaves it untouched", not "replaces it": a run with the cache
+                  off neither reads nor writes it, so what is kept survives with
+                  its original age and the next ordinary run uses it again. The
+                  button that actually replaces an answer is Clear, in the cache
+                  panel below — which is what its own text says. */}
+              <Tooltip title="An ordinary sync that ignores what we kept from the source and asks it everything again. Leaves the cache untouched — nothing is deleted and nothing is replaced, so the next ordinary sync uses the kept answers again. To replace them, clear them below. Takes the full collection time, about a quarter of an hour for museums.">
+                <span>
+                  <Button
+                    variant="outlined"
+                    onClick={() => refreshMutation.mutate()}
+                    disabled={!source.is_active || isStarting}
+                  >
+                    Sync without cache
+                  </Button>
+                </span>
+              </Tooltip>
+              </>
+              )}
               <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                 A sync preserves curator edits, visit history, manual region assignments and
                 rejections. A point the source stops offering is marked, not deleted.

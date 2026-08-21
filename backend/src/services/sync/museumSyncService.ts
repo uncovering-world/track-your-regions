@@ -25,6 +25,7 @@ import type {
   ContentsDelta,
 } from './types.js';
 import { workChanges } from './contentsChangeSet.js';
+import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { isTerminalSyncStatus, runningSyncs } from './types.js';
 import { collectTier1Museums } from './museum/pipeline.js';
 import { fetchEntityDetails, isQid } from './museum/queries.js';
@@ -72,6 +73,32 @@ function pacedSparql(progress: SyncProgress): (query: string) => Promise<SparqlB
   });
 }
 
+/**
+ * The same door again, with the answers kept.
+ *
+ * Two reasons, and the second is the one that matters today. Their front end
+ * caches nothing we send, because we POST — so a class closure that has not
+ * moved in months is recomputed by their cluster on every run. And a collection
+ * that fails in its third phase currently starts the next attempt at the first:
+ * run 61 threw away 1166 artwork classes it had already paid for.
+ *
+ * `refreshCache` turns it off for one run, which is the point of the button: a
+ * cache nobody can bypass is a fork of reality. A hit says so on screen, because
+ * an admin who cannot tell a cached phase from a fetched one will eventually
+ * debug an answer from last week.
+ */
+function collectingSparql(
+  progress: SyncProgress, refreshCache: boolean,
+): (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]> {
+  return withCache(pacedSparql(progress), {
+    categoryId: MUSEUM_CATEGORY_ID,
+    enabled: !refreshCache,
+    onHit: (descriptor, rows) => {
+      progress.statusMessage = `${descriptor.label}: ${rows} rows, from cache`;
+    },
+  });
+}
+
 // =============================================================================
 // Fetch
 // =============================================================================
@@ -103,13 +130,16 @@ async function readPreviousPlacements(): Promise<Record<string, string[]>> {
 
 async function fetchMuseumItems(
   progress: SyncProgress,
+  refreshCache: boolean,
 ): Promise<{ items: CollectedMuseum[]; fetchedCount: number; filtered: FilteredEntity[] }> {
   const previousPlacements = await readPreviousPlacements();
 
   const { items, fetched, filtered } = await collectTier1Museums({
     // The reporting door for the long half: everything in `collectTier1Museums`
-    // runs before the first museum is written, which is where a wait is invisible.
-    sparql: pacedSparql(progress),
+    // runs before the first museum is written, which is where a wait is
+    // invisible — and where an answer is worth keeping, since a collection that
+    // fails late otherwise starts the next attempt at its first phase.
+    sparql: collectingSparql(progress, refreshCache),
     previousPlacements,
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
@@ -429,7 +459,7 @@ async function processMuseum(
  */
 export function syncMuseums(
   triggeredBy: number | null,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; refreshCache?: boolean } = {},
 ): Promise<void> {
   return orchestrateSync<CollectedMuseum>({
     categoryId: MUSEUM_CATEGORY_ID,
@@ -445,7 +475,10 @@ export function syncMuseums(
     // different question from whether the place still exists, and is why both
     // lines stand together.
     recomputesMembership: true,
-    fetchItems: fetchMuseumItems,
+    // The one place the run's options reach the collection: everything else the
+    // orchestrator threads for us, but the cache is a property of *this* run
+    // rather than of the category.
+    fetchItems: (progress) => fetchMuseumItems(progress, options.refreshCache === true),
     processItem: processMuseum,
     getItemName: (m) => m.details?.museumLabel || m.label,
     getItemId: (m) => m.qid,
