@@ -17,7 +17,8 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { writeExperienceLocations, dedupeByIdentity } from './locationWriter.js';
+import { writeExperienceLocations } from './locationWriter.js';
+import { dedupeByIdentity } from './locationIncoming.js';
 import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 

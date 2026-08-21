@@ -27,34 +27,9 @@
  * source merely blinked is a question for a curator, and until it is answered
  * nothing about the row is irreversible.
  *
- * **Identity is the point together with the reference.** Neither alone works,
- * and the data says so in both directions:
- *
- * - the reference alone is not unique — UNESCO's reference names a *component*,
- *   and a component crossing a border is listed once per country, so
- *   `749ter-001` appears three times on W-Arly-Pendjari with three distinct
- *   points; eight experiences are like that;
- * - the point alone is not unique either — the source repeats a coordinate
- *   across distinct components. Checked against UNESCO's own API rather than
- *   assumed: site 874 offers 758 components at 546 distinct points, 97 of them
- *   shared, and the worst is one coordinate given to seventeen separately named
- *   and separately referenced rock shelters. It is not a rounding artefact —
- *   the published values carry ten decimals and are identical. Treating those
- *   as one row would discard 336 named components across the catalogue.
- *
- * The pair is unique across all 6677 stored rows, with no collisions. The
- * remaining candidate, the `(experience_id, ordinal)` unique key, is positional:
- * if the source reorders `components_list`, ordinal 3 becomes a different place
- * and keeping its assignment would be worse than rebuilding it.
- *
- * For the region assignment this is the right question either way: a component
- * that kept its point kept its region, and one that moved has to be recomputed
- * whatever it is called. Keying on the pair only adds that a *renumbered*
- * component is treated as new — which errs towards recomputing, the safe side.
- *
- * Every comparison happens in PostGIS rather than on JavaScript numbers.
- * Round-tripping a coordinate through a JS float to compare it risks calling an
- * unmoved point moved, which would throw away a good assignment for nothing.
+ * **Identity is the point together with the reference**, and neither alone
+ * works — the measurements that say so, and the PostGIS rule that follows from
+ * them, live in `locationPairing.ts` beside the fragments that ask the question.
  *
  * **A point that moved is a withdrawal plus an insert, and under a gated source
  * the two halves become visible at different moments.** The insert lands
@@ -119,162 +94,20 @@
 import { pool } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
-import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
-import type { ContentItem, ContentItemChange, ContentsDelta } from './types.js';
-import { pointChanges } from './contentsChangeSet.js';
+import type { ContentsDelta } from './types.js';
+// The source's list, before anything is known about the store: how it becomes a
+// CTE, how its values bind, and the duplicates the source itself ships.
+import {
+  bindParams, dedupeByIdentity, incomingCte, type IncomingLocation,
+} from './locationIncoming.js';
+// The vocabulary these statements are built from, in its own module since the
+// per-point diff took this file past the guide's length limit: what makes a
+// stored row the point the source is offering, and what a kept row's own columns
+// say happened to it.
+import {
+  claimed, claimedPointSql, keptChanges, named, samePointSql, NO_CHANGE,
+} from './locationPairing.js';
 
-/**
- * When a stored row is the point the source is offering (ADR-0027).
- *
- * One fragment for both halves of the question, because they are one rule and
- * separating them is the way it gets broken: **the reference decides which row is
- * a candidate, and the geometry decides whether the source means the same place.**
- * A tolerance applied without the reference would be a nearest-point search over
- * an object's own points, and 4172 pairs of points of one experience lie within a
- * kilometre of each other — many at 0.000 m, because what distinguishes two
- * rock-art shelters in one cliff is the component number, not the metres between
- * them. Every site that asks this question composes this, so no site can ask half
- * of it.
- *
- * Ten metres, from `changeSet.ts`, where it already answers the same question
- * about the experience's own coordinate. Below the width of the thing being
- * pointed at — a museum's door against its centroid — so a source re-centring a
- * park still reads as a move and still raises a card; what it absorbs is
- * arithmetic. 1642 of 6680 stored points sit on a coordinate rounded to six
- * decimals, which is what the World Heritage list's degrees-minutes-seconds
- * become, so a single re-publication at full precision would otherwise withdraw a
- * quarter of the catalogue's pins in one run.
- *
- * Exact where the incoming point carries no reference: without one there is
- * nothing to be a candidate *of*, so the tolerance would have nothing to hold it
- * to one component.
- *
- * `LOCATION_UNCHANGED_METERS` is interpolated rather than parameterised because it
- * is a module constant and never reaches here from a request; the coordinates
- * beside it are parameters, as everywhere in this file.
- */
-function samePointSql(alias: string): string {
-  return `${alias}.external_ref IS NOT DISTINCT FROM i.external_ref
-        AND (CASE WHEN i.external_ref IS NULL
-                  THEN ${alias}.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
-                  ELSE ST_DWithin(${alias}.location::geography,
-                                  ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)::geography,
-                                  ${LOCATION_UNCHANGED_METERS})
-             END)`;
-}
-
-/**
- * The pairing a claimed coordinate needs, and the reason the tolerance cannot
- * serve it.
- *
- * Identity is the point together with the reference, and the point half is a ten
- * metre window (ADR-0027). A curator's correction is the opposite of a rewrite
- * inside that window — the motivating case is 2.0 km — so a corrected row falls
- * out of `samePointSql` against the coordinate the source keeps offering. Out of
- * the pairing it is out of every arm that could protect it: the source's point is
- * inserted as a new row, the curator's is marked withdrawn, and the guard below
- * never runs. The claim would then hold for exactly the corrections too small to
- * need it.
- *
- * So a claimed row pairs on the reference alone. It keeps its real `metres`, so
- * where another stored row sits on the source's coordinate that row still wins
- * the pairing — a claim buys the corrected point its place in the list, not
- * priority over a better match.
- *
- * `IS NOT DISTINCT FROM`, so a referenceless row is covered too, and the reason
- * is worth stating because the null-safe form usually deserves suspicion. Made
- * strict, this fragment excludes exactly the row it most needs to protect: with
- * no reference `samePointSql` falls back to *exact* coordinate equality, so a
- * corrected referenceless point matches nothing, is withdrawn, and the source's
- * pin returns — the defect this whole branch exists to close, on the one row the
- * strict form declines to cover. And because that row is its experience's only
- * point, the anchor moved with the correction, so the object would end with its
- * coordinate on the curator's point and its only visible point on the source's:
- * #550, made by the endpoint written to close it.
- *
- * What the null-safe form costs is bounded by the data and by the pairing.
- * Measured 2026-08-21: the catalogue holds exactly one location with no
- * reference (Routes of Santiago de Compostela in France, 868) and no object holds
- * two, so "any referenceless incoming point" is one point. Were there two, the
- * second `DISTINCT ON` still makes the pairing one-to-one, and it breaks that
- * collision by `ordinal` — the source's own order, distance unread, the greedy
- * rule stated below — so the first-listed point takes the claimed row and the
- * other arrives as new.
- */
-function claimedPointSql(alias: string): string {
-  return `${alias}.curated_fields ? 'location'
-        AND ${alias}.external_ref IS NOT DISTINCT FROM i.external_ref`;
-}
-
-/**
- * The opening of a `CASE` that keeps a stored value a curator has claimed.
- *
- * The same guard `syncUtils` puts on an experience's columns (#488), one level
- * down: a point is a thing a curator can be right about, and before this every
- * arm below wrote the source's name and coordinate over whatever they had
- * decided, on the next run, silently.
- *
- * Only `name` and `location` are ever claimed. `external_ref` is the source's
- * handle on the row and `ordinal` is its place in the source's list — both are
- * what the pairing above reads to decide whether a point moved or was replaced,
- * so a claim on either would not protect a judgement, it would make the writer
- * unable to recognise the row it is holding.
- */
-function claimed(column: 'name' | 'location'): string {
-  return `CASE WHEN el.curated_fields ? '${column}'`;
-}
-
-/** An empty delta, for the paths on which the writer performed nothing. */
-const NO_CHANGE: ContentsDelta = { added: [], withdrawn: [], returned: [], changed: [] };
-
-/** One row of the keeping arm, which returns both sides of what it wrote. */
-interface KeptRow {
-  old_name: string | null;
-  old_lon: number;
-  old_lat: number;
-  old_curated_fields: string[] | null;
-  new_name: string | null;
-  new_lon: number;
-  new_lat: number;
-  external_ref: string | null;
-}
-
-/**
- * What the run rewrote about the points it kept.
- *
- * A claimed column is reported rather than hidden: the guard kept the curator's
- * value, and `curatedConflict` is how the object's diff says exactly that — the
- * source proposed something and did not get it. A run that quietly dropped those
- * would leave a curator unable to see that their point is still being argued with.
- */
-function keptChanges(rows: KeptRow[]): ContentItemChange[] {
-  const out: ContentItemChange[] = [];
-  for (const row of rows) {
-    const fields = pointChanges(
-      { name: row.old_name, lon: Number(row.old_lon), lat: Number(row.old_lat) },
-      { name: row.new_name, lon: Number(row.new_lon), lat: Number(row.new_lat) },
-      row.old_curated_fields ?? [],
-    );
-    if (fields.length > 0) {
-      // Named by what it was called before the run rewrote it, like every other
-      // item in the record: the name a curator saw is the one they can find.
-      out.push({ item: { name: row.old_name, ref: row.external_ref }, fields });
-    }
-  }
-  return out;
-}
-
-/** Name a row the way the record names it: what the source calls it, not its id. */
-function named(rows: Array<{ name?: string | null; external_ref?: string | null }>): ContentItem[] {
-  return rows.map(r => ({ name: r.name ?? null, ref: r.external_ref ?? null }));
-}
-
-export interface IncomingLocation {
-  name: string | null;
-  externalRef: string | null;
-  lon: number;
-  lat: number;
-}
 
 /** Which rows the write touched, so assignment can be limited to them. */
 export interface LocationWriteResult {
@@ -299,117 +132,6 @@ export interface LocationWriteResult {
    * to do, and a reader of one has no use for the other.
    */
   delta: ContentsDelta;
-}
-
-/**
- * Build the incoming list as a relation the query can join against.
- *
- * `$1` is always the experience id; each location contributes four parameters
- * after it. The empty case still has to produce a well-typed relation, because
- * the queries below join against it either way — and an untyped `NULL` column
- * would leave Postgres unable to infer the join's types.
- */
-function incomingCte(count: number): string {
-  if (count === 0) {
-    return `incoming(ordinal, external_ref, name, lon, lat) AS (
-              SELECT NULL::int, NULL::text, NULL::text, NULL::float8, NULL::float8
-              WHERE FALSE)`;
-  }
-  const rows = Array.from({ length: count }, (_, i) => {
-    const b = i * 4 + 2;
-    return `(${i + 1}, $${b}::text, $${b + 1}::text, $${b + 2}::float8, $${b + 3}::float8)`;
-  });
-  return `incoming(ordinal, external_ref, name, lon, lat) AS (VALUES ${rows.join(', ')})`;
-}
-
-/**
- * Drop repeats of the same place under the same reference, keeping the first.
- *
- * Two entries with the same reference at the same point — or, since ADR-0027,
- * within the ten metres that make it the same point — carry no information to
- * tell them apart, so collapsing them is the only reading available. That is a
- * different case from the shared coordinates above: those components differ by
- * reference and stay separate rows, however close they sit.
- *
- * It matters because a repeated pair would make the join below many-to-many —
- * both stored rows could take the same incoming ordinal, and the write would die
- * on the `(experience_id, ordinal)` unique key, rolling that experience back on
- * every subsequent sync. Deduping here keeps every claim in this file true at
- * once: the CTE is one row per identity, the UPDATE matches at most one entry
- * per stored row, and the fast path compares two counts that mean the same
- * thing.
- */
-export function dedupeByIdentity(incoming: IncomingLocation[]): IncomingLocation[] {
-  const seen = new Set<string>();
-  const kept: IncomingLocation[] = [];
-  return incoming.filter(loc => {
-    // JSON rather than a joined string: `null` and `''` are different
-    // references to `IS NOT DISTINCT FROM`, and a key that flattened them would
-    // drop one of a pair the SQL then treats as two — the mark would take the
-    // survivor's stored row and hide a point the source still offers.
-    const key = JSON.stringify([loc.lon, loc.lat, loc.externalRef]);
-    if (seen.has(key)) return false;
-    // And the same question the matcher asks, or the promise above is only true of
-    // exact repeats: two entries carrying one reference nine metres apart are both
-    // within the tolerance of one stored row. What that costs is not silence — the
-    // pairing is one-to-one, so the lower ordinal takes the row and the other is
-    // *inserted*, deterministically. It costs the run creating a second row nine
-    // metres from the first under one reference: exactly the pair ADR-0027 exists to
-    // remove and migration 026 exists to repair, manufactured fresh, for the next run
-    // to pair one of them and mark the other. With no stored row yet they both insert
-    // and reach the same place. Deduping is cheaper than either.
-    //
-    // Two such entries are indistinguishable to every rule this file has: the
-    // reference is the same and the geometry says one place. So one place is
-    // what they become, which is the existing rule widened rather than a new
-    // one — and points that really are apart stay apart, the catalogue's
-    // multi-point references standing 14 km and more from each other.
-    if (loc.externalRef !== null && loc.externalRef !== undefined
-      && kept.some(other => other.externalRef === loc.externalRef
-        && metresBetween(other, loc) <= LOCATION_UNCHANGED_METERS)) return false;
-    seen.add(key);
-    kept.push(loc);
-    return true;
-  });
-}
-
-/**
- * Metres between two incoming points, near enough for a ten-metre question.
- *
- * The one place in this file that measures in JavaScript, and it is allowed here
- * for the reason the rest is not: this compares two entries of the *source's own
- * list* to decide which of two indistinguishable ones to carry, and writes
- * nothing to the database on its answer. Every comparison against a stored row
- * still happens in PostGIS, where a rounding error would cost a region
- * assignment.
- *
- * Equirectangular rather than haversine: over ten metres the two agree to well
- * under a millimetre at any latitude this catalogue holds, and the cosine keeps
- * a degree of longitude honest at 78°N, where it is a quarter of what it is at
- * the equator.
- *
- * The haversine it replaces was antimeridian-safe for free — `sin(dLon/2)` reads
- * 360° − ε as ε — and a raw subtraction is not, so the difference is normalised
- * to (−180, 180]. Without it, two entries either side of the line and a metre
- * apart measure 40 000 km, both survive the dedupe, both answer the tolerance
- * against one stored row, and the object gains a second row for one place under
- * one reference. Latent rather than live: the catalogue's Pacific sites all sit
- * clear of the line. It is the repo's standing rule regardless (CLAUDE.md
- * § Antimeridian Handling), and this is the file's only distance in JavaScript.
- */
-function metresBetween(a: IncomingLocation, b: IncomingLocation): number {
-  const R = 6371008.8;
-  const toRad = Math.PI / 180;
-  const dLon = ((b.lon - a.lon + 540) % 360) - 180;
-  const x = dLon * toRad * Math.cos((a.lat + b.lat) / 2 * toRad);
-  const y = (b.lat - a.lat) * toRad;
-  return Math.sqrt(x * x + y * y) * R;
-}
-
-function bindParams(experienceId: number, incoming: IncomingLocation[]): unknown[] {
-  const params: unknown[] = [experienceId];
-  for (const loc of incoming) params.push(loc.externalRef, loc.name, loc.lon, loc.lat);
-  return params;
 }
 
 /**
