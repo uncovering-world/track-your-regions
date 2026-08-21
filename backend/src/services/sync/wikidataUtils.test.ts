@@ -127,4 +127,43 @@ describe('sparqlQuery', () => {
       .rejects.toThrow(/400/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('asks for a deadline the service can honour, not one it clamps', async () => {
+    fetchMock.mockResolvedValue(ok(GOOD_BODY));
+
+    await runWithTimers(sparqlQuery('SELECT * {}', '[Test]'));
+
+    // Their hard deadline is 60s and asking above it moves nothing: the query
+    // still dies there, but as a *gateway* error that says nothing about what
+    // went wrong. Under the ceiling the query engine answers instead.
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    const asked = Number(/timeout=(\d+)/.exec(body)?.[1]);
+    expect(asked).toBeLessThan(60000);
+  });
+
+  it('tells a caller it is waiting, so a screen can say so', async () => {
+    fetchMock
+      .mockResolvedValueOnce(httpError(504))
+      .mockResolvedValueOnce(ok(GOOD_BODY));
+    const waits: Array<{ reason: string; attempt: number; backoffMs: number }> = [];
+
+    await runWithTimers(sparqlQuery('SELECT * {}', '[Test]', undefined, w => waits.push(w)));
+
+    // Run 61 spent over a minute in here and the only witness was a container
+    // log: from the panel a waiting run and a hung run looked identical.
+    expect(waits).toHaveLength(1);
+    expect(waits[0]).toMatchObject({ attempt: 1 });
+    expect(waits[0].reason).toMatch(/504/);
+    expect(waits[0].backoffMs).toBeGreaterThan(0);
+  });
+
+  it('stops waiting when the budget is spent, rather than on a fixed count', async () => {
+    fetchMock.mockResolvedValue(httpError(503));
+
+    // The distinction the budget exists for: "busy for a minute" is worth
+    // riding out, "down" is not, and a count of retries cannot tell them apart
+    // because the pauses grow.
+    await expect(runWithTimers(sparqlQuery('SELECT * {}', '[Test]')))
+      .rejects.toThrow(/budget/);
+  });
 });
