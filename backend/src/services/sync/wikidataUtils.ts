@@ -11,9 +11,48 @@
 export const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
 export const WIKIDATA_USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
 export const SPARQL_DELAY_MS = 1000;
-export const SPARQL_TIMEOUT_MS = 130000; // Client-side abort — slightly above server-side limit
-export const SPARQL_SERVER_TIMEOUT_MS = 120000; // Ask Wikidata for 120s server-side timeout
-export const SPARQL_MAX_RETRIES = 4;
+
+/**
+ * What we ask the service to spend on one query, and what we wait for.
+ *
+ * **Their deadline is 60 seconds and asking for more does not move it.** We used
+ * to send `timeout=120000`, which the server clamps, so a query that could not
+ * finish spent their full 60 seconds and then came back to us as a *gateway*
+ * error — 504 or 502 from the front end, which says nothing about what went
+ * wrong. Asking for 55 gets the answer from the query engine instead: a clean
+ * SPARQL timeout, classified as such, five seconds sooner, and five seconds of
+ * their cluster returned to whoever is next in the queue.
+ *
+ * The client-side abort sits above it with room for the response to travel:
+ * without one a socket that never closes hangs a whole run.
+ */
+export const SPARQL_SERVER_TIMEOUT_MS = 55000;
+export const SPARQL_TIMEOUT_MS = 70000;
+
+/**
+ * How long a run keeps waiting for a service that is having a bad day.
+ *
+ * The published guidance is to assume the service is degraded or unavailable and
+ * to retry accordingly, and their own status pages measure outages in tens of
+ * minutes. The old shape — four retries with a 30-second ceiling — gave up after
+ * about 65 seconds, which is not "the service is down", it is "the service was
+ * busy for a minute". Run 61 died that way with nothing written after the class
+ * closure had already been paid for.
+ *
+ * So the bound is a duration rather than a count: keep trying while the whole
+ * wait is under fifteen minutes, with each pause capped at three. A run that
+ * cannot get an answer in fifteen minutes is one for a human to restart, and
+ * fifteen minutes of a quarter-hour import is a proportionate thing to wait.
+ *
+ * The count is deliberately set high enough that the budget is what actually
+ * stops the loop — 5 + 10 + 20 + 40 + 80 + 160 and then three-minute pauses
+ * reaches the budget on the tenth wait. A count low enough to bite first would
+ * make the budget decorative, which is how the old shape read: four retries and
+ * a 30-second ceiling gave up after about a minute whatever the constant said.
+ */
+export const SPARQL_MAX_RETRIES = 12;
+export const SPARQL_BACKOFF_CEILING_MS = 180000;
+export const SPARQL_WAIT_BUDGET_MS = 900000;
 
 export type SparqlBinding = Record<string, { value: string } | undefined>;
 
@@ -63,7 +102,7 @@ class RetrySignal extends Error {
 }
 
 function exponentialBackoff(attempt: number): number {
-  return Math.min(30000, 5000 * Math.pow(2, attempt));
+  return Math.min(SPARQL_BACKOFF_CEILING_MS, 5000 * Math.pow(2, attempt));
 }
 
 function backoffFromRetryAfter(retryAfter: number, attempt: number): number {
@@ -189,27 +228,65 @@ async function attemptSparqlOnce(
 }
 
 /**
+ * Told when a query is about to wait, so a screen can say so.
+ *
+ * A run that is waiting for Wikidata looks exactly like a run that has hung:
+ * the collection phase has no denominator, so the bar sits at zero, and the
+ * retries went to a container log nobody was watching. Run 61 spent over a
+ * minute that way and then failed. One callback is enough to end that — the
+ * caller decides whether it becomes a status message, a log line, or nothing.
+ */
+export interface SparqlWait {
+  /** What the service said, in the words the log uses: `SPARQL 504`, `Rate limited`. */
+  reason: string;
+  attempt: number;
+  /** How long we are about to wait, in milliseconds. */
+  backoffMs: number;
+  /** How much of the wait budget is already spent, so a caller can say "9 of 15 min". */
+  waitedMs: number;
+}
+
+/**
  * Execute a SPARQL query against Wikidata with retry for transient errors.
+ *
+ * Retries are bounded by *time*, not by a count: `SPARQL_MAX_RETRIES` caps the
+ * attempts and `SPARQL_WAIT_BUDGET_MS` caps the waiting, whichever comes first.
+ * The budget is what makes the difference between "busy for a minute" — which is
+ * ordinary and worth waiting out — and a service that is genuinely down.
  *
  * @param query - The SPARQL query string
  * @param logPrefix - Prefix for log messages (e.g., "[Museum Sync]")
  * @param retries - Number of retry attempts (default: SPARQL_MAX_RETRIES)
+ * @param onWait - Called before each wait, for a caller that has somewhere to show it
  */
 export async function sparqlQuery(
   query: string,
   logPrefix: string,
   retries: number = SPARQL_MAX_RETRIES,
+  onWait?: (wait: SparqlWait) => void,
 ): Promise<SparqlBinding[]> {
   const maxAttempts = retries + 1;
+  let waitedMs = 0;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       return await attemptSparqlOnce(query, attempt, retries);
     } catch (error) {
       const classified = classifySparqlException(error, attempt, retries);
       if (classified instanceof RetrySignal) {
+        // The budget is checked before the wait rather than after it, so the run
+        // never sleeps three minutes only to give up on waking.
+        if (waitedMs + classified.backoffMs > SPARQL_WAIT_BUDGET_MS) {
+          throw new Error(
+            `${classified.label}, and the wait budget of ${Math.round(SPARQL_WAIT_BUDGET_MS / 60000)} min is spent`,
+          );
+        }
         console.warn(
           `${logPrefix} ${classified.label}, retrying in ${Math.round(classified.backoffMs / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`,
         );
+        onWait?.({
+          reason: classified.label, attempt: attempt + 1, backoffMs: classified.backoffMs, waitedMs,
+        });
+        waitedMs += classified.backoffMs;
         await delay(classified.backoffMs);
         continue;
       }

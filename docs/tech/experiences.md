@@ -740,12 +740,12 @@ Two-phase fetch:
 
 Results are merged, deduplicated by QID, sorted by sitelinks descending, and capped at `TARGET_COUNT` (currently 200). Duplicate names are disambiguated by appending location hints from the description. Fetches English Wikipedia article URL and own website URL, stored as `metadata.wikipediaUrl` and `metadata.website`.
 
-**SPARQL reliability**: All Wikidata queries use direct `wdt:P31` (instance-of) rather than `wdt:P31/wdt:P279*` (subclass traversal) to avoid timeouts on the Wikidata endpoint. Requests include a 120s server-side timeout parameter (Blazegraph `timeout`) plus a 130s client-side AbortController safety net. Exponential backoff retries (up to 5 attempts) with 1s delay between requests. Falls back to per-type queries if the combined monument query fails.
+**SPARQL reliability**: All Wikidata queries use direct `wdt:P31` (instance-of) rather than `wdt:P31/wdt:P279*` (subclass traversal) to avoid timeouts on the Wikidata endpoint. Requests ask for a **55s** server-side timeout (Blazegraph `timeout`) plus a 70s client-side AbortController safety net. The service's own deadline is 60s and asking above it moves nothing — the query dies there either way, but as a *gateway* error (504, then 502 from their nginx) that says nothing about what went wrong, which is how museum run 61 failed. Under the ceiling the query engine answers instead, and five seconds of their cluster go back to the queue. Retries are bounded by **time rather than by count**: exponential backoff capped at three minutes, a total wait budget of fifteen, and `Retry-After` honoured where the service sends one. The count exists as a backstop and is set high enough that the budget is what stops the loop; the old shape (four retries, 30s ceiling) gave up after about a minute, which is "the service was busy", not "the service is down". 1s delay between requests, one query at a time — their limit is five parallel per IP. Falls back to per-type queries if the combined monument query fails.
 
 ### Shared patterns
 
 - Proper `User-Agent` header required by Wikimedia policy (constant in `wikidataUtils.ts`)
-- SPARQL retries with exponential backoff, 429 + `Retry-After` header handling, 120s server-side + 130s client-side timeouts (all in `sparqlQuery()`)
+- SPARQL retries with exponential backoff bounded by a fifteen-minute wait budget, 429 + `Retry-After` header handling, 55s server-side + 70s client-side timeouts (all in `sparqlQuery()`), and an optional `onWait` reporter so a run can say on screen that it is waiting for the source rather than looking hung
 - 1.5s delay between image downloads
 - `curated_fields` JSONB on `experiences` protects curator edits during sync upserts — each field is checked individually in the `ON CONFLICT` clause (implemented in `upsertExperienceRecord()`)
 - Sync log lifecycle: `createSyncLog()` → processing → `updateSyncLog()` (also updates `experience_categories.last_sync_*`)
