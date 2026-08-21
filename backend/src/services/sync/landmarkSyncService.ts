@@ -80,7 +80,7 @@ async function fetchSculptures(progress: SyncProgress): Promise<WikidataLandmark
     LIMIT 300
   `;
 
-  const bindings = await sparqlQuery(query, LOG_PREFIX, SPARQL_MAX_RETRIES);
+  const bindings = await sparqlQuery(query, LOG_PREFIX, { retries: SPARQL_MAX_RETRIES });
   const landmarks = bindingsToLandmarks(bindings, 'sculpture');
 
   console.log(`[Landmark Sync] Fetched ${landmarks.length} outdoor sculptures from Wikidata`);
@@ -117,7 +117,7 @@ async function fetchMonumentsViaFallback(): Promise<{ landmarks: WikidataLandmar
   for (const typeQid of MONUMENT_TYPE_QIDS) {
     const query = buildMonumentQuery(`?item wdt:P31 wd:${typeQid} .`, 160);
     try {
-      const bindings = await sparqlQuery(query, LOG_PREFIX, 2);
+      const bindings = await sparqlQuery(query, LOG_PREFIX, { retries: 2 });
       succeeded++;
       for (const b of bindings) {
         const key = b.item?.value;
@@ -148,7 +148,7 @@ async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[
   );
 
   try {
-    const bindings = await sparqlQuery(queryPrimary, LOG_PREFIX, SPARQL_MAX_RETRIES);
+    const bindings = await sparqlQuery(queryPrimary, LOG_PREFIX, { retries: SPARQL_MAX_RETRIES });
     const landmarks = bindingsToLandmarks(bindings, 'monument');
     console.log(`[Landmark Sync] Fetched ${landmarks.length} monuments from Wikidata`);
     return landmarks;

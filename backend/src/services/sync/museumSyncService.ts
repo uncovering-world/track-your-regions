@@ -33,9 +33,8 @@ import { ICONIC_SITELINKS, ICONIC_RELEASE } from './museum/tier1.js';
 import {
   sparqlQuery,
   delay,
+  WaitBudget,
   SPARQL_DELAY_MS,
-  SPARQL_MAX_RETRIES,
-  SPARQL_WAIT_BUDGET_MS,
   type SparqlBinding,
 } from './wikidataUtils.js';
 // Museums use remote Wikimedia URLs, no local image storage
@@ -63,13 +62,23 @@ const sparql = (query: string) => sparqlQuery(query, LOG_PREFIX);
  * will stop waiting at some point I can predict".
  */
 function pacedSparql(progress: SyncProgress): (query: string) => Promise<SparqlBinding[]> {
-  return (query) => sparqlQuery(query, LOG_PREFIX, SPARQL_MAX_RETRIES, (wait) => {
-    const next = Math.round(wait.backoffMs / 1000);
-    const spent = Math.round((wait.waitedMs + wait.backoffMs) / 60000);
-    const budget = Math.round(SPARQL_WAIT_BUDGET_MS / 60000);
-    progress.statusMessage =
-      `Wikidata is not answering (${wait.reason}) — retrying in ${next}s, `
-      + `attempt ${wait.attempt}, about ${spent} of ${budget} min of waiting spent`;
+  // One budget for the whole run, spent by whichever queries need it. Per query
+  // it would be arithmetic nobody meant: a collection sends a few hundred, and a
+  // quarter of an hour of patience each is hours of a run nobody is watching.
+  const budget = new WaitBudget();
+  return (query) => sparqlQuery(query, LOG_PREFIX, {
+    budget,
+    // Checked while waiting as well as between queries, because a backoff is now
+    // up to three minutes: without it, Cancel sits unhonoured for that long.
+    isCancelled: () => progress.cancel,
+    onWait: (wait) => {
+      const next = Math.round(wait.backoffMs / 1000);
+      const spent = Math.round((wait.waitedMs + wait.backoffMs) / 60000);
+      const total = Math.round(budget.totalMs / 60000);
+      progress.statusMessage =
+        `Wikidata is not answering (${wait.reason}) — retrying in ${next}s, `
+        + `attempt ${wait.attempt}, about ${spent} of ${total} min of waiting spent`;
+    },
   });
 }
 

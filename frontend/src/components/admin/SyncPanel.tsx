@@ -138,16 +138,28 @@ function SourceCard({ source }: SourceCardProps) {
   const [isPolling, setIsPolling] = useState(false);
   const [status, setStatus] = useState<SyncStatus | null>(null);
 
+  // What the server said about the last Cancel, when it said no. A press the
+  // server refuses — the run is already over, or the backend was restarted under
+  // it — otherwise produces nothing at all on screen, which reads as a button
+  // that does not work rather than as an answer.
+  const [cancelRefused, setCancelRefused] = useState(false);
+
+  /** A new run is starting: poll it, and drop what the last one was told. */
+  const beginRun = () => {
+    setIsPolling(true);
+    setCancelRefused(false);
+  };
+
   // Start sync mutation
   const startMutation = useMutation({
     mutationFn: () => startSync(source.id),
-    onSuccess: () => setIsPolling(true),
+    onSuccess: beginRun,
   });
 
   // Preview mutation: same run, no writes to experiences
   const dryRunMutation = useMutation({
     mutationFn: () => startSync(source.id, { dryRun: true }),
-    onSuccess: () => setIsPolling(true),
+    onSuccess: beginRun,
   });
 
   // The same run again, asking the source everything rather than reusing what it
@@ -156,21 +168,13 @@ function SourceCard({ source }: SourceCardProps) {
   // length — and the ordinary click should stay one click.
   const refreshMutation = useMutation({
     mutationFn: () => startSync(source.id, { refreshCache: true }),
-    onSuccess: () => setIsPolling(true),
+    onSuccess: beginRun,
   });
 
   // A preview is a run: while one is starting the panel must look busy, or the
   // gap between the click and the first poll reads as nothing having happened.
   const isStarting = startMutation.isPending || dryRunMutation.isPending
     || refreshMutation.isPending;
-
-  // Cancel sync mutation
-  const cancelMutation = useMutation({
-    mutationFn: () => cancelSync(source.id),
-    onSuccess: () => {
-      // Status will update via polling
-    },
-  });
 
   // Track if sync just completed (to show hint)
   const [justCompleted, setJustCompleted] = useState(false);
@@ -201,6 +205,16 @@ function SourceCard({ source }: SourceCardProps) {
       setIsPolling(false);
     }
   }, [source.id, queryClient]);
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelSync(source.id),
+    onSuccess: (result) => {
+      // Taken: the status will say so at the next poll. Refused: say so, and
+      // poll at once, so the card stops showing a run that is no longer there.
+      setCancelRefused(!result.cancelled);
+      if (!result.cancelled) void pollStatus();
+    },
+  });
 
   // Check initial status on mount
   useEffect(() => {
@@ -315,6 +329,16 @@ function SourceCard({ source }: SourceCardProps) {
         {refreshMutation.isError && (
           <Alert severity="error" sx={{ mb: 2 }}>
             Failed to start sync without cache: {(refreshMutation.error as Error)?.message}
+          </Alert>
+        )}
+        {cancelRefused && (
+          <Alert severity="info" sx={{ mb: 2 }} onClose={() => setCancelRefused(false)}>
+            {/* The two ways a press lands on nothing, told apart by what the
+                poll that followed it found. Either way the honest answer is
+                that this run is over, not that the button failed. */}
+            {isRunning
+              ? 'This run is past the point a cancel can stop it — it is finishing what it started.'
+              : 'There was nothing to cancel: this run had already ended.'}
           </Alert>
         )}
 
