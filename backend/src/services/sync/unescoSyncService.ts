@@ -14,19 +14,18 @@ import { upsertExperienceRecord } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import { readFixtureRecords } from './fixtureSource.js';
+import { fetchUnescoRecords } from './unescoApi.js';
+import { sparqlQuery, SPARQL_WAIT_BUDGET_MS } from './wikidataUtils.js';
+import { WaitBudget } from './sourceRetry.js';
 import type {
   SyncProgress,
   UnescoApiRecord,
-  UnescoApiResponse,
   ProcessedExperience,
   ParsedLocation,
   ContentsByKind,
 } from './types.js';
 
 const UNESCO_CATEGORY_ID = 1; // Seeded in migration
-const PAGE_SIZE = 100;
-const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
-const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
 
 /**
  * Parse UNESCO components_list field to extract individual locations
@@ -74,56 +73,22 @@ function parseComponentsList(componentsList: string | undefined): ParsedLocation
 }
 
 /**
- * Fetch all records from UNESCO API with pagination
- */
-async function fetchAllUnescoRecords(
-  progress: SyncProgress
-): Promise<UnescoApiRecord[]> {
-  const baseUrl =
-    'https://data.unesco.org/api/explore/v2.1/catalog/datasets/whc001/records';
-  const allRecords: UnescoApiRecord[] = [];
-  let offset = 0;
-  let totalCount = 0;
-
-  progress.status = 'fetching';
-  progress.statusMessage = 'Fetching from UNESCO API...';
-
-  do {
-    if (progress.cancel) {
-      throw new Error('Sync cancelled');
-    }
-
-    const url = `${baseUrl}?limit=${PAGE_SIZE}&offset=${offset}`;
-    progress.statusMessage = `Fetching page ${Math.floor(offset / PAGE_SIZE) + 1}...`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`UNESCO API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = (await response.json()) as UnescoApiResponse;
-    totalCount = data.total_count;
-    allRecords.push(...data.results);
-
-    progress.total = totalCount;
-    progress.progress = allRecords.length;
-    progress.statusMessage = `Fetched ${allRecords.length}/${totalCount} records`;
-
-    console.log(`[UNESCO Sync] Fetched ${allRecords.length}/${totalCount} records`);
-
-    offset += PAGE_SIZE;
-  } while (allRecords.length < totalCount);
-
-  return allRecords;
-}
-
-/**
  * Fetch Wikipedia article URLs for all UNESCO sites from Wikidata.
  * Uses property P757 (UNESCO World Heritage Site ID) to match sites,
  * then schema:about + schema:isPartOf to get English Wikipedia URLs.
  * Returns a Map from UNESCO id_no (string) -> Wikipedia article URL.
+ *
+ * Sent through the shared SPARQL client rather than a hand-rolled POST, which is
+ * what this used to be: it asked for a 60-second server deadline, the value
+ * their engine clamps and answers as a gateway error, and it had no retry at
+ * all, so one bad minute at Wikidata silently cost every site its article link.
+ * Still fails open — a missing link is a missing link, not a failed import — but
+ * now only after the same waiting every other query gets.
  */
-async function fetchWikipediaUrls(): Promise<Map<string, string>> {
+async function fetchWikipediaUrls(
+  progress: SyncProgress,
+  budget: WaitBudget,
+): Promise<Map<string, string>> {
   const query = `
     SELECT ?unescoId ?article WHERE {
       ?item wdt:P757 ?unescoId .
@@ -132,32 +97,19 @@ async function fetchWikipediaUrls(): Promise<Map<string, string>> {
     }
   `;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
-
   try {
-    const response = await fetch(WIKIDATA_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/sparql-results+json',
-        'User-Agent': USER_AGENT,
+    const bindings = await sparqlQuery(query, '[UNESCO Sync]', {
+      budget,
+      isCancelled: () => progress.cancel,
+      onWait: (wait) => {
+        progress.statusMessage =
+          `Wikidata is not answering (${wait.reason}) — retrying in `
+          + `${Math.round(wait.backoffMs / 1000)}s, attempt ${wait.attempt}`;
       },
-      body: `query=${encodeURIComponent(query)}&timeout=60000`,
-      signal: controller.signal,
     });
 
-    if (!response.ok) {
-      console.warn(`[UNESCO Sync] Wikipedia URL fetch failed: ${response.status}`);
-      return new Map();
-    }
-
-    const data = await response.json() as {
-      results: { bindings: Array<{ unescoId?: { value: string }; article?: { value: string } }> };
-    };
-
     const map = new Map<string, string>();
-    for (const binding of data.results.bindings) {
+    for (const binding of bindings) {
       if (binding.unescoId?.value && binding.article?.value) {
         map.set(binding.unescoId.value, binding.article.value);
       }
@@ -169,8 +121,6 @@ async function fetchWikipediaUrls(): Promise<Map<string, string>> {
     const msg = error instanceof Error ? error.message : String(error);
     console.warn(`[UNESCO Sync] Wikipedia URL fetch error: ${msg}`);
     return new Map(); // Fail open: sync proceeds without Wikipedia links
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -203,6 +153,27 @@ function parseDelimitedField(value: unknown): string[] {
   return [];
 }
 
+/**
+ * A yes from the portal, in whichever way it chose to say it.
+ *
+ * These fields arrive as the *strings* `"True"` and `"False"` — measured on
+ * 2026-08-21, from both the paged and the export endpoint. The code compared
+ * them against the number `1`, so the answer was no for every site ever
+ * imported: **0 of 1272** carried `metadata.inDanger`, and **0** carried the
+ * `transboundary` tag, against 58 and 51 in the source. The `in_danger` tag
+ * survived only because `danger_list` is a string and was checked beside it.
+ *
+ * Written wide rather than for the one shape seen today: a portal that switches
+ * to a real JSON boolean would otherwise turn every yes back into a no, and
+ * nothing anywhere would say so.
+ */
+function isSet(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') return /^(true|1|y|yes)$/i.test(value.trim());
+  return false;
+}
+
 function normalizeCategory(category: string | undefined | null): string | null {
   if (!category) return null;
   const cat = category.toLowerCase();
@@ -212,17 +183,17 @@ function normalizeCategory(category: string | undefined | null): string | null {
   return cat;
 }
 
-function buildUnescoTags(record: UnescoApiRecord): string[] {
+export function buildUnescoTags(record: UnescoApiRecord): string[] {
   const tags: string[] = [];
-  if (record.criteria) {
+  if (record.criteria_txt) {
     // UNESCO criteria like "(i)(ii)(iv)" -> ["criterion_i", "criterion_ii", "criterion_iv"]
-    const criteriaMatches = record.criteria.match(/\(([ivx]+)\)/gi);
+    const criteriaMatches = record.criteria_txt.match(/\(([ivx]+)\)/gi);
     if (criteriaMatches) {
       tags.push(...criteriaMatches.map(c => `criterion_${c.replace(/[()]/g, '').toLowerCase()}`));
     }
   }
-  if (record.danger === 1 || record.danger_list) tags.push('in_danger');
-  if (record.transboundary === 1) tags.push('transboundary');
+  if (isSet(record.danger) || record.danger_list) tags.push('in_danger');
+  if (isSet(record.transboundary)) tags.push('transboundary');
   return tags;
 }
 
@@ -317,12 +288,12 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
 
   const metadata: Record<string, unknown> = {
     dateInscribed: record.date_inscribed,
-    inDanger: record.danger === 1,
+    inDanger: isSet(record.danger),
     dangerList: record.danger_list || null,
-    criteria: record.criteria,
+    criteria: record.criteria_txt,
     region: record.region,
     areaHectares: record.area_hectares,
-    transboundary: record.transboundary === 1,
+    transboundary: isSet(record.transboundary),
     website: `https://whc.unesco.org/en/list/${record.id_no}`,
     wikipediaUrl: wikipediaUrl || null,
   };
@@ -454,12 +425,15 @@ export function syncUnescoSites(
         return { items: fixture, fetchedCount: fixture.length };
       }
 
-      const records = await fetchAllUnescoRecords(progress);
-      console.log(`[UNESCO Sync] Fetched ${records.length} total records`);
+      // One patience for the run, spent by whichever of its two sources needs
+      // it: a portal having a bad day and a query service having a bad day are
+      // the same fifteen minutes as far as the person watching is concerned.
+      const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
+      const records = await fetchUnescoRecords(progress, budget);
 
       // Fetch Wikipedia URLs from Wikidata (fails open -- sync continues without them)
       progress.statusMessage = 'Fetching Wikipedia URLs from Wikidata...';
-      wikipediaUrls = await fetchWikipediaUrls();
+      wikipediaUrls = await fetchWikipediaUrls(progress, budget);
 
       return { items: records, fetchedCount: records.length };
     },

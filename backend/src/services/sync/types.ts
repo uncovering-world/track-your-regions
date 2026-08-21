@@ -59,23 +59,25 @@ export interface UnescoApiRecord {
   iso_codes?: string | string[];
   states_names?: string | string[];
   main_image_url?: string | { url?: string };
-  date_inscribed?: number;
-  danger?: number;
+  /** The year, as a string: `"2003"`. Every scalar this portal sends is one. */
+  date_inscribed?: string | number;
+  /** `"True"` / `"False"` — the portal's booleans are strings. See `isSet`. */
+  danger?: string | number | boolean;
   danger_list?: string;
-  criteria?: string;
+  /**
+   * The inscription criteria, as "(i)(ii)(iii)(iv)".
+   *
+   * `criteria_txt` and not `criteria`: the latter is what this importer asked
+   * for until 2026-08-21 and is a field the whc001 dataset does not have, so
+   * every one of the 1272 imported sites carried no criterion tag at all.
+   */
+  criteria_txt?: string;
   region?: string;
   area_hectares?: number;
-  transboundary?: number;
+  /** `"True"` / `"False"`, like `danger`. See `isSet`. */
+  transboundary?: string | number | boolean;
   // Multi-location support for serial nominations
   components_list?: string; // Format: "{name: Fort Name, ref: 1739-005, latitude: 18.236, longitude: 73.444}"
-}
-
-/**
- * UNESCO API response structure
- */
-export interface UnescoApiResponse {
-  total_count: number;
-  results: UnescoApiRecord[];
 }
 
 /**

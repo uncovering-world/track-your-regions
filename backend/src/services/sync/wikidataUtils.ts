@@ -1,8 +1,23 @@
 /**
  * Shared Wikidata SPARQL utilities
  *
- * Used by museum and landmark sync services for querying Wikidata.
+ * Used by museum and landmark sync services for querying Wikidata. How a failed
+ * request is waited out is not here — that is `sourceRetry.ts`, shared with the
+ * other sources; what lives here is what Wikidata's own failures mean.
  */
+
+import {
+  withRetries,
+  abortOn,
+  exponentialBackoff,
+  backoffFromRetryAfter,
+  RetrySignal,
+  WaitBudget,
+  type SourceWait,
+} from './sourceRetry.js';
+
+export { WaitBudget } from './sourceRetry.js';
+export type { SourceWait } from './sourceRetry.js';
 
 // =============================================================================
 // Constants
@@ -91,25 +106,7 @@ export function parseWktPoint(wkt: string): { lat: number; lon: number } | null 
 // SPARQL Query Execution
 // =============================================================================
 
-/**
- * Sentinel thrown to signal the retry loop should sleep and try again.
- * Carries the backoff duration and a label for logging.
- */
-class RetrySignal extends Error {
-  constructor(public backoffMs: number, public label: string) {
-    super(label);
-  }
-}
-
-function exponentialBackoff(attempt: number): number {
-  return Math.min(SPARQL_BACKOFF_CEILING_MS, 5000 * Math.pow(2, attempt));
-}
-
-function backoffFromRetryAfter(retryAfter: number, attempt: number): number {
-  return Number.isFinite(retryAfter) && retryAfter > 0
-    ? retryAfter * 1000
-    : exponentialBackoff(attempt);
-}
+const backoffOf = (attempt: number) => exponentialBackoff(attempt, SPARQL_BACKOFF_CEILING_MS);
 
 async function fetchSparqlResponse(query: string, signal: AbortSignal): Promise<Response> {
   return fetch(WIKIDATA_ENDPOINT, {
@@ -182,7 +179,7 @@ async function handleSparqlHttpError(
   const retriable = response.status >= 500 || response.status === 429;
   if (attempt < retries && retriable) {
     const retryAfter = Number(response.headers.get('retry-after'));
-    const backoff = backoffFromRetryAfter(retryAfter, attempt);
+    const backoff = backoffFromRetryAfter(retryAfter, attempt, SPARQL_BACKOFF_CEILING_MS);
     throw new RetrySignal(backoff, `SPARQL ${response.status}`);
   }
   throw new Error(`Wikidata SPARQL error ${response.status}: ${text.substring(0, 500)}`);
@@ -205,19 +202,11 @@ function classifySparqlException(
     let label = 'SPARQL network error';
     if (isAbort) label = 'SPARQL timeout';
     else if (isMalformed) label = 'SPARQL malformed body';
-    return new RetrySignal(exponentialBackoff(attempt), label);
+    return new RetrySignal(backoffOf(attempt), label);
   }
   const message = error instanceof Error ? error.message : String(error);
   return new Error(`Wikidata SPARQL request failed: ${message}`);
 }
-
-/**
- * How often a cancelled run is noticed, both mid-request and mid-wait.
- *
- * A second is short enough that Cancel feels immediate and long enough that a
- * three-minute backoff costs 180 wake-ups rather than a busy loop.
- */
-const CANCEL_POLL_MS = 1000;
 
 async function attemptSparqlOnce(
   query: string,
@@ -225,151 +214,60 @@ async function attemptSparqlOnce(
   retries: number,
   isCancelled?: () => boolean,
 ): Promise<SparqlBinding[]> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SPARQL_TIMEOUT_MS);
-  // A pool band can take most of a minute, and the run is over long before it
-  // answers. Aborting hands the socket back rather than waiting out a query
-  // whose result nobody will read.
-  const watch = isCancelled
-    ? setInterval(() => { if (isCancelled()) controller.abort(); }, CANCEL_POLL_MS)
-    : undefined;
+  const { signal, release } = abortOn(SPARQL_TIMEOUT_MS, isCancelled);
   try {
-    const response = await fetchSparqlResponse(query, controller.signal);
+    const response = await fetchSparqlResponse(query, signal);
     if (!response.ok) await handleSparqlHttpError(response, attempt, retries);
     return await readSparqlBindings(response);
   } finally {
-    clearTimeout(timeout);
-    if (watch) clearInterval(watch);
+    release();
   }
 }
 
 /**
- * Told when a query is about to wait, so a screen can say so.
+ * What a caller may say about how a query should be attempted.
  *
- * A run that is waiting for Wikidata looks exactly like a run that has hung:
- * the collection phase has no denominator, so the bar sits at zero, and the
- * retries went to a container log nobody was watching. Run 61 spent over a
- * minute that way and then failed. One callback is enough to end that — the
- * caller decides whether it becomes a status message, a log line, or nothing.
+ * Everything here except `retries` is the run's rather than the query's, which
+ * is why it is passed in rather than defaulted: the patience is shared across a
+ * few hundred queries, and the cancel flag belongs to the run that owns them.
  */
-export interface SparqlWait {
-  /** What the service said, in the words the log uses: `SPARQL 504`, `Rate limited`. */
-  reason: string;
-  attempt: number;
-  /** How long we are about to wait, in milliseconds. */
-  backoffMs: number;
-  /** How much of the wait budget is already spent, so a caller can say "9 of 15 min". */
-  waitedMs: number;
+export interface SparqlOptions {
+  retries?: number;
+  /** Called before each wait, for a caller that has somewhere to show it. */
+  onWait?: (wait: SourceWait) => void;
+  /** Whether the run has been cancelled. Checked before each attempt and while waiting. */
+  isCancelled?: () => boolean;
+  /** How much waiting the whole run has left, shared across its queries. */
+  budget?: WaitBudget;
 }
 
 /**
  * Execute a SPARQL query against Wikidata with retry for transient errors.
  *
  * Retries are bounded by *time*, not by a count: `SPARQL_MAX_RETRIES` caps the
- * attempts and `SPARQL_WAIT_BUDGET_MS` caps the waiting, whichever comes first.
- * The budget is what makes the difference between "busy for a minute" — which is
- * ordinary and worth waiting out — and a service that is genuinely down.
+ * attempts and the run's `WaitBudget` caps the waiting, whichever comes first.
+ * The loop itself is `withRetries` — shared with every other source we import
+ * from — and what is Wikidata's about it is `classifySparqlException`.
  *
  * @param query - The SPARQL query string
  * @param logPrefix - Prefix for log messages (e.g., "[Museum Sync]")
  * @param options - the reporter, the cancel check, and the run's shared wait budget
  */
-export interface SparqlOptions {
-  retries?: number;
-  /** Called before each wait, for a caller that has somewhere to show it. */
-  onWait?: (wait: SparqlWait) => void;
-  /**
-   * Whether the run has been cancelled.
-   *
-   * Checked before every attempt *and* while waiting, because a wait is now
-   * minutes rather than seconds: without it, Cancel sits unhonoured for as long
-   * as the current backoff, which from the panel is indistinguishable from a
-   * button that does nothing.
-   */
-  isCancelled?: () => boolean;
-  /**
-   * How much waiting the whole run has left, shared across its queries.
-   *
-   * Per run rather than per query, which is the shape the first version got
-   * wrong: a museum collection sends a few hundred queries, and fifteen minutes
-   * of patience each is arithmetically hours of a run nobody is watching. One
-   * budget spent by whichever queries need it says the true thing — this source
-   * is having a bad day, and we stop when we have waited as long as we said.
-   */
-  budget?: WaitBudget;
-}
-
-/** A run's remaining patience, in milliseconds, shared by every query it sends. */
-export class WaitBudget {
-  private spentMs = 0;
-
-  constructor(public readonly totalMs: number = SPARQL_WAIT_BUDGET_MS) {}
-
-  get remainingMs(): number {
-    return Math.max(0, this.totalMs - this.spentMs);
-  }
-
-  spend(ms: number): void {
-    this.spentMs += ms;
-  }
-}
-
-/**
- * Wait, but wake early when the run is cancelled.
- *
- * Sliced rather than one timer, because `setTimeout` cannot be asked whether
- * anything has changed. A second is short enough that a cancel feels immediate
- * and long enough that a three-minute backoff costs 180 wake-ups.
- */
-async function interruptibleDelay(ms: number, isCancelled?: () => boolean): Promise<void> {
-  const slice = 1000;
-  for (let waited = 0; waited < ms; waited += slice) {
-    if (isCancelled?.()) return;
-    await delay(Math.min(slice, ms - waited));
-  }
-}
-
 export async function sparqlQuery(
   query: string,
   logPrefix: string,
   options: SparqlOptions = {},
 ): Promise<SparqlBinding[]> {
   const { retries = SPARQL_MAX_RETRIES, onWait, isCancelled } = options;
-  const budget = options.budget ?? new WaitBudget();
-  const maxAttempts = retries + 1;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    if (isCancelled?.()) throw new Error('Sync cancelled');
-    try {
-      return await attemptSparqlOnce(query, attempt, retries, isCancelled);
-    } catch (error) {
-      // Asked before the error is classified, because the abort a cancel causes
-      // is indistinguishable from a timeout — and retrying a run that has been
-      // stopped would wait out a backoff on its way to stopping anyway.
-      if (isCancelled?.()) throw new Error('Sync cancelled');
-      const classified = classifySparqlException(error, attempt, retries);
-      if (classified instanceof RetrySignal) {
-        // The budget is checked before the wait rather than after it, so the run
-        // never sleeps three minutes only to give up on waking.
-        if (classified.backoffMs > budget.remainingMs) {
-          throw new Error(
-            `${classified.label}, and this run's ${Math.round(budget.totalMs / 60000)} min of waiting is spent`,
-          );
-        }
-        console.warn(
-          `${logPrefix} ${classified.label}, retrying in ${Math.round(classified.backoffMs / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`,
-        );
-        onWait?.({
-          reason: classified.label,
-          attempt: attempt + 1,
-          backoffMs: classified.backoffMs,
-          waitedMs: budget.totalMs - budget.remainingMs,
-        });
-        budget.spend(classified.backoffMs);
-        await interruptibleDelay(classified.backoffMs, isCancelled);
-        continue;
-      }
-      throw classified;
-    }
-  }
-  throw new Error('SPARQL query failed after all retries');
+  return withRetries(
+    (attempt) => attemptSparqlOnce(query, attempt, retries, isCancelled),
+    {
+      logPrefix,
+      retries,
+      budget: options.budget ?? new WaitBudget(SPARQL_WAIT_BUDGET_MS),
+      isCancelled,
+      onWait,
+      classify: classifySparqlException,
+    },
+  );
 }

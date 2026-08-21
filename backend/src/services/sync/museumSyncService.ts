@@ -35,6 +35,7 @@ import {
   delay,
   WaitBudget,
   SPARQL_DELAY_MS,
+  SPARQL_WAIT_BUDGET_MS,
   type SparqlBinding,
 } from './wikidataUtils.js';
 // Museums use remote Wikimedia URLs, no local image storage
@@ -65,7 +66,7 @@ function pacedSparql(progress: SyncProgress): (query: string) => Promise<SparqlB
   // One budget for the whole run, spent by whichever queries need it. Per query
   // it would be arithmetic nobody meant: a collection sends a few hundred, and a
   // quarter of an hour of patience each is hours of a run nobody is watching.
-  const budget = new WaitBudget();
+  const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
   return (query) => sparqlQuery(query, LOG_PREFIX, {
     budget,
     // Checked while waiting as well as between queries, because a backoff is now
