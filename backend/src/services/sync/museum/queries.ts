@@ -20,7 +20,7 @@
  * else to batch is the pipeline's decision, since only it knows how long a run may take.
  */
 
-import { extractQid, parseWktPoint, type SparqlBinding } from '../wikidataUtils.js';
+import { extractQid, parseWktPoint, LABEL_LANGS, type SparqlBinding } from '../wikidataUtils.js';
 import type { CacheDescriptor } from '../wikidataCache.js';
 
 /**
@@ -56,8 +56,7 @@ export function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-/** Without `mul`, the National Gallery of Art comes back as the string `Q214867`. */
-export const LABEL_LANGS = 'en,mul,en-gb,de,fr,es,it,nl';
+export { LABEL_LANGS };
 
 const ENTITY_PREFIX = 'http://www.wikidata.org/entity/';
 

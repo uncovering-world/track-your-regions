@@ -173,6 +173,11 @@ export function getAllPricing(): ModelPricing[] {
 const LITELLM_PRICING_URL =
   'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
 
+/** The one outbound call in the codebase that did not say who was making it. */
+const PRICING_USER_AGENT =
+  'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
+const PRICING_TIMEOUT_MS = 30000;
+
 interface LiteLLMEntry {
   input_cost_per_token?: number;
   output_cost_per_token?: number;
@@ -266,7 +271,12 @@ export async function updatePricingFromRemote(): Promise<{
   modelsAdded: number;
   totalModels: number;
 }> {
-  const response = await fetch(LITELLM_PRICING_URL);
+  // Named, with a deadline: it is somebody else's file on somebody else's CDN,
+  // and a hung socket here would hold an admin request open indefinitely.
+  const response = await fetch(LITELLM_PRICING_URL, {
+    headers: { 'User-Agent': PRICING_USER_AGENT },
+    signal: AbortSignal.timeout(PRICING_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(`Failed to fetch pricing: ${response.status} ${response.statusText}`);
   }

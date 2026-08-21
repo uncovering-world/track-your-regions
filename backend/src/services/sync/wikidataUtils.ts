@@ -28,6 +28,17 @@ export const WIKIDATA_USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/tra
 export const SPARQL_DELAY_MS = 1000;
 
 /**
+ * The fallback chain the label service is asked for, everywhere we ask it.
+ *
+ * Without `mul`, the National Gallery of Art comes back as the bare string
+ * `Q214867` — a label service given one language answers with the QID for
+ * anything that has no label in it. Shared rather than per-collector, because a
+ * query that asks for `"en"` alone is a query whose answers can contain QIDs
+ * where a reader expects a name, and that is not a per-category preference.
+ */
+export const LABEL_LANGS = 'en,mul,en-gb,de,fr,es,it,nl';
+
+/**
  * What we ask the service to spend on one query, and what we wait for.
  *
  * **Their deadline is 60 seconds and asking for more does not move it.** We used

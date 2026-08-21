@@ -747,8 +747,8 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 
 Two-phase fetch:
 
-1. **Sculptures** — `wdt:P31 wd:Q860861` (outdoor sculpture), sitelinks > 15, LIMIT 300
-2. **Monuments** — `wdt:P31 ?type` with `VALUES` for 4 monument types (Q4989906 memorial, Q575759 war memorial, Q721747 monument, Q5003624 cenotaph), sitelinks > 20, LIMIT 300. Falls back to per-type queries if the combined query fails
+1. **Sculptures** — `wdt:P31 wd:Q860861` (outdoor sculpture), sitelinks > 15, LIMIT 300. Measured at 28 s for 131 rows on 2026-08-21: it answers, but with under half their deadline to spare
+2. **Monuments** — **one query per type**, four of them (Q4989906 memorial, Q575759 war memorial, Q721747 monument, Q5003624 cenotaph), sitelinks > 20, LIMIT 160 each, merged by entity. There used to be a combined `VALUES ?type` query tried first with these four as its fallback; measured on 2026-08-21 the combined query returns **nothing in 75 s**, so every run spent the service's whole deadline on a question that could not finish before asking the four that could — 14 s each. The fallback was the working path with a wasted minute in front of it. A type that fails is logged and skipped (unlike a museum pool band, no admission rule reads this count); a run where none answer still fails
 
 Results are merged, deduplicated by QID, sorted by sitelinks descending, and capped at `TARGET_COUNT` (currently 200). Duplicate names are disambiguated by appending location hints from the description. Fetches English Wikipedia article URL and own website URL, stored as `metadata.wikipediaUrl` and `metadata.website`.
 
