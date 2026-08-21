@@ -160,7 +160,15 @@ export function FieldDiff({ field, keepAction, takeAction, labels = CONFLICT_LAB
       )}
       {field.acceptable === false && (
         <Typography variant="caption" color="text.secondary" component="p">
-          This one lands at the next sync — accepting lifts your protection on it.
+          {/* The coordinate is no longer only deferred: accepting it hands back the
+              pin as well as the object's position, and the pin moves onto the
+              source's coordinate straight away. Said before the click rather than
+              in the line that confirms it, because a curator deciding whether to
+              give a place back reads the note under the diff. */}
+          {field.field === 'location'
+            ? 'Accepting lifts your protection on it: the point moves back to the source’s '
+              + 'coordinate now, and the object’s own position follows at the next sync.'
+            : 'This one lands at the next sync — accepting lifts your protection on it.'}
         </Typography>
       )}
     </Box>

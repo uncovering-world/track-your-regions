@@ -218,12 +218,18 @@ export async function publishContents(
  */
 export async function placeAfterRelease(
   experienceId: number,
-  // What sent it here, in the log's own words. Two callers now: a publication that
-  // released a deferred withdrawal, and a curator's verdict on a point, which places
-  // whenever it changes what a reader sees. Hardcoding the first made every line this
-  // function logs false for the second — nothing was published and no withdrawal was
-  // released — and a log line that names the wrong cause is worse than a vague one,
-  // because it sends whoever reads it to the wrong code.
+  // What sent it here, in the log's own words. Five callers now, and the default
+  // line is true of the first two: a publication that released a deferred
+  // withdrawal, and an admission that published an arrival's contents and released
+  // one — which is why `placeAfterAdmissionRelease` deliberately passes no trigger,
+  // having done both. The other three send their own: a curator's verdict on a
+  // point, a curator's correction to one, and accepting the source's coordinate,
+  // which puts a corrected pin back where the source has it. Nothing is published
+  // on any of those three and no withdrawal is released, so the hardcoded line
+  // would be false in every clause — and a log line naming the wrong cause is worse
+  // than a vague one, because it sends whoever reads it to the wrong code. A count
+  // is written here rather than "several" because it has to be re-read when a caller
+  // joins, which is the only thing that keeps the list beside it true.
   trigger = 'Publishing experience %d released a withdrawal',
 ): Promise<Array<{ worldViewId: number | null; worldViewName: string | null }>> {
   const failed: number[] = [];

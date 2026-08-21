@@ -814,6 +814,14 @@ export async function acceptSourceValue(
    * object's coordinate and its one visible point's are the same fact.
    */
   releasedPoints: number[];
+  /**
+   * Those of them the endpoint also put back on the coordinate that run offered
+   * — releasing alone would have the next run retire the row instead of
+   * rewriting it, since the pairing bounds a point's identity by distance.
+   */
+  movedPoints: number[];
+  placementFailed?: boolean;
+  placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
   fromSyncLogId: number;
 }> {
   return authFetchJson(`${API_URL}/api/experiences/${experienceId}/accept-source`, {

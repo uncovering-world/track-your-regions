@@ -86,8 +86,19 @@ and the conflict is computed where the rest of this decision says it must be.
 is positioned over — offered, published, and the one being corrected,** and claims it there too. With several points the anchor is a fact about the object, and
 nothing in a single correction says which of them the object should be pinned to. The two claims are
 made together and are released together: `accept-source` on the object's `location` takes the claim
-off the object's claiming points as well, because a coordinate held at one level and handed back at
-the other is the disagreement this decision exists to remove.
+off **the point the anchor was taken from** as well, because a coordinate held at one level and
+handed back at the other is the disagreement this decision exists to remove. That point is found by
+its coordinate — the anchor and its pin were written from one input and neither can move while both
+are claimed — rather than by re-deriving the guard, because the guard need not still hold: an object
+that gains a second published point and has it corrected carries a claim the anchor never came from,
+and releasing that one would undo a correction in answer to a card about something else. The release also **writes** the
+coordinate that run offered for the point, where it offered one. Releasing alone would hand the pin
+back by retiring it: the pairing needs the reference *and* ten metres (ADR-0027 decision 1), and the
+claim is the only thing that let a corrected row pair at any distance — so an unclaimed 2 km
+correction stops being a candidate, the run withdraws it and inserts the source's point beside it,
+and the queue asks a curator to rule on a withdrawal nobody made while the visit record stays on a
+pin no reader is shown. The value is the source's own, per point, from the run being answered, which
+is the same guarantee `expectedSyncLogId` gives the object's fields.
 
 **7. A run's contents record gains a fourth arm, and that narrows ADR-0026.** `ContentsDelta`
 carries `changed` beside `added`, `withdrawn` and `returned`: one entry per row a run kept and
@@ -127,12 +138,15 @@ members' own changes are field-shaped; the set's arrival and departure are not.
 **Negative / Trade-offs:**
 - A claimed column is a column the source can never correct again, and on contents there is **one
   way back, not a general one**. `accept-source` on an object's `location` releases the claim on the
-  object's claiming points along with the object's own, because decision 6 ties the two together:
+  point the anchor was taken from along with the object's own, because decision 6 ties those two
+  together — and on that point only, so a second corrected pin of the same object keeps its claim:
   the anchor is claimed only where one point carries it, so releasing half would leave the next run
   writing the source's coordinate to `experiences.location` while the pin stays where the curator
   put it — the disagreement this ADR exists to close, produced by the pair of endpoints that close
-  it. Nothing releases a point's `name`, and nothing releases a claim on a treasure at all: those
-  writers only add. So a curator who corrects a component's name and later learns the source was
+  it. That way back is narrower than it sounds, and the case it misses is the common one: decision 6
+  writes the object-level claim **only** where the object holds exactly one reader-visible point, so
+  a corrected component of a serial site never raises the card that releases it. Nothing releases a
+  point's `name` either, and nothing releases a claim on a treasure at all: those writers only add. So a curator who corrects a component's name and later learns the source was
   right cannot hand it back — re-editing to the source's own spelling leaves the claim standing, and
   that row goes on reporting a conflict every run, in the admin sync report where the queue's
   object-level `conflicts` card never looks. Accepted for now on the same ground as the missing

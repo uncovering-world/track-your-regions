@@ -20,12 +20,16 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
+vi.mock('./publishContents.js', () => ({ placeAfterRelease: vi.fn(async () => []) }));
+
 import { pool } from '../../db/index.js';
+import { placeAfterRelease } from './publishContents.js';
 import { acceptSourceValue } from './acceptSourceController.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
+const mockedPlace = placeAfterRelease as unknown as ReturnType<typeof vi.fn>;
 
 function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
@@ -33,6 +37,9 @@ function makeRes() {
 
 const CURATOR = { id: 7, role: 'curator' as const };
 const ADMIN = { id: 1, role: 'admin' as const };
+
+/** The object's one claiming point, as the release statement returns it. */
+const POINT = { id: 41, external_ref: '1739-005', name: 'Wing B' };
 
 /**
  * Captures what the transaction ran, so assertions can read the statements.
@@ -44,7 +51,9 @@ const ADMIN = { id: 1, role: 'admin' as const };
  * here — the lifecycle axes belong to the verdict handlers and their mock, in
  * `lifecycleController.test.ts`.
  */
-function makeClient(claimed?: string[], proposal?: unknown[], claimingPoints: number[] = []) {
+type ClaimingPoint = { id: number; external_ref: string | null; name: string | null };
+
+function makeClient(claimed?: string[], proposal?: unknown[], claimingPoints: ClaimingPoint[] = []) {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   return {
     queries,
@@ -53,8 +62,12 @@ function makeClient(claimed?: string[], proposal?: unknown[], claimingPoints: nu
         queries.push({ sql, params: params ?? [] });
         if (sql.includes('experience_sync_changes')) return { rows: proposal ?? [] };
         // Before the lock read: the release of the points' own claim is also an
-        // UPDATE, and it is the one that names `experience_locations`.
-        if (sql.includes('UPDATE experience_locations')) return { rows: claimingPoints.map(id => ({ id })) };
+        // UPDATE, and it is the one that names `experience_locations`. The
+        // coordinate write that follows it names the same table and returns
+        // nothing, which is what the `RETURNING` tells them apart by.
+        if (sql.includes('UPDATE experience_locations')) {
+          return { rows: sql.includes('RETURNING') ? claimingPoints : [] };
+        }
         if (sql.includes('FOR UPDATE')) return { rows: [{ curated_fields: claimed ?? [] }] };
         return { rows: [] };
       }),
@@ -67,6 +80,8 @@ describe('acceptSourceValue', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedConnect.mockReset();
+    mockedPlace.mockReset();
+    mockedPlace.mockResolvedValue([]);
   });
 
   it('refuses a curator whose scope does not reach the experience', async () => {
@@ -273,8 +288,9 @@ describe('acceptSourceValue', () => {
     const PROPOSAL = [{
       sync_log_id: 9,
       changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
+      contents: null,
     }];
-    const { client, queries } = makeClient(['location'], PROPOSAL, [41]);
+    const { client, queries } = makeClient(['location'], PROPOSAL, [POINT]);
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -290,7 +306,11 @@ describe('acceptSourceValue', () => {
     );
 
     const release = queries.find(q => q.sql.includes('UPDATE experience_locations'));
-    expect(release?.sql).toContain("curated_fields - 'location'");
+    expect(release?.sql).toContain("el.curated_fields - 'location'");
+    // The pin the anchor was taken from, not every claiming point: a second
+    // corrected point of the same object never raised this card, and undoing its
+    // correction in answer to one about the anchor is destroying curated work.
+    expect(release?.sql).toContain('el.location = e.location');
     expect(release?.params).toEqual([5]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       released: ['location'], releasedPoints: [41],
@@ -299,10 +319,111 @@ describe('acceptSourceValue', () => {
     expect(String(log?.params[3])).toContain('"releasedPoints":[41]');
   });
 
+  it('puts a released pin back on the coordinate that run offered for it', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    const PROPOSAL = [{
+      sync_log_id: 9,
+      changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
+      // What the run offered for the point itself, kept out by the claim and
+      // recorded per point — the object's own coordinate is a different number
+      // on a serial site, so it is not the one to write here.
+      contents: {
+        locations: {
+          changed: [{
+            item: { name: 'Wing B', ref: '1739-005' },
+            fields: [{ field: 'location', old: { lon: 10, lat: 50 }, new: { lon: 10.5, lat: 50.2 } }],
+          }],
+        },
+      },
+    }];
+    const { client, queries } = makeClient(['location'], PROPOSAL, [POINT]);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    // Releasing the claim alone hands the pin back by retiring it: the pairing
+    // needs the reference *and* ten metres, so a 2 km correction stops being a
+    // candidate the moment nothing claims it, and the run withdraws the row and
+    // inserts the source's point beside it — a `withdrawn` card for a component
+    // nobody delisted, and the visit record left on a pin no reader is shown.
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    const write = queries.find(q => q.sql.includes('ST_MakePoint'));
+    expect(write?.params).toEqual([41, 10.5, 50.2]);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ movedPoints: [41] }));
+    // A pin that moved is a region fact, and its `auto` rows were computed from
+    // where it used to be.
+    expect(mockedPlace).toHaveBeenCalledWith(5, expect.stringContaining('accepted the source coordinate'));
+  });
+
+  it('finds the entry for a referenceless point the same run renamed', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    const PROPOSAL = [{
+      sync_log_id: 9,
+      changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
+      // The record names an item by what it was called *before* the run, so on a
+      // row the same run renamed, the stored label is the entry's `name.new` and
+      // never its `item.name`. Matching one of them only would skip the write on
+      // the one referenceless point in the catalogue — whose `samePointSql`
+      // branch is exact coordinate equality, so the row released without a
+      // coordinate is withdrawn at the next run.
+      contents: {
+        locations: {
+          changed: [{
+            item: { name: 'Camino Francés', ref: null },
+            fields: [
+              { field: 'name', old: 'Camino Francés', new: 'Routes of Santiago' },
+              { field: 'location', old: { lon: 1, lat: 2 }, new: { lon: 3.5, lat: 42.9 } },
+            ],
+          }],
+        },
+      },
+    }];
+    const point = { id: 55, external_ref: null, name: 'Routes of Santiago' };
+    const { client, queries } = makeClient(['location'], PROPOSAL, [point]);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    const write = queries.find(q => q.sql.includes('ST_MakePoint'));
+    expect(write?.params).toEqual([55, 3.5, 42.9]);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ movedPoints: [55] }));
+  });
+
+  it('writes no coordinate where that run offered none for the row', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    const PROPOSAL = [{
+      sync_log_id: 9,
+      changed_fields: [{ field: 'location', new: { lat: 1, lon: 2 }, curatedConflict: true }],
+      contents: { locations: { changed: [{ item: { name: 'Other', ref: '1739-009' }, fields: [] }] } },
+    }];
+    const { client, queries } = makeClient(['location'], PROPOSAL, [POINT]);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    // The entry names another component. Writing its coordinate onto this row
+    // would put the pin somewhere no source ever placed it, and a row the source
+    // already matches within the tolerance pairs without any help.
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['location'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    expect(queries.some(q => q.sql.includes('ST_MakePoint'))).toBe(false);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ releasedPoints: [41], movedPoints: [] }));
+    expect(mockedPlace).not.toHaveBeenCalled();
+  });
+
   it('leaves the points alone when the accepted field is not the coordinate', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
-    const { client, queries } = makeClient(['name', 'location'], PROPOSAL, [41]);
+    const { client, queries } = makeClient(['name', 'location'], PROPOSAL, [POINT]);
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 

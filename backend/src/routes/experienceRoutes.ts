@@ -163,10 +163,16 @@ router.patch('/locations/:locationId/edit', authenticatedLimiter, validate(locat
 // Post-commit work that is expensive regardless of who sends it, which is the
 // criterion in `docs/tech/rate-limiting.md` § 5.
 router.post('/:id/admission', authenticatedLimiter, validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(experienceAdmissionBodySchema), setExperienceAdmission);
-router.post('/:id/accept-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(acceptSourceBodySchema), acceptSourceValue);
-// The other answer to the same card. Unrate-limited beside its opposite and for the
-// same reason: it writes one small row inside one transaction and schedules no
-// post-commit work at all — it does not even touch the experience.
+// Joined the limited set when accepting a coordinate stopped being a pure claim
+// release: it puts the object's pin back on the source's coordinate, and a pin
+// that moves is a region fact, so this too reaches `placeAfterRelease` after its
+// client is released — the same post-commit sweep as the three routes above.
+router.post('/:id/accept-source', authenticatedLimiter, validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(acceptSourceBodySchema), acceptSourceValue);
+// The other answer to the same card, and exempt on the criterion rather than by
+// resemblance to its opposite: that one stopped being exempt when accepting a
+// coordinate started moving a pin. This one writes one small row inside one
+// transaction and schedules no post-commit work at all — it does not even touch
+// the experience, because the value it refuses had already won every run.
 router.post('/:id/decline-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(declineSourceBodySchema), declineSourceValue);
 
 // Release everything one source is holding (ADR-0025 decision 5, and

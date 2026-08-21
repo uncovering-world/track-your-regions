@@ -439,10 +439,29 @@ describe('ReviewQueue', () => {
     });
     renderQueue();
 
-    expect(await screen.findByText(/lands at the next sync/)).toBeInTheDocument();
+    // The coordinate says it in its own words, because it is the one field that
+    // sits across the line: the pin moves on the spot, the object's position
+    // waits for the run. Told before the click, where the decision is made.
+    expect(await screen.findByText(/the point moves back to the source’s coordinate now/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/object’s own position follows at the next sync/)).toBeInTheDocument();
     // Still answerable: releasing the claim is what takes it off the queue,
     // and it is the only thing that does — editing only ever adds a claim
     expect(screen.getByRole('button', { name: /take all of the source/i })).toBeEnabled();
+  });
+
+  it('keeps the plain deferred note for a field with no pin to move', async () => {
+    mockedFetch.mockResolvedValue({
+      missing: [],
+      conflicts: [{ ...CONFLICT, proposed: [
+        { field: 'tags', old: ['a'], new: ['b'], acceptable: false },
+      ] }],
+      limit: 25,
+      offset: 0,
+    });
+    renderQueue();
+
+    expect(await screen.findByText(/lands at the next sync/)).toBeInTheDocument();
   });
 
   it('sends every conflicted field, not only the ones written on the spot', async () => {
@@ -563,6 +582,31 @@ describe('ReviewQueue', () => {
     expect(await screen.findByText(/name applied now/)).toBeInTheDocument();
     expect(screen.getByText(/coordinates at the next sync/)).toBeInTheDocument();
     expect(screen.getByText(/from run 41/)).toBeInTheDocument();
+  });
+
+  it('says that accepting the coordinate handed the pin back too', async () => {
+    mockedAccept.mockResolvedValue({
+      experienceId: 88,
+      applied: [],
+      released: ['location'],
+      releasedPoints: [41],
+      movedPoints: [41],
+      placementFailed: true,
+      placementFailedWorldViews: [{ id: 4, name: 'Wikivoyage' }],
+      fromSyncLogId: 41,
+    });
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [], conflicts: [CONFLICT], limit: 25, offset: 0 })
+      .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
+    renderQueue();
+
+    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
+
+    // The card asked about the object and never mentioned a point, while the
+    // answer moves the pin a curator placed by hand — and leaves its regions
+    // behind when placement fails, which only an admin can fix.
+    expect(await screen.findByText(/its point moved back to the source's coordinate/)).toBeInTheDocument();
+    expect(screen.getByText(/Wikivoyage \(world view 4\)/)).toBeInTheDocument();
   });
 
   describe('a row this category refused', () => {
