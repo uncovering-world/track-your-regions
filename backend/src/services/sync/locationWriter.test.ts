@@ -19,6 +19,7 @@ vi.mock('../../db/index.js', () => ({
 import { pool } from '../../db/index.js';
 import { writeExperienceLocations, dedupeByIdentity } from './locationWriter.js';
 import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -167,6 +168,24 @@ describe('writeExperienceLocations', () => {
     // Only where the source offers nothing: a name it does offer is a conflict the
     // keeping arm has to compute, which is what ADR-0029 decision 5 keeps it for.
     expect(String(sql)).toMatch(/el\.name IS NOT DISTINCT FROM i\.name/);
+  });
+
+  it('locks the object before parking a single ordinal, as every curator write does', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '0', matched: '0', ids: null }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    // This transaction reaches `experiences` twice — the insert's FK key-shares
+    // the row, and `retirePassAfterNewContent` at the end really updates it — so a
+    // run that parked a point first and then asked for the object, against a
+    // curator holding the object and waiting for that point, is a cycle Postgres
+    // resolves by failing one of them.
+    const object = statements.findIndex(s => s.includes(`FROM experiences WHERE id = $1 ${OBJECT_LOCK}`));
+    const park = statements.findIndex(s => /SET ordinal = -ordinal/.test(s));
+    expect(object).toBeGreaterThan(-1);
+    expect(park).toBeGreaterThan(object);
   });
 
   it('takes back a curator’s delisting when the source offers a withdrawn point again', async () => {

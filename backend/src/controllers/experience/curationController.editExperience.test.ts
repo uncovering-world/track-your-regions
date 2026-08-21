@@ -20,6 +20,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { editExperience } from './curationController.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 
 const EXPERIENCE_ID = 281;
 const CATEGORY_ID = 1;
@@ -51,7 +52,7 @@ function queueQueries(opts: {
   // The claim the transaction re-reads under its lock, which is what the
   // union is built from — not the unlocked read that answers 404 and scope.
   mockClientQuery.mockImplementation(async (sql: string) =>
-    (typeof sql === 'string' && sql.includes('FOR UPDATE'))
+    (typeof sql === 'string' && sql.includes(OBJECT_LOCK))
       ? { rows: [{ curated_fields: opts.lockedCurated ?? [], name: opts.lockedName ?? 'Old name' }] }
       : { rows: [] });
   mockPoolQuery.mockResolvedValueOnce({
@@ -227,7 +228,7 @@ describe('editExperience claim locking', () => {
     await done;
 
     const order = mockClientQuery.mock.calls.map(([sql]) => String(sql));
-    const lock = order.findIndex(sql => sql.includes('FOR UPDATE'));
+    const lock = order.findIndex(sql => sql.includes(OBJECT_LOCK));
     const update = order.findIndex(sql => sql.includes('UPDATE experiences'));
     expect(lock).toBeGreaterThan(-1);
     expect(update).toBeGreaterThan(lock);

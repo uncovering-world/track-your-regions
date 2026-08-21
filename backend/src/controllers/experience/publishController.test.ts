@@ -37,6 +37,7 @@ import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
 import { publishExperience } from './publishController.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import { publishExperienceBodySchema } from '../../types/index.js';
 import { computeChangeSet, type ExperienceSnapshot } from '../../services/sync/changeSet.js';
 
@@ -119,7 +120,7 @@ function makeClient(opts: {
         if (sql.includes('experience_sync_changes') && sql.includes('SELECT changed_fields')) {
           return opts.proposal === undefined ? { rows: [] } : { rows: [{ changed_fields: opts.proposal }] };
         }
-        if (sql.includes('FOR UPDATE')) {
+        if (sql.includes(OBJECT_LOCK)) {
           return {
             rows: opts.row === null ? [] : [{
               // Every column the locked read carries in production. `admission`
@@ -448,7 +449,7 @@ describe('publishing a held proposal', () => {
     // Resolved before the lock, a run landing in between would have its values
     // written under the run id the curator sent.
     expect(queries[0].sql).toBe('BEGIN');
-    const locked = queries.findIndex(q => q.sql.includes('FOR UPDATE'));
+    const locked = queries.findIndex(q => q.sql.includes(OBJECT_LOCK));
     const lookup = queries.findIndex(q => q.sql.includes('experience_sync_changes'));
     const write = queries.findIndex(q => q.sql.includes('UPDATE experiences'));
     expect(locked).toBeLessThan(lookup);
@@ -938,7 +939,7 @@ describe('refusing to publish', () => {
     // stops skipping, the pointer reads as "nothing held", and `published_at`
     // stops being stamped. Proved by mutation: removing `admission` from the
     // list killed no test until this one existed.
-    const locked = only(queries, 'FOR UPDATE');
+    const locked = only(queries, OBJECT_LOCK);
     for (const column of [
       'curation_state', 'curated_fields', 'metadata', 'admission', 'pending_change_sync_log_id',
     ]) {

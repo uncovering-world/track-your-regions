@@ -15,6 +15,7 @@
 
 import { Response } from 'express';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { offeredLocationSql, publishedContentSql } from './experienceLifecycle.js';
@@ -67,14 +68,14 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
   try {
     await client.query('BEGIN');
 
-    // **The object first, then the point — the order `accept-source` takes them
-    // in.** That endpoint locks `experiences` and then releases `location` on
-    // this object's points; this one writes the point and then the anchor. Taken
-    // in opposite orders the two deadlock on an object two curators answer at
-    // once, and Postgres resolves that by failing one of them with a 500. Held
-    // for every edit rather than only the ones that reach the anchor, so that
-    // the order is a property of the file instead of a property of one branch.
-    await client.query(`SELECT id FROM experiences WHERE id = $1 FOR UPDATE`, [experienceId]);
+    // **The object first, then the point** — `OBJECT_LOCK`'s rule (`db/locks.ts`),
+    // which every transaction that locks a row of an object's contents follows,
+    // the sync writer included since it opens with the same lock. The rule is
+    // what makes the mode argument hold: taken in two orders, two writers on one
+    // object close a cycle, and Postgres resolves a cycle by failing one of them
+    // with a 500. Held for every edit rather than only the ones that reach the
+    // anchor, so the order is a property of the file instead of one branch's.
+    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
 
     // Everything this transaction depends on, re-read under the lock: the claim
     // set it is about to add to, and the values the trail reports as `old`.
