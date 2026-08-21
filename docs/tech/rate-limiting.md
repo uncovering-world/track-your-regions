@@ -69,7 +69,7 @@ what goes stale when a route is added to the row below (it has already happened 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source` |
 
 A re-match deletes every `region_members` row for a world view and then spends
 20–130s re-resolving them. The endpoint already answers 409 while one is running,
@@ -101,11 +101,15 @@ placement, on the identical `withdrawalsReleased > 0` trigger. An earlier versio
 of this section said the four siblings had "no post-commit work"; that was true of
 three of them and the criterion decides per branch, not per endpoint.
 
-The ones that remain — `/:id/state`, `/:id/accept-source`, `/:id/decline-source`,
-`/review/queue` — stay exempt, checked rather than assumed: each ends at `res.json`
-with nothing after its `client.release()`. `/:id/decline-source` is the plainest of
-them: it writes one small row per field and does not touch the experience at all,
-because the value it refuses had already won every run.
+The ones that remain — `/:id/state`, `/:id/decline-source`, `/review/queue` — stay
+exempt, checked rather than assumed: each ends at `res.json` with nothing after its
+`client.release()`. `/:id/decline-source` is the plainest of them: it writes one
+small row per field and does not touch the experience at all, because the value it
+refuses had already won every run. `/:id/accept-source` was on this list until
+accepting a coordinate started moving a pin; it is in the table above now, for the
+reason given below it. That is the second time a route has left this list by
+growing post-commit work, which is why the list is re-read against the handlers
+rather than carried forward.
 
 `POST /api/experiences/locations/:locationId/state` — a curator's verdict on one
 point of an object (ADR-0026) — carries `authenticatedLimiter`, and it is worth
@@ -130,6 +134,15 @@ different region, so every correction that touches the coordinate calls
 `placeAfterRelease` after committing, which is the same post-commit placement
 `/:id/publish` is limited for. A rename is the one shape that places nothing — a label
 is not a place — and it is not worth a second limiter to separate them.
+
+`POST /api/experiences/:id/accept-source` joined them when accepting a coordinate
+stopped being a pure claim release. Handing the object's `location` back also hands
+back the pin that carried it, and the pin is put on the coordinate that run offered
+rather than left for the next one to retire the row — so a place moves, and a place
+that moves has to be re-placed after committing, exactly as the correction above does.
+The other five fields it accepts place nothing, and the endpoint asks the criterion per
+request the way `/state` does; the limiter is on the route either way, because a route
+is what a limiter can be attached to.
 
 `PUT /api/admin/sync/categories/:categoryId/curation-gate` — the switch that holds
 a source's content for review — stays exempt too, and CodeQL flags it, so the

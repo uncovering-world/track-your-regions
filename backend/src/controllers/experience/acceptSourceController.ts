@@ -14,6 +14,8 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor } from '../../services/sync/changeSet.js';
 import { columnFor } from './acceptableFields.js';
+import type { ContentItemChange } from '../../services/sync/types.js';
+import { placeAfterRelease } from './publishContents.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 
 /**
@@ -63,7 +65,15 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     res.status(409).json(outcome.refusal);
     return;
   }
-  const { applied, released, releasedPoints, fromSyncLogId } = outcome;
+  const { applied, released, releasedPoints, movedPoints, fromSyncLogId } = outcome;
+
+  // A pin put back on the source's coordinate is a region fact, exactly as a
+  // curator moving it is: the point's `auto` rows were computed from where it
+  // used to be. After the commit, like every other placement here — a placement
+  // inside the transaction would hold the row lock across a world-view sweep.
+  const placementFailedWorldViews = movedPoints.length > 0
+    ? await placeAfterRelease(experienceId, 'A curator accepted the source coordinate for experience %d')
+    : [];
 
   res.json({
     experienceId,
@@ -73,8 +83,15 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     released,
     // The points whose own claim on `location` went with the object's, named
     // rather than counted: a curator who corrected a pin is entitled to know
-    // which pin they just handed back.
+    // which pin they just handed back — and which of them went back onto the
+    // source's coordinate on the spot.
     releasedPoints,
+    movedPoints,
+    ...(placementFailedWorldViews.length > 0 && {
+      placementFailed: true,
+      placementFailedWorldViews: placementFailedWorldViews.map(
+        f => ({ id: f.worldViewId, name: f.worldViewName })),
+    }),
     fromSyncLogId,
   });
 }
@@ -82,13 +99,19 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
 /**
  * Write the accepted values and release the curator's claim on those fields.
  *
- * Releasing the claim is the point, and it is the whole of the answer for
- * fields this endpoint cannot write. A curator who lets the source have the
- * coordinates cannot type them in through `editExperience`, which does not
- * offer location at all. So releasing is what lets the *next run* apply the
- * source's value through the ordinary upsert, and it is the only thing that
- * takes such an item off the queue. For the five writable fields the value is
- * additionally applied now, which is the only difference between the two cases.
+ * Releasing the claim is the point, and for most fields it is the whole of the
+ * answer: releasing is what lets the *next run* apply the source's value through
+ * the ordinary upsert, and it is the only thing that takes such an item off the
+ * queue. Three cases, not two:
+ *
+ * - the five writable fields — released and written on `experiences` now;
+ * - `tags`, `metadata` and the country arrays — released, and the next run
+ *   applies them, since they need more than an assignment;
+ * - `location` — released on the object *and* on the points whose claim went
+ *   with it, and written onto those points on the spot, one table down. The
+ *   object's own coordinate still waits for the run; the pin does not, because
+ *   leaving it would have that run retire the row rather than rewrite it. See
+ *   the two blocks below, which is where that argument lives.
  *
  * Everything the decision rests on is read inside the transaction that writes,
  * under the row lock: `curated_fields`, and the proposal itself. Resolving the
@@ -110,6 +133,7 @@ async function applyProposedFields(
   applied: string[];
   released: string[];
   releasedPoints: number[];
+  movedPoints: number[];
   fromSyncLogId: number;
   refusal?: { error: string; fromSyncLogId?: number };
 }> {
@@ -128,7 +152,7 @@ async function applyProposedFields(
     // guard below would refuse a newer proposal while letting a retracted one
     // through.
     const proposal = await client.query(`
-      SELECT ch.sync_log_id, ch.changed_fields
+      SELECT ch.sync_log_id, ch.changed_fields, ch.contents
       FROM experience_sync_changes ch
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
       JOIN experiences e ON e.id = ch.experience_id
@@ -151,7 +175,7 @@ async function applyProposedFields(
     const refuse = async (error: string, fromSyncLogId?: number) => {
       unusable = await rollbackQuietly(client);
       return {
-        applied: [], released: [], releasedPoints: [],
+        applied: [], released: [], releasedPoints: [], movedPoints: [],
         fromSyncLogId: fromSyncLogId ?? 0, refusal: { error, fromSyncLogId },
       };
     };
@@ -211,19 +235,96 @@ async function applyProposedFields(
     // would be unanswerable, which is the "button that lies" `acceptableFields`
     // exists to prevent.
     //
-    // Written for every claiming point rather than the one the count implies, so
-    // that a second path to the object-level claim cannot quietly leave a point
-    // behind; today the guard in `editLocation` makes those the same row.
+    // **The pin the anchor was taken from, and only that one.** `editLocation`
+    // claims `location` on every point it moves, and on the *object* only where
+    // that point is its one visible place — so the two are the same row when the
+    // object's claim is written and need not stay so. An object that gains a
+    // second published point and has it corrected carries three claims, and a
+    // release written as "every claiming point" would undo that second correction
+    // in answer to a card about the object's anchor, which nobody asked and
+    // nothing would explain.
+    //
+    // Identified by the coordinate rather than by re-deriving the guard: the
+    // anchor and its point were written from the same input in one transaction,
+    // and nothing can move either while both are claimed, so they are still equal
+    // — and a point somewhere else is, by that fact, not the one this card is
+    // about. Where the object holds one visible point this is that point, which
+    // is the case the rule was written for.
     const pointRelease = open.some(p => claimKeyFor(p.field) === 'location')
       ? await client.query(
-        `UPDATE experience_locations
-            SET curated_fields = curated_fields - 'location'
-          WHERE experience_id = $1 AND curated_fields ? 'location'
-          RETURNING id`,
+        `UPDATE experience_locations el
+            -- Qualified on the right-hand side: both tables carry the column, and
+            -- unqualified it is ambiguous rather than wrong-but-working.
+            SET curated_fields = el.curated_fields - 'location'
+           FROM experiences e
+          WHERE e.id = $1 AND el.experience_id = e.id
+            AND el.curated_fields ? 'location'
+            AND el.location = e.location
+          RETURNING el.id, el.external_ref, el.name`,
         [experienceId],
       )
-      : { rows: [] as Array<{ id: number }> };
+      : { rows: [] as Array<{ id: number; external_ref: string | null; name: string | null }> };
     const releasedPoints = pointRelease.rows.map(r => r.id);
+
+    // **And the coordinate goes onto the row, here, rather than at the next run.**
+    //
+    // Releasing alone would hand the pin back by *retiring* it. The pairing that
+    // rewrites a point needs the reference **and** ten metres (ADR-0027), and the
+    // claim is what let a corrected row pair at any distance at all. Take the
+    // claim off a 2 km correction and the row stops being a candidate: the run
+    // withdraws it and inserts the source's point beside it, which raises a
+    // `withdrawn` card for a component nobody delisted — the question the curator
+    // has just answered — and leaves `user_visited_locations` and every manual
+    // region row on a pin no reader is shown. That is the cost ADR-0027 accepts
+    // for a source that genuinely moved something, and nobody has accepted it for
+    // an acceptance.
+    //
+    // The value is the source's own, not a guess and not the object's: the run
+    // being answered kept the stored coordinate *because* of the claim and
+    // recorded what it offered instead, per point, in its contents record. So the
+    // coordinate written here is the one that run proposed for this row, which is
+    // the same guarantee `expectedSyncLogId` gives the object's fields. The
+    // object's own coordinate is not written — `location` is not an acceptable
+    // field — and follows at the next run through the ordinary upsert, now that
+    // nothing claims it.
+    //
+    // Where the run recorded no offer for a row, nothing is written: there is no
+    // source value to write, and a row whose stored coordinate the source already
+    // matches within the tolerance pairs anyway.
+    const offered = (
+      proposal.rows[0].contents as { locations?: { changed?: ContentItemChange[] } } | null
+    )?.locations?.changed ?? [];
+    const movedPoints: number[] = [];
+    for (const row of pointRelease.rows) {
+      // Named, never identified by id — that is what the contents record stores
+      // (see the column comment), so the row is found by the source's own handle
+      // on it, and by name only where there is no handle.
+      //
+      // Both names, on that fallback. The record names an item by what it was
+      // called *before* the run — `keptChanges` stores `old_name`, so the entry
+      // stays legible after the row it names is renamed — while `RETURNING` gives
+      // back the label as it stands, which the same run's keep arm may already
+      // have rewritten. Comparing only one of them misses exactly the row this
+      // whole path exists for: the catalogue's one referenceless point, whose
+      // `samePointSql` branch is exact coordinate equality, so a released row
+      // that got no coordinate here is withdrawn at the next run.
+      const entry = offered.find((c) => {
+        if (c.item.ref !== null) return c.item.ref === row.external_ref;
+        if (row.external_ref !== null) return false;
+        const renamedTo = c.fields.find(f => f.field === 'name')?.new;
+        return c.item.name === row.name || renamedTo === row.name;
+      });
+      const point = entry?.fields.find(f => f.field === 'location')?.new as
+        { lon: number; lat: number } | undefined;
+      if (!point) continue;
+      await client.query(
+        `UPDATE experience_locations
+            SET location = ST_SetSRID(ST_MakePoint($2, $3), 4326)
+          WHERE id = $1`,
+        [row.id, point.lon, point.lat],
+      );
+      movedPoints.push(row.id);
+    }
 
     // Any standing refusal of these fields goes with the claim it belonged to. A
     // refusal answers "the source may not have this field *while I hold it*", and
@@ -246,14 +347,18 @@ async function applyProposedFields(
         appliesAtNextSync: columnFor(p.field) === null || undefined,
       })),
       // Only when there were any, so the trail of every other accepted field
-      // reads as it did before this rule existed.
+      // reads as it did before this rule existed. Both lists, because they are
+      // different facts: a released point kept its coordinate, a moved one was
+      // put back on the source's, and only the second is a placement event.
       releasedPoints: releasedPoints.length > 0 ? releasedPoints : undefined,
+      movedPoints: movedPoints.length > 0 ? movedPoints : undefined,
     })]);
     await client.query('COMMIT');
     return {
       applied: writable.map(p => p.field),
       released: open.filter(p => columnFor(p.field) === null).map(p => p.field),
       releasedPoints,
+      movedPoints,
       fromSyncLogId,
     };
   } catch (error) {

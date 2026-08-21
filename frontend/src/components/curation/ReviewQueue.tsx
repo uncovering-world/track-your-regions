@@ -35,6 +35,7 @@ import {
 } from '../../api/experiences';
 import { publishOutcomeFor } from './WaitingToPublish';
 import { formatDateTime } from '../../utils/dateFormat';
+import { worldViewList } from '../../utils/worldViewList';
 import { ItemHeader, messageFor } from './queueCard';
 import { FieldDiff } from './FieldDiff';
 import { fieldLabel } from './fieldLabel';
@@ -250,9 +251,12 @@ export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
  */
 export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const proposed = item.proposed ?? [];
-  // A moved coordinate or a metadata key cannot be written here, but accepting
-  // still releases the claim, and the next run applies it. Editing would not:
-  // every other path that touches `curated_fields` only ever adds to it.
+  // A moved coordinate or a metadata key is not written to the object here, but
+  // accepting still releases the claim, and the next run applies it. Editing
+  // would not: every other path that touches `curated_fields` only ever adds to
+  // it. The coordinate is half an exception — the object's position waits, while
+  // the pin that carried the correction moves back to the source's coordinate on
+  // the spot, which is what the note under that diff says.
   const deferred = proposed.some(f => !f.acceptable);
   const accept = useMutation({
     mutationFn: (fields: string[]) => acceptSourceValue(item.id, fields, item.sync_log_id ?? 0),
@@ -341,7 +345,8 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
           {/* What the two buttons differ in, and the difference is not symmetric.
               Accepting hands the field back and writes the source's value — now for
               the five fields this endpoint can write, at the next sync for the rest,
-              which is what the button labels distinguish. Refusing writes nothing at
+              which is what the button labels distinguish. The coordinate sits across
+              that line: the object's own position waits for the run, its pin does not. Refusing writes nothing at
               all, so readers stay on the curator's version; what it changes is the
               asking, and only for the text being refused — the sentence that stops a
               curator wondering whether "keep mine" hides a source that later changes
@@ -380,7 +385,13 @@ export function refusalOutcomeFor(
 /** What landed, and from which run — neither survives the refetch otherwise. */
 export function outcomeFor(
   item: { name: string },
-  data?: { applied: string[]; released: string[]; fromSyncLogId: number },
+  data?: {
+    applied: string[]; released: string[];
+    releasedPoints?: number[]; movedPoints?: number[];
+    placementFailed?: boolean;
+    placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
+    fromSyncLogId: number;
+  },
 ): string | undefined {
   if (!data) return undefined;
   const parts: string[] = [];
@@ -391,8 +402,35 @@ export function outcomeFor(
   if (data.released.length > 0) {
     parts.push(`${data.released.map(fieldLabel).join(', ')} at the next sync`);
   }
-  if (parts.length === 0) return undefined;
-  return `${item.name}: ${parts.join('; ')} — from run ${data.fromSyncLogId}.`;
+  // Accepting the coordinate does something to a row the card never mentioned:
+  // it hands back the pin a curator moved, and puts it on the source's
+  // coordinate where the run offered one. A side effect on a place is not a
+  // side effect to leave a curator to discover on the map.
+  const pins = data.movedPoints?.length ?? 0;
+  const handed = data.releasedPoints?.length ?? 0;
+  // Either array, not only the second: the server derives one from the other
+  // today, and a line that goes silent about a pin that moved is the failure this
+  // sentence exists to prevent — not something to make conditional on a
+  // relationship between two response fields holding.
+  if (pins > 0 || handed > 0) {
+    const counted = pins > 0 ? pins : handed;
+    const subject = counted === 1 ? 'its point' : `${counted} points`;
+    parts.push(pins > 0
+      ? `${subject} moved back to the source's coordinate`
+      : `${subject} handed back to the source`);
+  }
+  // Through `worldViewList`, like every other placement report, and in the same
+  // sentence rather than a second one: a pin that moved and whose region rows
+  // did not follow is a place on the map and absent from the country's list, and
+  // the curator cannot re-assign anything themselves. Read before the empty check
+  // below, because a failure nobody is told about is worse than a line with
+  // nothing else in it.
+  const stale = data.placementFailed
+    ? ` The point moved, but its regions could not be recomputed in ${worldViewList(data.placementFailedWorldViews)}`
+      + ' — they are out of date until an admin re-runs placement.'
+    : '';
+  if (parts.length === 0) return stale === '' ? undefined : `${item.name}:${stale}`;
+  return `${item.name}: ${parts.join('; ')} — from run ${data.fromSyncLogId}.${stale}`;
 }
 
 /**

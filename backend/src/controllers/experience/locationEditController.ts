@@ -81,11 +81,13 @@ export async function editLocation(req: AuthenticatedRequest, res: Response): Pr
     //
     // The set is re-read under the lock because one path does take a key back
     // off `experience_locations.curated_fields`: `accept-source` releases
-    // `location` on this object's claiming points together with the object's own
-    // claim, since the two are one fact and releasing half of it re-opens #550.
-    // A release landing between an unlocked read and this write would be undone
-    // by the rewrite below, re-claiming a coordinate whose curator had just
-    // handed it back. Everything else that writes these columns only adds.
+    // `location` on the point the object's anchor was taken from, together with
+    // the object's own claim, since those two are one fact and releasing half of
+    // it re-opens #550. That point can be this one — it is whichever pin sits on
+    // the object's coordinate — so a release landing between an unlocked read and
+    // this write would be undone by the rewrite below, re-claiming a coordinate
+    // whose curator had just handed it back. Everything else that writes these
+    // columns only adds.
     const locked = await client.query(
       `SELECT name, curated_fields,
               ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon
