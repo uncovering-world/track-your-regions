@@ -48,6 +48,7 @@ import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContex
 
 import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
 import { EmptyState } from '../shared/EmptyState';
+import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { locationLabel } from '../../utils/locationLabel';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
@@ -106,6 +107,11 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
   const { viewedIds, markViewed, unmarkViewed } = useViewedTreasures(experience.id);
 
   const imageUrl = extractImageUrl(experience.image_url);
+  // Keyed by the URL, so opening the next object does not inherit the last
+  // one's failure — the panel is reused rather than remounted.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const imageFailed = !!imageUrl && failedUrl === imageUrl;
+  const setImageFailed = () => setFailedUrl(imageUrl);
   const colors = CATEGORY_COLORS[experience.category || ''];
   const catStyle = colors ? { bg: colors.bg, text: colors.text } : { bg: '#E0E7FF', text: '#4F46E5' };
 
@@ -166,23 +172,28 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
       {/* Scrollable content */}
       <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
         {/* Image */}
-        {imageUrl && (
-          <Box
-            component="img"
-            src={toThumbnailUrl(imageUrl, 960)}
-            alt={experience.name}
-            sx={{
-              width: '100%',
-              maxHeight: 300,
-              objectFit: 'contain',
-              borderRadius: 1.5,
-              mb: 2,
-              bgcolor: 'grey.100',
-            }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
+        {imageUrl && !imageFailed && (
+          <Box sx={{ mb: 2 }}>
+            <Box
+              component="img"
+              src={toThumbnailUrl(imageUrl, 960)}
+              alt={experience.name}
+              sx={{
+                width: '100%',
+                maxHeight: 300,
+                objectFit: 'contain',
+                borderRadius: 1.5,
+                bgcolor: 'grey.100',
+              }}
+              // State rather than hiding the element, because the credit has to
+              // go with it: a line naming a photographer under a picture the
+              // reader cannot see credits nothing and explains less.
+              onError={setImageFailed}
+            />
+            {/* Under the picture rather than over it: the credit belongs to the
+                photograph, and this is the largest the catalogue ever shows one. */}
+            <ImageCreditLine credit={experience.image_credit} />
+          </Box>
         )}
 
         {/* Category + country chips */}

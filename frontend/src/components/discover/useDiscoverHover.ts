@@ -23,6 +23,7 @@ import type { Experience } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { clusterRadiusFor, SOURCE_ID, HOVER_SOURCE_ID } from './discoverMapLayers';
 import { pointInView } from '../../utils/viewBounds';
+import type { ImageCredit } from '../../api/experiences';
 
 /**
  * Rings for the places of an object that the map is currently drawing as pins.
@@ -84,7 +85,10 @@ export interface DiscoverHoverWiring {
 /** What the view renders with, and what it hands the map's own listeners. */
 export interface DiscoverHover {
   hoveredExperienceId: number | null;
-  hoverPreview: { name: string; imageUrl: string | null; categoryName: string } | null;
+  hoverPreview: {
+    name: string; imageUrl: string | null; categoryName: string;
+    imageCredit: ImageCredit | null;
+  } | null;
   cardRefsMap: React.MutableRefObject<Map<number, HTMLDivElement>>;
   listContainerRef: React.RefObject<HTMLDivElement | null>;
   mapHoverCallbackRef: React.MutableRefObject<(id: number | null) => void>;
@@ -105,6 +109,8 @@ export function useDiscoverHover({
   const [hoveredExperienceId, setHoveredExperienceId] = useState<number | null>(null);
   const [hoverPreview, setHoverPreview] = useState<{
     name: string; imageUrl: string | null; categoryName: string;
+    /** Whose photograph it is: this overlay shows one, so it has to say. */
+    imageCredit: ImageCredit | null;
   } | null>(null);
   const hoverSourceRef = useRef<'list' | 'map' | null>(null);
   const isAutoScrollingRef = useRef(false);
@@ -129,6 +135,7 @@ export function useDiscoverHover({
           name: exp.name,
           imageUrl: rawImg ? toThumbnailUrl(rawImg, 250) : null,
           categoryName: exp.category_name || '',
+          imageCredit: exp.image_credit ?? null,
         });
       }
     } else {

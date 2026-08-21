@@ -138,6 +138,10 @@ export async function listExperiences(req: Request, res: Response): Promise<void
       e.country_codes,
       e.country_names,
       e.image_url,
+      -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
+      -- Commons, and the licences most of them carry have one condition, which
+      -- is that whoever took them is named wherever they are shown.
+      e.metadata->'imageCredit' as image_credit,
       e.metadata->>'dateInscribed' as date_inscribed,
       e.metadata->>'inDanger' as in_danger,
       ${readerPositionSql('e')},

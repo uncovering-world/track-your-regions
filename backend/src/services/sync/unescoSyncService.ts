@@ -15,6 +15,12 @@ import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.j
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import { readFixtureRecords } from './fixtureSource.js';
 import { fetchUnescoRecords } from './unescoApi.js';
+import {
+  creditToWrite,
+  readStoredCredits,
+  type ImageCredit,
+  type StoredCredit,
+} from './imageCredit.js';
 import { sparqlQuery, SPARQL_WAIT_BUDGET_MS } from './wikidataUtils.js';
 import { WaitBudget } from './sourceRetry.js';
 import type {
@@ -26,6 +32,15 @@ import type {
 } from './types.js';
 
 const UNESCO_CATEGORY_ID = 1; // Seeded in migration
+
+/**
+ * What each site's row already says about who took its picture.
+ *
+ * Read once per run, like the other two collectors: `creditToWrite` needs it to
+ * know whether a curator owns the photograph, and asking per site would be 1272
+ * queries inside the write loop.
+ */
+let storedCredits = new Map<string, StoredCredit>();
 
 /**
  * Parse UNESCO components_list field to extract individual locations
@@ -276,6 +291,30 @@ function longitudeDelta(a: number, b: number): number {
 }
 
 /**
+ * Whose photograph this is, from the two fields the export carries beside it.
+ *
+ * `author` is the photographer, `copyright` the holder, and they are often the
+ * same string — "Museum Mors" is both for the Limfjord fossils. Kept apart
+ * anyway: where they differ, both are part of the credit, and collapsing them
+ * here would decide that for a reader we cannot see.
+ */
+export function imageCreditOf(record: UnescoApiRecord, imageUrl: string | null): ImageCredit | null {
+  // No picture, no credit. The portal fills the author on records whose image
+  // is missing, and storing a photographer's name against no photograph leaves
+  // it waiting to be printed under whichever one somebody adds later.
+  if (!imageUrl) return null;
+  const author = record.main_image_author?.trim() || null;
+  const license = record.main_image_copyright?.trim() || null;
+  if (!author && !license) return null;
+  return {
+    author,
+    license: license ? `© ${license}` : null,
+    licenseUrl: null,
+    detailsUrl: `https://whc.unesco.org/en/list/${record.id_no}`,
+  };
+}
+
+/**
  * Transform UNESCO API record to our internal format
  */
 function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): ProcessedExperience | null {
@@ -285,6 +324,8 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
     console.log(`[UNESCO Sync] Skipping ${record.id_no} - no coordinates`);
     return null;
   }
+
+  const imageUrl = extractRemoteImageUrl(record.main_image_url);
 
   const metadata: Record<string, unknown> = {
     dateInscribed: record.date_inscribed,
@@ -296,6 +337,21 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
     transboundary: isSet(record.transboundary),
     website: `https://whc.unesco.org/en/list/${record.id_no}`,
     wikipediaUrl: wikipediaUrl || null,
+    // The picture is served from whc.unesco.org, so the line under it has to
+    // say whose it is. The site's own page for the property is where the terms
+    // are, which is the same URL as `website` — named separately because a
+    // credit that pointed at our own page would be a credit to nobody.
+    //
+    // Through `creditToWrite` like the other two collectors, and for the reason
+    // this source makes sharpest: it carries 1260 of the catalogue's 1590
+    // photographs, and a curator replacing one of them with a picture of their
+    // own would otherwise have UNESCO's photographer printed underneath it at
+    // the next run — one person's name under another person's photograph.
+    ...creditToWrite(
+      imageCreditOf(record, imageUrl) ?? undefined,
+      storedCredits.get(String(record.id_no)),
+      imageUrl,
+    ),
   };
 
   return {
@@ -311,7 +367,7 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
     lon: point.lon,
     countryCodes: parseDelimitedField(record.iso_codes),
     countryNames: parseDelimitedField(record.states_names),
-    imageUrl: extractRemoteImageUrl(record.main_image_url),
+    imageUrl,
     metadata,
     locations,
   };
@@ -422,6 +478,10 @@ export function syncUnescoSites(
       if (fixture !== null) {
         console.log(`[UNESCO Sync] Using fixture source: ${fixture.length} records`);
         wikipediaUrls = new Map();
+        // Read for the fixture too: the delisting tests run against real rows,
+        // and a stale map from a previous run would decide who owns their
+        // pictures.
+        storedCredits = await readStoredCredits(UNESCO_CATEGORY_ID);
         return { items: fixture, fetchedCount: fixture.length };
       }
 
@@ -429,6 +489,7 @@ export function syncUnescoSites(
       // it: a portal having a bad day and a query service having a bad day are
       // the same fifteen minutes as far as the person watching is concerned.
       const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
+      storedCredits = await readStoredCredits(UNESCO_CATEGORY_ID);
       const records = await fetchUnescoRecords(progress, budget);
 
       // Fetch Wikipedia URLs from Wikidata (fails open -- sync continues without them)

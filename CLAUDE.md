@@ -74,7 +74,9 @@ Two triggers fire on region geometry changes: `update_region_metadata()` (area, 
 `focus_bbox` = [west, south, east, north]; `west > east` means antimeridian crossing. MapLibre's `cameraForBounds()` does NOT handle this — use pre-computed `anchorPoint` as center. Zoom computed via shifted bbox (`east + 360`).
 
 ### Experience Images
-UNESCO/landmarks: download locally to `/data/images`. Museums/artworks: remote Wikimedia URLs. Thumbnails via `Special:FilePath/X.jpg?width=N` (CDN-cached sizes: 120, 250, 330, 500, 960, 1280px). Wikimedia requires proper User-Agent, 429+Retry-After handling, 1.5s delay between downloads.
+**Every image is a remote URL today** — measured on the live database: 0 of 1272 UNESCO rows and 0 of 332 Wikidata-sourced rows are stored locally, despite `/data/images` machinery existing for it. UNESCO images are served from `whc.unesco.org/document/<id>`; museums, landmarks and artworks from Wikimedia Commons. Thumbnails via `Special:FilePath/X.jpg?width=N` (CDN-cached sizes: 120, 250, 330, 500, 960, 1280px). Wikimedia requires proper User-Agent, 429+Retry-After handling, 1.5s delay between downloads.
+
+**A hosted picture carries a credit.** Most Commons files are CC BY / CC BY-SA, whose one condition is naming the author wherever the work is shown; UNESCO's syndication terms ask for the same. Credits are captured at sync time into `metadata.imageCredit` (`imageCredit.ts`) and rendered by `ImageCreditLine`. Anything new that displays an experience picture shows the credit with it.
 
 ### Shared Components
 Reusable UI components live in `frontend/src/components/shared/`, shared utilities in `frontend/src/utils/`. Always check these before writing inline equivalents. See `docs/tech/shared-frontend-patterns.md` for the full inventory with usage guidance.

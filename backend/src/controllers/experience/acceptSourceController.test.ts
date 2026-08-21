@@ -54,7 +54,13 @@ const POINT = { id: 41, external_ref: '1739-005', name: 'Wing B' };
  */
 type ClaimingPoint = { id: number; external_ref: string | null; name: string | null };
 
-function makeClient(claimed?: string[], proposal?: unknown[], claimingPoints: ClaimingPoint[] = []) {
+function makeClient(
+  claimed?: string[],
+  proposal?: unknown[],
+  claimingPoints: ClaimingPoint[] = [],
+  /** What `metadata->'imageCredit'` holds: a credit, an explicit null, or nothing. */
+  imageCredit: unknown = null,
+) {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   return {
     queries,
@@ -69,7 +75,9 @@ function makeClient(claimed?: string[], proposal?: unknown[], claimingPoints: Cl
         if (sql.includes('UPDATE experience_locations')) {
           return { rows: sql.includes('RETURNING') ? claimingPoints : [] };
         }
-        if (sql.includes(OBJECT_LOCK)) return { rows: [{ curated_fields: claimed ?? [] }] };
+        if (sql.includes(OBJECT_LOCK)) {
+          return { rows: [{ curated_fields: claimed ?? [], image_credit: imageCredit }] };
+        }
         return { rows: [] };
       }),
       release: vi.fn(),
@@ -438,6 +446,79 @@ describe('acceptSourceValue', () => {
 
     expect(queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ releasedPoints: [] }));
+  });
+
+  it('releases the credit with the picture, and drops the stored one', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    const PROPOSAL = [{
+      sync_log_id: 9,
+      changed_fields: [{ field: 'imageUrl', new: 'https://example.org/p.jpg', curatedConflict: true }],
+    }];
+    const { client, queries } = makeClient(
+      ['image_url', 'metadata.imageCredit'], PROPOSAL, [], { author: 'Jane Doe' },
+    );
+    mockedConnect.mockResolvedValue(client);
+
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['imageUrl'], expectedSyncLogId: 9 } } as never,
+      makeRes() as never,
+    );
+
+    // Both halves of one decision. Releasing the picture and keeping the credit
+    // would leave the source's photograph credited to the curator's
+    // photographer — and the per-key re-apply would put that name back on every
+    // later run, so nothing could correct it.
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.sql).toContain("metadata = COALESCE(metadata, '{}'::jsonb) - 'imageCredit'");
+    const claims = String((update.params as unknown[]).find(
+      (v) => typeof v === 'string' && v.startsWith('['),
+    ));
+    expect(claims).not.toContain('metadata.imageCredit');
+    expect(claims).not.toContain('image_url');
+  });
+
+  it('does not report a credit that was never there', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    const PROPOSAL = [{
+      sync_log_id: 9,
+      changed_fields: [{ field: 'imageUrl', new: 'https://example.org/p.jpg', curatedConflict: true }],
+    }];
+    // What `editExperience` stores for a picture that is not on Commons: the
+    // key present and null, the claim deliberately withheld.
+    const { client, queries } = makeClient(['image_url'], PROPOSAL, [], null);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['imageUrl'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    // The drop still happens — the key goes either way — but telling a curator
+    // that a credit was removed when nothing they could see existed is a
+    // sentence about nothing.
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.sql).toContain("- 'imageCredit'");
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ releasedCredit: false }));
+  });
+
+  it('keeps a credit claim when the picture is not what was accepted', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: 1 }] });
+    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'X', curatedConflict: true }] }];
+    const { client, queries } = makeClient(['name', 'metadata.imageCredit'], PROPOSAL);
+    mockedConnect.mockResolvedValue(client);
+
+    await acceptSourceValue(
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['name'], expectedSyncLogId: 9 } } as never,
+      makeRes() as never,
+    );
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.sql).not.toContain("- 'imageCredit'");
+    const claims = String((update.params as unknown[]).find(
+      (v) => typeof v === 'string' && v.startsWith('['),
+    ));
+    expect(claims).toContain('metadata.imageCredit');
   });
 
   it('reads the claim it is about to rewrite under the same lock', async () => {

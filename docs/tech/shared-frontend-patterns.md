@@ -8,6 +8,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 |-----------|---------|---------|
 | `LoadingSpinner` | Centered `CircularProgress`. Props: `size?`, `padding?` | `<LoadingSpinner />` |
 | `EmptyState` | "No items" message. Props: `message`, `padding?` | `<EmptyState message="No results." />` |
+| `ImageCreditLine` | Who took the picture above it, and under what licence. Props: `credit` (`experience.image_credit`). Renders nothing when the source named nobody, and links only `http(s)` URLs | `<ImageCreditLine credit={experience.image_credit} />` |
 | `CurationDialog` | Edit + reject/unreject an experience, and take a lifecycle verdict back (`former` / `lost`) — the review queue lists only open questions, so an answered one has left it and this is where it stays reachable | Used in Map and Discover modes |
 | `AddExperienceDialog` | Search+assign or create new experience | Used in Map and Discover modes |
 | `LocationPicker` | Interactive location selector on a map | Used in experience editing |
@@ -42,6 +43,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | Loading spinner | `<LoadingSpinner />` | Inline `<Box sx={{display:'flex', justifyContent:'center'}}><CircularProgress /></Box>` |
 | Preload a card's picture | `preloadCardImage(exp.image_url)` | `new Image()` on `extractImageUrl(exp.image_url)` — that is the *original*, which no surface renders (every one uses a `toThumbnailUrl()` size), and it neither remembers failures nor knows that four urls in five answer 403 |
 | Empty state message | `<EmptyState message="..." />` | Inline `<Typography color="text.secondary">No items.</Typography>` |
+| A credit under a picture | `<ImageCreditLine credit={exp.image_credit} />` | Nothing at all — which is what every surface did until 2026-08-22, while showing ~1590 photographs whose licences require the author to be named |
 | Visited green color | `VISITED_GREEN` constant | Hardcoded `'#22c55e'` or `'#10B981'` |
 | Partial/amber color | `PARTIAL_AMBER` constant | Hardcoded `'#F59E0B'` |
 | Invalidate experience caches | `invalidateExperiences(qc, opts)` | Manual chain of `queryClient.invalidateQueries(...)` |

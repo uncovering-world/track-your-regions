@@ -38,6 +38,7 @@ import {
   type VisitedStatus,
 } from '../../api/experiences';
 import { experienceContentsQuery, experienceDetailsQuery } from '../../api/experienceCardQueries';
+import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ArtworksList } from './ArtworksList';
 import { VisitedStatusButton } from './VisitedStatusButton';
 import { computeVisitedStatus } from './utils';
@@ -251,6 +252,13 @@ function ExperienceExpandedDetailsComponent({
             bgcolor: 'grey.100',
           }}
         />
+      )}
+      {/* Only with the picture: this row renders before the bytes arrive, and a
+          credit under nothing would be a line about an image the reader cannot see. */}
+      {thumbnailUrl && imageReady && (
+        <Box sx={{ mt: -1.5, mb: 1.5 }}>
+          <ImageCreditLine credit={experience.image_credit} />
+        </Box>
       )}
 
       {/* Category & Country chips */}

@@ -584,6 +584,29 @@ describe('ReviewQueue', () => {
     expect(screen.getByText(/from run 41/)).toBeInTheDocument();
   });
 
+  it('says that accepting the picture dropped its credit', async () => {
+    mockedAccept.mockResolvedValue({
+      experienceId: 88,
+      applied: ['imageUrl'],
+      released: [],
+      releasedPoints: [],
+      movedPoints: [],
+      releasedCredit: true,
+      fromSyncLogId: 41,
+    });
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [], conflicts: [CONFLICT], limit: 25, offset: 0 })
+      .mockResolvedValue({ missing: [], conflicts: [], limit: 25, offset: 0 });
+    renderQueue();
+
+    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
+
+    // The value deleted is the curator's own — the edit that claimed the picture
+    // wrote the credit in the same statement — and the card said nothing about a
+    // photographer, so without this line the name simply stops being there.
+    expect(await screen.findByText(/picture credit dropped with it/)).toBeInTheDocument();
+  });
+
   it('says that accepting the coordinate handed the pin back too', async () => {
     mockedAccept.mockResolvedValue({
       experienceId: 88,

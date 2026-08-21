@@ -36,8 +36,16 @@ import {
   WaitBudget,
   SPARQL_DELAY_MS,
   SPARQL_WAIT_BUDGET_MS,
+  WIKIDATA_USER_AGENT,
   type SparqlBinding,
 } from './wikidataUtils.js';
+import {
+  fetchCommonsCredits,
+  readStoredCredits,
+  creditToWrite,
+  type ImageCredit,
+  type StoredCredit,
+} from './imageCredit.js';
 // Museums use remote Wikimedia URLs, no local image storage
 
 const MUSEUM_CATEGORY_ID = 2;
@@ -138,11 +146,35 @@ async function readPreviousPlacements(): Promise<Record<string, string[]>> {
   return placements;
 }
 
+/**
+ * Credits for this run's venue photographs, keyed by image URL.
+ *
+ * Module state for the same reason the UNESCO run keeps its Wikipedia links that
+ * way: the orchestrator hands `processItem` one museum at a time, and asking
+ * Commons per museum would be 128 requests where three will do.
+ */
+let imageCredits = new Map<string, ImageCredit>();
+
+/** What each museum's row already says about who took its picture, by external id. */
+let storedCredits = new Map<string, StoredCredit>();
+
+/** This run's credit, or the one already stored. The rule lives in `imageCredit.ts`. */
+function creditPatch(externalId: string, imageUrl: string | null): { imageCredit?: ImageCredit | null } {
+  return creditToWrite(
+    imageUrl ? imageCredits.get(imageUrl) : undefined,
+    storedCredits.get(externalId),
+    imageUrl,
+  );
+}
+
+
 async function fetchMuseumItems(
   progress: SyncProgress,
   refreshCache: boolean,
 ): Promise<{ items: CollectedMuseum[]; fetchedCount: number; filtered: FilteredEntity[] }> {
   const previousPlacements = await readPreviousPlacements();
+  imageCredits = new Map();
+  storedCredits = await readStoredCredits(MUSEUM_CATEGORY_ID);
 
   const { items, fetched, filtered } = await collectTier1Museums({
     // The reporting door for the long half: everything in `collectTier1Museums`
@@ -154,6 +186,24 @@ async function fetchMuseumItems(
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');
+    },
+    pause: () => delay(SPARQL_DELAY_MS),
+  });
+
+  // Whose photographs these are. Asked after the collection rather than during
+  // it: only the admitted venues are worth crediting, which is 128 files in
+  // three requests instead of one per candidate the pool ever named.
+  progress.statusMessage = 'Asking Commons who took the pictures...';
+  const creditBudget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
+  imageCredits = await fetchCommonsCredits(items.map((m) => m.details?.imageUrl), {
+    userAgent: WIKIDATA_USER_AGENT,
+    // Its own patience: the collection's is spent by the time this runs.
+    budget: creditBudget,
+    isCancelled: () => progress.cancel,
+    onWait: (wait) => {
+      progress.statusMessage =
+        `Commons is not answering (${wait.reason}) — retrying in `
+        + `${Math.round(wait.backoffMs / 1000)}s, attempt ${wait.attempt}`;
     },
     pause: () => delay(SPARQL_DELAY_MS),
   });
@@ -190,6 +240,11 @@ async function upsertMuseumExperience(
     totalArtworkSitelinks: totalSitelinks,
     // The reason this row exists, nameable: the most famous iconic work it holds.
     admittedFor: museum.admittedFor ?? null,
+    // The picture is served from Commons and taken by somebody, usually under a
+    // licence whose one condition is that they are named. What goes here is what
+    // this run fetched, or the row's own credit where the picture has not
+    // changed — never the one from a different photograph. See `creditToWrite`.
+    ...creditPatch(museum.qid, details.imageUrl),
   };
 
   // Store remote Wikimedia URL directly (thumbnailing handled by frontend)
@@ -526,6 +581,106 @@ async function fetchMuseumImages(qids: string[]): Promise<Map<string, string>> {
  * Fix missing museum images - re-download images for museums that have a
  * Wikidata image URL but no local image file.
  */
+/**
+ * Write every picture this action found, and report what happened to each row.
+ *
+ * Three outcomes rather than two, because they have different causes and only
+ * one of them is a problem: `fixed` is a picture written, `failed` is a museum
+ * Wikidata offered none for, and `kept` is a row whose picture a curator owns.
+ * Folding the last into either of the others would blame the source for a
+ * person's decision, or claim a write that never happened.
+ */
+async function writeFixedImages(
+  museums: { id: number; external_id: string; name: string }[],
+  images: Map<string, string>,
+  credits: Map<string, ImageCredit>,
+  progress: SyncProgress,
+): Promise<{ fixed: number; failed: number; kept: number }> {
+  let fixed = 0;
+  let failed = 0;
+  let kept = 0;
+
+  for (let i = 0; i < museums.length; i++) {
+    if (progress.cancel) throw new Error('Sync cancelled');
+
+    const museum = museums[i];
+    const imageUrl = images.get(museum.external_id);
+    progress.currentItem = museum.name;
+    progress.statusMessage = `Fixing ${i + 1}/${museums.length}: ${museum.name}`;
+    progress.progress = i + 1;
+
+    if (!imageUrl) {
+      failed++;
+      continue;
+    }
+    if (await writeFixedImage(museum.id, imageUrl, credits.get(imageUrl))) fixed++;
+    else kept++;
+  }
+
+  return { fixed, failed, kept };
+}
+
+/**
+ * Who took the pictures this action is about to put on cards.
+ *
+ * Asked before the write loop rather than per row: it is one batch of up to
+ * fifty files per request either way, and a card must never appear with a
+ * photograph and no name — the standing rule is that anything displaying an
+ * experience picture shows the credit with it.
+ */
+async function creditsForFixedImages(
+  imageUrls: string[],
+  progress: SyncProgress,
+): Promise<Map<string, ImageCredit>> {
+  progress.statusMessage = 'Asking Commons who took the pictures...';
+  const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
+  return fetchCommonsCredits(imageUrls, {
+    userAgent: WIKIDATA_USER_AGENT,
+    budget,
+    isCancelled: () => progress.cancel,
+    // Nothing else writes the status between the SPARQL pass and the write
+    // loop, so without this a bad day at Commons is a sentence frozen on the
+    // panel for as long as the budget lasts — the hung-looking run this whole
+    // change set exists to stop showing.
+    onWait: (wait) => { progress.statusMessage = waitMessage('Commons', wait, budget); },
+    pause: () => delay(SPARQL_DELAY_MS),
+  });
+}
+
+/**
+ * Write one museum's picture and its credit, unless a curator owns the picture.
+ *
+ * Answers whether the row was written. Guarded the way the `is_iconic` write is,
+ * and for the same reason: a curator can clear a wrong photograph (`imageUrl: ''`
+ * is an accepted edit), which claims `image_url` and leaves a row this action's
+ * own WHERE selects — so without the clause, the next click puts Wikidata's
+ * picture back over that decision. `COALESCE` because `curated_fields` is
+ * nullable and `NULL ? 'x'` is NULL, which would skip every unclaimed row
+ * rather than write it.
+ *
+ * The credit goes in the same statement, so no moment exists in which the card
+ * shows a photograph nobody is named for — and it is **omitted** rather than
+ * written as `null` where Commons could not answer, because a stored null is
+ * what the next run's catch-all diff reports as a change, for the removal of a
+ * nothing.
+ */
+async function writeFixedImage(
+  experienceId: number,
+  imageUrl: string,
+  credit: ImageCredit | undefined,
+): Promise<boolean> {
+  const written = await pool.query(
+    `UPDATE experiences
+        SET image_url = $1,
+            metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+            updated_at = NOW()
+      WHERE id = $3
+        AND NOT COALESCE(curated_fields ? 'image_url', false)`,
+    [imageUrl, JSON.stringify(credit ? { imageCredit: credit } : {}), experienceId],
+  );
+  return (written.rowCount ?? 0) > 0;
+}
+
 export async function fixMuseumImages(_triggeredBy: number | null): Promise<void> {
   // Check if already running
   const existing = runningSyncs.get(MUSEUM_CATEGORY_ID);
@@ -585,36 +740,16 @@ export async function fixMuseumImages(_triggeredBy: number | null): Promise<void
     progress.statusMessage = 'Fetching image URLs from Wikidata...';
     const images = await fetchMuseumImages(qids);
 
-    let fixed = 0;
-    let failed = 0;
+    const credits = await creditsForFixedImages([...images.values()], progress);
 
-    for (let i = 0; i < museums.length; i++) {
-      if (progress.cancel) throw new Error('Sync cancelled');
-
-      const museum = museums[i];
-      const imageUrl = images.get(museum.external_id);
-      progress.currentItem = museum.name;
-      progress.statusMessage = `Fixing ${i + 1}/${museums.length}: ${museum.name}`;
-      progress.progress = i + 1;
-
-      if (!imageUrl) {
-        failed++;
-        continue;
-      }
-
-      // Store remote Wikimedia URL directly
-      await pool.query(
-        'UPDATE experiences SET image_url = $1, updated_at = NOW() WHERE id = $2',
-        [imageUrl, museum.id]
-      );
-      fixed++;
-    }
+    const { fixed, failed, kept } = await writeFixedImages(museums, images, credits, progress);
 
     progress.status = 'complete';
     progress.created = fixed;
     progress.errors = failed;
-    progress.statusMessage = `Fixed images: ${fixed} updated, ${failed} no image found`;
-    console.log(`[Museum Sync] Fix images complete: ${fixed} updated, ${failed} no image found`);
+    const curated = kept > 0 ? `, ${kept} left as the curator set them` : '';
+    progress.statusMessage = `Fixed images: ${fixed} updated, ${failed} no image found${curated}`;
+    console.log(`[Museum Sync] Fix images complete: ${fixed} updated, ${failed} no image found${curated}`);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     progress.status = progress.cancel ? 'cancelled' : 'failed';

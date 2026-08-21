@@ -12,6 +12,21 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 // Types
 // =============================================================================
 
+/**
+ * The credit line a hosted picture has to carry.
+ *
+ * Every field is optional because the sources fill different ones: UNESCO names
+ * a photographer and a rights holder, Commons a photographer and a licence with
+ * a URL. What is common is that something must be shown.
+ */
+export interface ImageCredit {
+  author: string | null;
+  license: string | null;
+  licenseUrl: string | null;
+  /** The file page or the site's own page for the object: where the full terms are. */
+  detailsUrl: string | null;
+}
+
 export interface Experience {
   id: number;
   external_id: string;
@@ -21,6 +36,13 @@ export interface Experience {
   country_codes: string[];
   country_names: string[];
   image_url: string | null;
+  /**
+   * Whose photograph this is. Sent beside the picture rather than only on the
+   * detail read, because the condition CC BY and CC BY-SA impose is that the
+   * author is named wherever the work is shown — a thumbnail in a list is
+   * showing it.
+   */
+  image_credit?: ImageCredit | null;
   date_inscribed?: string;
   in_danger: boolean;
   longitude: number;
@@ -820,6 +842,12 @@ export async function acceptSourceValue(
    * rewriting it, since the pairing bounds a point's identity by distance.
    */
   movedPoints: number[];
+  /**
+   * Whether accepting the picture also dropped the credit the curator's own edit
+   * wrote for it. A boolean rather than the value: what they need to know is
+   * that the line under their photograph is gone.
+   */
+  releasedCredit?: boolean;
   placementFailed?: boolean;
   placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
   fromSyncLogId: number;

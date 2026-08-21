@@ -128,10 +128,10 @@ Two triggers fire on region geometry changes: `update_region_metadata()` (area, 
 
 ### Experience Images
 
-- UNESCO/landmarks: downloaded locally to `/data/images`
-- Museums/artworks: remote Wikimedia URLs
+- **Every image is a remote URL** — measured on the live database: 0 of 1272 UNESCO rows and 0 of 332 Wikidata-sourced rows are stored locally, despite the `/data/images` machinery existing for it. UNESCO images come from `whc.unesco.org/document/<id>`; museums, landmarks and artworks from Wikimedia Commons
 - Thumbnails: `Special:FilePath/X.jpg?width=N` (120, 250, 330, 500, 960, 1280 px)
 - Wikimedia integration requirements: proper `User-Agent`, handle 429 + `Retry-After`, and keep ~1.5s delay between downloads
+- **A hosted picture carries a credit.** Most Commons files are CC BY / CC BY-SA, whose one condition is naming the author wherever the work is shown; UNESCO's syndication terms ask the same. Credits are captured at sync time into `metadata.imageCredit` (`imageCredit.ts`) and rendered by `ImageCreditLine`. Anything new that displays an experience picture shows the credit with it
 
 ### Shared Components
 
