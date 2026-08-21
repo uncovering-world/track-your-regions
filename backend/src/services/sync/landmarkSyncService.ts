@@ -20,11 +20,39 @@ import {
   SPARQL_MAX_RETRIES,
   SPARQL_WAIT_BUDGET_MS,
   LABEL_LANGS,
+  WIKIDATA_USER_AGENT,
   type SparqlBinding,
 } from './wikidataUtils.js';
+import {
+  fetchCommonsCredits,
+  readStoredCredits,
+  creditToWrite,
+  type ImageCredit,
+  type StoredCredit,
+} from './imageCredit.js';
 
 const LANDMARK_CATEGORY_ID = 3;
 const TARGET_COUNT = 200;
+
+/**
+ * Credits for this run's photographs, keyed by image URL.
+ *
+ * Module state, like the UNESCO run's Wikipedia links: the orchestrator hands
+ * `processItem` one landmark at a time, and asking Commons per landmark would
+ * be 200 requests where four will do.
+ */
+let imageCredits = new Map<string, ImageCredit>();
+/** What each landmark's row already says, so a failed credit pass erases nothing. */
+let storedCredits = new Map<string, StoredCredit>();
+
+/** This run's credit, or the one already stored. The rule lives in `imageCredit.ts`. */
+function creditPatch(externalId: string, imageUrl: string | null): { imageCredit?: ImageCredit | null } {
+  return creditToWrite(
+    imageUrl ? imageCredits.get(imageUrl) : undefined,
+    storedCredits.get(externalId),
+    imageUrl,
+  );
+}
 
 const LOG_PREFIX = '[Landmark Sync]';
 
@@ -213,6 +241,8 @@ async function upsertLandmarkExperience(
   _progress: SyncProgress,
   context: SyncRunContext,
 ): Promise<ProcessItemResult> {
+  const imageUrl = landmark.imageUrl || null;
+
   const metadata = {
     wikidataQid: landmark.qid,
     creator: landmark.creatorLabel,
@@ -221,9 +251,14 @@ async function upsertLandmarkExperience(
     type: landmark.type,
     wikipediaUrl: landmark.articleUrl || null,
     website: landmark.website || null,
+    // `creator` is who made the sculpture; this is who photographed it. Two
+    // different people, and only one of them has ever been named on the card.
+    //
+    // What this run fetched, or the row's own credit where the picture has not
+    // changed. Resent rather than omitted, because the upsert replaces the whole
+    // metadata object — a key left out is a key dropped. See `creditToWrite`.
+    ...creditPatch(landmark.qid, imageUrl),
   };
-
-  const imageUrl = landmark.imageUrl || null;
 
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
     categoryId: LANDMARK_CATEGORY_ID,
@@ -324,8 +359,13 @@ async function fetchLandmarkItems(
   progress: SyncProgress,
   errorDetails: ErrorDetail[],
 ): Promise<{ items: WikidataLandmark[]; fetchedCount: number }> {
-  // One patience for the whole run, spent by whichever of its five queries needs it.
+  // One patience for the five SPARQL queries, spent by whichever of them needs it.
+  // The Commons credit pass below allocates its own, like the museum collector:
+  // by the time it runs this one is spent, and a run that waited out a bad
+  // quarter-hour at Wikidata should still be able to ask who took the pictures.
   const sparql = runSparql(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS));
+  imageCredits = new Map();
+  storedCredits = await readStoredCredits(LANDMARK_CATEGORY_ID);
 
   const sculptures = await tryFetchSource(progress, errorDetails, 'sculptures',
     () => fetchSculptures(progress, sparql));
@@ -344,6 +384,22 @@ async function fetchLandmarkItems(
   console.log(`[Landmark Sync] Processing top ${landmarks.length} landmarks`);
 
   disambiguateDuplicateNames(landmarks);
+
+  // After the cut to TARGET_COUNT, so the credit pass asks about the 200 rows
+  // that will exist rather than the 400 the two queries between them named.
+  progress.statusMessage = 'Asking Commons who took the pictures...';
+  const creditBudget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
+  imageCredits = await fetchCommonsCredits(landmarks.map((l) => l.imageUrl), {
+    userAgent: WIKIDATA_USER_AGENT,
+    budget: creditBudget,
+    isCancelled: () => progress.cancel,
+    onWait: (wait) => {
+      progress.statusMessage =
+        `Commons is not answering (${wait.reason}) — retrying in `
+        + `${Math.round(wait.backoffMs / 1000)}s, attempt ${wait.attempt}`;
+    },
+    pause: () => delay(SPARQL_DELAY_MS),
+  });
 
   return { items: landmarks, fetchedCount: allLandmarks.length };
 }

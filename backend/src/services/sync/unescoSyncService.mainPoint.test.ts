@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveMainPoint, buildUnescoTags } from './unescoSyncService.js';
+import { resolveMainPoint, buildUnescoTags, imageCreditOf } from './unescoSyncService.js';
 import type { UnescoApiRecord, ParsedLocation } from './types.js';
 
 function record(overrides: Partial<UnescoApiRecord> = {}): UnescoApiRecord {
@@ -106,6 +106,28 @@ describe('resolveMainPoint', () => {
     );
 
     expect(point).toEqual({ lat: 10, lon: 20 });
+  });
+});
+
+describe('who took the picture', () => {
+  it('says nothing about a site whose picture the source did not send', () => {
+    // The portal fills the author on records with no image. A credit stored
+    // against no photograph is a name waiting to be printed under whichever
+    // one somebody adds later.
+    expect(imageCreditOf(record({ main_image_author: 'Ko Hon Chiu Vincent' }), null)).toBeNull();
+  });
+
+  it('names the photographer and the rights holder where there is a picture', () => {
+    const credit = imageCreditOf(
+      record({ id_no: '208', main_image_author: 'Museum Mors', main_image_copyright: 'Museum Mors' }),
+      'https://whc.unesco.org/document/119616',
+    );
+
+    expect(credit).toMatchObject({
+      author: 'Museum Mors',
+      license: '© Museum Mors',
+      detailsUrl: 'https://whc.unesco.org/en/list/208',
+    });
   });
 });
 

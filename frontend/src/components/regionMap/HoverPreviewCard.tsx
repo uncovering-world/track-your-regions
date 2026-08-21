@@ -18,6 +18,7 @@ import { Box, Typography, keyframes } from '@mui/material';
 import type { MapRef } from 'react-map-gl/maplibre';
 import { useHoverSelector } from '../../hooks/useHoverContext';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
+import { ImageCreditLine } from '../shared/ImageCreditLine';
 
 /**
  * The card's entrance, defined next to the thing that plays it.
@@ -99,6 +100,10 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
         />
       )}
       <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+        {/* The largest picture the map ever shows, so the licence condition
+            applies here as much as on the detail panel: the author is named
+            wherever the work appears. */}
+        {image && <ImageCreditLine credit={hoverPreview.imageCredit} />}
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
           {hoverPreview.experienceName}
         </Typography>

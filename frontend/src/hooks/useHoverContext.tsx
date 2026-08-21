@@ -22,6 +22,7 @@
  */
 
 import { createContext, useContext, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react';
+import type { ImageCredit } from '../api/experiences';
 
 export interface HoverPreview {
   experienceId: number;
@@ -31,6 +32,8 @@ export interface HoverPreview {
   categoryName: string | null;
   category: string | null;
   imageUrl: string | null;
+  /** Whose photograph it is. Carried with the picture, because the card shows one. */
+  imageCredit: ImageCredit | null;
   longitude: number;
   latitude: number;
 }

@@ -387,7 +387,7 @@ export function outcomeFor(
   item: { name: string },
   data?: {
     applied: string[]; released: string[];
-    releasedPoints?: number[]; movedPoints?: number[];
+    releasedPoints?: number[]; movedPoints?: number[]; releasedCredit?: boolean;
     placementFailed?: boolean;
     placementFailedWorldViews?: Array<{ id: number | null; name: string | null }>;
     fromSyncLogId: number;
@@ -419,6 +419,11 @@ export function outcomeFor(
       ? `${subject} moved back to the source's coordinate`
       : `${subject} handed back to the source`);
   }
+  // The same argument as the pin, one field over: accepting the picture also
+  // deletes the credit the curator's own edit wrote, and the card said nothing
+  // about a photographer. Without this line the name under the picture simply
+  // stops being there.
+  if (data.releasedCredit) parts.push('its picture credit dropped with it');
   // Through `worldViewList`, like every other placement report, and in the same
   // sentence rather than a second one: a pin that moved and whose region rows
   // did not follow is a place on the map and absent from the country's list, and

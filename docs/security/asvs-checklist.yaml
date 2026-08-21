@@ -23,7 +23,7 @@ chapters:
       desc: "URL encoding for dynamically built URLs, safe protocols only"
       level: 1
       status: pass
-      notes: "External URLs use encodeURIComponent(). Curator websiteUrl validated server-side against unsafe schemes (javascript:, data:, vbscript:, blob:). Fixed 2026-02-10"
+      notes: "External URLs use encodeURIComponent(). Curator websiteUrl validated server-side against unsafe schemes (javascript:, data:, vbscript:, blob:). Fixed 2026-02-10. Picture credits from Wikimedia Commons (author, licence, licence URL) are third-party text: the author is reduced to plain text before storage and the licence URL is kept only when it parses as an absolute http(s) URL (imageCredit.ts safeHttpUrl); ImageCreditLine checks again before assigning any href and renders unlinked text otherwise. 2026-08-22"
     V1.2.3:
       desc: "Output encoding for dynamic JavaScript/JSON content"
       level: 1

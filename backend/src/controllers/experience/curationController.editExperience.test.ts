@@ -234,3 +234,107 @@ describe('editExperience claim locking', () => {
     expect(update).toBeGreaterThan(lock);
   });
 });
+
+describe('editExperience and the picture credit', () => {
+  /** The metadata patch of the UPDATE, parsed back out of its parameters. */
+  function metadataPatch(): Record<string, unknown> | undefined {
+    const update = mockClientQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE experiences'),
+    ) as [string, unknown[]] | undefined;
+    expect(update, 'expected an UPDATE').toBeDefined();
+    const patch = (update![1] as unknown[]).find(
+      (v) => typeof v === 'string' && v.startsWith('{') && v.includes('imageCredit'),
+    );
+    return patch ? JSON.parse(String(patch)) : undefined;
+  }
+
+  function editWith(body: Record<string, unknown>) {
+    const res = makeRes();
+    return editExperience(
+      { params: { id: String(EXPERIENCE_ID) }, body, user: ADMIN } as never,
+      res as never,
+    );
+  }
+
+  beforeEach(() => {
+    mockPoolQuery.mockReset();
+    mockClientQuery.mockReset();
+    mockPoolConnect.mockClear();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('offline'); }));
+  });
+
+  it('drops the old credit when the curator replaces the picture', async () => {
+    queueQueries({ lockedCurated: [] });
+
+    // Commons is unreachable in this test, so nothing can be resolved — which
+    // is exactly the case that must not leave the previous photographer's name
+    // under a photograph they did not take.
+    await editWith({ imageUrl: 'https://example.org/a-photo-the-curator-found.jpg' });
+
+    expect(metadataPatch()).toEqual({ imageCredit: null });
+  });
+
+  /** The `curated_fields` array of the UPDATE. */
+  function claims(): string {
+    const update = mockClientQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE experiences'),
+    ) as [string, unknown[]];
+    // The `curated_fields` parameter is the JSON array among them.
+    return String((update[1] as unknown[]).find(
+      (v) => typeof v === 'string' && v.startsWith('['),
+    ));
+  }
+
+  it('does not claim a credit it could not resolve', async () => {
+    queueQueries({ lockedCurated: [] });
+
+    // Commons is unreachable here, so the credit is null. Claiming that would be
+    // permanent — no later run could fill it — and one slow response would leave
+    // a real photograph uncredited for good. The picture itself is still
+    // claimed, and the sync writes no credit for a picture it does not own.
+    await editWith({ imageUrl: 'https://example.org/a-photo-the-curator-found.jpg' });
+
+    expect(claims()).toContain('image_url');
+    expect(claims()).not.toContain('metadata.imageCredit');
+  });
+
+  it('still claims a website the curator cleared', async () => {
+    queueQueries({ lockedCurated: [] });
+
+    // The null filter is about the credit alone. Clearing a website is a
+    // decision, and an unclaimed one would be written straight back by the
+    // next run.
+    await editWith({ websiteUrl: '' });
+
+    expect(claims()).toContain('metadata.website');
+  });
+
+  it('claims the credit when it resolved one', async () => {
+    queueQueries({ lockedCurated: [] });
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => '',
+      json: async () => ({ query: { pages: [{
+        title: 'File:Bruges.jpg',
+        imageinfo: [{ extmetadata: { Artist: { value: 'Jane Doe' } } }],
+      }] } }),
+    })));
+
+    await editWith({
+      imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Bruges.jpg',
+    });
+
+    expect(claims()).toContain('metadata.imageCredit');
+    expect(metadataPatch()?.imageCredit).toMatchObject({ author: 'Jane Doe' });
+  });
+
+  it('leaves the credit alone when the edit is not about the picture', async () => {
+    queueQueries({ lockedCurated: [] });
+
+    await editWith({ name: 'New name' });
+
+    expect(metadataPatch()).toBeUndefined();
+  });
+});

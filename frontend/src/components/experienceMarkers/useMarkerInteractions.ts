@@ -179,6 +179,7 @@ export function useMarkerInteractions({
               categoryName: marker.experience.category_name ?? null,
               category: marker.experience.category ?? null,
               imageUrl: marker.experience.image_url,
+              imageCredit: marker.experience.image_credit ?? null,
               longitude: marker.longitude,
               latitude: marker.latitude,
             });
@@ -268,6 +269,7 @@ export function useMarkerInteractions({
                 categoryName: exp.category_name ?? null,
                 category: exp.category ?? null,
                 imageUrl: exp.image_url,
+                imageCredit: exp.image_credit ?? null,
                 longitude: coords[0],
                 latitude: coords[1],
               });

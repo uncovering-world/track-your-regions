@@ -30,6 +30,7 @@ import { useNewBadgeImpressions } from '../../hooks/useNewBadgeImpressions';
 import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
 import { CurationDialog } from '../shared/CurationDialog';
 import { AddExperienceDialog } from '../shared/AddExperienceDialog';
+import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
 import { SOURCE_ID, HIGHLIGHT_SOURCE_ID } from './discoverMapLayers';
@@ -618,6 +619,8 @@ export function DiscoverExperienceView({
               />
             )}
             <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+              {/* Wherever the work appears, including here. */}
+              {hoverPreview.imageUrl && <ImageCreditLine credit={hoverPreview.imageCredit} />}
               <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
                 {hoverPreview.name}
               </Typography>

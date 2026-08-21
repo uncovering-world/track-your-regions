@@ -13,7 +13,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { claimKeyFor } from '../../services/sync/changeSet.js';
+import { claimKeyFor, METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
 import { columnFor } from './acceptableFields.js';
 import type { ContentItemChange } from '../../services/sync/types.js';
 import { placeAfterRelease } from './publishContents.js';
@@ -66,7 +66,9 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     res.status(409).json(outcome.refusal);
     return;
   }
-  const { applied, released, releasedPoints, movedPoints, fromSyncLogId } = outcome;
+  const {
+    applied, released, releasedPoints, movedPoints, releasedCredit, fromSyncLogId,
+  } = outcome;
 
   // A pin put back on the source's coordinate is a region fact, exactly as a
   // curator moving it is: the point's `auto` rows were computed from where it
@@ -88,6 +90,10 @@ export async function acceptSourceValue(req: AuthenticatedRequest, res: Response
     // source's coordinate on the spot.
     releasedPoints,
     movedPoints,
+    // The credit that went with the picture. A boolean rather than the value:
+    // what a curator needs to know is that the line under their photograph is
+    // gone, and the value itself is in the `edited` row that wrote it.
+    releasedCredit,
     ...(placementFailedWorldViews.length > 0 && {
       placementFailed: true,
       placementFailedWorldViews: placementFailedWorldViews.map(
@@ -135,6 +141,8 @@ async function applyProposedFields(
   released: string[];
   releasedPoints: number[];
   movedPoints: number[];
+  /** Whether accepting the picture also dropped the curator's credit for it. */
+  releasedCredit: boolean;
   fromSyncLogId: number;
   refusal?: { error: string; fromSyncLogId?: number };
 }> {
@@ -143,10 +151,15 @@ async function applyProposedFields(
   try {
     await client.query('BEGIN');
     const locked = await client.query(
-      `SELECT curated_fields FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
+      // The stored credit comes back with the claims, and under the same lock:
+      // whether one is *there* decides what the curator is told was removed, and
+      // reading it separately would be reading it at another moment.
+      `SELECT curated_fields, metadata->'imageCredit' AS image_credit
+         FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
     );
     const claimed: string[] = locked.rows[0]?.curated_fields ?? [];
+    const hadCredit = locked.rows[0]?.image_credit != null;
 
     // Same predicate as the queue, withdrawal check included: a conflict a
     // later run stopped proposing must not be writable here either, or the
@@ -176,7 +189,7 @@ async function applyProposedFields(
     const refuse = async (error: string, fromSyncLogId?: number) => {
       unusable = await rollbackQuietly(client);
       return {
-        applied: [], released: [], releasedPoints: [], movedPoints: [],
+        applied: [], released: [], releasedPoints: [], movedPoints: [], releasedCredit: false,
         fromSyncLogId: fromSyncLogId ?? 0, refusal: { error, fromSyncLogId },
       };
     };
@@ -205,11 +218,39 @@ async function applyProposedFields(
     const writable = open.filter(p => columnFor(p.field) !== null);
     const assignments = writable.map((p, i) => `${columnFor(p.field)} = $${i + 2}`);
     const values = writable.map(p => p.new);
-    const remaining = claimed.filter(k => !open.some(p => claimKeyFor(p.field) === k));
+    let remaining = claimed.filter(k => !open.some(p => claimKeyFor(p.field) === k));
+
+    // **A picture's credit goes with the picture.**
+    //
+    // The same shape as the coordinate below, and for the same reason: the two
+    // are written in one transaction by `editExperience` and mean one thing —
+    // "this photograph is mine, and this is who took it". Releasing only
+    // `image_url` leaves `metadata.imageCredit` claimed and still naming the
+    // curator's photographer, and the per-key re-apply in `syncUtils` then puts
+    // that name back over every later run's — so the card ends up showing the
+    // source's photograph credited to somebody who did not take it, permanently,
+    // which is the one thing this feature promises never to do.
+    //
+    // The stored key is dropped as well as the claim: the run that follows has
+    // to be free to write the new picture's credit, and a key left behind with
+    // the old value would be re-applied before it could.
+    const acceptedImage = open.some(p => claimKeyFor(p.field) === 'image_url');
+    // The deletion is unconditional; the *report* is not. `editExperience`
+    // writes `metadata.imageCredit` beside every picture change and writes
+    // `null` whenever the credit could not be resolved — a picture that is not
+    // on Commons, or a lookup that timed out — so accepting the source there
+    // would otherwise tell a curator that something was dropped when nothing
+    // they could see ever existed.
+    const releasedCredit = acceptedImage && hadCredit;
+    let creditDrop = '';
+    if (acceptedImage) {
+      remaining = remaining.filter(k => k !== `${METADATA_CLAIM_PREFIX}imageCredit`);
+      creditDrop = "\n           metadata = COALESCE(metadata, '{}'::jsonb) - 'imageCredit',";
+    }
 
     await client.query(
       `UPDATE experiences
-       SET ${assignments.map(a => `${a},`).join('\n           ')}
+       SET ${assignments.map(a => `${a},`).join('\n           ')}${creditDrop}
            curated_fields = $${writable.length + 2}::jsonb,
            updated_at = NOW()
        WHERE id = $1`,
@@ -353,6 +394,13 @@ async function applyProposedFields(
       // put back on the source's, and only the second is a placement event.
       releasedPoints: releasedPoints.length > 0 ? releasedPoints : undefined,
       movedPoints: movedPoints.length > 0 ? movedPoints : undefined,
+      // The credit deleted with the picture, on the same footing as the pin and
+      // for the same reason: the value dropped is always the curator's own —
+      // `editExperience` claims `image_url` only when it wrote the picture, and
+      // writes the credit in that same statement — and the card they answered
+      // said nothing about a photographer. Without this, the line under the
+      // picture disappears with no trace anywhere of what it said.
+      releasedCredit: releasedCredit || undefined,
     })]);
     await client.query('COMMIT');
     return {
@@ -360,6 +408,7 @@ async function applyProposedFields(
       released: open.filter(p => columnFor(p.field) === null).map(p => p.field),
       releasedPoints,
       movedPoints,
+      releasedCredit,
       fromSyncLogId,
     };
   } catch (error) {

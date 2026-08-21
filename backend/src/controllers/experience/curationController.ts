@@ -19,6 +19,8 @@ import {
   CURATOR_UNRESTRICTED_SCOPE_EXISTS,
 } from '../../middleware/auth.js';
 import { METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
+import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
+import { WIKIDATA_USER_AGENT } from '../../services/sync/wikidataUtils.js';
 
 const UNSAFE_URL_SCHEMES = /^(javascript|data|vbscript|blob):/i;
 
@@ -306,6 +308,17 @@ interface EditPayload {
   wikipediaUrl: string | undefined;
   hasWebsiteUpdate: boolean;
   hasWikipediaUpdate: boolean;
+  /**
+   * Whose picture the *new* one is, resolved before the write.
+   *
+   * `undefined` when the edit does not touch the image at all; `null` when it
+   * does and nobody could be named. Both matter: a credit belongs to one
+   * photograph, so an edit that replaces the photograph must replace the credit
+   * with it. Left alone, the card would go on naming the person who took the
+   * picture the curator just removed — worse than naming nobody, because it is
+   * a false claim about a real person.
+   */
+  imageCredit?: ImageCredit | null;
 }
 
 const EDIT_FIELD_MAP: Record<string, string> = {
@@ -350,12 +363,30 @@ function validateEditPayload(payload: EditPayload): string | null {
   return null;
 }
 
+/**
+ * The metadata keys this edit writes, or null where it writes none.
+ *
+ * Every key here is also claimed by the caller, from these same names: a value a
+ * curator put in metadata and a run that may overwrite it are the two halves of
+ * one decision, and they went out of step once already — the credit for a
+ * picture the curator replaced.
+ */
+function metadataPatchOf(payload: EditPayload): Record<string, unknown> | null {
+  const patch: Record<string, unknown> = {};
+  if (payload.hasWebsiteUpdate) patch.website = payload.websiteUrl || null;
+  if (payload.hasWikipediaUpdate) patch.wikipediaUrl = payload.wikipediaUrl || null;
+  // Written in the same statement as the image itself, so no moment exists in
+  // which the row holds one photograph and another photographer's name.
+  if (payload.imageCredit !== undefined) patch.imageCredit = payload.imageCredit;
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
 function buildUpdateQuery(
   payload: EditPayload,
   existingCurated: string[],
   experienceId: number,
 ): { sql: string; values: unknown[]; newCurated: string[] } {
-  const { updates, hasWebsiteUpdate, hasWikipediaUpdate, websiteUrl, wikipediaUrl } = payload;
+  const { updates } = payload;
   const setClauses: string[] = [];
   const values: unknown[] = [];
   let paramIdx = 1;
@@ -370,18 +401,26 @@ function buildUpdateQuery(
     paramIdx++;
   }
 
-  if (hasWebsiteUpdate || hasWikipediaUpdate) {
-    const metadataPatch: Record<string, string | null> = {};
-    if (hasWebsiteUpdate) metadataPatch.website = websiteUrl || null;
-    if (hasWikipediaUpdate) metadataPatch.wikipediaUrl = wikipediaUrl || null;
+  const patch = metadataPatchOf(payload);
+  if (patch) {
     setClauses.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${paramIdx}::jsonb`);
-    values.push(JSON.stringify(metadataPatch));
+    values.push(JSON.stringify(patch));
     paramIdx++;
   }
 
-  const curatedFieldNames = updates.map(u => u.column);
-  if (hasWebsiteUpdate) curatedFieldNames.push(`${METADATA_CLAIM_PREFIX}website`);
-  if (hasWikipediaUpdate) curatedFieldNames.push(`${METADATA_CLAIM_PREFIX}wikipediaUrl`);
+  const curatedFieldNames = [
+    ...updates.map(u => u.column),
+    // `imageCredit` alone is claimed only when it holds a value: a claimed
+    // `null` would be permanent, so one Commons lookup that timed out would
+    // leave a real photograph uncredited for good — and nothing overwrites the
+    // gap meanwhile, because a run writes no credit for a picture it does not
+    // own. The other two are the opposite: **clearing** a website or a Wikipedia
+    // link is a decision, and leaving it unclaimed would have the next run write
+    // the source's value straight back over it.
+    ...Object.entries(patch ?? {})
+      .filter(([key, value]) => key !== 'imageCredit' || (value !== null && value !== undefined))
+      .map(([key]) => `${METADATA_CLAIM_PREFIX}${key}`),
+  ];
   const newCurated = [...new Set([...existingCurated, ...curatedFieldNames])];
   setClauses.push(`curated_fields = $${paramIdx}`);
   values.push(JSON.stringify(newCurated));
@@ -396,6 +435,16 @@ function buildUpdateQuery(
   };
 }
 
+/**
+ * What the audit row says this edit changed.
+ *
+ * Every metadata key the write touches is named here, off the same patch the
+ * write is built from rather than a second hand-kept list. The credit is why
+ * that matters: an edit that replaces a picture also permanently claims
+ * `metadata.imageCredit`, so a log naming only `image_url` would hand back a
+ * claim whose provenance the trail cannot explain — and the photographer whose
+ * name was replaced would be unrecoverable from it.
+ */
 function buildEditAuditDetails(
   payload: EditPayload,
   existing: Record<string, unknown>,
@@ -405,16 +454,10 @@ function buildEditAuditDetails(
     details[upd.column] = { old: existing[upd.column], new: upd.value ?? null };
   }
   const existingMetadata = existing.metadata as Record<string, unknown> | null | undefined;
-  if (payload.hasWebsiteUpdate) {
-    details['metadata.website'] = {
-      old: existingMetadata?.website ?? null,
-      new: payload.websiteUrl || null,
-    };
-  }
-  if (payload.hasWikipediaUpdate) {
-    details['metadata.wikipediaUrl'] = {
-      old: existingMetadata?.wikipediaUrl ?? null,
-      new: payload.wikipediaUrl || null,
+  for (const [key, value] of Object.entries(metadataPatchOf(payload) ?? {})) {
+    details[`${METADATA_CLAIM_PREFIX}${key}`] = {
+      old: existingMetadata?.[key] ?? null,
+      new: value ?? null,
     };
   }
   return details;
@@ -461,6 +504,18 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
   if (!permitted) {
     res.status(403).json({ error: 'You do not have curator permissions for this experience' });
     return;
+  }
+
+  // Outside the transaction, because it is a request to somebody else's server
+  // and a lock held across one is a lock held for as long as they feel like
+  // taking. Answers null for anything that is not a Commons file or does not
+  // come back inside five seconds; the write below is the same either way.
+  const imageUpdate = payload.updates.find((u) => u.column === 'image_url');
+  if (imageUpdate) {
+    payload.imageCredit = await creditForOneImage(
+      typeof imageUpdate.value === 'string' ? imageUpdate.value : null,
+      WIKIDATA_USER_AGENT,
+    );
   }
 
   // `pool.query('BEGIN')` does NOT pin a connection — each call checks out
