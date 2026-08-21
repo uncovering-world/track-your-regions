@@ -15,8 +15,11 @@ import {
   extractQid,
   parseWktPoint,
   delay,
+  WaitBudget,
   SPARQL_DELAY_MS,
   SPARQL_MAX_RETRIES,
+  SPARQL_WAIT_BUDGET_MS,
+  LABEL_LANGS,
   type SparqlBinding,
 } from './wikidataUtils.js';
 
@@ -54,9 +57,33 @@ function bindingsToLandmarks(bindings: SparqlBinding[], type: 'sculpture' | 'mon
 }
 
 /**
+ * One door for this run's queries: paced, interruptible, and able to say it is waiting.
+ *
+ * The same three things the museum collector got, for the same reasons. This run sends five
+ * queries and each of them is tens of seconds of somebody else's cluster, so a Cancel pressed
+ * during one has to be acted on, and a run waiting out a bad minute has to look different from
+ * a run that has hung. One budget for the run, not one per query.
+ */
+function runSparql(progress: SyncProgress, budget: WaitBudget) {
+  return (query: string, retries = SPARQL_MAX_RETRIES) => sparqlQuery(query, LOG_PREFIX, {
+    retries,
+    budget,
+    isCancelled: () => progress.cancel,
+    onWait: (wait) => {
+      progress.statusMessage =
+        `Wikidata is not answering (${wait.reason}) — retrying in `
+        + `${Math.round(wait.backoffMs / 1000)}s, attempt ${wait.attempt}`;
+    },
+  });
+}
+
+/**
  * Fetch outdoor sculptures from Wikidata (famous sculptures with own coordinates, NOT in museum collections)
  */
-async function fetchSculptures(progress: SyncProgress): Promise<WikidataLandmark[]> {
+async function fetchSculptures(
+  progress: SyncProgress,
+  sparql: ReturnType<typeof runSparql>,
+): Promise<WikidataLandmark[]> {
   progress.statusMessage = 'Fetching outdoor sculptures from Wikidata...';
 
   const query = `
@@ -74,27 +101,31 @@ async function fetchSculptures(progress: SyncProgress): Promise<WikidataLandmark
       OPTIONAL { ?item wdt:P17 ?country }
       OPTIONAL { ?item wdt:P856 ?website }
       OPTIONAL { ?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> }
-      SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
     }
     ORDER BY DESC(?sitelinks)
     LIMIT 300
   `;
 
-  const bindings = await sparqlQuery(query, LOG_PREFIX, { retries: SPARQL_MAX_RETRIES });
+  const bindings = await sparql(query);
   const landmarks = bindingsToLandmarks(bindings, 'sculpture');
 
   console.log(`[Landmark Sync] Fetched ${landmarks.length} outdoor sculptures from Wikidata`);
   return landmarks;
 }
 
+/** Monument, memorial, war memorial, and the memorial-plaque-and-marker class. */
 const MONUMENT_TYPE_QIDS = ['Q4989906', 'Q575759', 'Q721747', 'Q5003624'];
 
-function buildMonumentQuery(typeFilter: string, limit: number): string {
+/** One type's worth: measured at 14 s and 135 rows for `monument` on 2026-08-21. */
+const MONUMENT_LIMIT = 160;
+
+function buildMonumentQuery(typeQid: string, limit: number): string {
   return `
     SELECT ?item ?itemLabel ?itemDescription ?coord ?image ?creatorLabel
            (YEAR(?inception) AS ?year) ?sitelinks ?countryLabel ?article ?website
     WHERE {
-      ${typeFilter}
+      ?item wdt:P31 wd:${typeQid} .
       ?item wdt:P625 ?coord .
       ?item wikibase:sitelinks ?sitelinks .
       FILTER(?sitelinks > 20)
@@ -104,64 +135,74 @@ function buildMonumentQuery(typeFilter: string, limit: number): string {
       OPTIONAL { ?item wdt:P17 ?country }
       OPTIONAL { ?item wdt:P856 ?website }
       OPTIONAL { ?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> }
-      SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
     }
     ORDER BY DESC(?sitelinks)
     LIMIT ${limit}
   `;
 }
 
-async function fetchMonumentsViaFallback(): Promise<{ landmarks: WikidataLandmark[]; succeeded: number }> {
+/**
+ * Fetch monuments from Wikidata: one query per type, merged by entity.
+ *
+ * There used to be a combined `VALUES ?type { … }` query with these four types tried first, and
+ * the per-type queries existed as its fallback. Measured against the live endpoint on
+ * 2026-08-21, the combined query does not answer at all — no response in 75 s, which means every
+ * landmark run spent the service's whole sixty-second deadline on a question that could not
+ * finish, and only then asked the four that could. The fallback was not a fallback; it was the
+ * working path with a minute of somebody else's cluster wasted in front of it.
+ *
+ * So the four are the query now. A type that fails is logged and skipped rather than fatal —
+ * `landmarks` is a breadth category with no admission rule reading its count, unlike the museum
+ * pool (ADR-0024) — but a run that gets nothing from any of them still fails.
+ */
+async function fetchOneMonumentType(
+  typeQid: string,
+  progress: SyncProgress,
+  sparql: ReturnType<typeof runSparql>,
+  into: Map<string, SparqlBinding>,
+): Promise<boolean> {
+  try {
+    for (const b of await sparql(buildMonumentQuery(typeQid, MONUMENT_LIMIT))) {
+      const key = b.item?.value;
+      if (key && !into.has(key)) into.set(key, b);
+    }
+    return true;
+  } catch (error) {
+    // A cancelled run is not a type that failed; carrying on would send the
+    // next three queries after the stop was pressed.
+    if (progress.cancel) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[Landmark Sync] Monument query failed for ${typeQid}: ${message}`);
+    return false;
+  }
+}
+
+async function fetchMonuments(
+  progress: SyncProgress,
+  sparql: ReturnType<typeof runSparql>,
+): Promise<WikidataLandmark[]> {
   const collected = new Map<string, SparqlBinding>();
   let succeeded = 0;
-  for (const typeQid of MONUMENT_TYPE_QIDS) {
-    const query = buildMonumentQuery(`?item wdt:P31 wd:${typeQid} .`, 160);
-    try {
-      const bindings = await sparqlQuery(query, LOG_PREFIX, { retries: 2 });
+
+  for (let i = 0; i < MONUMENT_TYPE_QIDS.length; i++) {
+    progress.statusMessage =
+      `Fetching monuments from Wikidata (type ${i + 1}/${MONUMENT_TYPE_QIDS.length})...`;
+    if (await fetchOneMonumentType(MONUMENT_TYPE_QIDS[i], progress, sparql, collected)) {
       succeeded++;
-      for (const b of bindings) {
-        const key = b.item?.value;
-        if (key && !collected.has(key)) collected.set(key, b);
-      }
-    } catch (fallbackError) {
-      const message = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      console.warn(`[Landmark Sync] Monument fallback query failed for ${typeQid}: ${message}`);
     }
     await delay(SPARQL_DELAY_MS);
   }
-  return {
-    landmarks: bindingsToLandmarks([...collected.values()], 'monument'),
-    succeeded,
-  };
-}
 
-/**
- * Fetch monuments from Wikidata (monuments, memorials, war memorials)
- */
-async function fetchMonuments(progress: SyncProgress): Promise<WikidataLandmark[]> {
-  progress.statusMessage = 'Fetching monuments from Wikidata...';
-
-  const queryPrimary = buildMonumentQuery(
-    `VALUES ?type { wd:Q4989906 wd:Q575759 wd:Q721747 wd:Q5003624 }
-       ?item wdt:P31 ?type .`,
-    300,
-  );
-
-  try {
-    const bindings = await sparqlQuery(queryPrimary, LOG_PREFIX, { retries: SPARQL_MAX_RETRIES });
-    const landmarks = bindingsToLandmarks(bindings, 'monument');
-    console.log(`[Landmark Sync] Fetched ${landmarks.length} monuments from Wikidata`);
-    return landmarks;
-  } catch (primaryError) {
-    console.warn('[Landmark Sync] Monument primary query failed, falling back to per-type queries');
-    const { landmarks, succeeded } = await fetchMonumentsViaFallback();
-    if (succeeded === 0 || landmarks.length === 0) {
-      const primaryMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
-      throw new Error(`Monument fetch failed (primary + fallback): ${primaryMessage}`);
-    }
-    console.log(`[Landmark Sync] Fetched ${landmarks.length} monuments via fallback queries`);
-    return landmarks;
+  const landmarks = bindingsToLandmarks([...collected.values()], 'monument');
+  if (succeeded === 0 || landmarks.length === 0) {
+    throw new Error('Monument fetch failed: no type query answered');
   }
+  console.log(
+    `[Landmark Sync] Fetched ${landmarks.length} monuments from Wikidata `
+    + `(${succeeded}/${MONUMENT_TYPE_QIDS.length} types answered)`,
+  );
+  return landmarks;
 }
 
 /**
@@ -233,12 +274,15 @@ async function tryFetchSource(
   progress: SyncProgress,
   errorDetails: ErrorDetail[],
   sourceName: string,
-  fetcher: (p: SyncProgress) => Promise<WikidataLandmark[]>,
+  fetcher: () => Promise<WikidataLandmark[]>,
 ): Promise<WikidataLandmark[]> {
   if (progress.cancel) throw new Error('Sync cancelled');
   try {
-    return await fetcher(progress);
+    return await fetcher();
   } catch (error) {
+    // A cancelled run is not a source that failed: swallowing it here would have
+    // the run carry on to the next query with the stop already pressed.
+    if (progress.cancel) throw error;
     const message = error instanceof Error ? error.message : String(error);
     progress.errors++;
     errorDetails.push({ externalId: `fetch-${sourceName}`, error: message });
@@ -280,9 +324,14 @@ async function fetchLandmarkItems(
   progress: SyncProgress,
   errorDetails: ErrorDetail[],
 ): Promise<{ items: WikidataLandmark[]; fetchedCount: number }> {
-  const sculptures = await tryFetchSource(progress, errorDetails, 'sculptures', fetchSculptures);
+  // One patience for the whole run, spent by whichever of its five queries needs it.
+  const sparql = runSparql(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS));
+
+  const sculptures = await tryFetchSource(progress, errorDetails, 'sculptures',
+    () => fetchSculptures(progress, sparql));
   await delay(SPARQL_DELAY_MS);
-  const monuments = await tryFetchSource(progress, errorDetails, 'monuments', fetchMonuments);
+  const monuments = await tryFetchSource(progress, errorDetails, 'monuments',
+    () => fetchMonuments(progress, sparql));
 
   if (sculptures.length === 0 && monuments.length === 0) {
     throw new Error('Landmark sync failed: no data fetched from Wikidata');
