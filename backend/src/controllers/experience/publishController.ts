@@ -34,6 +34,7 @@
 
 import { Response } from 'express';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
@@ -318,7 +319,7 @@ export async function publishUnderLock(
 
     const locked = await client.query(
       `SELECT curation_state, curated_fields, metadata, admission, pending_change_sync_log_id
-         FROM experiences WHERE id = $1 FOR UPDATE`,
+         FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
     );
     const before = locked.rows[0];

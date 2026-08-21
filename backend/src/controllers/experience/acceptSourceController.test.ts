@@ -25,6 +25,7 @@ vi.mock('./publishContents.js', () => ({ placeAfterRelease: vi.fn(async () => []
 import { pool } from '../../db/index.js';
 import { placeAfterRelease } from './publishContents.js';
 import { acceptSourceValue } from './acceptSourceController.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -68,7 +69,7 @@ function makeClient(claimed?: string[], proposal?: unknown[], claimingPoints: Cl
         if (sql.includes('UPDATE experience_locations')) {
           return { rows: sql.includes('RETURNING') ? claimingPoints : [] };
         }
-        if (sql.includes('FOR UPDATE')) return { rows: [{ curated_fields: claimed ?? [] }] };
+        if (sql.includes(OBJECT_LOCK)) return { rows: [{ curated_fields: claimed ?? [] }] };
         return { rows: [] };
       }),
       release: vi.fn(),
@@ -454,7 +455,7 @@ describe('acceptSourceValue', () => {
     // would drop whatever a concurrent edit claimed in between
     const order = queries.map(q => q.sql.trim().split(/\s+/).slice(0, 2).join(' '));
     expect(order[0]).toBe('BEGIN');
-    expect(queries[1].sql).toContain('FOR UPDATE');
+    expect(queries[1].sql).toContain(OBJECT_LOCK);
     expect(queries.findIndex(q => q.sql.includes('UPDATE experiences'))).toBeGreaterThan(1);
   });
 

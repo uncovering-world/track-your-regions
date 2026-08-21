@@ -14,6 +14,7 @@
 
 import { Response } from 'express';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
@@ -163,16 +164,17 @@ export async function setLocationState(req: AuthenticatedRequest, res: Response)
   try {
     await client.query('BEGIN');
 
-    // **The object first, then the point**, the order `editLocation` and
-    // `accept-source` take them in. This handler took the point alone and reached
-    // the object anyway, invisibly: its audit row is `experience_curation_log`,
-    // whose `experience_id` references `experiences`, so the INSERT takes
-    // `FOR KEY SHARE` on the parent — which conflicts with the `FOR UPDATE` the
-    // other two hold while they wait for this point. Two curators answering one
-    // point closed that cycle and Postgres broke it with a deadlock, failing one
-    // of them with a 500. Taken explicitly here so the order is a rule of the four
-    // writers rather than of the two that state it.
-    await client.query(`SELECT id FROM experiences WHERE id = $1 FOR UPDATE`, [experienceId]);
+    // **The object first, then the point** — `OBJECT_LOCK`'s rule, which every
+    // writer of an object's contents follows, this one included.
+    //
+    // Taken explicitly rather than left to the audit row's foreign key, which
+    // reaches `experiences` on its own account at the end of the transaction. The
+    // key share it takes is compatible with the lock above by design (see
+    // `db/locks.ts`), so this line closes no deadlock that exists today — it keeps
+    // the order true of every writer, which is the property that makes the mode
+    // argument hold at all. A handler whose only route to the parent is a lock it
+    // never states is one statement away from reopening the cycle.
+    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
 
     // Both axes are written whatever the curator sent, the unsent one defaulting to
     // what is stored — so the axis nobody decided has to be read under the lock that

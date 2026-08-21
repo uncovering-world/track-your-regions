@@ -32,6 +32,7 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { setExperienceState, setExperienceAdmission } from './lifecycleController.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import { assignRegionsForExperiences } from '../../services/sync/regionAssignmentService.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -67,7 +68,7 @@ function makeClient(state?: Record<string, unknown>) {
       // that override to whatever columns the default happens to carry.
       query: vi.fn(async (sql: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => {
         queries.push({ sql, params: params ?? [] });
-        if (sql.includes('FOR UPDATE')) {
+        if (sql.includes(OBJECT_LOCK)) {
           return { rows: [{
             source_membership: 'present',
             existence: 'extant',
@@ -222,7 +223,7 @@ describe('setExperienceState', () => {
     );
 
     expect(queries[0].sql).toBe('BEGIN');
-    expect(queries[1].sql).toContain('FOR UPDATE');
+    expect(queries[1].sql).toContain(OBJECT_LOCK);
     expect(queries.findIndex(q => q.sql.includes('UPDATE experiences'))).toBeGreaterThan(1);
   });
 
@@ -326,7 +327,7 @@ describe('setExperienceState', () => {
     client.query.mockImplementation(async (sql: string) => {
       queries.push({ sql, params: [] });
       if (sql === 'ROLLBACK') throw new Error('rollback failed too');
-      if (sql.includes('FOR UPDATE')) {
+      if (sql.includes(OBJECT_LOCK)) {
         return { rows: [{ curated_fields: [], source_membership: 'former', existence: 'extant', missing_since: null }] };
       }
       return { rows: [] };
@@ -352,7 +353,7 @@ describe('setExperienceState', () => {
       queries.push({ sql, params: [] });
       if (sql === 'ROLLBACK') throw new Error('rollback failed too');
       if (sql.includes('experience_curation_log')) throw new Error('log write failed');
-      if (sql.includes('FOR UPDATE')) {
+      if (sql.includes(OBJECT_LOCK)) {
         return { rows: [{ curated_fields: [], source_membership: 'present', existence: 'extant', missing_since: new Date('2026-08-03T10:00:00Z') }] };
       }
       return { rows: [] };
@@ -377,7 +378,7 @@ describe('setExperienceState', () => {
       queries.push({ sql, params: [] });
       if (sql.includes('experience_curation_log')) throw new Error('log write failed');
       // The flag has to be standing or the handler refuses before it writes
-      if (sql.includes('FOR UPDATE')) {
+      if (sql.includes(OBJECT_LOCK)) {
         return { rows: [{
           curated_fields: [],
           source_membership: 'present',
@@ -422,7 +423,7 @@ describe('setExperienceAdmission', () => {
       client: {
         query: vi.fn(async (sql: string, params?: unknown[]) => {
           queries.push({ sql, params: params ?? [] });
-          if (sql.includes('FOR UPDATE')) {
+          if (sql.includes(OBJECT_LOCK)) {
             return { rows: [{
               admission: 'refused',
               admission_reason: 'not an art museum',
@@ -706,7 +707,7 @@ describe('setExperienceAdmission', () => {
     await setExperienceAdmission(
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, makeRes() as never);
 
-    const locked = queries.find(q => q.sql.includes('FOR UPDATE'))!;
+    const locked = queries.find(q => q.sql.includes(OBJECT_LOCK))!;
     for (const column of ['admission', 'admission_reason', 'curated_fields', 'curation_state']) {
       expect(locked.sql, `the locked read does not select ${column}`).toContain(column);
     }
@@ -826,6 +827,6 @@ describe('setExperienceAdmission', () => {
     // unlocked read lets two answers race and leaves the log asserting one
     // verdict beside a column holding the other.
     expect(queries[0].sql).toBe('BEGIN');
-    expect(queries[1].sql).toContain('FOR UPDATE');
+    expect(queries[1].sql).toContain(OBJECT_LOCK);
   });
 });

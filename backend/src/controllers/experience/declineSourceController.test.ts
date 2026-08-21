@@ -20,6 +20,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { declineSourceValue } from './declineSourceController.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -40,7 +41,7 @@ function makeClient(claimed?: string[], proposal?: unknown[]) {
       query: vi.fn(async (sql: string, params?: unknown[]) => {
         queries.push({ sql, params: params ?? [] });
         if (sql.includes('experience_sync_changes')) return { rows: proposal ?? [] };
-        if (sql.includes('FOR UPDATE')) return { rows: [{ curated_fields: claimed ?? [] }] };
+        if (sql.includes(OBJECT_LOCK)) return { rows: [{ curated_fields: claimed ?? [] }] };
         return { rows: [] };
       }),
       release: vi.fn(),

@@ -1367,11 +1367,44 @@ reached how.
 Migration 011 widened the action CHECK to admit all four. A decision is one transaction over
 a `pool.connect()` client — `pool.query('BEGIN')` does not pin a connection, so the UPDATE
 and its log rows could otherwise land on different ones — and it re-reads both axes under
-`FOR UPDATE` first. Every verdict writes both columns, the axis the curator did not decide
+the object lock first. Every verdict writes both columns, the axis the curator did not decide
 defaulting to what is already stored, so reading that from outside the transaction would let
 one curator's verdict silently revert another's. Two curators on one item is the ordinary
 case: every region-scoped curator covering any of its regions sees it, as do its category
 curator and every admin.
+
+**The object lock is `OBJECT_LOCK` — `FOR NO KEY UPDATE`, not `FOR UPDATE`** — and a
+transaction that locks a row of an existing object's contents takes it on the object first.
+Both halves matter, and both were learned from the same failure. The rule is about
+transactions and about which rows they hold, and what it leaves outside is named rather than
+counted — the count went stale here once already — each for its own reason: `upsertMuseumTreasures` runs each statement on the pool with no
+`BEGIN`, so it holds nothing across them and can wait for a lock without ever being half of a
+cycle; `createManualExperience` creates the object in the same transaction, so the INSERT's
+own row lock is the "object first" the rule asks for; the region and rejection writers
+touch rows no lock-holder waits for, reaching `experiences` only through the audit row's key
+share, which the mode below is chosen never to conflict with; and **placement**
+(`assignRegionsForExperiences`) does key-share the point rows through
+`experience_location_regions`, so a transaction that changes a point's key column — the
+writer's ordinal parking — can wait for it, but it never waits in turn, since its own reach
+into `experiences` is another key share. `db/locks.ts` says the same in the same order, and is
+where a writer that joins the set will look.
+
+The **order**, because the audit row's foreign key reaches `experiences` even in a handler that
+never names it, so a writer that took the point first and logged afterwards was holding one row
+and waiting for the other. That binds `writeExperienceLocations` too, which is why the sync's
+location writer opens its transaction with the same lock rather than being the one path excused
+from the rule: it reaches the object twice — the insert's FK, and `retirePassAfterNewContent`,
+a real `UPDATE experiences` immediately before the COMMIT — so a run holding a parked point and
+asking for the object, against a curator holding the object and waiting for that point, is a
+cycle Postgres resolves by failing one of them.
+
+The **mode**, because an INSERT into `experience_locations` needs `FOR KEY SHARE` on the parent
+while its own transaction holds the object. `FOR NO KEY UPDATE` self-conflicts, so two writers
+on one object still serialise and an UPDATE or a DELETE of the row is still blocked, and it does
+not conflict with that key share. No writer here changes a key column of `experiences`, so
+nothing gives up anything it had. The constant lives in `db/locks.ts` — its own module, because
+`db/index.ts` builds the pool and every test of a curator write mocks that wholesale, which
+would have made the constant `undefined` inside those tests while the suite stayed green.
 
 **Conflicts** — fields where `curated_fields` refused the source's value and the two now
 disagree. The queue reads them out of `changed_fields` (`curatedConflict: true`) on the
@@ -1486,8 +1519,8 @@ it (`curationController.ts:383`) and never subtracts — so a curator told to "s
 editing" would find the card exactly where it was, forever. Nor could they: the edit dialog
 does not offer location at all.
 
-The accept path reads `curated_fields` **inside** the transaction that rewrites it, under
-`FOR UPDATE`. The whole column is rewritten, not one element of it, so a value read before
+The accept path reads `curated_fields` **inside** the transaction that rewrites it, under the
+object lock. The whole column is rewritten, not one element of it, so a value read before
 the lock would discard whatever a concurrent edit or a second curator claimed in between.
 `editExperience` now reads it the same way, for the mirror image of the same reason: it
 unions into the column, and a claim released by an accept between its old unlocked read and
@@ -1807,7 +1840,7 @@ kinds above. No longer the only writer that moves a row off `pending`, and never
 done it since this stage's own § 4.5, since overriding a refusal on an unread arrival marks it
 read, and `publish-waiting` does it per object for a whole source — but still the only one that clears `pending_change_sync_log_id` in answer
 to a person, because the batch leaves held proposals for the card that can show `old → new`. One transaction under
-`SELECT … FOR UPDATE`, shaped after `applyProposedFields`: everything the decision rests on —
+`SELECT … FOR NO KEY UPDATE`, shaped after `applyProposedFields`: everything the decision rests on —
 the pointer, the proposal, `curated_fields`, `curation_state`, `admission`, `metadata` — is
 re-read inside the lock that writes, and every refusal is awaited before the client is released.
 

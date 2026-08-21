@@ -117,6 +117,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
 import type { ContentItem, ContentItemChange, ContentsDelta } from './types.js';
@@ -546,6 +547,21 @@ export async function writeExperienceLocations(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // **The object first, then its points** — the rule every curator write follows
+    // (`OBJECT_LOCK`), and this transaction has to follow it too rather than being
+    // the one writer excused from it. It reaches `experiences` twice: the FK of the
+    // insert below key-shares the row, which the curator lock is deliberately
+    // compatible with, and `retirePassAfterNewContent` at the end is a real
+    // `UPDATE` on it, which is not. Without this line a run holding a parked point
+    // and reaching that update, against a curator holding the object and waiting
+    // for the parked point, is a cycle — and Postgres breaks a cycle by failing one
+    // of them, which for the curator is a 500 on a verdict they gave correctly.
+    //
+    // Taken in the same mode for the same reason: it self-conflicts, so a run and a
+    // curator on one object serialise, and it does not conflict with the key share
+    // this transaction's own insert needs.
+    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [experienceId]);
 
     // `ordinal` is unique per experience, so renumbering in place would collide
     // with a row that has not been renumbered yet. Park every positive ordinal on

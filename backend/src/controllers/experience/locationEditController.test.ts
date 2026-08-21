@@ -133,7 +133,9 @@ describe('editLocation', () => {
     // object's points; this handler writes the point and then the anchor. Taken
     // in opposite orders, two curators answering one object deadlock and
     // Postgres fails one of them with a 500.
-    const locks = queries.filter(q => q.sql.includes('FOR UPDATE')).map(q => q.sql);
+    // Both modes: the object is locked `FOR NO KEY UPDATE` so the sync writer's
+    // own FK key-share cannot deadlock against it, the point plainly.
+    const locks = queries.filter(q => /FOR (NO KEY )?UPDATE/.test(q.sql)).map(q => q.sql);
     expect(locks).toHaveLength(2);
     expect(locks[0]).toContain('FROM experiences');
     expect(locks[1]).toContain('FROM experience_locations');

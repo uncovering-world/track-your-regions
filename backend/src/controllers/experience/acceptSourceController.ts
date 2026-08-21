@@ -10,6 +10,7 @@
 
 import { Response } from 'express';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor } from '../../services/sync/changeSet.js';
@@ -142,7 +143,7 @@ async function applyProposedFields(
   try {
     await client.query('BEGIN');
     const locked = await client.query(
-      `SELECT curated_fields FROM experiences WHERE id = $1 FOR UPDATE`,
+      `SELECT curated_fields FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
     );
     const claimed: string[] = locked.rows[0]?.curated_fields ?? [];

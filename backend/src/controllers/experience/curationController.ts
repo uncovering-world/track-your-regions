@@ -9,6 +9,7 @@
 import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import type { UserRole } from '../../types/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -480,7 +481,7 @@ export async function editExperience(req: AuthenticatedRequest, res: Response): 
     // was already gone when the edit was written.
     const locked = await client.query(
       `SELECT curated_fields, name, short_description, description, category, image_url, tags, metadata
-       FROM experiences WHERE id = $1 FOR UPDATE`,
+       FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
     );
     const before = locked.rows[0] ?? existing;

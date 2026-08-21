@@ -19,6 +19,7 @@
 import { Response } from 'express';
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
@@ -95,7 +96,7 @@ export async function setExperienceState(req: AuthenticatedRequest, res: Respons
     // missing detection's `existence <> 'lost'` predicate, so the next clean
     // run re-flags it and the item returns to the queue for good.
     const locked = await client.query(
-      `SELECT source_membership, existence, missing_since FROM experiences WHERE id = $1 FOR UPDATE`,
+      `SELECT source_membership, existence, missing_since FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
     );
     before = locked.rows[0] ?? existing;
@@ -296,7 +297,7 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     // other.
     const locked = await client.query(
       `SELECT admission, admission_reason, curated_fields, curation_state
-         FROM experiences WHERE id = $1 FOR UPDATE`,
+         FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
     );
     const before = locked.rows[0];
