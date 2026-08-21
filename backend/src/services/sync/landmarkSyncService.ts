@@ -11,16 +11,17 @@ import type { SyncProgress, WikidataLandmark, ErrorDetail, ContentsByKind } from
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import {
-  sparqlQuery,
   extractQid,
   parseWktPoint,
   delay,
   WaitBudget,
   SPARQL_DELAY_MS,
-  SPARQL_MAX_RETRIES,
   SPARQL_WAIT_BUDGET_MS,
   LABEL_LANGS,
   WIKIDATA_USER_AGENT,
+  wikidataDoor,
+  waitMessage,
+  type WikidataDoor,
   type SparqlBinding,
 } from './wikidataUtils.js';
 import {
@@ -85,32 +86,11 @@ function bindingsToLandmarks(bindings: SparqlBinding[], type: 'sculpture' | 'mon
 }
 
 /**
- * One door for this run's queries: paced, interruptible, and able to say it is waiting.
- *
- * The same three things the museum collector got, for the same reasons. This run sends five
- * queries and each of them is tens of seconds of somebody else's cluster, so a Cancel pressed
- * during one has to be acted on, and a run waiting out a bad minute has to look different from
- * a run that has hung. One budget for the run, not one per query.
- */
-function runSparql(progress: SyncProgress, budget: WaitBudget) {
-  return (query: string, retries = SPARQL_MAX_RETRIES) => sparqlQuery(query, LOG_PREFIX, {
-    retries,
-    budget,
-    isCancelled: () => progress.cancel,
-    onWait: (wait) => {
-      progress.statusMessage =
-        `Wikidata is not answering (${wait.reason}) — retrying in `
-        + `${Math.round(wait.backoffMs / 1000)}s, attempt ${wait.attempt}`;
-    },
-  });
-}
-
-/**
  * Fetch outdoor sculptures from Wikidata (famous sculptures with own coordinates, NOT in museum collections)
  */
 async function fetchSculptures(
   progress: SyncProgress,
-  sparql: ReturnType<typeof runSparql>,
+  sparql: WikidataDoor,
 ): Promise<WikidataLandmark[]> {
   progress.statusMessage = 'Fetching outdoor sculptures from Wikidata...';
 
@@ -187,7 +167,7 @@ function buildMonumentQuery(typeQid: string, limit: number): string {
 async function fetchOneMonumentType(
   typeQid: string,
   progress: SyncProgress,
-  sparql: ReturnType<typeof runSparql>,
+  sparql: WikidataDoor,
   into: Map<string, SparqlBinding>,
 ): Promise<boolean> {
   try {
@@ -208,7 +188,7 @@ async function fetchOneMonumentType(
 
 async function fetchMonuments(
   progress: SyncProgress,
-  sparql: ReturnType<typeof runSparql>,
+  sparql: WikidataDoor,
 ): Promise<WikidataLandmark[]> {
   const collected = new Map<string, SparqlBinding>();
   let succeeded = 0;
@@ -363,7 +343,7 @@ async function fetchLandmarkItems(
   // The Commons credit pass below allocates its own, like the museum collector:
   // by the time it runs this one is spent, and a run that waited out a bad
   // quarter-hour at Wikidata should still be able to ask who took the pictures.
-  const sparql = runSparql(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS));
+  const sparql = wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), LOG_PREFIX);
   imageCredits = new Map();
   storedCredits = await readStoredCredits(LANDMARK_CATEGORY_ID);
 
@@ -394,9 +374,7 @@ async function fetchLandmarkItems(
     budget: creditBudget,
     isCancelled: () => progress.cancel,
     onWait: (wait) => {
-      progress.statusMessage =
-        `Commons is not answering (${wait.reason}) — retrying in `
-        + `${Math.round(wait.backoffMs / 1000)}s, attempt ${wait.attempt}`;
+      progress.statusMessage = waitMessage('Commons', wait, creditBudget);
     },
     pause: () => delay(SPARQL_DELAY_MS),
   });

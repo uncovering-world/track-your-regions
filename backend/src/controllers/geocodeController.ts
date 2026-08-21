@@ -85,7 +85,12 @@ type SparqlBinding = Record<string, { value: string } | undefined>;
 
 /**
  * Execute a SPARQL query against Wikidata with retry for transient errors.
- * Reuses the same pattern as museumSyncService.
+ *
+ * Deliberately *not* the collectors' shared client (`services/sync/wikidataUtils.ts`),
+ * which this used to name as the pattern it copied. That one is built for a run nobody
+ * is watching: it waits out a `Retry-After` against a budget the whole run shares, and
+ * is right to spend minutes doing it. Here a curator is holding a dialog open waiting
+ * for a suggestion, and a wait that long is a wait they would read as a hang.
  */
 async function sparqlQuery(query: string, retries = 2): Promise<SparqlBinding[]> {
   for (let attempt = 0; attempt <= retries; attempt++) {

@@ -28,15 +28,16 @@ import { workChanges } from './contentsChangeSet.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { isTerminalSyncStatus, runningSyncs } from './types.js';
 import { collectTier1Museums } from './museum/pipeline.js';
-import { fetchEntityDetails, isQid } from './museum/queries.js';
+import { fetchEntityDetails, isQid, type SparqlFn } from './museum/queries.js';
 import { ICONIC_SITELINKS, ICONIC_RELEASE } from './museum/tier1.js';
 import {
-  sparqlQuery,
   delay,
   WaitBudget,
   SPARQL_DELAY_MS,
   SPARQL_WAIT_BUDGET_MS,
+  waitMessage,
   WIKIDATA_USER_AGENT,
+  wikidataDoor,
   type SparqlBinding,
 } from './wikidataUtils.js';
 import {
@@ -52,9 +53,6 @@ const MUSEUM_CATEGORY_ID = 2;
 const ENTITY_BATCH = 50;
 
 const LOG_PREFIX = '[Museum Sync]';
-
-/** One SPARQL door for the whole pipeline, so a test can close it. */
-const sparql = (query: string) => sparqlQuery(query, LOG_PREFIX);
 
 /**
  * The same door, but it tells the screen when it is waiting for Wikidata.
@@ -74,21 +72,7 @@ function pacedSparql(progress: SyncProgress): (query: string) => Promise<SparqlB
   // One budget for the whole run, spent by whichever queries need it. Per query
   // it would be arithmetic nobody meant: a collection sends a few hundred, and a
   // quarter of an hour of patience each is hours of a run nobody is watching.
-  const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
-  return (query) => sparqlQuery(query, LOG_PREFIX, {
-    budget,
-    // Checked while waiting as well as between queries, because a backoff is now
-    // up to three minutes: without it, Cancel sits unhonoured for that long.
-    isCancelled: () => progress.cancel,
-    onWait: (wait) => {
-      const next = Math.round(wait.backoffMs / 1000);
-      const spent = Math.round((wait.waitedMs + wait.backoffMs) / 60000);
-      const total = Math.round(budget.totalMs / 60000);
-      progress.statusMessage =
-        `Wikidata is not answering (${wait.reason}) — retrying in ${next}s, `
-        + `attempt ${wait.attempt}, about ${spent} of ${total} min of waiting spent`;
-    },
-  });
+  return wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), LOG_PREFIX);
 }
 
 /**
@@ -201,9 +185,7 @@ async function fetchMuseumItems(
     budget: creditBudget,
     isCancelled: () => progress.cancel,
     onWait: (wait) => {
-      progress.statusMessage =
-        `Commons is not answering (${wait.reason}) — retrying in `
-        + `${Math.round(wait.backoffMs / 1000)}s, attempt ${wait.attempt}`;
+      progress.statusMessage = waitMessage('Commons', wait, creditBudget);
     },
     pause: () => delay(SPARQL_DELAY_MS),
   });
@@ -565,9 +547,27 @@ export function cancelMuseumSync() {
 }
 
 /** Wikimedia image URLs for a set of museum QIDs, batched. */
-async function fetchMuseumImages(qids: string[]): Promise<Map<string, string>> {
+async function fetchMuseumImages(
+  qids: string[],
+  progress: SyncProgress,
+): Promise<Map<string, string>> {
   const images = new Map<string, string>();
+  // The same door as every other query this service sends. It used to be a bare
+  // `sparqlQuery` with none of the three: no cancel check, no reporter, and no
+  // shared budget — so `sparqlQuery` minted a fresh fifteen minutes *per batch*.
+  // At `ENTITY_BATCH = 50` that is hours for a few hundred museums, none of it
+  // interruptible, while `runningSyncs` shows the card as running with a Cancel
+  // button on it. Raising the retry ceiling is what made the arithmetic bite.
+  const door = wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), LOG_PREFIX);
+  // `SparqlFn`'s second parameter is a cache descriptor and the door's is a
+  // retry count, so the two signatures cannot be passed for each other. This
+  // pass describes no question and caches nothing, which is why the descriptor
+  // is dropped rather than forwarded.
+  const sparql: SparqlFn = (query) => door(query);
   for (let i = 0; i < qids.length; i += ENTITY_BATCH) {
+    if (progress.cancel) throw new Error('Sync cancelled');
+    progress.statusMessage =
+      `Fetching image URLs from Wikidata (${Math.min(i + ENTITY_BATCH, qids.length)}/${qids.length})...`;
     const details = await fetchEntityDetails(sparql, qids.slice(i, i + ENTITY_BATCH));
     for (const [qid, row] of details) {
       if (row.imageUrl) images.set(qid, row.imageUrl);
@@ -738,7 +738,7 @@ export async function fixMuseumImages(_triggeredBy: number | null): Promise<void
       .map((m: { external_id: string }) => m.external_id)
       .filter(isQid);
     progress.statusMessage = 'Fetching image URLs from Wikidata...';
-    const images = await fetchMuseumImages(qids);
+    const images = await fetchMuseumImages(qids, progress);
 
     const credits = await creditsForFixedImages([...images.values()], progress);
 

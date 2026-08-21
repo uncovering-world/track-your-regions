@@ -35,6 +35,7 @@ import {
   WaitBudget,
   type SourceWait,
 } from './sourceRetry.js';
+import { waitMessage } from './wikidataUtils.js';
 import type { SyncProgress, UnescoApiRecord } from './types.js';
 
 const LOG_PREFIX = '[UNESCO Sync]';
@@ -185,9 +186,7 @@ export async function fetchUnescoRecords(
       budget,
       isCancelled: () => progress.cancel,
       onWait: (wait: SourceWait) => {
-        progress.statusMessage =
-          `UNESCO is not answering (${wait.reason}) — retrying in `
-          + `${Math.round(wait.backoffMs / 1000)}s, attempt ${wait.attempt}`;
+        progress.statusMessage = waitMessage('UNESCO', wait, budget);
       },
       classify: classifyUnescoException,
     },

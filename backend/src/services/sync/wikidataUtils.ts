@@ -236,6 +236,48 @@ async function attemptSparqlOnce(
 }
 
 /**
+ * Somewhere to say that a source is having a bad day, in the words a person
+ * watching a run needs: what the service said, which attempt this is, how long
+ * until the next one, and how much of the run's patience is gone.
+ *
+ * Shared by every collector rather than written per source, because it is the
+ * same sentence three times over and it was written differently each time. What
+ * a source may vary is its name, which is the argument.
+ */
+export function waitMessage(source: string, wait: SourceWait, budget: WaitBudget): string {
+  const next = Math.round(wait.backoffMs / 1000);
+  const spent = Math.round((wait.waitedMs + wait.backoffMs) / 60000);
+  const total = Math.round(budget.totalMs / 60000);
+  return `${source} is not answering (${wait.reason}) — retrying in ${next}s, `
+    + `attempt ${wait.attempt}, about ${spent} of ${total} min of waiting spent`;
+}
+
+/**
+ * A run's door to Wikidata: paced, interruptible, and able to say it is waiting.
+ *
+ * The three things every collector needs and each had written for itself. A
+ * query sent without them is a query nobody can stop and a wait nobody can see,
+ * which is what run 61 looked like from the panel — so the door is the shared
+ * thing and the query is the caller's.
+ */
+export type WikidataDoor = (query: string, retries?: number) => Promise<SparqlBinding[]>;
+
+export function wikidataDoor(
+  progress: { cancel: boolean; statusMessage: string },
+  budget: WaitBudget,
+  logPrefix: string,
+): WikidataDoor {
+  return (query, retries = SPARQL_MAX_RETRIES) => sparqlQuery(query, logPrefix, {
+    retries,
+    budget,
+    // Checked while waiting as well as between queries, because a backoff is up
+    // to three minutes: without it, Cancel sits unhonoured for that long.
+    isCancelled: () => progress.cancel,
+    onWait: (wait) => { progress.statusMessage = waitMessage('Wikidata', wait, budget); },
+  });
+}
+
+/**
  * What a caller may say about how a query should be attempted.
  *
  * Everything here except `retries` is the run's rather than the query's, which

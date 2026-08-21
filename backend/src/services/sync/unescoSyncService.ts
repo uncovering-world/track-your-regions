@@ -21,7 +21,7 @@ import {
   type ImageCredit,
   type StoredCredit,
 } from './imageCredit.js';
-import { sparqlQuery, SPARQL_WAIT_BUDGET_MS } from './wikidataUtils.js';
+import { sparqlQuery, SPARQL_WAIT_BUDGET_MS, waitMessage } from './wikidataUtils.js';
 import { WaitBudget } from './sourceRetry.js';
 import type {
   SyncProgress,
@@ -117,9 +117,7 @@ async function fetchWikipediaUrls(
       budget,
       isCancelled: () => progress.cancel,
       onWait: (wait) => {
-        progress.statusMessage =
-          `Wikidata is not answering (${wait.reason}) — retrying in `
-          + `${Math.round(wait.backoffMs / 1000)}s, attempt ${wait.attempt}`;
+        progress.statusMessage = waitMessage('Wikidata', wait, budget);
       },
     });
 
