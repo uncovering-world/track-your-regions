@@ -48,7 +48,7 @@ import { AddExperienceDialog } from './shared/AddExperienceDialog';
 import { invalidateExperiences } from '../utils/queryInvalidation';
 import { LoadingSpinner } from './shared/LoadingSpinner';
 import { ExperienceListItem } from './ExperienceList/ExperienceListItem';
-import { VirtualRow } from './ExperienceList/VirtualRow';
+import { VirtualRow } from './shared/VirtualRow';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSeenWindowIds } from '../hooks/useSeenWindowIds';
 
