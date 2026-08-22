@@ -144,7 +144,7 @@ human wrote (see **Trailers** below).
   git log -1 --format=%B | awk '{ if (length > 72) print NR": "length" chars: "$0 }'
   ```
   Empty output = all lines ≤ 72. Anything printed = re-wrap and amend.
-- Reference issues with `Closes #N` (for fixes that close the issue) or `Relates to #N` (for partial progress). Place these before the trailers. Run `gh issue list --search "<keyword>"` if unsure whether a relevant issue exists.
+- Reference issues with `Closes #N` (for fixes that close the issue) or `Part of #N` (for partial progress; `Relates to #N` only for a loose association). Place these before the trailers. Run `gh issue list --search "<keyword>"` if unsure whether a relevant issue exists.
 
 **Trailers:**
 

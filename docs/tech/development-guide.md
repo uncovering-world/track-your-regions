@@ -508,7 +508,7 @@ endpoint that returns all locations for a region's experiences.
 Reduces network requests from ~50 to 1 when opening a region
 with many experiences.
 
-[Issue: #234]
+Part of #234
 
 Signed-off-by: ...
 ```
@@ -522,7 +522,7 @@ Signed-off-by: ...
 **Body rules:**
 - Explain **what** changed and **why** — not just how
 - Wrap at 72 characters
-- Reference related issues: `[Issue: #N]`
+- Reference related issues: `Closes #N` / `Fixes #N` (the change closes the issue), `Part of #N` (partial progress), or `Relates to #N` (loose association)
 - Always sign off (`-s`). Add a `Co-Authored-By:` trailer **only** for AI-assisted commits, never by default
 
 ### Granular Commits
@@ -593,10 +593,10 @@ The project has slash commands (in `.claude/commands/`) that automate common wor
 
 | Command | When to use |
 |---------|-------------|
-| `/feature <issue#>` | Start work on a feature — creates branch, enters plan mode, checks for reusable code, updates docs |
-| `/fix <issue#>` | Fix a bug — minimal change, explains root cause before fixing |
+| `/feature <issue#>` | Start work on a feature — creates branch (board → 🏗 In progress), reads the issue's board fields, enters plan mode, checks for reusable code, updates docs |
+| `/fix <issue#>` | Fix a bug — minimal change (board → 🏗 In progress), explains root cause before fixing |
 | `/commit` | Commit changes — organizes into atomic commits, enforces title+body format, filters junk |
-| `/pr-create` | Create a PR — rebases on main, fills PR template from actual changes |
+| `/pr-create` | Create a PR — rebases on main, fills PR template, moves referenced issues to 👀 In review, then babysits the PR until it is mergeable |
 | `/review-pr` | Review PR comments — analyzes, categorizes, creates action plan |
 | `/pr-comments-analyze` | Deep analysis of PR review comments with draft replies |
 | `/pr-comments-reply` | Post replies to addressed PR comments |
@@ -607,9 +607,9 @@ The project has slash commands (in `.claude/commands/`) that automate common wor
 | `/security-alerts` | Triage GitHub code scanning alerts (CodeQL, etc.) |
 | `/quality-alerts` | Triage code quality alerts |
 | `/refactor-check` | Post-refactoring prevention check — verify dev guide has rules preventing the old pattern from recurring |
-| `/issues` | Browse and work with GitHub issues |
-| `/issue-create` | Create a new GitHub issue |
-| `/issue-upload` | Batch-create issues from a markdown file |
+| `/issues` | Browse the task board — Backlog grouped by Priority with Size/Theme/AI fit |
+| `/issue-create` | Create a new GitHub issue (template shape, neutral voice) and place it on the board |
+| `/issue-upload` | Batch-create issues from a markdown file, board placement included |
 | `/review-dependabot` | Review Dependabot PRs and security alerts |
 
 ### Typical workflows
@@ -621,12 +621,10 @@ The project has slash commands (in `.claude/commands/`) that automate common wor
 npm run check         # verify
 /security-check       # security scan
 /commit               # atomic commits + push
-/pr-create            # create PR
-  ... reviewer comments ...
-/review-pr            # analyze comments
-  ... fix issues ...
-/pr-changes-amend     # fold fixes into original commits
-/pr-comments-reply    # reply to reviewers
+/pr-create            # create PR, then babysit it until mergeable:
+                      #   watch checks, answer every review thread,
+                      #   /pr-changes-amend fixes into owning commits,
+                      #   force-with-lease push, repeat until green
 ```
 
 **Refactoring:**
@@ -636,5 +634,5 @@ npm run check         # verify
 /security-check       # security scan
 /refactor-check       # verify dev guide prevents the old pattern from recurring
 /commit               # atomic commits + push
-/pr-create            # create PR
+/pr-create            # create PR + babysit until mergeable
 ```

@@ -2,7 +2,7 @@
 Briefly describe the changes made and the issues they address.
 
 ## Related Issues
-Closes: #<Issue Number>
+<Closes|Fixes|Part of|Relates to>: #<Issue Number>
 
 ## How Was This Tested?
 Provide a brief explanation of the tests conducted to validate your changes.

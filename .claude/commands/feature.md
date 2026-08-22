@@ -20,6 +20,23 @@ gh issue view $ARGUMENTS --json number,title,body,labels,comments
 
 If the issue doesn't exist or isn't open, tell the user and stop.
 
+Also glance at its board fields — Size calibrates how much planning the work deserves, and AI fit says whether product/design calls should be expected mid-way (🤝 Pair) or the issue is specced end-to-end (🤖 Agent-ready):
+
+```bash
+gh api graphql -f query='
+query($number: Int!) {
+  repository(owner: "uncovering-world", name: "track-your-regions") {
+    issue(number: $number) {
+      projectItems(first: 10) { nodes { project { number } fieldValues(first: 20) { nodes {
+        ... on ProjectV2ItemFieldSingleSelectValue {
+          name field { ... on ProjectV2SingleSelectField { name } } } } } } }
+    }
+  }
+}' -F number=$ARGUMENTS
+```
+
+Use the item whose `project.number` is 2 — an issue can sit on several projects, and only the board's values matter here. An **empty** `projectItems` answer is ambiguous, not a clean failure: some token shapes cannot see project items at all and return an empty list with no error, which is indistinguishable from "this issue has no board fields". Before concluding that, cross-check with the org-side query from `/issues` § 1 (it reads `organization → projectV2 → items` and answers for such tokens) filtered to this issue number. Reading the board is best-effort either way: if it errors for the missing `project` scope, run `gh auth refresh -s project`; if it stays unreadable, continue without the fields — it must not block the work.
+
 ### 2. Understand the requirements
 
 - Read the issue title, description, and all comments carefully
@@ -36,6 +53,14 @@ git checkout -b feature/$ARGUMENTS-<short-slug>
 ```
 
 Use a short slug derived from the issue title (e.g., `feature/200-dark-mode`).
+
+Mark the issue as being worked on:
+
+```bash
+scripts/board.sh status $ARGUMENTS "In progress"
+```
+
+The board update is best-effort: if it fails because the token lacks the `project` scope, run `gh auth refresh -s project` (or note the miss and continue) — it must not block the work itself.
 
 ### 4. Enter plan mode
 
@@ -111,5 +136,5 @@ Commit the changes following the conventions in `docs/tech/development-guide.md`
 - **Docs in dedicated commits** — documentation updates are separate from code commits
 
 Then summarize what was built and suggest:
-- **To create a PR**: use `gh pr create` — the PR description should reference the issue with `Closes #$ARGUMENTS` or `Part of #$ARGUMENTS` (if partial)
+- **To create a PR**: run `/pr-create` — it fills the template, references the issue (`Closes #$ARGUMENTS`, or `Part of #$ARGUMENTS` if partial), enforces the clean-history gate, and moves every referenced issue to 👀 In review on the board
 - **To continue work**: list any remaining items from the issue that weren't addressed

@@ -37,6 +37,14 @@ git checkout -b fix/$ARGUMENTS-<short-slug>
 
 Use a short slug derived from the issue title (e.g., `fix/42-login-crash`).
 
+Mark the issue as being worked on:
+
+```bash
+scripts/board.sh status $ARGUMENTS "In progress"
+```
+
+The board update is best-effort: if it fails because the token lacks the `project` scope, run `gh auth refresh -s project` (or note the miss and continue) — it must not block the work itself.
+
 ### 4. Investigate
 
 - **Read area-specific docs** for the affected area before diving into code:
@@ -97,5 +105,4 @@ Commit the fix following the conventions in `docs/tech/development-guide.md`:
 - **Docs in dedicated commits** — documentation updates are separate from code commits
 
 Then summarize what was done and suggest:
-- **To create a PR**: run `/commit` or use `gh pr create`
-- **To close the issue**: the PR description should include `Fixes #$ARGUMENTS`
+- **To create a PR**: run `/commit`, then `/pr-create` — it enforces the clean-history gate, includes `Fixes #$ARGUMENTS` in the description, and moves the issue to 👀 In review on the board

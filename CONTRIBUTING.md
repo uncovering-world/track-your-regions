@@ -75,7 +75,7 @@ Follow this format for all commit messages:
 
 <Description>
 
-[Issue: #<GitHub Issue Number>]
+<Closes|Fixes|Part of|Relates to> #<GitHub Issue Number>
 
 Signed-off-by: <Your Name> <Your Email>
 ```
@@ -88,7 +88,7 @@ Signed-off-by: <Your Name> <Your Email>
 - Keep the `<Topic>` line concise and imperative.
 - In the `<Description>` body, explain *what* changed and *why* (not how), and
   wrap every body line at 72 characters.
-- If the commit fixes an issue, add the issue number in the commit message.
+- Reference related issues in the body: `Closes #N` / `Fixes #N` when the commit closes the issue, `Part of #N` for partial progress, `Relates to #N` for a loose association. Omit the line entirely when no issue applies.
 - Sign your commits to verify your identity (use `git commit -s`).
 - Only if the commit was written with AI assistance, add a
   `Co-Authored-By: <Model Name> <noreply@anthropic.com>` trailer — never by default.
@@ -101,10 +101,10 @@ Signed-off-by: <Your Name> <Your Email>
 2. Ensure code passes linting, has adequate test coverage, and adheres to our structure and style guide.
 3. Create a PR to merge your feature branch into `main` of the original repo.
 4. In the PR description, provide a clear explanation of your changes and the motivation behind them.
-5. In the PR description, provide the Issue number that your PR fixes in a form `Fixes #<Issue Number>`.
-   This will trigger bots to check that the PRs changes address all the requirements of the issue.
+5. In the PR description, reference the issues the PR addresses: `Closes #<N>` / `Fixes #<N>` when the PR completes the issue, `Part of #<N>` for partial progress (the issue stays open), `Relates to #<N>` for a loose association.
+   This will trigger bots to check that the PR's changes address all the requirements of the issue.
 6. PRs are reviewed with the help of AI bots @coderabbitai and @CodiumAI-Agent. Pay attention to their comments. If you disagree, provide a clear explanation in the comments.
-7. Resolve all discussion threads and ensure mandatory checks pass before merging.
+7. See every discussion thread through to resolution — answer each one, and let the commenter resolve it once addressed (do not resolve other people's threads yourself; the one exception is a bot reviewer that reports it could not resolve its own thread and asks for manual resolution — honour that ask and say so in a reply) — and ensure mandatory checks pass before merging.
 
 #### Handling Stalled PRs
 - If a PR is inactive for more than 7 days, a 'stale' label will be added to it and a reminder will be posted in the PR.
