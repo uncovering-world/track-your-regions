@@ -3,7 +3,6 @@
  * Shows thumbnail, category, country, name, and visited status.
  */
 
-import { forwardRef } from 'react';
 import { Box, Typography, Chip, Checkbox, Tooltip, IconButton } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -68,234 +67,228 @@ interface ExperienceCardProps {
   onCurate?: () => void;
 }
 
-export const ExperienceCard = forwardRef<HTMLDivElement, ExperienceCardProps>(
-  function ExperienceCard(
-    {
-      experience,
-      isVisited,
-      isHovered = false,
-      isSelected = false,
-      onClick,
-      onMouseEnter,
-      onMouseLeave,
-      onVisitedToggle,
-      showCheckbox,
-      onCurate,
-    },
-    ref,
-  ) {
-    const isRejected = experience.is_rejected;
-    const imageUrl = extractImageUrl(experience.image_url);
-    const colors = CATEGORY_COLORS[experience.category || ''];
-    const catStyle = colors
-      ? { bg: colors.bg, text: colors.text, border: colors.primary }
-      : { bg: '#E0E7FF', text: '#4F46E5', border: '#6366F1' };
+export function ExperienceCard({
+  experience,
+  isVisited,
+  isHovered = false,
+  isSelected = false,
+  onClick,
+  onMouseEnter,
+  onMouseLeave,
+  onVisitedToggle,
+  showCheckbox,
+  onCurate,
+}: ExperienceCardProps) {
+  const isRejected = experience.is_rejected;
+  const imageUrl = extractImageUrl(experience.image_url);
+  const colors = CATEGORY_COLORS[experience.category || ''];
+  const catStyle = colors
+    ? { bg: colors.bg, text: colors.text, border: colors.primary }
+    : { bg: '#E0E7FF', text: '#4F46E5', border: '#6366F1' };
 
-    const cardStyle = computeCardSurfaceStyle({ isRejected, isVisited, isHovered, isSelected, catStyle });
-    const { bgcolor, borderLeftColor, cardOpacity, titleColor } = cardStyle;
+  const cardStyle = computeCardSurfaceStyle({ isRejected, isVisited, isHovered, isSelected, catStyle });
+  const { bgcolor, borderLeftColor, cardOpacity, titleColor } = cardStyle;
 
-    return (
+  return (
+    <Box
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      sx={{
+        display: 'flex',
+        gap: 1.5,
+        p: 1.25,
+        cursor: 'pointer',
+        bgcolor,
+        borderLeft: '3px solid',
+        borderLeftColor,
+        borderBottom: '1px solid',
+        borderBottomColor: 'divider',
+        transition: 'all 0.15s ease',
+        '&:hover': { bgcolor: 'action.hover' },
+        opacity: cardOpacity,
+      }}
+    >
+      {/* Thumbnail */}
       <Box
-        ref={ref}
-        onClick={onClick}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
         sx={{
-          display: 'flex',
-          gap: 1.5,
-          p: 1.25,
-          cursor: 'pointer',
-          bgcolor,
-          borderLeft: '3px solid',
-          borderLeftColor,
-          borderBottom: '1px solid',
-          borderBottomColor: 'divider',
-          transition: 'all 0.15s ease',
-          '&:hover': { bgcolor: 'action.hover' },
-          opacity: cardOpacity,
+          width: 56,
+          height: 56,
+          flexShrink: 0,
+          borderRadius: 1,
+          overflow: 'hidden',
+          bgcolor: 'grey.100',
+          position: 'relative',
         }}
       >
-        {/* Thumbnail */}
-        <Box
-          sx={{
-            width: 56,
-            height: 56,
-            flexShrink: 0,
-            borderRadius: 1,
-            overflow: 'hidden',
-            bgcolor: 'grey.100',
-            position: 'relative',
-          }}
-        >
-          {imageUrl ? (
-            <Box
-              component="img"
-              src={toThumbnailUrl(imageUrl, 120)}
-              alt=""
-              loading="lazy"
-              sx={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                filter: isVisited ? 'saturate(0.4)' : 'none',
-              }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          ) : (
-            <Box
-              sx={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                bgcolor: catStyle.bg,
-              }}
-            >
-              <Typography sx={{ fontSize: '0.55rem', color: catStyle.text }}>
-                {experience.category?.charAt(0).toUpperCase() || '?'}
-              </Typography>
-            </Box>
-          )}
-          {isVisited && (
-            <CheckCircleIcon
-              sx={{
-                position: 'absolute',
-                bottom: 1,
-                right: 1,
-                fontSize: 14,
-                color: VISITED_GREEN,
-                bgcolor: 'white',
-                borderRadius: '50%',
-              }}
-            />
-          )}
-        </Box>
+        {imageUrl ? (
+          <Box
+            component="img"
+            src={toThumbnailUrl(imageUrl, 120)}
+            alt=""
+            loading="lazy"
+            sx={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              filter: isVisited ? 'saturate(0.4)' : 'none',
+            }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <Box
+            sx={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              bgcolor: catStyle.bg,
+            }}
+          >
+            <Typography sx={{ fontSize: '0.55rem', color: catStyle.text }}>
+              {experience.category?.charAt(0).toUpperCase() || '?'}
+            </Typography>
+          </Box>
+        )}
+        {isVisited && (
+          <CheckCircleIcon
+            sx={{
+              position: 'absolute',
+              bottom: 1,
+              right: 1,
+              fontSize: 14,
+              color: VISITED_GREEN,
+              bgcolor: 'white',
+              borderRadius: '50%',
+            }}
+          />
+        )}
+      </Box>
 
-        {/* Text content */}
-        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.25 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-            <Typography
-              variant="body2"
-              noWrap
+      {/* Text content */}
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.25 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+          <Typography
+            variant="body2"
+            noWrap
+            sx={{
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              lineHeight: 1.3,
+              textDecoration: (isRejected || isVisited) ? 'line-through' : 'none',
+              color: titleColor,
+            }}
+          >
+            {experience.name}
+          </Typography>
+          {experience.is_new && (
+            <Chip
+              label="New"
+              size="small"
+              color="success"
               sx={{
+                height: 16,
+                fontSize: '0.55rem',
+                fontWeight: 700,
+                '& .MuiChip-label': { px: 0.5 },
+                flexShrink: 0,
+              }}
+            />
+          )}
+          <LifecycleChip state={experience} />
+          {(experience.location_count ?? 0) > 1 && (
+            <Chip
+              icon={<PlaceIcon sx={{ fontSize: '0.6rem !important' }} />}
+              label={experience.location_count}
+              size="small"
+              sx={{
+                height: 16,
+                fontSize: '0.55rem',
                 fontWeight: 600,
-                fontSize: '0.8rem',
-                lineHeight: 1.3,
-                textDecoration: (isRejected || isVisited) ? 'line-through' : 'none',
-                color: titleColor,
+                '& .MuiChip-label': { px: 0.5 },
+                '& .MuiChip-icon': { ml: 0.25 },
+                flexShrink: 0,
               }}
-            >
-              {experience.name}
-            </Typography>
-            {experience.is_new && (
-              <Chip
-                label="New"
-                size="small"
-                color="success"
-                sx={{
-                  height: 16,
-                  fontSize: '0.55rem',
-                  fontWeight: 700,
-                  '& .MuiChip-label': { px: 0.5 },
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            <LifecycleChip state={experience} />
-            {(experience.location_count ?? 0) > 1 && (
-              <Chip
-                icon={<PlaceIcon sx={{ fontSize: '0.6rem !important' }} />}
-                label={experience.location_count}
-                size="small"
-                sx={{
-                  height: 16,
-                  fontSize: '0.55rem',
-                  fontWeight: 600,
-                  '& .MuiChip-label': { px: 0.5 },
-                  '& .MuiChip-icon': { ml: 0.25 },
-                  flexShrink: 0,
-                }}
-              />
-            )}
-          </Box>
-          <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-            {isRejected && (
-              <Chip
-                icon={<BlockIcon sx={{ fontSize: '0.6rem !important' }} />}
-                label="Rejected"
-                size="small"
-                color="error"
-                variant="outlined"
-                sx={{
-                  height: 16,
-                  fontSize: '0.55rem',
-                  '& .MuiChip-label': { px: 0.5 },
-                  '& .MuiChip-icon': { ml: 0.25 },
-                }}
-              />
-            )}
-            {experience.category && (
-              <Chip
-                label={experience.category}
-                size="small"
-                sx={{
-                  bgcolor: catStyle.bg,
-                  color: catStyle.text,
-                  fontWeight: 600,
-                  fontSize: '0.55rem',
-                  height: 16,
-                  textTransform: 'capitalize',
-                  '& .MuiChip-label': { px: 0.5 },
-                }}
-              />
-            )}
-            {experience.in_danger && (
-              <Tooltip title="In Danger">
-                <WarningAmberIcon sx={{ fontSize: 12, color: 'error.main' }} />
-              </Tooltip>
-            )}
-          </Box>
-          {experience.country_names?.[0] && (
-            <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '0.7rem' }}>
-              {experience.country_names.length > 1
-                ? `${experience.country_names[0]} +${experience.country_names.length - 1}`
-                : experience.country_names[0]}
-            </Typography>
+            />
           )}
         </Box>
-
-        {/* Actions: checkbox + curate */}
-        <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: 0.25 }}>
-          {onCurate && (
-            <Tooltip title="Curate">
-              <IconButton
-                size="small"
-                onClick={(e) => { e.stopPropagation(); onCurate(); }}
-                sx={{ p: 0.25, opacity: 0.5, '&:hover': { opacity: 1 } }}
-              >
-                <TuneIcon sx={{ fontSize: 16 }} />
-              </IconButton>
+        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+          {isRejected && (
+            <Chip
+              icon={<BlockIcon sx={{ fontSize: '0.6rem !important' }} />}
+              label="Rejected"
+              size="small"
+              color="error"
+              variant="outlined"
+              sx={{
+                height: 16,
+                fontSize: '0.55rem',
+                '& .MuiChip-label': { px: 0.5 },
+                '& .MuiChip-icon': { ml: 0.25 },
+              }}
+            />
+          )}
+          {experience.category && (
+            <Chip
+              label={experience.category}
+              size="small"
+              sx={{
+                bgcolor: catStyle.bg,
+                color: catStyle.text,
+                fontWeight: 600,
+                fontSize: '0.55rem',
+                height: 16,
+                textTransform: 'capitalize',
+                '& .MuiChip-label': { px: 0.5 },
+              }}
+            />
+          )}
+          {experience.in_danger && (
+            <Tooltip title="In Danger">
+              <WarningAmberIcon sx={{ fontSize: 12, color: 'error.main' }} />
             </Tooltip>
           )}
-          {showCheckbox && (
-            <Checkbox
-              checked={isVisited}
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onVisitedToggle?.(e);
-              }}
-              sx={{
-                p: 0.25,
-                '&.Mui-checked': { color: '#22c55e' },
-              }}
-            />
-          )}
         </Box>
+        {experience.country_names?.[0] && (
+          <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '0.7rem' }}>
+            {experience.country_names.length > 1
+              ? `${experience.country_names[0]} +${experience.country_names.length - 1}`
+              : experience.country_names[0]}
+          </Typography>
+        )}
       </Box>
-    );
-  },
-);
+
+      {/* Actions: checkbox + curate */}
+      <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: 0.25 }}>
+        {onCurate && (
+          <Tooltip title="Curate">
+            <IconButton
+              size="small"
+              onClick={(e) => { e.stopPropagation(); onCurate(); }}
+              sx={{ p: 0.25, opacity: 0.5, '&:hover': { opacity: 1 } }}
+            >
+              <TuneIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+        )}
+        {showCheckbox && (
+          <Checkbox
+            checked={isVisited}
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              onVisitedToggle?.(e);
+            }}
+            sx={{
+              p: 0.25,
+              '&.Mui-checked': { color: '#22c55e' },
+            }}
+          />
+        )}
+      </Box>
+    </Box>
+  );
+}
