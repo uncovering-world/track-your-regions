@@ -4,7 +4,7 @@ List open issues from the org task board, with their board fields, to help pick 
 
 ## Arguments
 
-$ARGUMENTS — optional filters, combinable: a label (`bug`, `enhancement`, `roadmap`, …), a Theme (`Curation`, `Map & Geo`, …), an AI-fit shorthand (`agent`, `pair`, `human`), a Priority (`Urgent`, `High`, `Medium`, `Low`), or a Status (`New`, `In progress`, `In review`, `Done` — naming a Status lifts the open-only rule below, so `Done` shows the closed issues it implies). If not provided, show the whole Backlog plus any untriaged 🆕 New items.
+$ARGUMENTS — optional filters, combinable: a label (`bug`, `enhancement`, `roadmap`, …), a Theme (`Curation`, `Map & Geo`, …), an AI-fit shorthand (`agent`, `pair`, `human`), a Priority (`Urgent`, `High`, `Medium`, `Low`), or a Status (`New`, `In progress`, `In review`, `Done` — naming a Status lifts the open-only rule below, so `Done` shows the closed issues it implies). If not provided, show the whole Backlog plus any untriaged items (no Priority set).
 
 ## Instructions
 

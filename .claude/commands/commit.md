@@ -115,7 +115,7 @@ git commit -s -m "$(cat <<'EOF'
 
 <body: explain what changed and why, wrap every line at 72 chars>
 
-Closes #<N>
+<Closes|Fixes|Part of|Relates to> #<N>
 
 Co-Authored-By: <model name> <noreply@anthropic.com>
 EOF
@@ -125,8 +125,9 @@ EOF
 The heredoc delimiter is quoted (`<<'EOF'`), so **everything between the
 markers is literal** — no expansion, and no shell comments. Never annotate
 a line inline; the annotation lands in the commit message verbatim. The
-last two lines above are conditional: drop `Closes #<N>` when no issue
-applies, and drop the `Co-Authored-By` trailer entirely for commits a
+last two lines above are conditional: pick the issue-reference keyword
+per the rule below (`Closes`/`Fixes` close, `Part of` keeps the issue
+open) and drop the line entirely when no issue applies, and drop the `Co-Authored-By` trailer entirely for commits a
 human wrote (see **Trailers** below).
 
 **Title:**
@@ -166,7 +167,7 @@ Check by eye:
 - `Signed-off-by: <real name> <email>` trailer is present
 - `Co-Authored-By: ...` trailer is present **only if** the commit was AI-assisted
 
-If anything's off and the commit hasn't been pushed yet, undo with `git reset --soft HEAD~1`, fix, and recommit fresh — don't `--amend` silently (per repo policy, prefer new commits to amends). If the commit was already pushed, ask the user before rewriting.
+If anything's off and the commit hasn't been pushed yet, undo with `git reset --soft HEAD~1`, fix, and recommit fresh — don't `--amend` silently (per repo policy, prefer new commits to amends). If the commit was already pushed, ask the user before rewriting — except inside `/pr-create` § "Babysit the PR until it is mergeable", where rewriting the loop's own pushed commits is its normal operation (see the carve-out there).
 
 ### 8. Push
 
@@ -183,7 +184,7 @@ After all commits are created and verified:
 git push -u origin <branch-name>
 ```
 
-If the branch is new, this sets up tracking. If pushing to an existing branch, a regular `git push` suffices. If the branch was rebased, use `git push --force-with-lease` (never bare `--force`) and confirm with the user first if the branch already has a PR with reviewers.
+If the branch is new, this sets up tracking. If pushing to an existing branch, a regular `git push` suffices. If the branch was rebased, use `git push --force-with-lease` (never bare `--force`; and nothing that refreshes `origin/<branch>` beforehand — a refspec-less `git fetch origin` or a bare `git pull` blinds the lease, see `/pr-create` § 8) and confirm with the user first if the branch already has a PR with reviewers — except inside `/pr-create` § Babysit, whose loop pushes its own amends as part of answering that PR's review (see the carve-out there).
 
 ### 9. Summary
 

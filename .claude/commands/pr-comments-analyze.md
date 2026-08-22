@@ -119,4 +119,4 @@ When fixing issues from PR comments, **NEVER** create generic "address review co
 
 ### 8. Ask before proceeding
 
-After presenting the plan, ask the user which items they want to address. Do NOT start making changes automatically. For "Disagree" items, confirm with the user before posting any replies.
+After presenting the plan, ask the user which items they want to address. Do NOT start making changes automatically. For "Disagree" items, confirm with the user before posting any replies. One carve-out: inside `/pr-create` § "Babysit the PR until it is mergeable" this gate is waived — the unattended loop proceeds on its own verification, and a Disagree reply must state its concrete reason.

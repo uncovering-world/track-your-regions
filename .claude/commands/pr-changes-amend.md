@@ -52,7 +52,7 @@ Present the mapping to the user:
 ...
 ```
 
-**Ask the user to confirm the mapping before proceeding.**
+**Ask the user to confirm the mapping before proceeding.** One carve-out: inside `/pr-create` § "Babysit the PR until it is mergeable" this gate is waived — the unattended loop proceeds on its own mapping, which each thread reply then names.
 
 ### 3. Create fixup commits
 
@@ -87,6 +87,8 @@ Since interactive rebase requires manual editing, instead use `--autosquash`:
 # Then run:
 git rebase --autosquash {base}
 ```
+
+**Stacked chains** (`/pr-create` § 8): a leaf member folds against its own dependency branch as the `{base}`; a member that **has dependents** is never folded in isolation — create the `fixup!` commits on the chain's **top** branch and fold once from there with `git rebase --autosquash --update-refs origin/main`, so the rewrite carries into every member and all branch refs move together; then force-push **each** branch of the chain (the § 6 reminder covers one branch only for the non-chain case).
 
 ### 4. Execute the rebase
 
@@ -126,10 +128,10 @@ The safest approach:
 ### 6. Clean up
 
 After successful rebase:
-- Delete the backup branch: `git branch -d backup/{branch-name}`
+- Delete the backup branch: `git branch -D backup/{branch-name}` — after the autosquash its tip is never reachable from HEAD, so plain `-d` refuses every time; the real safety check was step 4's `git diff backup/{branch-name}..HEAD`, not `-d`'s reachability test
 - Show the final commit history: `git log --oneline {base}..HEAD`
-- Remind the user they need to **force-push**: `git push --force-with-lease`
-- **Do NOT force-push automatically** — always let the user do it
+- Remind the user they need to **force-push**: `git push --force-with-lease` (sound as long as nothing refreshed `origin/<branch>` since the last look at the branch — no refspec-less `git fetch origin`, no bare `git pull`; see `/pr-create` § 8)
+- **Do NOT force-push automatically** — always let the user do it. One carve-out: when this command runs inside `/pr-create` § "Babysit the PR until it is mergeable", the loop pushes its own amends (`git push --force-with-lease`, per `/pr-create` § 8) as part of answering that PR's review — that is the loop's normal operation, not an override to ask about.
 
 ### 7. Abort safety
 
