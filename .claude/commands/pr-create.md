@@ -113,8 +113,8 @@ Use the project's PR template (`.github/PULL_REQUEST_TEMPLATE.md`) and fill each
 Write a clear summary of what the branch does and why. Derive this from the commit messages and the actual diff — don't just repeat commit titles. Group related changes if there are multiple commits.
 
 #### Related Issues
-- If commit messages reference issues, include them with `Closes #N` or `Relates to #N`
-- Also search open issues for matches: `gh issue list --state open --json number,title` — look for issues related to the branch's changes by title/keyword
+- If commit messages reference issues, include them with `Closes #N` / `Fixes #N` (the merge closes the issue) or `Part of #N` (partial progress — the issue stays open). Use `Relates to #N` only for a loose association that should not drive the issue's board status.
+- Also search open issues for matches: `gh issue list --state open --limit 500 --json number,title` (the default `--limit` is 30, far below this repo's open count) — look for issues related to the branch's changes by title/keyword
 - If no issues are referenced and none found, write "None"
 
 #### How Was This Tested?
@@ -146,7 +146,19 @@ PR title rules:
 - Imperative mood ("Add X", "Fix Y", not "Added X" or "Fixes Y")
 - Derived from the branch's overall purpose, not just the last commit
 
-### 6. Report results
+### 6. Update the board
+
+For every issue the PR references (`Closes #N` / `Fixes #N` / `Part of #N`), move it to review on the org board:
+
+```bash
+scripts/board.sh status <N> "In review"
+```
+
+The board update is best-effort: if it fails because the token lacks the `project` scope, run `gh auth refresh -s project` (or note the miss and continue) — it must not block the work itself.
+
+An issue referenced with `Closes`/`Fixes` goes ✅ Done automatically when the merge closes it. A `Part of #N` issue stays open — after the merge, move it back to 📋 Backlog (or 🏗 In progress if its work continues) by hand.
+
+### 7. Report results
 
 For each PR created, show:
 - PR number and URL

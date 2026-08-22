@@ -93,6 +93,7 @@ Invoke `/vibe-history` which will:
 - Create branches with atomic commits following project conventions
 - Push and create PRs
 - Verify nothing was lost
+- Babysit every PR in the chain until it is mergeable (`/pr-create` § 8, chain-aware)
 
 ---
 
@@ -111,6 +112,7 @@ After all phases complete, present the final report:
 **History results:**
 - Branches and PRs created (with URLs)
 - Suggested merge order
+- Babysit state per PR (checks, unanswered threads) — the pipeline is not finished while any chain PR has red checks or unanswered reviewers
 
 **Backups:**
 - Initial backup: `backup/vibe-ship-start-YYYYMMDD-HHMM`

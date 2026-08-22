@@ -125,11 +125,7 @@ Must pass — the branch must compile on its own. If it fails because the branch
 git push -u origin <branch-name>
 ```
 
-Create a PR with:
-- Short title (under 70 characters)
-- Summary section with 1-3 bullet points
-- Test plan
-- Reference to related PRs in the chain (if applicable)
+For the chain's **root** branch (based on main), run `/pr-create` — it fills `.github/PULL_REQUEST_TEMPLATE.md` from the actual changes, enforces the clean-history gate, and moves referenced issues to 👀 In review on the board. A **dependent** chain member must not go through `/pr-create`'s rebase-onto-main: open its PR by hand with `gh pr create --base <dependency-branch> --head <branch>` (so the PR shows only its own commits), after applying `/pr-create` § 2.5 to that branch too — clean history inspected against **its own base** (`git log <dependency-branch>..HEAD`, and any folding per the stacked-chains rule in `/pr-changes-amend`, never against `main`), and the before-pushing tier (`npm run security:all`, `npm run test:e2e:smoke`) confirmed on it — then fill the same template and do the board move yourself (`scripts/board.sh status <N> "In review"`). In every PR body, reference the related PRs in the chain. Defer `/pr-create` § 8's babysit loop until after § 6's nothing-lost verification — open the whole chain first, then babysit the PRs together.
 
 ### 6. Final verification — nothing lost
 
@@ -141,11 +137,15 @@ git diff backup/vibe-history-YYYYMMDD-HHMM
 
 The diff should be empty (or only contain expected ordering differences). If changes were lost, identify what's missing and fix it.
 
-### 7. Summary
+### 7. Babysit the chain
+
+The deferral in step 5e resumes here: with the nothing-lost verification done, enter `/pr-create` § "Babysit the PR until it is mergeable" for **every** PR in the chain — watch their checks, answer every review thread, fold fixes into owning commits, and keep the chain's dependency order in mind when rebasing (a fix in the root ripples into the dependents). The command is not finished while any PR in the chain has red checks or unanswered reviewers.
+
+### 8. Summary
 
 Report:
 - List of branches and PRs created (with URLs)
 - Merge order
 - Any items that couldn't be cleanly split
 - Backup branch name (can be deleted once all PRs are merged)
-- Suggested next steps: "Review each PR, merge in the suggested order"
+- Suggested next steps: "Merge in the suggested order" (the review conversation is already being babysat per step 7)
