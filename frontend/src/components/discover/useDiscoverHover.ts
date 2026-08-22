@@ -5,9 +5,10 @@
  * `docs/tech/development-guide.md`. It is not a slice of that component's state
  * so much as the join between its two halves: a row hovered rings every point
  * the object is drawn at, and a marker hovered scrolls the row into view and
- * shows its picture. Both directions share one source of truth — which surface
- * the hover came from — so they cannot live apart without that flag becoming
- * two.
+ * shows its picture. Both directions share one source of truth — the shared
+ * hover store's `hoverSource` (#573) — so they cannot live apart without that
+ * flag becoming two. This hook writes the store and draws the rings; what a
+ * hover changes on screen is read from the store where it is drawn.
  *
  * The rules it carries were each a defect once: a ring covers *every* pin of an
  * object rather than the first (a serial site is its parts); the places inside
@@ -17,13 +18,13 @@
  * because `getClusterLeaves` resolves after the pointer has moved on.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import type { Experience } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
+import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../../hooks/useHoverContext';
 import { clusterRadiusFor, SOURCE_ID, HOVER_SOURCE_ID } from './discoverMapLayers';
 import { pointInView } from '../../utils/viewBounds';
-import type { ImageCredit } from '../../api/experiences';
 
 /**
  * Rings for the places of an object that the map is currently drawing as pins.
@@ -76,25 +77,36 @@ export interface DiscoverHoverWiring {
   drawnCoordsRef: React.MutableRefObject<(expId: number) => [number, number][]>;
   /** The current selection, which the marker source deliberately does not hold. */
   selectedExpIdRef: React.MutableRefObject<number | null>;
-  /** A hover from the detail panel's location list, which rings one place. */
-  externalHoverCoords?: { lng: number; lat: number } | null;
-  /** Reported back when a highlight dot is hovered, so the panel can follow. */
-  onHoverHighlightLocation?: (locationId: number | null) => void;
+  /**
+   * The selected object's places, for the ring a panel-row hover asks for: the
+   * row names a location id, and these are the only coordinates it has here.
+   */
+  selectedLocsRef: React.MutableRefObject<{ id?: number; lng: number; lat: number }[] | null>;
 }
 
-/** What the view renders with, and what it hands the map's own listeners. */
+/** What the view hands the map's own listeners. */
 export interface DiscoverHover {
-  hoveredExperienceId: number | null;
-  hoverPreview: {
-    name: string; imageUrl: string | null; categoryName: string;
-    imageCredit: ImageCredit | null;
-  } | null;
-  cardRefsMap: React.MutableRefObject<Map<number, HTMLDivElement>>;
-  listContainerRef: React.RefObject<HTMLDivElement | null>;
   mapHoverCallbackRef: React.MutableRefObject<(id: number | null) => void>;
   highlightHoverCallbackRef: React.MutableRefObject<(locationId: number | null) => void>;
   onCardMouseEnter: (expId: number) => void;
   onCardMouseLeave: () => void;
+}
+
+/** The preview the overlay card shows for a hovered marker. */
+function previewOf(exp: Experience): HoverPreview {
+  const rawImg = extractImageUrl(exp.image_url);
+  return {
+    experienceId: exp.id,
+    experienceName: exp.name,
+    locationId: null,
+    locationName: null,
+    categoryName: exp.category_name || '',
+    category: exp.category ?? null,
+    imageUrl: rawImg ? toThumbnailUrl(rawImg, 250) : null,
+    imageCredit: exp.image_credit ?? null,
+    longitude: exp.longitude,
+    latitude: exp.latitude,
+  };
 }
 
 export function useDiscoverHover({
@@ -102,101 +114,96 @@ export function useDiscoverHover({
   experiences,
   drawnCoordsRef,
   selectedExpIdRef,
-  externalHoverCoords,
-  onHoverHighlightLocation,
+  selectedLocsRef,
 }: DiscoverHoverWiring): DiscoverHover {
-  // ── Hover sync state ──
-  const [hoveredExperienceId, setHoveredExperienceId] = useState<number | null>(null);
-  const [hoverPreview, setHoverPreview] = useState<{
-    name: string; imageUrl: string | null; categoryName: string;
-    /** Whose photograph it is: this overlay shows one, so it has to say. */
-    imageCredit: ImageCredit | null;
-  } | null>(null);
-  const hoverSourceRef = useRef<'list' | 'map' | null>(null);
-  const isAutoScrollingRef = useRef(false);
-  const cardRefsMap = useRef<Map<number, HTMLDivElement>>(new Map());
-  const listContainerRef = useRef<HTMLDivElement>(null);
+  // Hover lives in the shared store, not in state here: as `useState` in this
+  // hook, every pointer move over a marker or a card re-rendered the view that
+  // owns the map and every card in the list — the cost the store exists to
+  // remove (#573). This hook only *writes* it; what a hover changes is read
+  // where it is drawn (`DiscoverExperienceRow`, `DiscoverHoverCard`) and
+  // reacted to in subscriptions where it moves something (the list's scroll
+  // anchor, the panel's location list, the ring below).
+  const { store, setHoveredFromMarker, setHoveredFromList, setHoverPreview } = useHoverActions();
   /** Which card-hover fan-out is current, so a late cluster answer stands down. */
   const hoverGenerationRef = useRef(0);
   const experiencesRef = useRef(experiences);
   experiencesRef.current = experiences;
 
-  // Map hover → React state. A ref because the map's listeners are registered
+  // Map hover → the store. A ref because the map's listeners are registered
   // once, on mount, by `useDiscoverMap` — they must see this render's callback.
   const mapHoverCallbackRef = useRef<(id: number | null) => void>(() => {});
   mapHoverCallbackRef.current = (id: number | null) => {
-    hoverSourceRef.current = id != null ? 'map' : null;
-    setHoveredExperienceId(id);
+    setHoveredFromMarker(id);
     if (id != null) {
       const exp = experiencesRef.current.find(e => e.id === id);
-      if (exp) {
-        const rawImg = extractImageUrl(exp.image_url);
-        setHoverPreview({
-          name: exp.name,
-          imageUrl: rawImg ? toThumbnailUrl(rawImg, 250) : null,
-          categoryName: exp.category_name || '',
-          imageCredit: exp.image_credit ?? null,
-        });
-      }
-    } else {
-      setHoverPreview(null);
+      if (exp) setHoverPreview(previewOf(exp));
     }
+    // Leaving needs no explicit preview clear: the store drops the preview with
+    // the hover, exactly as the map-mode marker path relies on.
   };
 
-  // Hover on a highlight dot → the panel's location list, the same way round.
+  // Hover on a highlight dot → the store, with the place named so the panel's
+  // location list can highlight and scroll to its row. The dots belong to the
+  // selected object, which is the experience the hover therefore names.
   const highlightHoverCallbackRef = useRef<(locationId: number | null) => void>(() => {});
   highlightHoverCallbackRef.current = (locationId: number | null) => {
-    onHoverHighlightLocation?.(locationId);
+    if (locationId == null) {
+      // Only clear a hover this dot still owns. The dots overlap other
+      // objects' pins in pixels, and the pin's `mousemove` is registered ahead
+      // of the dot's `mouseleave` (`useDiscoverMap`) — so by the time the
+      // leave runs, the same mouse move may already have named the pin's
+      // object, with no place. Clearing then would wipe that hover in the
+      // gesture that set it, and the marker handler's dedupe key would keep it
+      // from being re-set while the pointer stays on the pin. A dot's own
+      // hover always names a place, which is what the guard reads.
+      const { hoverSource, hoveredLocationId } = store.getState();
+      if (hoverSource !== 'marker' || hoveredLocationId == null) return;
+      setHoveredFromMarker(null, null);
+      return;
+    }
+    setHoveredFromMarker(selectedExpIdRef.current, locationId);
   };
 
-  // ── Map hover → auto-scroll list ──
-  useEffect(() => {
-    if (hoverSourceRef.current !== 'map' || hoveredExperienceId == null) return;
-    const card = cardRefsMap.current.get(hoveredExperienceId);
-    if (card && listContainerRef.current) {
-      isAutoScrollingRef.current = true;
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Clear auto-scroll flag after animation
-      const timer = setTimeout(() => { isAutoScrollingRef.current = false; }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [hoveredExperienceId]);
-
-  // ── External hover (from detail panel location list) → update map hover ring ──
-  useEffect(() => {
-    // This hook is called before `useDiscoverMap` — it hands that one the two
-    // callback refs above — so on the first commit this effect runs before the
-    // map is built, where it used to run after. It makes no difference: the map's
-    // sources are added on `load`, so this asked for a source that did not exist
-    // yet either way, and both paths out of that are this early return.
+  // ── Panel location-row hover → one ring on that place ──
+  //
+  // The panel names a place by hovering its row (`setHoveredFromList` with a
+  // location id); the coordinates live here, in the selected object's fetch, so
+  // the ring is drawn from a subscription rather than by the panel. Only the
+  // location case: a plain card hover draws its own rings in the handler below,
+  // in the same gesture, and the map's own hovers keep their imperative writes.
+  useEffect(() => subscribeToHoverTarget(store, ({ hoveredExperienceId, hoveredLocationId, hoverSource }) => {
     const map = mapRef.current;
     if (!map) return;
-    const hoverSource = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (!hoverSource) return;
+    const hoverSource_ = map.getSource(HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (!hoverSource_) return;
 
-    if (externalHoverCoords) {
-      hoverSource.setData({
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [externalHoverCoords.lng, externalHoverCoords.lat] },
-          properties: {},
-        }],
-      });
-    } else if (hoverSourceRef.current !== 'list' && hoverSourceRef.current !== 'map') {
-      // Only clear if no internal hover is active
-      hoverSource.setData({ type: 'FeatureCollection', features: [] });
+    if (hoverSource === 'list' && hoveredLocationId != null) {
+      const loc = selectedLocsRef.current?.find(l => l.id === hoveredLocationId);
+      if (loc) {
+        hoverSource_.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [loc.lng, loc.lat] },
+            properties: {},
+          }],
+        });
+      }
+    } else if (hoveredExperienceId == null) {
+      // Nothing hovered anywhere: the ring comes down. Idempotent beside the
+      // imperative clears in the leave handlers, and what takes the ring down
+      // after the pointer leaves the panel's rows.
+      hoverSource_.setData({ type: 'FeatureCollection', features: [] });
     }
-    // The refs below are arguments now rather than locals, so the exhaustive-deps
-    // rule cannot tell they are stable — they are listed to keep it quiet, and a
-    // ref object never changes identity, so nothing re-runs because of them.
-  }, [externalHoverCoords, mapRef]);
+    // `mapRef`/`selectedLocsRef` are refs — stable identities, listed only for
+    // the exhaustive-deps rule.
+  }), [store, mapRef, selectedLocsRef]);
 
   // ── List hover → update map hover ring (cluster-aware) ──
   const handleCardMouseEnter = useCallback((expId: number) => {
-    if (hoverSourceRef.current === 'map' || isAutoScrollingRef.current) return;
-    hoverSourceRef.current = 'list';
-    setHoveredExperienceId(expId);
+    // A marker hover owns the gesture: it is what scrolled the list here.
+    if (store.getState().hoverSource === 'marker') return;
+    setHoveredFromList(expId);
 
     const map = mapRef.current;
     if (!map) return;
@@ -316,13 +323,12 @@ export function useDiscoverHover({
           }
         });
     }
-  }, [mapRef, drawnCoordsRef, selectedExpIdRef]);
+  }, [mapRef, drawnCoordsRef, selectedExpIdRef, store, setHoveredFromList]);
 
   const handleCardMouseLeave = useCallback(() => {
-    if (hoverSourceRef.current !== 'list') return;
+    if (store.getState().hoverSource !== 'list') return;
     hoverGenerationRef.current++;
-    hoverSourceRef.current = null;
-    setHoveredExperienceId(null);
+    setHoveredFromList(null);
 
     const map = mapRef.current;
     if (!map) return;
@@ -330,13 +336,9 @@ export function useDiscoverHover({
     if (hoverSource) {
       hoverSource.setData({ type: 'FeatureCollection', features: [] });
     }
-  }, [mapRef]);
+  }, [mapRef, store, setHoveredFromList]);
 
   return {
-    hoveredExperienceId,
-    hoverPreview,
-    cardRefsMap,
-    listContainerRef,
     mapHoverCallbackRef,
     highlightHoverCallbackRef,
     onCardMouseEnter: handleCardMouseEnter,

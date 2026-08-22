@@ -256,14 +256,27 @@ export function useDiscoverMap({
         // `mousemove` dedupes on a dot that has not changed, so leaving the ring
         // as it is would leave it on the pin the pointer has just left.
         const dot = fromAMove ? highlightDotAt(e.point) : null;
-        if (dot) {
-          // The ring, and not the dot's key: `mapCurrentHighlightLocId` is what
-          // the dot's own `mousemove` dedupes on, and that delegate is
-          // registered after this leave, so it runs later in the same move.
-          // Writing the key here would leave the hand-over half done — ring on
-          // the dot, and the panel never told which place it is, because the
-          // move that would have said so found nothing to do.
+        // Only a dot that names a place can hold the hand-over: the fold dot
+        // is the one highlight feature with `locationId: null`, and the
+        // `mousemove` that would re-announce below is gated on the id — a ring
+        // handed to it would be wiped by the store clear and never redrawn,
+        // flashing once per crossing. For it the ring simply comes down, as it
+        // does over empty map.
+        const dotLocId = dot?.properties?.locationId as number | null | undefined;
+        if (dot && dotLocId != null) {
           setHoverRing(pointOf(dot));
+          // And *release* the dot's dedupe key — never write the dot's id into
+          // it: `mapCurrentHighlightLocId` is what the dot's own `mousemove`
+          // dedupes on, and that delegate is registered after this leave, so it
+          // runs next in this same move. With the key released it re-announces
+          // the place, which is what restores the store the clear below empties
+          // — and with it the ring (the store's clear branch wipes the one set
+          // above) and the panel row's highlight (#573). The key could stay
+          // untouched only while ring and panel state lived apart from the
+          // marker hover and survived that clear on their own; writing the
+          // dot's id instead would leave the hand-over half done, with the
+          // re-announcing move finding nothing to do.
+          mapCurrentHighlightLocId = null;
         } else {
           if (!fromAMove || !onACluster(e.point)) map.getCanvas().style.cursor = '';
           setHoverRing(null);
@@ -319,16 +332,25 @@ export function useDiscoverMap({
         const fromAMove = e.originalEvent?.type === 'mousemove';
         const pin = fromAMove ? markerAt(e.point) : null;
         if (pin) {
-          // The ring, and not the pin's key, for the reason the mirror above
-          // gives: `mapCurrentHoveredKey` belongs to the marker `mousemove`,
-          // which is registered ahead of this leave and has already set it in
-          // this same move. Writing it here is dead today and the same trap
-          // tomorrow, the moment those registrations change order.
           setHoverRing(pointOf(pin));
-        } else {
-          if (!fromAMove || !onACluster(e.point)) map.getCanvas().style.cursor = '';
-          setHoverRing(null);
+          // …and say so, because the marker `mousemove` will not: it is
+          // registered ahead of this leave, and when the pointer was on this
+          // pin *before* it touched the dot, it deduped on a key it still
+          // holds — nothing re-announced the pin in this move. Reporting the
+          // dot's end instead would clear the store (the standing hover
+          // genuinely is the dot's, so the callback's own guard cannot help),
+          // taking the ring above, the card highlight and the preview card
+          // with it, and the marker dedupe would keep every later move over
+          // the pin from putting them back (#573). For a pin entered in this
+          // same move the announcement is a duplicate the store's equality
+          // check absorbs. The hover is the pin's now, so there is nothing of
+          // the dot's left to clear — hence no `highlightHoverCallbackRef`.
+          mapCurrentHoveredKey = keyOf(pin);
+          mapHoverCallbackRef.current?.(pin.properties?.id as number);
+          return;
         }
+        if (!fromAMove || !onACluster(e.point)) map.getCanvas().style.cursor = '';
+        setHoverRing(null);
 
         highlightHoverCallbackRef.current?.(null);
       });

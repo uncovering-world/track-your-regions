@@ -26,6 +26,7 @@ import HomeIcon from '@mui/icons-material/Home';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { useDiscoverExperiences } from '../../hooks/useDiscoverExperiences';
 import { useAuth } from '../../hooks/useAuth';
+import { HoverProvider } from '../../hooks/useHoverContext';
 import { DiscoverRegionList } from './DiscoverRegionList';
 import { DiscoverExperienceView } from './DiscoverExperienceView';
 import { ExperienceDetailPanel } from './ExperienceDetailPanel';
@@ -120,18 +121,15 @@ export function DiscoverPage() {
     setAddTarget({ regionId, regionName });
   }, []);
 
-  // Location hover from detail panel → map hover ring
-  const [hoveredLocationCoords, setHoveredLocationCoords] = useState<{ lng: number; lat: number } | null>(null);
-  const handleHoverLocation = useCallback((coords: { lng: number; lat: number } | null) => {
-    setHoveredLocationCoords(coords);
-  }, []);
-
-  // Highlight dot hover on map → location list auto-scroll
-  const [hoveredLocationId, setHoveredLocationId] = useState<number | null>(null);
-
   const detailOpen = selectedExperienceId !== null && selectedExperience !== null;
 
+  // The hover store serves this whole page: the map and list (the view), and
+  // the detail panel's location list — a panel-row hover rings the place on the
+  // map, and a highlight-dot hover scrolls the panel, both through the store
+  // rather than through state here, which re-rendered all three panels per
+  // pointer move (#573).
   return (
+    <HoverProvider>
     <Box sx={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* ── Left Panel: Tree Navigation ── */}
       <Box
@@ -271,8 +269,6 @@ export function DiscoverPage() {
           selectedExperienceId={selectedExperienceId}
           selectedExperienceLocations={selectedExperienceLocations}
           selectedLocationsResolved={selectedLocationsResolved}
-          externalHoverCoords={hoveredLocationCoords}
-          onHoverHighlightLocation={setHoveredLocationId}
         />
       </Box>
 
@@ -298,8 +294,6 @@ export function DiscoverPage() {
           <ExperienceDetailPanel
             experience={selectedExperience}
             onClose={() => setSelectedExperienceId(null)}
-            onHoverLocation={handleHoverLocation}
-            hoveredLocationId={hoveredLocationId}
             onCurate={isCurator ? () => setDetailCurationTarget(selectedExperience) : undefined}
           />
         )}
@@ -322,5 +316,6 @@ export function DiscoverPage() {
         />
       )}
     </Box>
+    </HoverProvider>
   );
 }

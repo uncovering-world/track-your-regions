@@ -25,12 +25,11 @@ import { useCollapsedExperiences } from '../../hooks/useCollapsedExperiences';
 import { buildExperienceMarkers, representablePlaces } from '../experienceMarkers/buildMarkers';
 import { FoldPlacesControl } from '../experienceMarkers/FoldPlacesControl';
 import { DiscoverExperienceList } from './DiscoverExperienceList';
+import { DiscoverHoverCard } from './DiscoverHoverCard';
 import { useAuth } from '../../hooks/useAuth';
-import { useNewBadgeImpressions } from '../../hooks/useNewBadgeImpressions';
 import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
 import { CurationDialog } from '../shared/CurationDialog';
 import { AddExperienceDialog } from '../shared/AddExperienceDialog';
-import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
 import { SOURCE_ID, HIGHLIGHT_SOURCE_ID } from './discoverMapLayers';
@@ -39,11 +38,6 @@ import { useDiscoverHover } from './useDiscoverHover';
 
 /** Discover shows one category at a time, so the builder's filter has nothing to do. */
 const NO_CATEGORY_FILTER: Set<string> = new Set();
-
-// Stable identity: an inline [] would be a new array every render, and the
-// impression effect keys off the array it is given.
-const EMPTY_EXPERIENCES: Experience[] = [];
-
 
 interface DiscoverExperienceViewProps {
   activeView: ActiveView | null;
@@ -56,10 +50,6 @@ interface DiscoverExperienceViewProps {
   selectedExperienceLocations: { id?: number; lng: number; lat: number; name?: string }[] | null;
   /** That fetch has answered, so the set above is real rather than the fallback. */
   selectedLocationsResolved: boolean;
-  /** External hover coordinates (e.g. from detail panel location list) */
-  externalHoverCoords?: { lng: number; lat: number } | null;
-  /** Called when hovering a highlight dot (red location marker) on the map */
-  onHoverHighlightLocation?: (locationId: number | null) => void;
 }
 
 export function DiscoverExperienceView({
@@ -71,8 +61,6 @@ export function DiscoverExperienceView({
   selectedExperienceId,
   selectedExperienceLocations,
   selectedLocationsResolved,
-  externalHoverCoords,
-  onHoverHighlightLocation,
 }: DiscoverExperienceViewProps) {
   // A batch of its own, and deliberately: `includeChildren` is part of the query
   // key, and Map mode passes `false`, so this is a second, larger answer rather
@@ -186,7 +174,7 @@ export function DiscoverExperienceView({
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const { isAuthenticated, isCurator, user } = useAuth();
+  const { isAuthenticated, isCurator } = useAuth();
   const { visitedIds, markVisited, unmarkVisited } = useVisitedExperiences();
   const [search, setSearch] = useState('');
 
@@ -203,19 +191,20 @@ export function DiscoverExperienceView({
     [experiences],
   );
 
-  // Hover is one mechanism across the map and the list, so it lives in one place
-  // rather than as two halves of this component — see the hook.
-  const {
-    hoveredExperienceId, hoverPreview, cardRefsMap, listContainerRef,
-    mapHoverCallbackRef, highlightHoverCallbackRef, onCardMouseEnter, onCardMouseLeave,
-  } = useDiscoverHover({
-    mapRef, experiences, drawnCoordsRef, selectedExpIdRef,
-    externalHoverCoords, onHoverHighlightLocation,
-  });
-
-  // The selected object's places, for the fit effect's long-lived callbacks.
+  // The selected object's places, for the fit effect's long-lived callbacks
+  // and for the ring a panel-row hover asks the hover hook to draw.
   const selectedLocsRef = useRef(selectedExperienceLocations);
   selectedLocsRef.current = selectedExperienceLocations;
+
+  // Hover is one mechanism across the map and the list, so it lives in one place
+  // rather than as two halves of this component — see the hook. It writes the
+  // shared hover store; nothing here reads it, which is what keeps a pointer
+  // move over a marker from re-rendering the component that owns the map.
+  const {
+    mapHoverCallbackRef, highlightHoverCallbackRef, onCardMouseEnter, onCardMouseLeave,
+  } = useDiscoverHover({
+    mapRef, experiences, drawnCoordsRef, selectedExpIdRef, selectedLocsRef,
+  });
 
   // Not `utils/categoryColors.shortSourceName`: this heading has room for
   // "Public Art" where a chip does not, and the shared one shortens that to
@@ -238,21 +227,9 @@ export function DiscoverExperienceView({
     );
   }, [experiences, search]);
 
-  // Discover renders the same cards from the same response, so a chip shown
-  // here is an impression exactly as one in Map mode is. Reporting from only
-  // one surface would make a reader's week start whenever they happened to use
-  // that one.
-  //
-  // Reported from the filtered set and behind the loading gate — the same two
-  // conditions the card list renders under (below), rather than from the whole
-  // response. Today the two coincide: the query is `enabled` only with an
-  // active view, `isLoading` is false whenever there is data to render, and
-  // search only ever narrows a set already reported. But that is three separate
-  // facts staying true, and the cost of getting it wrong is not recoverable —
-  // the server keeps the first impression, so a row stamped while unrendered
-  // spends the reader's week without them.
-  useNewBadgeImpressions(
-    isLoading ? EMPTY_EXPERIENCES : filteredExperiences, isAuthenticated, user?.id);
+  // New-badge impressions moved into `DiscoverExperienceList` with the window:
+  // what a reader was shown is now what the window has held, and only the list
+  // knows its window.
 
   // Reset search when active view changes
   useEffect(() => {
@@ -584,60 +561,9 @@ export function DiscoverExperienceView({
             </Box>
           </Box>
         )}
-        {/* Hover preview card (map marker hover) */}
-        {hoverPreview && (
-          <Box
-            sx={{
-              position: 'absolute',
-              bottom: 12,
-              left: 12,
-              zIndex: 3,
-              width: 260,
-              maxWidth: 'calc(100% - 24px)',
-              backgroundColor: 'rgba(255,255,255,0.97)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(0,0,0,0.08)',
-              borderRadius: 2,
-              overflow: 'hidden',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.20)',
-              pointerEvents: 'none',
-              animation: 'tyrDiscoverHoverIn 170ms cubic-bezier(0.2, 0.8, 0.2, 1)',
-            }}
-          >
-            {hoverPreview.imageUrl && (
-              <Box
-                component="img"
-                src={hoverPreview.imageUrl}
-                alt={hoverPreview.name}
-                sx={{
-                  width: '100%',
-                  maxHeight: 180,
-                  objectFit: 'contain',
-                  display: 'block',
-                  backgroundColor: 'grey.100',
-                }}
-              />
-            )}
-            <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-              {/* Wherever the work appears, including here. */}
-              {hoverPreview.imageUrl && <ImageCreditLine credit={hoverPreview.imageCredit} />}
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
-                {hoverPreview.name}
-              </Typography>
-              {hoverPreview.categoryName && (
-                <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.85 }} noWrap>
-                  {hoverPreview.categoryName}
-                </Typography>
-              )}
-            </Box>
-          </Box>
-        )}
-        <style>{`
-          @keyframes tyrDiscoverHoverIn {
-            from { opacity: 0; transform: translateY(8px) scale(0.98); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
-          }
-        `}</style>
+        {/* Hover preview card (map marker hover) — its own subscriber to the
+            hover store, so a marker hover re-renders it and not this view. */}
+        <DiscoverHoverCard />
       </Box>
 
       {/* Experience list (below map, only when active view) */}
@@ -654,10 +580,7 @@ export function DiscoverExperienceView({
           hasCuratorScope={hasCuratorScope}
           isAuthenticated={isAuthenticated}
           visitedIds={visitedIds}
-          hoveredExperienceId={hoveredExperienceId}
           selectedExperienceId={selectedExperienceId}
-          listContainerRef={listContainerRef}
-          cardRefsMap={cardRefsMap}
           onBack={onBack}
           onSelectExperience={onSelectExperience}
           onCardMouseEnter={onCardMouseEnter}

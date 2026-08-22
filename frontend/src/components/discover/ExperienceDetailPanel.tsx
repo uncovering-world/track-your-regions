@@ -45,6 +45,7 @@ import {
 } from '../../hooks/useVisitedExperiences';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
+import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../../hooks/useHoverContext';
 
 import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
 import { EmptyState } from '../shared/EmptyState';
@@ -58,15 +59,11 @@ const CONTENTS_INITIAL_SHOW = 20;
 interface ExperienceDetailPanelProps {
   experience: Experience;
   onClose: () => void;
-  /** Called when hovering a location in the location list */
-  onHoverLocation?: (coords: { lng: number; lat: number } | null) => void;
-  /** Location ID hovered on the map (for auto-scroll in location list) */
-  hoveredLocationId?: number | null;
   /** Curator: opens curation dialog */
   onCurate?: () => void;
 }
 
-export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, hoveredLocationId, onCurate }: ExperienceDetailPanelProps) {
+export function ExperienceDetailPanel({ experience, onClose, onCurate }: ExperienceDetailPanelProps) {
   const { isAuthenticated } = useAuth();
 
   // Fetch full details
@@ -275,6 +272,7 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
         {/* Locations section */}
         {isMultiLocation && (
           <LocationsSection
+            experienceId={experience.id}
             locations={displayLocations}
             totalCount={totalLocations}
             isAuthenticated={isAuthenticated}
@@ -282,8 +280,6 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
             onUnmarkLocation={unmarkLocationVisited}
             onMarkAll={() => markAllLocations({ experienceId: experience.id })}
             onUnmarkAll={() => unmarkAllLocations({ experienceId: experience.id })}
-            onHoverLocation={onHoverLocation}
-            hoveredLocationId={hoveredLocationId}
           />
         )}
 
@@ -358,20 +354,30 @@ export function ExperienceDetailPanel({ experience, onClose, onHoverLocation, ho
 // Locations Section (collapsible, searchable for large lists)
 // =============================================================================
 
+/** One place the object has, as a row in the section's location list. */
+interface PanelLocation {
+  id: number;
+  name: string | null;
+  ordinal: number | null;
+  longitude: number;
+  latitude: number;
+  isVisited: boolean;
+}
+
 interface LocationsSectionProps {
-  locations: { id: number; name: string | null; ordinal: number | null; longitude: number; latitude: number; isVisited: boolean }[];
+  /** Whose places these are — a row hover names the object and the place. */
+  experienceId: number;
+  locations: PanelLocation[];
   totalCount: number;
   isAuthenticated: boolean;
   onMarkLocation: (id: number) => void;
   onUnmarkLocation: (id: number) => void;
   onMarkAll: () => void;
   onUnmarkAll: () => void;
-  onHoverLocation?: (coords: { lng: number; lat: number } | null) => void;
-  /** Location ID hovered on the map — triggers auto-scroll + highlight */
-  hoveredLocationId?: number | null;
 }
 
 function LocationsSection({
+  experienceId,
   locations,
   totalCount,
   isAuthenticated,
@@ -379,13 +385,12 @@ function LocationsSection({
   onUnmarkLocation,
   onMarkAll,
   onUnmarkAll,
-  onHoverLocation,
-  hoveredLocationId,
 }: LocationsSectionProps) {
   const shouldCollapse = totalCount > LOCATIONS_COLLAPSE_THRESHOLD;
   const [expanded, setExpanded] = useState(!shouldCollapse);
   const [searchText, setSearchText] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { store } = useHoverActions();
 
   const visitedCount = locations.filter((l) => l.isVisited).length;
 
@@ -402,16 +407,27 @@ function LocationsSection({
     overscan: 5,
   });
 
-  // Auto-scroll to hovered location (from map highlight dot hover)
-  useEffect(() => {
-    if (hoveredLocationId == null) return;
-    const idx = filteredLocations.findIndex(l => l.id === hoveredLocationId);
+  // Auto-scroll to hovered location (from map highlight dot hover) — from a
+  // subscription, so a pointer crossing the dots does not re-render this
+  // section per move; the hover used to arrive as page state, which did (#573).
+  // Only a hover from the map: a row hover can only have come from a row
+  // already on the page. Through refs, because the subscription is registered
+  // once and a hover is not the moment to re-register it because the rows or
+  // the fold changed.
+  const filteredRef = useRef(filteredLocations);
+  filteredRef.current = filteredLocations;
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
+  useEffect(() => subscribeToHoverTarget(store, ({ hoveredLocationId, hoverSource }) => {
+    if (hoverSource !== 'marker' || hoveredLocationId == null) return;
+    const idx = filteredRef.current.findIndex(l => l.id === hoveredLocationId);
     if (idx >= 0) {
-      if (!expanded) setExpanded(true);
+      if (!expandedRef.current) setExpanded(true);
+      // Smooth stays: these rows are fixed-height estimates with no
+      // `measureElement`, which is the case TanStack supports it for.
       virtualizer.scrollToIndex(idx, { align: 'center', behavior: 'smooth' });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only respond to hover changes; depending on filteredLocations/expanded/virtualizer would re-scroll on unrelated re-renders
-  }, [hoveredLocationId]);
+  }), [store, virtualizer]);
 
   return (
     <Box sx={{ mb: 2 }}>
@@ -503,55 +519,17 @@ function LocationsSection({
             >
               {virtualizer.getVirtualItems().map((virtualRow) => {
                 const loc = filteredLocations[virtualRow.index];
-                const isHovered = hoveredLocationId === loc.id;
                 return (
-                  <Box
+                  <PanelLocationRow
                     key={loc.id}
-                    onMouseEnter={() => onHoverLocation?.({ lng: loc.longitude, lat: loc.latitude })}
-                    onMouseLeave={() => onHoverLocation?.(null)}
-                    sx={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      height: `${virtualRow.size}px`,
-                      transform: `translateY(${virtualRow.start}px)`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.5,
-                      px: 1,
-                      borderBottom: '1px solid',
-                      borderColor: 'divider',
-                      '&:hover': { bgcolor: 'action.hover' },
-                      cursor: 'default',
-                      ...(isHovered && {
-                        bgcolor: 'action.selected',
-                        borderLeft: '3px solid',
-                        borderLeftColor: '#f97316',
-                      }),
-                    }}
-                  >
-                    <LocationOnIcon fontSize="small" color={loc.isVisited ? 'success' : 'action'} sx={{ flexShrink: 0 }} />
-                    <Typography
-                      variant="body2"
-                      noWrap
-                      sx={{
-                        flex: 1,
-                        textDecoration: loc.isVisited ? 'line-through' : 'none',
-                        color: loc.isVisited ? 'text.secondary' : 'text.primary',
-                      }}
-                    >
-                      {locationLabel(loc)}
-                    </Typography>
-                    {isAuthenticated && (
-                      <Checkbox
-                        checked={loc.isVisited}
-                        size="small"
-                        onChange={() => loc.isVisited ? onUnmarkLocation(loc.id) : onMarkLocation(loc.id)}
-                        sx={{ p: 0.5, '&.Mui-checked': { color: '#22c55e' } }}
-                      />
-                    )}
-                  </Box>
+                    experienceId={experienceId}
+                    loc={loc}
+                    size={virtualRow.size}
+                    start={virtualRow.start}
+                    isAuthenticated={isAuthenticated}
+                    onMarkLocation={onMarkLocation}
+                    onUnmarkLocation={onUnmarkLocation}
+                  />
                 );
               })}
             </Box>
@@ -560,6 +538,86 @@ function LocationsSection({
           )}
         </Box>
       </Collapse>
+    </Box>
+  );
+}
+
+interface PanelLocationRowProps {
+  experienceId: number;
+  loc: PanelLocation;
+  size: number;
+  start: number;
+  isAuthenticated: boolean;
+  onMarkLocation: (id: number) => void;
+  onUnmarkLocation: (id: number) => void;
+}
+
+/**
+ * One place in the panel's location list, subscribed to its own "is the map
+ * pointing at me" boolean — a dot hover highlights this row and this row alone,
+ * where the id as page state re-rendered the whole page per pointer move. Its
+ * own hover writes the store, and the ring on the map is drawn from that by
+ * `useDiscoverHover`'s subscription, which holds the coordinates. Only a hover
+ * from the *map* highlights: the row's own pointer case is the `&:hover` CSS.
+ */
+function PanelLocationRow({
+  experienceId,
+  loc,
+  size,
+  start,
+  isAuthenticated,
+  onMarkLocation,
+  onUnmarkLocation,
+}: PanelLocationRowProps) {
+  const { setHoveredFromList } = useHoverActions();
+  const isHovered = useHoverSelector(
+    s => s.hoverSource === 'marker' && s.hoveredLocationId === loc.id);
+  return (
+    <Box
+      onMouseEnter={() => setHoveredFromList(experienceId, loc.id)}
+      onMouseLeave={() => setHoveredFromList(null, null)}
+      sx={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: `${size}px`,
+        transform: `translateY(${start}px)`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.5,
+        px: 1,
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        '&:hover': { bgcolor: 'action.hover' },
+        cursor: 'default',
+        ...(isHovered && {
+          bgcolor: 'action.selected',
+          borderLeft: '3px solid',
+          borderLeftColor: '#f97316',
+        }),
+      }}
+    >
+      <LocationOnIcon fontSize="small" color={loc.isVisited ? 'success' : 'action'} sx={{ flexShrink: 0 }} />
+      <Typography
+        variant="body2"
+        noWrap
+        sx={{
+          flex: 1,
+          textDecoration: loc.isVisited ? 'line-through' : 'none',
+          color: loc.isVisited ? 'text.secondary' : 'text.primary',
+        }}
+      >
+        {locationLabel(loc)}
+      </Typography>
+      {isAuthenticated && (
+        <Checkbox
+          checked={loc.isVisited}
+          size="small"
+          onChange={() => loc.isVisited ? onUnmarkLocation(loc.id) : onMarkLocation(loc.id)}
+          sx={{ p: 0.5, '&.Mui-checked': { color: '#22c55e' } }}
+        />
+      )}
     </Box>
   );
 }
