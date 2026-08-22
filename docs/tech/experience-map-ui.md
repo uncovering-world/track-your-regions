@@ -9,9 +9,15 @@ This document describes how experience markers work in both map surfaces:
 - Discover Mode: `frontend/src/components/discover/DiscoverExperienceView.tsx`, which owns the
   selection and the camera and delegates the rest to one file each: `useDiscoverMap.ts` (the map
   instance and every listener on it), `useDiscoverHover.ts` (hover, in both directions),
-  `discoverMapLayers.ts` (sources and paint) and `DiscoverExperienceList.tsx` (the rows)
+  `discoverMapLayers.ts` (sources and paint) and `DiscoverExperienceList.tsx` (the windowed rows)
 - Shared interaction state: `frontend/src/hooks/useExperienceContext.tsx`, and hover alone in
-  `frontend/src/hooks/useHoverContext.tsx` — see § What a hover is allowed to re-render
+  `frontend/src/hooks/useHoverContext.tsx` — see § What a hover is allowed to re-render. Both
+  surfaces ride that store now (#573): `ExperienceProvider` mounts its provider for Map mode, and
+  `DiscoverPage` mounts one of its own for the whole Discover page — the map and list, and the
+  detail panel's location list, whose hover used to be page state re-rendering all three panels
+  per pointer move. Region hover has the same shape in its own store,
+  `frontend/src/hooks/useRegionHover.tsx`, mounted by `NavigationProvider` — as context state it
+  re-rendered every `useNavigation` consumer, the region map among them, on each mouse move
 
 ## Shared state model
 
@@ -71,6 +77,18 @@ The memos are the other half: `ExperienceListItem`, `ExperienceExpandedDetails` 
 are each wrapped in `memo`, and their props are chosen so it holds. Unwrap any one and the hover
 reaches everything below it again while every test still passes — which is how it regressed before
 (`hoverIsolation.test.tsx` guards the wrappers).
+
+Discover follows the same rules since #573, with its own cast (`discoverListWindow.test.tsx`
+guards its memo and its render counts): `DiscoverExperienceRow` selects "am I the hovered one",
+`DiscoverHoverCard` selects the preview, `PanelLocationRow` selects "is the map pointing at me",
+and `useDiscoverHover` only *writes* the store — its ring drawing stays imperative, and the two
+scroll answers (the card list's and the panel's) are `subscribeToHoverTarget` subscriptions in the
+components that own the virtualisers. A highlight-dot hover names the selected object *and* the
+place (`setHoveredFromMarker(selectedId, locationId)`), which is what lets the panel row highlight
+itself and the card list decline to scroll for it — a dot hover is about the panel's list, and
+moving the card list under a reader looking at the panel was the old behaviour's one kindness,
+kept. The panel-row direction inverts it: the row writes `setHoveredFromList(expId, locationId)`
+and the ring is drawn by `useDiscoverHover`'s subscription, which holds the coordinates.
 
 ## Batch location data
 
@@ -169,7 +187,7 @@ The same reporting covers what happens *inside* an open card — the picture arr
 
 `experience-list-layout.smoke.spec.ts` keeps the opening honest by sampling **every animation frame** rather than polling: the fault it guards against lasted a single frame, and a 50 ms poll steps straight over it. It caught this one when a pre-paint measurement placed in the wrong component looked correct and did nothing.
 
-Rows here are of unequal height — a header is one line, an expanded experience carries its locations — so the sizes are measured rather than assumed, via `measureElement` and a `getItemKey` that keys the measurement cache by the row's identity instead of its index. `admin/WorldViewImportTree.tsx:393,613` is the prior art for that; `RegionList.tsx:238` also virtualises but with a fixed `estimateSize: () => 48`, and needs none of it.
+Rows here are of unequal height — a header is one line, an expanded experience carries its locations — so the sizes are measured rather than assumed, via `measureElement` and a `getItemKey` that keys the measurement cache by the row's identity instead of its index. `admin/WorldViewImportTree.tsx:393,613` is the prior art for that; `RegionList.tsx:265` also virtualises but with a fixed `estimateSize: () => 48`, and needs none of it.
 
 The region is still read whole (`WHOLE_REGION_LIMIT`, see above) and every marker is still built: windowing is about what the DOM holds, not about what was fetched. The scrollbar covers the region, so this is not paging under another name.
 
@@ -254,13 +272,40 @@ Two further things are about promising the space before the content exists:
 
 A card that opens because everything settled has nothing left to append: the queries whose answers used to arrive late — a description that can be one line or ten, an artworks list that can hold twenty items — are among the things it waits for. There is no honest height to reserve for content of unknown length, so the card is not shown at the wrong length instead. The exception is the cap: a card opened because `READY_CAP_MS` ran out is opened incomplete, and whatever was still in flight appends when it lands, which is the old behaviour kept deliberately for the case where a request hangs.
 
+## Discover's card list is windowed too
+
+`DiscoverExperienceList` mounts the rows its scroll window covers (#573), through the same
+`useVirtualizer` + shared `VirtualRow` shape as the map-mode list — up to 683 `ExperienceCard`s
+mounted at once before, a window of them after, each wrapped in the subscribing
+`DiscoverExperienceRow`. The differences from the map-mode list are the
+ones its simpler rows earn: no groups, so the experiences are the rows; and no open state, so the
+84 px estimate is honest and `measureElement` is a correction rather than a requirement.
+
+Three consequences, each the map-mode list met first:
+
+- **A marker hover scrolls by index, not by element.** The row a marker names is usually not
+  mounted, so the `cardRefsMap` of elements went with the windowing; a subscription in the list
+  asks `scrollToIndex` instead. The jump replaces the old smooth `scrollIntoView` — TanStack
+  documents smooth as unsupported beside dynamic measurement, and a jump cannot slide rows under
+  a resting pointer, which is what the old `isAutoScrollingRef` guard existed to absorb.
+- **New-badge impressions report what the window has held**, via `useSeenWindowIds` — the shared
+  accumulate-and-flush both windowed lists use. Reporting the whole filtered set was honest only
+  while every row was mounted; the server keeps the first impression, so a row stamped unrendered
+  spends the reader's week without them.
+- **The name filter keys the measurement cache by row identity** (`getItemKey` = experience id),
+  so a height measured for one row is not handed to whatever the filter moves into its slot.
+
+`RegionList` and `DiscoverRegionList` were windowed already; `DiscoverRegionList`'s hover is pure
+CSS and needed nothing, `RegionList`'s rode the navigation context and now rides the region hover
+store (§ above).
+
 ## Hover preview card placement
 
 Both Map mode and Discover mode render hover cards as React `<Box>` overlays positioned absolutely over the map container — not as MapLibre native popups. This allows consistent styling, image loading, and animation across both surfaces.
 
 Map mode (`regionMap/HoverPreviewCard.tsx`): positioned by marker screen location (left/right and top/bottom) to avoid covering the hovered marker. Its own component and its own subscriber to the hover store, so the map is not one: `RegionMapVT` used to read the preview and render this inline, which meant a mouse move across a list of places re-rendered the whole map. It still needs the map — only the map can say where on screen the described point currently is — and takes `mapRef`/`mapLoaded` as props for that.
 
-Discover mode (`DiscoverExperienceView`): positioned in the bottom-left corner of the map — which is why the fold chip sits at the top centre (`FoldPlacesControl`), since the card would otherwise paint over it. On marker hover, `useDiscoverHover` looks up the experience in the `experiences` array by feature ID to get its image URL and category name. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
+Discover mode (`discover/DiscoverHoverCard.tsx`): positioned in the bottom-left corner of the map — which is why the fold chip sits at the top centre (`FoldPlacesControl`), since the card would otherwise paint over it. Its own component and its own subscriber to the hover store, for the same reason as Map mode's: rendered inline by `DiscoverExperienceView`, every marker the pointer crossed re-rendered the component that owns the map. On marker hover, `useDiscoverHover` looks up the experience in the `experiences` array by feature ID and writes the preview into the store. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
 
 ## Region visual feedback
 

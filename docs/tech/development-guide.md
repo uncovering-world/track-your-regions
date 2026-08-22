@@ -169,7 +169,6 @@ components/
 │   ├── NoticeLink.tsx
 │   ├── PlacesCountChip.tsx   ← the count, and the fold it offers
 │   ├── RejectedSection.tsx
-│   ├── VirtualRow.tsx
 │   ├── VisitedStatusButton.tsx
 │   ├── useInViewFilter.ts    ← which rows the map's view leaves
 │   ├── useListScrollAnchor.ts ← every movement of the list
@@ -181,8 +180,9 @@ components/
 │   ├── FoldPlacesControl.tsx
 │   ├── layers.ts
 │   └── useMarkerInteractions.ts ← the map's own listeners: popup, ring, click
-├── regionMap/                ← what came out of RegionMapVT: hooks, and the hover card
+├── regionMap/                ← what came out of RegionMapVT: hooks, and the hover cards
 │   ├── HoverPreviewCard.tsx  ← names what the pointer is over, over the map
+│   ├── HoveredRegionTooltip.tsx ← names the region under the pointer; its own store subscriber
 │   ├── layerStyles.ts
 │   ├── useRegionMetadata.ts
 │   ├── useTileUrls.ts
@@ -261,7 +261,9 @@ Hooks in `frontend/src/hooks/` are app-wide concerns shared across many componen
 | `useNavigation` | World views, divisions, breadcrumbs, tile version |
 | `useAuth` | Authentication state, login/logout |
 | `useExperienceContext` | Experiences, selection, what the map is showing |
-| `useHoverContext` | What the pointer is over — a store, not state, and read where it is drawn |
+| `useHoverContext` | What the pointer is over — a store, not state, and read where it is drawn. Map mode's provider is mounted by `ExperienceProvider`, Discover's by `DiscoverPage` |
+| `useRegionHover` | Which region the pointer is over — the same store shape, mounted by `NavigationProvider`. As context state it re-rendered every `useNavigation` consumer per mouse move |
+| `useSeenWindowIds` | Which rows a windowed list's viewport has held, accumulated and flushed on a timer — what New-badge impressions may honestly report |
 | `useVisitedRegions` | Region visit tracking |
 | `useVisitedExperiences` | Experience visit tracking, mutations |
 | `useDiscoverExperiences` | Discover mode queries |
