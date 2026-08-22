@@ -41,7 +41,7 @@ const syncRegistry: Record<
 
 /**
  * Start sync for a source
- * POST /api/admin/sync/sources/:categoryId/start
+ * POST /api/admin/sync/categories/:categoryId/start
  */
 export async function startSync(req: AuthenticatedRequest, res: Response): Promise<void> {
   const categoryId = parseInt(String(req.params.categoryId));
@@ -172,7 +172,7 @@ export async function setWikidataCacheTtl(req: Request, res: Response): Promise<
 
 /**
  * Get sync status for a source
- * GET /api/admin/sync/sources/:categoryId/status
+ * GET /api/admin/sync/categories/:categoryId/status
  */
 export async function getSyncStatus(req: Request, res: Response): Promise<void> {
   const categoryId = parseInt(String(req.params.categoryId));
@@ -229,7 +229,7 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
 
 /**
  * Cancel sync for a source
- * POST /api/admin/sync/sources/:categoryId/cancel
+ * POST /api/admin/sync/categories/:categoryId/cancel
  */
 export async function cancelSync(req: Request, res: Response): Promise<void> {
   const categoryId = parseInt(String(req.params.categoryId));
@@ -249,7 +249,7 @@ export async function cancelSync(req: Request, res: Response): Promise<void> {
 
 /**
  * Fix missing images for a source
- * POST /api/admin/sync/sources/:categoryId/fix-images
+ * POST /api/admin/sync/categories/:categoryId/fix-images
  */
 export async function fixImages(req: AuthenticatedRequest, res: Response): Promise<void> {
   const categoryId = parseInt(String(req.params.categoryId));
@@ -444,7 +444,7 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
 
 /**
  * List all experience sources with assignment status
- * GET /api/admin/sync/sources
+ * GET /api/admin/sync/categories
  *
  * Reports each source's curation gate and what it is holding; the switch that *writes*
  * the gate is `curationGateController.ts`, because this file is about starting, watching
@@ -635,7 +635,7 @@ export async function getExperienceCounts(req: Request, res: Response): Promise<
 
 /**
  * Reorder experience sources (set display_priority)
- * PUT /api/admin/sync/sources/reorder
+ * PUT /api/admin/sync/categories/reorder
  * Body: { categoryIds: [1, 3, 2] }  -- array of source IDs in desired order
  */
 export async function reorderCategories(req: Request, res: Response): Promise<void> {
