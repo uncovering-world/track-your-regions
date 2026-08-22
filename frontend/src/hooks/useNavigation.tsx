@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { AdministrativeDivision, WorldView, Region } from '../types';
 import { fetchWorldViews, fetchDivisionAncestors, fetchRootRegions, fetchRegionAncestors } from '../api';
 import { useAuth } from './useAuth';
+import { RegionHoverProvider } from './useRegionHover';
 
 interface NavigationContextType {
   // World View
@@ -22,10 +23,6 @@ interface NavigationContextType {
   selectedRegion: Region | null;
   setSelectedRegion: (region: Region | null) => void;
   rootRegions: Region[];
-
-  // Hovered item (shared between list and map)
-  hoveredRegionId: number | null;
-  setHoveredRegionId: (id: number | null) => void;
 
   // Breadcrumbs (works for both GADM divisions and custom regions)
   divisionBreadcrumbs: AdministrativeDivision[];
@@ -67,7 +64,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
   const [divisionBreadcrumbs, setDivisionBreadcrumbs] = useState<AdministrativeDivision[]>([]);
   const [regionBreadcrumbs, setRegionBreadcrumbs] = useState<Region[]>([]);
-  const [hoveredRegionId, setHoveredRegionId] = useState<number | null>(null);
   const [tileVersion, setTileVersion] = useState(0);
 
   // Increment tile version to force MapLibre to reload tiles
@@ -406,8 +402,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     selectedRegion,
     setSelectedRegion: handleSetSelectedRegion,
     rootRegions,
-    hoveredRegionId,
-    setHoveredRegionId,
     divisionBreadcrumbs,
     regionBreadcrumbs,
     tileVersion,
@@ -425,7 +419,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     selectedRegion,
     handleSetSelectedRegion,
     rootRegions,
-    hoveredRegionId,
     divisionBreadcrumbs,
     regionBreadcrumbs,
     tileVersion,
@@ -434,9 +427,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     rootRegionsLoading,
   ]);
 
+  // The hovered region rides its own store rather than this context — it
+  // changes on every mouse move over the region map, and here it re-rendered
+  // all twelve consumers of this context per move (#573). Mounted by this
+  // provider the way `ExperienceProvider` mounts `HoverProvider`, so every
+  // surface that navigates regions can read it.
   return (
     <NavigationContext.Provider value={value}>
-      {children}
+      <RegionHoverProvider>{children}</RegionHoverProvider>
     </NavigationContext.Provider>
   );
 }

@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
 import type { Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl';
+import { subscribeToRegionHover, useRegionHoverActions } from '../../hooks/useRegionHover';
 
 const REGIONS_SOURCE_LAYER = 'regions';
 
@@ -71,7 +72,6 @@ interface UseMapFeatureStateOptions {
   isCustomWorldView: boolean;
   isExploring: boolean;
   visitedRegionIds: Set<number> | undefined;
-  hoveredRegionId: number | null;
   sourceLayerName: string;
   tileUrl: string | null;
   viewingRegionId: 'all-leaf' | number;
@@ -84,7 +84,6 @@ export function useMapFeatureState({
   isCustomWorldView,
   isExploring,
   visitedRegionIds,
-  hoveredRegionId,
   sourceLayerName,
   tileUrl,
   viewingRegionId,
@@ -251,31 +250,71 @@ export function useMapFeatureState({
     return stopWaiting;
   }, [mapLoaded, tileUrl, mapRef]);
 
-  // Apply hover state to features using setFeatureState
+  // Apply hover state to features using setFeatureState — from a subscription,
+  // not a render: the hovered id changes on every mouse move over the map, and
+  // as a prop of this hook it re-rendered the component that *is* the map's
+  // sources and layers for each one (#573). Answering it here costs two
+  // `setFeatureState` calls and no render at all.
   const prevHoveredIdRef = useRef<number | null>(null);
+  const { store: regionHoverStore } = useRegionHoverActions();
 
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
 
     const map = mapRef.current.getMap();
-    if (!map.getSource('regions-vt')) return;
 
+    // The root overlay is in the list only while it is mounted: `setHoverState`
+    // checks `getSource` per overlay anyway, but the gate is also what makes
+    // `rootOverlayEnabled` a dependency — the overlay appearing re-subscribes,
+    // and the call-once below paints the standing hover onto it.
     const overlaySources = [
-      'root-regions-vt',
+      ...(rootOverlayEnabled ? ['root-regions-vt'] : []),
       ...Array.from({ length: contextLayerCount }, (_, i) => `context-${i}-vt`),
     ];
 
-    if (prevHoveredIdRef.current !== null) {
-      clearHoverState(map, sourceLayerName, overlaySources, prevHoveredIdRef.current);
-    }
+    // Called once on subscribe with the standing value — a hover set before
+    // this effect re-ran (the tiles arriving, an overlay appearing, the source
+    // replaced under it) is painted rather than lost until the pointer moves
+    // again. `tileUrl` is a dependency for exactly that: replacing `regions-vt`
+    // wipes its feature state, and re-subscribing is what repaints the standing
+    // hover onto the new source — the visited effect above lists it for the
+    // same reason.
+    const paint = (hoveredRegionId: number | null) => {
+      // Checked per event, not once at subscribe: the sources are added by
+      // react-map-gl's own `<Source>` components after `load`, so a check that
+      // gated the subscription concluded "no source" once and never looked
+      // again — the pre-store effect self-healed because hover state re-ran it
+      // on every pointer move, and this subscription has no such retry.
+      if (!map.getSource('regions-vt')) return;
+      if (prevHoveredIdRef.current !== null) {
+        clearHoverState(map, sourceLayerName, overlaySources, prevHoveredIdRef.current);
+      }
 
-    if (hoveredRegionId !== null && !isExploring) {
-      setHoverState(map, sourceLayerName, overlaySources, hoveredRegionId);
-      prevHoveredIdRef.current = hoveredRegionId;
-    } else {
-      prevHoveredIdRef.current = null;
-    }
-  }, [mapLoaded, hoveredRegionId, sourceLayerName, isExploring, contextLayerCount, mapRef]);
+      if (hoveredRegionId !== null && !isExploring) {
+        setHoverState(map, sourceLayerName, overlaySources, hoveredRegionId);
+        prevHoveredIdRef.current = hoveredRegionId;
+      } else {
+        prevHoveredIdRef.current = null;
+      }
+    };
+    const unsubscribe = subscribeToRegionHover(regionHoverStore, paint);
+
+    // The retry for a paint the guard above skipped: a hover set in the window
+    // between this effect running and the source landing has no later event to
+    // carry it — the deps cover the *replacement* of a source, not its first
+    // arrival. Same shape as the visited effect's listener; gated on the
+    // painted id already matching so routine tile loads cost nothing.
+    const handleSourceData = (e: MapSourceDataEvent) => {
+      if (e.sourceId !== 'regions-vt' || !e.isSourceLoaded) return;
+      if (prevHoveredIdRef.current === regionHoverStore.getState()) return;
+      paint(regionHoverStore.getState());
+    };
+    map.on('sourcedata', handleSourceData);
+    return () => {
+      unsubscribe();
+      map.off('sourcedata', handleSourceData);
+    };
+  }, [mapLoaded, regionHoverStore, sourceLayerName, isExploring, contextLayerCount, rootOverlayEnabled, tileUrl, mapRef]);
 
   // Hide region layers when exploring
   useEffect(() => {
