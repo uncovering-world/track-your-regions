@@ -6,12 +6,11 @@ import { useRef, useEffect, useCallback, useMemo } from 'react';
 import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';
 import { useNavigation } from '../../hooks/useNavigation';
+import { useRegionHoverActions } from '../../hooks/useRegionHover';
 import { useExperienceContext } from '../../hooks/useExperienceContext';
 import { fetchDivision, fetchDivisionGeometry } from '../../api';
 import { smartFitBounds } from '../../utils/mapUtils';
 import type { Region } from '../../types';
-
-const REGIONS_SOURCE_LAYER = 'regions';
 
 interface ClickMeta {
   name?: string;
@@ -114,13 +113,15 @@ export function useMapInteractions({
     selectedDivision,
     selectedWorldView,
     setSelectedDivision,
-    hoveredRegionId,
-    setHoveredRegionId,
     isCustomWorldView,
     selectedRegion,
     setSelectedRegion,
     regionBreadcrumbs,
   } = useNavigation();
+  // The setter only. What is hovered is rendered by `HoveredRegionTooltip` and
+  // painted by `useMapFeatureState`'s subscription — reading it here would put
+  // this hook's owner, the map, back on the every-mouse-move render path.
+  const { setHoveredRegionId } = useRegionHoverActions();
 
   const { isExploring } = useExperienceContext();
 
@@ -387,36 +388,6 @@ export function useMapInteractions({
     }
   }, [selectedDivision, selectedWorldView, setSelectedDivision, isCustomWorldView, selectedRegion, setSelectedRegion, regionBreadcrumbs]);
 
-  // Get hovered region name from metadata, falling back to tile feature properties
-  // (for siblings not in current-level metadata)
-  const hoveredRegionName = useMemo(() => {
-    if (!hoveredRegionId) return null;
-    if (metadataById[hoveredRegionId]?.name) return metadataById[hoveredRegionId].name;
-    // Fall back: query tile features for the name
-    if (mapRef.current) {
-      const map = mapRef.current.getMap();
-      // Check context sources, main source, and root overlay
-      const sourceIds = [
-        ...Array.from({ length: contextLayerCount }, (_, i) => `context-${i}-vt`),
-        'regions-vt',
-        'root-regions-vt',
-      ];
-      for (const sourceId of sourceIds) {
-        if (!map.getSource(sourceId)) continue;
-        const sourceLayer = sourceId === 'regions-vt' ? sourceLayerName : REGIONS_SOURCE_LAYER;
-        // Filter by promoted feature ID to avoid scanning all loaded tile features
-        const features = map.querySourceFeatures(sourceId, {
-          sourceLayer,
-          filter: ['==', ['id'], hoveredRegionId],
-        });
-        if (features.length > 0 && features[0].properties?.name) {
-          return features[0].properties.name as string;
-        }
-      }
-    }
-    return null;
-  }, [hoveredRegionId, metadataById, mapRef, sourceLayerName, contextLayerCount]);
-
   // Interactive layer IDs
   const interactiveLayerIds = useMemo(() => {
     const layers = ['region-fill', 'region-hull'];
@@ -434,12 +405,10 @@ export function useMapInteractions({
     handleMouseMove,
     handleMouseLeave,
     handleGoToParent,
-    hoveredRegionName,
     interactiveLayerIds,
     selectedRegion,
     selectedDivision,
     isCustomWorldView,
     isExploring,
-    hoveredRegionId,
   };
 }

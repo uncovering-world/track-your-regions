@@ -25,6 +25,7 @@ import { useNavigation } from '../hooks/useNavigation';
 import { useVisitedRegions } from '../hooks/useVisitedRegions';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { HoverPreviewCard } from './regionMap/HoverPreviewCard';
+import { HoveredRegionTooltip } from './regionMap/HoveredRegionTooltip';
 import { ExperienceMarkers } from './ExperienceMarkers';
 import { SelectedObjectFoldControl } from './experienceMarkers/FoldPlacesControl';
 import { MapUnavailable } from './shared/MapUnavailable';
@@ -61,7 +62,6 @@ export function RegionMapVT() {
     selectedWorldView,
     isCustomWorldView,
     selectedRegion,
-    hoveredRegionId,
     regionBreadcrumbs,
   } = useNavigation();
 
@@ -108,7 +108,6 @@ export function RegionMapVT() {
     isCustomWorldView,
     isExploring,
     visitedRegionIds,
-    hoveredRegionId,
     sourceLayerName,
     tileUrl,
     viewingRegionId,
@@ -120,7 +119,6 @@ export function RegionMapVT() {
     handleMouseMove,
     handleMouseLeave,
     handleGoToParent,
-    hoveredRegionName,
     interactiveLayerIds,
   } = useMapInteractions({
     mapRef,
@@ -427,30 +425,15 @@ export function RegionMapVT() {
         )}
       </Map>
 
-      {/* Hovered region tooltip - hidden when exploring */}
-      {hoveredRegionId && hoveredRegionName && !isExploring && (
-        <Box
-          sx={{
-            position: 'absolute',
-            bottom: 16,
-            left: 16,
-            backgroundColor: 'rgba(255,255,255,0.98)',
-            backdropFilter: 'blur(8px)',
-            p: 1.5,
-            px: 2,
-            borderRadius: 2,
-            maxWidth: 300,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-            border: '1px solid rgba(0,0,0,0.06)',
-          }}
-        >
-          <Typography variant="subtitle2" sx={{ fontWeight: 500 }}>
-            {hoveredRegionName}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Click to explore
-          </Typography>
-        </Box>
+      {/* Hovered region tooltip - hidden when exploring. Its own subscriber to
+          the region hover store, so a mouse move re-renders it and not the map. */}
+      {!isExploring && (
+        <HoveredRegionTooltip
+          mapRef={mapRef}
+          metadataById={metadataById}
+          sourceLayerName={sourceLayerName}
+          contextLayerCount={contextLayers.length}
+        />
       )}
 
       {/* Artwork preview overlay */}

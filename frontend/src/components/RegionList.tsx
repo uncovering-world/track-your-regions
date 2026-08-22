@@ -15,6 +15,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { useQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNavigation } from '../hooks/useNavigation';
+import { useRegionHoverActions, useRegionHoverSelector } from '../hooks/useRegionHover';
 import { useVisitedRegions } from '../hooks/useVisitedRegions';
 import { fetchRootDivisions, fetchSubdivisions, fetchSubregions, fetchRootRegions } from '../api';
 import { LoadingSpinner } from './shared/LoadingSpinner';
@@ -65,129 +66,155 @@ function emptyListMessage(
   return selectedDivision ? 'No subdivisions' : 'No divisions found';
 }
 
+/** The placement the virtualiser hands a row: everything it needs to sit still. */
+interface RowPlacement {
+  size: number;
+  start: number;
+}
+
+interface DivisionRowProps {
+  division: AdministrativeDivision;
+  placement: RowPlacement;
+  onClick: (division: AdministrativeDivision) => void;
+  /** The store's setter — stable, so hovering costs this row's render alone. */
+  onHoverChange: (id: number | null) => void;
+}
+
+/**
+ * One division row, subscribed to its own "am I the hovered one" boolean.
+ *
+ * Hover used to be state in `NavigationContext`, so crossing this list — or the
+ * map, which shares the id — re-rendered the whole list and every other
+ * consumer of that context per mouse move (#573). Now a move re-renders the row
+ * entered and the row left, which is the invariant `regionHoverStore.test.tsx`
+ * pins.
+ */
+function DivisionRow({ division, placement, onClick, onHoverChange }: DivisionRowProps) {
+  const isHovered = useRegionHoverSelector(id => id === division.id);
+  return (
+    <ListItemButton
+      onClick={() => onClick(division)}
+      onMouseEnter={() => onHoverChange(division.id)}
+      onMouseLeave={() => onHoverChange(null)}
+      selected={isHovered}
+      sx={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: `${placement.size}px`,
+        transform: `translateY(${placement.start}px)`,
+        backgroundColor: isHovered ? 'action.hover' : 'transparent',
+      }}
+    >
+      <ListItemIcon sx={{ minWidth: 28 }}>
+        <Box
+          sx={{
+            width: division.hasChildren ? 10 : 8,
+            height: division.hasChildren ? 10 : 8,
+            borderRadius: '50%',
+            bgcolor: division.hasChildren ? 'primary.main' : 'grey.400',
+          }}
+        />
+      </ListItemIcon>
+      <ListItemText
+        primary={division.name}
+        primaryTypographyProps={{
+          noWrap: true,
+          sx: { fontSize: '0.9rem' },
+        }}
+      />
+    </ListItemButton>
+  );
+}
+
+interface RegionRowProps {
+  region: Region;
+  placement: RowPlacement;
+  visited: boolean;
+  onClick: (region: Region) => void;
+  onHoverChange: (id: number | null) => void;
+  onToggleVisited: (regionId: number) => void;
+}
+
+function regionRowBackground(visited: boolean, isHovered: boolean): string {
+  if (visited) return 'rgba(76, 175, 80, 0.1)';
+  return isHovered ? 'action.hover' : 'transparent';
+}
+
+/** One region row; the same subscription shape as `DivisionRow` above. */
+function RegionRow({ region, placement, visited, onClick, onHoverChange, onToggleVisited }: RegionRowProps) {
+  const isHovered = useRegionHoverSelector(id => id === region.id);
+  return (
+    <ListItemButton
+      onClick={() => onClick(region)}
+      onMouseEnter={() => onHoverChange(region.id)}
+      onMouseLeave={() => onHoverChange(null)}
+      selected={isHovered}
+      sx={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: `${placement.size}px`,
+        transform: `translateY(${placement.start}px)`,
+        backgroundColor: regionRowBackground(visited, isHovered),
+        borderLeft: `4px solid ${region.color || '#3388ff'}`,
+      }}
+    >
+      <ListItemIcon sx={{ minWidth: 28 }}>
+        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: region.color || '#3388ff' }} />
+      </ListItemIcon>
+      <ListItemText
+        primary={region.name}
+        primaryTypographyProps={{
+          noWrap: true,
+          sx: { fontSize: '0.9rem' },
+        }}
+      />
+      <Tooltip title={visited ? 'Mark as not visited' : 'Mark as visited'}>
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleVisited(region.id);
+          }}
+          sx={{
+            ml: 1,
+            color: visited ? 'success.main' : 'action.disabled',
+          }}
+        >
+          {visited
+            ? <CheckCircleIcon fontSize="small" />
+            : <CheckCircleOutlineIcon fontSize="small" />}
+        </IconButton>
+      </Tooltip>
+    </ListItemButton>
+  );
+}
+
 export function RegionList() {
   const {
     selectedWorldView,
     selectedDivision,
     setSelectedDivision,
-    hoveredRegionId,
-    setHoveredRegionId,
     isCustomWorldView,
     selectedRegion,
     setSelectedRegion,
     rootRegions,
     rootRegionsLoading,
   } = useNavigation();
+  // The setter alone: this component renders none of the hover, so a mouse
+  // move across its rows — or across the map, which writes the same store —
+  // must not re-render it. Each row subscribes to its own boolean instead.
+  const { setHoveredRegionId } = useRegionHoverActions();
 
   // Visited regions tracking (only for custom world views)
   const { isVisited, toggleVisited } = useVisitedRegions(
     isCustomWorldView ? selectedWorldView?.id : undefined
   );
 
-  const regionRowBackground = (visited: boolean, isHovered: boolean): string => {
-    if (visited) return 'rgba(76, 175, 80, 0.1)';
-    return isHovered ? 'action.hover' : 'transparent';
-  };
-
   const parentRef = useRef<HTMLDivElement>(null);
-
-  const renderDivisionRow = (
-    division: AdministrativeDivision,
-    virtualRow: { size: number; start: number },
-  ) => {
-    const isHovered = hoveredRegionId === division.id;
-    return (
-      <ListItemButton
-        key={division.id}
-        onClick={() => handleDivisionClick(division)}
-        onMouseEnter={() => setHoveredRegionId(division.id)}
-        onMouseLeave={() => setHoveredRegionId(null)}
-        selected={isHovered}
-        sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: `${virtualRow.size}px`,
-          transform: `translateY(${virtualRow.start}px)`,
-          backgroundColor: isHovered ? 'action.hover' : 'transparent',
-        }}
-      >
-        <ListItemIcon sx={{ minWidth: 28 }}>
-          <Box
-            sx={{
-              width: division.hasChildren ? 10 : 8,
-              height: division.hasChildren ? 10 : 8,
-              borderRadius: '50%',
-              bgcolor: division.hasChildren ? 'primary.main' : 'grey.400',
-            }}
-          />
-        </ListItemIcon>
-        <ListItemText
-          primary={division.name}
-          primaryTypographyProps={{
-            noWrap: true,
-            sx: { fontSize: '0.9rem' },
-          }}
-        />
-      </ListItemButton>
-    );
-  };
-
-  const renderRegionRow = (
-    region: Region,
-    virtualRow: { size: number; start: number },
-  ) => {
-    const isHovered = hoveredRegionId === region.id;
-    const visited = isVisited(region.id);
-    return (
-      <ListItemButton
-        key={region.id}
-        onClick={() => handleRegionClick(region)}
-        onMouseEnter={() => setHoveredRegionId(region.id)}
-        onMouseLeave={() => setHoveredRegionId(null)}
-        selected={isHovered}
-        sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: `${virtualRow.size}px`,
-          transform: `translateY(${virtualRow.start}px)`,
-          backgroundColor: regionRowBackground(visited, isHovered),
-          borderLeft: `4px solid ${region.color || '#3388ff'}`,
-        }}
-      >
-        <ListItemIcon sx={{ minWidth: 28 }}>
-          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: region.color || '#3388ff' }} />
-        </ListItemIcon>
-        <ListItemText
-          primary={region.name}
-          primaryTypographyProps={{
-            noWrap: true,
-            sx: { fontSize: '0.9rem' },
-          }}
-        />
-        <Tooltip title={visited ? 'Mark as not visited' : 'Mark as visited'}>
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleVisited(region.id);
-            }}
-            sx={{
-              ml: 1,
-              color: visited ? 'success.main' : 'action.disabled',
-            }}
-          >
-            {visited
-              ? <CheckCircleIcon fontSize="small" />
-              : <CheckCircleOutlineIcon fontSize="small" />}
-          </IconButton>
-        </Tooltip>
-      </ListItemButton>
-    );
-  };
 
   // Fetch divisions for GADM hierarchy
   const { data: divisions = [], isLoading: divisionsLoading } = useQuery({
@@ -284,9 +311,32 @@ export function RegionList() {
           position: 'relative',
         }}
       >
-        {virtualizer.getVirtualItems().map((virtualRow) => isCustomWorldView
-          ? renderRegionRow(regions[virtualRow.index], virtualRow)
-          : renderDivisionRow(divisions[virtualRow.index], virtualRow))}
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          if (isCustomWorldView) {
+            const region = regions[virtualRow.index];
+            return (
+              <RegionRow
+                key={region.id}
+                region={region}
+                placement={virtualRow}
+                visited={isVisited(region.id)}
+                onClick={handleRegionClick}
+                onHoverChange={setHoveredRegionId}
+                onToggleVisited={toggleVisited}
+              />
+            );
+          }
+          const division = divisions[virtualRow.index];
+          return (
+            <DivisionRow
+              key={division.id}
+              division={division}
+              placement={virtualRow}
+              onClick={handleDivisionClick}
+              onHoverChange={setHoveredRegionId}
+            />
+          );
+        })}
       </List>
     </Paper>
   );

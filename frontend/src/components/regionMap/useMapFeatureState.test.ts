@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
 
 import { useMapFeatureState } from './useMapFeatureState';
+import { RegionHoverProvider, useRegionHoverActions } from '../../hooks/useRegionHover';
 
 /**
  * The blocking overlay is raised on every tile URL change and lowered only by an
@@ -38,25 +40,40 @@ function makeMap() {
   return { map, emit, handlers };
 }
 
+/** The store's setter, for the hover tests below; null between renders. */
+let hoverActions: ReturnType<typeof useRegionHoverActions> | null = null;
+function GrabHoverActions() {
+  hoverActions = useRegionHoverActions();
+  return null;
+}
+
 function renderState(
   map: ReturnType<typeof makeMap>['map'],
   mapLoaded = true,
   tileUrl: string | null = 'http://martin.test/tiles/{z}/{x}/{y}',
 ) {
+  hoverActions = null;
   const mapRef = { current: { getMap: () => map } as unknown as MapRef };
-  return renderHook(() =>
-    useMapFeatureState({
-      mapRef: mapRef as React.RefObject<MapRef | null>,
-      mapLoaded,
-      isCustomWorldView: true,
-      isExploring: false,
-      visitedRegionIds: undefined,
-      hoveredRegionId: null,
-      sourceLayerName: 'regions',
-      tileUrl,
-      viewingRegionId: 'all-leaf',
-      contextLayerCount: 0,
-    }),
+  return renderHook(
+    ({ url }: { url: string | null }) =>
+      useMapFeatureState({
+        mapRef: mapRef as React.RefObject<MapRef | null>,
+        mapLoaded,
+        isCustomWorldView: true,
+        isExploring: false,
+        visitedRegionIds: undefined,
+        sourceLayerName: 'regions',
+        tileUrl: url,
+        viewingRegionId: 'all-leaf',
+        contextLayerCount: 0,
+      }),
+    {
+      initialProps: { url: tileUrl },
+      // The hover arrives from the region hover store's subscription now, so
+      // the hook needs the provider even where a test never hovers anything.
+      wrapper: ({ children }: { children: ReactNode }) =>
+        createElement(RegionHoverProvider, null, createElement(GrabHoverActions), children),
+    },
   );
 }
 
@@ -146,5 +163,53 @@ describe('useMapFeatureState tile readiness', () => {
 
     expect(result.current.tilesReady).toBe(true);
     expect(result.current.tilesStalled).toBe(false);
+  });
+});
+
+/**
+ * The hover half: painted from a store subscription now, which has no retry of
+ * its own — the pre-store effect re-ran on every pointer move, so a source that
+ * appeared late or was replaced was healed by the next hover. These pin the two
+ * substitutes for that retry: the per-event source check, and the re-subscribe
+ * on `tileUrl` whose call-once repaints the hover that was already standing.
+ */
+describe('useMapFeatureState hover painting', () => {
+  it('paints a hover that arrived before the source, once the source lands', () => {
+    const { map, emit } = makeMap();
+    renderState(map);
+
+    // Sources are added by react-map-gl after `load`: at subscribe time there
+    // is nothing to paint on, and that must not end the story — the pointer
+    // has not moved, so no later hover event will carry this id.
+    act(() => { hoverActions!.setHoveredRegionId(7); });
+    expect(map.setFeatureState).not.toHaveBeenCalled();
+
+    map.getSource.mockReturnValue({} as never);
+    act(() => { emit('sourcedata', { sourceId: 'regions-vt', isSourceLoaded: true }); });
+    expect(map.setFeatureState).toHaveBeenCalledWith(
+      { source: 'regions-vt', sourceLayer: 'regions', id: 7 },
+      { hovered: true },
+    );
+  });
+
+  it('repaints the standing hover when the tile source is replaced', () => {
+    const { map } = makeMap();
+    map.getSource.mockReturnValue({} as never);
+    const { rerender } = renderState(map);
+
+    act(() => { hoverActions!.setHoveredRegionId(42); });
+    expect(map.setFeatureState).toHaveBeenCalledWith(
+      { source: 'regions-vt', sourceLayer: 'regions', id: 42 },
+      { hovered: true },
+    );
+
+    // Replacing the source wipes its feature state; the pointer has not moved,
+    // so only the re-subscription's call-once can put the hover back.
+    map.setFeatureState.mockClear();
+    rerender({ url: 'http://martin.test/v2/{z}/{x}/{y}' });
+    expect(map.setFeatureState).toHaveBeenCalledWith(
+      { source: 'regions-vt', sourceLayer: 'regions', id: 42 },
+      { hovered: true },
+    );
   });
 });
