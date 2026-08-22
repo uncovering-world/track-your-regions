@@ -11,6 +11,19 @@ import type { Request, Response } from 'express';
 
 const USER_AGENT = 'TrackYourRegions/1.0 (https://github.com/trackyourregions; contact@trackyourregions.com)';
 const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
+/**
+ * How long each of this file's two lookups may take **in total** — every request it
+ * makes to somebody else, not each one separately. Both numbers are statements about
+ * the person waiting rather than about the query: Wikidata's own hard deadline is 60 s
+ * and Nominatim's is longer still, and a suggestion arriving after either has been
+ * given up on, in a dialog that is likely already closed.
+ *
+ * The image lookup gets the longer one because it is up to three layers deep and a
+ * curator has asked for it and knows they are waiting; place search is one request
+ * under someone's typing, where ten seconds is already past useful.
+ */
+const IMAGE_LOOKUP_TIMEOUT_MS = 20000;
+const PLACE_SEARCH_TIMEOUT_MS = 10000;
 
 // Simple in-memory rate limiter: track last request timestamp
 let lastRequestTime = 0;
@@ -48,6 +61,7 @@ export async function searchPlaces(req: Request, res: Response) {
         'User-Agent': USER_AGENT,
         'Accept': 'application/json',
       },
+      signal: AbortSignal.timeout(PLACE_SEARCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -91,10 +105,17 @@ type SparqlBinding = Record<string, { value: string } | undefined>;
  * is watching: it waits out a `Retry-After` against a budget the whole run shares, and
  * is right to spend minutes doing it. Here a curator is holding a dialog open waiting
  * for a suggestion, and a wait that long is a wait they would read as a hang.
+ *
+ * The deadline arrives from the caller rather than being made here, and it is the one
+ * the whole request shares: a ceiling on this function alone would leave the retries
+ * bounded and the lookup around them not, and this is one of three layers. Until it
+ * existed there was no ceiling anywhere — `fetch` carried no signal, so a socket
+ * Wikidata never closed held the curator's request open for as long as the socket lived.
  */
-async function sparqlQuery(query: string, retries = 2): Promise<SparqlBinding[]> {
+async function sparqlQuery(query: string, signal: AbortSignal, retries = 2): Promise<SparqlBinding[]> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     const response = await fetch(WIKIDATA_ENDPOINT, {
+      signal,
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -129,10 +150,11 @@ function filePathUrl(filename: string): string {
 /**
  * Layer 1: Direct Wikidata entity lookup by QID → P18 (image)
  */
-async function lookupByQid(qid: string): Promise<{ imageUrl: string; entityLabel: string; description?: string; wikipediaUrl?: string } | null> {
+async function lookupByQid(qid: string, signal: AbortSignal): Promise<{ imageUrl: string; entityLabel: string; description?: string; wikipediaUrl?: string } | null> {
   const url = `https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`;
   const response = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT },
+    signal,
   });
   if (!response.ok) return null;
 
@@ -165,7 +187,7 @@ async function lookupByQid(qid: string): Promise<{ imageUrl: string; entityLabel
 /**
  * Layer 2: SPARQL spatial search — find nearby entities with images
  */
-async function lookupBySpatial(lat: number, lng: number): Promise<{ imageUrl: string; entityLabel: string; wikidataId: string; description?: string } | null> {
+async function lookupBySpatial(lat: number, lng: number, signal: AbortSignal): Promise<{ imageUrl: string; entityLabel: string; wikidataId: string; description?: string } | null> {
   const query = `
     SELECT ?item ?itemLabel ?itemDescription ?image WHERE {
       SERVICE wikibase:around {
@@ -181,7 +203,7 @@ async function lookupBySpatial(lat: number, lng: number): Promise<{ imageUrl: st
     LIMIT 5
   `;
 
-  const bindings = await sparqlQuery(query);
+  const bindings = await sparqlQuery(query, signal);
   if (bindings.length === 0) return null;
 
   const first = bindings[0];
@@ -198,7 +220,7 @@ async function lookupBySpatial(lat: number, lng: number): Promise<{ imageUrl: st
 /**
  * Layer 3: Name search via wbsearchentities → check P18
  */
-async function lookupByName(name: string): Promise<{ imageUrl: string; entityLabel: string; wikidataId: string; description?: string; wikipediaUrl?: string } | null> {
+async function lookupByName(name: string, signal: AbortSignal): Promise<{ imageUrl: string; entityLabel: string; wikidataId: string; description?: string; wikipediaUrl?: string } | null> {
   const url = new URL('https://www.wikidata.org/w/api.php');
   url.searchParams.set('action', 'wbsearchentities');
   url.searchParams.set('search', name);
@@ -208,6 +230,7 @@ async function lookupByName(name: string): Promise<{ imageUrl: string; entityLab
 
   const response = await fetch(url.toString(), {
     headers: { 'User-Agent': USER_AGENT },
+    signal,
   });
   if (!response.ok) return null;
 
@@ -216,7 +239,7 @@ async function lookupByName(name: string): Promise<{ imageUrl: string; entityLab
   };
 
   for (const entity of data.search) {
-    const result = await lookupByQid(entity.id);
+    const result = await lookupByQid(entity.id, signal);
     if (result) {
       return { ...result, wikidataId: entity.id };
     }
@@ -241,9 +264,9 @@ function isValidLatLng(lat: number | undefined, lng: number | undefined): lat is
     && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
-async function suggestByQid(wikidataId: string | undefined): Promise<SuggestImagePayload | null> {
+async function suggestByQid(wikidataId: string | undefined, signal: AbortSignal): Promise<SuggestImagePayload | null> {
   if (!wikidataId || !/^Q\d+$/.test(wikidataId)) return null;
-  const result = await lookupByQid(wikidataId);
+  const result = await lookupByQid(wikidataId, signal);
   if (!result) return null;
   return {
     imageUrl: result.imageUrl,
@@ -258,12 +281,25 @@ async function suggestByQid(wikidataId: string | undefined): Promise<SuggestImag
 async function suggestBySpatial(
   lat: number | undefined,
   lng: number | undefined,
+  signal: AbortSignal,
 ): Promise<SuggestImagePayload | null> {
   if (!isValidLatLng(lat, lng)) return null;
-  const result = await lookupBySpatial(lat, lng as number);
+  const result = await lookupBySpatial(lat, lng as number, signal);
   if (!result) return null;
-  // Spatial search doesn't include sitelinks; fetch Wikipedia URL via QID follow-up
-  const entityData = result.wikidataId ? await lookupByQid(result.wikidataId) : undefined;
+  // Spatial search doesn't include sitelinks; fetch Wikipedia URL via QID follow-up.
+  //
+  // Failing it costs the link and nothing else — the line below already treats the link
+  // as optional — so it is caught here rather than allowed to leave with the picture.
+  // The shared deadline made that a live case rather than a theoretical one: the spatial
+  // query is the slow half of this layer, so a follow-up that starts at eighteen seconds
+  // has two to abort in, and letting it throw would turn a suggestion the server was
+  // holding into a 500 that `AddExperienceDialog` reports as "no image found".
+  const entityData = result.wikidataId
+    ? await lookupByQid(result.wikidataId, signal).catch((err: unknown) => {
+      console.warn('[Geocode] Wikipedia link lookup failed for', result.wikidataId, err);
+      return undefined;
+    })
+    : undefined;
   return {
     imageUrl: result.imageUrl,
     source: 'wikidata_spatial',
@@ -274,9 +310,9 @@ async function suggestBySpatial(
   };
 }
 
-async function suggestByName(name: string | undefined): Promise<SuggestImagePayload | null> {
+async function suggestByName(name: string | undefined, signal: AbortSignal): Promise<SuggestImagePayload | null> {
   if (!name) return null;
-  const result = await lookupByName(name);
+  const result = await lookupByName(name, signal);
   if (!result) return null;
   return {
     imageUrl: result.imageUrl,
@@ -303,10 +339,14 @@ export async function suggestImage(req: Request, res: Response) {
   }
 
   try {
+    // One deadline for the walk, made here and shared by every layer: a curator asked
+    // one question, and three layers each free to take as long as they like is what
+    // they experience as one lookup that never comes back.
+    const signal = AbortSignal.timeout(IMAGE_LOOKUP_TIMEOUT_MS);
     const layers = [
-      () => suggestByQid(wikidataId),
-      () => suggestBySpatial(lat, lng),
-      () => suggestByName(name),
+      () => suggestByQid(wikidataId, signal),
+      () => suggestBySpatial(lat, lng, signal),
+      () => suggestByName(name, signal),
     ];
     for (const layer of layers) {
       const payload = await layer();
