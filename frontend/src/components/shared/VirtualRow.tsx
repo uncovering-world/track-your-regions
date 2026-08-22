@@ -1,5 +1,7 @@
 /**
- * One row of the windowed experience list, placed where the virtualiser says.
+ * One row of a windowed list, placed where the virtualiser says. Shared by the
+ * map-mode experience list and Discover's — each owns its virtualiser and hands
+ * this the placement.
  *
  * Measurement is the library's: the ref reports the element, and a `ResizeObserver`
  * reports changes. That observer runs *after* layout, which is one frame too late
