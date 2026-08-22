@@ -106,3 +106,7 @@ Commit the fix following the conventions in `docs/tech/development-guide.md`:
 
 Then summarize what was done and suggest:
 - **To create a PR**: run `/commit`, then `/pr-create` — it enforces the clean-history gate, includes `Fixes #$ARGUMENTS` in the description, and moves the issue to 👀 In review on the board
+
+### 10. Babysit the PR
+
+Once a PR exists, the work is not done until it is mergeable. Follow `/pr-create` § "Babysit the PR until it is mergeable": watch the checks, answer every review thread (reply, don't resolve), fold fixes into their owning commits via `/pr-changes-amend`, and rebase when main moves — until checks are green and reviews are addressed.

@@ -44,8 +44,9 @@ Ask the user to confirm which branches to create PRs for.
 Before creating PRs, ensure each branch is rebased with fast-forward on top of the latest main:
 
 ```bash
-git fetch origin  # update ALL remote tracking refs (needed for --force-with-lease)
-git fetch origin main:main  # fast-forward local main
+git fetch origin main:main  # fast-forward local main — and nothing else: a refspec-less
+                            # `git fetch origin` would refresh origin/<branch> too, making
+                            # the per-branch lease below vacuous
 ```
 
 If the working tree is dirty, stash before switching branches:
@@ -57,8 +58,10 @@ For each branch:
 ```bash
 git checkout <branch>
 git rebase main
-git push --force-with-lease
+git push --force-with-lease    # first push of a new branch: git push -u origin <branch>
 ```
+
+Rewriting your own branch's history and force-pushing it is this repo's normal flow — `--force-with-lease` is all the protection needed here, *because* the fetch above touched only `main`: the lease compares against your remote-tracking ref, which still holds the last state of the branch you actually saw. A refused push means someone else pushed to the branch — fetch it, read what arrived, fold it in, push again.
 
 After rebase, check if the branch still has commits ahead of main:
 ```bash
@@ -166,3 +169,29 @@ For each PR created, show:
 - Brief note on what was included
 
 If multiple PRs were created, show a summary table at the end.
+
+### 8. Babysit the PR until it is mergeable
+
+Creating the PR is not the end of the job — an open PR is unfinished work. Stay on it until it is mergeable: checks green, every review thread answered, no conflicts with main. Poll periodically rather than waiting to be asked, and do not move on to other branches while checks are red or reviewers are unanswered. One carve-out: a stacked chain built by `/vibe-history` opens all its PRs first (that command owns the ordering and the nothing-lost verification) and then this loop covers the whole chain together.
+
+**Checks.** `gh pr checks <number>` (add `--watch` to block on them). On a failure, read the actual failing log (`gh run view <run-id> --log-failed`), reproduce locally, and fix. A fix is folded into the commit that owns the broken code — run `/pr-changes-amend` (for a dependent member of a stacked chain, pass its dependency branch as the base: `/pr-changes-amend <dependency-branch>` — the default `main` base would let the mapping reach the root's commits and rewrite them inside the dependent; and when the amended commit belongs to a chain member that itself **has** dependents, create the `fixup!` on the chain's top branch and fold from there with `git rebase --autosquash --update-refs origin/main`, so the rewrite carries into every dependent and all refs move together — then force-push each branch of the chain) — never appended as an "address review" commit; then `git push --force-with-lease` (see "Conflicts and staleness" below for the one rule that keeps that safe). Pushing its own amends unattended is this loop's normal operation (the carve-out is stated in `/pr-changes-amend` and `/commit` too): the branch is under this loop's stewardship, `--force-with-lease` refuses to clobber anything it has not seen, every amend answers a review thread that gets a reply naming the fix, and parking each wave for a manual push would defeat "stay on it until it is mergeable".
+
+**Reviews and comments.** Fetch new review threads as they arrive — `/pr-comments-analyze` collects and classifies them, `/pr-comments-reply` answers them; inside this loop their ask-the-user approval gates are carved out (stated in both files), since an unattended loop cannot wait on them and every reply is anchored to a verified fix or a stated reason. Ground rules, learned the hard way:
+
+- Answer every thread; **do not resolve threads yourself** unless explicitly told to — the commenter resolves. `main` requires conversation resolution, so an ignored thread blocks the merge as surely as a red check. One carve-out: when a bot commenter reports it could not resolve its own thread ("please resolve it manually"), that *is* being told — resolve it yourself and say so in the reply.
+- Read a bot reviewer's *verdict*, not just its finding list — and verify each claim against the code (grep for the claim, not the cited line number; lines drift) before agreeing or pushing back.
+- When a finding is real, look for its symmetric twin — the same bug in the mirrored code path — and fix both; then expect second-order breakage from the fix and re-run the affected tests.
+- A declined finding gets a reply with the concrete reason, never silence.
+
+**Conflicts and staleness.** If main moves ahead, rebase — the repo is rebase-only, no merge commits:
+
+```bash
+git fetch origin main && git rebase origin/main
+git push --force-with-lease
+```
+
+One rule keeps the bare lease sound: **never refresh `origin/<branch>` inside the loop** — that means no refspec-less `git fetch origin` and no bare `git pull` (it runs exactly that fetch); fetch `main` (or another specific ref) by name. The lease compares against your remote-tracking ref, i.e. the last state of the branch you actually saw; a full fetch would silently mark a reviewer's or the maintainer's fresh push as "seen" and let the next force-push clobber it. With the fetch scoped, a third-party push simply makes the push refuse — fetch the branch, read what arrived, fold it in, push again.
+
+A **stacked chain** (dependents' PR bases are their dependency branches, per `/vibe-history` step 5e) does not use the recipe above branch-by-branch: rebasing a dependent onto `origin/main` would balloon its PR with main's and the root's commits, and hand-running `--onto` needs pre-rebase tips that the root's rebase destroys. Rebase the whole stack in one move from its top instead: `git checkout <top-branch> && git rebase --update-refs origin/main` — `--update-refs` moves every intermediate branch ref with it, no remembered shas — then force-push each branch of the chain (`--force-with-lease`, same scoped-fetch rule). Re-run whatever gates the rebase could have invalidated.
+
+**Done.** The loop ends when the PR reports mergeable and all reviews are addressed. Auto-merge is disabled on this repo — the maintainer presses the button; report the final state rather than merging.

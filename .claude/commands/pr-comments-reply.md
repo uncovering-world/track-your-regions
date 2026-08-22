@@ -64,7 +64,7 @@ Show all planned replies in a table before posting:
 ...
 ```
 
-Ask the user to confirm before posting. The user may want to edit individual replies.
+Ask the user to confirm before posting. The user may want to edit individual replies. One carve-out: inside `/pr-create` § "Babysit the PR until it is mergeable" this gate is waived — the loop posts replies anchored to verified fixes or stated reasons without waiting.
 
 ### 6. Post replies
 

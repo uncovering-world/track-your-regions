@@ -138,3 +138,7 @@ Commit the changes following the conventions in `docs/tech/development-guide.md`
 Then summarize what was built and suggest:
 - **To create a PR**: run `/pr-create` — it fills the template, references the issue (`Closes #$ARGUMENTS`, or `Part of #$ARGUMENTS` if partial), enforces the clean-history gate, and moves every referenced issue to 👀 In review on the board
 - **To continue work**: list any remaining items from the issue that weren't addressed
+
+### 9. Babysit the PR
+
+Once a PR exists, the work is not done until it is mergeable. Follow `/pr-create` § "Babysit the PR until it is mergeable": watch the checks, answer every review thread (reply, don't resolve), fold fixes into their owning commits via `/pr-changes-amend`, and rebase when main moves — until checks are green and reviews are addressed.
