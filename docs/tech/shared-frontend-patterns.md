@@ -15,6 +15,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | `MapUnavailable` | Explains that this browser cannot draw maps. Props: `detail?`, `compact?` | `<MapUnavailable detail="The list still works." />` |
 | `LifecycleChip` | Labels a `former` or `lost` experience, nothing for an ordinary one. Props: `state` (`source_membership` / `existence`). Also exports `lifecycleLabel()` and `verdictOf()`, which share the precedence rule: existence answers first | `<LifecycleChip state={experience} />` |
 | `GuardedMap` | `react-map-gl`'s `<Map>` with the WebGL check built in. Extra props: `unavailableDetail?`, `unavailableCompact?` | `import { GuardedMap as MapGL } from '…/GuardedMap'` — alias it to the local name and nothing else changes |
+| `VirtualRow` | One row of a windowed list: places it where the virtualiser says and registers it with `measureElement`. Props: `virtualizer`, `index`, `start`, `children`. Renders a `li` — put it inside a `List` | Both windowed experience lists (`ExperienceList.tsx`, `discover/DiscoverExperienceList.tsx`) |
 
 ## Utility Modules (`frontend/src/utils/`)
 
@@ -60,6 +61,9 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | Fold an object's places to one pin | `useCollapsedExperiences(regionId)` + `<FoldPlacesControl />` | Local `useState` in a surface, or an effect that clears the set when the region changes — an effect runs after render, which leaves a commit where the new region's rows are drawn against the old region's folds |
 | Rendering any map | `GuardedMap` (aliased to your local name), or an early return on `isWebGLAvailable()` where overlays sit over the map | Importing `Map` straight from `react-map-gl/maplibre`, or a bare `new maplibregl.Map` — both throw without WebGL, and there is no error boundary to catch it |
 | Ask whether a place is inside the map's view | `pointInView(lng, lat, bounds)` | `bounds.contains([lng, lat])`, or a literal `west <= lng && lng <= east` — `LngLatBounds.contains` takes its wrapping branch only on `sw.lng > ne.lng`, which `getBounds()` never produces, so both drop every real longitude over the dateline |
+| Place a windowed list's row | `<VirtualRow virtualizer={v} index={i} start={row.start}>…</VirtualRow>` | A hand-rolled absolutely-positioned `Box` with its own `measureElement` ref — whose inline ref function detaches and reattaches per render, forcing a synchronous layout per mounted row (see the note in `VirtualRow.tsx`) |
+| Share hover state between a list and a map | A store + selectors: `useHoverContext` (experiences/places), `useRegionHover` (regions) | React state in a context — every consumer re-renders per mouse move; `hoverStore.test.tsx` / `regionHoverStore.test.tsx` pin what a hover may re-render |
+| Report New-badge impressions from a windowed list | `useSeenWindowIds(idsInVisibleRange, resetKey)` and hand the accumulated set to `useNewBadgeImpressions` | Reporting the fetched/filtered set — rows the window never held get stamped, and the server keeps the *first* impression, so their "new" week is spent unseen |
 
 ## Maintaining This Doc
 
