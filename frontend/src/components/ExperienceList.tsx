@@ -50,15 +50,7 @@ import { LoadingSpinner } from './shared/LoadingSpinner';
 import { ExperienceListItem } from './ExperienceList/ExperienceListItem';
 import { VirtualRow } from './ExperienceList/VirtualRow';
 import { useVirtualizer } from '@tanstack/react-virtual';
-
-/**
- * How often, at most, the rows the window has held are reported as seen.
- *
- * Long enough that a scroll through a freshly published region is a handful of
- * requests rather than one per render, short enough that a reader who glances
- * and leaves has still been counted.
- */
-const SEEN_FLUSH_MS = 800;
+import { useSeenWindowIds } from '../hooks/useSeenWindowIds';
 
 interface ExperienceGroup {
   categoryName: string;
@@ -171,13 +163,6 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // Track which groups are expanded
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  // Which experiences the reader's window has held, for the New-badge impression
-  // below. Accumulated across scrolling and reset per region.
-  const [seenExperienceIds, setSeenExperienceIds] = useState<Set<number>>(() => new Set());
-  // Rows seen since the last flush, and the flush itself. Declared here because
-  // the region-change block below clears them, and that block runs during render.
-  const pendingSeen = useRef<Set<number>>(new Set());
-  const seenFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs for scrolling to items (experiences and locations)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -226,14 +211,6 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     setTrackedRegionId(regionId);
     hasAutoExpanded.current = false;
     setExpandedGroups(new Set());
-    // What the reader has laid eyes on belongs to the region they were in. Reset
-    // here rather than in an effect for the same reason the rest of this block is
-    // here: one render carrying region B's rows against A's seen-set would report
-    // impressions for rows nobody has seen, and the server keeps the first one.
-    // The rows still waiting to be flushed go with it, or region A's would be
-    // reported once the timer came round against region B's list.
-    setSeenExperienceIds(new Set());
-    pendingSeen.current = new Set();
   }
 
   // The parent's copy stays in an effect — setting another component's state
@@ -411,56 +388,15 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     if (regionId) removeFromRegion({ experienceId: exp.id, rId: regionId });
   }, [regionId, removeFromRegion]);
 
-  // Rows the reader's window has actually held, accumulated. Windowing is what
-  // makes this answerable: before it, expanding a group of 467 stamped all 467 as
-  // seen while the reader had passed ten, and the server keeps the *first*
-  // impression — so those rows spent the reader's personal week unseen, which is
-  // precisely what that week exists to prevent. Accumulated rather than "in view
-  // now", because scrolling away does not unsee a row.
-  //
-  // State rather than a ref, so the memo below has something real to depend on:
-  // a ref mutated in place tells React nothing, and the impressions call would
-  // keep reporting the previous set.
-  //
-  // Flushed on a timer rather than per render, which is what windowing costs
-  // here: the set used to change once per region and now changes as the reader
-  // scrolls, and each change is a request. `authenticatedLimiter` allows 60 a
-  // minute per IP across every authenticated call, and a curator publishing a
-  // sync's arrivals in one go is precisely how a region comes to hold hundreds
-  // of rows carrying the mark. Ids accumulate between flushes, so this bounds
-  // how often the rows are reported, never which of them are.
   const virtualItems = virtualizer.getVirtualItems();
   // What the viewport intersects, which is not what is mounted: `virtualItems`
   // carries the `overscan` rows on either side, deliberately below the fold. Read
   // after `getVirtualItems()` so the range belongs to this render.
   const visibleRange = virtualizer.range;
-  useEffect(() => {
-    const fresh = experienceIdsInVisibleRange(flatRows, visibleRange)
-      .filter(id => !seenExperienceIds.has(id) && !pendingSeen.current.has(id));
-    for (const id of fresh) pendingSeen.current.add(id);
-    if (pendingSeen.current.size === 0 || seenFlushTimer.current) return;
-    seenFlushTimer.current = setTimeout(() => {
-      seenFlushTimer.current = null;
-      const batch = pendingSeen.current;
-      pendingSeen.current = new Set();
-      // Empty when a region change cleared the pending set while this was in
-      // flight; setting state anyway would report the new region's list against
-      // a set that gained nothing.
-      if (batch.size === 0) return;
-      setSeenExperienceIds(prev => {
-        const next = new Set(prev);
-        for (const id of batch) next.add(id);
-        return next;
-      });
-    }, SEEN_FLUSH_MS);
-  }, [visibleRange, flatRows, seenExperienceIds]);
-
-  // A flush landing after the list is gone belongs to nobody.
-  useEffect(() => () => {
-    if (seenFlushTimer.current) clearTimeout(seenFlushTimer.current);
-    seenFlushTimer.current = null;
-    pendingSeen.current = new Set();
-  }, []);
+  // Rows the reader's window has actually held, accumulated per region and
+  // flushed on a timer — the whole argument lives with `useSeenWindowIds`.
+  const seenExperienceIds = useSeenWindowIds(
+    experienceIdsInVisibleRange(flatRows, visibleRange), regionId);
 
   // `activeExperiences`, deliberately not the rows the view leaves: membership in
   // `seenExperienceIds` already means "this row rendered", since it is fed only
