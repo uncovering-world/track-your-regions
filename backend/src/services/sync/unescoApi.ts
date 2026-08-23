@@ -62,10 +62,10 @@ const EXPORT_FIELDS = [
   'name_en', 'name_fr', 'name_es', 'name_ru', 'name_ar', 'name_zh',
   'short_description_en', 'short_description_fr',
   'category', 'coordinates', 'iso_codes', 'states_names',
-  // The picture and the two fields that say whose it is. 1196 of 1273 records
-  // name an author and 1216 a copyright holder — 610 distinct ones, from
-  // "UNESCO" to "Ko Hon Chiu Vincent" — and the catalogue was showing all of
-  // them uncredited while asking this same endpoint for the URL.
+  // The picture and the two fields that say whose it is. Most records name an
+  // author, and most a copyright holder — a wide range of them, from "UNESCO"
+  // to "Ko Hon Chiu Vincent" — and the catalogue was showing all of them
+  // uncredited while asking this same endpoint for the URL.
   'main_image_url', 'main_image_author', 'main_image_copyright',
   'date_inscribed', 'danger', 'danger_list', 'criteria_txt', 'region',
   'area_hectares', 'transboundary', 'components_list',

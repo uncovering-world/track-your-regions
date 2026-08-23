@@ -1,21 +1,26 @@
 /**
  * Who took the picture, and under what licence we are allowed to show it.
  *
- * The catalogue displays 1590 photographs it does not host: 1260 served from
- * `whc.unesco.org` and 330 from Wikimedia Commons. Every one of them was taken
- * by somebody, most under a licence whose whole condition is that the somebody
- * is named — CC BY and CC BY-SA between them cover the Commons set — and until
- * now the catalogue named nobody. That is not a rendering gap; it is the one
- * obligation those licences impose, and UNESCO's syndication terms ask for the
- * same in their own words.
+ * The catalogue displays photographs it does not host: UNESCO's, served from
+ * `whc.unesco.org`, and Wikimedia Commons files both on the objects and on the
+ * works inside them (#582). Every one of them was taken by somebody, and a
+ * share of them carry CC BY or CC BY-SA, which of a catalogue that merely
+ * *shows* a picture ask the one thing — that the somebody is named wherever it
+ * appears; ShareAlike binds adaptations, which showing a photograph is not.
+ * Until this file existed the catalogue named nobody. That is not a rendering gap; it is the one obligation those licences
+ * impose, and UNESCO's syndication terms ask for the same in their own words.
+ *
+ * No counts here on purpose: how many pictures the catalogue holds is a
+ * property of the last sync, and a comment that states it is wrong by the next
+ * one. Measure it when the question comes up.
  *
  * Both sources hand the credit over for free once asked:
  *
- *   - UNESCO's export carries `main_image_author` (1196 of 1273 records) and
- *     `main_image_copyright` (1216) beside the image URL. Two more field names
- *     in the `select` and nothing else changes.
- *   - Commons answers `extmetadata` for up to 50 files in one request, which
- *     covers our 330 in seven — with `Artist`, `LicenseShortName` and
+ *   - UNESCO's export carries `main_image_author` and `main_image_copyright`
+ *     beside the image URL, on most of its records. Two more field names in the
+ *     `select` and nothing else changes.
+ *   - Commons answers `extmetadata` for up to 50 files in one request, which is
+ *     their documented ceiling — with `Artist`, `LicenseShortName` and
  *     `LicenseUrl` for each.
  *
  * `Artist` arrives as HTML, because it is a wiki field. It is reduced to text
@@ -44,8 +49,21 @@ const FILE_PATH_PATH = '/wiki/Special:FilePath/';
 /** The hosts that actually serve Commons files; anything else is somebody else's server. */
 const COMMONS_HOSTS = new Set(['commons.wikimedia.org', 'commons.m.wikimedia.org']);
 
-/** Their documented ceiling for a titles list, and what the 330 files cost: seven requests. */
+/** Their documented ceiling for a titles list, and the first of a batch's two limits. */
 const TITLE_BATCH = 50;
+/**
+ * And the other ceiling, which is the URL the batch is asked down.
+ *
+ * The count alone was enough while the callers were museums and landmarks, whose
+ * files are named after a building. Artworks are not: a painting's file is named
+ * after the painting, its painter, the museum and the inventory number, so fifty
+ * of them can build a query string several kilobytes long. MediaWiki's own
+ * guidance is to POST past 8 kB, and a request over the limit fails as a 414 —
+ * which this file turns into a batch of missing credits rather than a failed
+ * import, so it would go unnoticed. Closing a batch early costs one more request
+ * and cannot.
+ */
+const TITLE_CHARS_BATCH = 6000;
 const CREDIT_TIMEOUT_MS = 30000;
 const CREDIT_MAX_RETRIES = 4;
 const CREDIT_BACKOFF_CEILING_MS = 60000;
@@ -199,9 +217,51 @@ interface CommonsPage {
   imageinfo?: Array<{ extmetadata?: Record<string, ExtMetadataValue> }>;
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+/**
+ * What one title costs the query string, measured the way the query is built.
+ *
+ * `URLSearchParams` and not `encodeURIComponent`, because `askCommons` sends the
+ * titles through the former and the two disagree: form encoding escapes `~ ' ! (
+ * )` where `encodeURIComponent` leaves them, and writes a space as `+` where
+ * `encodeURIComponent` writes `%20`. Measuring with the wrong one is only ever
+ * *usually* safe — today's file names are mostly spaces, so the old estimate ran
+ * high on every batch — but a set full of apostrophes and brackets, which Commons
+ * names commonly are, would have measured short and built a longer URL than the
+ * budget allows. That failure is silent: a 414 reaches this module as a batch of
+ * missing credits.
+ *
+ * Per name rather than per batch because the encoding is per character, so the
+ * costs add: the separator is one `|`, which form encoding writes as three.
+ */
+function titleCost(name: string): number {
+  return new URLSearchParams({ t: `File:${name}|` }).toString().length - 2;
+}
+
+/**
+ * File names grouped into the batches one request may carry.
+ *
+ * Two ceilings, because the batch has two costs: how many titles the API accepts
+ * at once, and how long the URL those titles build comes out. A name is measured
+ * as it will be sent, so the budget is about the request rather than about the
+ * characters a person would count. A single name over the whole budget still
+ * gets its own batch and is asked about: refusing to ask is a credit certainly
+ * missing, where asking is one that may yet arrive.
+ */
+export function batchTitles(names: string[]): string[][] {
+  const out: string[][] = [];
+  let batch: string[] = [];
+  let chars = 0;
+  for (const name of names) {
+    const cost = titleCost(name);
+    if (batch.length > 0 && (batch.length >= TITLE_BATCH || chars + cost > TITLE_CHARS_BATCH)) {
+      out.push(batch);
+      batch = [];
+      chars = 0;
+    }
+    batch.push(name);
+    chars += cost;
+  }
+  if (batch.length > 0) out.push(batch);
   return out;
 }
 
@@ -276,6 +336,37 @@ export interface CreditOptions {
 }
 
 /**
+ * What a stored row says about its picture, in the four parts `creditToWrite` asks about.
+ *
+ * One fragment for both tables because the answer has to mean the same thing on
+ * either: `experiences` and `treasures` carry the same `metadata` key, the same
+ * `image_url` and the same `curated_fields` claim set, and a rule about who owns
+ * a photograph cannot read one shape here and another there.
+ */
+const STORED_CREDIT_COLUMNS = `SELECT external_id, image_url,
+            metadata->'imageCredit' AS credit,
+            metadata ? 'imageCredit' AS has_credit,
+            curated_fields ? 'image_url' AS image_claimed`;
+
+interface StoredCreditRow {
+  external_id: string; image_url: string | null;
+  credit: ImageCredit | null; has_credit: boolean; image_claimed: boolean;
+}
+
+function creditsByExternalId(rows: StoredCreditRow[]): Map<string, StoredCredit> {
+  const credits = new Map<string, StoredCredit>();
+  for (const row of rows) {
+    credits.set(row.external_id, {
+      credit: row.credit,
+      hasCredit: row.has_credit === true,
+      imageUrl: row.image_url,
+      imageClaimed: row.image_claimed === true,
+    });
+  }
+  return credits;
+}
+
+/**
  * The credits a category's rows already carry, keyed by external id.
  *
  * Read once per run, because a run that could not fetch a credit has to resend
@@ -287,28 +378,26 @@ export interface CreditOptions {
  */
 export async function readStoredCredits(categoryId: number): Promise<Map<string, StoredCredit>> {
   const result = await pool.query(
-    `SELECT external_id, image_url,
-            metadata->'imageCredit' AS credit,
-            metadata ? 'imageCredit' AS has_credit,
-            curated_fields ? 'image_url' AS image_claimed
+    `${STORED_CREDIT_COLUMNS}
        FROM experiences
       WHERE category_id = $1`,
     [categoryId],
   );
-  const credits = new Map<string, StoredCredit>();
-  const rows = result.rows as {
-    external_id: string; image_url: string | null;
-    credit: ImageCredit | null; has_credit: boolean; image_claimed: boolean;
-  }[];
-  for (const row of rows) {
-    credits.set(row.external_id, {
-      credit: row.credit,
-      hasCredit: row.has_credit === true,
-      imageUrl: row.image_url,
-      imageClaimed: row.image_claimed === true,
-    });
-  }
-  return credits;
+  return creditsByExternalId(result.rows as StoredCreditRow[]);
+}
+
+/**
+ * The same, for the works inside those rows.
+ *
+ * Every treasure rather than a category's worth of them, because a treasure has
+ * no category: it is globally unique by `external_id` and shared by every venue
+ * that holds it (ADR-0023). No `WHERE` at all, then, and one query per run —
+ * the run reads the whole table once and looks up what it needs by
+ * `external_id`, rather than asking per work.
+ */
+export async function readStoredTreasureCredits(): Promise<Map<string, StoredCredit>> {
+  const result = await pool.query(`${STORED_CREDIT_COLUMNS} FROM treasures`);
+  return creditsByExternalId(result.rows as StoredCreditRow[]);
 }
 
 /**
@@ -442,7 +531,7 @@ export async function fetchCommonsCredits(
   const byName = groupByFile(urls);
   if (byName.size === 0) return credits;
 
-  for (const batch of chunk([...byName.keys()], TITLE_BATCH)) {
+  for (const batch of batchTitles([...byName.keys()])) {
     for (const page of await creditBatch(batch, options)) {
       const read = readCredit(page);
       if (!read) continue;

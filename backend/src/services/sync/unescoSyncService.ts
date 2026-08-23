@@ -341,8 +341,8 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
     // credit that pointed at our own page would be a credit to nobody.
     //
     // Through `creditToWrite` like the other two collectors, and for the reason
-    // this source makes sharpest: it carries 1260 of the catalogue's 1590
-    // photographs, and a curator replacing one of them with a picture of their
+    // this source makes sharpest: it carries more of the catalogue's photographs
+    // than any other, and a curator replacing one of them with a picture of their
     // own would otherwise have UNESCO's photographer printed underneath it at
     // the next run — one person's name under another person's photograph.
     ...creditToWrite(
