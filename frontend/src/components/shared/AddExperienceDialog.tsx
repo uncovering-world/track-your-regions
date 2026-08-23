@@ -44,6 +44,7 @@ import {
   assignExperienceToRegion,
   createManualExperience,
   fetchExperienceCategories,
+  type Experience,
 } from '../../api/experiences';
 import { searchPlaces, suggestImageUrl, type PlaceResult, type ImageSuggestion } from '../../api/geocode';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
@@ -51,6 +52,7 @@ import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LocationPicker } from './LocationPicker';
 import { LoadingSpinner } from './LoadingSpinner';
 import { EmptyState } from './EmptyState';
+import { ImageCreditLine } from './ImageCreditLine';
 
 interface ApplySuggestionParams {
   setNewImageUrl: (url: string) => void;
@@ -98,6 +100,46 @@ function applySuggestionToState(data: ImageSuggestion, p: ApplySuggestionParams)
     p.setNewWikipediaUrl(data.wikipediaUrl);
     p.linkAutoFilled.current = true;
   }
+}
+
+/**
+ * A search hit's picture and its lines, including whose photograph it is.
+ *
+ * Its own component because the row holds state: whether the picture arrived.
+ * Most of what this dialog searches is UNESCO, where four URLs in five answer
+ * 403 (#557), so "the image failed" is the ordinary case here — and hiding the
+ * `<img>` while leaving the credit would name a photographer under nothing.
+ */
+function SearchResultBody({ exp, imageUrl }: { exp: Experience; imageUrl: string }) {
+  const [failed, setFailed] = useState(false);
+  const shown = failed ? '' : imageUrl;
+  return (
+    <>
+      {shown && (
+        <Box
+          component="img"
+          src={shown}
+          alt=""
+          sx={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }}
+          onError={() => setFailed(true)}
+        />
+      )}
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <ListItemText
+          primary={exp.name}
+          secondary={[exp.category_name, exp.category, exp.country_names?.[0]].filter(Boolean).join(' \u00B7 ')}
+          primaryTypographyProps={{ variant: 'body2', fontWeight: 500, noWrap: true }}
+          secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
+          sx={{ my: 0 }}
+        />
+        {/* Hung on the picture that is actually on screen: these rows show one at
+            40 px, and a small picture is still the picture being shown. Nothing
+            here names an artist, so the credit has nothing to repeat and always
+            draws. */}
+        {shown && <ImageCreditLine credit={exp.image_credit} />}
+      </Box>
+    </>
+  );
 }
 
 interface AddExperienceDialogProps {
@@ -549,6 +591,11 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                   {suggestMutation.isPending ? <CircularProgress size={16} /> : 'Suggest'}
                 </Button>
               </Box>
+              {/* No credit under this one, and that is the shape of the data rather
+                  than an omission: the object does not exist yet, so there is no
+                  stored `metadata.imageCredit` to draw. `POST /experiences` resolves
+                  the credit for whatever URL is saved, so the picture is named from
+                  the moment anybody but its author can see it. */}
               {newImageUrl && (
                 <Box
                   component="img"
@@ -630,7 +677,14 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
             {searchResults && searchResults.results.length > 0 && (
               <List dense disablePadding sx={{ maxHeight: 400, overflowY: 'auto' }}>
                 {searchResults.results.map((exp) => {
-                  const imageUrl = extractImageUrl(exp.image_url);
+                  // The normalised URL decides whether there is a picture, not the stored
+                  // one: `toThumbnailUrl` answers with an empty string for a host we do
+                  // not trust, and `src=""` is not "no image" — the browser resolves it
+                  // against the page and draws a broken thumbnail. The rule
+                  // `ObjectContext` states, applied to the row that shows the same
+                  // objects — and it is what keeps a credit off a picture nobody sees.
+                  const thumbnail = extractImageUrl(exp.image_url);
+                  const imageUrl = thumbnail ? toThumbnailUrl(thumbnail, 120) : '';
                   return (
                     <ListItem
                       key={exp.id}
@@ -651,21 +705,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                         </Button>
                       }
                     >
-                      {imageUrl && (
-                        <Box
-                          component="img"
-                          src={toThumbnailUrl(imageUrl, 120)}
-                          alt=""
-                          sx={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }}
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
-                      )}
-                      <ListItemText
-                        primary={exp.name}
-                        secondary={[exp.category_name, exp.category, exp.country_names?.[0]].filter(Boolean).join(' \u00B7 ')}
-                        primaryTypographyProps={{ variant: 'body2', fontWeight: 500, noWrap: true }}
-                        secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
-                      />
+                      <SearchResultBody exp={exp} imageUrl={imageUrl} />
                     </ListItem>
                   );
                 })}

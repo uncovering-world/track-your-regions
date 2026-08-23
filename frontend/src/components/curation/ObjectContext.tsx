@@ -21,6 +21,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import type { ReviewQueueItem } from '../../api/experiences';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
+import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { PointPreviewDialog } from './PointPreviewDialog';
 
 /** Four decimals is about 11 m at the equator — finer than this screen can use. */
@@ -58,6 +59,22 @@ export function madeOfLabel(
 export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const [showMap, setShowMap] = useState(false);
   const [showImage, setShowImage] = useState(false);
+  // Two, because they are two requests: the card asks for 120 px and the dialog
+  // for 960. A failure has to take its *own* credit away, and on this screen a
+  // failure is the ordinary case rather than the edge one — most of what the
+  // queue holds is UNESCO, whose URLs largely answer 403 (#557), and
+  // `toThumbnailUrl` sends those through a proxy that surfaces the 403 as an
+  // image error.
+  //
+  // Held as *which picture* failed rather than as a flag, because this component
+  // is not a list row: the bench draws one card at a time (`ReviewBench`,
+  // `<ObjectContext item={item} />` with no key anywhere on the chain), so moving
+  // between two questions of the same kind reconciles a new `item` into the same
+  // instance. A boolean would survive that and blank the next object's picture —
+  // one 403 turning every card after it into a photoless card. Keyed by URL it
+  // cannot: a different picture is a different key.
+  const [cardFailedFor, setCardFailedFor] = useState<string | null>(null);
+  const [fullFailedFor, setFullFailedFor] = useState<string | null>(null);
   const image = extractImageUrl(item.image_url ?? null);
   // The thumbnail, not the extracted URL, is what decides whether there is a picture:
   // `extractImageUrl` turns a stored `/images/…` path into one on our own API, whose host
@@ -65,7 +82,9 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   // `src=""` resolves against the page and draws a broken image in a 96×72 frame, which is
   // the one thing this file's header says it must not do. UNESCO and museum rows carry
   // trusted remote URLs today; the local shape is what `museumSyncService` still repairs.
-  const thumbnail = image ? toThumbnailUrl(image, 120) : '';
+  const cardFailed = !!image && cardFailedFor === image;
+  const fullFailed = !!image && fullFailedFor === image;
+  const thumbnail = image && !cardFailed ? toThumbnailUrl(image, 120) : '';
   const hasPoint = typeof item.latitude === 'number' && typeof item.longitude === 'number';
   const regions = item.region_names ?? [];
   const links: Array<{ label: string; href: string }> = [];
@@ -107,10 +126,20 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
             alt=""
             loading="lazy"
             sx={{ width: 96, height: 72, objectFit: 'cover', borderRadius: 1, bgcolor: 'grey.100' }}
+            onError={() => setCardFailedFor(image)}
           />
         </ButtonBase>
       )}
       <Box sx={{ minWidth: 0 }}>
+        {/* First line of the text column rather than under the 96×72 frame: a
+            caption there would set the width of the picture's own column, and a
+            photographer's name is longer than the picture is wide. No
+            `redundantWith` — a card names an object, not an artist, so there is
+            nothing here for the credit to repeat.
+            Hung on the thumbnail rather than on the credit alone: a row whose
+            `image_url` is a local path draws no picture here (see above), and a
+            photographer named under no photograph credits them for nothing. */}
+        {thumbnail && <ImageCreditLine credit={item.image_credit} />}
         {madeOf && (
           // Above the coordinates, because it changes what the coordinates mean: one
           // pair of numbers on an object made of seven places is one of seven.
@@ -181,12 +210,29 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
         <Dialog open={showImage} onClose={() => setShowImage(false)} maxWidth="md">
           <DialogTitle sx={{ pb: 1 }}>{item.name}</DialogTitle>
           <DialogContent sx={{ pt: 0 }}>
-            <Box
-              component="img"
-              src={toThumbnailUrl(image, 960)}
-              alt={item.name}
-              sx={{ width: '100%', height: 'auto', display: 'block' }}
-            />
+            {!fullFailed && (
+              <Box
+                component="img"
+                src={toThumbnailUrl(image, 960)}
+                alt={item.name}
+                sx={{ width: '100%', height: 'auto', display: 'block' }}
+                onError={() => setFullFailedFor(image)}
+              />
+            )}
+            {/* And again under the enlargement, which is where the picture is
+                actually being looked at — a credit on the card the reader
+                scrolled past does not follow the photograph onto this screen.
+                Gated on this copy's own arrival: the card's 120 px and this 960 px
+                are two requests, and the credit belongs to whichever is drawn. */}
+            {!fullFailed && <ImageCreditLine credit={item.image_credit} />}
+            {/* Said rather than left blank: the curator opened this deliberately, so
+                an empty white box under the object's name reads as a rendering fault
+                on the one screen whose job is deciding whether a picture is right. */}
+            {fullFailed && (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                This picture could not be loaded. Its source may no longer be serving it.
+              </Typography>
+            )}
           </DialogContent>
         </Dialog>
       )}

@@ -139,6 +139,94 @@ describe('ObjectContext', () => {
     expect(screen.queryByText(/holds/)).not.toBeInTheDocument();
   });
 
+  it('names whoever took the photograph it is showing', () => {
+    // A curator's screen is the catalogue being worked on rather than published,
+    // which changes nothing about the licence — and it answers a question only
+    // this screen raises: somebody deciding whether to replace a picture needs
+    // to know whose it is.
+    render(<ObjectContext item={item({
+      image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Mesha%20stele.jpg',
+      image_credit: {
+        author: 'Mbzt',
+        license: 'CC BY-SA 4.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0',
+        detailsUrl: 'https://commons.wikimedia.org/wiki/File:Mesha_stele.jpg',
+      },
+    })} />);
+
+    expect(screen.getByRole('link', { name: 'Mbzt' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'CC BY-SA 4.0' })).toBeInTheDocument();
+  });
+
+  it('takes the credit away with a picture that did not arrive', () => {
+    // Not an edge case on this screen: most of what the queue holds is UNESCO,
+    // whose URLs largely answer 403 (#557), and the proxy surfaces that as an
+    // image error. A photographer named under a broken frame is the one claim
+    // the credit feature exists to avoid making.
+    render(<ObjectContext item={item({
+      image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Mesha%20stele.jpg',
+      // Something other than the picture, so the card is still on screen after the
+      // failure: without it `ObjectContext` renders nothing at all and the assertion
+      // would hold even if the credit's own guard were removed.
+      region_names: ['Tigray'],
+      image_credit: {
+        author: 'Mbzt',
+        license: 'CC BY-SA 4.0',
+        licenseUrl: null,
+        detailsUrl: 'https://commons.wikimedia.org/wiki/File:Mesha_stele.jpg',
+      },
+    })} />);
+    expect(screen.getByRole('link', { name: 'Mbzt' })).toBeInTheDocument();
+
+    fireEvent.error(screen.getByRole('button', { name: /enlarge the picture/ }).querySelector('img')!);
+
+    expect(screen.queryByRole('link', { name: 'Mbzt' })).not.toBeInTheDocument();
+    expect(screen.getByText('Tigray')).toBeInTheDocument();
+  });
+
+  it('does not carry one object\'s failed picture onto the next', () => {
+    // The bench draws one card at a time with no key, so a new `item` reconciles
+    // into the same instance. Held as a flag, a single 403 would blank every
+    // object after it — a photoless card for a picture that is there.
+    const broken = item({
+      external_id: '1', name: 'Aksum',
+      image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Broken.jpg',
+      region_names: ['Tigray'],
+      image_credit: {
+        author: 'Mbzt', license: 'CC BY-SA 4.0', licenseUrl: null,
+        detailsUrl: 'https://commons.wikimedia.org/wiki/File:Broken.jpg',
+      },
+    });
+    const { rerender } = render(<ObjectContext item={broken} />);
+    fireEvent.error(screen.getByRole('button', { name: /enlarge the picture/ }).querySelector('img')!);
+    expect(screen.queryByRole('link', { name: 'Mbzt' })).not.toBeInTheDocument();
+
+    rerender(<ObjectContext item={item({
+      external_id: '2', name: 'Stonehenge',
+      image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Stonehenge.jpg',
+      region_names: ['Wiltshire'],
+      image_credit: {
+        author: 'Stefan Kühn', license: 'CC BY-SA 3.0', licenseUrl: null,
+        detailsUrl: 'https://commons.wikimedia.org/wiki/File:Stonehenge.jpg',
+      },
+    })} />);
+
+    expect(screen.getByRole('button', { name: /Stonehenge — enlarge the picture/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Stefan Kühn' })).toBeInTheDocument();
+  });
+
+  it('credits nobody where it is drawing no picture', () => {
+    // A row whose `image_url` is a local path draws no thumbnail here, and a
+    // photographer named under no photograph is credited for nothing.
+    render(<ObjectContext item={item({
+      image_url: '/images/unesco/15.jpg',
+      region_names: ['Tigray'],
+      image_credit: { author: 'Mbzt', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null },
+    })} />);
+
+    expect(screen.queryByText(/Mbzt/)).not.toBeInTheDocument();
+  });
+
   it('does not print a coordinate for an object that has no point', () => {
     // `latitude` absent is not `0`: the equator is a real place, and a card that read a
     // missing point as "0.0000, 0.0000" would send a curator to the Gulf of Guinea.
