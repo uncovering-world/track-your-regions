@@ -12,24 +12,18 @@
 
 import { pool } from '../../db/index.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
-import { retirePassAfterNewContent } from './curationDecay.js';
 import { orchestrateSync, getSyncStatus, cancelSync, type FilteredEntity } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
 import type { ChangeSetResult } from './changeSet.js';
 import type {
   SyncProgress,
-  ProcessedContent,
   CollectedMuseum,
-  ContentItem,
-  ContentItemChange,
   ContentsDelta,
 } from './types.js';
-import { workChanges } from './contentsChangeSet.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { isTerminalSyncStatus, runningSyncs } from './types.js';
 import { collectTier1Museums } from './museum/pipeline.js';
 import { fetchEntityDetails, isQid, type SparqlFn } from './museum/queries.js';
-import { ICONIC_SITELINKS, ICONIC_RELEASE } from './museum/tier1.js';
 import {
   delay,
   WaitBudget,
@@ -40,9 +34,11 @@ import {
   wikidataDoor,
   type SparqlBinding,
 } from './wikidataUtils.js';
+import { upsertMuseumTreasures } from './museum/treasureWriter.js';
 import {
   fetchCommonsCredits,
   readStoredCredits,
+  readStoredTreasureCredits,
   creditToWrite,
   type ImageCredit,
   type StoredCredit,
@@ -131,16 +127,32 @@ async function readPreviousPlacements(): Promise<Record<string, string[]>> {
 }
 
 /**
- * Credits for this run's venue photographs, keyed by image URL.
+ * Credits for every photograph this run shows, keyed by image URL: the venues'
+ * and the works' alike, filled by one call in `fetchMuseumItems`.
+ *
+ * Both in one map deliberately — it is what stops a work and the museum holding
+ * it crediting the same file differently — which is why `processMuseum` hands
+ * this same map to `upsertMuseumTreasures` for the works it writes.
  *
  * Module state for the same reason the UNESCO run keeps its Wikipedia links that
  * way: the orchestrator hands `processItem` one museum at a time, and asking
- * Commons per museum would be 128 requests where three will do.
+ * Commons per museum would be one request each where a handful covers them all.
  */
 let imageCredits = new Map<string, ImageCredit>();
 
 /** What each museum's row already says about who took its picture, by external id. */
 let storedCredits = new Map<string, StoredCredit>();
+
+/**
+ * The same for the works on its walls, by the work's own id.
+ *
+ * Separate from the museums' map and not merged into it: both are keyed by a
+ * Wikidata QID, and a venue and a work are different rows in different tables
+ * that can hold different pictures. One map would let a museum's stored credit
+ * answer for a painting of the same id, which cannot happen today only because
+ * nothing is both.
+ */
+let storedTreasureCredits = new Map<string, StoredCredit>();
 
 /** This run's credit, or the one already stored. The rule lives in `imageCredit.ts`. */
 function creditPatch(externalId: string, imageUrl: string | null): { imageCredit?: ImageCredit | null } {
@@ -159,6 +171,7 @@ async function fetchMuseumItems(
   const previousPlacements = await readPreviousPlacements();
   imageCredits = new Map();
   storedCredits = await readStoredCredits(MUSEUM_CATEGORY_ID);
+  storedTreasureCredits = await readStoredTreasureCredits();
 
   const { items, fetched, filtered } = await collectTier1Museums({
     // The reporting door for the long half: everything in `collectTier1Museums`
@@ -175,11 +188,26 @@ async function fetchMuseumItems(
   });
 
   // Whose photographs these are. Asked after the collection rather than during
-  // it: only the admitted venues are worth crediting, which is 128 files in
-  // three requests instead of one per candidate the pool ever named.
+  // it: only the admitted venues are worth crediting, which is a handful of
+  // requests instead of one per candidate the pool ever named.
+  //
+  // The works are asked about in the same breath, and the reason is the map
+  // rather than the arithmetic: one map means a work and the museum holding it
+  // cannot end up crediting the same file differently. Batching the two sets
+  // together saves at most one request — sharing a batch cannot reduce the
+  // number of titles, only the number of half-empty batches — so the saving is
+  // not why it is done.
+  //
+  // Most of the works are photographs of paintings and come back "Public
+  // domain", where Commons names the painter rather than a photographer. A
+  // minority are CC BY or CC BY-SA, which of a screen showing a picture ask the
+  // photographer's name, and the run cannot know which is which without asking.
   progress.statusMessage = 'Asking Commons who took the pictures...';
   const creditBudget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
-  imageCredits = await fetchCommonsCredits(items.map((m) => m.details?.imageUrl), {
+  imageCredits = await fetchCommonsCredits([
+    ...items.map((m) => m.details?.imageUrl),
+    ...items.flatMap((m) => m.artworks.map((a) => a.imageUrl)),
+  ], {
     userAgent: WIKIDATA_USER_AGENT,
     // Its own patience: the collection's is spent by the time this runs.
     budget: creditBudget,
@@ -228,7 +256,7 @@ async function upsertMuseumExperience(
     // The reason this row exists, nameable: the most famous iconic work it holds.
     admittedFor: museum.admittedFor ?? null,
     // The picture is served from Commons and taken by somebody, usually under a
-    // licence whose one condition is that they are named. What goes here is what
+    // licence that asks for them to be named. What goes here is what
     // this run fetched, or the row's own credit where the picture has not
     // changed — never the one from a different photograph. See `creditToWrite`.
     ...creditPatch(museum.qid, details.imageUrl),
@@ -289,188 +317,6 @@ async function upsertMuseumExperience(
 }
 
 /**
- * Upsert artworks as treasures and link to experience via junction table.
- *
- * `is_iconic` is sticky on the way down: a work joins the highlights at `ICONIC_SITELINKS` and
- * only leaves below `ICONIC_RELEASE`, so the badge does not flicker on and off as Wikipedia
- * grows. Selection upstream uses the single threshold; only the stored flag has hysteresis.
- *
- * Returns what the museum gained and what the run rewrote about what it already
- * held, named (ADR-0026). `withdrawn` and `returned` are always empty and that is
- * the decision, not an omission: nothing unlinks a work, because no contents
- * coverage floor exists for treasures and a run that under-fetched would take
- * real works off the walls and report success.
- *
- * `changed` is the one arm computed per work, and its contract is the part a
- * caller cannot see: the "after" side is the **source's offer**, not the row the
- * upsert wrote. That is what makes `curatedConflict` reachable for a work at all
- * — the upsert's own `CASE` writes a claimed value back over itself, so against
- * the written row a claimed field equals itself and the refusal disappears. The
- * comparison is argued where it happens, in the loop below.
- *
- * Exported for its test as well as for the sync: one of its promises lives in a
- * parameter number, which no caller can observe.
- */
-export async function upsertMuseumTreasures(
-  experienceId: number,
-  artworks: ProcessedContent[]
-): Promise<ContentsDelta> {
-  const added: ContentItem[] = [];
-  const changed: ContentItemChange[] = [];
-
-  // What the run is about to write over, read once for the whole museum rather
-  // than once per work. The upsert cannot answer this itself — it is a single
-  // `INSERT … ON CONFLICT` and `RETURNING` gives back the new values — and
-  // without a "before" there is nothing to compare, so a source rewriting a
-  // title or an attribution would land silently on a work a curator has already
-  // passed. The claim set comes with it, because a field the source proposed and
-  // the guard above refused is the *reason* to report rather than a case to skip.
-  const refs = artworks.map(a => a.externalId);
-  const before = new Map<string, {
-    name: string | null; artist: string | null; year: number | null;
-    imageUrl: string | null; curatedFields: string[];
-  }>();
-  if (refs.length > 0) {
-    const stored = await pool.query(
-      `SELECT external_id, name, artist, year, image_url, curated_fields
-         FROM treasures WHERE external_id = ANY($1::text[])`,
-      [refs],
-    );
-    for (const row of stored.rows) {
-      before.set(row.external_id, {
-        name: row.name, artist: row.artist, year: row.year,
-        imageUrl: row.image_url, curatedFields: row.curated_fields ?? [],
-      });
-    }
-  }
-
-  for (const artwork of artworks) {
-    // Step 1: Upsert into treasures (globally unique by external_id)
-    //
-    // `curation_state` is bound to `MUSEUM_CATEGORY_ID` directly rather than
-    // reached through an experience: a treasure is globally shared and is not
-    // owned by any one of them. It is set on insert only — absent from
-    // `DO UPDATE SET` — because a work already stored may already have been
-    // passed by a curator, and this run must not reset that (ADR-0025).
-    const treasureResult = await pool.query(
-      `INSERT INTO treasures (
-        external_id, name, treasure_type, artist, year,
-        image_url, sitelinks_count, is_iconic, metadata, curation_state, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-        CASE WHEN (SELECT requires_curation FROM experience_categories WHERE id = $12)
-             THEN 'pending' ELSE 'auto' END,
-        NOW(), NOW())
-      ON CONFLICT (external_id) DO UPDATE SET
-        -- Four of these are things a curator can be right about, and the guard is
-        -- the one an experience's columns have carried since #488: a claimed field
-        -- keeps what was decided, and everything else still follows the source.
-        -- sitelinks_count and is_iconic are outside it deliberately -- a count and a
-        -- threshold on that count are a measurement, not a judgement -- and so is
-        -- external_id, which is identity and is the conflict target above.
-        name = CASE WHEN treasures.curated_fields ? 'name' THEN treasures.name ELSE EXCLUDED.name END,
-        treasure_type = EXCLUDED.treasure_type,
-        artist = CASE WHEN treasures.curated_fields ? 'artist' THEN treasures.artist ELSE EXCLUDED.artist END,
-        year = CASE WHEN treasures.curated_fields ? 'year' THEN treasures.year ELSE EXCLUDED.year END,
-        image_url = CASE WHEN treasures.curated_fields ? 'image_url'
-                         THEN treasures.image_url ELSE EXCLUDED.image_url END,
-        sitelinks_count = EXCLUDED.sitelinks_count,
-        is_iconic = CASE
-          WHEN EXCLUDED.sitelinks_count >= $10 THEN true
-          WHEN treasures.is_iconic THEN EXCLUDED.sitelinks_count >= $11
-          ELSE false
-        END,
-        metadata = EXCLUDED.metadata,
-        updated_at = NOW()
-      -- The name beside the id because a link is named by what the catalogue
-      -- calls the work, which on a claimed field is not what the source sent.
-      -- Nothing else off this row: the comparison that reports a rewrite reads
-      -- the pre-run snapshot instead, and taking its claim set from here would be
-      -- taking it from the statement that already honoured it.
-      RETURNING id, name`,
-      [
-        artwork.externalId,
-        artwork.name,
-        artwork.treasureType,
-        artwork.artist,
-        artwork.year,
-        artwork.imageUrl,
-        artwork.sitelinksCount,
-        artwork.sitelinksCount >= ICONIC_SITELINKS,
-        null, // metadata
-        ICONIC_SITELINKS,
-        ICONIC_RELEASE,
-        MUSEUM_CATEGORY_ID,
-      ]
-    );
-
-    const stored = treasureResult.rows[0];
-    const treasureId = stored.id;
-
-    // What this run did to a work it already held, or tried to.
-    //
-    // **The "after" is the source's offer, not the row the statement wrote** —
-    // the same pair `keptChanges` compares for a point, and for the same reason.
-    // The upsert's own `CASE` keeps the stored value wherever a claim holds, so a
-    // claimed field written back over itself compares equal: read from the
-    // written row, exactly the refusals worth reporting are the ones that
-    // disappear, and `curatedConflict` could never be true for a work. Read from
-    // the offer, a claim marks the entry rather than erasing it.
-    //
-    // A work the run has just inserted has no "before" and is an arrival, which
-    // `added` below carries.
-    const was = before.get(artwork.externalId);
-    if (was) {
-      const fields = workChanges(was, {
-        name: artwork.name, artist: artwork.artist, year: artwork.year, imageUrl: artwork.imageUrl,
-      }, was.curatedFields);
-      if (fields.length > 0) {
-        changed.push({ item: { name: was.name, ref: artwork.externalId }, fields });
-      }
-    }
-
-    // Step 2: Link treasure to experience via junction table. Unlike the
-    // treasure above, a link does have an experience to read the gate through,
-    // so it is reached the same way the location insert reaches it. Links are
-    // never deleted (ADR-0023), so a link a curator already passed must keep
-    // that state when a later run finds it again — insert-only, same as above.
-    const link = await pool.query(
-      `INSERT INTO experience_treasures (experience_id, treasure_id, curation_state)
-       VALUES ($1, $2,
-         CASE WHEN (SELECT c.requires_curation
-                      FROM experiences e JOIN experience_categories c ON c.id = e.category_id
-                     WHERE e.id = $1)
-              THEN 'pending' ELSE 'auto' END)
-       ON CONFLICT (experience_id, treasure_id) DO NOTHING
-       RETURNING treasure_id`,
-      [experienceId, treasureId]
-    );
-    // `DO NOTHING` returns no row when the link was already there, so this is
-    // "the museum gained a work", not "the run mentioned one".
-    //
-    // Named from the row the statement wrote, not from the artwork in hand: on a
-    // work whose name a curator has claimed those are different strings, and the
-    // one a reader will see is the stored one. Reporting the source's title for a
-    // link to a work the catalogue calls something else names a work nobody can
-    // find.
-    if (link.rows.length > 0) added.push({ name: stored.name, ref: artwork.externalId });
-  }
-
-  // Once for the museum rather than once per painting: the fact is that a
-  // curator's pass no longer covers everything on show, and it is the same fact
-  // whether one work arrived or twelve.
-  if (added.length > 0) await retirePassAfterNewContent(pool, experienceId);
-
-  // `changed` is expected to be empty most runs and is still computed: 120 works
-  // re-asked of Wikidata on 2026-08-20, eleven days after import, differed in
-  // name, artist, year and image exactly zero times. That measurement says how
-  // often a card will appear, not whether the run should be able to raise one —
-  // the axis that moves for a work is which venue holds it, and the day a source
-  // does rewrite an attribution is the day a curator needs to hear about it
-  // rather than the day we discover the run could not say.
-  return { added, withdrawn: [], returned: [], changed };
-}
-
-/**
  * Process a single museum: upsert experience + treasures
  */
 async function processMuseum(
@@ -484,7 +330,9 @@ async function processMuseum(
   // Treasures hang off a row a preview never wrote.
   let treasures: ContentsDelta | undefined;
   if (!context.dryRun) {
-    treasures = await upsertMuseumTreasures(experienceId, museum.artworks);
+    treasures = await upsertMuseumTreasures(experienceId, museum.artworks, {
+      fetched: imageCredits, stored: storedTreasureCredits,
+    });
   }
 
   return {
