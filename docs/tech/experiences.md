@@ -380,6 +380,34 @@ nowhere. The two are never both true of one field: they are answered by differen
 field carrying both would raise two contradictory cards over one value, and where both apply the
 claim wins as the narrower and separately answerable reason.
 
+**A field the import computes about its own run is not a field a person is asked about** (#571).
+Two metadata keys are the run's own bookkeeping rather than facts about the object:
+`artworkCount`, how many works the pass just placed in a venue, and `totalArtworkSitelinks`, the
+sum of those works' sitelink counts — a fame measure the run records about the venue it just
+filled. Nothing reads either one today: which museums are admitted and in what order is decided
+inside the run, off live Wikidata (`museum/pipeline.ts`), never off the stored copy. They are named in
+`SYNC_OWNED_METADATA_KEYS` (`changeSet.ts`), and both halves of the machinery read that one
+constant, because a rule the diff and the write disagreed about is worse than either behaviour:
+
+- **The diff leaves them out, on both sides.** A run that moved nothing else is `unchanged` and
+  raises no card; a card a real change does raise carries only the real change. Both sides,
+  because `publishHeldFields.ts` reads the catch-all's `old` as the list of keys that entry
+  speaks for — a counter named there would be wiped back to the value the proposal was computed
+  against the moment somebody published the field beside it.
+- **The upsert writes them past the gate and past a `metadata` claim**, the way `last_seen_at`
+  goes past both. Ignoring them in the diff alone would have been worse than the bug: the counter
+  would freeze at whatever it read when the gate went up, with nothing left to report it and
+  nothing able to correct it.
+
+A sum over some 2500 works moves whenever anybody anywhere adds a language link to any painting a
+museum holds, so under a gated source every move became a held proposal. Measured on run 64, 13
+of the 15 held changes were `metadata`, and the Louvre's was in full
+`totalArtworkSitelinks: 2363 → 2365` — while the row itself still stored 2363, four runs later.
+One level down the same rule is already SQL: the treasures upsert writes `sitelinks_count`
+unconditionally, "a measurement, not a judgement". `admittedFor` is derived too and is
+deliberately not in the set — it names the most famous work a museum holds, which is the reason
+the row exists at all, and is worth a look when it changes.
+
 ### What a run did to an object's contents ([ADR-0026](../decisions/0026-a-run-records-what-a-container-holds.md))
 
 An experience is a container: it has fields of its own, and it holds **contents** of two kinds —
@@ -752,6 +780,9 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   each work it holds as a treasure whose own `is_iconic` joins at the same 22-sitelink threshold
   and releases only below 18 (`ICONIC_RELEASE`), so the badge does not flicker as Wikipedia's
   coverage grows
+- Records what the pass itself counted — `artworkCount` and `totalArtworkSitelinks` in the venue's
+  metadata — as the run's own bookkeeping rather than as content: written straight through the
+  gate, reported as no change and asked about on no card (§ Change provenance above)
 - Departures are marked, not deleted (ADR-0022); a treasure-to-experience link is only ever added,
   never removed — see ADR-0023 for what that means for a work whose venue changes
 - Images use remote Wikimedia `Special:FilePath` URLs (not downloaded locally); Wikipedia article
