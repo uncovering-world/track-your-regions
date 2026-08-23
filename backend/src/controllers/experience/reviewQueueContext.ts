@@ -31,12 +31,19 @@ export const QUEUE_PAGE_SIZE = 25;
  *
  * Carried on every kind through one fragment rather than added per query, so the eight
  * cards cannot drift into showing different amounts about the same object. It costs each
- * query four columns off the row it already reads plus one region lookup; the regions are
+ * query only columns off the row it already reads plus one region lookup; the regions are
  * a list because an object crosses them, and their names are what a curator recognises —
  * the ids on the object are not.
  */
 export function objectContextSelectSql(alias = 'e'): string {
   return `${alias}.image_url,
+          -- With the picture rather than after it: a curator's screen is where the
+          -- catalogue is being worked on rather than published, and a licence
+          -- naming its photographer does not stop asking because the audience is
+          -- one person. It also answers a question only this screen raises — a
+          -- curator deciding whether to replace a photograph needs to know whose
+          -- it is.
+          ${alias}.metadata->'imageCredit' AS image_credit,
           ST_Y(${alias}.location) AS latitude,
           ST_X(${alias}.location) AS longitude,
           ${alias}.metadata->>'website' AS website_url,
@@ -98,6 +105,11 @@ export function countedWorksSelectSql(alias = 'e'): string {
              FROM (SELECT jsonb_build_object(
                             'name', t.name, 'type', t.treasure_type, 'artist', t.artist,
                             'imageUrl', t.image_url, 'year', t.year,
+                            -- The works preview draws these at 48 px inside a tooltip,
+                            -- with no enlargement to move the obligation onto -- unlike
+                            -- the card above, which opens a dialog. So the credit has to
+                            -- ride the row itself.
+                            'imageCredit', t.metadata->'imageCredit',
                             -- The source's own id, so the preview can stop being a dead
                             -- end: a curator who does not recognise a work needs somewhere
                             -- to go, and this is where the work came from.

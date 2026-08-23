@@ -112,8 +112,8 @@ export function buildRegionQueries(opts: {
         e.country_names,
         e.image_url,
         -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
-        -- Commons, and the licences most of them carry have one condition,
-        -- which is that whoever took them is named wherever they are shown.
+        -- Commons, and the licences most of them carry ask one thing of a page
+        -- showing a picture: that whoever took it is named wherever it appears.
         e.metadata->'imageCredit' as image_credit,
         e.created_at,
       ${readerPositionSql('e')},
@@ -177,8 +177,8 @@ export function buildRegionQueries(opts: {
         e.country_names,
         e.image_url,
         -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
-        -- Commons, and the licences most of them carry have one condition,
-        -- which is that whoever took them is named wherever they are shown.
+        -- Commons, and the licences most of them carry ask one thing of a page
+        -- showing a picture: that whoever took it is named wherever it appears.
         e.metadata->'imageCredit' as image_credit,
         e.created_at,
       ${readerPositionSql('e')},
