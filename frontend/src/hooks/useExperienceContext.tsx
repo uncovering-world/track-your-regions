@@ -17,7 +17,7 @@
 
 import { createContext, useContext, useState, useMemo, useCallback, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchExperiencesByRegion, WHOLE_REGION_LIMIT, type Experience } from '../api/experiences';
+import { fetchExperiencesByRegion, WHOLE_REGION_LIMIT, type Experience, type ImageCredit } from '../api/experiences';
 import { useCollapsedExperiences } from './useCollapsedExperiences';
 import { HoverProvider } from './useHoverContext';
 import type { ViewBounds } from '../utils/viewBounds';
@@ -74,9 +74,22 @@ interface ExperienceContextType {
   collapsedExperienceIds: ReadonlySet<number>;
   toggleCollapsedExperience: (id: number) => void;
 
-  // Artwork preview image (shown as overlay on map)
-  previewImageUrl: string | null;
-  setPreviewImageUrl: (url: string | null) => void;
+  /**
+   * The artwork the pointer is over, shown as an overlay on the map.
+   *
+   * The credit rides with the URL rather than being looked up where the overlay
+   * is drawn, for the same reason the hover store carries one: the map has no
+   * work in scope, and a 500 px photograph with nobody named under it is exactly
+   * what the licence forbids.
+   */
+  artworkPreview: ArtworkPreview | null;
+  setArtworkPreview: (preview: ArtworkPreview | null) => void;
+}
+
+/** A work's picture as the map's overlay needs it: the image, and whose it is. */
+export interface ArtworkPreview {
+  url: string;
+  credit?: ImageCredit | null;
 }
 
 const ExperienceContext = createContext<ExperienceContextType | null>(null);
@@ -92,7 +105,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   const [selectedExperienceId, setSelectedExperienceId] = useState<number | null>(null);
   const [flyToExperienceId, setFlyToExperienceId] = useState<number | null>(null);
   const [expandedCategoryNames, setExpandedCategoryNames] = useState<Set<string>>(new Set());
-  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [artworkPreview, setArtworkPreview] = useState<ArtworkPreview | null>(null);
   // Held for the region it was measured in: a view belongs to the map that was
   // showing that region, and carrying it into the next one would filter the new
   // list by the old camera for the render before the map moves.
@@ -186,9 +199,9 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     setExpandedCategoryNames,
     collapsedExperienceIds,
     toggleCollapsedExperience,
-    previewImageUrl,
-    setPreviewImageUrl,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, previewImageUrl]);
+    artworkPreview,
+    setArtworkPreview,
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>

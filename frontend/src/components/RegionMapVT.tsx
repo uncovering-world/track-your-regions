@@ -29,6 +29,7 @@ import { HoveredRegionTooltip } from './regionMap/HoveredRegionTooltip';
 import { ExperienceMarkers } from './ExperienceMarkers';
 import { SelectedObjectFoldControl } from './experienceMarkers/FoldPlacesControl';
 import { MapUnavailable } from './shared/MapUnavailable';
+import { ArtworkPreviewOverlay } from './regionMap/ArtworkPreviewOverlay';
 import { isWebGLAvailable } from '../utils/webgl';
 import { MAP_STYLE } from '../constants/mapStyles';
 import { useRegionMetadata } from './regionMap/useRegionMetadata';
@@ -71,7 +72,7 @@ export function RegionMapVT() {
   );
 
   // Check if in exploration mode (right panel open with experiences)
-  const { previewImageUrl, isExploring, setViewBounds } = useExperienceContext();
+  const { artworkPreview, isExploring, setViewBounds } = useExperienceContext();
 
   // Determine what parent we're viewing subdivisions of (GADM)
   let viewingParentId: number | 'root';
@@ -436,36 +437,8 @@ export function RegionMapVT() {
         />
       )}
 
-      {/* Artwork preview overlay */}
-      {previewImageUrl && (
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 5,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-            pointerEvents: 'none',
-          }}
-        >
-          <Box
-            component="img"
-            src={previewImageUrl}
-            sx={{
-              maxWidth: '60%',
-              maxHeight: '70%',
-              objectFit: 'contain',
-              borderRadius: 2,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-            }}
-          />
-        </Box>
-      )}
+      {/* The work under the pointer, at a size worth looking at, credited. */}
+      <ArtworkPreviewOverlay preview={artworkPreview} />
 
       {/* The map's own way to fold one object back into a single pin (#558) */}
       {isExploring && isCustomWorldView && selectedRegion && (

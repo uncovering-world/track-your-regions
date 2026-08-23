@@ -2,7 +2,7 @@
 //  App-wide theme system – Dual palettes (Dark / Light) + MUI theme
 // ═══════════════════════════════════════════════════════════════
 
-import { createTheme } from '@mui/material/styles';
+import { createTheme, type Theme } from '@mui/material/styles';
 
 // ── Font tokens (shared) ───────────────────────────────────────
 const font = {
@@ -206,6 +206,30 @@ export function createAppTheme(mode: ThemeMode) {
       h6: { fontFamily: '"Syne", sans-serif' },
     },
     components: {
+      // Every control MUI builds on `ButtonBase` — its own buttons included —
+      // clears the browser's focus outline (`outline: 0` on the root) and leaves
+      // `focusRipple` off, so a keyboard reader is given a tab stop with nothing
+      // to see. That is WCAG 2.4.7, and it fails silently: nothing in this
+      // repository's gates checks focus visibility, and `jsx-a11y` is not
+      // installed. Here rather than on each control, so the next `ButtonBase`
+      // anybody adds is visible without their having to know to grep for a class
+      // name they have never met.
+      MuiButtonBase: {
+        styleOverrides: {
+          // The callback goes on the **slot**, not on a rule inside it: MUI calls
+          // `styleOverrides` values one level down only, so a function nested under
+          // a selector is handed to emotion as a declaration value and dropped
+          // without a word. Checked by rendering rather than by reading — the first
+          // version of this was written the other way and emitted no outline at all,
+          // which is the same silent failure the rule exists to prevent.
+          root: ({ theme }: { theme: Theme }) => ({
+            '&.Mui-focusVisible': {
+              outline: `2px solid ${theme.palette.primary.main}`,
+              outlineOffset: 2,
+            },
+          }),
+        },
+      },
       MuiButton: {
         styleOverrides: {
           root: {

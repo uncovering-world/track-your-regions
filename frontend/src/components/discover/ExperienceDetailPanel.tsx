@@ -6,6 +6,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Box,
+  ButtonBase,
   Typography,
   IconButton,
   Chip,
@@ -35,6 +36,7 @@ import {
   fetchExperienceLocations,
   fetchExperienceTreasures,
   type Experience,
+  type ExperienceTreasure,
 } from '../../api/experiences';
 import { useAuth } from '../../hooks/useAuth';
 import {
@@ -47,9 +49,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../../hooks/useHoverContext';
 
-import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
+import { CATEGORY_COLORS } from '../../utils/categoryColors';
 import { EmptyState } from '../shared/EmptyState';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { ContentTile } from './ContentTile';
 import { locationLabel } from '../../utils/locationLabel';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
@@ -376,7 +379,12 @@ interface LocationsSectionProps {
   onUnmarkAll: () => void;
 }
 
-function LocationsSection({
+/**
+ * Exported for its test, like `ContentsSection`: what it promises is a property
+ * of the *closed* state — that a keyboard can open it — and no caller of the
+ * panel can drive that.
+ */
+export function LocationsSection({
   experienceId,
   locations,
   totalCount,
@@ -431,9 +439,20 @@ function LocationsSection({
 
   return (
     <Box sx={{ mb: 2 }}>
-      {/* Header */}
-      <Box
-        sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', mb: 1 }}
+      {/* Same disclosure, and if anything the sharper of the two: each row inside
+          carries a visit checkbox, so a signed-in keyboard reader was locked out of
+          *recording* — on a serial site of more than fifteen places, which is every
+          site whose list is worth opening. Ticking off the places you have stood in
+          is what this product is for, so the header that hides them is not a lesser
+          case than the works grid. */}
+      <ButtonBase
+        component="div"
+        role="button"
+        aria-expanded={expanded}
+        sx={{
+          display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', mb: 1,
+          width: '100%', textAlign: 'inherit',
+        }}
         onClick={() => setExpanded(!expanded)}
       >
         <LocationOnIcon fontSize="small" color="action" />
@@ -446,7 +465,7 @@ function LocationsSection({
           </Typography>
         )}
         {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-      </Box>
+      </ButtonBase>
 
       <Collapse in={expanded} timeout="auto">
         {/* Batch actions + search for large lists */}
@@ -614,6 +633,14 @@ function PanelLocationRow({
         <Checkbox
           checked={loc.isVisited}
           size="small"
+          // Named, because a bare checkbox is announced as "checkbox, not checked"
+          // and nothing else — neither which place it is nor what ticking it says.
+          // A row of thirty of those is a list a screen reader cannot use at all.
+          inputProps={{
+            'aria-label': loc.isVisited
+              ? `${locationLabel(loc)} — mark as not visited`
+              : `${locationLabel(loc)} — mark as visited`,
+          }}
           onChange={() => loc.isVisited ? onUnmarkLocation(loc.id) : onMarkLocation(loc.id)}
           sx={{ p: 0.5, '&.Mui-checked': { color: '#22c55e' } }}
         />
@@ -627,7 +654,7 @@ function PanelLocationRow({
 // =============================================================================
 
 interface ContentsSectionProps {
-  contents: { id: number; name: string; treasure_type: string; artist: string | null; year: number | null; image_url: string | null; sitelinks_count: number }[];
+  contents: ExperienceTreasure[];
   totalCount: number;
   isAuthenticated: boolean;
   viewedIds: Set<number>;
@@ -635,7 +662,12 @@ interface ContentsSectionProps {
   onUnmarkViewed: (id: number) => void;
 }
 
-function ContentsSection({
+/**
+ * Exported for its test: what this section promises is that a museum's works can
+ * be reached at all, and that is a property of the *closed* state, which no
+ * caller of the panel can drive.
+ */
+export function ContentsSection({
   contents,
   totalCount,
   isAuthenticated,
@@ -666,9 +698,21 @@ function ContentsSection({
 
   return (
     <Box sx={{ mb: 2 }}>
-      {/* Header */}
-      <Box
-        sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', mb: 1 }}
+      {/* The header is the only way into this section, and the section is shut by
+          default for anything past `CONTENTS_COLLAPSE_THRESHOLD` — which is most
+          museums. As a `<div onClick>` it was not a tab stop, so the works grid
+          inside could be operated by keyboard in principle and reached by nobody:
+          `Collapse` hides its contents outright while shut, so there was no way in
+          at all. A real control, then, carrying `aria-expanded` so a reader is told
+          whether the thing they are about to open is open. */}
+      <ButtonBase
+        component="div"
+        role="button"
+        aria-expanded={expanded}
+        sx={{
+          display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', mb: 1,
+          width: '100%', textAlign: 'inherit',
+        }}
         onClick={() => setExpanded(!expanded)}
       >
         <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
@@ -680,7 +724,7 @@ function ContentsSection({
           </Typography>
         )}
         {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-      </Box>
+      </ButtonBase>
 
       <Collapse in={expanded} timeout="auto">
         {/* Search for large lists */}
@@ -719,93 +763,17 @@ function ContentsSection({
             bgcolor: 'background.paper',
           }}
         >
-          {displayContents.map((content) => {
-            const isViewed = viewedIds.has(content.id);
-            const thumbUrl = content.image_url ? toThumbnailUrl(content.image_url, 120) : null;
-
-            return (
-              <Box
-                key={content.id}
-                sx={{
-                  position: 'relative',
-                  borderRadius: 1,
-                  overflow: 'hidden',
-                  cursor: 'pointer',
-                  opacity: isViewed ? 0.5 : 1,
-                  transition: 'opacity 0.2s',
-                  '&:hover': { opacity: 1 },
-                }}
-                onClick={() => isViewed ? onUnmarkViewed(content.id) : onMarkViewed(content.id)}
-              >
-                {thumbUrl ? (
-                  <Box
-                    component="img"
-                    src={thumbUrl}
-                    alt={content.name}
-                    loading="lazy"
-                    sx={{
-                      width: '100%',
-                      aspectRatio: '1',
-                      objectFit: 'cover',
-                      display: 'block',
-                    }}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <Box
-                    sx={{
-                      width: '100%',
-                      aspectRatio: '1',
-                      bgcolor: 'grey.100',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem', textAlign: 'center', px: 0.5 }}>
-                      {content.name}
-                    </Typography>
-                  </Box>
-                )}
-                {isAuthenticated && isViewed && (
-                  <CheckCircleIcon
-                    sx={{
-                      position: 'absolute',
-                      top: 2,
-                      right: 2,
-                      fontSize: 16,
-                      color: VISITED_GREEN,
-                      bgcolor: 'white',
-                      borderRadius: '50%',
-                    }}
-                  />
-                )}
-                <Tooltip title={[
-                  content.name,
-                  content.artist ? ` - ${content.artist}` : '',
-                  content.year ? ` (${content.year})` : '',
-                ].join('')}>
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      bgcolor: 'rgba(0,0,0,0.6)',
-                      px: 0.5,
-                      py: 0.25,
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ color: 'white', fontSize: '0.55rem', lineHeight: 1.2 }} noWrap>
-                      {content.name}
-                    </Typography>
-                  </Box>
-                </Tooltip>
-              </Box>
-            );
-          })}
+          {displayContents.map((content) => (
+            <ContentTile
+              key={content.id}
+              content={content}
+              isViewed={viewedIds.has(content.id)}
+              isAuthenticated={isAuthenticated}
+              onToggleViewed={() => (viewedIds.has(content.id)
+                ? onUnmarkViewed(content.id)
+                : onMarkViewed(content.id))}
+            />
+          ))}
         </Box>
 
         {/* Show more button */}
