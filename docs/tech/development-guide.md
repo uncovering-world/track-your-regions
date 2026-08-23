@@ -199,7 +199,8 @@ components/
 │   ├── FoldPlacesControl.tsx
 │   ├── layers.ts
 │   └── useMarkerInteractions.ts ← the map's own listeners: popup, ring, click
-├── regionMap/                ← what came out of RegionMapVT: hooks, and the hover cards
+├── regionMap/                ← what came out of RegionMapVT: its hooks, and what it draws over the map
+│   ├── ArtworkPreviewOverlay.tsx ← the work under the pointer, at a size worth looking at
 │   ├── HoverPreviewCard.tsx  ← names what the pointer is over, over the map
 │   ├── HoveredRegionTooltip.tsx ← names the region under the pointer; its own store subscriber
 │   ├── layerStyles.ts
