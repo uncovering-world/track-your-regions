@@ -719,12 +719,21 @@ async function insertManualExperience(
   body: CreateManualBody,
   userId: number,
   categoryId: number,
+  imageCredit: ImageCredit | null,
 ): Promise<{ experienceId: number; externalId: string }> {
   const externalId = `curator-${userId}-${Date.now()}`;
 
-  const metadataObj: Record<string, string> = {};
+  const metadataObj: Record<string, unknown> = {};
   if (body.websiteUrl) metadataObj.website = body.websiteUrl as string;
   if (body.wikipediaUrl) metadataObj.wikipediaUrl = body.wikipediaUrl as string;
+  // A picture a person chose is a picture somebody took. The row is `verified`
+  // and published the moment it is written, so it is on a reader's screen before
+  // any run could come back and name the photographer — and no run ever would:
+  // this row belongs to no source, so no collector reads it. Resolved by the
+  // caller before the transaction opens (see `createManualExperience`), because
+  // this is a request to somebody else's server and a lock held across one is
+  // held for as long as they feel like taking.
+  if (imageCredit) metadataObj.imageCredit = imageCredit;
   const metadata = Object.keys(metadataObj).length > 0 ? JSON.stringify(metadataObj) : null;
 
   const expResult = await client.query(`
@@ -823,12 +832,20 @@ export async function createManualExperience(req: AuthenticatedRequest, res: Res
   }
   const categoryId = categoryResult.rows[0].id as number;
 
+  // Before the transaction opens, for the reason the edit path gives: this is a
+  // request to somebody else's server, and a lock held across one is held for as
+  // long as they feel like taking. Answers null for anything that is not a
+  // Commons file or does not come back inside five seconds — a save must not
+  // fail, or wait, because a metadata endpoint is slow.
+  const imageCredit = await creditForOneImage(body.imageUrl as string | undefined, WIKIDATA_USER_AGENT);
+
   // Pin all five inserts (experience, location, region link, location-region
   // link, curation log) to a single client so they form a real transaction.
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { experienceId, externalId } = await insertManualExperience(client, body, userId, categoryId);
+    const { experienceId, externalId } =
+      await insertManualExperience(client, body, userId, categoryId, imageCredit);
     await client.query('COMMIT');
     res.status(201).json({ id: experienceId, name: body.name, externalId });
   } catch (error) {
