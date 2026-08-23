@@ -1351,8 +1351,20 @@ BEGIN
                     -- so an un-backfilled database renders as it always did.
                     WHEN z <= 2 AND r.geom_overview IS NOT NULL
                         THEN r.geom_overview
+                    WHEN z <= 4 AND r.geom_simplified_coarse IS NOT NULL
+                        THEN r.geom_simplified_coarse
                     WHEN z <= 4 AND r.geom_simplified_low IS NOT NULL THEN r.geom_simplified_low
                     WHEN z <= 8 AND r.geom_simplified_medium IS NOT NULL THEN r.geom_simplified_medium
+                    -- Display budget. What a tile costs is dominated by what it
+                    -- has to read: the eight root divisions weigh 386 MB and take
+                    -- 1.9 s to detoast, which is the floor under every tile that
+                    -- touches them, at any zoom, even one answering 62 bytes.
+                    -- pg_column_size() reads the TOAST header rather than the
+                    -- geometry (0.4 ms for those same 386 MB), so a feature too
+                    -- heavy to serve at full resolution is served one rung down.
+                    WHEN pg_column_size(r.geom_3857) > 10485760
+                         AND r.geom_simplified_medium IS NOT NULL
+                        THEN r.geom_simplified_medium
                     ELSE r.geom_3857
                 END,
                 bounds, 4096, 64, true
@@ -1418,8 +1430,20 @@ BEGIN
                     -- so an un-backfilled database renders as it always did.
                     WHEN z <= 2 AND r.geom_overview IS NOT NULL
                         THEN r.geom_overview
+                    WHEN z <= 4 AND r.geom_simplified_coarse IS NOT NULL
+                        THEN r.geom_simplified_coarse
                     WHEN z <= 4 AND r.geom_simplified_low IS NOT NULL THEN r.geom_simplified_low
                     WHEN z <= 8 AND r.geom_simplified_medium IS NOT NULL THEN r.geom_simplified_medium
+                    -- Display budget. What a tile costs is dominated by what it
+                    -- has to read: the eight root divisions weigh 386 MB and take
+                    -- 1.9 s to detoast, which is the floor under every tile that
+                    -- touches them, at any zoom, even one answering 62 bytes.
+                    -- pg_column_size() reads the TOAST header rather than the
+                    -- geometry (0.4 ms for those same 386 MB), so a feature too
+                    -- heavy to serve at full resolution is served one rung down.
+                    WHEN pg_column_size(r.geom_3857) > 10485760
+                         AND r.geom_simplified_medium IS NOT NULL
+                        THEN r.geom_simplified_medium
                     ELSE r.geom_3857
                 END,
                 bounds, 4096, 64, true
@@ -1471,8 +1495,17 @@ BEGIN
                     -- Precomputed; see simplify_for_overview(). NULL here means
                     -- "not computed yet" and falls through to the low rung.
                     WHEN z <= 2 AND d.geom_overview_3857 IS NOT NULL THEN d.geom_overview_3857
+                    WHEN z <= 4 AND d.geom_simplified_coarse_3857 IS NOT NULL
+                        THEN d.geom_simplified_coarse_3857
                     WHEN z <= 4 AND d.geom_simplified_low_3857 IS NOT NULL THEN d.geom_simplified_low_3857
                     WHEN z <= 8 AND d.geom_simplified_medium_3857 IS NOT NULL THEN d.geom_simplified_medium_3857
+                    -- Display budget, as in tile_world_view_root_regions: North
+                    -- America's division weighs 86 MB, and a zoom-9 tile over
+                    -- Lisbon spent 2,746 ms reading rows like it to answer 62
+                    -- bytes. One rung down answers the same tile in 83 ms.
+                    WHEN pg_column_size(d.geom_3857) > 10485760
+                         AND d.geom_simplified_medium_3857 IS NOT NULL
+                        THEN d.geom_simplified_medium_3857
                     ELSE d.geom_3857
                 END,
                 bounds, 4096, 64, true
@@ -1531,8 +1564,17 @@ BEGIN
                     -- Precomputed; see simplify_for_overview(). NULL here means
                     -- "not computed yet" and falls through to the low rung.
                     WHEN z <= 2 AND d.geom_overview_3857 IS NOT NULL THEN d.geom_overview_3857
+                    WHEN z <= 4 AND d.geom_simplified_coarse_3857 IS NOT NULL
+                        THEN d.geom_simplified_coarse_3857
                     WHEN z <= 4 AND d.geom_simplified_low_3857 IS NOT NULL THEN d.geom_simplified_low_3857
                     WHEN z <= 8 AND d.geom_simplified_medium_3857 IS NOT NULL THEN d.geom_simplified_medium_3857
+                    -- Display budget, as in tile_world_view_root_regions: North
+                    -- America's division weighs 86 MB, and a zoom-9 tile over
+                    -- Lisbon spent 2,746 ms reading rows like it to answer 62
+                    -- bytes. One rung down answers the same tile in 83 ms.
+                    WHEN pg_column_size(d.geom_3857) > 10485760
+                         AND d.geom_simplified_medium_3857 IS NOT NULL
+                        THEN d.geom_simplified_medium_3857
                     ELSE d.geom_3857
                 END,
                 bounds, 4096, 64, true
@@ -1582,8 +1624,17 @@ BEGIN
             r.color,
             ST_AsMVTGeom(
                 CASE
+                    -- No cheap rung here on purpose: this layer exists to draw
+                    -- the small parts drop_small_parts() throws away.
                     WHEN z <= 4 AND r.geom_simplified_low_real IS NOT NULL THEN r.geom_simplified_low_real
                     WHEN z <= 8 AND r.geom_simplified_medium_real IS NOT NULL THEN r.geom_simplified_medium_real
+                    -- The display budget is orthogonal to that, and applies as
+                    -- it does in the other five functions: the rows this layer
+                    -- serves are hull regions, whose real geometry is every
+                    -- island they are made of.
+                    WHEN pg_column_size(r.geom_3857) > 10485760
+                         AND r.geom_simplified_medium_real IS NOT NULL
+                        THEN r.geom_simplified_medium_real
                     ELSE r.geom_3857
                 END,
                 bounds, 4096, 64, true
@@ -1645,8 +1696,20 @@ BEGIN
                     -- so an un-backfilled database renders as it always did.
                     WHEN z <= 2 AND r.geom_overview IS NOT NULL
                         THEN r.geom_overview
+                    WHEN z <= 4 AND r.geom_simplified_coarse IS NOT NULL
+                        THEN r.geom_simplified_coarse
                     WHEN z <= 4 AND r.geom_simplified_low IS NOT NULL THEN r.geom_simplified_low
                     WHEN z <= 8 AND r.geom_simplified_medium IS NOT NULL THEN r.geom_simplified_medium
+                    -- Display budget. What a tile costs is dominated by what it
+                    -- has to read: the eight root divisions weigh 386 MB and take
+                    -- 1.9 s to detoast, which is the floor under every tile that
+                    -- touches them, at any zoom, even one answering 62 bytes.
+                    -- pg_column_size() reads the TOAST header rather than the
+                    -- geometry (0.4 ms for those same 386 MB), so a feature too
+                    -- heavy to serve at full resolution is served one rung down.
+                    WHEN pg_column_size(r.geom_3857) > 10485760
+                         AND r.geom_simplified_medium IS NOT NULL
+                        THEN r.geom_simplified_medium
                     ELSE r.geom_3857
                 END,
                 bounds, 4096, 64, true
