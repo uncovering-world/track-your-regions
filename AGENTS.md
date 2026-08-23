@@ -82,7 +82,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 
 ### Domain Model
 
-- `administrative_divisions`: GADM official boundaries (tree via `parent_id`), pre-simplified at 4 LOD levels
+- `administrative_divisions`: GADM official boundaries (tree via `parent_id`), pre-simplified at 5 LOD levels
 - `world_views`: custom regional hierarchies; default world view (`id=1`) is GADM itself
 - `regions`: user-defined groups within a world view, hierarchical via `parent_region_id`; computed geometry, `focus_bbox`, `anchor_point`, `is_leaf`
 - `region_members`: links regions to divisions, supports `custom_geom` for partial coverage
