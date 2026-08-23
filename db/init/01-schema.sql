@@ -802,21 +802,30 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_3857 geometry(MultiPolygon, 3857);
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS hull_geom_3857 geometry(MultiPolygon, 3857);
 
--- Add simplified geometry columns for low zoom levels (zoom 3-4; zoom 0-2 reads
--- geom_overview below)
+-- Simplified geometry at 5 km. No longer the rung a tile function reaches for —
+-- the coarse rung below covers the zooms it used to serve — but still the arm
+-- the ladder falls through to at zoom 0-4 when a cheap rung is NULL, still the
+-- input both cheap rungs are derived from, and its 4326 twin on
+-- administrative_divisions is what the GeoJSON API answers with.
 -- For uses_hull regions, these derive from hull (correct overview representation)
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_simplified_low geometry(MultiPolygon, 3857);
 -- Add simplified geometry columns for medium zoom levels (zoom 5-8)
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_simplified_medium geometry(MultiPolygon, 3857);
 
--- Overview zoom levels (0-2), where one tile spans the whole world at roughly
--- 10 km per MVT unit. `geom_simplified_low` still carries far more detail than
--- that scale can represent — half a million vertices for eight continents — and
--- the tile functions used to cut it down per request with
--- ST_SimplifyPreserveTopology, which cost more than everything else in the query
--- combined while removing under a third of the vertices. Precomputed here
--- instead. NULL means "not computed": callers fall through to the low rung, so
--- an un-backfilled database renders as it always did. See simplify_for_overview().
+-- Coarse rung, zoom 3-4: 10 km of tolerance and a 100 km^2 floor under the
+-- parts, which is one screen pixel at zoom 3. The rung the ladder was missing:
+-- geom_overview is eight times coarser than zoom 3 can show, while the 5 km rung
+-- that used to serve these zooms carried three quarters of a million vertices
+-- across the administrative mirror and made a zoom-3 tile cost 483 ms (#551).
+-- Same NULL contract as geom_overview: not computed, fall through to the 5 km rung.
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_simplified_coarse geometry(MultiPolygon, 3857);
+
+-- Overview zoom levels (0-2), where a screen pixel is 78 km down to 19.6 km wide
+-- and `geom_simplified_low` carries far more detail than that scale can
+-- represent. 50 km of tolerance, with the 2,500 km^2 floor that follows from it.
+-- NULL means "not computed": callers fall through to the low rung, so an
+-- un-backfilled database renders as it always did. See simplify_for_overview()
+-- and drop_small_parts().
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS geom_overview geometry(MultiPolygon, 3857);
 
 -- Real-geometry simplified columns (always from geom_3857, never from hull)
@@ -830,33 +839,85 @@ ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS geom_simplified_lo
 -- Overview rung, same reasoning as regions.geom_overview above: the low rung
 -- holds 619,254 vertices for the eight root divisions, which a zoom-0 tile
 -- cannot represent and pays for anyway.
+--
+-- Unlike regions, every 3857 rung on this table is simplified per row — the
+-- coverage pass this table has (simplify_coverage_siblings) works on the 4326
+-- columns the GeoJSON API reads, and nothing has ever made the rendered columns
+-- gap-free. Two neighbouring divisions can therefore diverge by up to twice the
+-- tolerance along a shared border. Tracked as part of #560.
 ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS geom_overview_3857 geometry(MultiPolygon, 3857);
+-- Coarse rung, zoom 3-4, same parameters as regions.geom_simplified_coarse.
+ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS geom_simplified_coarse_3857 geometry(MultiPolygon, 3857);
 ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS geom_simplified_medium_3857 geometry(MultiPolygon, 3857);
+
+-- Helper function: drop the parts of a MultiPolygon too small to be seen.
+--
+-- The weight of an overview rung is not in the detail of its outlines, it is in
+-- the number of rings it carries: neither ST_SimplifyVW nor the topology-
+-- preserving variants ever delete a ring, so both bottom out at roughly four
+-- points per ring no matter the tolerance. Europe's root region holds 84,217
+-- points and still holds 49,942 after Douglas-Peucker at 50 km, because it is
+-- some twelve thousand pieces. Dropping the pieces is the only thing that makes
+-- an overview rung cheap.
+--
+-- The floor is measured in SRID 3857 area on purpose. Web Mercator inflates area
+-- away from the equator by the same factor it inflates everything else on the
+-- screen, so a fixed 3857 area IS a fixed number of pixels at a given zoom —
+-- which is the question being asked: can a reader see this piece at all.
+--
+-- The largest part is kept unconditionally, so a region that IS an archipelago
+-- (Aland, the Aegean islands, Nauru) never simplifies away to nothing. That is
+-- the surviving half of rule 12: geometry is never annihilated, but a speck a
+-- reader cannot see is no longer carried up the ladder. See ADR-0031.
+CREATE OR REPLACE FUNCTION drop_small_parts(
+    geom geometry,
+    min_part_area double precision
+) RETURNS geometry AS $$
+    SELECT CASE WHEN $1 IS NULL THEN NULL ELSE (
+        SELECT validate_multipolygon(ST_Collect(part.geom))
+        FROM (
+            SELECT d.geom AS geom,
+                   ST_Area(d.geom) AS part_area,
+                   row_number() OVER (ORDER BY ST_Area(d.geom) DESC) AS size_rank
+            FROM ST_Dump($1) d
+        ) part
+        WHERE part.size_rank = 1 OR part.part_area >= $2
+    ) END;
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
+
+COMMENT ON FUNCTION drop_small_parts IS 'Keeps the parts of a MultiPolygon at or above min_part_area (SRID 3857 area = screen area), plus the largest part unconditionally';
 
 -- Helper function: reduce geometry to what an overview-zoom tile can actually show.
 --
--- Uses Douglas-Peucker where simplify_for_zoom() uses ST_SimplifyVW, because VW
--- does not reach overview scale: at this tolerance it left 490,680 of 773,264
--- vertices and took 107 s to precompute, against 29,863 in under two seconds
--- here. VW's better coastal character (rule 13) is worth its cost at zoom 3-8,
--- where the shape is actually legible; at zoom 0 a coastline is a few pixels.
+-- Two things happen, and the order matters. The parts below the floor go first,
+-- because they are the cost (see drop_small_parts above). Only then are the
+-- outlines simplified, with the topology-preserving variant: what is left is
+-- what a reader looks for on the map, and it must not be annihilated.
 --
--- Keeps simplify_for_zoom()'s three-stage shape, because rule 12 applies here
--- too: never drop a geometry entirely. Douglas-Peucker annihilates anything
--- narrower than the tolerance, and 50km annihilates 1,324 of the administrative
--- mirror's 3,594 leaves — a world view made only of small regions would render
--- an empty map when zoomed out.
+-- The floor is the tolerance squared — the area of a tolerance-sized square, so
+-- one knob sets the rung's scale for both outlines and pieces, the way
+-- ST_SimplifyVW already reads its own tolerance as an area (rule 13).
 --
--- Stage 2 scales the tolerance to the widest constituent polygon, not to the
--- whole MultiPolygon's envelope. The distinction is the difference between
--- working and not for scattered geography: France's leaf is 845 pieces spread
--- across 3,385km, none wider than 49km, so an envelope-derived tolerance stays
--- an order of magnitude above every island and stage 2 collapses too.
+-- Both cheap rungs come from here. geom_simplified_coarse is called at one
+-- screen pixel of the finest zoom it serves — 10 km against the 9,784 m zoom 3
+-- draws to the pixel, so its 100 km^2 floor is 1.05 square pixels there.
+-- geom_overview keeps the 50 km it has always had instead, which is 2.5 pixels
+-- at zoom 2 and a floor of 6.5 square pixels: coarser than the pixel rule, and
+-- deliberately so, because sizing it by that rule costs 898 ms for the world
+-- tile of the administrative mirror against 626 ms.
 --
--- Stage 3 then simplifies with the topology-preserving variant rather than
--- returning the input. It is the slow one this rung exists to avoid, but it
--- never annihilates, it is what these rows went through before, and only the
--- handful that survive two Douglas-Peucker passes ever reach it.
+-- One rung cannot do both jobs — measured, a single 10 km rung stretched down to
+-- zoom 0 turns that same tile from 217 ms into 1,494 ms and its payload from
+-- 158 kB into 428 kB, for detail eight times finer than that zoom can draw.
+--
+-- Per-row simplification cannot keep a border shared: two neighbours simplified
+-- independently diverge by up to twice the tolerance, and at this tolerance that
+-- is a visible white sliver between them. simplify_coverage_regions() runs the
+-- same reduction over a whole sibling set with ST_CoverageSimplify and overwrites
+-- what this function wrote, exactly as it already does for the low and medium
+-- rungs (rule 15). What survives from here is what falls outside a sibling set:
+-- a world view's root regions, which have siblings but no parent for the pass to
+-- be keyed on, and every row of administrative_divisions. See ADR-0031 decision 3.
 --
 -- NULL in, NULL out — and NULL in the column means "not computed", which is what
 -- lets callers fall through to geom_simplified_low on a database that has not run
@@ -866,36 +927,19 @@ CREATE OR REPLACE FUNCTION simplify_for_overview(
     tolerance double precision DEFAULT 50000
 ) RETURNS geometry AS $$
 DECLARE
-    result geometry;
-    widest_part double precision;
+    floored geometry;
 BEGIN
     IF geom IS NULL THEN
         RETURN NULL;
     END IF;
 
-    -- Stage 1: simplify at the overview tolerance
-    result := ST_Multi(ST_CollectionExtract(
-        ST_MakeValid(ST_Simplify(geom, tolerance)), 3));
+    floored := drop_small_parts(geom, tolerance * tolerance);
 
-    -- Stage 2: smaller than the tolerance — scale it to the widest piece
-    IF result IS NULL OR ST_IsEmpty(result) THEN
-        SELECT max(sqrt(ST_Area(ST_Envelope(part.geom))))
-        INTO widest_part
-        FROM (SELECT (ST_Dump(geom)).geom) AS part;
-
-        IF widest_part > 0 THEN
-            result := ST_Multi(ST_CollectionExtract(
-                ST_MakeValid(ST_Simplify(geom, widest_part / 10.0)), 3));
-        END IF;
+    IF floored IS NULL THEN
+        RETURN NULL;
     END IF;
 
-    -- Stage 3: nothing survives Douglas-Peucker — use the variant that cannot
-    -- annihilate rather than keeping the input unsimplified (rule 12)
-    IF result IS NULL OR ST_IsEmpty(result) THEN
-        result := ST_SimplifyPreserveTopology(geom, tolerance);
-    END IF;
-
-    RETURN result;
+    RETURN validate_multipolygon(ST_SimplifyPreserveTopology(floored, tolerance));
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
@@ -1019,6 +1063,12 @@ CREATE OR REPLACE FUNCTION simplify_coverage_regions(
 ) RETURNS integer AS $$
 DECLARE
     sibling_count integer;
+    -- Not parameters: the signature is what every caller passes today (the
+    -- parent id alone), and widening it would leave an overload behind on every
+    -- database that already holds the three-argument version — with both
+    -- reachable, a one-argument call stops resolving at all.
+    tolerance_overview constant double precision := 50000;
+    tolerance_coarse constant double precision := 10000;
 BEGIN
     -- Coverage needs ≥2 non-hull siblings with geometry
     SELECT COUNT(*) INTO sibling_count
@@ -1055,6 +1105,42 @@ BEGIN
         FROM regions
         WHERE parent_region_id = p_parent_region_id
           AND geom_3857 IS NOT NULL
+          AND NOT COALESCE(uses_hull, false)
+    ) sub
+    WHERE r.id = sub.id;
+
+    -- The two cheap rungs, gap-free, from the low rung the two statements above
+    -- have just made coverage-clean. They run last, because the low write fires
+    -- the trigger that recomputes both per row, and these are the values that
+    -- have to survive: at these tolerances a per-row border and its neighbour
+    -- diverge by up to twice the tolerance, which is a white sliver wide enough
+    -- to see — measured around the Alps at zoom 5, and across all of Scandinavia
+    -- at zoom 2 before this pass existed.
+    --
+    -- The floor goes on before the coverage pass, not after: dropping a piece
+    -- cannot open a gap along a shared border (a speck has no neighbour to share
+    -- one with), while simplifying first would pay for every speck it is about
+    -- to throw away.
+    UPDATE regions r
+    SET geom_overview = sub.overview,
+        geom_simplified_coarse = sub.coarse
+    FROM (
+        SELECT id,
+            validate_multipolygon(
+                ST_CoverageSimplify(
+                    drop_small_parts(geom_simplified_low, tolerance_overview * tolerance_overview),
+                    tolerance_overview
+                ) OVER ()
+            ) AS overview,
+            validate_multipolygon(
+                ST_CoverageSimplify(
+                    drop_small_parts(geom_simplified_low, tolerance_coarse * tolerance_coarse),
+                    tolerance_coarse
+                ) OVER ()
+            ) AS coarse
+        FROM regions
+        WHERE parent_region_id = p_parent_region_id
+          AND geom_simplified_low IS NOT NULL
           AND NOT COALESCE(uses_hull, false)
     ) sub
     WHERE r.id = sub.id;
@@ -1143,15 +1229,17 @@ BEGIN
             -- input the tile functions simplified before, so the overview keeps
             -- the same hull-aware shape, and starting from 5 km of detail is
             -- cheaper than starting from full.
-            NEW.geom_overview := simplify_for_overview(NEW.geom_simplified_low);
+            NEW.geom_overview := simplify_for_overview(NEW.geom_simplified_low, 50000);
+            NEW.geom_simplified_coarse := simplify_for_overview(NEW.geom_simplified_low, 10000);
         END IF;
     END IF;
 
     -- No NULL guard: simplify_for_overview(NULL) returns NULL, which is what a
     -- cleared low rung has to leave behind. Skipping the write instead would
-    -- keep the previous shape and go on serving it at zoom 0-2.
+    -- keep the previous shape and go on serving it at zoom 0-4.
     IF low_changed THEN
-        NEW.geom_overview := simplify_for_overview(NEW.geom_simplified_low);
+        NEW.geom_overview := simplify_for_overview(NEW.geom_simplified_low, 50000);
+        NEW.geom_simplified_coarse := simplify_for_overview(NEW.geom_simplified_low, 10000);
     END IF;
 
     RETURN NEW;
@@ -1188,7 +1276,8 @@ BEGIN
 
     IF (geom_changed OR low_changed) AND NEW.geom_3857 IS NOT NULL THEN
         NEW.geom_simplified_low_3857 := simplify_for_zoom(NEW.geom_3857, 5000, 0, 0);
-        NEW.geom_overview_3857 := simplify_for_overview(NEW.geom_simplified_low_3857);
+        NEW.geom_overview_3857 := simplify_for_overview(NEW.geom_simplified_low_3857, 50000);
+        NEW.geom_simplified_coarse_3857 := simplify_for_overview(NEW.geom_simplified_low_3857, 10000);
     END IF;
     IF (geom_changed OR medium_changed) AND NEW.geom_3857 IS NOT NULL THEN
         NEW.geom_simplified_medium_3857 := simplify_for_zoom(NEW.geom_3857, 1000, 0, 0);
