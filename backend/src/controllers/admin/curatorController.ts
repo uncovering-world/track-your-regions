@@ -6,7 +6,7 @@
  */
 
 import { Response } from 'express';
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 /**
@@ -53,6 +53,21 @@ interface AssignmentInput {
 
 type ValidationError = { status: number; error: string };
 
+/**
+ * How a writer of somebody's curator standing locks their user row.
+ *
+ * Granting a scope and taking one back both decide the role from a count of
+ * what is left, so they have to serialise on the user or two admins acting at
+ * once leave the two halves disagreeing: an assignment whose owner is back to
+ * `user` and locked out of every curation screen, or a `curator` with nothing
+ * scoped. `FOR NO KEY UPDATE` for the reason `db/locks.ts` gives for the same
+ * mode — it self-conflicts, so the two serialise, while staying compatible with
+ * the `FOR KEY SHARE` that `curator_assignments`' foreign key takes on this
+ * very row. A constant of its own rather than `OBJECT_LOCK`, which names the
+ * order and mode for an experience and its contents.
+ */
+const USER_ROLE_LOCK = 'FOR NO KEY UPDATE';
+
 function validateAssignmentInput(body: AssignmentInput): ValidationError | null {
   const { userId, scopeType, regionId, categoryId } = body;
   if (!userId || !scopeType) {
@@ -70,18 +85,23 @@ function validateAssignmentInput(body: AssignmentInput): ValidationError | null 
   return null;
 }
 
-async function verifyAssignmentReferences(
-  body: AssignmentInput,
-): Promise<{ error: ValidationError } | { userRole: string }> {
-  const userResult = await pool.query('SELECT id, role FROM users WHERE id = $1', [body.userId]);
+/**
+ * Do the three things the body names exist? Answers the error to send, or null.
+ *
+ * Existence only: the role the promotion turns on is read inside the
+ * transaction, under the lock, because a read out here is stale the moment a
+ * concurrent revoke commits.
+ */
+async function verifyAssignmentReferences(body: AssignmentInput): Promise<ValidationError | null> {
+  const userResult = await pool.query('SELECT id FROM users WHERE id = $1', [body.userId]);
   if (userResult.rows.length === 0) {
-    return { error: { status: 404, error: 'User not found' } };
+    return { status: 404, error: 'User not found' };
   }
 
   if (body.scopeType === 'region') {
     const regionResult = await pool.query('SELECT id FROM regions WHERE id = $1', [body.regionId]);
     if (regionResult.rows.length === 0) {
-      return { error: { status: 404, error: 'Region not found' } };
+      return { status: 404, error: 'Region not found' };
     }
   }
 
@@ -91,21 +111,41 @@ async function verifyAssignmentReferences(
       [body.categoryId],
     );
     if (catResult.rows.length === 0) {
-      return { error: { status: 404, error: 'Category not found' } };
+      return { status: 404, error: 'Category not found' };
     }
   }
 
-  return { userRole: userResult.rows[0].role };
+  return null;
 }
 
 async function insertAssignmentAndPromote(
   body: AssignmentInput,
   assignedBy: number,
-  currentRole: string,
 ): Promise<{ id: number; assignedAt: Date; rolePromoted: boolean }> {
-  await pool.query('BEGIN');
+  // One client, not pool.query('BEGIN') — see the note in curationController:
+  // pg.Pool hands out an arbitrary idle client per call, so a transaction has
+  // to be pinned or its statements land on different connections. The scope row
+  // and the promotion that answers for it are the pair this holds together: a
+  // curator row without the role reaches no curation screen, and the role
+  // without the row grants powers nothing scoped.
+  const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
-    const insertResult = await pool.query(
+    await client.query('BEGIN');
+
+    // The role is re-read here, under the lock that revoking takes too, and not
+    // taken from the reference check above: that read is outside any
+    // transaction, so a revoke committing between the two decides this
+    // promotion on a role that no longer holds. `FOR NO KEY UPDATE` for the
+    // reason `db/locks.ts` gives — it self-conflicts, so a grant and a revoke
+    // of the same user serialise, while staying compatible with the KEY SHARE
+    // the INSERT's foreign key takes on this very row.
+    const locked = await client.query(
+      `SELECT role FROM users WHERE id = $1 ${USER_ROLE_LOCK}`,
+      [body.userId],
+    );
+
+    const insertResult = await client.query(
       `
       INSERT INTO curator_assignments (user_id, scope_type, region_id, category_id, assigned_by, notes)
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -114,20 +154,27 @@ async function insertAssignmentAndPromote(
       [body.userId, body.scopeType, body.regionId || null, body.categoryId || null, assignedBy, body.notes || null],
     );
 
-    const rolePromoted = currentRole === 'user';
+    // No row means the user was deleted since the reference check; the INSERT
+    // above has already failed on its foreign key by then, so this value never
+    // reaches anybody.
+    const rolePromoted = locked.rows[0]?.role === 'user';
     if (rolePromoted) {
-      await pool.query("UPDATE users SET role = 'curator' WHERE id = $1", [body.userId]);
+      await client.query("UPDATE users SET role = 'curator' WHERE id = $1", [body.userId]);
     }
 
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
     return {
       id: insertResult.rows[0].id,
       assignedAt: insertResult.rows[0].assigned_at,
       rolePromoted,
     };
   } catch (error) {
-    await pool.query('ROLLBACK');
+    // A client whose ROLLBACK also failed must be destroyed, not pooled: it
+    // would otherwise carry an open transaction into the next request.
+    unusable = await rollbackQuietly(client);
     throw error;
+  } finally {
+    client.release(unusable);
   }
 }
 
@@ -146,14 +193,14 @@ export async function createCuratorAssignment(req: AuthenticatedRequest, res: Re
     return;
   }
 
-  const refResult = await verifyAssignmentReferences(body);
-  if ('error' in refResult) {
-    res.status(refResult.error.status).json({ error: refResult.error.error });
+  const refError = await verifyAssignmentReferences(body);
+  if (refError) {
+    res.status(refError.status).json({ error: refError.error });
     return;
   }
 
   try {
-    const inserted = await insertAssignmentAndPromote(body, assignedBy, refResult.userRole);
+    const inserted = await insertAssignmentAndPromote(body, assignedBy);
     res.status(201).json({
       id: inserted.id,
       userId: body.userId,
@@ -192,42 +239,70 @@ export async function revokeCuratorAssignment(req: AuthenticatedRequest, res: Re
 
   const userId = assignmentResult.rows[0].user_id;
 
-  // Delete assignment and check if role should revert, atomically
-  await pool.query('BEGIN');
+  // Delete assignment and check if role should revert, atomically — on one
+  // pinned client, as `insertAssignmentAndPromote` above. The count that
+  // decides the demotion is read here, so a statement landing outside the
+  // transaction would count assignments a concurrent revoke has not committed.
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  let remaining: number;
+  let roleReverted = false;
   try {
-    await pool.query('DELETE FROM curator_assignments WHERE id = $1', [assignmentId]);
+    await client.query('BEGIN');
+
+    // The user row first, in the mode granting takes, so the two serialise —
+    // see `USER_ROLE_LOCK`. Two revokes running side by side would otherwise
+    // each see the other's assignment still standing, and neither would demote.
+    const locked = await client.query(
+      `SELECT role FROM users WHERE id = $1 ${USER_ROLE_LOCK}`,
+      [userId],
+    );
+
+    // The read above this transaction is what found the assignment, and by now
+    // another admin may have revoked it. Deleting nothing and then reporting a
+    // successful revoke is the part that misleads: it would also demote on a
+    // count taken for somebody else's decision.
+    const deleted = await client.query(
+      'DELETE FROM curator_assignments WHERE id = $1 RETURNING user_id',
+      [assignmentId],
+    );
+    if (deleted.rowCount === 0) {
+      unusable = await rollbackQuietly(client);
+      res.status(404).json({ error: 'Assignment not found' });
+      return;
+    }
 
     // Check if user has any remaining assignments
-    const remainingResult = await pool.query(
+    const remainingResult = await client.query(
       'SELECT COUNT(*) as count FROM curator_assignments WHERE user_id = $1',
       [userId],
     );
 
-    const remaining = parseInt(remainingResult.rows[0].count);
-    let roleReverted = false;
+    remaining = parseInt(remainingResult.rows[0].count);
 
     // Revert role to 'user' if no remaining assignments (and not admin)
-    if (remaining === 0) {
-      const userResult = await pool.query('SELECT role FROM users WHERE id = $1', [userId]);
-      if (userResult.rows.length > 0 && userResult.rows[0].role === 'curator') {
-        await pool.query("UPDATE users SET role = 'user' WHERE id = $1", [userId]);
-        roleReverted = true;
-      }
+    if (remaining === 0 && locked.rows[0]?.role === 'curator') {
+      await client.query("UPDATE users SET role = 'user' WHERE id = $1", [userId]);
+      roleReverted = true;
     }
 
-    await pool.query('COMMIT');
-
-    res.json({
-      success: true,
-      assignmentId,
-      userId,
-      remainingAssignments: remaining,
-      roleReverted,
-    });
+    await client.query('COMMIT');
   } catch (error) {
-    await pool.query('ROLLBACK');
+    // A client whose ROLLBACK also failed must be destroyed, not pooled: it
+    // would otherwise carry an open transaction into the next request.
+    unusable = await rollbackQuietly(client);
     throw error;
+  } finally {
+    client.release(unusable);
   }
+
+  res.json({
+    success: true,
+    assignmentId,
+    userId,
+    remainingAssignments: remaining,
+    roleReverted,
+  });
 }
 
 /**
