@@ -11,17 +11,29 @@
  * which is a different question and a longer read.
  */
 
+import { useState } from 'react';
 import { Box, Link, Stack, Tooltip, Typography } from '@mui/material';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { ImageCreditLine } from '../shared/ImageCreditLine';
+import type { ImageCredit } from '../../api/experiences';
 
 export interface CountedWork {
   name: string;
   type: string | null;
   artist: string | null;
   imageUrl: string | null;
+  /** Whose photograph of the work this is, when the run managed to ask. */
+  imageCredit?: ImageCredit | null;
   year: number | null;
-  /** The source's own id — a Wikidata QID for every work in the catalogue today. */
-  externalId?: string | null;
+  /**
+   * The source's own id — a Wikidata QID for every work in the catalogue.
+   *
+   * Not optional and not nullable, because `treasures.external_id` is
+   * `NOT NULL UNIQUE`: it is the identity the works upsert conflicts on, and it is
+   * what keys these rows below. A fallback to the name would be the unsafe key the
+   * row's own comment argues against.
+   */
+  externalId: string;
 }
 
 /**
@@ -33,7 +45,7 @@ export interface CountedWork {
  * Wikidata entity, so the page it came from is one link away.
  */
 function sourceLink(work: CountedWork): string | null {
-  return /^Q\d+$/.test(work.externalId ?? '')
+  return /^Q\d+$/.test(work.externalId)
     ? `https://www.wikidata.org/wiki/${work.externalId}`
     : null;
 }
@@ -57,13 +69,26 @@ function subtitle(work: CountedWork): string {
 }
 
 function WorkRow({ work }: { work: CountedWork }) {
+  // A plain flag is safe wherever the parent keys the child, as it does here — by
+  // the work's own id — `NOT NULL UNIQUE` in the schema, so there is no fallback
+  // to write — and a different work is therefore a different instance that cannot
+  // inherit this one's refusal. The *name* would not do: `treasures.name` is a
+  // Wikidata label with no uniqueness about it, and this list is a museum's
+  // best-known dozen, which is exactly where labels collide — the Getty holds two
+  // works called `Spring` inside its twelve. Keyed by name, a duplicate would let
+  // one of them take the other's refusal: a picture that loaded, credited under a
+  // frame that did not, which is the inversion the flag exists to prevent. The
+  // surfaces that hold *one* instance across many pictures — the hover cards, the
+  // queue card, its publish preview, the map overlay — remember which URL failed
+  // instead.
+  const [failed, setFailed] = useState(false);
   const line = subtitle(work);
   const link = sourceLink(work);
   // The normalised URL decides whether there is a picture at all: `toThumbnailUrl` answers
   // with an empty string for a host we do not trust, and `src=""` is not "no image" — the
   // browser resolves it against the page and draws a broken thumbnail. Every treasure image
   // stored today is on commons.wikimedia.org, so this guards the next source, not this one.
-  const thumbnail = work.imageUrl ? toThumbnailUrl(work.imageUrl, 120) : '';
+  const thumbnail = work.imageUrl && !failed ? toThumbnailUrl(work.imageUrl, 120) : '';
   return (
     <Stack direction="row" spacing={1} alignItems="center">
       {thumbnail && (
@@ -76,6 +101,10 @@ function WorkRow({ work }: { work: CountedWork }) {
           alt=""
           loading="lazy"
           sx={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }}
+          // Without this the frame keeps the browser's broken-image glyph with a
+          // photographer's name under it, inside a tooltip a curator cannot
+          // dismiss to check.
+          onError={() => setFailed(true)}
         />
       )}
       <Box sx={{ minWidth: 0 }}>
@@ -98,6 +127,19 @@ function WorkRow({ work }: { work: CountedWork }) {
           )
           : <Typography variant="caption" component="div" sx={{ fontWeight: 600 }}>{work.name}</Typography>}
         {line && <Typography variant="caption" component="div">{line}</Typography>}
+        {/* The line above already names the artist, and Commons names the painter
+            as the author of a photograph of a painting — so this draws only where
+            it carries something the row does not: a licence asking to be honoured,
+            or a photographer who is not the artist. Hung on the thumbnail, since a
+            name under no picture credits nobody for nothing.
+            `color="inherit"` because these rows live inside a `Tooltip` and nowhere
+            else: MUI's default tooltip is grey[700] at 92% with white text, this
+            theme overrides none of it, and the component's own `text.secondary`
+            would be near-black on near-black — the neighbouring `Typography`s take
+            `color="inherit"` for the same reason. */}
+        {thumbnail && (
+          <ImageCreditLine credit={work.imageCredit} redundantWith={work.artist} color="inherit" />
+        )}
       </Box>
     </Stack>
   );
@@ -145,13 +187,13 @@ export function WorksPreview({ works, total, held, only, children }: {
       slotProps={{ tooltip: { sx: { maxWidth: 340, maxHeight: 420, overflowY: 'auto' } } }}
       title={(
         <Stack spacing={0.75} sx={{ py: 0.5 }}>
-          {named.map(work => <WorkRow key={work.name} work={work} />)}
+          {named.map(work => <WorkRow key={work.externalId} work={work} />)}
           {named.length > 0 && rest.length > 0 && (
             <Typography variant="caption" color="inherit" sx={{ pt: 0.5 }}>
               Also kept here, less widely known:
             </Typography>
           )}
-          {rest.map(work => <WorkRow key={work.name} work={work} />)}
+          {rest.map(work => <WorkRow key={work.externalId} work={work} />)}
           {/* The card carries at most twelve, so a holding of more must not show twelve and
               stop: a curator counting them would think the number above was wrong. */}
           {missing > 0 && (

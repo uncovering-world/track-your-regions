@@ -31,8 +31,10 @@ import {
   type PublishRequest,
   type PublishResult,
   type ReviewQueueItem,
+  type ImageCredit,
 } from '../../api/experiences';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
 import { worldViewList } from '../../utils/worldViewList';
@@ -385,8 +387,18 @@ function holdingNote(group: GatedGroup): string {
  * exactly so this card can be followed through to the thing it is asking about.
  * Without it the card names an object and offers no way to judge it, which is
  * the dead end this whole section exists to remove.
+ *
+ * Exported for its test: the promise below is about what survives a *rerender*
+ * with a different id, which no caller can observe and no assertion about
+ * `GatedCard` reaches without driving a mutation first.
  */
-function ObjectPreview({ experienceId }: { experienceId: number }) {
+export function ObjectPreview({ experienceId }: { experienceId: number }) {
+  // Which picture failed, not that one did. `GatedCard` is mounted unkeyed from
+  // `ReviewBench`, and `showObject` survives moving between two waiting rows, so
+  // a new `experienceId` reconciles into this same instance — a flag would carry
+  // one object's refusal onto the next and hide a picture that is there. Same
+  // finding as `ObjectContext`, same shape, second site.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['experience', experienceId],
     queryFn: () => fetchExperience(experienceId),
@@ -402,16 +414,28 @@ function ObjectPreview({ experienceId }: { experienceId: number }) {
   }
 
   const source = extractImageUrl(data.image_url);
-  const image = source ? toThumbnailUrl(source, 250) : null;
+  // A failure is ordinary here rather than exceptional: this preview draws from
+  // the same catalogue the queue does, whose URLs largely answer 403 (#557), and
+  // a credit beside a picture that did not arrive names a photographer for
+  // nothing.
+  const url = source ? toThumbnailUrl(source, 250) : null;
+  const image = url && url !== failedUrl ? url : null;
+  // Already in hand: `GET /experiences/:id` returns `metadata` whole, so the
+  // credit was reaching this preview and simply not being drawn.
+  const credit = (data.metadata?.imageCredit ?? null) as ImageCredit | null;
   return (
     <Stack direction="row" spacing={2} sx={{ mt: 2 }} alignItems="flex-start">
       {image && (
-        <Box
-          component="img"
-          src={image}
-          alt={data.name}
-          sx={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 1 }}
-        />
+        <Box sx={{ width: 120, flexShrink: 0 }}>
+          <Box
+            component="img"
+            src={image}
+            alt={data.name}
+            sx={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 1 }}
+            onError={() => setFailedUrl(image)}
+          />
+          <ImageCreditLine credit={credit} />
+        </Box>
       )}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="body2" sx={{ mb: 0.5 }}>

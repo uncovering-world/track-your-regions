@@ -7,15 +7,15 @@
  * list that stopped at the cap without saying so.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { WorksPreview, type CountedWork } from './WorksPreview';
 
 /** Onze-Lieve-Vrouwekathedraal's three, as the catalogue holds them. */
 const CATHEDRAL: CountedWork[] = [
-  { name: 'The Elevation of the Cross', type: 'painting', artist: 'Peter Paul Rubens', imageUrl: null, year: 1610 },
-  { name: 'The Descent from the Cross', type: 'painting', artist: 'Peter Paul Rubens', imageUrl: null, year: 1612 },
-  { name: 'The Assumption of the Virgin', type: 'painting', artist: 'Peter Paul Rubens', imageUrl: null, year: 1626 },
+  { name: 'The Elevation of the Cross', type: 'painting', artist: 'Peter Paul Rubens', imageUrl: null, year: 1610, externalId: 'Q901' },
+  { name: 'The Descent from the Cross', type: 'painting', artist: 'Peter Paul Rubens', imageUrl: null, year: 1612, externalId: 'Q902' },
+  { name: 'The Assumption of the Virgin', type: 'painting', artist: 'Peter Paul Rubens', imageUrl: null, year: 1626, externalId: 'Q903' },
 ];
 
 function open(node: React.ReactElement) {
@@ -85,7 +85,7 @@ describe('WorksPreview', () => {
 
   it('names each work by what it is, who made it and when', async () => {
     await open(
-      <WorksPreview works={[{ name: 'Doryphoros', type: 'statue', artist: 'Polykleitos', imageUrl: null, year: -450 }]}>
+      <WorksPreview works={[{ name: 'Doryphoros', type: 'statue', artist: 'Polykleitos', imageUrl: null, year: -450, externalId: 'Q910' }]}>
         {phrase}
       </WorksPreview>,
     );
@@ -98,8 +98,8 @@ describe('WorksPreview', () => {
     // "200" beside "200 BC" reads as a typo rather than as four centuries.
     await open(
       <WorksPreview works={[
-        { name: 'Antinous Farnese', type: 'statue', artist: null, imageUrl: null, year: 200 },
-        { name: 'The Night Watch', type: 'painting', artist: null, imageUrl: null, year: 1642 },
+        { name: 'Antinous Farnese', type: 'statue', artist: null, imageUrl: null, year: 200, externalId: 'Q904' },
+        { name: 'The Night Watch', type: 'painting', artist: null, imageUrl: null, year: 1642, externalId: 'Q905' },
       ]}
       >
         {phrase}
@@ -108,5 +108,92 @@ describe('WorksPreview', () => {
 
     expect(screen.getByText('statue · AD 200')).toBeInTheDocument();
     expect(screen.getByText('painting · 1642')).toBeInTheDocument();
+  });
+
+  it('names whoever took the photograph beside the work it shows', async () => {
+    // A picture drawn on a curator's screen is a picture being shown, and a
+    // minority of these are CC BY or CC BY-SA — which ask for the name.
+    await open(
+      <WorksPreview works={[{
+        name: 'Mesha Stele',
+        externalId: 'Q724954',
+        type: 'stele',
+        artist: null,
+        imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Mesha%20stele.jpg',
+        year: -840,
+        imageCredit: {
+          author: 'Mbzt', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null,
+        },
+      }]}
+      >
+        {phrase}
+      </WorksPreview>,
+    );
+
+    expect(screen.getByRole('tooltip').textContent).toContain('Mbzt · CC BY-SA 4.0');
+  });
+
+  it('credits nobody for a work it draws no picture of', async () => {
+    // Most of these rows carry no image at all — the cathedral's three do not — and a
+    // photographer named under nothing is credited for nothing.
+    await open(
+      <WorksPreview works={[{
+        ...CATHEDRAL[0],
+        imageCredit: {
+          author: 'Mbzt', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null,
+        },
+      }]}
+      >
+        {phrase}
+      </WorksPreview>,
+    );
+
+    expect(screen.getByRole('tooltip').textContent).not.toContain('Mbzt');
+  });
+
+  it('does not let one work of a repeated name take another\'s failure', async () => {
+    const warned = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Real case: the Getty holds two works called `Spring` inside the twelve this
+    // preview shows. Keyed by name, React would match the second render of one to
+    // the other's fiber, and the refusal would land on the wrong row — a picture
+    // that loaded, credited under a frame that did not.
+    const credit = {
+      author: 'Mbzt', license: 'CC BY-SA 4.0', licenseUrl: null,
+      detailsUrl: 'https://commons.wikimedia.org/wiki/File:Spring.jpg',
+    };
+    await open(
+      <WorksPreview works={[
+        { name: 'Spring', type: 'painting', artist: null, year: 1573, externalId: 'Q1',
+          imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Spring%20one.jpg',
+          imageCredit: credit },
+        { name: 'Spring', type: 'painting', artist: null, year: 1894, externalId: 'Q2',
+          imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Spring%20two.jpg',
+          imageCredit: credit },
+      ]}
+      >
+        {phrase}
+      </WorksPreview>,
+    );
+
+    // The distinguishing assertion is the key itself, not the rendering: with
+    // duplicate keys React still draws both rows here, and only warns — so an
+    // assertion about which picture disappears passes either way, and did when
+    // this test was first written. What does not pass either way is the warning.
+    expect(warned.mock.calls.flat().join(' ')).not.toMatch(/same key/i);
+
+    // The thumbnails are decorative (`alt=""`), so they carry no `img` role —
+    // reached through the tooltip's own node instead.
+    const tip = screen.getByRole('tooltip');
+    const shown = () => Array.from(tip.querySelectorAll('img'));
+    const [first, second] = shown();
+    expect(shown()).toHaveLength(2);
+
+    fireEvent.error(first);
+
+    // One credit gone with its picture, one still standing beside a picture that
+    // is there — rather than both, or the wrong one.
+    expect(shown()).toEqual([second]);
+    expect(screen.getAllByText(/Mbzt/)).toHaveLength(1);
+    warned.mockRestore();
   });
 });
