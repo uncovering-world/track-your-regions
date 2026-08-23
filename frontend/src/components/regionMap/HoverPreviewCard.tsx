@@ -13,7 +13,7 @@
  * describes, and only the map can say where on screen that point currently is.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Box, Typography, keyframes } from '@mui/material';
 import type { MapRef } from 'react-map-gl/maplibre';
 import { useHoverSelector } from '../../hooks/useHoverContext';
@@ -45,11 +45,16 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
   // the pointer crosses places of the object it already describes.
   const hoverPreview = useHoverSelector(s => s.hoverPreview);
 
+  // Held as *which* picture failed, not as a flag: this card stays mounted while
+  // the pointer crosses objects, so a flag would blank every picture after the
+  // first refusal — and four of these URLs in five refuse (#557).
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const image = useMemo(() => {
     if (!hoverPreview) return null;
     const imageUrl = extractImageUrl(hoverPreview.imageUrl);
-    return imageUrl ? toThumbnailUrl(imageUrl, 720) : null;
-  }, [hoverPreview]);
+    const url = imageUrl ? toThumbnailUrl(imageUrl, 720) : null;
+    return url && url !== failedUrl ? url : null;
+  }, [hoverPreview, failedUrl]);
 
   const placement = useMemo(() => {
     const fallback = { left: 16, bottom: 16 } as const;
@@ -97,6 +102,7 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
             display: 'block',
             backgroundColor: 'grey.100',
           }}
+          onError={() => setFailedUrl(image)}
         />
       )}
       <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
