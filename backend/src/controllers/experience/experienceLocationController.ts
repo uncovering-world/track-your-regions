@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from 'express';
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
 import {
   hideLostSql,
   hideRefusedSql,
@@ -521,11 +521,17 @@ export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Re
     return;
   }
 
-  // Mark locations as visited in a single transaction
-  await pool.query('BEGIN');
+  // Mark locations as visited in a single transaction, on one client — see the
+  // note in curationController: pg.Pool hands out an arbitrary idle client per
+  // call, so a transaction has to be pinned or its statements land on different
+  // connections, and the BEGIN goes back to the pool with nothing to close it.
+  const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
+    await client.query('BEGIN');
+
     for (const loc of locationsResult.rows) {
-      await pool.query(`
+      await client.query(`
         INSERT INTO user_visited_locations (user_id, location_id, visited_at)
         VALUES ($1, $2, NOW())
         ON CONFLICT (user_id, location_id) DO NOTHING
@@ -533,16 +539,20 @@ export async function markAllLocationsVisited(req: AuthenticatedRequest, res: Re
     }
 
     // Also mark the experience itself as visited for backward compatibility
-    await pool.query(`
+    await client.query(`
       INSERT INTO user_visited_experiences (user_id, experience_id, visited_at)
       VALUES ($1, $2, NOW())
       ON CONFLICT (user_id, experience_id) DO NOTHING
     `, [userId, experienceId]);
 
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
   } catch (error) {
-    await pool.query('ROLLBACK');
+    // A client whose ROLLBACK also failed must be destroyed, not pooled: it
+    // would otherwise carry an open transaction into the next request.
+    unusable = await rollbackQuietly(client);
     throw error;
+  } finally {
+    client.release(unusable);
   }
 
   res.json({
@@ -569,13 +579,21 @@ export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: 
   const experienceId = parseInt(String(req.params.experienceId));
   const regionId = req.query.regionId ? parseInt(String(req.query.regionId)) : null;
 
-  await pool.query('BEGIN');
+  // One client for the whole transaction, as in `markAllLocationsVisited` above.
+  // This half is the sharper one: its body is deletes, so a ROLLBACK that
+  // reached a shared connection would resurrect visits a different reader had
+  // just cleared.
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  let locationsUnmarked: number;
   try {
+    await client.query('BEGIN');
+
     let result;
 
     if (regionId) {
       // Only unmark locations that are in the specified region
-      result = await pool.query(`
+      result = await client.query(`
         DELETE FROM user_visited_locations
         WHERE user_id = $1 AND location_id IN (
           SELECT el.id
@@ -586,7 +604,7 @@ export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: 
       `, [userId, experienceId, regionId]);
     } else {
       // Unmark all locations
-      result = await pool.query(`
+      result = await client.query(`
         DELETE FROM user_visited_locations
         WHERE user_id = $1 AND location_id IN (
           SELECT id FROM experience_locations WHERE experience_id = $2
@@ -598,7 +616,7 @@ export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: 
     // the note there. It matters on the region-scoped branch above, which
     // clears one region's visits and can leave a withdrawn point's visit
     // standing somewhere else.
-    const remainingResult = await pool.query(`
+    const remainingResult = await client.query(`
       SELECT COUNT(*) as count
       FROM user_visited_locations uvl
       JOIN experience_locations el ON uvl.location_id = el.id
@@ -607,24 +625,29 @@ export async function unmarkAllLocationsVisited(req: AuthenticatedRequest, res: 
     `, [userId, experienceId]);
 
     if (parseInt(remainingResult.rows[0].count) === 0) {
-      await pool.query(
+      await client.query(
         'DELETE FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2',
         [userId, experienceId]
       );
     }
 
-    await pool.query('COMMIT');
-
-    res.json({
-      success: true,
-      experienceId,
-      regionId,
-      locationsUnmarked: result.rowCount || 0,
-    });
+    await client.query('COMMIT');
+    locationsUnmarked = result.rowCount || 0;
   } catch (error) {
-    await pool.query('ROLLBACK');
+    // A client whose ROLLBACK also failed must be destroyed, not pooled: it
+    // would otherwise carry an open transaction into the next request.
+    unusable = await rollbackQuietly(client);
     throw error;
+  } finally {
+    client.release(unusable);
   }
+
+  res.json({
+    success: true,
+    experienceId,
+    regionId,
+    locationsUnmarked,
+  });
 }
 
 /**
