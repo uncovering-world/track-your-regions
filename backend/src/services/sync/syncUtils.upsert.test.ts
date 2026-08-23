@@ -20,7 +20,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { upsertExperienceRecord, type ExperienceUpsertParams } from './syncUtils.js';
-import { METADATA_CLAIM_PREFIX } from './changeSet.js';
+import { METADATA_CLAIM_PREFIX, SYNC_OWNED_METADATA_KEYS } from './changeSet.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -467,6 +467,76 @@ describe('metadata is guarded per claimed key, not per column', () => {
     // whatever real value the source just sent -- clobbering it. Do not delete this
     // assertion as noise; it is what stops that regression from going unnoticed.
     expect(text).toMatch(/WHERE experiences\.metadata \? claimed\.k/);
+  });
+});
+
+describe('the keys a run computes about its own pass go past both guards', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  /**
+   * The behaviour these regexes stand in for was measured against the live
+   * database, each inside BEGIN...ROLLBACK on the real Louvre row (#571):
+   *
+   * - held row (`auto` under a gated category): `totalArtworkSitelinks` went
+   *   2363 → 2365 while `website` and `wikipediaUrl` kept their stored values,
+   *   so the counter crossed the gate and the content did not;
+   * - a UNESCO row, whose source sends neither key: metadata gained no key at
+   *   all, null-valued or otherwise;
+   * - a pending row claiming `metadata.website` **and**
+   *   `metadata.totalArtworkSitelinks`: the website stayed the curator's, the
+   *   sum was written to 2365 anyway.
+   *
+   * A mocked pool proves none of that. What it can hold is the shape those runs
+   * went through.
+   */
+  it('binds the key list rather than spelling it into the statement', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const [sql, params] = mockedQuery.mock.calls[0];
+    // One constant, in changeSet.ts, read by the diff and by this statement. A
+    // list built into the SQL text here could drift from the one the diff
+    // ignores, and the pair that disagreed would either ask about a value it had
+    // just written or freeze a value nothing reports.
+    expect(params[params.length - 1]).toEqual([...SYNC_OWNED_METADATA_KEYS]);
+    // $16, which is what both metadata arms read it as.
+    expect(params).toHaveLength(16);
+    expect(String(sql)).not.toContain("'artworkCount'");
+  });
+
+  it('merges the run-owned slice over the arm that refuses everything else', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const arm = assignmentsOf(mockedQuery.mock.calls[0][0]).get('metadata');
+    // The arm a claim on the whole column or a hold takes. Without the merge it
+    // is `THEN experiences.metadata` and the counter never moves again — which
+    // is the state the Louvre was found in, its stored sum four runs stale while
+    // the queue asked about the difference every time.
+    expect(arm).toMatch(/THEN COALESCE\(experiences\.metadata, '\{\}'::jsonb\) \|\|\s*COALESCE\(\(\s*SELECT jsonb_object_agg\(owned\.k/);
+    // Read off EXCLUDED, not off the stored row: the point is the value this run
+    // computed. And guarded by presence, or a source that sends neither key —
+    // every UNESCO and landmark row — would have `"artworkCount": null` merged
+    // in, since jsonb_object_agg refuses a null key and accepts a null value.
+    expect(arm).toContain('EXCLUDED.metadata -> owned.k');
+    expect(arm).toContain('WHERE EXCLUDED.metadata ? owned.k');
+  });
+
+  it('keeps them out of the claimed-key re-application, as the diff does', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const arm = assignmentsOf(mockedQuery.mock.calls[0][0]).get('metadata');
+    // `claimedMetadataKeys` drops the same keys on the diff's side. Left in
+    // here, a claim on a counter would put the stored value back over the
+    // source's while the diff reported nothing either way — a number no run
+    // could correct and no screen could show. Unreachable through
+    // `editExperience`, which offers three keys and none of them is a counter;
+    // pinned because the two sides have to agree by construction.
+    expect(arm).toContain('AND claimed.k <> ALL($16::text[])');
   });
 });
 

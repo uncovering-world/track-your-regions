@@ -9,7 +9,8 @@ import { pool, db } from '../../db/index.js';
 import { experienceSyncLogs, experienceCategories } from '../../db/schema.js';
 import { writeExperienceLocations, type LocationWriteResult } from './locationWriter.js';
 import {
-  computeChangeSet, METADATA_CLAIM_PREFIX, type ChangeSetResult, type ExperienceSnapshot,
+  computeChangeSet, METADATA_CLAIM_PREFIX, SYNC_OWNED_METADATA_KEYS,
+  type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
 
 // =============================================================================
@@ -72,6 +73,23 @@ const heldSql = (gate: string) => `(${gate} AND experiences.curation_state <> 'p
 const HELD = heldSql('(SELECT requires_curation FROM gate)');
 /** The preview's form: one SELECT, so the flag is fetched inline. */
 const PREVIEW_HELD = heldSql('(SELECT requires_curation FROM experience_categories WHERE id = $1)');
+
+/**
+ * The part of the incoming metadata this run owns outright, as an object to
+ * merge over whatever the guards above decided (#571).
+ *
+ * `$16` is `SYNC_OWNED_METADATA_KEYS`, bound rather than spelled into the
+ * statement so the key list stays one constant and no SQL is assembled by
+ * concatenation. `jsonb_object_agg` over an empty set is NULL, which is what the
+ * COALESCE is for; the presence guard is what keeps a source that sends none of
+ * these keys from writing a null-valued one into every row, since the aggregate
+ * rejects a null key and accepts a null value.
+ */
+const SYNC_OWNED_SLICE = `COALESCE((
+                 SELECT jsonb_object_agg(owned.k, EXCLUDED.metadata -> owned.k)
+                 FROM unnest($16::text[]) AS owned(k)
+                 WHERE EXCLUDED.metadata ? owned.k
+               ), '{}'::jsonb)`;
 
 /** Columns the diff reads. Declared once; the SQL below is built from them. */
 const SNAPSHOT_COLUMNS = [
@@ -232,8 +250,23 @@ export async function upsertExperienceRecord(
         -- included (#488). A claim on 'metadata' itself still holds the whole
         -- column; a per-key claim now re-applies just those keys over whatever
         -- the source sent, so an unclaimed key still updates.
+        --
+        -- The keys a run computes about its own pass stand outside both guards:
+        -- a claim cannot hold them because nobody can be right about a
+        -- measurement, and the gate does not hold them because they are not
+        -- content a reader sees. That is the standing last_seen_at has here,
+        -- and the one the treasures upsert gives sitelinks_count. Refusing them
+        -- froze the Louvre's stored fame sum at the value it had when the gate
+        -- went up, while every run went on asking a curator about the difference
+        -- (#571). Each arm reaches that its own way: the refusing arm merges the
+        -- slice over the stored object, and the writing arm has it already,
+        -- inside the source's own object, provided the claimed-key
+        -- re-application below leaves it alone. computeChangeSet keeps the
+        -- identical keys out of the diff, so nothing written here is reported as
+        -- a change or waits on anybody.
         metadata = CASE
-          WHEN experiences.curated_fields ? 'metadata' OR ${HELD} THEN experiences.metadata
+          WHEN experiences.curated_fields ? 'metadata' OR ${HELD}
+            THEN COALESCE(experiences.metadata, '{}'::jsonb) || ${SYNC_OWNED_SLICE}
           ELSE COALESCE(EXCLUDED.metadata, '{}'::jsonb) || COALESCE((
                  SELECT jsonb_object_agg(claimed.k, experiences.metadata -> claimed.k)
                  FROM (
@@ -241,7 +274,12 @@ export async function upsertExperienceRecord(
                    FROM jsonb_array_elements_text(experiences.curated_fields) AS t(key)
                    WHERE key LIKE '${METADATA_CLAIM_PREFIX}%'
                  ) AS claimed
+                 -- The exclusion claimedMetadataKeys applies on the other side.
+                 -- Re-applying a claimed counter here would put the stored value
+                 -- back over the source's while the diff reported neither, and
+                 -- the row would keep a number no run could ever correct.
                  WHERE experiences.metadata ? claimed.k
+                   AND claimed.k <> ALL($16::text[])
                ), '{}'::jsonb)
         END,
         -- The pointer says which run's proposal is being held, so the curator's
@@ -305,6 +343,10 @@ export async function upsertExperienceRecord(
       params.imageUrl,
       JSON.stringify(params.metadata),
       options.syncLogId ?? null,
+      // The key list the metadata arms read twice, bound once. A text[] rather
+      // than a literal built into the statement, so the constant in
+      // `changeSet.ts` stays the only place these names are written down.
+      [...SYNC_OWNED_METADATA_KEYS],
     ]
   );
 
