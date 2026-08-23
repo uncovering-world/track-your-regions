@@ -17,11 +17,15 @@ The tile functions are optimized for fast response times (~0.7s per tile):
 
 1. **Pre-computed SRID 3857 geometries** - No `ST_Transform` at query time
 2. **Pre-simplified geometries** for different zoom levels:
-   - `geom_overview` / `geom_overview_3857` - Zoom 0-2 (50km tolerance)
-   - `geom_simplified_low` - Zoom 3-4 (5km tolerance)
+   - `geom_overview` / `geom_overview_3857` - Zoom 0-2 (50km tolerance, parts
+     under 2,500km² dropped)
+   - `geom_simplified_coarse` / `geom_simplified_coarse_3857` - Zoom 3-4 (10km
+     tolerance, parts under 100km² dropped)
    - `geom_simplified_medium` - Zoom 5-8 (1km tolerance)
-3. **Spatial indexes** on the geometry columns, with one exception: the overview
-   rung has none. Tile functions filter on `geom_3857 && bounds` and read every
+   - `geom_simplified_low` (5km) is the input the two cheap rungs are derived
+     from, and the arm the ladder falls through to when one of them is NULL
+3. **Spatial indexes** on the geometry columns, with two exceptions: neither
+   cheap rung has one. Tile functions filter on `geom_3857 && bounds` and read every
    LOD rung only inside `ST_AsMVTGeom`, so none of the simplified columns is a
    spatial-predicate operand — the indexes on the older rungs predate that and
    are not load-bearing for tiles
@@ -220,11 +224,23 @@ docker compose restart martin
 The tile functions do not simplify. Each zoom band reads a column simplified
 once, at write time, by the geometry triggers:
 
-- Zoom 0-2: `geom_overview` (50km, Douglas-Peucker)
-- Zoom 3-4: `geom_simplified_low` (5km)
+- Zoom 0-2: `geom_overview` (50km, floored at 2,500km², coverage-simplified)
+- Zoom 3-4: `geom_simplified_coarse` (10km, floored at 100km², coverage-simplified)
 - Zoom 5-8: `geom_simplified_medium` (1km)
-- Zoom 9+: `geom_3857`, full resolution
+- Zoom 9+: `geom_3857`, full resolution — unless the row's stored geometry
+  exceeds the 10 MB display budget, which reads the 1km rung instead
+
+Coverage-simplified means *within a sibling set of `regions`*. Borders across two
+sets, a world view's root regions, and every rendered rung of
+`administrative_divisions` are still simplified per row — see ADR-0031 decision 3
+for what that costs and #560 for closing it.
+
+The two cheap rungs use `ST_SimplifyPreserveTopology` over an input whose small
+parts have been dropped, not the plain Douglas-Peucker they used to (ADR-0031):
+nothing PostGIS offers deletes a ring, so dropping parts is the only thing that
+makes an overview rung cheap, and doing it per row rather than by coverage is
+what used to pull neighbouring borders apart.
 
 Adjust in `db/init/01-schema.sql`, which defines both the tile functions and the
 triggers that fill those columns. See `docs/tech/geometry-columns.md` for why
-zoom 0-2 has a rung of its own.
+there are two cheap rungs and why the ladder is capped by what a row weighs.

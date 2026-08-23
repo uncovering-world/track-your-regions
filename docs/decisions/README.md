@@ -41,6 +41,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0028](0028-a-reader-is-positioned-by-places-they-can-go-to.md) | A reader is positioned by places they can go to, never by a point that names the whole | Accepted | 2026-08-17 |
 | [0029](0029-what-an-object-is-made-of-can-be-curated.md) | What an object is made of can be curated, and a correction outlives the run | Accepted | 2026-08-20 |
 | [0030](0030-answers-from-a-source-are-kept-with-an-expiry.md) | What a source answers is kept, with an expiry a person can change | Accepted | 2026-08-21 |
+| [0031](0031-a-display-rung-drops-what-a-reader-cannot-see.md) | A display rung drops what a reader cannot see | Accepted | 2026-08-23 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
