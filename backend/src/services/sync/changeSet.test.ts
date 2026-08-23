@@ -293,8 +293,11 @@ describe('a gated source over a row a reader can already see', () => {
 });
 
 describe('a metadata key claimed per key', () => {
-  const before = snapshot({ metadata: { website: 'https://curator.example', artworkCount: 5 } });
-  const incoming = snapshot({ metadata: { website: 'https://source.example', artworkCount: 9 } });
+  // The second key is deliberately an ordinary one. A key the run owns would be
+  // stripped from the catch-all before the diff ran, and these cases are about
+  // what the catch-all does with the keys it does speak for.
+  const before = snapshot({ metadata: { website: 'https://curator.example', wikipediaUrl: 'https://en.wikipedia.org/wiki/Serengeti' } });
+  const incoming = snapshot({ metadata: { website: 'https://source.example', wikipediaUrl: 'https://en.wikipedia.org/wiki/Serengeti_National_Park' } });
 
   it('reports the claimed key as a conflict, not as an applied change', () => {
     const result = computeChangeSet(before, incoming, ['metadata.website'], WROTE);
@@ -320,7 +323,7 @@ describe('a metadata key claimed per key', () => {
     const applied = result.changedFields[0];
     expect(applied.old).not.toHaveProperty('website');
     expect(applied.new).not.toHaveProperty('website');
-    expect(applied.new).toMatchObject({ artworkCount: 9 });
+    expect(applied.new).toMatchObject({ wikipediaUrl: 'https://en.wikipedia.org/wiki/Serengeti_National_Park' });
   });
 
   it('keeps a whole-column claim as a conflict, with nothing else applied', () => {
@@ -338,12 +341,73 @@ describe('a metadata key claimed per key', () => {
     // claimed.k`, so a missing key gets no protection and the source's value
     // is written; the report must agree, not raise a conflict over a write
     // that already happened.
-    const orphanedBefore = snapshot({ metadata: { artworkCount: 5 } });
+    const orphanedBefore = snapshot({ metadata: { wikipediaUrl: 'https://en.wikipedia.org/wiki/Serengeti' } });
     const result = computeChangeSet(orphanedBefore, incoming, ['metadata.website'], WROTE);
 
     expect(result.curatedConflicts).toHaveLength(0);
     expect(result.changedFields.map(c => c.field)).toEqual(['metadata']);
     expect(result.changedFields[0].new).toMatchObject({ website: 'https://source.example' });
+  });
+});
+
+describe('a metadata key the run computes about its own pass', () => {
+  // Run 64's Louvre card, as it stood: 122 works, and a sum over them that two
+  // language links somewhere in the world had just moved.
+  const museum = (totalArtworkSitelinks: number, extra: Record<string, unknown> = {}) => snapshot({
+    name: 'Louvre Museum',
+    metadata: {
+      wikidataQid: 'Q19675',
+      website: 'https://www.louvre.fr/zh-hans',
+      admittedFor: { qid: 'Q12418', label: 'Mona Lisa' },
+      artworkCount: 122,
+      totalArtworkSitelinks,
+      ...extra,
+    },
+  });
+
+  it('is not a change, so a run that moved only the counters raises no card', () => {
+    const result = computeChangeSet(museum(2363), museum(2365), [], HELD);
+
+    // The whole point of #571: a card in the review queue saying
+    // `totalArtworkSitelinks: 2363 → 2365`, and the same card again next run.
+    expect(result.changedFields).toEqual([]);
+    expect(result.heldFields).toEqual([]);
+    expect(result.changeType).toBe('unchanged');
+    expect(result.significance).toBeNull();
+  });
+
+  it('stays out of the card a real change does raise, on both sides', () => {
+    const before = museum(2363);
+    const incoming = museum(2365, { website: 'https://www.louvre.fr/en' });
+
+    const result = computeChangeSet(before, incoming, [], HELD);
+
+    expect(result.heldFields.map(f => f.field)).toEqual(['metadata']);
+    const held = result.heldFields[0];
+    // The curator is asked about the website and nothing else. Stripped from
+    // `old` as well as `new`, because `publishHeldFields.ts` reads `old` as the
+    // list of keys this entry speaks for: a counter named there would be wiped
+    // back to the value the proposal was computed against the moment somebody
+    // published the website.
+    expect(held.new).toEqual({
+      wikidataQid: 'Q19675',
+      website: 'https://www.louvre.fr/en',
+      admittedFor: { qid: 'Q12418', label: 'Mona Lisa' },
+    });
+    expect(held.old).not.toHaveProperty('artworkCount');
+    expect(held.old).not.toHaveProperty('totalArtworkSitelinks');
+  });
+
+  it('raises no conflict when claimed, because the upsert writes it anyway', () => {
+    // Unreachable through `editExperience`, which offers three keys and none of
+    // them is this. Pinned because the upsert's claimed-key re-application
+    // carries the same exclusion, and a conflict here would offer a curator
+    // "accept source" over a value the same statement had already written.
+    const result = computeChangeSet(
+      museum(2363), museum(2365), ['metadata.totalArtworkSitelinks'], HELD);
+
+    expect(result.curatedConflicts).toEqual([]);
+    expect(result.changeType).toBe('unchanged');
   });
 });
 

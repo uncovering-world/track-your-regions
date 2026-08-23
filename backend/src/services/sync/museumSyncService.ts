@@ -211,13 +211,18 @@ async function upsertMuseumExperience(
              returnedFromMissing: boolean; locations?: ContentsDelta }> {
   const details = museum.details!;
 
-  // Total sitelinks across all artworks as a ranking metric
+  // A fame measure over the works this pass placed, recorded on the venue and
+  // read back by nothing: which museums are admitted and in what order is
+  // decided inside the run, off live Wikidata (`museum/pipeline.ts`).
   const totalSitelinks = museum.artworks.reduce((sum, a) => sum + a.sitelinksCount, 0);
 
   const metadata = {
     wikidataQid: museum.qid,
     website: details.website,
     wikipediaUrl: details.articleUrl || null,
+    // Bookkeeping this run keeps about its own pass, so it goes past the gate
+    // and past a claim, and no card is ever raised about it
+    // (`SYNC_OWNED_METADATA_KEYS`, #571).
     artworkCount: museum.artworks.length,
     totalArtworkSitelinks: totalSitelinks,
     // The reason this row exists, nameable: the most famous iconic work it holds.
