@@ -321,6 +321,13 @@ export interface ExperienceTreasure {
   artist: string | null;
   year: number | null;
   image_url: string | null;
+  /**
+   * Whose photograph of the work this is. Beside the picture for the same
+   * reason it is on the object above: a minority of Commons files are CC BY or
+   * CC BY-SA, which of a screen showing a picture ask one thing — that the
+   * photographer is named wherever it appears.
+   */
+  image_credit?: ImageCredit | null;
   sitelinks_count: number;
 }
 
@@ -427,6 +434,8 @@ export interface ReviewQueueItem {
    * card renders what exists rather than reserving space for what does not.
    */
   image_url?: string | null;
+  /** Whose photograph the card is showing — a curator's screen owes it too. */
+  image_credit?: ImageCredit | null;
   latitude?: number | null;
   longitude?: number | null;
   website_url?: string | null;
@@ -490,14 +499,18 @@ export interface ReviewQueueItem {
     type: string | null;
     artist: string | null;
     imageUrl: string | null;
+    /** Whose photograph of the work it is — `countedWorksSelectSql` sends it beside the URL. */
+    imageCredit?: ImageCredit | null;
     year: number | null;
     /**
      * The source's own id for the work — a Wikidata QID for everything stored today.
      *
      * Sent so the preview is not a dead end: a curator who does not recognise a work needs
-     * somewhere to go, and this is where it came from. Nullable because the column is.
+     * somewhere to go, and this is where it came from. Not nullable: `treasures.external_id`
+     * is `NOT NULL UNIQUE` — the identity the works upsert conflicts on — and this field is
+     * built straight off that column.
      */
-    externalId: string | null;
+    externalId: string;
   }> | null;
   /**
    * How many works the object holds — on **every** kind, beside `offered_locations`,

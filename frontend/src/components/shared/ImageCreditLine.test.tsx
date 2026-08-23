@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ImageCreditLine } from './ImageCreditLine';
+import { creditAddsBeyond, ImageCreditLine } from './ImageCreditLine';
 
 describe('ImageCreditLine', () => {
   it('names the photographer and the licence', () => {
@@ -100,5 +100,94 @@ describe('ImageCreditLine', () => {
     const { container } = render(<ImageCreditLine credit={undefined} />);
 
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+/**
+ * The rule the dense lists opt into.
+ *
+ * A row of works already names the artist, and Commons names the *painter* as
+ * the author of a photograph of a painting — so on most of these files the
+ * credit would repeat the line above it and add "Public domain", a licence that
+ * asks for nothing. The obligation is the CC BY / CC BY-SA minority, and those
+ * must never be suppressed.
+ */
+describe('a credit beside a row that already names the artist', () => {
+  const credit = (over: Partial<Parameters<typeof creditAddsBeyond>[0] & object> = {}) => ({
+    author: 'Rembrandt', license: 'Public domain', licenseUrl: null, detailsUrl: null, ...over,
+  });
+
+  it('is dropped when the photograph is free and the author is the artist', () => {
+    expect(creditAddsBeyond(credit(), 'Rembrandt')).toBe(false);
+  });
+
+  it('reads two spellings of one name as one person', () => {
+    expect(creditAddsBeyond(credit({ author: 'leonardo  da vinci' }), 'Leonardo da Vinci')).toBe(false);
+  });
+
+  it('is kept whenever the licence asks for the name', () => {
+    // The Mesha Stele at the Louvre: a photograph of a 3D object, CC BY-SA 4.0,
+    // taken by somebody who is not the maker of the thing photographed.
+    expect(creditAddsBeyond(
+      credit({ author: 'Mbzt', license: 'CC BY-SA 4.0' }), null,
+    )).toBe(true);
+  });
+
+  it('is kept when a free photograph names somebody the row does not', () => {
+    expect(creditAddsBeyond(credit({ author: 'Google Arts Project' }), 'Rembrandt')).toBe(true);
+  });
+
+  it('is kept when the licence is one this rule does not recognise', () => {
+    // The default runs towards crediting: an unknown licence may well ask for a
+    // name, and over-crediting costs a line where under-crediting breaks a term.
+    expect(creditAddsBeyond(credit({ license: 'GFDL' }), 'Rembrandt')).toBe(true);
+  });
+
+  it('is dropped when a free photograph names nobody at all', () => {
+    expect(creditAddsBeyond(credit({ author: null }), 'Rembrandt')).toBe(false);
+  });
+
+  it('is dropped when there is no credit', () => {
+    expect(creditAddsBeyond(null, 'Rembrandt')).toBe(false);
+    expect(creditAddsBeyond({
+      author: null, license: null, licenseUrl: null, detailsUrl: null,
+    }, 'Rembrandt')).toBe(false);
+  });
+
+  it('is what the component honours when a row hands it the artist', () => {
+    const { container, rerender } = render(
+      <ImageCreditLine credit={credit()} redundantWith="Rembrandt" />,
+    );
+    expect(container).toBeEmptyDOMElement();
+
+    // The same credit on a large view, which passes no artist, still shows.
+    rerender(<ImageCreditLine credit={credit()} />);
+    expect(container.textContent).toBe('Rembrandt · Public domain');
+  });
+
+  it('is opted into by passing the prop, not by the value it carries', () => {
+    // A dense row whose artist field is `undefined` is still a dense row asking
+    // for the rule. The two readings agree wherever an author is named — with no
+    // artist to repeat, the photographer is new either way — and part company on a
+    // credit that names nobody: under the rule "Public domain" alone says nothing
+    // the row needs, and without it the row gains a line that carries no name.
+    const { container } = render(<ImageCreditLine
+      credit={{ author: null, license: 'Public domain', licenseUrl: null, detailsUrl: null }}
+      redundantWith={undefined}
+    />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('shows on a row whose work has no artist recorded', () => {
+    // A stele has no named maker, so `redundantWith` is null — and the
+    // photographer is then the only person the picture can name.
+    //
+    // A *free* licence deliberately: under CC BY-SA the rule answers true at the
+    // licence check and never reaches the artist comparison, so the same
+    // assertion would pass with the null-artist branch broken.
+    const { container } = render(<ImageCreditLine credit={credit()} redundantWith={null} />);
+
+    expect(container.textContent).toBe('Rembrandt · Public domain');
   });
 });
