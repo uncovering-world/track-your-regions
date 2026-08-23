@@ -28,7 +28,12 @@ export async function getExperienceTreasures(req: AuthenticatedRequest, res: Res
   const result = await pool.query(`
     SELECT
       t.id, t.external_id, t.name, t.treasure_type, t.artist, t.year,
-      t.image_url, t.sitelinks_count, t.is_iconic
+      t.image_url, t.sitelinks_count, t.is_iconic,
+      -- Beside the picture, as it is on the object itself: these files are
+      -- served from Wikimedia Commons and a share of them are CC BY or CC BY-SA,
+      -- which of a screen that shows a picture ask one thing -- that whoever
+      -- took it is named wherever it appears. A list of works is showing them.
+      t.metadata->'imageCredit' AS image_credit
     FROM treasures t
     JOIN experience_treasures et ON t.id = et.treasure_id
     JOIN experiences e ON e.id = et.experience_id

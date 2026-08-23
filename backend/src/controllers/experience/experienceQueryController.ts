@@ -139,8 +139,8 @@ export async function listExperiences(req: Request, res: Response): Promise<void
       e.country_names,
       e.image_url,
       -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
-      -- Commons, and the licences most of them carry have one condition, which
-      -- is that whoever took them is named wherever they are shown.
+      -- Commons, and the licences most of them carry ask one thing of a page
+      -- showing a picture: that whoever took it is named wherever it appears.
       e.metadata->'imageCredit' as image_credit,
       e.metadata->>'dateInscribed' as date_inscribed,
       e.metadata->>'inDanger' as in_danger,
@@ -385,6 +385,10 @@ export async function searchExperiences(req: Request, res: Response): Promise<vo
       e.category,
       e.country_names,
       e.image_url,
+      -- Beside the picture here too. The one screen this read feeds is the
+      -- curator's "search and assign" dialog, which draws each result's
+      -- photograph at 40 px — a small picture is still the picture being shown.
+      e.metadata->'imageCredit' as image_credit,
       ${readerPositionSql('e')},
       similarity(e.name, $1) as relevance
     FROM experiences e
