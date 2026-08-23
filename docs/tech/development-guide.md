@@ -140,6 +140,25 @@ services/
 - Use raw `pool.query()` with parameterized SQL for PostGIS geometry operations.
 - **Never** concatenate user input into SQL strings.
 - When you need `SET`/`RESET` to apply to the same connection as your query, use `const client = await pool.connect()` + `client.query()` + `client.release()`. `pool.query()` grabs a random connection each time.
+- **A transaction is pinned to one client, always.** `pool.query('BEGIN')` is not a transaction: pg.Pool checks out an arbitrary idle client, runs the BEGIN on it and releases it with the transaction still open. The statements that follow may land on other connections, and a *different request* that checks out the leaked client runs its own writes inside that stray transaction — to be rolled back with it. The shape, as in `curationController.ts`'s `editExperience`:
+
+  ```ts
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    // ... every statement of the transaction on `client`
+    await client.query('COMMIT');
+  } catch (error) {
+    // A client whose ROLLBACK also failed must be destroyed, not pooled.
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
+  ```
+
+  Respond *after* the `finally`, not inside the `try` — a `res.json()` before the release leaves the connection out on any path that throws between the two. `rollbackQuietly` (`db/index.ts`) is what keeps a failing ROLLBACK from replacing the error the caller needs to see, and its return value is the argument `release()` needs to destroy a client that can no longer be trusted. The rule is enforced: `no-restricted-syntax` in `backend/eslint.config.mjs` fails the lint on `pool.query('BEGIN' | 'COMMIT' | 'ROLLBACK' | 'SAVEPOINT' | 'RELEASE' …)`, because the prose form of it lived in a comment for months while four call sites went on doing it (#532).
 
 ### Backend Gotchas
 
