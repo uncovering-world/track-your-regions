@@ -27,7 +27,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
-  pool: { query: vi.fn() },
+  pool: { query: vi.fn(), connect: vi.fn() },
+  rollbackQuietly: async (c: { query: (s: string) => unknown }) => {
+    try { await c.query('ROLLBACK'); return undefined; } catch (e) { return e as Error; }
+  },
 }));
 
 import { pool } from '../../db/index.js';
@@ -44,14 +47,41 @@ import {
 import { offeredToReaderSql } from './experienceLifecycle.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
+const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
+/** The same mock, in its callable shape: `vi.fn()`'s own type is not callable. */
+const answer = mockedQuery as unknown as (sql: string, params?: unknown[]) => Promise<unknown>;
 
 function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
 }
 
+/**
+ * The client a handler pins for its transaction (#532).
+ *
+ * Its statements are answered by the pool's mock, so a test that stubs a row
+ * stubs it for both and `sentSql()` below still sees everything the handler
+ * sent. What separates them is the client's own call list, which is what
+ * `clientSql()` reads: a statement is there only if it was addressed to this
+ * one connection.
+ */
+function pinClient() {
+  const client = {
+    query: vi.fn((sql: string, params?: unknown[]) => answer(sql, params)),
+    release: vi.fn(),
+  };
+  mockedConnect.mockReset();
+  mockedConnect.mockResolvedValue(client);
+  return client;
+}
+
 /** Every statement the handler sent, in order. */
 function sentSql(): string[] {
   return mockedQuery.mock.calls.map(call => String(call[0]));
+}
+
+/** What the pinned client was asked, in order. */
+function clientSql(client: ReturnType<typeof pinClient>): string[] {
+  return client.query.mock.calls.map(call => String(call[0]));
 }
 
 /** The one statement that reads the location table. */
@@ -130,6 +160,7 @@ describe('a visit outlives the point', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedQuery.mockResolvedValue({ rows: [{ location_id: 1, visit_id: 3 }], rowCount: 1 });
+    pinClient();
   });
 
   it('counts a reader progress over the points still on offer', async () => {
@@ -224,6 +255,76 @@ describe('a visit outlives the point', () => {
     const counts = sentSql().filter(sql => /COUNT\(\*\) as count/i.test(sql));
     expect(counts).toHaveLength(1);
     expect(counts[0]).toMatch(/el\.missing_since IS NULL/);
+  });
+});
+
+/**
+ * A transaction has to hold one connection for its whole length — #532.
+ *
+ * `pool.query('BEGIN')` reads as a transaction and is not one: pg.Pool checks
+ * out an arbitrary idle client, runs the BEGIN on it and releases it with the
+ * transaction still open. The statements that follow may land on other
+ * connections, and a *different reader's* write that checks out the leaked
+ * client joins the stray transaction — to be rolled back with it. These two
+ * handlers write in bulk, so what a stray ROLLBACK undoes here is somebody
+ * else's tick beside a place they did visit.
+ *
+ * The assertion is therefore not "the statements ran" but "they ran on the one
+ * client the handler checked out", which a return to `pool.query('BEGIN')`
+ * fails outright: nothing is addressed to a client at all.
+ */
+describe('a transaction is pinned to one connection', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValue({ rows: [{ id: 1, count: '0' }], rowCount: 1 });
+  });
+
+  it('marks every location on the pinned client, BEGIN through COMMIT', async () => {
+    const client = pinClient();
+
+    await markAllLocationsVisited(
+      { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
+      makeRes() as never);
+
+    const onClient = clientSql(client);
+    expect(onClient[0]).toBe('BEGIN');
+    expect(onClient.at(-1)).toBe('COMMIT');
+    expect(onClient.filter(sql => /INSERT INTO user_visited_locations/i.test(sql))).toHaveLength(1);
+    expect(onClient.filter(sql => /INSERT INTO user_visited_experiences/i.test(sql))).toHaveLength(1);
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes the visits back on the pinned client, both deletes included', async () => {
+    const client = pinClient();
+
+    await unmarkAllLocationsVisited(
+      { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
+      makeRes() as never);
+
+    const onClient = clientSql(client);
+    expect(onClient[0]).toBe('BEGIN');
+    expect(onClient.at(-1)).toBe('COMMIT');
+    expect(onClient.filter(sql => /DELETE FROM user_visited_locations/i.test(sql))).toHaveLength(1);
+    expect(onClient.filter(sql => /DELETE FROM user_visited_experiences/i.test(sql))).toHaveLength(1);
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back and hands the connection back when a statement fails', async () => {
+    const client = pinClient();
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })  // the points on offer
+      .mockResolvedValueOnce({ rows: [] })           // BEGIN
+      .mockRejectedValueOnce(new Error('insert failed'));
+
+    await expect(markAllLocationsVisited(
+      { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
+      makeRes() as never)).rejects.toThrow('insert failed');
+
+    // Both halves matter: an unclosed transaction on a client nobody released
+    // is exactly the state this issue is about, and the release is what stops
+    // the next request from inheriting it.
+    expect(clientSql(client)).toContain('ROLLBACK');
+    expect(client.release).toHaveBeenCalledTimes(1);
   });
 });
 
