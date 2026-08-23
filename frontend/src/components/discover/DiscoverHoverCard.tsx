@@ -9,13 +9,17 @@
  * sits at the top centre, since the card would otherwise paint over it.
  */
 
+import { useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useHoverSelector } from '../../hooks/useHoverContext';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 
 export function DiscoverHoverCard() {
   const hoverPreview = useHoverSelector(s => s.hoverPreview);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   if (!hoverPreview) return null;
+  const picture = hoverPreview.imageUrl && hoverPreview.imageUrl !== failedUrl
+    ? hoverPreview.imageUrl : null;
 
   return (
     <Box
@@ -36,10 +40,10 @@ export function DiscoverHoverCard() {
         animation: 'tyrDiscoverHoverIn 170ms cubic-bezier(0.2, 0.8, 0.2, 1)',
       }}
     >
-      {hoverPreview.imageUrl && (
+      {picture && (
         <Box
           component="img"
-          src={hoverPreview.imageUrl}
+          src={picture}
           alt={hoverPreview.experienceName}
           sx={{
             width: '100%',
@@ -48,11 +52,15 @@ export function DiscoverHoverCard() {
             display: 'block',
             backgroundColor: 'grey.100',
           }}
+          // Held as *which* picture failed, not as a flag: this card stays mounted
+          // while the pointer crosses objects, so a flag would blank every picture
+          // after the first refusal — and four of these URLs in five refuse (#557).
+          onError={() => setFailedUrl(hoverPreview.imageUrl)}
         />
       )}
       <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         {/* Wherever the work appears, including here. */}
-        {hoverPreview.imageUrl && <ImageCreditLine credit={hoverPreview.imageCredit} />}
+        {picture && <ImageCreditLine credit={hoverPreview.imageCredit} />}
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
           {hoverPreview.experienceName}
         </Typography>
