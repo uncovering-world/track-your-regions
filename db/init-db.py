@@ -428,14 +428,25 @@ class GADMProcessor:
         Runs as a single pass over all divisions with geometry, computing:
         1. geom_simplified_low/medium (4326 simplification)
         2. geom_3857 (transform to Web Mercator)
-        3. geom_simplified_low_3857/medium_3857 and geom_overview_3857 (3857 simplification)
+        3. geom_simplified_low_3857/medium_3857 and the two cheap rungs,
+           geom_overview_3857 and geom_simplified_coarse_3857 (3857 simplification)
 
         Much faster than per-row trigger execution during INSERT.
         """
-        # Count divisions needing computation
+        # Count divisions needing computation. Any rung missing counts, not just
+        # geom_3857: a rung that arrived after the rows did is missing while
+        # geom_3857 is not, and a run interrupted between step 2's commit and
+        # step 3's leaves geom_3857 filled and every 3857 rung NULL. Asking only
+        # about the first of them returns "already computed" in both cases and
+        # says so untruthfully, while every division tile falls through to full
+        # resolution at every zoom.
         self.pg_cursor.execute("""
             SELECT COUNT(*) FROM administrative_divisions
-            WHERE geom IS NOT NULL AND geom_3857 IS NULL
+            WHERE geom IS NOT NULL
+              AND (geom_3857 IS NULL
+                   OR geom_simplified_low_3857 IS NULL
+                   OR geom_overview_3857 IS NULL
+                   OR geom_simplified_coarse_3857 IS NULL)
         """)
         count = self.pg_cursor.fetchone()[0]
         if count == 0:
@@ -488,16 +499,20 @@ class GADMProcessor:
                 geom_simplified_medium_3857 = simplify_for_zoom(geom_3857, 1000, 0, 0)
             WHERE geom_3857 IS NOT NULL AND geom_simplified_low_3857 IS NULL
         """)
-        # Separate statement so the overview reads the low rung this step just
-        # wrote, matching how the trigger derives it. It cannot be left to the
+        # Separate statement so the cheap rungs read the low rung this step just
+        # wrote, matching how the trigger derives them. It cannot be left to the
         # trigger: it is disabled for the bulk import, and the UPDATE above
         # changes neither geom nor geom_simplified_low, so re-enabling it would
         # not fire either. Without this a freshly imported database serves the
         # slow pre-computation path on the default world view.
         self.pg_cursor.execute("""
             UPDATE administrative_divisions
-            SET geom_overview_3857 = simplify_for_overview(geom_simplified_low_3857)
-            WHERE geom_simplified_low_3857 IS NOT NULL AND geom_overview_3857 IS NULL
+            SET geom_overview_3857 =
+                    simplify_for_overview(geom_simplified_low_3857, 50000),
+                geom_simplified_coarse_3857 =
+                    simplify_for_overview(geom_simplified_low_3857, 10000)
+            WHERE geom_simplified_low_3857 IS NOT NULL
+              AND (geom_overview_3857 IS NULL OR geom_simplified_coarse_3857 IS NULL)
         """)
         self.pg_conn.commit()
         print(f"done ({time.perf_counter() - step3_start:.1f}s)")
