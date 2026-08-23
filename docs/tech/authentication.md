@@ -201,6 +201,30 @@ docker exec -i tyr-ng-db psql -U postgres -d track_regions \
         AND email_verified = true;"
 ```
 
+### The curator role follows the assignments
+
+Nobody sets `role = 'curator'` by hand. An admin granting the first
+scope in `curator_assignments` promotes the account, and revoking the
+last one takes the role back — the role is a summary of the rows, and
+each half of the pair is useless alone: an assignment whose owner is
+back to `user` is locked out of every curation screen by
+`requireCurator`, and a `curator` with no rows left has authority over
+nothing.
+
+Both writes therefore take `SELECT role FROM users WHERE id = $1 FOR NO
+KEY UPDATE` as the first statement of their transaction
+(`USER_ROLE_LOCK` in `controllers/admin/curatorController.ts`), and
+decide the promotion from *that* read rather than from the reference
+check before it. Two admins acting on one account at the same moment
+otherwise leave the halves disagreeing: two revokes each counting the
+other's assignment as still standing and neither demoting, or a grant
+deciding "already a curator" against a role a concurrent revoke has
+just taken away. The mode is the one `db/locks.ts` argues for — it
+self-conflicts, so the two serialise, and it stays compatible with the
+key share `curator_assignments`' foreign key takes on the same row.
+Granting and revoking lock in the same order, which is what keeps them
+from deadlocking rather than merely serialising.
+
 ## API Endpoints
 
 ### Authentication
