@@ -68,6 +68,51 @@ export const LOCATION_MAJOR_METERS = 1000;
 const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
 
 /**
+ * Metadata keys a run computes about its own pass, not facts about the object.
+ *
+ * The rule they name: *a field the import computes about its own run is not a
+ * field a person is asked about.* `artworkCount` is how many works the pass just
+ * placed in the venue, `totalArtworkSitelinks` the sum of those works' sitelink
+ * counts — a fame measure the run records about the venue it just filled.
+ * Nothing reads either one today: which museums are admitted and in what order
+ * is decided inside the run, off live Wikidata (`museum/pipeline.ts`), never off
+ * the stored copy. A sum over some 2500 works
+ * moves whenever anybody anywhere adds a language link to any painting a museum
+ * holds, so under a gated source every move became a held proposal: the Louvre's
+ * card read `totalArtworkSitelinks: 2363 → 2365`, and the next run raised the
+ * same card again, for essentially every museum, for ever (#571).
+ *
+ * Held out of the diff on **both sides**, like the major keys and a per-key
+ * claim above: a run that moved nothing else is `unchanged` and raises no card,
+ * and a run that also changed something real shows a card carrying only the
+ * something real. Both sides, because a stored key the catch-all's `old` does
+ * not mention is a key the catch-all does not speak for, which is what keeps
+ * `publishHeldFields.ts` from wiping the counter when a curator publishes.
+ *
+ * `syncUtils.ts` writes these keys past the gate for the same reason
+ * `last_seen_at` goes past it, and the two halves have to agree. Ignored in the
+ * diff but refused by the write would leave the counter frozen at whatever it
+ * read when the gate went up — which is exactly what the Louvre's stored 2363
+ * already was: a number the queue kept asking about and no run could land, so
+ * the stored copy said one thing and every run since computed another. No
+ * reader saw that, because no reader reads it; the first thing that does would
+ * have.
+ *
+ * One level down the same rule is already SQL: the treasures upsert writes
+ * `sitelinks_count` unconditionally, "a measurement, not a judgement".
+ *
+ * `admittedFor` is derived too and is deliberately not here: it names the most
+ * famous work a museum holds, which is the reason the row exists at all, and is
+ * worth a look when it changes.
+ */
+export const SYNC_OWNED_METADATA_KEYS = ['artworkCount', 'totalArtworkSitelinks'] as const;
+
+/** Whether a metadata key belongs to the run rather than to the object. */
+function isSyncOwned(key: string): boolean {
+  return (SYNC_OWNED_METADATA_KEYS as readonly string[]).includes(key);
+}
+
+/**
  * The `curated_fields` prefix for a per-key metadata claim (`metadata.website`,
  * never `metadata` itself). The upsert's SQL guard in `syncUtils.ts` parses the
  * same claims out of the same column and needs the identical prefix to find
@@ -182,12 +227,23 @@ function fieldSignificance(field: string): FieldSignificance {
   return MAJOR_FIELDS.has(field) ? 'major' : 'minor';
 }
 
-/** Keys a curator claimed individually, as bare key names. */
+/**
+ * Keys a curator claimed individually, as bare key names.
+ *
+ * A sync-owned key drops out for the same reason a major one does: it is not
+ * reported through the catch-all, so it cannot be reported as a claim on the
+ * catch-all either. The upsert's re-application of claimed keys carries the
+ * identical exclusion, or one of the two would report a conflict over a value
+ * the other had just written. Unreachable today — `editExperience` claims only
+ * `website`, `wikipediaUrl` and `imageCredit` — but the two sides should agree
+ * by construction rather than by what the edit surface happens to offer.
+ */
 function claimedMetadataKeys(curatedFields: string[]): string[] {
   return curatedFields
     .filter(key => key.startsWith(METADATA_CLAIM_PREFIX))
     .map(key => key.slice(METADATA_CLAIM_PREFIX.length))
-    .filter(key => !(MAJOR_METADATA_KEYS as readonly string[]).includes(key));
+    .filter(key => !(MAJOR_METADATA_KEYS as readonly string[]).includes(key))
+    .filter(key => !isSyncOwned(key));
 }
 
 /**
@@ -196,6 +252,10 @@ function claimedMetadataKeys(curatedFields: string[]): string[] {
  * major, a key a curator claimed individually is also reported on its own so
  * a claim on it can be told apart from the catch-all, and everything else
  * collapses into one minor entry.
+ *
+ * A fourth group is reported nowhere: the keys the run computes about its own
+ * pass. They are not a question, so they raise no card — see
+ * `SYNC_OWNED_METADATA_KEYS`.
  */
 function metadataChanges(
   before: Record<string, unknown> | null,
@@ -235,15 +295,16 @@ function metadataChanges(
     }
   }
 
-  const ignoredKeys = [...MAJOR_METADATA_KEYS, ...claimed];
+  const ignoredKeys = [...MAJOR_METADATA_KEYS, ...SYNC_OWNED_METADATA_KEYS, ...claimed];
   const withoutReportedKeys = (source: Record<string, unknown>) => {
     const copy = { ...source };
     for (const key of ignoredKeys) delete copy[key];
     return copy;
   };
 
-  // Both sides stripped of what was already reported on its own — major or
-  // individually claimed — so the payload matches the label: a key claimed
+  // Both sides stripped of what this entry does not speak for — reported on its
+  // own above, major or individually claimed, or reported nowhere because the
+  // run owns it — so the payload matches the label: a key claimed
   // and kept has already had its say in a conflict row above, and carrying
   // its value here too would show a curator that value inside a row marked
   // applied, right next to the row saying it was refused (#488, one layer in:
