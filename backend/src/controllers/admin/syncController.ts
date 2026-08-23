@@ -7,7 +7,7 @@
 import { Request, Response } from 'express';
 import { isTerminalSyncStatus } from '../../services/sync/types.js';
 import { isCancellable } from '../../services/sync/syncOrchestrator.js';
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
 import { waitingCountsByCategory } from '../experience/waitingCounts.js';
 import {
   syncUnescoSites,
@@ -646,18 +646,29 @@ export async function reorderCategories(req: Request, res: Response): Promise<vo
     return;
   }
 
-  await pool.query('BEGIN');
+  // One client, not pool.query('BEGIN') — see the note in curationController:
+  // pg.Pool hands out an arbitrary idle client per call, so a transaction has
+  // to be pinned or its statements land on different connections. The order is
+  // written one row at a time, so a half-applied run leaves two sources sharing
+  // a display_priority and one with none.
+  const client = await pool.connect();
+  let unusable: Error | undefined;
   try {
+    await client.query('BEGIN');
     for (let i = 0; i < categoryIds.length; i++) {
-      await pool.query(
+      await client.query(
         'UPDATE experience_categories SET display_priority = $1 WHERE id = $2',
         [i + 1, categoryIds[i]]
       );
     }
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    await pool.query('ROLLBACK');
+    // A client whose ROLLBACK also failed must be destroyed, not pooled: it
+    // would otherwise carry an open transaction into the next request.
+    unusable = await rollbackQuietly(client);
     throw err;
+  } finally {
+    client.release(unusable);
   }
 
   res.json({ success: true, order: categoryIds });
