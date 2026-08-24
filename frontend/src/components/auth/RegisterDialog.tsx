@@ -18,6 +18,12 @@ import GoogleIcon from '@mui/icons-material/Google';
 import AppleIcon from '@mui/icons-material/Apple';
 import { useAuth } from '../../hooks/useAuth';
 import { getGoogleAuthUrl, getAppleAuthUrl, resendVerification } from '../../api/auth';
+import {
+  MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH,
+  PASSWORD_TOO_SHORT,
+  PASSWORD_TOO_LONG,
+} from '../../constants/passwordRules';
 
 interface RegisterDialogProps {
   open: boolean;
@@ -47,8 +53,15 @@ export function RegisterDialog({ open, onClose, onSwitchToLogin }: RegisterDialo
       return;
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(PASSWORD_TOO_SHORT);
+      return;
+    }
+
+    // The ceiling matters as much as the floor: past it the schema rejects the
+    // body and every ZodError renders as the bare string "Validation error".
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      setError(PASSWORD_TOO_LONG);
       return;
     }
 
@@ -178,7 +191,7 @@ export function RegisterDialog({ open, onClose, onSwitchToLogin }: RegisterDialo
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={isLoading}
-            helperText="At least 8 characters"
+            helperText={`Between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters`}
           />
           <TextField
             margin="dense"

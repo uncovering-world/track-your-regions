@@ -16,6 +16,7 @@ import {
 import PersonIcon from '@mui/icons-material/Person';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { useAuth } from '../../hooks/useAuth';
 import { LoginDialog } from './LoginDialog';
 import { RegisterDialog } from './RegisterDialog';
@@ -154,6 +155,13 @@ export function UserMenu() {
         <Divider />
 
         {/* Menu items */}
+        <MenuItem onClick={() => { handleMenuClose(); navigate('/account'); }}>
+          <ListItemIcon>
+            <ManageAccountsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Account</ListItemText>
+        </MenuItem>
+
         {isAdmin && (
           <MenuItem onClick={() => { handleMenuClose(); navigate('/admin'); }}>
             <ListItemIcon>
