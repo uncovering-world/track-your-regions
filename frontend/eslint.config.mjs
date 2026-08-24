@@ -79,4 +79,33 @@ export default [
       },
     },
   },
+  // The performance lane's runner and budget evaluator: plain ESM run by
+  // Node inside the e2e container, not by the browser.
+  {
+    files: ['perf/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      // Same false-positive class as in the src block above: every index is
+      // one of the evaluator's own keys (a threshold name, a resource type)
+      // or an audit id from the report it is judging - nothing a request
+      // supplied.
+      'security/detect-object-injection': 'off',
+      // The lane's URLs are the test stack's compose-network origins
+      // (http://frontend:5173, http://backend:3001); there is no TLS inside
+      // that network to prefer.
+      'sonarjs/no-clear-text-protocols': 'off',
+      // Every path the runner touches is built from the committed budgets
+      // file's outputDir and this directory's own layout, and writing reports
+      // to a configured directory is the runner's job; the rule would fire on
+      // all seven fs calls with nothing to say about any of them.
+      'security/detect-non-literal-fs-filename': 'off',
+      'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
+    },
+  },
 ];

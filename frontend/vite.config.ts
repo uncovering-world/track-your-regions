@@ -56,7 +56,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    // perf/ holds the performance lane's runner; its budget evaluator is the
+    // one piece of it worth a unit test, and it is plain ESM.
+    include: ['src/**/*.test.{ts,tsx}', 'perf/**/*.test.mjs'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

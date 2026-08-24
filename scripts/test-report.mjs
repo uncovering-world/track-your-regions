@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseLighthouseResults } from './lighthouse-summary.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +64,22 @@ const STEP_TEMPLATES = {
     packageDir: 'frontend',
     project: 'full',
   },
+  perf: {
+    id: 'perf',
+    label: 'Frontend Performance (Lighthouse)',
+    scope: 'frontend/perf/lighthouse-budgets.json (production build on the test stack)',
+    kind: 'lighthouse',
+    packageDir: 'frontend',
+    // The stack's frontend must come up as a production build for this
+    // step; the mode is decided when the stack is started (below), not by
+    // the step, because a container already up in the other shape is left
+    // alone by the step's own `up` (TEST_STACK_SKIP_UP).
+    frontendMode: 'preview',
+    // A "test" here is one assertion on one URL; the listed items are the
+    // measured pages and the assertions that spoke.
+    filesLabel: 'Pages',
+    casesLabel: 'Assertions',
+  },
 };
 
 const MODE_STEPS = {
@@ -75,6 +92,7 @@ const MODE_STEPS = {
   'frontend-coverage': ['frontend-coverage'],
   'e2e-smoke': ['e2e-smoke'],
   'e2e-full': ['e2e-full'],
+  perf: ['perf'],
 };
 
 const STEP_CONTAINER_COMMAND = {
@@ -84,6 +102,7 @@ const STEP_CONTAINER_COMMAND = {
   'frontend-coverage': 'run-frontend-coverage',
   'e2e-smoke': 'run-e2e-smoke',
   'e2e-full': 'run-e2e-full',
+  perf: 'run-perf',
 };
 
 const mode = process.argv[2] || 'test';
@@ -108,9 +127,16 @@ const startedAt = Date.now();
 const stepResults = [];
 let hadRunnerFailure = false;
 
+// docker-compose.yml reads FRONTEND_MODE when the frontend container is
+// created, so a mode a step needs has to reach the `up` that creates it.
+// Unset means the dev server, which is what every other lane browses.
+const stackEnv = steps.some((step) => step.frontendMode === 'preview')
+  ? { FRONTEND_MODE: 'preview' }
+  : {};
+
 if (RUN_CONTAINER_TESTS) {
   printSectionHeader('Preparing Test Environment', 'Starting shared test services');
-  const upExitCode = await runCommand(TEST_STACK_SCRIPT, ['up'], { cwd: ROOT_DIR, env: {} });
+  const upExitCode = await runCommand(TEST_STACK_SCRIPT, ['up'], { cwd: ROOT_DIR, env: stackEnv });
   if (upExitCode !== 0) {
     printError('Failed to prepare test environment.');
     process.exit(upExitCode);
@@ -163,7 +189,7 @@ async function runStep(step, activeMode, index) {
     }
     command = TEST_STACK_SCRIPT;
     args = [stackCommand, jsonPath];
-    env = { TEST_STACK_SKIP_UP: '1' };
+    env = { ...stackEnv, TEST_STACK_SKIP_UP: '1' };
   } else {
     const packageCwd = path.join(ROOT_DIR, step.packageDir);
     cwd = packageCwd;
@@ -177,16 +203,21 @@ async function runStep(step, activeMode, index) {
       command = resolveLocalBinary(step.packageDir, 'playwright');
       args = ['test', `--project=${step.project}`, '--reporter=list,json'];
       env = { PLAYWRIGHT_JSON_OUTPUT_FILE: jsonPath };
+    } else if (step.kind === 'lighthouse') {
+      // The lane measures a production build served inside the test stack,
+      // by the stack's own pinned Chromium; there is no host-side shape of
+      // it that would produce comparable numbers. Say so instead of running
+      // something else under the same name.
+      throw new Error(
+        'The performance lane runs only against the isolated test stack; unset TEST_REPORT_LOCAL.',
+      );
     } else {
       throw new Error(`Unsupported step kind: ${step.kind}`);
     }
   }
 
   const exitCode = await runCommand(command, args, { cwd, env });
-  const parsed =
-    step.kind === 'vitest'
-      ? parseVitestReport(jsonPath)
-      : parsePlaywrightReport(jsonPath);
+  const parsed = parseStepReport(step, jsonPath);
 
   return {
     ...step,
@@ -195,6 +226,19 @@ async function runStep(step, activeMode, index) {
     reportPath: jsonPath,
     ...parsed,
   };
+}
+
+function parseStepReport(step, jsonPath) {
+  if (step.kind === 'vitest') {
+    return parseVitestReport(jsonPath);
+  }
+  if (step.kind === 'lighthouse') {
+    return parseLighthouseResults({
+      assertionResultsPath: jsonPath,
+      reportDir: path.join(ROOT_DIR, step.packageDir, 'lighthouse-report'),
+    });
+  }
+  return parsePlaywrightReport(jsonPath);
 }
 
 function resolveLocalBinary(packageDir, binName) {
@@ -436,12 +480,15 @@ function printOverallReport(summary) {
     printLine(
       `Result: ${step.total} tests | ${step.passed} passed | ${step.failed} failed | ${step.skipped} skipped`,
     );
+    if (step.note) {
+      printLine(step.note);
+    }
 
     if (step.parseError) {
       printLine(`Report parse error: ${step.parseError}`);
     } else {
-      printLimitedList('Test files', step.files, 20);
-      printLimitedList('Test cases', step.cases, 30);
+      printLimitedList(step.filesLabel || 'Test files', step.files, 20);
+      printLimitedList(step.casesLabel || 'Test cases', step.cases, 30);
     }
   }
 

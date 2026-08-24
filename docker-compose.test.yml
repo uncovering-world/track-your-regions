@@ -16,6 +16,10 @@ services:
       # host paths before this service starts (its base image runs as root).
       - ./frontend/playwright-report:/app/playwright-report:z
       - ./frontend/test-results:/app/test-results:z
+      # Lighthouse's HTML/JSON reports, manifest and assertion results (the
+      # `outputDir` in frontend/perf/lighthouse-budgets.json), for the same
+      # reason as the two above.
+      - ./frontend/lighthouse-report:/app/lighthouse-report:z
     depends_on:
       - frontend
     command: ["bash", "-lc", "sleep infinity"]

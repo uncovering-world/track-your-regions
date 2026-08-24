@@ -116,8 +116,8 @@ chmod a+rwX "$DATA_DIR" "$DATA_DIR/images"
 # absent host path would be auto-created root-owned; pre-creating and
 # opening it up avoids relying on root's umask happening to leave it
 # readable.
-mkdir -p frontend/playwright-report frontend/test-results
-chmod a+rwX frontend/playwright-report frontend/test-results
+mkdir -p frontend/playwright-report frontend/test-results frontend/lighthouse-report
+chmod a+rwX frontend/playwright-report frontend/test-results frontend/lighthouse-report
 
 compose() {
   STACK_NAME="$STACK_NAME" \
@@ -263,6 +263,54 @@ run_e2e_playwright() {
   return "$playwright_rc"
 }
 
+# The performance lane measures the production build, so the frontend
+# service comes up in preview mode (frontend/docker-entrypoint.sh) - a
+# `vite build` followed by `vite preview`, on the same port and hostname
+# the dev server uses, so the backend's CORS origin and the browser's URLs
+# do not change with the mode. Exported rather than passed inline: compose
+# reads FRONTEND_MODE straight from the environment
+# (docker-compose.yml's `${FRONTEND_MODE:-dev}`), and ensure_up brings the
+# stack up with the plain `compose` wrapper, which does not list it.
+# `compose up` recreates a container whose environment changed, so a stack
+# left up by the smoke lane switches shape here instead of being reused.
+ensure_perf_runner() {
+  export FRONTEND_MODE=preview
+  ensure_up
+  compose_test_profile up -d --build --no-deps e2e
+}
+
+run_perf() {
+  local out_path="$1"
+  local lighthouse_rc=0
+  # The runner (frontend/perf/lighthouse.mjs) writes its verdicts beside the
+  # reports, in the bind-mounted lighthouse-report/; copied out through the
+  # container anyway, like the Playwright report, so the caller's JSON path
+  # is served the same way whichever lane ran.
+  local assertions_path="/app/lighthouse-report/assertion-results.json"
+
+  ensure_perf_runner
+  # lighthouse-report/ is a bind mount that outlives the container, so last
+  # run's verdicts are still there when this one starts. The runner clears
+  # them itself, but only once it is running - a budgets file that does not
+  # parse, or a container that never starts, would leave last run's passing
+  # rows for the `cat` below to copy out as this run's. Cleared here first,
+  # so a run that never judged anything has nothing to hand back.
+  compose_test_profile exec -T e2e sh -lc "rm -f /app/lighthouse-report/assertion-results.json /app/lighthouse-report/manifest.json" || true
+  # Lighthouse drives the Playwright image's own Chromium - the same pinned
+  # build the smoke lane's browser is - rather than downloading one, so the
+  # numbers do not move with whatever Chrome a developer or runner has
+  # installed. Resolved at run time because the path carries Playwright's
+  # build number and platform directory (chromium-1208/chrome-linux64 for
+  # v1.58.2), both of which a Playwright bump can change.
+  # Same `|| rc=$?` shape as run_e2e_playwright: a failed assertion must not
+  # abort this function before the results and the report are copied out.
+  compose_test_profile exec -T e2e sh -lc "CHROME_PATH=\$(ls -d /ms-playwright/chromium-*/chrome-linux*/chrome | head -n 1) && export CHROME_PATH && npm run lighthouse" || lighthouse_rc=$?
+  # Root-owned bind-mount output, as for the Playwright artifacts above.
+  compose_test_profile exec -T e2e sh -lc "chmod -R a+rwX /app/lighthouse-report" || true
+  compose_test_profile exec -T e2e sh -lc "cat '${assertions_path}'" > "$out_path"
+  return "$lighthouse_rc"
+}
+
 cmd_up() {
   ensure_up
   cmd_status
@@ -307,6 +355,7 @@ Commands:
   run-frontend-coverage   Internal: run frontend unit/integration tests with coverage
   run-e2e-smoke           Internal: run smoke E2E tests
   run-e2e-full            Internal: run full E2E tests
+  run-perf                Internal: run the Lighthouse lane against the production build
   help                    Show this help
 
 Environment overrides:
@@ -350,6 +399,10 @@ case "${1:-help}" in
   run-e2e-full)
     require_output_path "${2:-}"
     run_e2e_playwright "full" "$2"
+    ;;
+  run-perf)
+    require_output_path "${2:-}"
+    run_perf "$2"
     ;;
   help|--help|-h) cmd_help ;;
   *)
