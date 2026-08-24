@@ -33,6 +33,7 @@ import {
   Public as PublicIcon,
   SmartToy as AIIcon,
   Gavel as RulesIcon,
+  FactCheck as ChecksIcon,
   CameraEnhance as CVIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../hooks/useAuth';
@@ -44,10 +45,11 @@ import { WorldViewImportPanel } from './WorldViewImportPanel';
 import { AISettingsPanel } from './AISettingsPanel';
 import { CVSettingsPanel } from './CVSettingsPanel';
 import { ExtractionRulesPanel } from './ExtractionRulesPanel';
+import { CatalogueChecksPanel } from './CatalogueChecksPanel';
 
 const DRAWER_WIDTH = 240;
 
-type AdminSection = 'overview' | 'sync' | 'assignment' | 'history' | 'curators' | 'ai' | 'cv' | 'extractionRules' | 'wvImport';
+type AdminSection = 'overview' | 'sync' | 'assignment' | 'history' | 'checks' | 'curators' | 'ai' | 'cv' | 'extractionRules' | 'wvImport';
 
 export function AdminDashboard() {
   const { isAdmin, isLoading } = useAuth();
@@ -90,6 +92,7 @@ export function AdminDashboard() {
     { id: 'sync', label: 'Sync Experiences', icon: <SyncIcon /> },
     { id: 'assignment', label: 'Region Assignment', icon: <MapIcon /> },
     { id: 'history', label: 'Sync History', icon: <HistoryIcon /> },
+    { id: 'checks', label: 'Catalogue Checks', icon: <ChecksIcon /> },
     { id: 'curators', label: 'Curators', icon: <CuratorIcon /> },
     { id: 'ai', label: 'AI Settings', icon: <AIIcon /> },
     { id: 'cv', label: 'CV Settings', icon: <CVIcon /> },
@@ -142,6 +145,8 @@ export function AdminDashboard() {
         return <AssignmentPanel />;
       case 'history':
         return <SyncHistoryPanel />;
+      case 'checks':
+        return <CatalogueChecksPanel />;
       case 'curators':
         return <CuratorPanel />;
       case 'ai':
