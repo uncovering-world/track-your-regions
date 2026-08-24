@@ -624,6 +624,34 @@ terminal. It cannot be a push gate: a push carries code, and the rows live in
 whatever database that code is later run against. See
 `docs/tech/data-assertions.md` for what is asserted and how accepted debt works.
 
+## Performance
+
+Performance is measured, budgeted and gated — not felt. Two tiers, both run
+by CI on every pull request and both available locally under the same names:
+
+```bash
+npm run perf:size      # build the frontend, check the entry chunk against its gzip budget (size-limit)
+npm run perf           # Lighthouse against the production build on the isolated test stack
+npm run perf:api       # p50/p95 of the hot read endpoints against a running stack (a measurement, not a gate)
+```
+
+The budgets live next to what they measure — `frontend/package.json`
+(`"size-limit"`) and `frontend/perf/lighthouse-budgets.json` — and the
+numbers they were set from, with the rule for moving them, in
+`docs/tech/performance.md`. The short form of that rule: a budget sits just
+above the last measured baseline, **lowering** one is a deliberate change,
+**raising** one needs a stated reason in the pull request. The lane exists
+to make an anti-pattern visible in the PR that introduces it — a dependency
+that doubles the bundle, a layout that shifts, a screen that blocks the
+main thread — while the UI is still cheap to change, not to certify the
+current frontend as fast.
+
+When the gate goes red, read the report before touching the budget:
+`frontend/lighthouse-report/` holds every run's HTML, and CI uploads the
+same directory as the `lighthouse-report` artifact. The summary the lane
+prints names the page, the metric and the number; the HTML report names
+the element and the request behind it.
+
 ## Slash Commands
 
 The project has slash commands (in `.claude/commands/`) that automate common workflows. Use them — they encode the conventions in this guide:
