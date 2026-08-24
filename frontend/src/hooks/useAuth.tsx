@@ -15,7 +15,9 @@ import {
   logout as apiLogout,
   getCurrentUser,
   verifyEmail as apiVerifyEmail,
+  changePassword as apiChangePassword,
   setLastGoogleEmail,
+  type ChangePasswordInput,
 } from '../api/auth';
 import { setAccessToken as setGlobalAccessToken, refreshSession, setRefreshSuccessListener } from '../api/fetchUtils';
 
@@ -39,6 +41,7 @@ interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (credentials: RegisterCredentials) => Promise<{ message: string }>;
   verifyEmail: (token: string) => Promise<void>;
+  changePassword: (input: ChangePasswordInput) => Promise<string>;
   logout: () => Promise<void>;
   getAccessToken: () => string | null;
   authFetch: <T>(url: string, options?: RequestInit) => Promise<T>;
@@ -212,6 +215,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, [queryClient]);
 
+  const changePassword = useCallback(async (input: ChangePasswordInput): Promise<string> => {
+    const response = await apiChangePassword(input);
+
+    // The server revoked every refresh token and issued a new pair for this
+    // session. Adopt the access token exactly as login() does — the one held
+    // here is not invalid, but the next silent refresh would run against a
+    // cookie this session no longer matches if the pair were left half-adopted.
+    accessToken = response.accessToken;
+    setGlobalAccessToken(response.accessToken);
+
+    const payload = parseToken(response.accessToken);
+    if (payload) {
+      tokenExpiresAt = payload.exp * 1000;
+    }
+
+    // No queryClient.clear() — the identity is unchanged, only the credential.
+    return response.message;
+  }, []);
+
   const logout = useCallback(async (): Promise<void> => {
     // Clear local state first
     accessToken = null;
@@ -330,6 +352,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     register,
     verifyEmail,
+    changePassword,
     logout,
     getAccessToken,
     authFetch,

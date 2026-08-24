@@ -2,13 +2,28 @@
  * Authentication API functions
  */
 
-import { API_URL } from './fetchUtils';
+import { API_URL, requireFreshToken } from './fetchUtils';
 import type { LoginCredentials, RegisterCredentials, User } from '../types/auth';
 
 /** Auth response for cookie-based flow (no refresh token in body) */
 export interface CookieAuthResponse {
   accessToken: string;
   user: User;
+}
+
+/** What the change-password form sends */
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+}
+
+/**
+ * Change-password answer: a fresh access token for this session (the old
+ * refresh family is revoked) plus the message to show the user.
+ */
+export interface ChangePasswordResponse {
+  accessToken: string;
+  message: string;
 }
 
 /** Response from register endpoint (no tokens — must verify email first) */
@@ -177,6 +192,63 @@ export async function getCurrentUser(accessToken: string): Promise<User> {
 
   if (!response.ok) {
     throw new Error('Failed to get user profile');
+  }
+
+  return response.json();
+}
+
+/**
+ * Change the password of a local account.
+ *
+ * The server revokes every refresh token and issues a fresh pair for this
+ * session, so the call must carry the cookie (`credentials: 'include'`) and the
+ * caller must adopt the returned access token — `useAuth().changePassword` does
+ * both. `message` is the server's own sentence, which names the consequence
+ * (other devices signed out), so no surface has to restate it.
+ *
+ * Built by hand rather than through `authFetchJson`, and this is the one
+ * endpoint where that matters: a wrong *current password* answers 401, the same
+ * status an expired access token gets, so `authFetchJson` would read it as a
+ * dead token and try to refresh. Every wrong attempt would then rotate the
+ * refresh family for nothing, and once those refreshes hit `refreshLimiter`
+ * (30/min) or a flaky network, the null result makes it dispatch
+ * `auth:session-expired` — signing the user out while the form says "Current
+ * password is incorrect", which is precisely the message that means the session
+ * is fine. Freshening the token first and reading 401 as the endpoint means it
+ * keeps the two apart.
+ *
+ * The session can still be genuinely over, and this feature is what makes that
+ * reachable: change the password on one device and every other device's refresh
+ * token is revoked, so the copy of this form left open there submits into a dead
+ * session. That case is decided *before* the request — no usable token means no
+ * point spending one — and it is the only place a 401-shaped outcome here signs
+ * the user out.
+ */
+export async function changePassword(input: ChangePasswordInput): Promise<ChangePasswordResponse> {
+  const token = await requireFreshToken();
+  if (!token) {
+    // Same event `authFetchJson` fires on a dead session, so the app leaves the
+    // signed-in state once rather than sitting in a phantom one until some
+    // other request happens to notice.
+    window.dispatchEvent(new CustomEvent('auth:session-expired'));
+    throw new Error('Your session has expired. Please sign in again.');
+  }
+
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  });
+
+  const response = await fetch(`${API_URL}/api/auth/change-password`, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Password change failed' }));
+    throw new Error(error.error || 'Password change failed');
   }
 
   return response.json();
