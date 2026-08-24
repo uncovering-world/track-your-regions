@@ -21,4 +21,7 @@ COPY --chown=node:node . .
 
 EXPOSE 5173
 
-CMD ["npm", "run", "dev", "--", "--host"]
+# Dev server by default; FRONTEND_MODE=preview serves a production build
+# instead. The script owns the switch so the compose file and this recipe
+# cannot disagree about what each mode runs.
+CMD ["./docker-entrypoint.sh"]
