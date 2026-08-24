@@ -616,6 +616,14 @@ npm run security:all   # check + slow Semgrep (Node + Python) + Trivy image scan
 npm run test:e2e:smoke # isolated test stack, seeded fixture, Playwright smoke
 ```
 
+Neither tier above touches the **rows**. Where a change writes catalogue data —
+a sync service, the location writer, region placement — the question "did the
+run write rows that should not exist" is asked of a database rather than of a
+branch, and it is asked in the **admin panel → Catalogue Checks**, not from a
+terminal. It cannot be a push gate: a push carries code, and the rows live in
+whatever database that code is later run against. See
+`docs/tech/data-assertions.md` for what is asserted and how accepted debt works.
+
 ## Slash Commands
 
 The project has slash commands (in `.claude/commands/`) that automate common workflows. Use them — they encode the conventions in this guide:

@@ -200,6 +200,7 @@ Before working in a specific area, read the relevant docs. Start from the area g
 | **Map UI behavior** (markers, hover, selection) | `docs/tech/experience-map-ui.md` | Marker model, hover cards, context layers, exploration outlines |
 | **Shared frontend components/utils** | `docs/tech/shared-frontend-patterns.md` | Full inventory with "use this, not that" table |
 | **Experience system** | `docs/tech/experiences.md` | Sources, sync, region assignment, API |
+| **Anything that writes catalogue rows** | `docs/tech/data-assertions.md` | Admin panel → Catalogue Checks: the invariants over live rows, and the debt it carries |
 | **Security** | `docs/security/SECURITY.md` | `docs/security/asvs-checklist.yaml` — per-requirement status |
 | **Auth flows** | `docs/tech/authentication.md` | JWT, OAuth, tokens, email verification |
 | **Architecture decisions** | `docs/decisions/README.md` | ADR index, when/how to create, template |

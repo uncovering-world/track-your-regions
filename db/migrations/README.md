@@ -37,6 +37,15 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`031-data-assertion-acceptances.sql` adds `data_assertion_acceptances`, the ledger
+behind the admin panel's catalogue checks: one row per act of accepting what an
+assertion currently finds, so the newest row per assertion is the debt this
+catalogue is knowingly carrying and the rows behind it are the history of who
+said so (ADR-0032). Nothing to backfill — an assertion with no accepted number is
+reported in full, which is the correct starting state on a database nobody has
+answered for yet. Adding a table cannot fail on rows already there, so it may run
+before or after the next re-application of `01-schema.sql`.
+
 `013-locations-mark-not-delete.sql` adds `experience_locations.missing_since` and drops
 `ordinal`'s NOT NULL, so a point a source stops offering can be marked instead of deleted —
 deleting it cascaded away the visit record and every region assignment on it. There is nothing
