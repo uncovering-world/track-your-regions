@@ -2754,5 +2754,49 @@ COMMENT ON COLUMN wikidata_query_cache.query_hash IS 'SHA-256 of the exact query
 COMMENT ON COLUMN wikidata_query_cache.expires_at IS 'Stored rather than derived: the row keeps the rule that applied when it was written, and the panel shows the same expiry the reader honours.';
 
 -- =============================================================================
+-- Catalogue Data Assertions
+-- =============================================================================
+
+-- What this catalogue has been told to carry.
+--
+-- The assertions in the admin panel are claims that should hold -- a place is
+-- not stored twice, an object a reader is offered has somewhere to go. The
+-- catalogue does not hold all of them, and never will hold all of every rule
+-- added later: measured the day this landed, 28 objects sat in no region, 173
+-- offered places carried no region row, and 2911 pictures named no author. A
+-- panel that demanded zero everywhere would be red on its first morning and
+-- stay red, which is how a check becomes wallpaper.
+--
+-- So the rule stays at zero and the debt is recorded here. A row means a person
+-- looked at a number and said this is what we are carrying; the panel reports a
+-- larger number as something that needs attention and an equal one as held.
+--
+-- A ledger, not a setting (ADR-0032): one row per act of accepting, never
+-- updated, so the current number is the newest row per assertion and the ones
+-- before it are the history of what this catalogue was carrying and who said
+-- so. `accepted_by` has no cascade for the same reason the curation log's
+-- curator does not -- the record of a decision outlives the account that made
+-- it, and deleting a user has to be a deliberate act that faces its trail.
+--
+-- Lives in the database it describes, so the numbers travel with the rows they
+-- are about: a dump restored elsewhere carries its own accepted debt, and a
+-- fresh checkout of the code inherits none.
+CREATE TABLE IF NOT EXISTS data_assertion_acceptances (
+    id SERIAL PRIMARY KEY,
+    assertion_id VARCHAR(80) NOT NULL,
+    accepted_count INTEGER NOT NULL CHECK (accepted_count >= 0),
+    accepted_by INTEGER NOT NULL REFERENCES users(id),
+    accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- The read is always "the newest row for each assertion", which is what this
+-- order serves; the id breaks a tie between two acceptances in one clock tick.
+CREATE INDEX IF NOT EXISTS idx_data_assertion_acceptances_current
+    ON data_assertion_acceptances(assertion_id, accepted_at DESC, id DESC);
+
+COMMENT ON TABLE data_assertion_acceptances IS 'What a person accepted as the debt this catalogue carries, per assertion. A ledger: the newest row per assertion_id is the number in force, the rest is history.';
+COMMENT ON COLUMN data_assertion_acceptances.accepted_count IS 'The number the assertion returned when it was accepted, measured on the server at that moment rather than sent by the client.';
+
+-- =============================================================================
 -- Schema Complete
 -- =============================================================================
