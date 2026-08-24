@@ -3,7 +3,9 @@
 Performance has numbers, budgets and a gate. This document says what is
 measured, how, what the numbers were when the budgets were set, and the rule
 for moving a budget. It is the reference for the two CI jobs that enforce
-them and for the three local commands that run the same checks.
+them and for the local commands that run the same checks and one more —
+`perf:size`, `perf`, `perf:api`, and `perf:local` on the developer's own
+data.
 
 The lane exists to make an anti-pattern visible in the pull request that
 introduces it — a dependency that doubles the bundle, a layout that shifts
@@ -20,6 +22,7 @@ ratchets instead of aspiring.
 | Bundle size | gzip size of the entry chunk and the stylesheet, from `vite build` | `frontend/package.json` → `"size-limit"` | CI **Build** job, after the frontend build; locally `npm run perf:size` |
 | Lighthouse | LCP, TBT, CLS, TTI, the performance score, and transfer size per resource type, on the map view and Discover, against the **production build** served compressed inside the isolated test stack | `frontend/perf/lighthouse-budgets.json` | CI **Performance (Lighthouse)** job; locally `npm run perf` |
 | Backend latency | p50/p95/max of the hot read endpoints — the by-region experience reads and the Martin tile functions | — (a measurement, recorded here) | locally `npm run perf:api` against a stack holding the real catalogue |
+| Local run | all three, on the dev stack's production build and its real catalogue: the map view and Discover of the world view the database exposes | `frontend/perf/lighthouse-budgets.local.json` | locally `npm run perf:local` — the pre-push run for a change that touches what the browser loads or draws |
 
 Why two tiers and not one: the bundle check is deterministic and needs no
 browser, so it runs in the minutes the build already takes and fails on
@@ -101,6 +104,63 @@ script requests, 19.7 MB and a 17.6 s LCP as if they were the bundle's —
 numbers that describe the development shape, and a mistake the lane must
 not be able to make twice.
 
+## The local run: the developer's own data
+
+The CI lane measures a fixture and therefore the shell. Most of what a
+visitor feels on the real catalogue lives in the data — the size of a
+region's reads, the number of markers, the geometry behind a tile — and
+that data lives on the developer's machine. `npm run perf:local`
+(`scripts/perf-local.sh`) measures everything one machine can, in the order
+things fail fastest:
+
+1. the bundle-size budget (`npm run perf:size`);
+2. Lighthouse against the **dev stack's frontend in its production shape**
+   — `scripts/frontend-mode.sh preview` switches the container to
+   `FRONTEND_MODE=preview` and waits for the built page — on the pages of
+   the world view the database exposes (`/?wv=5`, `/discover?wv=5`), driven
+   by the machine's own Chrome and judged against
+   `frontend/perf/lighthouse-budgets.local.json`;
+3. the latency probe (`npm run perf:api`).
+
+**Performance is measured on the production build, never on the dev
+server.** The dev server serves unbundled modules with HMR and no
+compression, and its numbers describe the tooling: 370 script requests,
+19.7 MB and a 17.6 s LCP where the built page is one request, 783 kB and
+1.4 s. The Lighthouse runner refuses it. The dev stack's frontend has both
+shapes and three commands — `npm run dev:frontend:preview`,
+`dev:frontend:dev`, `dev:frontend:mode` — and two tells without a command:
+the dev server's tab is titled "Track Your Regions (dev server)" and its
+document loads `/@vite/client`; the built page has the plain title and one
+hashed `/assets/index-*.js`. The local run leaves the frontend in its
+production shape, ready to be opened and looked at.
+
+Two things make the local run's numbers its own, not the lane's: the
+machine (a 2016 laptop here) and the database (whatever the dev stack
+holds). Its **byte budgets are the gate** — they are deterministic — and its
+timings are set wide, at `warn`, to be read rather than to fail. The pages
+and the probe name one world view and one region; the budgets file carries
+the ones the baseline was measured on (`worldView: 5`, substituted into
+`{worldView}` in its URLs), and another database names its own:
+`npm run perf:local -- --world-view 7 --region 42` reaches both the probe
+and the runner. The world view has to be public for the pages to load
+(`is_public` on `world_views`; the dev database's mirror world view is
+public for this reason) — and because a world view the visitor cannot see
+falls back to the default one without a word, after one request for it
+that answers 404, the runner checks that the representative run made a
+request containing `/api/world-views/<id>/` **that was answered 2xx** — a
+CORS preflight's 204 does not count — (`expectRequestMatching`) and fails
+rather than measuring another page under the same name. The frontend's port comes from `.env` like the world
+view comes from the flag (`{port}` in the local budgets' URLs). The switch
+touches only the frontend container (`--no-deps`) and waits for the
+backend's `/health` before anything is measured.
+
+What the local run cannot yet see is the interactions where the data cost
+actually lives — clicking Europe, opening a card — because none of them has
+a URL (#644) and Lighthouse's navigation mode measures page loads; #646
+adds scenarios (timespans around scripted interactions) to it. Making the
+CI lane itself see production-like data — a scaled synthetic fixture on
+pull requests, the golden dump nightly — is #647.
+
 ## Baseline
 
 Recorded when the budgets were first set. Re-measure and replace the tables
@@ -177,6 +237,34 @@ them: a local run while Semgrep and Trivy were scanning in parallel
 measured 665 ms of TBT on the map view. Run the lane on a quiet machine, or
 read a local timing miss as information rather than a verdict.
 
+### Local run — 2026-08-24
+
+`npm run perf:local` on the same laptop, against the dev stack's production
+build and its database (1 604 experiences / 6 693 locations; world view 5
+"Administrative", 3 831 regions, 3 594 of them leaves). Representative run of
+three, desktop preset, the machine's own Chrome:
+
+| Page | Score | FCP | LCP | TBT | CLS | TTI | script | total (requests) |
+|------|-------|-----|-----|-----|-----|-----|--------|-------|
+| `/?wv=5` (map view, eight continents) | 62 | 1.19 s | 1.46 s | 993 ms | 0.001 | 2.80 s | 782.7 kB | 2 231.3 kB (40) |
+| `/discover?wv=5` | 90 | 1.18 s | 1.39 s | 121 ms | 0.011 | 1.82 s | 782.7 kB | 1 022.5 kB (43) |
+
+The first run on real data found three things the fixture could not show,
+each filed with its numbers:
+
+- **`GET /api/world-views/5/regions/leaf` — 1 105 kB, 3 594 rows** — is
+  fetched on the map root to look up the metadata of the eight regions on
+  screen, and is the largest transfer on the page, ahead of the entry
+  chunk; the 993 ms of TBT across thirteen long tasks (366, 293, 279 ms …)
+  is that list being parsed and indexed. Discover, which does not make the
+  read, sits at 121 ms on the same world view. #649.
+- **Every backend response is uncompressed** — the leaf list, the 624 kB
+  by-region read, the 973 kB of locations: no compression middleware, no
+  `Content-Encoding`. JSON of this shape compresses five- to eight-fold.
+  #650.
+- **`favicon.ico` is 86 kB**, fetched on every page, the third-largest
+  transfer after the chunk and the leaf list. #648.
+
 ### Backend latency — 2026-08-24
 
 `npm run perf:api` against the dev stack (the same i7-6600U laptop,
@@ -243,6 +331,13 @@ Two readings of that table:
 | `interactive` | error | 2 500 ms | 1.33–1.64 s on the CI runner (1.90 / 1.59 s locally) |
 | `categories:performance` | warn | 0.8 | informational — the composite score moves ±5 points on identical hardware and is not a gate |
 
+The local run has its own file, `frontend/perf/lighthouse-budgets.local.json`,
+with the same script and stylesheet lines, a total-size line at 2 350 000 B
+(the map root's 2 231 kB, most of it the leaf list of #649 — the line drops
+when that lands) and a request count of 60 as errors, and every timing at
+`warn` set wide for a laptop (LCP 2.5 s, TBT 1.2 s, CLS 0.02, TTI 3.5 s,
+score 0.5): the local run's bytes gate, its timings inform.
+
 The rule:
 
 - **A budget sits just above the last measured baseline.** Bytes get about
@@ -297,6 +392,10 @@ What the lane does not measure, by design or not yet:
   is no real-user monitoring, and there is no production host to attach
   one to (#585).
 - **Mobile.** Desktop preset only, see above.
-- **A loaded region.** The fixture is three experiences; the lane sees the
-  shell. A fixture region with hundreds of experiences and pictures would
-  let Lighthouse see what the probe measures from the other side.
+- **A loaded region, in CI.** The fixture is three experiences; the lane
+  sees the shell. The local run sees the real catalogue on one machine;
+  #647 brings production-like data to CI (a scaled fixture on pull
+  requests, the golden dump nightly).
+- **Interactions.** Opening a continent, opening a card — the moments the
+  data cost is paid — have no URL (#644) and are not navigations; #646
+  measures them as scripted scenarios in the local run.

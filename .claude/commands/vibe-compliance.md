@@ -94,6 +94,7 @@ npm run knip           # unused files + dependencies
 npm run security:all   # Semgrep SAST + npm audit
 TEST_REPORT_LOCAL=1 npm test  # unit tests
 npm run test:e2e:smoke # isolated test stack + Playwright smoke (before pushing)
+npm run perf:local     # production build on the dev stack's own data (before pushing, when the change touches what the browser loads or draws)
 ```
 
 Also run `/security-check` for Claude Code security review of changed files.
