@@ -219,12 +219,17 @@ async function runStep(step, activeMode, index) {
   const exitCode = await runCommand(command, args, { cwd, env });
   const parsed = parseStepReport(step, jsonPath);
 
+  // `ok` after the spread, not before it: the parsed report carries its own
+  // `ok`, and spread last it replaced this one - so a runner that exited
+  // non-zero still printed PASS whenever the report file said so. The two
+  // report files written fresh per run made that unreachable; a report that
+  // survives from an earlier run does not.
   return {
     ...step,
+    ...parsed,
     exitCode,
     ok: exitCode === 0 && parsed.ok,
     reportPath: jsonPath,
-    ...parsed,
   };
 }
 
