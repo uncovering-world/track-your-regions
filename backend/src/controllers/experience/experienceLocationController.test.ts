@@ -154,6 +154,28 @@ describe('reads that show a point', () => {
     expect(locationRead()).toMatch(/el\.missing_since IS NULL/);
     expect(locationRead()).toMatch(/el\.curation_state <> 'pending'/);
   });
+
+  it('answers for the objects the region list is showing, not for the roll-up', async () => {
+    // #521: placement puts an unread point in a region on purpose (ADR-0025
+    // decision 5), so `experience_regions` can hold an object whose only point
+    // here is one nobody may see. This batch answers for the rows the list
+    // shows — a feed carrying an object the list dropped is the same
+    // disagreement from the other side, markers with no row to hang on.
+    await getRegionExperienceLocations(
+      { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
+
+    expect(locationRead()).toMatch(/mem_elr\.region_id = er\.region_id/);
+  });
+
+  it('answers for them in the other branch too', async () => {
+    // Two independently built statements, as everywhere else in this pair of
+    // controllers: one being right says nothing about the other.
+    await getRegionExperienceLocations(
+      { params: { regionId: '7' }, query: { includeChildren: 'false' } } as never,
+      makeRes() as never);
+
+    expect(locationRead()).toMatch(/mem_elr\.region_id = er\.region_id/);
+  });
 });
 
 describe('a visit outlives the point', () => {

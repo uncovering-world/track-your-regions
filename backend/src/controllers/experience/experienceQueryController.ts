@@ -8,7 +8,7 @@ import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 import {
   hideLostSql, hideRefusedSql, hidePendingSql, lifecycleSelectSql, includeLost,
-  offeredLocationSql, publishedContentSql, readerPositionSql,
+  offeredLocationSql, publishedContentSql, readerPositionSql, readerRegionMembershipSql,
 } from './experienceLifecycle.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
@@ -45,9 +45,15 @@ function buildExperiencesFilters(query: Request['query']): ListExperiencesFilter
     params.push(String(query.category));
   }
   if (query.regionId) {
+    // The roll-up says where an object's points are, including the ones a
+    // gated run wrote unread — so membership is asked of the points this
+    // caller may see (#521, `readerRegionMembershipSql`). The same question
+    // the by-region list asks, asked here because this filter answers it for
+    // the same reader.
     conditions.push(`e.id IN (
       SELECT er.experience_id FROM experience_regions er
       WHERE er.region_id = $${paramIndex++}
+        AND ${readerRegionMembershipSql('er.experience_id')}
     )`);
     params.push(parseInt(String(query.regionId)));
   }
@@ -246,8 +252,16 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
     WHERE er.experience_id = $1
       AND wv.is_active = true
       AND ($2::boolean OR wv.is_public = true)
+      -- Named to a reader only where a point they may see put the object there
+      -- (#521). This list is a claim a reader acts on — Discover's detail panel
+      -- offers each region as somewhere to go — so it has to name the regions
+      -- whose own lists will hold the object, not the ones the roll-up holds.
+      -- Relaxed on the same boolean as the row itself, and for the ADR's own
+      -- reason: a curator reading a queue item has to be shown where publishing
+      -- will put it, which is the one thing an unrelaxed list could never say.
+      AND ($3::boolean OR ${readerRegionMembershipSql('er.experience_id')})
     ORDER BY wv.name, r.name
-  `, [id, isAdmin]);
+  `, [id, isAdmin, maySeeUnread]);
 
   res.json({
     ...result.rows[0],
@@ -455,6 +469,11 @@ export async function getExperienceRegionCounts(req: Request, res: Response): Pr
       AND ${hideLostSql()}
       AND ${hideRefusedSql()}
       AND ${hidePendingSql()}
+      -- Counted the way the region's own list counts them (#521): a number on
+      -- the tree that includes an object placed here by a point nobody may see
+      -- sends a reader into a region to find one fewer thing than the tree
+      -- promised, or none at all.
+      AND ${readerRegionMembershipSql()}
     GROUP BY r.id, r.name, r.color, e.category_id
     ORDER BY r.name
   `, parentRegionId ? [worldViewId, parentRegionId] : [worldViewId]);

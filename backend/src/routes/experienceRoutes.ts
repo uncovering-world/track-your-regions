@@ -235,8 +235,10 @@ router.delete('/:id/remove-from-region/:regionId', validate(idAndRegionIdParamSc
 
 // Get single experience (optionalAuth: 404s on a refused row (ADR-0024) and
 // on an unread `pending` row outside a curator/admin's scope (ADR-0025); its
-// regions[] are filtered by world-view visibility separately in the
-// controller — admins see every assignment, everyone else only visible ones)
+// regions[] are filtered in the controller on two axes — the world view's own
+// visibility, which only an admin bypasses, and whether the region holds a
+// point of this object that this caller may see (#521), which a curator whose
+// scope reaches the object bypasses too, a manual assignment being exempt)
 router.get('/:id', publicReadLimiter, validate(idParamSchema, 'params'), optionalAuth, getExperience);
 
 // Get locations for an experience (multi-location support; optionalAuth

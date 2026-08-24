@@ -16,6 +16,7 @@ import {
   hidePendingSql,
   publishedContentSql,
   readerPositionSql,
+  readerRegionMembershipSql,
 } from './experienceLifecycle.js';
 
 describe('offeredLocationSql', () => {
@@ -232,5 +233,79 @@ describe('readerPositionSql', () => {
   it('takes the alias it is given, so a query with another name for the table is not silently wrong', () => {
     expect(readerPositionSql('x')).toContain('el.experience_id = x.id');
     expect(readerPositionSql('x')).toContain('ORDER BY el.location::geography <-> x.location::geography');
+  });
+});
+
+describe('readerRegionMembershipSql', () => {
+  // #521. `experience_regions` is placement's roll-up of where an object's
+  // *points* are, and placement deliberately places `pending` ones (ADR-0025
+  // decision 5), so the roll-up alone answers "is this object here" with rows
+  // no reader is shown.
+  it('asks the region for a point this reader may see', () => {
+    const sql = readerRegionMembershipSql();
+
+    expect(sql).toContain('FROM experience_location_regions mem_elr');
+    expect(sql).toContain('JOIN experience_locations mem_el ON mem_el.id = mem_elr.location_id');
+    // The point has to be placed in *this* region and belong to *this* object:
+    // dropping either correlation turns the predicate into "somebody has a
+    // visible point somewhere", which is true of nearly every row.
+    expect(sql).toContain('mem_elr.region_id = er.region_id');
+    expect(sql).toContain('mem_el.experience_id = e.id');
+  });
+
+  it('spells the whole of what a reader may see, not half of it', () => {
+    // The same pair every other reader-facing read of a point carries —
+    // `location_count`, the map feed, `readerPositionSql`. A membership that
+    // gated only `curation_state` would keep an object in a region on the
+    // strength of a point the source withdrew, which is the same list-entry
+    // with no pin arriving through the other door.
+    const sql = readerRegionMembershipSql();
+
+    expect(sql).toContain('mem_el.missing_since IS NULL');
+    expect(sql).toContain("mem_el.existence <> 'lost'");
+    expect(sql).toContain("mem_el.curation_state <> 'pending'");
+  });
+
+  it('exempts a curator who put the object here by hand', () => {
+    // A manual assignment is not derived from a point and carries no
+    // `experience_location_regions` row to find (`assignExperienceToRegion`
+    // writes one table). It is how an object whose only point falls just
+    // outside the boundary (#469) or lies offshore (#470) is in the region's
+    // list at all, so gating it would delete a curator's decision.
+    expect(readerRegionMembershipSql()).toContain("er.assignment_type = 'manual'");
+  });
+
+  it('reads a row that names no type as placement, not as a curator', () => {
+    // `assignment_type` is nullable with a default of `auto`. Written as
+    // `<> 'auto'` the exemption would still be NULL for such a row and gate it
+    // — the same answer by accident — but a row inserted with no type is
+    // placement's, and the predicate should say so rather than land there
+    // through three-valued logic.
+    expect(readerRegionMembershipSql()).not.toContain("<> 'auto'");
+  });
+
+  it('takes the expression and alias it is given, since not every caller has an `e`', () => {
+    // The membership subquery in `listExperiences` and the batch feed's
+    // `IN (SELECT …)` have no experiences alias in scope at all — they
+    // correlate on `er.experience_id` — and a fragment that hard-coded `e.id`
+    // would fail there rather than being quietly wrong, which is the better
+    // half of this argument existing.
+    const sql = readerRegionMembershipSql('er.experience_id', 'er');
+    expect(sql).toContain('mem_el.experience_id = er.experience_id');
+
+    const aliased = readerRegionMembershipSql('x.id', 'm');
+    expect(aliased).toContain('mem_elr.region_id = m.region_id');
+    expect(aliased).toContain("m.assignment_type = 'manual'");
+    expect(aliased).toContain('mem_el.experience_id = x.id');
+  });
+
+  it('never shadows the caller\'s own location aliases', () => {
+    // Both call sites in `experienceLocationController` already have `el` in
+    // scope for the rows they return, and the batch feed's WHERE sits beside
+    // `offeredLocationSql('el')` — an inner `el` would resolve to this
+    // fragment's table and gate the wrong rows.
+    const sql = readerRegionMembershipSql();
+    expect(sql).not.toMatch(/\bexperience_locations el\b/);
+    expect(sql).not.toMatch(/\bexperience_location_regions elr\b/);
   });
 });

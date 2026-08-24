@@ -14,6 +14,7 @@ import {
   offeredLocationSql,
   offeredToReaderSql,
   publishedContentSql,
+  readerRegionMembershipSql,
 } from './experienceLifecycle.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
@@ -96,6 +97,10 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
       WHERE e.id IN (
         SELECT DISTINCT er.experience_id FROM experience_regions er
         WHERE er.region_id IN (SELECT id FROM descendant_regions)
+          -- The same membership the list uses (#521). This batch answers for
+          -- the rows the list is showing, so the two ask the question the same
+          -- way or the feed starts carrying an object the list dropped.
+          AND ${readerRegionMembershipSql('er.experience_id')}
       )
         AND ${offeredLocationSql()}
         AND ${publishedContentSql('el')}
@@ -143,6 +148,9 @@ export async function getRegionExperienceLocations(req: Request, res: Response):
       ) leaf_r ON true
       JOIN experience_regions er ON er.experience_id = e.id
       WHERE er.region_id = $1
+        -- The same membership the list uses (#521) — see the note on the
+        -- other branch.
+        AND ${readerRegionMembershipSql()}
         AND ${offeredLocationSql()}
         AND ${publishedContentSql('el')}
         ${lifecycleFilter}
