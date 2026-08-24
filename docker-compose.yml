@@ -89,6 +89,12 @@ services:
       # even after changing BACKEND_PORT.
       VITE_API_URL: ${FRONTEND_API_URL_OVERRIDE:-http://localhost:${BACKEND_PORT:-3001}}
       VITE_MARTIN_URL: ${FRONTEND_MARTIN_URL_OVERRIDE:-http://localhost:${MARTIN_PORT:-3000}}
+      # `dev` (Vite dev server) or `preview` (a production build, served
+      # compressed). The performance lane in scripts/test-stack.sh sets
+      # `preview`; everything else leaves the default. The image's own CMD
+      # (frontend/docker-entrypoint.sh) reads it — no `command:` override
+      # here, so the two cannot drift.
+      FRONTEND_MODE: ${FRONTEND_MODE:-dev}
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
     volumes:
@@ -96,7 +102,6 @@ services:
       - ./frontend/index.html:/app/index.html:ro,z
     depends_on:
       - backend
-    command: npm run dev -- --host
 
   # Martin Vector Tile Server
   # Serves MVT tiles directly from PostGIS for fast map rendering

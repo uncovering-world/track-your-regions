@@ -1,9 +1,27 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig, type PluginOption } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import compression from 'compression';
 import path from 'path';
 
+/**
+ * `vite preview` sends the built assets uncompressed - 2.8 MB for the entry
+ * chunk where any static host or CDN would send its gzip (about 790 kB).
+ * Lighthouse's simulated throttling works from transfer size, so a
+ * performance budget measured against raw bytes would ratchet on a number no
+ * visitor ever downloads. Only the preview server is touched: the dev server
+ * serves unbundled modules and is not what the performance lane measures.
+ */
+function previewCompression(): PluginOption {
+  return {
+    name: 'preview-compression',
+    configurePreviewServer(server) {
+      server.middlewares.use(compression());
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), previewCompression()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -20,6 +38,14 @@ export default defineConfig({
     // - including the initial page load - gets HTTP 403 "Blocked request".
     // Not reachable from outside the compose network, so this doesn't widen
     // real exposure.
+    allowedHosts: ['frontend'],
+  },
+  preview: {
+    // Same port and host rule as the dev server: the test stack's frontend
+    // container answers on 5173 as "frontend" in both modes, so the backend's
+    // CORS origin and the browser's URLs are the same whichever one is up.
+    port: 5173,
+    host: true,
     allowedHosts: ['frontend'],
   },
   build: {
