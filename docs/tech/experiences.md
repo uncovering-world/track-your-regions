@@ -994,6 +994,39 @@ landing `pending` and its placement finishing is the same window every other reg
 already treats as "not yet in any region" — including the curation queue's own scope filter,
 which this matches rather than diverges from.
 
+**Region membership is asked of the points a reader can see, not of the roll-up.**
+`experience_regions` is placement's denormalisation of where an object's *points* are, and
+placement writes it from every **offered** point — `pending` ones included, because decision 5
+holds contents by writing them invisible and an unplaced one would leave the region curator's
+queue empty. A read that answers "what is in this region" from that table alone therefore offers
+an object on the strength of a row no reader is shown: the region's list gains it, the
+`location_count` beside it reads through `publishedContentSql` and says none of its points are on
+offer here, the marker batch draws nothing, and opening it lists places in other regions (#521).
+`readerRegionMembershipSql()` (`experienceLifecycle.ts`) is the further question — does this
+region hold a point of this object that is offered *and* published — and every reader-facing
+region read carries it: the by-region list and its count in both branches, the marker batch in
+both branches, `region-counts`, `GET /api/experiences?regionId=`, and the `regions[]` of
+`GET /:id`. A **manual** assignment is exempt, since a curator adding an object to a region is not
+deriving membership from a point and that claim carries no `experience_location_regions` row to
+find — it is how an object whose only point falls just outside the boundary (#469) or lies
+offshore (#470) reaches a region's list at all. That exemption is permanent and reaches a row
+placement wrote: `assignExperienceToRegion` upserts `assignment_type = 'manual'`, so a curator
+putting a rejected-but-auto-placed object back into a region flips the row for good, and
+placement's clear touches `auto` rows only. It is the reading rather than an oversight — the case
+the exemption exists for has no backing point by construction — and it does not produce the
+pinless row the predicate exists to prevent, since the marker batch answers with the object's
+places wherever they are (`representablePlaces` falls back to the out-of-region ones). A claim
+that should no longer stand is removed with `removeExperienceFromRegion`, which deletes a row of
+either type. The curator's side reads the roll-up whole and is
+unchanged (`experienceScope.ts`, `reviewQueueContext.ts`, `publishWaitingController.ts`), which is
+what puts the unread point in front of the curator being asked about it. `regions[]` is the single
+read that relaxes, on the same boolean as the row it sits in, for the reason `/:id/locations`
+does: a curator reading a queue item has to be shown where publishing will put it. Measured on the
+dev catalogue, where the predicate changes no row today — all 5368 memberships are backed by a
+published point — the cost is the region list unchanged within noise, its count 12 → 27 ms, the
+tree counts 5.6 → 10.4 ms at the world's roots, `?regionId` 15 → 33 ms and the marker batch
+129 → 143 ms.
+
 The `admission` row in the table above reads "Visit history: shown" beside "Card: not reachable", and those two
 cells are not a contradiction — reading them as one is what let another by-id read stay open for a
 whole slice. The line they fall either side of: **the catalogue's reads refuse a kept-out row; a
