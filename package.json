@@ -21,7 +21,7 @@
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "lint": "npm --prefix backend run lint && npm --prefix frontend run lint",
     "lint:fix": "npm --prefix backend run lint:fix && npm --prefix frontend run lint:fix",
-    "lint:circular": "madge --extensions ts,tsx --circular backend/src && madge --extensions ts,tsx --circular frontend/src",
+    "lint:circular": "./scripts/require-node-tools.sh madge && madge --extensions ts,tsx --circular backend/src && madge --extensions ts,tsx --circular frontend/src",
     "lint:shell": "docker run --rm -v \"${PWD}:/mnt:z\" -w /mnt koalaman/shellcheck:v0.10.0 $(git ls-files '*.sh')",
     "lint:docker": "files=$(git ls-files '*Dockerfile*'); [ -n \"$files\" ] || { echo 'lint:docker: no tracked Dockerfiles found' >&2; exit 1; }; for f in $files; do echo \"hadolint $f\"; docker run --rm -i hadolint/hadolint:v2.14.0 < \"$f\" || exit 1; done",
     "lint:extra": "npm run lint:circular && npm run lint:shell && npm run lint:docker",
