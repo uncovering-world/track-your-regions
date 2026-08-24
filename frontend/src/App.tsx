@@ -7,7 +7,7 @@ import { Header } from './components/Header';
 import { NavigationPane } from './components/NavigationPane';
 import { MainDisplay, setExplorationModeListener } from './components/MainDisplay';
 import { DiscoverPage } from './components/discover/DiscoverPage';
-import { AuthCallbackHandler, VerifyEmailPage } from './components/auth';
+import { AccountPage, AuthCallbackHandler, VerifyEmailPage } from './components/auth';
 import { AdminDashboard } from './components/admin';
 import { ReviewPage } from './components/curation/ReviewPage';
 import { NavigationProvider } from './hooks/useNavigation';
@@ -98,6 +98,16 @@ function MainContent() {
   );
 }
 
+/** The account area. The page itself says what a signed-out visitor sees. */
+function AccountContent() {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'auto' }}>
+      <Header />
+      <AccountPage />
+    </Box>
+  );
+}
+
 /**
  * The curator's queue, behind the same role check the API enforces.
  *
@@ -156,6 +166,7 @@ function ThemedApp() {
           <Routes>
             <Route path="/auth/callback" element={<AuthCallbackHandler />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/account" element={<AccountContent />} />
             <Route path="/admin/*" element={<AdminDashboard />} />
             <Route path="/discover" element={<DiscoverContent />} />
             <Route path="/review" element={<CurationReview />} />
