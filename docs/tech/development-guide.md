@@ -627,17 +627,41 @@ whatever database that code is later run against. See
 ## Performance
 
 Performance is measured, budgeted and gated — not felt. Two tiers, both run
-by CI on every pull request and both available locally under the same names:
+by CI on every pull request and both available locally under the same names,
+plus a local run on the developer's own data:
 
 ```bash
 npm run perf:size      # build the frontend, check the entry chunk against its gzip budget (size-limit)
-npm run perf           # Lighthouse against the production build on the isolated test stack
+npm run perf           # Lighthouse against the production build on the isolated test stack (the fixture)
 npm run perf:api       # p50/p95 of the hot read endpoints against a running stack (a measurement, not a gate)
+npm run perf:local     # all of the above on the dev stack and its real catalogue - the pre-push run
 ```
 
+**Performance is measured on the production build, never on the dev server.**
+The dev server serves unbundled modules with HMR and no compression: the map
+view through it is 370 script requests, 19.7 MB and a 17 s LCP, where the
+built page is one request, 783 kB and 1.4 s. Numbers taken from it describe
+the development tooling, not the product, and the Lighthouse runner refuses
+to measure it. The dev stack's frontend has both shapes; switch and check with
+
+```bash
+npm run dev:frontend:preview   # production build on localhost:5173, compressed - measure this, or open it and look
+npm run dev:frontend:dev       # back to the dev server
+npm run dev:frontend:mode      # which one is answering right now
+```
+
+Telling them apart without a command: the dev server's tab is titled
+"Track Your Regions (dev server)" and its document loads `/@vite/client`; the
+built page has the plain title and one hashed `/assets/index-*.js`. The
+world view a visitor sees has to be public for the real-data pages to load
+(`is_public` on `world_views`; the mirror world view is public on the dev
+database for this reason).
+
 The budgets live next to what they measure — `frontend/package.json`
-(`"size-limit"`) and `frontend/perf/lighthouse-budgets.json` — and the
-numbers they were set from, with the rule for moving them, in
+(`"size-limit"`), `frontend/perf/lighthouse-budgets.json` for the CI lane and
+`frontend/perf/lighthouse-budgets.local.json` for `perf:local` (the two carry
+different numbers: the local one is measured on the real catalogue) — and
+the numbers they were set from, with the rule for moving them, in
 `docs/tech/performance.md`. The short form of that rule: a budget sits just
 above the last measured baseline, **lowering** one is a deliberate change,
 **raising** one needs a stated reason in the pull request. The lane exists

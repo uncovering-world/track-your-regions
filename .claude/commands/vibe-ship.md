@@ -76,6 +76,7 @@ npm run knip
 npm run security:all
 TEST_REPORT_LOCAL=1 npm test
 npm run test:e2e:smoke
+npm run perf:local   # when the change touches what the browser loads or draws
 ```
 
 Plus `/security-check` for Claude Code security review.
