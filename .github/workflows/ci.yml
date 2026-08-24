@@ -128,6 +128,15 @@ jobs:
       - name: Build frontend
         run: npm --prefix frontend run build
 
+      # The deterministic half of the performance gate: the entry chunk's
+      # gzip size against the budget in frontend/package.json ("size-limit").
+      # It runs here, on the build this job just made, so a dependency that
+      # doubles the bundle fails in the same minutes the build takes rather
+      # than waiting for a browser. The timing half runs in the `perf` job.
+      # See docs/tech/performance.md for the numbers and the ratchet rule.
+      - name: Bundle-size budget (frontend)
+        run: npm --prefix frontend run size
+
   security:
     # Kept as "Security Scan" so existing branch-protection required-check
     # rules match. Slow Semgrep SAST only — fast audits (npm audit, pip-audit,
@@ -238,3 +247,44 @@ jobs:
             frontend/test-results
             .test-results
           retention-days: 7
+
+  perf:
+    # Lighthouse against the production build, served inside the same
+    # isolated stack the smoke lane uses, driven by that stack's pinned
+    # Chromium. Budgets live in frontend/perf/lighthouse-budgets.json; the
+    # numbers they were set from, and the rule for moving them, in
+    # docs/tech/performance.md. Same command as `npm run perf` locally.
+    name: Performance (Lighthouse)
+    runs-on: ubuntu-latest
+    needs: [check]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # As for e2e-smoke: the checkout goes straight to docker compose,
+          # so no token is left in .git/config for the containers to find.
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No host npm ci, for the reason given on the e2e-smoke job: every
+      # service under test installs its own dependencies inside its image,
+      # and Lighthouse runs inside the `e2e` container.
+      - name: Run Lighthouse lane
+        run: npm run perf
+
+      # Uploaded on green runs too: the reports are how a budget gets
+      # re-read when it is ratcheted, and a warning-level assertion that
+      # drifts is only visible here.
+      - name: Upload Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: |
+            frontend/lighthouse-report
+            .test-results
+          retention-days: 14
