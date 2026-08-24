@@ -17,6 +17,7 @@ import {
   offeredLocationSql,
   publishedContentSql,
   readerPositionSql,
+  readerRegionMembershipSql,
 } from './experienceLifecycle.js';
 import { isNewSql } from './experienceNewBadge.js';
 
@@ -76,6 +77,14 @@ export function buildRegionQueries(opts: {
   // would not un-hide one that is also unread, so it must not be counted as
   // something the toggle would reveal.
   const lostHiddenPredicate = `e.existence = 'lost' AND ${hideRefusedSql()} AND ${hidePendingSql()}`;
+  // What puts an object in this region, asked of the points a reader may see
+  // rather than of the roll-up alone (#521) — `readerRegionMembershipSql` says
+  // why the roll-up cannot answer it. It goes on the WHERE of all four
+  // statements rather than into `lifecyclePredicate`: membership is not a
+  // lifecycle question, and a count that carried it in one FILTER and not the
+  // other would offer to reveal rows the list could never show. A list and the
+  // count beside it disagreeing about the set is the same defect twice.
+  const membershipFilter = ` AND ${readerRegionMembershipSql()}`;
   // The chip's personal half needs to know who is asking. Anonymous readers
   // bind nothing and fall back to the category window, which is the whole rule
   // for them — there is nobody to have shown it to. Both branches bind
@@ -140,6 +149,7 @@ export function buildRegionQueries(opts: {
       ${descendantRejectionJoin}
       WHERE er.region_id IN (SELECT id FROM descendant_regions)
       ${rejectionFilter}
+      ${membershipFilter}
       ${lifecycleFilter}
       GROUP BY e.id, s.name, s.display_priority
       ORDER BY e.name
@@ -161,6 +171,7 @@ export function buildRegionQueries(opts: {
       ${descendantRejectionJoin}
       WHERE er.region_id IN (SELECT id FROM descendant_regions)
       ${rejectionFilter}
+      ${membershipFilter}
     `;
   } else {
     const rejectionSelect = showRejected
@@ -205,6 +216,7 @@ export function buildRegionQueries(opts: {
       ${simpleRejectionJoin}
       WHERE er.region_id = $1
       ${rejectionFilter}
+      ${membershipFilter}
       ${lifecycleFilter}
       ORDER BY e.name
       LIMIT $2 OFFSET $3
@@ -219,6 +231,7 @@ export function buildRegionQueries(opts: {
       ${simpleRejectionJoin}
       WHERE er.region_id = $1
       ${rejectionFilter}
+      ${membershipFilter}
     `;
   }
 

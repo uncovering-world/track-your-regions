@@ -354,6 +354,72 @@ export function offeredToReaderSql(experienceAlias = 'e', locationAlias = 'el'):
 }
 
 /**
+ * Membership a reader can see: this region holds a point of the object that this
+ * reader may be shown, or a curator put the object here by hand.
+ *
+ * `experience_regions` is a denormalisation of where an object's *points* are,
+ * and placement writes it from every offered point — unread ones included, on
+ * purpose. ADR-0025 decision 5 holds contents by writing them invisible rather
+ * than by withholding them, and a `pending` point that went unplaced would leave
+ * the region curator who has to answer for it with an empty queue. So the roll-up
+ * says "this object is here" on the strength of a row no reader is shown, and a
+ * bare `JOIN experience_regions` has no way to tell the two apart.
+ *
+ * Malta's Ċentrali is the shape of it. The Megalithic Temples are six temples
+ * across four of Malta's five regions, and Ċentrali is the one they are not in.
+ * Let a gated run add a seventh component there: the region's list gains the
+ * site, the `location_count` beside it reads through `publishedContentSql` and
+ * says none of its points are on offer here, the map draws no pin, and opening
+ * the site lists six temples elsewhere on the island. A list entry with no pin,
+ * in a product where the list and the map are two views of one set.
+ *
+ * Why the read rather than placement: the write has to place the pending point,
+ * for the reason above. So the reader's side asks the question the roll-up cannot
+ * answer — is any of the points that put this object here one this reader may
+ * see — with the same pair every other reader-facing read of a point uses.
+ *
+ * A **manual** row is exempt, and that is not a hole. A curator adding an object
+ * to a region is not deriving membership from a point; they are saying it belongs
+ * here, which is how an object whose only point falls just outside the boundary
+ * (#469) or lies offshore (#470) reaches a region's list at all, and that claim
+ * carries no `experience_location_regions` row to find. `assignment_type` is
+ * nullable with a default of `auto`, so a row naming no type is gated like the
+ * placement rows it came in with rather than exempted like a curator's.
+ *
+ * **The exemption is permanent, and covers a row that placement wrote.**
+ * `assignExperienceToRegion` upserts — `DO UPDATE SET assignment_type = 'manual'`
+ * — so a curator putting a rejected-but-auto-placed object back into a region
+ * flips that row, and placement's clear touches `auto` rows only, so it survives
+ * every later run. The point that originally placed it can then be withdrawn,
+ * called gone, or rewritten unread, and this predicate still short-circuits. That
+ * is the reading rather than an oversight: the case the exemption exists for has
+ * no backing point *by construction* — a point just outside the boundary is in no
+ * `experience_location_regions` row for the region it was claimed into — so a
+ * rule that trusted a manual row only while a visible point stood behind it would
+ * refuse exactly the claims it is meant to keep. What such a row does not produce
+ * is the pinless row this predicate exists to prevent: the marker batch answers
+ * with the object's places wherever they are, since `representablePlaces` falls
+ * back to the out-of-region ones. The residue is an object with no visible point
+ * *anywhere* held in a region by a manual claim, which is the shape #547's third
+ * assertion is being written to catch, and the remedy for a claim that should not
+ * stand is `removeExperienceFromRegion`, which deletes a row of either type.
+ *
+ * The curator's side is untouched: the queue's own scope reads
+ * (`experienceScope.ts`, `reviewQueueContext.ts`, `publishWaitingController.ts`)
+ * go on reading the roll-up whole, which is what puts the unread point in front
+ * of the curator who is being asked about it.
+ */
+export function readerRegionMembershipSql(experienceIdExpr = 'e.id', membershipAlias = 'er'): string {
+  return `(${membershipAlias}.assignment_type = 'manual' OR EXISTS (
+        SELECT 1 FROM experience_location_regions mem_elr
+        JOIN experience_locations mem_el ON mem_el.id = mem_elr.location_id
+        WHERE mem_elr.region_id = ${membershipAlias}.region_id
+          AND mem_el.experience_id = ${experienceIdExpr}
+          AND ${offeredLocationSql('mem_el')}
+          AND ${publishedContentSql('mem_el')}))`;
+}
+
+/**
  * The same question for a work: may a reader claim to have looked at this one,
  * in this experience? `experience_treasures` is the row that says the work is on
  * show here, so it carries its own state beside the container's — a published

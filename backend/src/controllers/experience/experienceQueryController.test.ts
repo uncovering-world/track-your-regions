@@ -63,7 +63,7 @@ describe('getExperience visibility', () => {
     // unconditional, is_public is bypassed only for admins.
     expect(sql).toMatch(/AND wv\.is_active = true/);
     expect(sql).toMatch(/AND\s*\(\$2::boolean OR wv\.is_public = true\)/);
-    expect(params).toEqual([281, false]);
+    expect(params).toEqual([281, false, false]);
 
     expect(res.status).not.toHaveBeenCalledWith(404);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -81,7 +81,9 @@ describe('getExperience visibility', () => {
     );
 
     const [, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
-    expect(params).toEqual([281, true]);
+    // The third is the pending relaxation, true for an admin like the gate it
+    // mirrors — see the membership tests below.
+    expect(params).toEqual([281, true, true]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       regions: [HIDDEN_WV_REGION, PUBLIC_WV_REGION],
     }));
@@ -100,7 +102,7 @@ describe('getExperience visibility', () => {
     );
 
     const [, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
-    expect(params).toEqual([281, false]);
+    expect(params).toEqual([281, false, false]);
     expect(res.status).not.toHaveBeenCalledWith(404);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       id: 281,
@@ -557,5 +559,112 @@ describe('the bbox filter', () => {
     await listExperiences({ query: { bbox: 'north-of-here' } } as never, makeRes() as never);
 
     expect(String(mockedQuery.mock.calls[0][0])).not.toContain('ST_MakeEnvelope');
+  });
+});
+
+/**
+ * Where a reader is told an object is, asked of the points that reader may see
+ * (#521).
+ *
+ * `experience_regions` is placement's roll-up of where an object's *points*
+ * are, and placement places `pending` ones deliberately — ADR-0025 decision 5
+ * holds contents by writing them invisible, and an unplaced one would leave the
+ * region curator's queue empty. So the roll-up can say "this object is here" on
+ * the strength of a row no reader is shown, and every read that answers from it
+ * has to ask the further question itself.
+ *
+ * The reads are pinned together because the failure is a *disagreement*: a list
+ * that gates while its count does not says 1 and shows 0, which is worse than
+ * either behaviour applied consistently.
+ */
+describe('region membership a reader can see', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValue({ rows: [{ count: '0', total: 0 }] });
+  });
+
+  /** The membership predicate, recognised by the aliases only it uses. */
+  const MEMBERSHIP = /mem_elr\.region_id = er\.region_id/;
+
+  const reads: Array<{ name: string; run: () => Promise<unknown>; statements: number }> = [
+    {
+      name: 'a region list and its count',
+      statements: 2,
+      run: () => getExperiencesByRegion(
+        { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never),
+    },
+    {
+      name: 'a region list without its children',
+      statements: 2,
+      run: () => getExperiencesByRegion(
+        { params: { regionId: '1' }, query: { includeChildren: 'false' }, user: undefined } as never,
+        makeRes() as never),
+    },
+    {
+      // One, and deliberately: `getExperienceRegionCounts` also sends a second
+      // statement listing every region at this level so a region with nothing
+      // in it still reaches the tree, and that one joins no membership at all.
+      name: 'the tree counts',
+      statements: 1,
+      run: () => getExperienceRegionCounts({ query: { worldViewId: '1' } } as never, makeRes() as never),
+    },
+    {
+      // Two, because `listExperiences` builds its list and its `total` from one
+      // `whereClause` and sends them as two statements — the same shape as the
+      // by-region read above, and the same way for them to disagree.
+      name: 'the flat list filtered to a region',
+      statements: 2,
+      run: () => listExperiences({ query: { regionId: '1' } } as never, makeRes() as never),
+    },
+  ];
+
+  for (const { name, run, statements } of reads) {
+    it(`asks it of ${name}`, async () => {
+      await run();
+
+      // Every statement the read sends, separately: `buildRegionQueries` builds
+      // the list and the count as two independent strings, and a check that
+      // joined them would let the count keep offering what the list dropped.
+      for (let i = 0; i < statements; i++) {
+        expect(String(mockedQuery.mock.calls[i][0])).toMatch(MEMBERSHIP);
+      }
+    });
+  }
+
+  it('asks it of the whole point a reader may see, not of the gate alone', async () => {
+    await getExperiencesByRegion(
+      { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
+
+    const sql = String(mockedQuery.mock.calls[0][0]);
+    const clause = sql.slice(sql.indexOf('mem_elr'));
+    expect(clause).toContain('mem_el.missing_since IS NULL');
+    expect(clause).toContain("mem_el.existence <> 'lost'");
+    expect(clause).toContain("mem_el.curation_state <> 'pending'");
+  });
+
+  it('keeps asking it of a reader who asked to see what is gone', async () => {
+    // `includeLost` widens one axis — objects that no longer exist — and says
+    // nothing about whether the region holds a point of them anybody may see.
+    await getExperiencesByRegion(
+      { params: { regionId: '1' }, query: { includeLost: 'true' }, user: undefined } as never,
+      makeRes() as never);
+
+    expect(String(mockedQuery.mock.calls[0][0])).toMatch(MEMBERSHIP);
+    expect(String(mockedQuery.mock.calls[1][0])).toMatch(MEMBERSHIP);
+  });
+
+  it('names a region to a reader only where a point they may see put the object there', async () => {
+    // `getExperience`'s `regions[]` is what Discover's detail panel offers as
+    // somewhere to go, so it has to name the regions whose own lists hold the
+    // object. Relaxed on the same boolean as the row itself: a curator reading
+    // a queue item has to be shown where publishing will put it.
+    queueQueries([PUBLIC_WV_REGION]);
+
+    await getExperience({ params: { id: '281' } } as never, makeRes() as never);
+
+    const [sql, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
+    expect(sql).toMatch(/mem_elr\.region_id = er\.region_id/);
+    expect(sql).toMatch(/\(\$3::boolean OR/);
+    expect(params[2]).toBe(false);
   });
 });
