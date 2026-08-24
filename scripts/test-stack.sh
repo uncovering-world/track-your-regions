@@ -180,9 +180,16 @@ ensure_up() {
   compose exec -T backend npm run seed:e2e
 }
 
+# --no-deps on the runner's `up`: without it, `--build` also rebuilds the
+# services e2e depends on (frontend, and backend through it) and recreates
+# their containers when the fresh image differs - which ensure_up has just
+# brought up and waited for. A restart there is short enough to hide
+# behind Playwright's retries in dev mode; a frontend that has to build
+# first would not be. Either way the runner has no business restarting
+# what it is about to test.
 ensure_e2e_runner() {
   ensure_up
-  compose_test_profile up -d --build e2e
+  compose_test_profile up -d --build --no-deps e2e
 }
 
 require_output_path() {
