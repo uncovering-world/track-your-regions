@@ -1,0 +1,70 @@
+{
+  "urls": [
+    "http://localhost:{port}/?wv={worldView}",
+    "http://localhost:{port}/discover?wv={worldView}"
+  ],
+  "worldView": 5,
+  "port": 5173,
+  "expectRequestMatching": "/api/world-views/{worldView}/",
+  "runs": 3,
+  "chromeFlags": [
+    "--headless=new"
+  ],
+  "outputDir": "lighthouse-report/local",
+  "assertions": {
+    "resource-summary:script:size": [
+      "error",
+      {
+        "maxNumericValue": 825000
+      }
+    ],
+    "resource-summary:stylesheet:size": [
+      "error",
+      {
+        "maxNumericValue": 12000
+      }
+    ],
+    "resource-summary:total:size": [
+      "error",
+      {
+        "maxNumericValue": 2350000
+      }
+    ],
+    "resource-summary:total:count": [
+      "error",
+      {
+        "maxNumericValue": 60
+      }
+    ],
+    "largest-contentful-paint": [
+      "warn",
+      {
+        "maxNumericValue": 2500
+      }
+    ],
+    "total-blocking-time": [
+      "warn",
+      {
+        "maxNumericValue": 1200
+      }
+    ],
+    "cumulative-layout-shift": [
+      "warn",
+      {
+        "maxNumericValue": 0.02
+      }
+    ],
+    "interactive": [
+      "warn",
+      {
+        "maxNumericValue": 3500
+      }
+    ],
+    "categories:performance": [
+      "warn",
+      {
+        "minScore": 0.5
+      }
+    ]
+  }
+}
