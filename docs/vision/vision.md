@@ -52,6 +52,8 @@ Everything a visitor can do, plus:
 - **Personal travel map** — a world map colored by your visited regions, visible at a glance
 - **A New mark that waits for you** — the **New** window is the same for everyone, but signed in it is a floor rather than a deadline: arrive at the tail of it and the mark stays a week longer, counted from the first time it was actually shown to *you*. A batch is not something you can miss by visiting on the wrong day, and nothing a source does later takes the mark away — it runs out on its own
 
+- **Change your password** — the **Account** page, reached from your own menu, shows who you are and lets you change the password you signed up with. It asks for the current one, refuses anything that has turned up in a public breach, and says the number of times it has, because that is what makes the refusal convincing rather than officious. Changing it signs out every *other* device and leaves the one you are on open — the page says so before you press, not after. An account that signs in with Google (or Apple) has no password here, so it is told where its password lives instead of being handed a form that cannot work
+
 The authenticated experience is about reflection and tracking — turning scattered travel memories into a coherent, browsable record.
 
 #### How to Sign Up

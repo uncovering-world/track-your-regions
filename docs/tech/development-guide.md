@@ -326,6 +326,8 @@ The full inventory of shared components and utilities — including a "use this,
 
 All API calls live in `frontend/src/api/`. Use `authFetchJson()` from `fetchUtils.ts` for authenticated requests.
 
+The one deliberate exception is `changePassword` (`api/auth.ts`): its endpoint answers a wrong *current password* with 401, and `authFetchJson` reads every 401 as an expired token — so the shared path would rotate the refresh family on each wrong attempt and eventually sign the user out under the sentence saying the session is fine. It builds its request by hand and takes its token from `requireFreshToken()`. The reasoning is in [authentication.md](authentication.md) § Password Security; do not "clean it up" back onto the shared path. Other hand-built authenticated calls (`getCurrentUser`, the two `image-proxy` fetches) record no reason and are debt, not precedent.
+
 When adding a new endpoint:
 1. Add the function in the appropriate `api/*.ts` file.
 2. Add/update the TypeScript types in the same file.

@@ -190,7 +190,7 @@ chapters:
       desc: "Users can change password"
       level: 1
       status: pass
-      notes: "POST /api/auth/change-password — validates current password, checks HIBP, revokes all sessions. Fixed 2026-02-10"
+      notes: "POST /api/auth/change-password — validates current password, checks HIBP, revokes every refresh token the account holds and issues a replacement pair for the calling session, so other devices end at their next refresh. Fixed 2026-02-10. Reachable by a user since 2026-08-24: the account page at /account, linked from the user menu (#326) — before that the endpoint existed with no UI, so the requirement passed on the API alone"
     V6.2.3:
       desc: "Password change requires current password"
       level: 1
@@ -210,12 +210,12 @@ chapters:
       desc: "Password fields use type=password"
       level: 1
       status: pass
-      notes: "MUI TextField with type='password' used in login/register forms"
+      notes: "MUI TextField with type='password' used in login/register forms and the change-password form on /account"
     V6.2.7:
       desc: "Paste and password managers allowed"
       level: 1
       status: pass
-      notes: "No paste prevention detected; standard MUI TextField"
+      notes: "No paste prevention detected; standard MUI TextField. The change-password form also carries autocomplete=current-password/new-password so a manager can fill and store it; ChangePasswordForm.test.tsx pins both"
     V6.2.8:
       desc: "Password verified as-is, no truncation or case changes"
       level: 1

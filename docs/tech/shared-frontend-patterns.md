@@ -35,7 +35,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | `wordDiff.ts` | `wordDiff(before, after)` — which words differ between two versions of a text, as parts that reassemble into each side exactly. Refuses values past 400 words (`capped`) rather than freezing the tab; marks nothing that would change a decision, since both values render in full either way |
 | `webgl.ts` | `isWebGLAvailable()` — ask before constructing any map; see `maplibre-patterns.md` |
 | `viewBounds.ts` | `ViewBounds`, `pointInView(lng, lat, bounds)` — is this place on screen? Reads the box in its own frame, so it answers both MapLibre's unwrapped `getBounds()` shape (`{west: 175, east: 185}` over the dateline) and this repository's `west > east` one (`focus_bbox`, the `bbox` parameter) |
-| `fetchUtils.ts` | `ensureFreshToken()` — proactive JWT refresh before SSE connections |
+| `fetchUtils.ts` (in `frontend/src/api/`, not `utils/`) | `ensureFreshToken()` — proactive JWT refresh before SSE connections, **best-effort**: hands back whatever token it has when the refresh fails, spent or not, because the stream fails the same way either way. `requireFreshToken()` — the strict one: `null` for a *spent* token, so a caller can say "your session is over" rather than send a dead token; a merely expiring one it still hands over, since a failed refresh proves nothing |
 
 ## Pattern Table: Use This, Not That
 
@@ -66,6 +66,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | Place a windowed list's row | `<VirtualRow virtualizer={v} index={i} start={row.start}>…</VirtualRow>` | A hand-rolled absolutely-positioned `Box` with its own `measureElement` ref — whose inline ref function detaches and reattaches per render, forcing a synchronous layout per mounted row (see the note in `VirtualRow.tsx`) |
 | Share hover state between a list and a map | A store + selectors: `useHoverContext` (experiences/places), `useRegionHover` (regions) | React state in a context — every consumer re-renders per mouse move; `hoverStore.test.tsx` / `regionHoverStore.test.tsx` pin what a hover may re-render |
 | Report New-badge impressions from a windowed list | `useSeenWindowIds(idsInVisibleRange, resetKey)` and hand the accumulated set to `useNewBadgeImpressions` | Reporting the fetched/filtered set — rows the window never held get stamped, and the server keeps the *first* impression, so their "new" week is spent unseen |
+| Get a token for a request whose endpoint answers 401 for a reason of its own | `requireFreshToken()` — `null` for a spent token, so "your session is over" is decided before the request and never confused with what the endpoint meant. Note what it does *not* refuse: a token merely inside the 60s refresh margin still goes, because `refreshSession()` returns `null` for a 429 and a network blip as readily as for a rejected refresh, and treating that as a dead session signs people out of live ones | `ensureFreshToken()`, which hands back a dead token as readily as a live one — right for its SSE callers, whose stream fails the same way either way, and wrong for anyone who needs to tell the two apart. Which is which depends on the caller, so the pair is two names rather than one contract read two ways — `fetchUtils.token.test.ts` pins where they part |
 
 ## Maintaining This Doc
 

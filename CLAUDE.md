@@ -74,7 +74,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 
 ### Structure notes (non-obvious contracts; layout itself — see `ls backend/src`, `ls frontend/src`)
 - Startup cleanup in backend `index.ts` marks orphaned `running` sync logs as `failed`
-- All frontend API calls go through `authFetchJson()` (`frontend/src/api/fetchUtils.ts`) with in-memory JWT; refresh token lives in an httpOnly cookie
+- All frontend API calls go through `authFetchJson()` (`frontend/src/api/fetchUtils.ts`) with in-memory JWT; refresh token lives in an httpOnly cookie. The one *deliberate* exception is `changePassword`, which builds its request by hand because its endpoint answers a wrong *current password* with 401 while `authFetchJson` reads every 401 as an expired token — see `docs/tech/authentication.md` § Password Security. Other hand-built authenticated calls exist (`getCurrentUser`, the two `image-proxy` fetches) and record no reason: treat them as debt, not as precedent. Pre-auth calls (login, register, refresh) are not exceptions at all — they have no token to send
 - Map: MapLibre GL via react-map-gl; `RegionMapVT.tsx` renders Martin vector tiles; `ExperienceMarkers.tsx` uses declarative `<Source>`/`<Layer>` over one unclustered GeoJSON source — a density heatmap below `HEATMAP_MAX_ZOOM`, individual markers above it. Discover Mode still clusters, on its own map instance
 
 ### Martin Vector Tiles
