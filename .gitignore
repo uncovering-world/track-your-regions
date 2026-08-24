@@ -64,9 +64,6 @@ htmlcov/
 # Agent / Claude Code worktrees
 .worktrees/
 
-# Stray root-level lockfile (backend/ and frontend/ each have their own)
-/package-lock.json
-
 # Large data files
 *.gpkg
 *.geojson

@@ -34,6 +34,15 @@ jobs:
             cv-python/requirements.txt
             cv-python/requirements-dev.txt
 
+      # The root install is this job's alone: `npm run check` is the only
+      # entry point that reaches `lint:extra`, and the root package.json
+      # carries nothing but the repo-wide lint tooling. `npm ci` rather than
+      # `npm install` so the transitive tree is the locked one — the whole
+      # point of #490 was that a tool resolved fresh on every run is neither
+      # reproducible nor immune to a registry blip.
+      - name: Install root dev tooling
+        run: npm ci
+
       - name: Install backend dependencies
         run: npm ci --prefix backend
 
