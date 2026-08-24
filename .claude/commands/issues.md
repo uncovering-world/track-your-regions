@@ -55,5 +55,5 @@ After the tables, suggest:
 
 - **To fix a bug**: run `/fix <number>`
 - **To work on a feature**: run `/feature <number>`
-- **To see issue details**: run `gh issue view <number>`
+- **To see issue details**: run `gh issue view <number> --json body,comments` — the body *and* the thread. A table row carries a title and five board fields, and none of them survives contact with a comment that retriaged the work, narrowed it, or recorded that the premise changed. Reading only the body is how a session starts on the wrong half of an issue
 - Picking rule (also in the board README): match Size to the session's capacity and AI fit to its mode (autonomous → 🤖 Agent-ready), then take the highest Priority that fits.
