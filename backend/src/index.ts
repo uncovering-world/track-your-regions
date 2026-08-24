@@ -24,6 +24,7 @@ import cookieParser from 'cookie-parser';
 import passport from 'passport';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { responseCompression } from './middleware/compression.js';
 
 const app = express();
 const PORT = parseInt(process.env.BACKEND_PORT || '3001');
@@ -36,6 +37,13 @@ app.use(helmet({
     preload: true,
   },
 }));
+
+// Compress what the client accepts. Mounted above everything that writes a
+// response so no layer below it has to know: which responses are compressed
+// is decided by the filter in middleware/compression.ts, on the response's
+// own content type and path.
+app.use(responseCompression());
+
 const FRONTEND_ORIGIN = process.env.FRONTEND_URL || 'http://localhost:5173';
 app.use(cors({
   origin: FRONTEND_ORIGIN,
