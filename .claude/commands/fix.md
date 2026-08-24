@@ -22,7 +22,7 @@ If the issue doesn't exist or isn't open, tell the user and stop.
 
 ### 2. Understand the problem
 
-- Read the issue title, description, and any comments
+- Read the issue title, description, and **every comment on it** — the thread is part of the issue, not decoration. A later comment can update the premise the body rests on, retriage the work, or record that half of it already shipped; where the two disagree, the newest statement that names its evidence wins and the body is what went stale. #521 is the measured case: the body called the defect unreachable until #500 gated a source, and a comment eleven days later recorded that the gate had shipped in #534 and was on for all three categories
 - Extract the specific bug behavior described
 - Identify reproduction steps if provided
 - Note any files or areas of code mentioned

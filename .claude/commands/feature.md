@@ -39,7 +39,7 @@ Use the item whose `project.number` is 2 — an issue can sit on several project
 
 ### 2. Understand the requirements
 
-- Read the issue title, description, and all comments carefully
+- Read the issue title, description, and **all comments** carefully — the thread is part of the issue, not decoration. A later comment can add a requirement, narrow the scope, or update the premise the body rests on; where the two disagree, the newest statement that names its evidence wins and the body is what went stale
 - Extract specific requirements and acceptance criteria
 - Note any subtasks or checkboxes in the issue body
 - Identify which parts of the system are affected (frontend, backend, database, etc.)
