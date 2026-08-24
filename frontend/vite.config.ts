@@ -20,8 +20,24 @@ function previewCompression(): PluginOption {
   };
 }
 
+/**
+ * The dev server's tab says what it is. Its numbers are not the product's -
+ * unbundled modules, HMR, no compression - and the performance lane refuses
+ * to measure it; a person looking at a tab should not need devtools to know
+ * which shape they have open. `vite build` and `vite preview` leave the
+ * title alone, so the built page a visitor gets is unchanged.
+ */
+function devServerTitle(): PluginOption {
+  return {
+    name: 'dev-server-title',
+    apply: 'serve',
+    transformIndexHtml: (html) =>
+      html.replace('<title>Track Your Regions</title>', '<title>Track Your Regions (dev server)</title>'),
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), previewCompression()],
+  plugins: [react(), previewCompression(), devServerTitle()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
