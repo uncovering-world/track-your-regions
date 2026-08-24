@@ -21,7 +21,7 @@ ratchets instead of aspiring.
 |------|------|-----------------|------|
 | Bundle size | gzip size of the entry chunk and the stylesheet, from `vite build` | `frontend/package.json` → `"size-limit"` | CI **Build** job, after the frontend build; locally `npm run perf:size` |
 | Lighthouse | LCP, TBT, CLS, TTI, the performance score, and transfer size per resource type, on the map view and Discover, against the **production build** served compressed inside the isolated test stack | `frontend/perf/lighthouse-budgets.json` | CI **Performance (Lighthouse)** job; locally `npm run perf` |
-| Backend latency | p50/p95/max of the hot read endpoints — the by-region experience reads and the Martin tile functions | — (a measurement, recorded here) | locally `npm run perf:api` against a stack holding the real catalogue |
+| Backend latency | p50/p95/max of the hot read endpoints — the by-region experience reads and the Martin tile functions — and the bytes each one puts on the wire, in the encoding it puts them there in | — (a measurement, recorded here) | locally `npm run perf:api` against a stack holding the real catalogue |
 | Local run | all three, on the dev stack's production build and its real catalogue: the map view and Discover of the world view the database exposes | `frontend/perf/lighthouse-budgets.local.json` | locally `npm run perf:local` — the pre-push run for a change that touches what the browser loads or draws |
 
 Why two tiers and not one: the bundle check is deterministic and needs no
@@ -69,13 +69,16 @@ run-perf`, which:
 Two properties of the measurement are deliberate and worth knowing before
 reading a number:
 
-- **The build is served compressed.** `vite preview` sends the entry chunk
-  raw — 2.87 MB where any static host or CDN sends its gzip — and
-  Lighthouse's simulated throttling works from transfer size, so a budget
-  set against raw bytes would ratchet on a download no visitor makes. The
-  preview server gets a `compression()` middleware in `vite.config.ts`;
-  only the preview server, since the dev server serves unbundled modules
-  and is not what the lane measures. `vite preview` still answers
+- **Everything is served compressed — the build and the API both.** `vite
+  preview` sends the entry chunk raw — 2.87 MB where any static host or CDN
+  sends its gzip — and Lighthouse's simulated throttling works from transfer
+  size, so a budget set against raw bytes would ratchet on a download no
+  visitor makes. The preview server gets a `compression()` middleware in
+  `vite.config.ts`; only the preview server, since the dev server serves
+  unbundled modules and is not what the lane measures. The backend has its
+  own, in `backend/src/middleware/compression.ts` — see § The API is
+  compressed too, below, which is the half the lane found missing on its
+  first run against real data. `vite preview` still answers
   `Cache-Control: no-cache`, which Lighthouse notes under its diagnostics;
   it is not asserted, and a real host sets its own headers.
 - **Desktop preset.** The product is a desktop map today (`mobile-planning.md`
@@ -103,6 +106,66 @@ the dev server through a stack left up in the other mode and reported 370
 script requests, 19.7 MB and a 17.6 s LCP as if they were the bundle's —
 numbers that describe the development shape, and a mistake the lane must
 not be able to make twice.
+
+## The API is compressed too
+
+The frontend's preview server was given a `compression()` middleware so the
+lane would not budget a download no real host sends — and then the lane's
+first run against the real catalogue found that the backend was sending
+exactly such downloads for real. Every response left it raw: no middleware,
+no `Content-Encoding`, 1.6 MB to open Europe. That is fixed in
+`backend/src/middleware/compression.ts`, mounted in `index.ts` above
+everything that writes a response, and the sizes in the baseline below are
+what a browser now receives.
+
+The interesting part is not that it compresses but what it refuses to:
+
+- **Server-sent events are never compressed.** The middleware buffers writes
+  until it has a block to emit, so the three SSE endpoints — region geometry
+  computation, the import match pipeline, import coverage — would deliver a
+  run's progress in one lump at the end of the run it was reporting on. The
+  filter matches on `text/event-stream`, and `compression` restores the
+  untouched `write`/`end` when a filter refuses, so a refused response
+  streams exactly as it did before the middleware existed.
+- **Nothing under `/api/auth` is compressed.** Those bodies carry the access
+  token, and compressing a body that mixes a secret with attacker-supplied
+  input is the BREACH class of attack. Excluding the prefix removes the
+  class instead of arguing about each response, and costs nothing: no route
+  there is large enough to gain from compression. The reasoning is in
+  `docs/security/SECURITY.md`.
+- **Below a kilobyte nothing is compressed.** `compression`'s own default,
+  kept and made explicit: the encoding's framing and the CPU it costs are
+  worth more than the bytes they save. `/health` (77 B) and the region
+  counts (985 B on the dev catalogue) go out as they are — and the counts
+  start being compressed on the database where they grow past it.
+- **Already-compressed formats are untouched**, by the library's default
+  filter: images, and the vector tiles, which Martin has always gzipped
+  itself.
+
+Brotli where the client takes it, which every browser does, gzip where it
+does not; `compression` negotiates, at its own default brotli quality of 4.
+On this catalogue brotli beats gzip by four to eight per cent — 241 kB
+against 261 kB on the leaf-region list, 148 kB against 154 kB on the
+locations read. Neither encoding's cost is visible in the probe's timings;
+what that measured is in the baseline below.
+
+**Why here and not in a reverse proxy.** A proxy in front of the backend
+would be the conventional place, and #585 will put one there. But the dev
+and test stacks talk to the backend directly, and they are where this lane
+measures and where a developer opens the product: compression that exists
+only in production would leave every number in this document describing a
+transfer no visitor makes — which is the mistake this section exists to
+record having made once already.
+
+**What gates it.** The byte budgets catch a regression in the *result* — remove
+the middleware and the local run's map root goes from 1 366 kB back over
+its 1 440 000 B line. They cannot catch a regression in the *rules*: the
+fixture's three experiences answer below the threshold, so the CI lane's
+numbers do not move whether the middleware is there or not. The rules are
+held by the backend's own tests (`compression.test.ts`), which assert the
+filter and then assert it again through a live server — that a large read
+arrives encoded, that an auth response does not however large it is, and
+that an event reaches the client before its stream ends.
 
 ## The local run: the developer's own data
 
@@ -237,7 +300,7 @@ them: a local run while Semgrep and Trivy were scanning in parallel
 measured 665 ms of TBT on the map view. Run the lane on a quiet machine, or
 read a local timing miss as information rather than a verdict.
 
-### Local run — 2026-08-24
+### Local run — 2026-08-25
 
 `npm run perf:local` on the same laptop, against the dev stack's production
 build and its database (1 604 experiences / 6 693 locations; world view 5
@@ -246,26 +309,38 @@ three, desktop preset, the machine's own Chrome:
 
 | Page | Score | FCP | LCP | TBT | CLS | TTI | script | total (requests) |
 |------|-------|-----|-----|-----|-----|-----|--------|-------|
-| `/?wv=5` (map view, eight continents) | 62 | 1.19 s | 1.46 s | 993 ms | 0.001 | 2.80 s | 782.7 kB | 2 231.3 kB (40) |
-| `/discover?wv=5` | 90 | 1.18 s | 1.39 s | 121 ms | 0.011 | 1.82 s | 782.7 kB | 1 022.5 kB (43) |
+| `/?wv=5` (map view, eight continents) | 56 | 1.14 s | 1.92 s | 1 531 ms | 0.006 | 3.40 s | 782.7 kB | 1 366.1 kB (40) |
+| `/discover?wv=5` | 90 | 1.14 s | 1.63 s | 84 ms | 0.010 | 1.75 s | 782.7 kB | 1 020.0 kB (43) |
+
+The map root's total moved from 2 231.3 kB to 1 366.1 kB when the backend
+started compressing (#650) — 865 kB off one page load, the largest single
+saving this lane has measured. Discover barely moved (1 022.5 → 1 020.0 kB):
+its reads are the small ones, below the threshold. Across the three runs
+per page the totals sat within 1.5 kB of each other, which is what makes
+this a byte budget rather than a timing one.
+
+The timings on this table are the laptop's and were taken on a machine that
+had just rebuilt a container: TBT tripped its `warn` line at 1 531 ms, where
+the previous run measured 993 ms. Nothing in this change touches the main
+thread — the same bytes are parsed, they merely arrive smaller — and the
+run's own spread was 1 220–2 419 ms. Read it as noise, and read #649 as the
+reason there is that much TBT to be noisy about.
 
 The first run on real data found three things the fixture could not show,
-each filed with its numbers:
+each filed with its numbers. The third of them — that every backend
+response went out uncompressed — is the one this baseline no longer
+carries. The other two stand:
 
-- **`GET /api/world-views/5/regions/leaf` — 1 105 kB, 3 594 rows** — is
-  fetched on the map root to look up the metadata of the eight regions on
-  screen, and is the largest transfer on the page, ahead of the entry
-  chunk; the 993 ms of TBT across thirteen long tasks (366, 293, 279 ms …)
-  is that list being parsed and indexed. Discover, which does not make the
-  read, sits at 121 ms on the same world view. #649.
-- **Every backend response is uncompressed** — the leaf list, the 624 kB
-  by-region read, the 973 kB of locations: no compression middleware, no
-  `Content-Encoding`. JSON of this shape compresses five- to eight-fold.
-  #650.
+- **`GET /api/world-views/5/regions/leaf` — 3 594 rows, 241 kB compressed
+  (1 105 kB before)** — is fetched on the map root to look up the metadata
+  of the eight regions on screen, and is still the largest transfer on the
+  page after the entry chunk; the TBT across its long tasks is that list
+  being parsed and indexed, and compression does not touch that — Discover,
+  which does not make the read, sits at 84 ms on the same world view. #649.
 - **`favicon.ico` is 86 kB**, fetched on every page, the third-largest
   transfer after the chunk and the leaf list. #648.
 
-### Backend latency — 2026-08-24
+### Backend latency — 2026-08-25
 
 `npm run perf:api` against the dev stack (the same i7-6600U laptop,
 PostgreSQL 17.10 / PostGIS 3.5.6 in Docker),
@@ -276,40 +351,59 @@ directly, the heaviest read a click on a continent makes). 30 timed
 requests per endpoint after one warm-up, backend requests paced to stay
 under `publicReadLimiter`'s 60 a minute; p95 by linear interpolation
 between ranks, since nearest-rank p95 is the maximum under another name at
-any sample count below twenty. Tile requests carry a cache-buster so
-Martin's in-memory tile cache is not what gets timed. A sample that times
-out or answers anything but 200 is counted as a failure and left out of
-the timings.
+any sample count below twenty. Tile requests carry a cache-buster, unique
+per run, so Martin's in-memory tile cache is not what gets timed. A sample
+that times out or answers anything but 200 is counted as a failure and left
+out of the timings.
 
-| Endpoint | bytes | p50 | p95 | max |
-|----------|-------|-----|-----|-----|
-| `GET /api/experiences/by-region/6737?includeChildren=true&limit=5000` | 624 kB | 101 ms | 149 ms | 185 ms |
-| `GET /api/experiences/by-region/6737/locations?includeChildren=true` | 973 kB | 153 ms | 263 ms | 268 ms |
-| `GET /api/experiences/region-counts?worldViewId=5` | 1.0 kB | 16 ms | 22 ms | 28 ms |
-| `tile_world_view_root_regions/3/4/2` (Europe, z3 — the #551 tile) | 3.7 kB | 14 ms | 26 ms | 27 ms |
-| `tile_world_view_root_regions/5/16/10` | 3.1 kB | 17 ms | 35 ms | 36 ms |
-| `tile_region_subregions/5/16/10?parent_id=6737` | 10.3 kB | 30 ms | 61 ms | 62 ms |
-| `tile_world_view_all_leaf_regions/3/4/2` | 63.1 kB | 80 ms | 160 ms | 163 ms |
-| `tile_gadm_root_divisions/3/4/2` | 5.9 kB | 27 ms | 57 ms | 63 ms |
+The bytes are what crossed the wire, in the encoding they crossed it in —
+the probe counts them off the socket and asks for the encodings a browser
+asks for. The first version of this table did not: it read the length after
+decoding, so the tile rows understated nothing and overstated everything by
+whatever gzip had saved.
+
+| Endpoint | wire bytes | enc | p50 | p95 | max |
+|----------|-----------|-----|-----|-----|-----|
+| `GET /api/experiences/by-region/6737?includeChildren=true&limit=5000` | 142.0 kB | br | 110 ms | 134 ms | 197 ms |
+| `GET /api/experiences/by-region/6737/locations?includeChildren=true` | 148.3 kB | br | 163 ms | 212 ms | 235 ms |
+| `GET /api/experiences/region-counts?worldViewId=5` | 985 B | identity | 16 ms | 17 ms | 27 ms |
+| `tile_world_view_root_regions/3/4/2` (Europe, z3 — the #551 tile) | 3.2 kB | gzip | 25 ms | 26 ms | 26 ms |
+| `tile_world_view_root_regions/5/16/10` | 2.4 kB | gzip | 33 ms | 34 ms | 34 ms |
+| `tile_region_subregions/5/16/10?parent_id=6737` | 7.8 kB | gzip | 58 ms | 62 ms | 63 ms |
+| `tile_world_view_all_leaf_regions/3/4/2` | 44.7 kB | gzip | 157 ms | 223 ms | 225 ms |
+| `tile_gadm_root_divisions/3/4/2` | 5.0 kB | gzip | 54 ms | 83 ms | 433 ms |
+
+The tile timings are roughly double the first table's, and none of that is
+this change: that table was the second run of a probe whose cache-buster
+repeated from run to run, so it timed tiles Martin already held. These are
+generated tiles. The `tile_gadm_root_divisions` maximum of 433 ms is one
+sample of thirty against a p95 of 83 ms — the laptop, not the query.
 
 The bare `npm run perf:api` names exactly these targets (its defaults are
 world view 5 and region 6737), so it reproduces this table; a different
 database needs `--world-view` and `--region`. The probe is anonymous, as a
 visitor is, so it can only read a world view that is public — the dev
-database's mirror world view was made public for the run and set back
-afterwards; against a world view that is not, every backend row comes
-back as a 404 failure rather than a number.
+database's mirror world view is public for this reason; against a world
+view that is not, every backend row comes back as a 404 failure rather
+than a number.
 
-Two readings of that table:
+Three readings of that table:
 
-- **Opening Europe costs 1.6 MB before a marker is drawn** — 624 kB of
-  rows for the list and 973 kB of locations for the map, both whole-region
-  reads (`WHOLE_REGION_LIMIT`). Under half a second on this database at
-  p95, and growing with every sync; the lane's fixture cannot see it,
-  which is why the row is here.
+- **Opening Europe costs 290 kB before a marker is drawn, where it cost
+  1.6 MB.** The two whole-region reads (`WHOLE_REGION_LIMIT`) are 624 kB
+  and 973 kB of JSON, and they leave as 142 kB and 148 kB. Still under half
+  a second on this database at p95, and still growing with every sync — the
+  reads themselves are unchanged, which is the point of #657 and of the
+  `WHOLE_REGION_LIMIT` row under Known breaches. The lane's fixture cannot
+  see any of it, which is why the row is here.
+- **Compression costs no measurable latency.** The by-region read's p50
+  went from 101 ms to 110 ms and the locations read's from 153 ms to
+  163 ms, across a re-measurement on a laptop whose other runs moved by
+  more than that. Brotli at quality 4 on a few hundred kilobytes is not
+  where the time in these endpoints goes.
 - **The #551 tile no longer costs 676 ms on this database.** The same z3
-  tile that issue measured answers in tens of milliseconds and 3.7 kB, with
-  Martin's cache busted per request: ADR-0031 (2026-08-23) sized the
+  tile that issue measured answers in tens of milliseconds and 3.2 kB, with
+  Martin's cache busted per run: ADR-0031 (2026-08-23) sized the
   coarse rung by the pixel rule after re-measuring the same tile at
   483–508 ms, and the probe's row is that rung. The issue carries this
   measurement and should be re-verified against the probe before any
@@ -332,11 +426,20 @@ Two readings of that table:
 | `categories:performance` | warn | 0.8 | informational — the composite score moves ±5 points on identical hardware and is not a gate |
 
 The local run has its own file, `frontend/perf/lighthouse-budgets.local.json`,
-with the same script and stylesheet lines, a total-size line at 2 350 000 B
-(the map root's 2 231 kB, most of it the leaf list of #649 — the line drops
-when that lands) and a request count of 60 as errors, and every timing at
-`warn` set wide for a laptop (LCP 2.5 s, TBT 1.2 s, CLS 0.02, TTI 3.5 s,
-score 0.5): the local run's bytes gate, its timings inform.
+with the same script and stylesheet lines, a total-size line at 1 440 000 B
+(the map root's 1 366 kB — 783 kB of entry chunk, then the leaf list of
+#649, which is 241 kB compressed and still the second-largest item on the
+page; the line drops again when that lands) and a request count of 60 as
+errors, and every timing at `warn` set wide for a laptop (LCP 2.5 s, TBT
+1.2 s, CLS 0.02, TTI 3.5 s, score 0.5): the local run's bytes gate, its
+timings inform.
+
+That total-size line moved down from 2 350 000 B when the backend started
+compressing (#650), which is the ratchet doing what it is for: the saving
+is now the floor. The CI lane's own 1 050 000 B was left alone — its
+fixture's responses are below the compression threshold, so its total moved
+by 200 bytes, and a budget is lowered by a measurement, not by a change
+elsewhere that ought to have moved it.
 
 The rule:
 
@@ -384,7 +487,10 @@ Filed, and linked here so the baseline is read with them in mind:
   pictures), which is one reason the fixture's numbers describe the shell.
 - The unpaged region list: `WHOLE_REGION_LIMIT = 5000` rows in one read
   (`docs/tech/experience-map-ui.md` § Shared state model); the probe's
-  by-region row is what that costs on Europe today.
+  by-region row is what that costs on Europe today. Compression made those
+  rows four times cheaper to ship and did not make them fewer, or make the
+  browser's work of parsing them smaller — #657 is about sending fewer of
+  them, and it is the one that moves the timings.
 
 What the lane does not measure, by design or not yet:
 
@@ -399,3 +505,7 @@ What the lane does not measure, by design or not yet:
 - **Interactions.** Opening a continent, opening a card — the moments the
   data cost is paid — have no URL (#644) and are not navigations; #646
   measures them as scripted scenarios in the local run.
+- **Whether the API is still compressed, in CI.** The fixture's responses
+  are below the threshold either way, so removing the middleware would not
+  move a single number in the CI lane. The backend's unit tests are what
+  hold that; #647's production-like data would put it back inside the lane.
