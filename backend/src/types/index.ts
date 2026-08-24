@@ -642,6 +642,21 @@ export const curationGateBodySchema = z.object({
   requiresCuration: z.boolean(),
 });
 
+/**
+ * Which catalogue assertion an admin is accepting the debt of.
+ *
+ * The id and nothing else: the number is measured on the server when the
+ * acceptance is recorded, never sent by the browser, because the whole lane
+ * rests on the accepted figure being a measurement rather than a claim. A
+ * schema carrying a count would be a schema inviting one.
+ *
+ * Bounded at the column's own width, so a request that could not be stored is
+ * refused at the edge rather than by the database.
+ */
+export const dataAssertionAcceptBodySchema = z.object({
+  assertionId: z.string().min(1).max(80),
+});
+
 export const startRegionAssignmentBodySchema = z.object({
   worldViewId: z.coerce.number().int().positive(),
   categoryId: z.coerce.number().int().positive().optional(),

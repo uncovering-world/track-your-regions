@@ -9,7 +9,7 @@ import { Router, Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { pool } from '../db/index.js';
 import { validate } from '../middleware/errorHandler.js';
-import { expensiveAdminLimiter } from '../middleware/rateLimiter.js';
+import { authenticatedLimiter, expensiveAdminLimiter } from '../middleware/rateLimiter.js';
 import { z } from 'zod';
 import {
   categoryIdParamSchema,
@@ -22,6 +22,7 @@ import {
   cacheTtlBodySchema,
   reorderCategoriesBodySchema,
   curationGateBodySchema,
+  dataAssertionAcceptBodySchema,
   startRegionAssignmentBodySchema,
   regionAssignmentStatusQuerySchema,
   experienceCountsQuerySchema,
@@ -93,6 +94,7 @@ import {
   getExperienceCounts,
 } from '../controllers/admin/syncController.js';
 import { setCurationGate } from '../controllers/admin/curationGateController.js';
+import { acceptDataAssertion, getDataAssertions } from '../controllers/admin/dataAssertionsController.js';
 import {
   listCurators,
   createCuratorAssignment,
@@ -233,6 +235,33 @@ router.post('/experiences/assign-regions/cancel', validate(startRegionAssignment
 
 // Get experience counts by region
 router.get('/experiences/counts-by-region', validate(experienceCountsQuerySchema, 'query'), getExperienceCounts);
+
+// =============================================================================
+// Catalogue Data Assertions
+// =============================================================================
+
+// What the catalogue's own rows say about themselves, and what has been accepted
+// as the debt it carries. Seven statements over the whole catalogue, so it is
+// rate-limited with the other expensive admin work and read when a person opens
+// the section rather than polled.
+router.get('/data-assertions', expensiveAdminLimiter, getDataAssertions);
+
+// Accept what one assertion currently finds. The body names the assertion only:
+// the number is measured on the server as it records it, since an accepted
+// figure that a browser supplied would be a claim rather than a measurement.
+//
+// `authenticatedLimiter` and not the expensive one, by the rule in
+// `docs/tech/rate-limiting.md`: 5/min is a ceiling on the *person*, and the
+// state this screen exists for is a database where nobody has answered for
+// anything — six invariants to accept, one press each. One accept runs a single
+// assertion and inserts one row; the seven-statement report beside it is the
+// expensive call, and it keeps the expensive bucket.
+router.post(
+  '/data-assertions/accept',
+  authenticatedLimiter,
+  validate(dataAssertionAcceptBodySchema),
+  acceptDataAssertion,
+);
 
 // =============================================================================
 // Curator Management Routes
