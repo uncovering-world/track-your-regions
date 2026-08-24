@@ -594,6 +594,13 @@ Run before every commit:
 npm run check          # comprehensive gate: lint + typecheck (Node + Python) + fast security + knip + lint:extra. Same script CI runs.
 ```
 
+It expects dependencies installed in three places: `backend/`, `frontend/`, and
+the repository root — the root holds the repo-wide lint tooling (`madge`), whose
+version comes from the tracked root `package-lock.json` rather than from the
+registry at run time. A missing root install stops `lint:circular` with the name
+of the gate that did not run; a missing `cv-python/.venv` does the same for the
+`*:py` gates.
+
 For periodic cleanup (includes exports/types, ~30-40% false positive rate on exports):
 
 ```bash

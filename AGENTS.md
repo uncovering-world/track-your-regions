@@ -13,7 +13,7 @@ Supporting directories:
 
 ## Build, Test, and Development Commands
 Run from repo root unless noted.
-- `pnpm install`: install workspace dependencies.
+- `npm install`: install the repo-wide lint tooling the root `package.json` declares (`madge`, behind `lint:circular`). The two apps carry their own trees: `npm ci --prefix backend`, `npm ci --prefix frontend`. npm, not pnpm — the pins live in `package-lock.json`, which pnpm does not read.
 - `npm run dev`: start all services with Docker Compose.
 - `npm run dev:frontend`: run frontend locally.
 - `npm run dev:backend`: run backend locally.

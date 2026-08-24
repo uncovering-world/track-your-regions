@@ -28,6 +28,19 @@ World-boundary data is empty until you run:
 npm run db:load-gadm   # ~30 min; offers to download the file
 ```
 
+The repo-wide lint tooling lives in the root `package.json`. Install it
+once, in the repository root:
+
+```shell
+npm install
+```
+
+`npm run check` runs `madge` from the root `node_modules` instead of
+fetching it per run, so the version that runs here is the one the
+tracked root `package-lock.json` names — the same tree CI installs with
+`npm ci`. Without it the gate stops and names the check that did not
+run, rather than dying on `madge: command not found`.
+
 For Python tooling (cv-python tests, type checking), set up the venv
 once:
 
