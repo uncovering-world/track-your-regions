@@ -36,6 +36,7 @@ docs/
 | [rate-limiting.md](tech/rate-limiting.md) | Rate limiting tiers, per-endpoint strategy, adding limiters to new routes |
 | [hacking.md](tech/hacking.md) | Practical engineering guide for local debugging and safe changes |
 | [development-guide.md](tech/development-guide.md) | Code organization conventions, splitting patterns, commit hygiene |
+| [data-assertions.md](tech/data-assertions.md) | Catalogue Checks — invariants over the live catalogue's rows, and the debt it carries |
 | [shared-frontend-patterns.md](tech/shared-frontend-patterns.md) | Shared UI components and utilities — full inventory with "use this, not that" reference |
 | [maplibre-patterns.md](tech/maplibre-patterns.md) | MapLibre + react-map-gl patterns and pitfalls — overlapping layers, MVT properties, feature IDs, fonts, paint priority |
 | [world-view-import.md](tech/world-view-import.md) | WorldView Import — matching algorithm, API endpoints, admin UI |

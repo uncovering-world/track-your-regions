@@ -68,8 +68,19 @@ what goes stale when a route is added to the row below (it has already happened 
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
-| `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source` |
+| `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source` |
+
+The catalogue checks split across both buckets on the same rule, and the split is
+the point. `GET /api/admin/data-assertions` runs seven statements over the whole
+catalogue — about 1.5 seconds — so it is expensive on its own and takes the
+five-a-minute bucket. `POST …/accept` runs one of those statements and inserts one
+row, and the state the screen exists for is a database where nobody has answered
+for anything: six invariants, one press each. Every limiter here is keyed by IP,
+so five a minute is five for the whole address that admin works from — on the
+expensive bucket they would be refused halfway through their first pass, a minute
+at a time, which is the failure the last row of "Adding rate limiting to new
+endpoints" warns about.
 
 A re-match deletes every `region_members` row for a world view and then spends
 20–130s re-resolving them. The endpoint already answers 409 while one is running,
