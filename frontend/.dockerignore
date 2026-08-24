@@ -7,6 +7,7 @@ node_modules
 dist
 test-results
 playwright-report
+lighthouse-report
 coverage
 
 # Never ship secrets into an image layer.

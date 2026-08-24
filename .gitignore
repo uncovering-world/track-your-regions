@@ -37,6 +37,9 @@ test-results/
 .test-results/
 frontend/playwright-report/
 frontend/test-results/
+# Lighthouse: the performance lane's reports, bind-mounted out of the e2e
+# container.
+frontend/lighthouse-report/
 
 # TypeScript
 *.tsbuildinfo
