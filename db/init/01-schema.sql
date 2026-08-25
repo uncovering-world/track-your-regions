@@ -581,7 +581,12 @@ CREATE OR REPLACE TRIGGER trigger_region_metadata
 CREATE OR REPLACE FUNCTION update_region_focus_data()
 RETURNS TRIGGER AS $$
 DECLARE
+  -- A span this wide is the whole world however it is measured, so no window
+  -- onto it is a frame: such a box is reported as global rather than dressed up
+  -- as a crossing one. Both places that pick a shifted box check it (#666).
+  near_global_deg CONSTANT double precision := 350;
   effective_geom geometry;  -- hull or raw geom for bounds calculation
+  measure_geom geometry;    -- effective_geom snapped, for measurement only
   min_lat double precision;
   max_lat double precision;
   -- Normal [-180,180] bbox
@@ -603,45 +608,82 @@ DECLARE
   child_shift_east double precision;
   child_min_lat double precision;
   child_max_lat double precision;
+  child_covers_globe boolean;
 BEGIN
   -- Use hull for hull regions, otherwise raw geometry
   effective_geom := COALESCE(NEW.hull_geom, NEW.geom);
 
   IF effective_geom IS NOT NULL THEN
+    -- Snap to 1e-9 degrees (about 0.1 mm) before measuring anything. GADM
+    -- geometry overshoots the antimeridian by 1e-13 degrees, about 11 nanometres
+    -- on the ground -- 5 vertices of the Far Eastern Federal District sit at
+    -- 180.0000000000001, 9 of Fiji's do -- and ST_ShiftLongitude wraps both ways, so it
+    -- carries those vertices back to -179.9999999999999. The shifted span then
+    -- came out wider than the unshifted one (370 degrees against 360), the
+    -- detection below read the region as global, and the map framed the whole
+    -- world with the anchor in the wrong ocean (#666). The snap serves the
+    -- measurement only: the stored geometry is untouched.
+    measure_geom := ST_SnapToGrid(effective_geom, 1e-9);
+
     -- Latitude bounds
-    min_lat := ST_YMin(effective_geom);
-    max_lat := ST_YMax(effective_geom);
+    min_lat := ST_YMin(measure_geom);
+    max_lat := ST_YMax(measure_geom);
     center_lat := (min_lat + max_lat) / 2;
 
     -- Compute normal bbox
-    norm_west := ST_XMin(effective_geom);
-    norm_east := ST_XMax(effective_geom);
+    norm_west := ST_XMin(measure_geom);
+    norm_east := ST_XMax(measure_geom);
     norm_span := norm_east - norm_west;
 
     -- Compute shifted bbox for antimeridian detection
     -- ST_ShiftLongitude moves negative coords to [180,360] range
-    shifted_geom := ST_ShiftLongitude(effective_geom);
+    shifted_geom := ST_ShiftLongitude(measure_geom);
     shift_west := ST_XMin(shifted_geom);
     shift_east := ST_XMax(shifted_geom);
     shift_span := shift_east - shift_west;
 
-    IF norm_span > 350 THEN
-      -- Near-full-globe span: geometry touches both sides of the antimeridian.
-      -- ST_ShiftLongitude can't help (shifted span may be even wider).
-      -- Strategy: try children's focus data first, fall back to hull bbox.
+    IF norm_span > near_global_deg THEN
+      -- Near-full-globe span in [-180,180]: either the geometry reaches both
+      -- sides of the antimeridian, or it really does wrap the world. The
+      -- shifted measurement tells them apart -- but only if children have a
+      -- tighter answer first, which they do for a parent whose own union is
+      -- coarser than the boxes underneath it (Oceania).
 
-      -- Try children's aggregated focus data (for parent regions like Oceania)
+      -- Try children's aggregated focus data (for parent regions like Oceania).
+      -- A child whose own box is global cannot be aggregated: shifting it maps
+      -- both edges onto 180 and it collapses to a point, contributing nothing.
+      -- That is how Antarctica's continent row came to claim a 347-degree
+      -- window with a 13-degree gap over Queen Maud Land, which is not a gap in
+      -- Antarctica. Such a parent covers every longitude its child does, so it
+      -- is global too -- child_covers_globe sends it to the last branch.
+      --
+      -- One blind spot is left and is not closed here: a child whose own box
+      -- crosses Greenwich (west < 0 < east) maps to west + 360 > east, an
+      -- inverted interval, and MIN/MAX then read its two edges as unrelated
+      -- numbers. A parent with Russia [37.54 .. -169.65] and France [-5.1 .. 8.2]
+      -- beneath it would come out as [37.54 .. -5.1], a window ending at France's
+      -- western edge. Closing it properly is not another guard but a different
+      -- operation -- the smallest arc covering a set of intervals on a circle,
+      -- which is a sort and a largest-gap search, not MIN and MAX (#673). It needs a
+      -- curated grouping holding both a dateline-crossing and a Greenwich-crossing
+      -- member, which no world view has today: of the 8 near-global parents on the
+      -- dev database, the only child matching west < 0 < east is Antarctica's
+      -- global one, which the term above already catches.
       SELECT
         MIN(CASE WHEN c.focus_bbox[1] < 0 THEN c.focus_bbox[1] + 360 ELSE c.focus_bbox[1] END),
         MAX(CASE WHEN c.focus_bbox[3] < 0 THEN c.focus_bbox[3] + 360 ELSE c.focus_bbox[3] END),
         MIN(c.focus_bbox[2]),
-        MAX(c.focus_bbox[4])
-      INTO child_shift_west, child_shift_east, child_min_lat, child_max_lat
+        MAX(c.focus_bbox[4]),
+        BOOL_OR(c.focus_bbox[1] <= c.focus_bbox[3]
+                AND c.focus_bbox[3] - c.focus_bbox[1] > near_global_deg)
+      INTO child_shift_west, child_shift_east, child_min_lat, child_max_lat, child_covers_globe
       FROM regions c
       WHERE c.parent_region_id = NEW.id
         AND c.focus_bbox IS NOT NULL;
 
-      IF child_shift_west IS NOT NULL THEN
+      IF child_shift_west IS NOT NULL
+         AND NOT child_covers_globe
+         AND child_shift_east - child_shift_west <= near_global_deg THEN
         -- Use children's aggregated bbox
         final_west := CASE WHEN child_shift_west > 180 THEN child_shift_west - 360 ELSE child_shift_west END;
         final_east := CASE WHEN child_shift_east > 180 THEN child_shift_east - 360 ELSE child_shift_east END;
@@ -652,17 +694,14 @@ BEGIN
         center_lat := (child_min_lat + child_max_lat) / 2;
         min_lat := child_min_lat;
         max_lat := child_max_lat;
-      ELSIF NEW.hull_geom IS NOT NULL AND NOT ST_IsEmpty(NEW.hull_geom) THEN
-        -- Leaf region with hull (e.g. Fiji after hull generation): use hull bbox
-        -- Hull is compact and doesn't span 360°
-        shift_west := ST_XMin(ST_ShiftLongitude(NEW.hull_geom));
-        shift_east := ST_XMax(ST_ShiftLongitude(NEW.hull_geom));
-        final_west := CASE WHEN shift_west > 180 THEN shift_west - 360 ELSE shift_west END;
-        final_east := CASE WHEN shift_east > 180 THEN shift_east - 360 ELSE shift_east END;
-        center_lng := (shift_west + shift_east) / 2;
-        IF center_lng > 180 THEN center_lng := center_lng - 360; END IF;
-      ELSIF shift_span < norm_span THEN
-        -- No children/hull but shifted bbox is more compact (e.g. Russia): use shifted
+      ELSIF shift_span < norm_span AND shift_span <= near_global_deg THEN
+        -- Shifted bbox is compact: an antimeridian-crossing region (the Far
+        -- Eastern Federal District, Fiji, Russia). The branch that stood
+        -- between this one and the children above took the hull's shifted box
+        -- with no compactness test; effective_geom IS the hull whenever there
+        -- is one, so that box is the one measured here already, and the only
+        -- thing the branch added was skipping the test that keeps a hull
+        -- wrapping the globe from being reported as a crossing window.
         final_west := CASE WHEN shift_west > 180 THEN shift_west - 360 ELSE shift_west END;
         final_east := CASE WHEN shift_east > 180 THEN shift_east - 360 ELSE shift_east END;
         center_lng := (shift_west + shift_east) / 2;
