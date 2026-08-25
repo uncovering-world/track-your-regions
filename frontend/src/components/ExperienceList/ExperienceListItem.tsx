@@ -285,6 +285,9 @@ function ExperienceListItemComponent({
         // renders a `div` (see the note below), which is what the cast says.
         ref={rowElRef as React.RefObject<HTMLLIElement>}
         data-selected={isSelected}
+        // Reachable by script and not by Tab: the list puts the focus in the
+        // card a link named once it has opened, and nowhere else.
+        tabIndex={-1}
         // The one thing that differs per row, as a variable the classes read.
         style={{ '--tyr-row-color': color } as React.CSSProperties}
         onMouseEnter={() => {
