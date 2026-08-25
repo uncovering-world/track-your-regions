@@ -481,6 +481,13 @@ CREATE OR REPLACE TRIGGER trigger_simplify_geom
 -- =============================================================================
 
 -- Function to generate anchor point (representative point for labels)
+--
+-- NOT the source of regions.anchor_point: update_region_focus_data() owns that column
+-- and computes the centre of the frame it also stores in focus_bbox. A point on the
+-- surface is a different answer, and for a region crossing the antimeridian a worse
+-- one -- it lands inside whichever component ST_PointOnSurface picks, which is where
+-- the camera then goes. Nothing calls this today; regenerateDisplayGeometries did
+-- until #666.
 CREATE OR REPLACE FUNCTION generate_anchor_point(p_geom GEOMETRY)
 RETURNS GEOMETRY AS $$
 DECLARE
