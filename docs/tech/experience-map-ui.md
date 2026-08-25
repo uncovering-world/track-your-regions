@@ -352,12 +352,16 @@ downloading 3 594 boxes to use one of them.
 Three consequences worth keeping in mind when touching this path:
 
 - **Do not fly from tile geometry in a custom world view.** A feature is clipped
-  to the tile it was drawn in, and a bbox measured that way puts a region
-  straddling the antimeridian on the wrong half of the world. The completion
-  above always has an answer: every region a tile drew has geometry, and the
-  trigger that computes geometry computes `focus_bbox` with it. GADM divisions
-  are the exception — they have no focus box anywhere, so they are framed from
-  `GET /api/divisions/:id/geometry`.
+  to the tile it was drawn in, so the box is the box of whatever part of the
+  region that tile happened to hold. The completion above always has an answer:
+  every region a tile drew has geometry, and the trigger that computes geometry
+  computes `focus_bbox` with it. GADM divisions are the exception — they have no
+  focus box anywhere, so they are framed from `GET /api/divisions/:id/geometry`,
+  measured with `focusFromGeoJson()` (`frontend/src/utils/mapUtils.ts`). That
+  helper is what stands in for the missing box: it applies the antimeridian rule
+  the trigger applies, so a division crossing the dateline is framed the same way
+  in either world view. A plain `turf.bbox` does not, and framing the Far Eastern
+  Federal District with one gave the whole globe (#666).
 - **`tile_region_islands` carries no `parent_region_id`.** A click on the real
   coastline of a hull region therefore arrives parentless, and the same
   completion fills it in; without it the map would stay at the level above and

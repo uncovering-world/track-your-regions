@@ -333,8 +333,51 @@ Coverage-aware simplification for **sibling regions** (same parent). Uses `ST_Co
 | `update_simplified_geometries` | `administrative_divisions` | `geom` change | Per-row simplification of 4326 simplified columns. Fallback for individual updates (batch import uses `simplify_coverage_siblings`). |
 | `update_admin_div_geom_3857` | `administrative_divisions` | `geom` or simplified change | Transforms to 3857, computes 3857 simplified columns. |
 | `update_region_metadata` | `regions` | `geom` change | Computes area, detects `uses_hull` on INSERT. |
-| `update_region_focus_data` | `regions` | `geom` or `hull_geom` change | Computes `anchor_point` and `focus_bbox`. |
+| `update_region_focus_data` | `regions` | `geom` or `hull_geom` change | Computes `anchor_point` and `focus_bbox`. See [How a crossing region is told from a global one](#how-a-crossing-region-is-told-from-a-global-one). |
 | `trg_regions_geom_3857` | `regions` | `geom`, `hull_geom`, or `geom_simplified_low` change | Transforms to 3857, computes all simplified columns (hull-based and real-geom-based), including both cheap rungs. The third condition exists for `simplify_coverage_regions()`, which writes `geom_simplified_low` directly — without it `geom_overview` and `geom_simplified_coarse` would keep the pre-coverage shape and serve it at zoom 0-4. |
+
+### How a crossing region is told from a global one
+
+`focus_bbox` is `[west, south, east, north]`, and `west > east` says the box
+crosses the antimeridian. Deciding which of the two a region is happens in
+`update_region_focus_data()` and is worth stating in full, because getting it
+wrong is not visible in the data — the row looks like an ordinary box, and only
+the map shows what it claims.
+
+The shape is measured twice: once as it stands, and once with negative
+longitudes carried up by 360. Whichever measurement is *tighter* is the truthful
+one. A region crossing the dateline is compact only in the shifted frame; one
+that really wraps the world is wide in both, and keeps a full-width box, because
+no window onto it would be a frame. `near_global_deg` (350°) is where "wide in
+both" begins, and both places that would keep a shifted box check it.
+
+Three things make this harder than it reads:
+
+- **GADM's geometry overshoots the antimeridian.** Five vertices of the Far
+  Eastern Federal District sit at `180.0000000000001`, nine of Fiji's do — 1e-13
+  degrees past the meridian, about 11 nanometres on the ground at the equator and
+  less further north. `ST_ShiftLongitude` wraps in *both*
+  directions, so it carried those vertices back to `-179.9999999999999` and the
+  shifted span came out at 370°, wider than the unshifted 360°. Both regions
+  were filed as global and framed as the whole Earth at zoom 1, anchored in the
+  wrong ocean (#666). The function snaps to `1e-9` degrees before measuring —
+  the measurement only; the stored geometry is untouched.
+- **A parent's box comes from its children** when its own union spans the world,
+  because a union of things either side of the dateline spans it by
+  construction. That aggregation has to run bottom-up, and it cannot absorb a
+  child whose own box is global: shifting one maps both edges onto 180 and it
+  collapses to a point, contributing nothing. Antarctica's continent row claimed
+  a 347° window with a 13° gap over Queen Maud Land for exactly that reason.
+- **The trigger fires only on `geom` and `hull_geom`.** An existing database does
+  not heal itself when the function changes; `db/migrations/032-antimeridian-focus-data.sql`
+  is the one-shot that re-fires it over the rows a change can reach.
+
+A GADM division has no focus data anywhere — not in the tiles, not in the API —
+so the frontend measures one itself with `focusFromGeoJson()`
+(`frontend/src/utils/mapUtils.ts`), applying the same rule. `turf.bbox` does not:
+it returns the extremes of the raw longitudes, which for a shape over the
+dateline is `[-180, …, 180]`. `backend/src/db/regionFocusAntimeridian.test.ts`
+holds the SQL and the TypeScript to the same threshold.
 
 ## Tile cache busting
 
