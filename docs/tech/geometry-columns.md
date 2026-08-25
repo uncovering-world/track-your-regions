@@ -159,6 +159,16 @@ No cheap rung here, deliberately: this layer exists to draw the small parts
 budget is orthogonal to that and applies as it does everywhere else — these rows
 are hull regions, whose real geometry is every island they are made of.
 
+`world_view_id` is required on this source, the way `parent_id` is on the two
+subdivision sources: `uses_hull` is the only other thing it filters on, so a
+request that named no world view answered with the islands of every hull region
+in the database — drawn over whichever world view was open, above the main
+source, and clickable there (#660). It answers an unscoped request with an empty
+tile rather than with everything, which is what the two world-view sources still
+do not do (#662). `parent_id` stays optional and narrows within the world view:
+the root of a world view draws all of its hull regions, a selected region draws
+its children's.
+
 ---
 
 ## `administrative_divisions` table geometry columns

@@ -129,7 +129,7 @@ curl -s localhost:3000/catalog | jq '.tiles | keys'
 | `/tile_region_subregions/{z}/{x}/{y}` | `parent_id` | Subregions of a parent |
 | `/tile_gadm_root_divisions/{z}/{x}/{y}` | - | Root GADM divisions |
 | `/tile_gadm_subdivisions/{z}/{x}/{y}` | `parent_id` | GADM subdivisions of a parent |
-| `/tile_region_islands/{z}/{x}/{y}` | `parent_id` (optional) | Real island boundaries for archipelagos |
+| `/tile_region_islands/{z}/{x}/{y}` | `world_view_id`, `parent_id` (optional) | Real island boundaries for archipelagos |
 
 ### Example Usage
 
