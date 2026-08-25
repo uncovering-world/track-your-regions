@@ -1610,9 +1610,25 @@ AS $$
 DECLARE
     result bytea;
     bounds geometry;
+    p_world_view_id integer;
     p_parent_id integer;
 BEGIN
+    p_world_view_id := (query_params->>'world_view_id')::integer;
     p_parent_id := (query_params->>'parent_id')::integer;
+
+    -- Required, the way parent_id is on the two subdivision sources: a tile
+    -- parameter whose answer is meaningless without it is refused rather than
+    -- defaulted. This one filters on uses_hull alone otherwise, so a request
+    -- that named no scope answered with the islands of every hull region in the
+    -- database: drawn over whichever world view was open, above the main source,
+    -- and clickable there (#660). A parent id belongs to one world view already;
+    -- what the root of a world view asks for is the whole of it, and that is
+    -- the request that carried nothing. The two world-view sources still treat
+    -- theirs as optional -- see #662.
+    IF p_world_view_id IS NULL THEN
+        RETURN '';
+    END IF;
+
     bounds := ST_TileEnvelope(z, x, y);
 
     SELECT ST_AsMVT(tile, 'islands', 4096, 'geom', 'id') INTO result
@@ -1640,7 +1656,8 @@ BEGIN
                 bounds, 4096, 64, true
             ) AS geom
         FROM regions r
-        WHERE r.uses_hull = true
+        WHERE r.world_view_id = p_world_view_id
+          AND r.uses_hull = true
           AND r.hull_geom IS NOT NULL
           AND r.geom_3857 IS NOT NULL
           AND (p_parent_id IS NULL OR r.parent_region_id = p_parent_id)
@@ -1652,7 +1669,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION tile_region_islands IS 'MVT tiles for real island boundaries of hull regions. Query params: parent_id (optional)';
+COMMENT ON FUNCTION tile_region_islands IS 'MVT tiles for real island boundaries of hull regions. Query params: world_view_id (required), parent_id (optional)';
 
 -- -----------------------------------------------------------------------------
 -- Function: tile_world_view_all_leaf_regions
