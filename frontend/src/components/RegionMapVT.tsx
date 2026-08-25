@@ -125,7 +125,6 @@ export function RegionMapVT() {
     mapRef,
     mapLoaded,
     metadataById,
-    sourceLayerName,
     viewingRegionId,
     contextLayerCount: contextLayers.length,
   });

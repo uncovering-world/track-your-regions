@@ -26,7 +26,7 @@ function flyToClickedFeature(
   map: MapRef | null,
   id: number,
   meta: ClickMeta | undefined,
-  fromContextLayer: boolean,
+  isCustomWorldView: boolean,
   clickedFeature: { geometry?: GeoJSON.Geometry } & object,
   lastMapClickIdRef: React.MutableRefObject<number | null>,
 ): void {
@@ -40,11 +40,23 @@ function flyToClickedFeature(
     });
     return;
   }
-  // Context-layer clicks: tile functions don't include focusBbox. Don't fly
-  // immediately from imprecise tile geometry — let the ancestors API enrich
-  // selectedRegion with proper focusBbox, which triggers the fly-to effect
-  // with accurate bounds.
-  if (fromContextLayer || !clickedFeature.geometry) return;
+  // No tile function carries focusBbox, so in a custom world view the accurate
+  // box is always one read away: the ancestors call the selection makes anyway
+  // enriches selectedRegion, and the fly-to effect below flies from it. Flying
+  // from tile geometry first would be a second, worse animation — worse because
+  // a feature is clipped to the tile it was drawn in, and because a bbox
+  // measured that way puts a region straddling the antimeridian on the wrong
+  // half of the world. Every region a tile drew has geometry, and the trigger
+  // that computes geometry computes `focus_bbox` with it (measured on the dev
+  // database: of 3 594 leaf regions with geometry, 0 lack focus data), so the
+  // enrichment has an answer. A click on a context layer has always taken this
+  // path and needs no term of its own: those layers exist only in a custom
+  // world view — `useTileUrls` returns none otherwise, and `RegionMapVT` renders
+  // and registers them under the same condition.
+  //
+  // GADM divisions are the exception and keep the tile-geometry path: they have
+  // no focus data at all, in the tiles or in the API.
+  if (isCustomWorldView || !clickedFeature.geometry) return;
 
   lastMapClickIdRef.current = id;
   try {
@@ -96,7 +108,6 @@ interface UseMapInteractionsOptions {
     focusBbox?: [number, number, number, number] | null;
     anchorPoint?: [number, number] | null;
   }>;
-  sourceLayerName: string;
   viewingRegionId: 'all-leaf' | number;
   contextLayerCount: number;
 }
@@ -105,7 +116,6 @@ export function useMapInteractions({
   mapRef,
   mapLoaded,
   metadataById,
-  sourceLayerName,
   viewingRegionId,
   contextLayerCount,
 }: UseMapInteractionsOptions) {
@@ -151,29 +161,17 @@ export function useMapInteractions({
         duration: 400,
         anchorPoint: selectedRegion.anchorPoint,
       });
-      return;
     }
 
-    console.log('[RegionMapVT] No pre-computed focusBbox, trying tile query:', selectedRegion.name);
-    const map = mapRef.current.getMap();
-    const features = map.querySourceFeatures('regions-vt', {
-      sourceLayer: sourceLayerName,
-      filter: ['==', ['get', 'id'], selectedRegion.id],
-    });
-
-    if (features.length > 0 && features[0].geometry) {
-      try {
-        const geojson: GeoJSON.FeatureCollection = {
-          type: 'FeatureCollection',
-          features: [features[0] as GeoJSON.Feature],
-        };
-        const bbox = turf.bbox(geojson) as [number, number, number, number];
-        smartFitBounds(mapRef.current, bbox, { padding: 80, duration: 400, geojson });
-      } catch (e) {
-        console.error('[RegionMapVT] Failed to fit bounds from tile feature:', e);
-      }
-    }
-  }, [selectedRegion, isCustomWorldView, mapLoaded, sourceLayerName, mapRef]);
+    // No box yet: the selection was built from a tile feature, and no tile
+    // function carries one. The ancestors read that every selection makes fills
+    // it in and this effect runs again — see `useNavigation`. There is nothing
+    // useful to do in the meantime; what stood here was a `querySourceFeatures`
+    // filtered on `['get', 'id']`, which never matched anything: `ST_AsMVT` uses
+    // the id column as the feature id and leaves it out of the properties, so a
+    // region tile offers `region_id`, `name`, `color`, `parent_region_id` and no
+    // `id` at all (read off a live tile, 2026-08-25).
+  }, [selectedRegion, isCustomWorldView, mapLoaded, mapRef]);
 
   // Fly to selected division when selection changes (for GADM list clicks)
   useEffect(() => {
@@ -186,27 +184,10 @@ export function useMapInteractions({
 
     console.log('[RegionMapVT] Flying to division from list selection:', selectedDivision.id, selectedDivision.name);
 
-    const map = mapRef.current.getMap();
-    const features = map.querySourceFeatures('regions-vt', {
-      sourceLayer: sourceLayerName,
-      filter: ['==', ['get', 'id'], selectedDivision.id],
-    });
-
-    if (features.length > 0 && features[0].geometry) {
-      try {
-        const geojson: GeoJSON.FeatureCollection = {
-          type: 'FeatureCollection',
-          features: [features[0] as GeoJSON.Feature],
-        };
-        const bbox = turf.bbox(geojson) as [number, number, number, number];
-        smartFitBounds(mapRef.current, bbox, { padding: 100, duration: 500, geojson });
-        return;
-      } catch (e) {
-        console.error('[RegionMapVT] Failed to fit bounds from tile feature:', e);
-      }
-    }
-
-    // Feature not in tiles yet - fetch geometry from API
+    // A division has no focus box anywhere — not in the tiles, not in the API —
+    // so its geometry is what it is framed from. Asked of the API rather than of
+    // the loaded tiles: the tile query that stood here filtered on `['get',
+    // 'id']` and matched nothing, for the reason given in the effect above.
     fetchDivisionGeometry(selectedDivision.id, selectedWorldView?.id ?? 1)
       .then(geom => {
         if (geom?.geometry && mapRef.current) {
@@ -223,7 +204,7 @@ export function useMapInteractions({
         }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on division ID change
-  }, [selectedDivision?.id, isCustomWorldView, mapLoaded, sourceLayerName, selectedWorldView?.id]);
+  }, [selectedDivision?.id, isCustomWorldView, mapLoaded, selectedWorldView?.id]);
 
   // Reset to world view when navigating back to root
   const prevRegionIdRef = useRef<number | null | undefined>(undefined);
@@ -276,7 +257,7 @@ export function useMapInteractions({
       mapRef.current,
       id,
       meta,
-      fromContextLayer,
+      isCustomWorldView,
       clickedFeature,
       lastMapClickIdRef,
     );
