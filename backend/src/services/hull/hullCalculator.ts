@@ -4,7 +4,7 @@
 
 import * as turf from '@turf/turf';
 import type { HullParams, Point } from './types.js';
-import { crossesDateline, splitPointsAtDateline } from './dateline.js';
+import { splitPointsAtDateline } from './dateline.js';
 import { clampPolygonToLngRange, ensureEdgeAt } from './clamp.js';
 import { alignDatelineEdges } from './align.js';
 
@@ -168,14 +168,19 @@ function selectLngRange(points: Point[]): { min: number; max: number } {
 /**
  * Generate a hull from points with proper dateline handling.
  * For dateline-crossing regions, generates two separate hulls that meet at ±180.
+ *
+ * Whether the region crosses is the caller's to say, from the stored focus_bbox
+ * (west > east) or from geometry_focus() on an unstored shape -- one rule, not
+ * a threshold over the points (#674).
  */
 export function generateHullFromPoints(
   points: Point[],
-  params: HullParams
+  params: HullParams,
+  crossesDateline: boolean,
 ): GeoJSON.Geometry | null {
   if (!points || points.length < 1) return null;
 
-  if (crossesDateline(points)) {
+  if (crossesDateline) {
     console.log(`[Hull TS] Region crosses dateline, generating split hulls`);
     const { eastPoints, westPoints } = splitPointsAtDateline(points);
     console.log(`[Hull TS] East points: ${eastPoints.length}, West points: ${westPoints.length}`);

@@ -1,17 +1,13 @@
 /**
- * Dateline detection and point splitting utilities
+ * Point splitting at the dateline.
+ *
+ * Whether a region crosses is not decided here: the detection that used to sit
+ * beside this -- points on both sides of ±150° -- was a second rule beside the
+ * database's, and read a point cloud from 151°E to 151°W as crossing whether or
+ * not it did. The caller reads focus_bbox, or asks geometry_focus() (#674).
  */
 
 import type { Point } from './types.js';
-
-/**
- * Check if points cross the dateline (have points on both sides near ±180)
- */
-export function crossesDateline(points: Point[]): boolean {
-  const nearPositive = points.some(p => p.lng > 150);
-  const nearNegative = points.some(p => p.lng < -150);
-  return nearPositive && nearNegative;
-}
 
 /**
  * Split points into east and west groups based on sign of longitude

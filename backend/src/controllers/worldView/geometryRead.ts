@@ -74,22 +74,22 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
   // - hull: return hull geometry (handles dateline properly)
   // - anchor: return anchor point only
   if (detail === 'hull') {
-    // Return hull geometry (handles dateline properly)
+    // Return hull geometry (handles dateline properly). Whether it crosses the
+    // dateline is read off focus_bbox -- west > east -- which the trigger
+    // computed from this same hull by the one rule (#674). The envelope test
+    // that stood here read Antarctica as crossing and any region wider than
+    // 180 degrees as crossing whether it touched the line or not.
     const hullResult = await pool.query(
       `SELECT
          ST_AsGeoJSON(hull_geom)::json as geometry,
-         ST_XMin(hull_geom) as min_lng,
-         ST_XMax(hull_geom) as max_lng
+         focus_bbox[1] > focus_bbox[3] as crosses_dateline
        FROM regions
        WHERE id = $1 AND hull_geom IS NOT NULL`,
       [regionId]
     );
 
     if (hullResult.rows.length > 0 && hullResult.rows[0].geometry) {
-      // Check if this is a dateline-crossing geometry (MultiPolygon with parts at both ±180)
-      const minLng = hullResult.rows[0].min_lng;
-      const maxLng = hullResult.rows[0].max_lng;
-      const crossesDateline = (maxLng - minLng) > 180 || (minLng < -170 && maxLng > 170);
+      const crossesDateline = hullResult.rows[0].crosses_dateline === true;
 
       res.json({
         type: 'Feature',

@@ -30,7 +30,7 @@ export async function previewHullGeometry(req: Request, res: Response): Promise<
     // If customGeometry provided, use it instead of fetching from DB
     let result;
     if (customGeometry) {
-      result = previewHullFromGeometry(customGeometry, params);
+      result = await previewHullFromGeometry(customGeometry, params);
     } else {
       result = await previewHull(regionId, params);
     }

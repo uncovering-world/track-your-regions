@@ -44,4 +44,6 @@ export interface RegionData {
   usesHull: boolean;
   name: string;
   savedHullParams: HullParams | null;
+  /** geometry_focus() over the very points the hull is built from, measured in the same query (#674) */
+  crossesDateline: boolean;
 }
