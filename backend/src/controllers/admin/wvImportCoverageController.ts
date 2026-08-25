@@ -384,8 +384,8 @@ export async function getCoverageSSE(req: AuthenticatedRequest, res: Response): 
 
 /**
  * Geographic suggestion for a single coverage gap.
- * Ensures assigned divisions have anchor_points populated, then KNN-compares
- * the gap's centroid against those tiny Point geometries (~84ms total).
+ * KNN-compares the gap's centroid against the assigned divisions' boundaries
+ * (~84ms total).
  * POST /api/admin/wv-import/matches/:worldViewId/geo-suggest-gap
  */
 export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -393,38 +393,11 @@ export async function geoSuggestGap(req: AuthenticatedRequest, res: Response): P
   const { divisionId } = req.body;
   console.log(`[WV Import] POST /matches/${worldViewId}/geo-suggest-gap — divisionId=${divisionId}`);
 
-  // Ensure assigned divisions have anchor_points populated (idempotent, only fills NULLs).
-  // Uses a dedicated connection to disable triggers (avoids expensive 3857 recomputation).
-  const needsFill = await pool.query(`
-    SELECT count(*) AS missing
-    FROM region_members rm
-    JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $1
-    JOIN administrative_divisions ad ON ad.id = rm.division_id
-    WHERE ad.anchor_point IS NULL
-  `, [worldViewId]);
-
-  if (parseInt(needsFill.rows[0].missing as string) > 0) {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('ALTER TABLE administrative_divisions DISABLE TRIGGER trg_admin_div_geom_3857');
-      await client.query(`
-        UPDATE administrative_divisions ad
-        SET anchor_point = ST_Centroid(ST_Envelope(ad.geom))
-        FROM region_members rm
-        JOIN regions r ON r.id = rm.region_id AND r.world_view_id = $1
-        WHERE ad.id = rm.division_id AND ad.anchor_point IS NULL
-      `, [worldViewId]);
-      await client.query('ALTER TABLE administrative_divisions ENABLE TRIGGER trg_admin_div_geom_3857');
-      await client.query('COMMIT');
-      console.log(`[WV Import] Populated anchor_points for assigned divisions in WV ${worldViewId}`);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-  }
+  // A division's anchor_point is the focus trigger's since #674: every row with
+  // geometry has one, written from geometry_focus(). The filler that stood here
+  // wrote ST_Centroid(ST_Envelope(geom)) into the NULLs behind a DISABLE
+  // TRIGGER -- a different, worse answer for a division over the dateline --
+  // and the KNN below already COALESCEs to a centroid for a row without one.
 
   // Boundary-based KNN: finds the nearest assigned region by polygon boundary distance.
   // Uses `geom <->` (GiST bbox-based KNN) to catch large regions whose boundary is
