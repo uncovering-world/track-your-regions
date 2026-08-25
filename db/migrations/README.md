@@ -37,8 +37,19 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`033-division-focus-data.sql` fills `administrative_divisions.focus_bbox` and `anchor_point` —
+the focus data regions have always had, now stored for divisions too (#674) — from
+`geometry_focus()`, the one rule, for every division with geometry. It writes the two columns
+directly rather than re-firing the geometry trigger, which would drag the simplification and 3857
+triggers through 392 112 rows, and it disables `trg_admin_div_geom_3857` around the write, since
+that trigger fires on any UPDATE and compares geometries byte for byte to find it has nothing to
+do. About five minutes on the dev database. Runs *after* the next re-application of
+`01-schema.sql`, which defines the function and adds the column; its guard refuses otherwise. A
+re-run fills only what is still empty and takes seconds. Its closing SELECT lists every division
+whose box is global — the two Antarctica rows, and nothing else, on a database holding GADM 4.1.
+
 `032-antimeridian-focus-data.sql` recomputes `focus_bbox` and `anchor_point` for the
-regions the antimeridian fix in `update_region_focus_data()` reaches (#666). The trigger
+regions the antimeridian fix in `update_region_focus_data()` reaches (#666; the measurement has since moved into `geometry_focus()`, which the guard accepts). The trigger
 fires only on `geom` and `hull_geom`, so a database already holding rows keeps the wrong
 boxes until something re-fires it: on the dev database the Far Eastern Federal District and
 Fiji each claimed every longitude on Earth and anchored the camera in the wrong ocean. This

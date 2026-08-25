@@ -355,13 +355,14 @@ Three consequences worth keeping in mind when touching this path:
   to the tile it was drawn in, so the box is the box of whatever part of the
   region that tile happened to hold. The completion above always has an answer:
   every region a tile drew has geometry, and the trigger that computes geometry
-  computes `focus_bbox` with it. GADM divisions are the exception — they have no
-  focus box anywhere, so they are framed from `GET /api/divisions/:id/geometry`,
-  measured with `focusFromGeoJson()` (`frontend/src/utils/mapUtils.ts`). That
-  helper is what stands in for the missing box: it applies the antimeridian rule
-  the trigger applies, so a division crossing the dateline is framed the same way
-  in either world view. A plain `turf.bbox` does not, and framing the Far Eastern
-  Federal District with one gave the whole globe (#666).
+  computes `focus_bbox` with it. GADM divisions are no exception any more: their
+  focus data is stored beside their geometry by the same rule (#674), the
+  division lists carry it, and `useRegionMetadata` puts it in the lookup — so a
+  division's tile click takes the very branch a region's does, and a list click
+  frames from `selectedDivision.focusBbox` without fetching anything. What stood
+  there measured a clipped tile feature, then a downloaded geometry — 17 MB for
+  the Far Eastern Federal District — with a rule of the client's own; before
+  #666 that rule was `turf.bbox`, which framed the whole globe.
 - **`tile_region_islands` carries no `parent_region_id`.** A click on the real
   coastline of a hull region therefore arrives parentless, and the same
   completion fills it in; without it the map would stay at the level above and
