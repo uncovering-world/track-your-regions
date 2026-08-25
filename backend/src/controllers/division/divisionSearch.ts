@@ -5,6 +5,7 @@
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AdministrativeDivisionWithPath } from './types.js';
+import { FOCUS_JSON_COLUMNS } from './focusColumns.js';
 
 /**
  * Search for regions by name with optional fuzzy matching
@@ -96,7 +97,9 @@ export async function searchDivisions(req: Request, res: Response): Promise<void
           depth,
           (SELECT name FROM administrative_divisions WHERE id = target_id) as name,
           (SELECT parent_id FROM administrative_divisions WHERE id = target_id) as parent_id,
-          (SELECT has_children FROM administrative_divisions WHERE id = target_id) as has_children
+          (SELECT has_children FROM administrative_divisions WHERE id = target_id) as has_children,
+          (SELECT focus_bbox FROM administrative_divisions WHERE id = target_id) as focus_bbox,
+          (SELECT anchor_point FROM administrative_divisions WHERE id = target_id) as anchor_point
         FROM path_cte
         WHERE parent_id IS NULL
       ),
@@ -108,6 +111,8 @@ export async function searchDivisions(req: Request, res: Response): Promise<void
           name,
           parent_id,
           has_children,
+          focus_bbox,
+          anchor_point,
           (
             -- Exact name match (case insensitive, accent insensitive): +1000
             CASE WHEN LOWER(unaccent(name)) = LOWER(unaccent($1)) THEN 1000 ELSE 0 END
@@ -142,7 +147,8 @@ export async function searchDivisions(req: Request, res: Response): Promise<void
         parent_id,
         has_children,
         path,
-        relevance_score
+        relevance_score,
+        ${FOCUS_JSON_COLUMNS}
       FROM scored
       ORDER BY target_id, relevance_score DESC
     `;
@@ -270,6 +276,8 @@ export async function searchDivisions(req: Request, res: Response): Promise<void
     name: d.name,
     parentId: d.parent_id,
     hasChildren: d.has_children,
+    focusBbox: d.focus_bbox_json,
+    anchorPoint: d.anchor_point_json,
     path: d.path,
     usageCount: usageCounts[d.id] || 0,
     usedAsSubdivisionCount: usedAsSubdivisionCount[d.id] || 0,
