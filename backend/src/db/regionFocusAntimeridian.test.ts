@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -23,22 +23,42 @@ import { join } from 'node:path';
  *
  * - `db/init/01-schema.sql`, where `geometry_focus()` measures and the trigger
  *   stores the box (#674 moved the measurement out of the trigger);
- * - `frontend/src/utils/mapUtils.ts`, which applies the same rule to a GADM
- *   division, since a division has focus data nowhere — not in the tiles, not
- *   in the API — and framing it from a plain `turf.bbox` reproduced the bug in
- *   the client after it was fixed in the database;
+ * - `frontend/src/utils/mapUtils.ts`, which applies the same rule to a shape
+ *   that exists only in the client — a boundary being drawn, a cut, a combined
+ *   selection — where no trigger has measured it yet. A stored region or
+ *   division carries its box and is never measured there; framing a division
+ *   from a plain `turf.bbox` is how the bug reached the client before #666,
+ *   and downloading its geometry to measure it is what #674 retired;
  * - `db/migrations/032-antimeridian-focus-data.sql`, whose guard refuses to run
  *   against a database whose function predates the fix, and which would refuse
  *   forever if a term it looks for left the schema.
  *
  * `focusFromGeoJson` itself is tested against the real shapes in
  * `frontend/src/utils/mapUtils.test.ts`; nothing here restates that.
+ *
+ * The last block holds #674's principle across both packages: the rule is
+ * decided in exactly two places -- `geometry_focus()` for what the database
+ * holds, `focusFromGeoJson()` for what only the client holds -- and every
+ * other site reads a stored box. Four detections were found in the tree
+ * before it; two of them read Antarctica as crossing.
  */
 
 const repoRoot = join(__dirname, '..', '..', '..');
 const collapse = (text: string) => text.replace(/\s+/g, ' ');
 
-const schema = collapse(readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql'), 'utf8'));
+const schemaRaw = readFileSync(join(repoRoot, 'db', 'init', '01-schema.sql'), 'utf8');
+const schema = collapse(schemaRaw);
+/** The schema with its comment lines dropped, for counting what the code does rather than what it says. */
+const schemaCode = collapse(
+  schemaRaw.split('\n').filter(line => !line.trim().startsWith('--')).join('\n'),
+);
+
+/** Every file under a directory, for the guards that hold a rule across a package. */
+function filesUnder(dir: string, ext: string): string[] {
+  return readdirSync(dir, { recursive: true, encoding: 'utf8' })
+    .filter(name => name.endsWith(ext))
+    .map(name => join(dir, name));
+}
 const migration = collapse(
   readFileSync(join(repoRoot, 'db', 'migrations', '032-antimeridian-focus-data.sql'), 'utf8'),
 );
@@ -60,8 +80,10 @@ function functionBody(signature: string, terminator: string): string {
   return schema.slice(start, end);
 }
 
-/** The trigger: reads geometry_focus(), adds the children aggregation. */
+/** The regions trigger: reads geometry_focus(), adds the children aggregation. */
 const focusFn = functionBody('update_region_focus_data()', '$$ LANGUAGE plpgsql;');
+/** The divisions trigger: reads geometry_focus(), adds nothing (#674). */
+const divisionFocusFn = functionBody('update_division_focus_data()', '$$ LANGUAGE plpgsql;');
 /** The measurement itself (#674). */
 const geometryFocusFn = functionBody('geometry_focus(', 'END; $$;');
 /** The threshold, stated once for both. */
@@ -132,5 +154,64 @@ describe('032-antimeridian-focus-data.sql', () => {
 
   it('recomputes deepest-first, since a parent reads its children stored boxes', () => {
     expect(migration).toContain('FOR lvl IN REVERSE max_depth..0 LOOP');
+  });
+});
+
+describe('the antimeridian is decided in two places, and nowhere else', () => {
+  it('has geometry_focus() as the only measurement in the schema', () => {
+    // Comments may name ST_ShiftLongitude to explain the rule; code may call
+    // it once, inside the function that is the rule.
+    const calls = schemaCode.match(/ST_ShiftLongitude\(/g) ?? [];
+    expect(calls).toHaveLength(1);
+    expect(geometryFocusFn).toContain('ST_ShiftLongitude(');
+  });
+
+  it('feeds both focus triggers from it', () => {
+    expect(divisionFocusFn).toContain('SELECT * INTO f FROM geometry_focus(NEW.geom)');
+    expect(divisionFocusFn).not.toContain('ST_XMin');
+    expect(schema).toContain(
+      'CREATE OR REPLACE TRIGGER trigger_division_focus_data BEFORE INSERT OR UPDATE OF geom ON administrative_divisions',
+    );
+  });
+
+  it('lets no backend TypeScript decide it from raw longitudes', () => {
+    // The two retired detections: a threshold over a point cloud in
+    // hull/dateline.ts, and an envelope test in geometryRead.ts. Neither may
+    // come back under its old name or its old arithmetic; a backend module
+    // reads focus_bbox, or asks geometry_focus() for a shape that is not stored.
+    const backendSrc = join(repoRoot, 'backend', 'src');
+    for (const file of filesUnder(backendSrc, '.ts')) {
+      if (file.endsWith('.test.ts')) continue;
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
+      const text = readFileSync(file, 'utf8');
+      expect(text, `${file} defines a crossing detection of its own`)
+        .not.toMatch(/function crossesDateline\(/);
+      expect(text, `${file} decides a crossing from an envelope`)
+        .not.toMatch(/min_lng|max_lng/);
+    }
+  });
+
+  it('keeps the frontend threshold in one place, equal to the schema', () => {
+    const frontendSrc = join(repoRoot, 'frontend', 'src');
+    const declarations = filesUnder(frontendSrc, '.ts')
+      .concat(filesUnder(frontendSrc, '.tsx'))
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
+      .filter(file => /NEAR_GLOBAL_DEG\s*=/.test(readFileSync(file, 'utf8')));
+    expect(declarations.map(file => file.slice(repoRoot.length + 1)))
+      .toEqual(['frontend/src/utils/mapUtils.ts']);
+    expect(mapUtils).toContain(`const NEAR_GLOBAL_DEG = ${NEAR_GLOBAL_DEG};`);
+  });
+
+  it("frames the map's own division paths from the stored box, not a measurement", () => {
+    // useMapInteractions used to measure a clipped tile feature and a
+    // downloaded geometry to frame a division; both now read what the
+    // division list carried (#674).
+    const interactions = readFileSync(
+      join(repoRoot, 'frontend', 'src', 'components', 'regionMap', 'useMapInteractions.ts'),
+      'utf8',
+    );
+    expect(interactions).not.toContain('turf.bbox');
+    expect(interactions).not.toContain('focusFromGeoJson');
+    expect(interactions).not.toContain('fetchDivisionGeometry');
   });
 });
