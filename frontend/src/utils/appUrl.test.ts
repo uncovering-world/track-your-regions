@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAppUrl, legacyRedirect, parseAppUrl, slugify, type AppAddress } from './appUrl';
+import { buildAppUrl, legacyRedirect, parseAppUrl, slugify, slugsOf, type AppAddress } from './appUrl';
 
 const MAP_ROOT: AppAddress = { mode: 'map', worldViewId: null, regionId: null, experienceId: null, categoryId: null };
 
@@ -137,6 +137,15 @@ describe('legacyRedirect', () => {
 
   it('leaves pages that are not places alone', () => {
     expect(legacyRedirect('/auth/callback', '?code=abc&wv=5')).toBeNull();
+  });
+});
+
+describe('slugsOf', () => {
+  it('reads the slugs an address carries', () => {
+    expect(slugsOf('/wv/5/r/6737-europe/e/1234-stonehenge')).toEqual({ region: 'europe', experience: 'stonehenge' });
+    expect(slugsOf('/discover/wv/5/r/6737-europe-old-name')).toEqual({ region: 'europe-old-name', experience: '' });
+    expect(slugsOf('/wv/5/r/6737')).toEqual({ region: '', experience: '' });
+    expect(slugsOf('/account')).toEqual({ region: '', experience: '' });
   });
 });
 

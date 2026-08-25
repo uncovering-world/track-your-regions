@@ -59,6 +59,55 @@ describe('useAppAddress', () => {
     await waitFor(() => expect(result.current.at).toBe('/wv/5/r/6737-europe/e/1234-stonehenge'));
   });
 
+  it('keeps the slugs already in the address for the ids it does not rename', async () => {
+    // Opening a card names the card and not the region; the region's slug must
+    // not be lost to a write that had nothing to say about it.
+    const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/wv/5/r/6737-europe') });
+    act(() => {
+      result.current.go({ ...result.current.address!, experienceId: 1 }, { names: { experience: 'Stonehenge' } });
+    });
+    await waitFor(() => expect(result.current.at).toBe('/wv/5/r/6737-europe/e/1-stonehenge'));
+  });
+
+  it('drops a slug whose id changed', async () => {
+    const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/wv/5/r/6737-europe') });
+    act(() => { result.current.go({ ...result.current.address!, regionId: 9 }); });
+    await waitFor(() => expect(result.current.at).toBe('/wv/5/r/9'));
+  });
+
+  it('builds on what it last wrote, not on a render that has not happened yet', async () => {
+    // The window that made this necessary: `navigate` updates the browser's URL
+    // through `history.replaceState` at once, while React re-renders through a
+    // transition. So the address bar can already read `/wv/5` while every
+    // component still holds the address parsed from `/` — and a click landing
+    // there would build its next address on the old one and undo the write. The
+    // functional form asks for the latest instead.
+    const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/') });
+
+    act(() => {
+      result.current.go({ mode: 'map', worldViewId: 5, regionId: null, experienceId: null, categoryId: null }, { replace: true });
+      result.current.go(at => ({ ...at, mode: 'discover' }));
+    });
+
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5'));
+  });
+
+  it('follows a navigation made from outside it', async () => {
+    // The other half of the write-ahead ref: what `go` wrote is authoritative
+    // only until the location moves on its own — Back, a link, the legacy
+    // redirect. Then the address is whatever arrived, and a relative write
+    // builds on that rather than on the last thing this hook wrote.
+    const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/wv/5') });
+    act(() => { result.current.go(at => ({ ...at, regionId: 9 })); });
+    await waitFor(() => expect(result.current.at).toBe('/wv/5/r/9'));
+
+    act(() => { result.current.go(at => ({ ...at, regionId: null })); });
+    await waitFor(() => expect(result.current.at).toBe('/wv/5'));
+
+    act(() => { result.current.go(at => ({ ...at, mode: 'discover' })); });
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5'));
+  });
+
   it('does nothing for the address the page is already at', async () => {
     const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/wv/5/r/6737-europe') });
     const before = result.current.key;

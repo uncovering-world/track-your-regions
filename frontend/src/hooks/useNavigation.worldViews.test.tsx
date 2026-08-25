@@ -217,9 +217,188 @@ describe('useNavigation world view fetching', () => {
     });
     expect(result.current.selectedRegion?.id).toBe(42);
 
-    act(() => release([PUBLIC_WV]));
-    await waitFor(() => expect(result.current.selectedWorldView?.id).toBe(2));
+    // The list confirms the world view the address named — the only way a
+    // region of it could have been chosen, since rootRegions is read from it.
+    act(() => release([HIDDEN_WV]));
+    await waitFor(() => expect(result.current.selectedWorldView?.id).toBe(5));
     expect(result.current.selectedRegion?.id).toBe(42);
+  });
+
+  it('drops a region chosen early when its world view turns out invisible', async () => {
+    // The other outcome of the same window. The region is in the address now,
+    // under the world view it belongs to; when that world view is replaced by
+    // one the caller can see, the region cannot stay on screen under it.
+    const wrapWith = makeWrapper();
+    authState.isLoading = false;
+    authState.isAdmin = false;
+    authState.user = null;
+    let release: (v: unknown) => void = () => {};
+    mockFetchWorldViews.mockImplementation(() => new Promise(r => { release = r; }));
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname }),
+      { wrapper: wrapWith },
+    );
+    act(() => {
+      result.current.nav.setSelectedRegion({ id: 42, name: 'Chosen early' } as never);
+    });
+    await waitFor(() => expect(result.current.at).toBe('/wv/5/r/42-chosen-early'));
+
+    act(() => release([PUBLIC_WV]));
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
+    await waitFor(() => expect(result.current.at).toBe('/wv/2'));
+    expect(result.current.nav.selectedRegion).toBeNull();
+  });
+
+  it('writes the world view it adopts on a bare /, so everything under it is addressable', async () => {
+    // The entry every visitor without a link uses. Nothing is published to an
+    // anonymous caller but custom world views, so the first pick here is one —
+    // and if it is not written, the address holds no world view, `buildAppUrl`
+    // drops every segment under it, and a region can never be addressed. Since
+    // the address is now the only store for the open card, that also leaves
+    // the experience list unable to open one at all.
+    const wrapWith = makeWrapper('/');
+    authState.isLoading = false;
+    authState.isAdmin = false;
+    authState.user = null;
+    mockFetchWorldViews.mockResolvedValue([PUBLIC_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname }),
+      { wrapper: wrapWith },
+    );
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
+    await waitFor(() => expect(result.current.at).toBe('/wv/2'));
+
+    // And the region under it reaches the address.
+    act(() => { result.current.nav.setSelectedRegion({ id: 42, name: 'Somewhere' } as never); });
+    await waitFor(() => expect(result.current.at).toBe('/wv/2/r/42-somewhere'));
+  });
+
+  it('leaves a bare / bare when the world view it adopts is the default one', async () => {
+    // An admin's GADM default writes no segment, so `/` is its address.
+    const wrapWith = makeWrapper('/');
+    authState.isLoading = false;
+    authState.isAdmin = true;
+    authState.user = { id: 1 };
+    mockFetchWorldViews.mockResolvedValue([{ id: 1, name: 'GADM', isDefault: true, isPublic: false }, PUBLIC_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname }),
+      { wrapper: wrapWith },
+    );
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(1));
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(result.current.at).toBe('/');
+  });
+
+  it('follows a bare address back to the default world view', async () => {
+    // A bare `/` is the default world view's address, not the absence of one —
+    // that is what adopting made true. So Back across a switch away from the
+    // default, and typing `/` in the address bar, both have to land on it.
+    // Left unfollowed, the picker says one world view and the address another:
+    // the map keeps drawing the custom one while the link shares GADM, and a
+    // refresh silently changes which.
+    const GADM = { id: 1, name: 'GADM', isDefault: true, isPublic: false };
+    const wrapWith = makeWrapper('/');
+    authState.isLoading = false;
+    authState.isAdmin = true;
+    authState.user = { id: 1 };
+    mockFetchWorldViews.mockResolvedValue([GADM, OTHER_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname, navigate: useNavigate() }),
+      { wrapper: wrapWith },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(1));
+
+    act(() => { result.current.nav.setSelectedWorldView(OTHER_WV as never); });
+    await waitFor(() => expect(result.current.at).toBe('/wv/7'));
+
+    act(() => { result.current.navigate(-1); });
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(1));
+    expect(result.current.at).toBe('/');
+    // And it settles there rather than writing its way back out.
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(result.current.at).toBe('/');
+    expect(result.current.nav.selectedWorldView?.id).toBe(1);
+  });
+
+  it('names the world view it adopted off the map once the app arrives at an address', async () => {
+    // `/verify-email`, the OAuth callback and `/admin` bouncing a non-admin all
+    // adopt a world view on a page that has nowhere to write it, and then
+    // navigate to `/`. Arriving there is not a *change* of world view, so
+    // nothing re-attempts the write — and the session is left in the state the
+    // bare-`/` fix exists to prevent: no region addressable, no card openable.
+    const wrapWith = makeWrapper('/verify-email');
+    authState.isLoading = false;
+    authState.isAdmin = false;
+    authState.user = null;
+    mockFetchWorldViews.mockResolvedValue([PUBLIC_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname, navigate: useNavigate() }),
+      { wrapper: wrapWith },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
+    // Nothing was written where there is no place to write it.
+    expect(result.current.at).toBe('/verify-email');
+
+    act(() => { result.current.navigate('/', { replace: true }); });
+
+    await waitFor(() => expect(result.current.at).toBe('/wv/2'));
+  });
+
+  it('canonicalises an address naming the default world view explicitly', async () => {
+    // `buildAppUrl` never writes `/wv/1` — the default writes no segment — so a
+    // hand-typed one is an address the app would not produce and cannot keep.
+    // Typed while the default is *already* selected, which is the path the
+    // first-pick adopt does not cover: the address names the selection, so
+    // nothing reads it as a switch.
+    const GADM = { id: 1, name: 'GADM', isDefault: true, isPublic: false };
+    const wrapWith = makeWrapper('/');
+    authState.isLoading = false;
+    authState.isAdmin = true;
+    authState.user = { id: 1 };
+    mockFetchWorldViews.mockResolvedValue([GADM, OTHER_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname, navigate: useNavigate() }),
+      { wrapper: wrapWith },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(1));
+
+    act(() => { result.current.navigate('/wv/1'); });
+
+    await waitFor(() => expect(result.current.at).toBe('/'));
+    expect(result.current.nav.selectedWorldView?.id).toBe(1);
+  });
+
+  it('does not switch the world view when a page that carries no place is opened', async () => {
+    // `/account`, `/admin` and `/review` name no place at all, which is a
+    // different thing from naming the default world view. Reading them as a
+    // bare address would switch an admin off the world view they were on the
+    // moment they open the admin panel.
+    const wrapWith = makeWrapper('/wv/7');
+    authState.isLoading = false;
+    authState.isAdmin = true;
+    authState.user = { id: 1 };
+    mockFetchWorldViews.mockResolvedValue([{ id: 1, name: 'GADM', isDefault: true, isPublic: false }, OTHER_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname, navigate: useNavigate() }),
+      { wrapper: wrapWith },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
+
+    act(() => { result.current.navigate('/account'); });
+
+    await new Promise(resolve => setTimeout(resolve, 40));
+    expect(result.current.nav.selectedWorldView?.id).toBe(7);
+    expect(result.current.at).toBe('/account');
   });
 
   it('reconciles a selection that goes invalid without the list changing', async () => {
