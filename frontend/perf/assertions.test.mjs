@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateAssertions, hasFailures, validateAssertions } from './assertions.mjs';
 
-const URL = 'http://frontend:5173/?wv=9001';
+const URL = 'http://frontend:5173/wv/9001';
 
 const lhr = {
   categories: { performance: { score: 0.62 } },
