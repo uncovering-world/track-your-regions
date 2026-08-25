@@ -26,6 +26,7 @@ import HomeIcon from '@mui/icons-material/Home';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { useDiscoverExperiences } from '../../hooks/useDiscoverExperiences';
 import { useAuth } from '../../hooks/useAuth';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { HoverProvider } from '../../hooks/useHoverContext';
 import { DiscoverRegionList } from './DiscoverRegionList';
 import { DiscoverExperienceView } from './DiscoverExperienceView';
@@ -106,6 +107,11 @@ export function DiscoverPage() {
     if (selectedExperienceId == null) return null;
     return experiences.find(e => e.id === selectedExperienceId) ?? null;
   }, [selectedExperienceId, experiences]);
+
+  // The tab names the place: the open card, then the region in question — the
+  // list's region when one is open, otherwise the level the tree stands at.
+  const placeName = activeView?.regionName ?? breadcrumbs[breadcrumbs.length - 1]?.regionName;
+  useDocumentTitle([selectedExperience?.name, placeName].filter(Boolean).join(' · ') || null);
 
   const availableWorldViews = useMemo(
     () => worldViews.filter(wv => !wv.isDefault),
