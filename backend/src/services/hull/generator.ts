@@ -12,7 +12,6 @@ import type {
   PreviewHullResult,
 } from './types.js';
 import { DEFAULT_HULL_PARAMS } from './types.js';
-import { crossesDateline } from './dateline.js';
 import { generateHullFromPoints } from './hullCalculator.js';
 
 /**
@@ -24,6 +23,12 @@ import { generateHullFromPoints } from './hullCalculator.js';
  * 4. Fallback to regions.geom if no members
  */
 async function fetchRegionPoints(regionId: number): Promise<RegionData | null> {
+  // Whether the hull has to be split at the dateline is measured over the very
+  // points it is built from, by geometry_focus() in the same query -- not read
+  // off regions.focus_bbox, which describes COALESCE(hull_geom, geom): after a
+  // member change invalidateRegionGeometry() clears geom but not hull_geom, so
+  // that box would describe the previous hull until the geometry is recomputed,
+  // and the two hull endpoints run with no recompute in front of them (#674).
   const result = await pool.query(`
     SELECT
       r.id,
@@ -31,11 +36,13 @@ async function fetchRegionPoints(regionId: number): Promise<RegionData | null> {
       r.uses_hull,
       r.is_custom_boundary,
       r.hull_params,
-      (
-        SELECT json_agg(json_build_object(
-          'lng', ST_X(pt.geom),
-          'lat', ST_Y(pt.geom)
-        ))
+      pts.points,
+      (SELECT f.west > f.east FROM geometry_focus(pts.collected) f) AS crosses_dateline
+    FROM regions r
+    CROSS JOIN LATERAL (
+        SELECT
+          json_agg(json_build_object('lng', ST_X(pt.geom), 'lat', ST_Y(pt.geom))) AS points,
+          ST_Collect(pt.geom) AS collected
         FROM (
           -- If is_custom_boundary, use region's own geometry (user-drawn)
           SELECT ST_PointOnSurface((dump.geom)) as geom
@@ -60,8 +67,7 @@ async function fetchRegionPoints(regionId: number): Promise<RegionData | null> {
             AND GeometryType(dump.geom) IN ('POLYGON', 'MULTIPOLYGON')
         ) pt
         WHERE pt.geom IS NOT NULL
-      ) as points
-    FROM regions r
+    ) pts
     WHERE r.id = $1
   `, [regionId]);
 
@@ -86,6 +92,7 @@ async function fetchRegionPoints(regionId: number): Promise<RegionData | null> {
     usesHull: row.uses_hull,
     name: row.name,
     savedHullParams,
+    crossesDateline: row.crosses_dateline === true,
   };
 }
 
@@ -148,10 +155,10 @@ export async function generateSingleHull(
     return { generated: false, error: 'No points for hull generation' };
   }
 
-  const datelineCrossing = crossesDateline(points);
+  const datelineCrossing = regionData.crossesDateline;
   console.log(`[Hull TS] ${name}: ${points.length} points, crossesDateline=${datelineCrossing}`);
 
-  const hull = generateHullFromPoints(points, effectiveParams);
+  const hull = generateHullFromPoints(points, effectiveParams, datelineCrossing);
 
   if (!hull) {
     return { generated: false, error: 'Hull generation failed' };
@@ -209,10 +216,10 @@ export async function previewHull(
     maxLat: Math.max(...lats),
   };
 
-  const datelineCrossing = crossesDateline(points);
+  const datelineCrossing = regionData.crossesDateline;
   console.log(`[Hull TS] Preview ${name}: ${points.length} points, bounds=[${sourceBounds.minLng.toFixed(3)}, ${sourceBounds.maxLng.toFixed(3)}], params=${JSON.stringify(params)}`);
 
-  const hull = generateHullFromPoints(points, params);
+  const hull = generateHullFromPoints(points, params, datelineCrossing);
 
   return {
     geometry: hull,
@@ -226,10 +233,10 @@ export async function previewHull(
  * Preview hull from provided geometry (without fetching from DB).
  * Useful when the geometry hasn't been saved yet (e.g., in boundary editor).
  */
-export function previewHullFromGeometry(
+export async function previewHullFromGeometry(
   geometry: GeoJSON.Geometry,
   params: HullParams = DEFAULT_HULL_PARAMS
-): PreviewHullResult {
+): Promise<PreviewHullResult> {
   console.log(`[Hull TS] Previewing hull from provided geometry with params:`, params);
 
   // Extract points from the geometry
@@ -270,10 +277,18 @@ export function previewHullFromGeometry(
     maxLat: Math.max(...lats),
   };
 
-  const datelineCrossing = crossesDateline(points);
+  // This geometry is not stored, so no trigger has measured it -- but the
+  // database is right here, and the rule lives in it. One call to
+  // geometry_focus() on the whole shape, not a threshold over one point per
+  // polygon (#674).
+  const focus = await pool.query<{ crosses: boolean }>(
+    `SELECT west > east AS crosses FROM geometry_focus(ST_GeomFromGeoJSON($1))`,
+    [JSON.stringify(geometry)],
+  );
+  const datelineCrossing = focus.rows[0]?.crosses === true;
   console.log(`[Hull TS] Preview from geometry: ${points.length} points, bounds=[${sourceBounds.minLng.toFixed(3)}, ${sourceBounds.maxLng.toFixed(3)}]`);
 
-  const hull = generateHullFromPoints(points, params);
+  const hull = generateHullFromPoints(points, params, datelineCrossing);
 
   return {
     geometry: hull,
