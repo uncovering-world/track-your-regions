@@ -6,7 +6,6 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '../../hooks/useNavigation';
 import {
-  fetchLeafRegions,
   fetchSubregions,
   fetchRootDivisions,
   fetchSubdivisions,
@@ -85,15 +84,22 @@ export function useRegionMetadata(
   } = useNavigation();
 
   // Fetch region metadata for custom world views (no geometries)
+  //
+  // One level's children, never the whole world view (#649). At the root the map
+  // draws every leaf region of the world view, and reading the metadata of all
+  // of them to answer a hover and a click was 3 594 rows and 241 kB on the
+  // Administrative world view — the page's largest transfer after the entry
+  // chunk, and the long tasks its parse spent were most of the map root's TBT.
+  // Nothing here needs the list: a tile carries a region's name, colour and
+  // parent, and the focus box the fly-to wants comes with the ancestors read
+  // that every selection makes anyway (see `useNavigation`).
+  //
+  // Under `RegionList`'s key, not one of its own: both ask for the same
+  // children of the same region, and under one key React Query asks once.
   const { data: regionMetadata, isLoading: regionsLoading } = useQuery({
-    queryKey: ['regionMetadata', selectedWorldViewId, viewingRegionId],
-    queryFn: async () => {
-      if (viewingRegionId === 'all-leaf') {
-        return fetchLeafRegions(selectedWorldViewId!);
-      }
-      return fetchSubregions(viewingRegionId as number);
-    },
-    enabled: !!selectedWorldViewId && isCustomWorldView,
+    queryKey: ['subregions', viewingRegionId],
+    queryFn: () => fetchSubregions(viewingRegionId as number),
+    enabled: !!selectedWorldViewId && isCustomWorldView && viewingRegionId !== 'all-leaf',
     staleTime: 30000,
   });
 
