@@ -168,7 +168,7 @@ function ThemedApp() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/account" element={<AccountContent />} />
             <Route path="/admin/*" element={<AdminDashboard />} />
-            <Route path="/discover" element={<DiscoverContent />} />
+            <Route path="/discover/*" element={<DiscoverContent />} />
             <Route path="/review" element={<CurationReview />} />
             <Route path="/*" element={<MainContent />} />
           </Routes>

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, useSearchParams } from 'react-router';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import type { ReactNode } from 'react';
 
 const { mockFetchWorldViews, authState } = vi.hoisted(() => ({
@@ -49,8 +49,8 @@ const HIDDEN_WV = { id: 5, name: 'Administrative', isDefault: false, isPublic: f
 const PUBLIC_WV = { id: 2, name: 'Wikivoyage Regions', isDefault: false, isPublic: true };
 const OTHER_WV = { id: 7, name: 'Cultural Regions', isDefault: false, isPublic: true };
 
-/** A wrapper whose provider stays mounted across rerenders, starting at ?wv=5. */
-function makeWrapper(entry = '/?wv=5') {
+/** A wrapper whose provider stays mounted across rerenders, starting at /wv/5. */
+function makeWrapper(entry = '/wv/5') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   function Wrapper({ children }: { children: ReactNode }) {
     return (
@@ -228,12 +228,12 @@ describe('useNavigation world view fetching', () => {
     // `selectedWorldView` in the deps is the whole reason the effect fires.
     //
     // The assertion is the invariant, not a particular id. setSelectedWorldView
-    // *is* applyWorldView, so it writes `?wv=5` on the way in, and react-router
+    // *is* applyWorldView, so it writes `/wv/5` on the way in, and react-router
     // v7 defers that through startTransition — whether the effect re-reads the
     // URL before or after that lands decides between two answers that are both
     // correct. What must hold either way is that the selection ends up as one
     // the caller can actually see.
-    const wrapWith = makeWrapper('/?wv=7');
+    const wrapWith = makeWrapper('/wv/7');
     authState.isLoading = false;
     authState.isAdmin = true;
     authState.user = { id: 1 };
@@ -277,67 +277,68 @@ describe('useNavigation world view fetching', () => {
     await waitFor(() => expect(result.current.selectedWorldView?.id).toBe(42));
   });
 
-  it('drops ?wv when the world view it names is not visible', async () => {
-    // A bookmarked /?wv=5 opened after the session ends. The selection corrects
+  it('drops a world view from the address when it is not visible', async () => {
+    // A bookmarked /wv/5 opened after the session ends. The selection corrects
     // to a visible world view; the URL has to follow, or the address bar keeps
     // advertising one the picker does not show, re-shares a dead link, and
     // leaves selectedWorldViewId falling back to that id on every load — one
     // 404 root-regions request per visit before it corrects itself.
     //
-    // Asserted on the query string rather than selectedWorldViewId: that is
+    // Asserted on the path rather than selectedWorldViewId: that is
     // `selectedWorldView?.id ?? urlWorldViewId`, so it reads 2 from the
     // selection alone and would pass with the URL left untouched.
-    const wrapWith = makeWrapper('/?wv=5');
+    const wrapWith = makeWrapper('/wv/5');
     authState.isLoading = false;
     authState.isAdmin = false;
     authState.user = null;
     mockFetchWorldViews.mockResolvedValue([PUBLIC_WV]);
 
     const { result } = renderHook(
-      () => ({ nav: useNavigation(), params: useSearchParams()[0] }),
+      () => ({ nav: useNavigation(), at: useLocation().pathname }),
       { wrapper: wrapWith },
     );
 
     await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
-    await waitFor(() => expect(result.current.params.get('wv')).toBe('2'));
+    await waitFor(() => expect(result.current.at).toBe('/wv/2'));
   });
 
-  it('drops ?wv when there is nothing visible at all', async () => {
-    // A fresh install, or every world view hidden, plus a bookmarked /?wv=5.
+  it('drops the world view from the address when there is nothing visible at all', async () => {
+    // A fresh install, or every world view hidden, plus a bookmarked /wv/5.
     // Nothing was ever selected, so there is no context to clear — but the URL
     // still names a world view this caller cannot see, and no later branch runs
     // to correct it: no selection is made, so the effect has no reason to fire
     // again. Until it is cleared, selectedWorldViewId reads 5 and rootRegions
     // keeps requesting a world view that answers 404.
-    const wrapWith = makeWrapper('/?wv=5');
+    const wrapWith = makeWrapper('/wv/5');
     authState.isLoading = false;
     authState.isAdmin = false;
     authState.user = null;
     mockFetchWorldViews.mockResolvedValue([]);
 
     const { result } = renderHook(
-      () => ({ nav: useNavigation(), params: useSearchParams()[0] }),
+      () => ({ nav: useNavigation(), at: useLocation().pathname }),
       { wrapper: wrapWith },
     );
 
-    await waitFor(() => expect(result.current.params.get('wv')).toBeNull());
+    await waitFor(() => expect(result.current.at).toBe('/'));
     expect(result.current.nav.selectedWorldView).toBeNull();
     expect(result.current.nav.selectedWorldViewId).toBeNull();
   });
 
-  it('follows ?wv when it changes to another visible world view', async () => {
+  it('follows the address when it changes to another visible world view', async () => {
     // #465: the guard on "selection still visible" sat above the only line that
-    // reads `?wv`, so a URL naming a different — but perfectly visible — world
-    // view was ignored. Editing the address bar, opening a shared link in a tab
-    // that already has a selection, and going back across a switch all land here.
-    const wrapWith = makeWrapper('/?wv=2');
+    // reads the address, so a URL naming a different — but perfectly visible —
+    // world view was ignored. Editing the address bar, opening a shared link in a
+    // tab that already has a selection, and going back across a switch all land
+    // here.
+    const wrapWith = makeWrapper('/wv/2');
     authState.isLoading = false;
     authState.isAdmin = false;
     authState.user = null;
     mockFetchWorldViews.mockResolvedValue([PUBLIC_WV, OTHER_WV]);
 
     const { result } = renderHook(
-      () => ({ nav: useNavigation(), params: useSearchParams() }),
+      () => ({ nav: useNavigation(), navigate: useNavigate() }),
       { wrapper: wrapWith },
     );
     await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
@@ -347,38 +348,38 @@ describe('useNavigation world view fetching', () => {
     });
 
     // The address bar changes, and nothing calls into the hook.
-    act(() => { result.current.params[1]({ wv: '7' }); });
+    act(() => { result.current.navigate('/wv/7'); });
 
     await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
     // A switch, so the previous world view's context goes with it.
     expect(result.current.nav.selectedRegion).toBeNull();
   });
 
-  it('retires ?wv when it names something invisible, keeping the selection', async () => {
+  it('retires an address naming something invisible, keeping the selection', async () => {
     // The other half of the same branch: following the URL must not mean trusting
     // it. An id absent from the visible list is not a switch target — but leaving
     // it in the address bar is the same disagreement in the other direction, and
     // nothing downstream corrects it, since the guard below returns precisely
     // because the selection is still visible.
-    const wrapWith = makeWrapper('/?wv=2');
+    const wrapWith = makeWrapper('/wv/2');
     authState.isLoading = false;
     authState.isAdmin = false;
     authState.user = null;
     mockFetchWorldViews.mockResolvedValue([PUBLIC_WV, OTHER_WV]);
 
     const { result } = renderHook(
-      () => ({ nav: useNavigation(), params: useSearchParams() }),
+      () => ({ nav: useNavigation(), at: useLocation().pathname, navigate: useNavigate() }),
       { wrapper: wrapWith },
     );
     await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
 
-    act(() => { result.current.params[1]({ wv: '5' }); });  // hidden world view
+    act(() => { result.current.navigate('/wv/5'); });  // hidden world view
 
-    await waitFor(() => expect(result.current.params[0].get('wv')).toBe('2'));
+    await waitFor(() => expect(result.current.at).toBe('/wv/2'));
     expect(result.current.nav.selectedWorldView?.id).toBe(2);
   });
 
-  it('never parks ?wv on an invisible id when neither it nor the selection survives', async () => {
+  it('never parks the address on an invisible id when neither it nor the selection survives', async () => {
     // Back to an entry naming one hidden world view, then a logout — the param
     // and the selection differ and both vanish at once. Retiring the param
     // against a selection that is itself about to be replaced writes another id
@@ -386,28 +387,29 @@ describe('useNavigation world view fetching', () => {
     //
     // The end state is the same either way, so this records what the address bar
     // held on every render rather than only where it settled.
-    const wrapWith = makeWrapper('/?wv=7');
+    const wrapWith = makeWrapper('/wv/7');
     authState.isLoading = false;
     authState.isAdmin = true;
     authState.user = { id: 1 };
     mockFetchWorldViews.mockResolvedValue([HIDDEN_WV, OTHER_WV]);
 
-    const seen: (string | null)[] = [];
+    const seen: string[] = [];
     const { result, rerender } = renderHook(
       () => {
         const nav = useNavigation();
-        const params = useSearchParams();
-        seen.push(params[0].get('wv'));
-        return { nav, params };
+        const at = useLocation().pathname;
+        seen.push(at);
+        return { nav, at, navigate: useNavigate() };
       },
       { wrapper: wrapWith },
     );
     await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
 
-    // The param moves to the other hidden world view and the session ends in the
-    // same pass, so the selection is 7 and the param is 5, neither now visible.
+    // The address moves to the other hidden world view and the session ends in
+    // the same pass, so the selection is 7 and the address names 5, neither now
+    // visible.
     act(() => {
-      result.current.params[1]({ wv: '5' });
+      result.current.navigate('/wv/5');
       authState.isAdmin = false;
       authState.user = null;
       mockFetchWorldViews.mockResolvedValue([PUBLIC_WV]);
@@ -415,28 +417,29 @@ describe('useNavigation world view fetching', () => {
     rerender();
 
     await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
-    await waitFor(() => expect(result.current.params[0].get('wv')).toBe('2'));
+    await waitFor(() => expect(result.current.at).toBe('/wv/2'));
 
     // 7 was legitimate while it was visible; what must never appear is 7 written
     // back after the list that hid it had already arrived.
-    const afterSwitch = seen.slice(seen.lastIndexOf('5') + 1);
-    expect(afterSwitch).not.toContain('7');
+    const afterSwitch = seen.slice(seen.lastIndexOf('/wv/5') + 1);
+    expect(afterSwitch).not.toContain('/wv/7');
   });
 
   it('does not undo a picker switch made from a URL that already names one', async () => {
-    // applyWorldView sets the selection urgently and writes `?wv` through the
-    // router's startTransition, so there is a commit carrying the new selection
-    // beside the old param. Reacting to that as though the URL had moved sends
-    // the user straight back to the world view they just left — and every shared
-    // link, and every switch after the first, arrives with a param already set.
-    const wrapWith = makeWrapper('/?wv=2');
+    // applyWorldView sets the selection urgently and writes the address through
+    // the router's startTransition, so there is a commit carrying the new
+    // selection beside the old address. Reacting to that as though the URL had
+    // moved sends the user straight back to the world view they just left — and
+    // every shared link, and every switch after the first, arrives with an
+    // address already set.
+    const wrapWith = makeWrapper('/wv/2');
     authState.isLoading = false;
     authState.isAdmin = false;
     authState.user = null;
     mockFetchWorldViews.mockResolvedValue([PUBLIC_WV, OTHER_WV]);
 
     const { result } = renderHook(
-      () => ({ nav: useNavigation(), params: useSearchParams() }),
+      () => ({ nav: useNavigation(), at: useLocation().pathname }),
       { wrapper: wrapWith },
     );
     await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(2));
@@ -448,7 +451,25 @@ describe('useNavigation world view fetching', () => {
     // on it; the failure this guards against shows up as a revert, not a delay.
     await new Promise(resolve => setTimeout(resolve, 150));
     expect(result.current.nav.selectedWorldView?.id).toBe(7);
-    await waitFor(() => expect(result.current.params[0].get('wv')).toBe('7'));
+    await waitFor(() => expect(result.current.at).toBe('/wv/7'));
+  });
+
+  it('honours a legacy ?wv= link and brings it to the path', async () => {
+    // Every link shared before #644 carried the world view as `?wv=`. It still
+    // opens on that world view, and the address bar is corrected in place.
+    const wrapWith = makeWrapper('/?wv=7');
+    authState.isLoading = false;
+    authState.isAdmin = false;
+    authState.user = null;
+    mockFetchWorldViews.mockResolvedValue([PUBLIC_WV, OTHER_WV]);
+
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), location: useLocation() }),
+      { wrapper: wrapWith },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
+    await waitFor(() => expect(result.current.location.pathname).toBe('/wv/7'));
+    expect(result.current.location.search).toBe('');
   });
 
   it('asks for an anonymous visitor too, once auth has settled', async () => {

@@ -9,14 +9,34 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import { useNavigate, useLocation } from 'react-router';
 import { UserMenu } from './auth/UserMenu';
 import { useAppTheme } from '../theme';
+import { useAppAddress } from '../hooks/useAppAddress';
+import { useNavigation } from '../hooks/useNavigation';
+import type { AppAddress, AppMode } from '../utils/appUrl';
 
 export function Header() {
   const { mode, toggleMode } = useAppTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const isDiscover = location.pathname === '/discover';
+  const { address, go } = useAppAddress();
+  const { selectedWorldView } = useNavigation();
+  const isDiscover = address?.mode === 'discover';
   const isReview = location.pathname === '/review';
   const { isCurator } = useAuth();
+
+  // The place carries over between the two views: the world view and the region
+  // stay, and so does an open card — Discover finds its category from the
+  // object. Off the map (the review queue, the account page) there is no address
+  // to carry, so the world view comes from the selection instead: a bare `/`
+  // would read as the default world view, which is not the one on screen.
+  const placeIn = (nextMode: AppMode): AppAddress => address
+    ? { ...address, mode: nextMode, categoryId: null }
+    : {
+      mode: nextMode,
+      worldViewId: selectedWorldView && !selectedWorldView.isDefault ? selectedWorldView.id : null,
+      regionId: null,
+      experienceId: null,
+      categoryId: null,
+    };
 
   return (
     <AppBar position="static" color="primary" elevation={1}>
@@ -31,7 +51,7 @@ export function Header() {
             color="inherit"
             size="small"
             startIcon={<MapIcon />}
-            onClick={() => navigate('/')}
+            onClick={() => go(placeIn('map'))}
             sx={{
               opacity: isDiscover ? 0.7 : 1,
               borderBottom: isDiscover ? 'none' : '2px solid currentColor',
@@ -46,7 +66,7 @@ export function Header() {
             color="inherit"
             size="small"
             startIcon={<ExploreIcon />}
-            onClick={() => navigate('/discover')}
+            onClick={() => go(placeIn('discover'))}
             sx={{
               opacity: isDiscover ? 1 : 0.7,
               borderBottom: isDiscover ? '2px solid currentColor' : 'none',
