@@ -33,7 +33,9 @@ postgres:
   # `MARTIN_URL` consumer), so nothing is lost by not serving tables.
   #
   # This does not make the tile server authorized: the functions remain public,
-  # so a hidden world view's regions are still fetchable by id. See
+  # so a hidden world view's regions are still fetchable by id — and the default
+  # world view by no id at all, since its map is GADM and
+  # tile_gadm_root_divisions takes no parameter. See
   # docs/security/SECURITY.md § Known Gaps.
   auto_publish:
     tables: false

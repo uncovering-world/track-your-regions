@@ -7,7 +7,9 @@
  *
  * Tile access is a separate boundary and is NOT covered here: Martin publishes
  * its tile functions on a public port, so a hidden world view's geometry remains
- * fetchable by tile id until that is closed.
+ * fetchable by tile id until that is closed — and the default world view by no
+ * id at all, its map being GADM, whose root source takes no parameter.
+ * `docs/security/SECURITY.md` § Known Gaps carries the whole of it.
  */
 
 import type { Response, NextFunction } from 'express';
