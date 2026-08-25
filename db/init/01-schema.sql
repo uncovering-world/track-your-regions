@@ -1330,6 +1330,20 @@ DECLARE
     p_world_view_id integer;
 BEGIN
     p_world_view_id := (query_params->>'world_view_id')::integer;
+
+    -- Required, the way parent_id is on the two subdivision sources and
+    -- world_view_id is on the island one: a tile parameter whose answer is
+    -- meaningless without it is refused rather than defaulted. Otherwise the
+    -- only other filter here is parent_region_id IS NULL, which every world
+    -- view's roots satisfy, so a request that named none answered with all of
+    -- them at once (#662). Nothing draws that way -- useTileUrls names the
+    -- world view on both URLs it builds from this function -- but Martin is
+    -- published unauthenticated, so what this answers to a request the
+    -- application never makes is reachable all the same.
+    IF p_world_view_id IS NULL THEN
+        RETURN '';
+    END IF;
+
     bounds := ST_TileEnvelope(z, x, y);
 
     SELECT ST_AsMVT(tile, 'regions', 4096, 'geom', 'id') INTO result
@@ -1371,7 +1385,7 @@ BEGIN
             ) AS geom
         FROM regions r
         WHERE r.parent_region_id IS NULL
-          AND (p_world_view_id IS NULL OR r.world_view_id = p_world_view_id)
+          AND r.world_view_id = p_world_view_id
           AND r.geom_3857 IS NOT NULL
           AND r.geom_3857 && bounds
     ) AS tile
@@ -1381,7 +1395,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION tile_world_view_root_regions IS 'MVT tiles for root regions of a world view. Query params: world_view_id';
+COMMENT ON FUNCTION tile_world_view_root_regions IS 'MVT tiles for root regions of a world view. Query params: world_view_id (required)';
 
 -- -----------------------------------------------------------------------------
 -- Function: tile_region_subregions
@@ -1459,7 +1473,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION tile_region_subregions IS 'MVT tiles for subregions of a parent region. Query params: parent_id';
+COMMENT ON FUNCTION tile_region_subregions IS 'MVT tiles for subregions of a parent region. Query params: parent_id (required)';
 
 -- -----------------------------------------------------------------------------
 -- Function: tile_gadm_root_divisions
@@ -1590,7 +1604,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION tile_gadm_subdivisions IS 'MVT tiles for GADM subdivisions of a parent. Query params: parent_id';
+COMMENT ON FUNCTION tile_gadm_subdivisions IS 'MVT tiles for GADM subdivisions of a parent. Query params: parent_id (required)';
 
 -- -----------------------------------------------------------------------------
 -- Function: tile_region_islands
@@ -1623,8 +1637,8 @@ BEGIN
     -- database: drawn over whichever world view was open, above the main source,
     -- and clickable there (#660). A parent id belongs to one world view already;
     -- what the root of a world view asks for is the whole of it, and that is
-    -- the request that carried nothing. The two world-view sources still treat
-    -- theirs as optional -- see #662.
+    -- the request that carried nothing. The two other world-view sources
+    -- require theirs the same way, since #662.
     IF p_world_view_id IS NULL THEN
         RETURN '';
     END IF;
@@ -1692,6 +1706,16 @@ DECLARE
     p_world_view_id integer;
 BEGIN
     p_world_view_id := (query_params->>'world_view_id')::integer;
+
+    -- Required, as on the root-region source above and for the same reason.
+    -- This one is the broader leak of the two: is_leaf is a property of a row
+    -- rather than a scope, so an unscoped request answered with every leaf
+    -- region in the database -- the whole of every world view, at the zoom a
+    -- world view's own map opens on (#662).
+    IF p_world_view_id IS NULL THEN
+        RETURN '';
+    END IF;
+
     bounds := ST_TileEnvelope(z, x, y);
 
     SELECT ST_AsMVT(tile, 'regions', 4096, 'geom', 'id') INTO result
@@ -1732,7 +1756,7 @@ BEGIN
                 bounds, 4096, 64, true
             ) AS geom
         FROM regions r
-        WHERE (p_world_view_id IS NULL OR r.world_view_id = p_world_view_id)
+        WHERE r.world_view_id = p_world_view_id
           AND r.geom_3857 IS NOT NULL
           AND r.geom_3857 && bounds
           AND r.is_leaf = true
@@ -1743,7 +1767,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION tile_world_view_all_leaf_regions IS 'MVT tiles for all leaf regions (no subregions) of a world view. Query params: world_view_id';
+COMMENT ON FUNCTION tile_world_view_all_leaf_regions IS 'MVT tiles for all leaf regions (no subregions) of a world view. Query params: world_view_id (required)';
 
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION tile_world_view_root_regions TO PUBLIC;
