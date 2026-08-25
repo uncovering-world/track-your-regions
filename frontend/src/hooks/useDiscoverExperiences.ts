@@ -7,9 +7,19 @@
  * - Active view state: which region+category is being explored
  * - Loading experiences for the active view
  * - Selected experience for inline detail
+ *
+ * Discover keeps no place of its own (#644). The region in question is the one
+ * `useNavigation` holds — so the map and Discover share one place, and the
+ * header carries it across — and the category list and the open card are read
+ * from the address: `/discover/wv/5/r/7100-malta/e/1234-stonehenge?cat=1`.
+ *
+ * `r` is the region the visitor is looking at. With a category list open it is
+ * the region whose list it is, and the tree stands at its parent — exactly the
+ * state a chip click produces, since chips sit on the rows of a level. Without
+ * one, the tree stands at the region itself.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchExperienceRegionCounts,
@@ -18,7 +28,9 @@ import {
   fetchExperienceLocations,
   WHOLE_REGION_LIMIT,
 } from '../api/experiences';
+import type { Region } from '../types';
 import { useNavigation } from './useNavigation';
+import { useAppAddress } from './useAppAddress';
 
 /** The active experience view: region + category selection */
 export interface ActiveView {
@@ -35,17 +47,40 @@ export interface DiscoverBreadcrumb {
 }
 
 export function useDiscoverExperiences() {
-  const { selectedWorldView, selectedWorldViewId, worldViews, setSelectedWorldView } = useNavigation();
+  const {
+    selectedWorldView, selectedWorldViewId, worldViews, setSelectedWorldView,
+    selectedRegion, setSelectedRegion, regionBreadcrumbs,
+  } = useNavigation();
+  const { address, go } = useAppAddress();
 
-  // Tree navigation state
-  const [breadcrumbs, setBreadcrumbs] = useState<DiscoverBreadcrumb[]>([]);
-  const [activeView, setActiveView] = useState<ActiveView | null>(null);
-  const [selectedExperienceId, setSelectedExperienceId] = useState<number | null>(null);
+  const categoryId = address?.mode === 'discover' ? address.categoryId : null;
+  const listOpen = categoryId !== null && selectedRegion !== null;
 
-  // Current parent region (last breadcrumb, or null for root)
-  const currentParentId = breadcrumbs.length > 0
-    ? breadcrumbs[breadcrumbs.length - 1].regionId
-    : null;
+  // The trail to the region in question. The ancestors read answers it for
+  // certain; until it does — it fires on every selection — the trail is what a
+  // click already knows: one step down from the last level, or back up to one
+  // of its own entries. Without this the crumbs would lag every click by one
+  // request, and drop the region just entered for its duration.
+  const trail = useMemo((): Region[] => {
+    if (!selectedRegion) return [];
+    const last = regionBreadcrumbs[regionBreadcrumbs.length - 1];
+    if (last?.id === selectedRegion.id) return regionBreadcrumbs;
+    const at = regionBreadcrumbs.findIndex(r => r.id === selectedRegion.id);
+    if (at !== -1) return regionBreadcrumbs.slice(0, at + 1);
+    if (last && selectedRegion.parentRegionId === last.id) return [...regionBreadcrumbs, selectedRegion];
+    return [selectedRegion];
+  }, [selectedRegion, regionBreadcrumbs]);
+
+  // The tree level: the region itself, or — with its list open — its parent,
+  // where the chip was clicked.
+  const levelTrail = listOpen ? trail.slice(0, -1) : trail;
+  const currentParentId = listOpen
+    ? (selectedRegion.parentRegionId ?? null)
+    : (selectedRegion?.id ?? null);
+  const breadcrumbs = useMemo(
+    (): DiscoverBreadcrumb[] => levelTrail.map(r => ({ regionId: r.id, regionName: r.name })),
+    [levelTrail],
+  );
 
   // Fetch experience categories (for icon/name mapping)
   const { data: categories = [] } = useQuery({
@@ -84,6 +119,28 @@ export function useDiscoverExperiences() {
     return totals;
   }, [regionCounts]);
 
+  // The open list: the region in question and the category the address names.
+  const activeView = useMemo((): ActiveView | null => {
+    if (!listOpen) return null;
+    const category = categories.find(c => c.id === categoryId);
+    if (!category) return null;
+    return { regionId: selectedRegion.id, regionName: selectedRegion.name, categoryId: category.id, categoryName: category.name };
+  }, [listOpen, categories, categoryId, selectedRegion]);
+
+  // A category nobody knows is dropped from the address, in place, once the
+  // categories have answered — before that, every category is unknown.
+  useEffect(() => {
+    if (address === null || categoryId === null || categories.length === 0) return;
+    if (categories.some(c => c.id === categoryId)) return;
+    go({ ...address, categoryId: null }, { replace: true });
+  }, [address, categoryId, categories, go]);
+
+  // The card the address names — of this region, and only once the region is
+  // here: during a restore the address arrives first.
+  const addressedExperienceId = address !== null && selectedRegion !== null && address.regionId === selectedRegion.id
+    ? address.experienceId
+    : null;
+
   // Fetch experiences for active view (region + source)
   const { data: experiencesData, isLoading: experiencesLoading } = useQuery({
     // Keyed on the region alone. The response is category-independent — the
@@ -92,16 +149,20 @@ export function useDiscoverExperiences() {
     // on every switch. That was wasteful at 500 rows and is more so now that a
     // region is fetched whole. The `['discover-experiences']` prefix used for
     // invalidation is unchanged.
-    queryKey: ['discover-experiences', activeView?.regionId],
+    //
+    // Read for an open list, and also for a card the address names without a
+    // category — the header writes that on the way from the map — so that the
+    // category can be read off the object below.
+    queryKey: ['discover-experiences', selectedRegion?.id],
     // The category filter runs in `select` below, on what came back — so a
     // truncated response is filtered, not a filtered response truncated. At 500
     // that lost the smaller categories first: Europe holds 69 museums among 661
     // experiences, and `Museo del Prado` sorts past the cut.
-    queryFn: () => fetchExperiencesByRegion(activeView!.regionId, {
+    queryFn: () => fetchExperiencesByRegion(selectedRegion!.id, {
       includeChildren: true,
       limit: WHOLE_REGION_LIMIT,
     }),
-    enabled: !!activeView,
+    enabled: selectedRegion !== null && (listOpen || addressedExperienceId !== null),
     staleTime: 120000,
     select: (data) => {
       // Filter to only the selected category
@@ -120,6 +181,44 @@ export function useDiscoverExperiences() {
     () => experiencesData?.experiences ?? [],
     [experiencesData?.experiences],
   );
+
+  // A card without a category: the category is the object's own, so it is read
+  // off the object and written into the address in place; an object the region
+  // does not hold is dropped the same way. Not before the categories and the
+  // region have answered — until then every object is unknown — and a read that
+  // failed is not an answer: it must not spend a shared link on a hiccup.
+  useEffect(() => {
+    if (address === null || addressedExperienceId === null || categoryId !== null) return;
+    if (categories.length === 0 || !experiencesData) return;
+    const object = experiencesData?.experiences.find(e => e.id === addressedExperienceId);
+    const category = object ? categories.find(c => c.name === object.category_name) : undefined;
+    go(
+      category ? { ...address, categoryId: category.id } : { ...address, experienceId: null },
+      { replace: true, names: { experience: object?.name } },
+    );
+  }, [address, addressedExperienceId, categoryId, categories, experiencesData, go]);
+
+  const selectedExperienceId = activeView ? addressedExperienceId : null;
+
+  // A card the open list does not hold — hidden, rejected, elsewhere, of
+  // another category, or not there at all — is dropped from the address once
+  // the list has answered, in place and in silence: one answer for all of them.
+  // A *successful* answer, for the reason above.
+  useEffect(() => {
+    if (address === null || selectedExperienceId === null || !experiencesData) return;
+    if (experiences.some(e => e.id === selectedExperienceId)) return;
+    go({ ...address, experienceId: null }, { replace: true });
+  }, [address, selectedExperienceId, experiencesData, experiences, go]);
+
+  // Bring the card's slug up to date once the list names it, the way the region
+  // brings its own: a deep link carries whatever slug it was made with, or none.
+  const openCard = selectedExperienceId === null
+    ? undefined
+    : experiences.find(e => e.id === selectedExperienceId);
+  useEffect(() => {
+    if (address === null || !openCard?.name) return;
+    go(address, { replace: true, names: { experience: openCard.name } });
+  }, [address, openCard, go]);
 
   // Fetch locations for the selected experience (for map display)
   const { data: selectedLocationsData, isPending: selectedLocationsPending } = useQuery({
@@ -146,80 +245,56 @@ export function useDiscoverExperiences() {
     return null;
   }, [selectedExperienceId, selectedLocationsData, experiences]);
 
-  // Navigate into a region (drill down)
+  /** What a row of the current level knows about itself: enough to be selected. */
+  const rowRegion = useCallback((regionId: number, regionName: string): Region => ({
+    id: regionId,
+    worldViewId: selectedWorldViewId ?? 0,
+    name: regionName,
+    description: null,
+    parentRegionId: currentParentId,
+    color: null,
+  }), [selectedWorldViewId, currentParentId]);
+
+  // Navigate into a region (drill down): the region is the level now.
   const navigateToRegion = useCallback((regionId: number, regionName: string) => {
-    setBreadcrumbs(prev => [...prev, { regionId, regionName }]);
-    setActiveView(null);
-    setSelectedExperienceId(null);
-  }, []);
+    setSelectedRegion(rowRegion(regionId, regionName), { categoryId: null });
+  }, [setSelectedRegion, rowRegion]);
 
-  // Navigate to a breadcrumb level
+  // Navigate to a breadcrumb level: one of the trail's own entries, or the root.
   const navigateToBreadcrumb = useCallback((index: number) => {
-    if (index < 0) {
-      // Root level
-      setBreadcrumbs([]);
-    } else {
-      setBreadcrumbs(prev => prev.slice(0, index + 1));
-    }
-    setActiveView(null);
-    setSelectedExperienceId(null);
-  }, []);
+    setSelectedRegion(index < 0 ? null : levelTrail[index] ?? null, { categoryId: null });
+  }, [setSelectedRegion, levelTrail]);
 
-  // Open experience view for a region + source
+  // Open experience view for a region + source: the region is in question, the
+  // tree stays at its parent.
   const openExperienceView = useCallback((
     regionId: number,
     regionName: string,
     categoryId: number,
-    categoryName: string
+    _categoryName: string,
   ) => {
-    setActiveView({ regionId, regionName, categoryId, categoryName });
-    setSelectedExperienceId(null);
-  }, []);
+    setSelectedRegion(rowRegion(regionId, regionName), { categoryId });
+  }, [setSelectedRegion, rowRegion]);
 
-  // Close experience view (back to tree)
+  // Close experience view (back to tree): the level the list was opened from.
   const closeExperienceView = useCallback(() => {
-    setActiveView(null);
-    setSelectedExperienceId(null);
-  }, []);
+    setSelectedRegion(levelTrail[levelTrail.length - 1] ?? null, { categoryId: null });
+  }, [setSelectedRegion, levelTrail]);
 
-  // Switching from the Discover picker — the reset lives below, so it covers the
-  // automatic switch too.
+  // Open or close a card: a step the visitor took, so Back undoes it.
+  const setSelectedExperienceId = useCallback((id: number | null) => {
+    if (address === null) return;
+    const name = id === null ? undefined : experiences.find(e => e.id === id)?.name;
+    go(at => ({ ...at, experienceId: id }), { names: { experience: name } });
+  }, [address, experiences, go]);
+
+  // Switching from the Discover picker. The reset of everything above is not
+  // Discover's to do: it derives from the region `useNavigation` clears on a
+  // switch, in the same commit, so no render escapes with the new world view
+  // and the old level.
   const changeWorldView = useCallback((wv: typeof worldViews[0]) => {
     setSelectedWorldView(wv);
   }, [setSelectedWorldView]);
-
-  // Discover keeps a second world-view context that useNavigation cannot reach —
-  // it lives here, and this hook is the only thing that knows about it. Clearing
-  // it in changeWorldView alone would cover the manual switch and miss the
-  // automatic one: useNavigation replaces a selection the caller can no longer
-  // see, which on /discover would otherwise leave the departed world view's
-  // region names in the breadcrumb trail and its last regionId driving the
-  // counts query. Keyed on the id, so both paths land here.
-  //
-  // Adjusted during render rather than in an effect. Effects run after the
-  // render that observed the new world view, and the counts query is keyed on
-  // [selectedWorldViewId, currentParentId] — so an effect would let one render
-  // through with the new world view and the old parent, firing a request for a
-  // pairing that never existed and briefly drawing the departed trail. React
-  // re-runs this component immediately on a render-phase setState, before
-  // committing anything or running children, so no such render escapes.
-  const worldViewId = selectedWorldView?.id;
-  const [lastWorldViewId, setLastWorldViewId] = useState(worldViewId);
-  if (worldViewId !== lastWorldViewId) {
-    setLastWorldViewId(worldViewId);
-    // A change, not a first arrival. selectedWorldView is null on the first
-    // render, so undefined → id would otherwise read as a switch and wipe
-    // anything chosen before the list landed — and something can be: the counts
-    // query is enabled on selectedWorldViewId, which falls back to `?wv`, so the
-    // root level is populated and clickable while the world view object is still
-    // in flight. Same distinction useNavigation draws between a first pick and a
-    // switch, for the same reason.
-    if (lastWorldViewId !== undefined) {
-      setBreadcrumbs([]);
-      setActiveView(null);
-      setSelectedExperienceId(null);
-    }
-  }
 
   return {
     // World view
