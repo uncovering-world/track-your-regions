@@ -139,8 +139,9 @@ if (hasFailures(assertionResults)) {
 log(`All budgets met (${assertionResults.length} assertions over ${urls.length} pages, ${runsPerUrl} runs each).`);
 
 /**
- * The app asks for `?wv=` eagerly and only then learns the visitor cannot
- * see it, so a 404 for the fragment is exactly the fallback case; only a
+ * The app reads the world view the address names eagerly and only then
+ * learns the visitor cannot see it, so a 404 for the fragment is exactly
+ * the fallback case; only a
  * 2xx says the page the budgets were set on is the page that loaded. The
  * CORS preflight that precedes every cross-origin read is listed as its
  * own request and answers 204 whatever the read then answers, so it does
@@ -221,7 +222,7 @@ function describe(lhr) {
   ].join(' | ');
 }
 
-/** `/?wv=9001` becomes `root-wv-9001`, `/discover?wv=9001` becomes `discover-wv-9001`. */
+/** `/wv/9001` becomes `wv-9001`, `/discover/wv/9001` becomes `discover-wv-9001`. */
 function slugOf(url) {
   const { pathname, search } = new URL(url);
   const route = pathname.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'root';

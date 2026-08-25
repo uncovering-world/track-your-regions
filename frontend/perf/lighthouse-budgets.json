@@ -1,7 +1,7 @@
 {
   "urls": [
-    "http://frontend:5173/?wv={worldView}",
-    "http://frontend:5173/discover?wv={worldView}"
+    "http://frontend:5173/wv/{worldView}",
+    "http://frontend:5173/discover/wv/{worldView}"
   ],
   "worldView": 9001,
   "expectRequestMatching": "/api/world-views/{worldView}/",

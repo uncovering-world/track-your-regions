@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseLighthouseResults } from '../../scripts/lighthouse-summary.mjs';
 
-const URL = 'http://frontend:5173/?wv=9001';
+const URL = 'http://frontend:5173/wv/9001';
 const dirs = [];
 
 function reportDir(files) {
@@ -32,9 +32,9 @@ describe('parseLighthouseResults', () => {
         { url: URL, auditId: 'categories:performance', level: 'warn', operator: '>=', expected: 0.8, actual: 0.94, passed: true },
       ],
       'manifest.json': [
-        { url: URL, isRepresentativeRun: true, jsonPath: '/app/lighthouse-report/root-wv-9001-run2.report.json', summary: { performance: 0.94 } },
+        { url: URL, isRepresentativeRun: true, jsonPath: '/app/lighthouse-report/wv-9001-run2.report.json', summary: { performance: 0.94 } },
       ],
-      'root-wv-9001-run2.report.json': {
+      'wv-9001-run2.report.json': {
         audits: {
           'largest-contentful-paint': { numericValue: 2150 },
           'resource-summary': { details: { items: [{ resourceType: 'total', transferSize: 912327 }, { resourceType: 'script', transferSize: 782659 }] } },
@@ -48,10 +48,10 @@ describe('parseLighthouseResults', () => {
     expect([result.total, result.passed, result.failed, result.skipped]).toEqual([4, 2, 1, 1]);
     expect(result.note).toMatch(/^1 budget\(s\) at warn level are over/);
     expect(result.cases).toEqual([
-      '[error] resource-summary:total:count on /?wv=9001: 61 requests (<= 60 requests)',
-      '[warn] largest-contentful-paint on /?wv=9001: 2.15 s (<= 2.00 s)',
+      '[error] resource-summary:total:count on /wv/9001: 61 requests (<= 60 requests)',
+      '[warn] largest-contentful-paint on /wv/9001: 2.15 s (<= 2.00 s)',
     ]);
-    expect(result.files).toEqual(['/?wv=9001 - perf 94 | LCP 2.15 s | script 782.7 kB | total 912.3 kB']);
+    expect(result.files).toEqual(['/wv/9001 - perf 94 | LCP 2.15 s | script 782.7 kB | total 912.3 kB']);
   });
 
   it('reports a missing or unreadable results file as a failure, not an empty pass', () => {
