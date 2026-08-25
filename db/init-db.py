@@ -258,12 +258,15 @@ class GADMProcessor:
         # Each leaf INSERT would otherwise trigger:
         #   trigger_simplify_geom: 2 simplification ops (4326)
         #   trg_admin_div_geom_3857: 1 transform + 2 simplification ops (3857)
-        # These results get overwritten by precalculate-geometries.py anyway.
+        #   trigger_division_focus_data: a snap and a longitude shift over every vertex
+        # These results get overwritten by precalculate-geometries.py anyway,
+        # except the focus data, which step 4 below computes in one pass.
         if self.include_geometry:
             print("  Disabling geometry triggers for bulk import...")
             self.pg_cursor.execute("""
                 ALTER TABLE administrative_divisions DISABLE TRIGGER trigger_simplify_geom;
                 ALTER TABLE administrative_divisions DISABLE TRIGGER trg_admin_div_geom_3857;
+                ALTER TABLE administrative_divisions DISABLE TRIGGER trigger_division_focus_data;
             """)
             self.pg_conn.commit()
 
@@ -298,6 +301,7 @@ class GADMProcessor:
             self.pg_cursor.execute("""
                 ALTER TABLE administrative_divisions ENABLE TRIGGER trigger_simplify_geom;
                 ALTER TABLE administrative_divisions ENABLE TRIGGER trg_admin_div_geom_3857;
+                ALTER TABLE administrative_divisions ENABLE TRIGGER trigger_division_focus_data;
             """)
             self.pg_conn.commit()
 
@@ -457,7 +461,7 @@ class GADMProcessor:
         start = time.perf_counter()
 
         # Step 1: 4326 simplification (same as trigger_simplify_geom)
-        print("    Step 1/3: Simplifying geometries (4326)...", end=" ", flush=True)
+        print("    Step 1/4: Simplifying geometries (4326)...", end=" ", flush=True)
         self.pg_cursor.execute("""
             UPDATE administrative_divisions
             SET geom_simplified_low = validate_multipolygon(
@@ -472,7 +476,7 @@ class GADMProcessor:
 
         # Step 2: Transform to 3857 (with polar clipping fallback)
         step2_start = time.perf_counter()
-        print("    Step 2/3: Transforming to Web Mercator (3857)...", end=" ", flush=True)
+        print("    Step 2/4: Transforming to Web Mercator (3857)...", end=" ", flush=True)
         self.pg_cursor.execute("""
             UPDATE administrative_divisions
             SET geom_3857 = validate_multipolygon(
@@ -492,7 +496,7 @@ class GADMProcessor:
 
         # Step 3: 3857 simplification
         step3_start = time.perf_counter()
-        print("    Step 3/3: Simplifying geometries (3857)...", end=" ", flush=True)
+        print("    Step 3/4: Simplifying geometries (3857)...", end=" ", flush=True)
         self.pg_cursor.execute("""
             UPDATE administrative_divisions
             SET geom_simplified_low_3857 = simplify_for_zoom(geom_3857, 5000, 0, 0),
@@ -516,6 +520,24 @@ class GADMProcessor:
         """)
         self.pg_conn.commit()
         print(f"done ({time.perf_counter() - step3_start:.1f}s)")
+
+        # Step 4: focus data (same as trigger_division_focus_data). The statement
+        # db/migrations/033-division-focus-data.sql runs on a database that
+        # already holds GADM; here the trigger is disabled for the bulk insert,
+        # so a fresh load computes it the same way, once, with no per-row cost.
+        step4_start = time.perf_counter()
+        print("    Step 4/4: Measuring focus data...", end=" ", flush=True)
+        self.pg_cursor.execute("""
+            UPDATE administrative_divisions d
+            SET (focus_bbox, anchor_point) = (
+              SELECT ARRAY[f.west, f.south, f.east, f.north],
+                     ST_SetSRID(ST_MakePoint(f.center_lng, f.center_lat), 4326)
+              FROM geometry_focus(d.geom) f
+            )
+            WHERE d.geom IS NOT NULL AND d.focus_bbox IS NULL
+        """)
+        self.pg_conn.commit()
+        print(f"done ({time.perf_counter() - step4_start:.1f}s)")
 
         elapsed = time.perf_counter() - start
         print(f"  Derived columns complete for {count:,} divisions ({elapsed:.1f}s)")
