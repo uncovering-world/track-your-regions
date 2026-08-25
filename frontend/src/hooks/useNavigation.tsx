@@ -54,6 +54,45 @@ function pickWorldView(worldViews: WorldView[], wvParam: string | null, isAdmin:
   return worldViews[0];
 }
 
+/**
+ * What the ancestors read can tell a selection that the tile it was clicked in
+ * could not, or `null` when there is nothing left to tell it.
+ *
+ * Only the missing fields, so that applying the answer is what stops the next
+ * run from applying it again: each branch requires the field it fills to be
+ * absent, and a patch that filled a field already present would re-select the
+ * region for ever.
+ */
+function completeSelectionFromAncestor(selected: Region, ancestor: Region): Partial<Region> | null {
+  // The read this answer comes from is keyed on a region id alone, and one layer
+  // can hand over an id belonging to another world view: at the root
+  // `useTileUrls` asks `tile_region_islands` with no scope at all, and that
+  // function filters on `uses_hull` alone — so the islands of every hull region
+  // in the database are drawn over whichever world view is open, and they are
+  // clickable. Completing the selection from an answer about a different world
+  // view would point this one's map at that one's regions. Refuse, and the map
+  // stays where it is. The tile is the thing that should be scoped (#660).
+  if (ancestor.worldViewId !== selected.worldViewId) return null;
+
+  const patch: Partial<Region> = {};
+
+  if (!selected.focusBbox && ancestor.focusBbox) {
+    patch.focusBbox = ancestor.focusBbox;
+    patch.anchorPoint = ancestor.anchorPoint;
+    patch.hasSubregions = ancestor.hasSubregions;
+  }
+
+  // `tile_region_islands` draws the real coastlines of a hull region and has no
+  // `parent_region_id` column, so a click on one arrives with a null parent —
+  // the very id the map reads to decide which level to draw, and the list reads
+  // to find the region's siblings.
+  if (selected.parentRegionId == null && ancestor.parentRegionId != null) {
+    patch.parentRegionId = ancestor.parentRegionId;
+  }
+
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
 export function NavigationProvider({ children }: { children: ReactNode }) {
   const { isAdmin, isLoading: authLoading, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -167,10 +206,12 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, [ancestorData, selectedDivision]);
 
   // Update region breadcrumbs from ancestors query (for custom world views)
-  // Also enrich selectedRegion with full data (focusBbox, anchorPoint) from the
-  // API response — tile features don't include these, so context layer clicks
-  // create a selectedRegion without focus data. The last breadcrumb entry is
-  // the selectedRegion itself, returned by the ancestors API with full data.
+  // Also enrich selectedRegion with what the map could not know from the tile
+  // it was clicked in. A vector tile carries a region's id, name, colour and —
+  // in most layers — its parent; it never carries `focus_bbox` or
+  // `anchor_point`, and the islands layer carries no parent either. This read
+  // fires on every selection anyway, for the breadcrumbs, and it answers with
+  // the full row: the last entry it returns *is* the selected region.
   useEffect(() => {
     if (regionAncestors) {
       setRegionBreadcrumbs(prev => {
@@ -179,17 +220,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         }
         return regionAncestors;
       });
-      // Enrich selectedRegion with full API data if it was missing focusBbox
       const lastAncestor = regionAncestors[regionAncestors.length - 1];
       if (lastAncestor && selectedRegion && lastAncestor.id === selectedRegion.id) {
-        if (!selectedRegion.focusBbox && lastAncestor.focusBbox) {
-          setSelectedRegion({
-            ...selectedRegion,
-            focusBbox: lastAncestor.focusBbox,
-            anchorPoint: lastAncestor.anchorPoint,
-            hasSubregions: lastAncestor.hasSubregions,
-          });
-        }
+        const patch = completeSelectionFromAncestor(selectedRegion, lastAncestor);
+        if (patch) setSelectedRegion({ ...selectedRegion, ...patch });
       }
     } else if (!selectedRegion) {
       setRegionBreadcrumbs(prev => prev.length === 0 ? prev : []);
