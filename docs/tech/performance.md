@@ -309,36 +309,44 @@ three, desktop preset, the machine's own Chrome:
 
 | Page | Score | FCP | LCP | TBT | CLS | TTI | script | total (requests) |
 |------|-------|-----|-----|-----|-----|-----|--------|-------|
-| `/?wv=5` (map view, eight continents) | 56 | 1.14 s | 1.92 s | 1 531 ms | 0.006 | 3.40 s | 782.7 kB | 1 366.1 kB (40) |
-| `/discover?wv=5` | 90 | 1.14 s | 1.63 s | 84 ms | 0.010 | 1.75 s | 782.7 kB | 1 020.0 kB (43) |
+| `/?wv=5` (map view — the world painted leaf region by leaf region) | 63 | 1.18 s | 1.78 s | 679 ms | 0.006 | 2.43 s | 782.7 kB | 1 122.3 kB (38) |
+| `/discover?wv=5` | 89 | 1.17 s | 1.58 s | 115 ms | 0.010 | 1.78 s | 782.7 kB | 1 019.4 kB (43) |
 
-The map root's total moved from 2 231.3 kB to 1 366.1 kB when the backend
-started compressing (#650) — 865 kB off one page load, the largest single
-saving this lane has measured. Discover barely moved (1 022.5 → 1 020.0 kB):
-its reads are the small ones, below the threshold. Across the three runs
-per page the totals sat within 1.5 kB of each other, which is what makes
-this a byte budget rather than a timing one.
+Two changes moved the map root's total this week, and the ratchet has taken
+both savings as the floor:
 
-The timings on this table are the laptop's and were taken on a machine that
-had just rebuilt a container: TBT tripped its `warn` line at 1 531 ms, where
-the previous run measured 993 ms. Nothing in this change touches the main
-thread — the same bytes are parsed, they merely arrive smaller — and the
-run's own spread was 1 220–2 419 ms. Read it as noise, and read #649 as the
-reason there is that much TBT to be noisy about.
+- **2 231.3 kB → 1 366.1 kB** when the backend started compressing (#650) —
+  865 kB off one page load, the largest single saving this lane has
+  measured. Discover barely moved (1 022.5 → 1 020.0 kB): its reads are the
+  small ones, below the threshold.
+- **1 366.1 kB → 1 122.3 kB** when the map stopped reading the metadata of
+  every leaf region in the world view (#649) — 244 kB and two requests (the
+  read and its CORS preflight), and with them the parse of 3 594 rows, which
+  compression could not touch. What that parse was worth in milliseconds
+  this laptop will not say precisely: the six runs of the changed code
+  measured TBT at 679–1 361 ms, the quiet ones near the bottom of that and
+  the ones taken while a container rebuilt near the top, where the code
+  before it measured 993 ms quiet and 1 531 ms busy. Discover, which never
+  made the read, sits at 115–202 ms throughout. The saving is the bytes;
+  the milliseconds are the direction, on this machine.
+
+Across six runs the map root's total sat between 1 122.3 and 1 123.7 kB,
+which is what makes this a byte budget rather than a timing one — and why
+every timing in the local file is a `warn`, with the `error` lines
+calibrated on the CI runner instead.
+
+What the map root downloads now, largest first: the 782.7 kB entry chunk
+(#643), the 86.1 kB favicon (#648), then its own map tiles — 85.1 kB for
+the z1 tile over Eurasia and two more near 36 kB. No API read is among
+them.
 
 The first run on real data found three things the fixture could not show,
-each filed with its numbers. The third of them — that every backend
-response went out uncompressed — is the one this baseline no longer
-carries. The other two stand:
+each filed with its numbers. Two are settled: every backend response went
+out uncompressed (#650), and the map root read every leaf region in the
+world view (#649). The third stands:
 
-- **`GET /api/world-views/5/regions/leaf` — 3 594 rows, 241 kB compressed
-  (1 105 kB before)** — is fetched on the map root to look up the metadata
-  of the eight regions on screen, and is still the largest transfer on the
-  page after the entry chunk; the TBT across its long tasks is that list
-  being parsed and indexed, and compression does not touch that — Discover,
-  which does not make the read, sits at 84 ms on the same world view. #649.
-- **`favicon.ico` is 86 kB**, fetched on every page, the third-largest
-  transfer after the chunk and the leaf list. #648.
+- **`favicon.ico` is 86 kB**, fetched on every page, and now the
+  second-largest transfer on both pages after the entry chunk. #648.
 
 ### Backend latency — 2026-08-25
 
@@ -426,20 +434,22 @@ Three readings of that table:
 | `categories:performance` | warn | 0.8 | informational — the composite score moves ±5 points on identical hardware and is not a gate |
 
 The local run has its own file, `frontend/perf/lighthouse-budgets.local.json`,
-with the same script and stylesheet lines, a total-size line at 1 440 000 B
-(the map root's 1 366 kB — 783 kB of entry chunk, then the leaf list of
-#649, which is 241 kB compressed and still the second-largest item on the
-page; the line drops again when that lands) and a request count of 60 as
-errors, and every timing at `warn` set wide for a laptop (LCP 2.5 s, TBT
-1.2 s, CLS 0.02, TTI 3.5 s, score 0.5): the local run's bytes gate, its
+with the same script and stylesheet lines, a total-size line at 1 180 000 B
+(the map root's 1 122.3 kB — 783 kB of entry chunk, then the favicon of
+#648 and the map's own tiles — plus the usual 5 %) and a request count of
+60 as errors, and every timing at `warn` set wide for a laptop (LCP 2.5 s,
+TBT 1.2 s, CLS 0.02, TTI 3.5 s, score 0.5): the local run's bytes gate, its
 timings inform.
 
-That total-size line moved down from 2 350 000 B when the backend started
-compressing (#650), which is the ratchet doing what it is for: the saving
-is now the floor. The CI lane's own 1 050 000 B was left alone — its
-fixture's responses are below the compression threshold, so its total moved
-by 200 bytes, and a budget is lowered by a measurement, not by a change
-elsewhere that ought to have moved it.
+That total-size line has come down twice in a week — 2 350 000 B →
+1 440 000 B when the backend started compressing (#650), and → 1 180 000 B
+when the map root stopped reading every leaf region (#649) — which is the
+ratchet doing what it is for: each saving becomes the floor. The CI lane's
+own 1 050 000 B was left alone both times. Its fixture is one region
+("Testland", `backend/src/db/seed/e2eFixture.ts`) and its responses sit
+below the compression threshold, so the first change moved its total by
+200 bytes and the second removes a one-row read; a budget is lowered by a
+measurement, not by a change elsewhere that ought to have moved it.
 
 The rule:
 

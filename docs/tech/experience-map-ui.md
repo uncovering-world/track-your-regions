@@ -307,6 +307,51 @@ Map mode (`regionMap/HoverPreviewCard.tsx`): positioned by marker screen locatio
 
 Discover mode (`discover/DiscoverHoverCard.tsx`): positioned in the bottom-left corner of the map — which is why the fold chip sits at the top centre (`FoldPlacesControl`), since the card would otherwise paint over it. Its own component and its own subscriber to the hover store, for the same reason as Map mode's: rendered inline by `DiscoverExperienceView`, every marker the pointer crossed re-rendered the component that owns the map. On marker hover, `useDiscoverHover` looks up the experience in the `experiences` array by feature ID and writes the preview into the store. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
 
+## What the map reads at each level
+
+The polygons come from Martin (`useTileUrls`). Everything the map says *about*
+them — the name in the tooltip, the box a click flies to — comes from the reads
+below, and each is scoped to the level on screen (`useRegionMetadata`):
+
+| Level | Drawn from | Metadata read |
+|-------|-----------|---------------|
+| World-view root | `tile_world_view_all_leaf_regions`, with the root-region borders overlaid | none — the root regions are already in hand, from `useNavigation` |
+| A region with subregions | `tile_region_subregions` | its children, `GET /api/world-views/regions/:id/subregions` |
+| A leaf region | `tile_region_subregions` of its parent | its siblings — the same read, under the same React Query key `RegionList` uses, so one request answers both |
+| GADM root / a division | `tile_gadm_root_divisions` / `tile_gadm_subdivisions` | the divisions at that level |
+
+The root row is the one worth stating. Drawing *every* leaf region of the world
+view at the root is deliberate — the visitor is meant to see the whole world as
+the regions they could visit, not eight continents to drill into — and it stays
+that way; tiles cost what is on screen, so that holds however many regions a
+world view grows to. What did not hold was reading the metadata of all of them
+alongside: 3 594 rows on the Administrative world view, 241 kB compressed, the
+page's largest transfer after the entry chunk, spent before the first hover, and
+growing with every region added (#649).
+
+It needs none of it. A region tile feature carries `region_id`, `name`, `color`,
+`parent_region_id` and `has_subregions`, which is everything the click handler
+builds a selection from. What no tile function carries is `focus_bbox` and
+`anchor_point` — and those arrive with the ancestors read that every selection
+makes anyway for the breadcrumbs, whose last entry *is* the selected region
+(`completeSelectionFromAncestor` in `useNavigation`). So the fly-to waits one
+round trip for the box of the one region that was clicked, instead of the page
+downloading 3 594 boxes to use one of them.
+
+Two consequences worth keeping in mind when touching this path:
+
+- **Do not fly from tile geometry in a custom world view.** A feature is clipped
+  to the tile it was drawn in, and a bbox measured that way puts a region
+  straddling the antimeridian on the wrong half of the world. The completion
+  above always has an answer: every region a tile drew has geometry, and the
+  trigger that computes geometry computes `focus_bbox` with it. GADM divisions
+  are the exception — they have no focus box anywhere, so they are framed from
+  `GET /api/divisions/:id/geometry`.
+- **`tile_region_islands` carries no `parent_region_id`.** A click on the real
+  coastline of a hull region therefore arrives parentless, and the same
+  completion fills it in; without it the map would stay at the level above and
+  the list would show root regions where the region's siblings belong.
+
 ## Region visual feedback
 
 ### Selected vs sibling contrast
