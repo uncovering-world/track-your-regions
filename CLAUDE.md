@@ -202,6 +202,7 @@ Before working in a specific area, read the relevant docs. Start from the area g
 | **Code conventions** (any area) | `docs/tech/development-guide.md` | Splitting patterns, commit hygiene, refactoring rules |
 | **Map rendering, tile layers, map interactions** | `docs/tech/development-guide.md` § MapLibre Gotchas | `docs/tech/maplibre-patterns.md` — overlapping layers, MVT gaps, feature IDs, paint priority, fonts |
 | **Map UI behavior** (markers, hover, selection) | `docs/tech/experience-map-ui.md` | Marker model, hover cards, context layers, exploration outlines |
+| **Anything that reads or writes the URL** (a route, a selection, a new parameter) | `docs/tech/addresses.md` | The grammar, ids vs slugs, push vs replace, silent degradation, the one parse/build module |
 | **Shared frontend components/utils** | `docs/tech/shared-frontend-patterns.md` | Full inventory with "use this, not that" table |
 | **Experience system** | `docs/tech/experiences.md` | Sources, sync, region assignment, API |
 | **Anything that writes catalogue rows** | `docs/tech/data-assertions.md` | Admin panel → Catalogue Checks: the invariants over live rows, and the debt it carries |

@@ -180,7 +180,7 @@ things fail fastest:
 2. Lighthouse against the **dev stack's frontend in its production shape**
    — `scripts/frontend-mode.sh preview` switches the container to
    `FRONTEND_MODE=preview` and waits for the built page — on the pages of
-   the world view the database exposes (`/?wv=5`, `/discover?wv=5`), driven
+   the world view the database exposes (`/wv/5`, `/discover/wv/5`), driven
    by the machine's own Chrome and judged against
    `frontend/perf/lighthouse-budgets.local.json`;
 3. the latency probe (`npm run perf:api`).
@@ -218,9 +218,12 @@ touches only the frontend container (`--no-deps`) and waits for the
 backend's `/health` before anything is measured.
 
 What the local run cannot yet see is the interactions where the data cost
-actually lives — clicking Europe, opening a card — because none of them has
-a URL (#644) and Lighthouse's navigation mode measures page loads; #646
-adds scenarios (timespans around scripted interactions) to it. Making the
+actually lives — clicking Europe, opening a card. Both are addresses now
+(#644), so a selected region and an open card *can* be audited as page
+loads; adding them to the two budgets files is #669. What a navigation
+still cannot show is the cost of the click itself, since Lighthouse's
+navigation mode measures page loads; #646 adds scenarios (timespans around
+scripted interactions) to it. Making the
 CI lane itself see production-like data — a scaled synthetic fixture on
 pull requests, the golden dump nightly — is #647.
 
@@ -260,8 +263,8 @@ Fedora):
 
 | Page | Score | FCP | LCP | TBT | CLS | TTI | script | total (requests) |
 |------|-------|-----|-----|-----|-----|-----|--------|-------|
-| `/?wv=9001` (map view) | 86 | 0.96 s | 1.38 s | 229 ms | 0.006 | 1.90 s | 782.7 kB | 910.3 kB (39) |
-| `/discover?wv=9001` | 92 | 1.19 s | 1.39 s | 83 ms | 0.000 | 1.59 s | 782.7 kB | 983.1 kB (42) |
+| `/wv/9001` (map view) | 86 | 0.96 s | 1.38 s | 229 ms | 0.006 | 1.90 s | 782.7 kB | 910.3 kB (39) |
+| `/discover/wv/9001` | 92 | 1.19 s | 1.39 s | 83 ms | 0.000 | 1.59 s | 782.7 kB | 983.1 kB (42) |
 
 What the report says behind those numbers, on the day the lane was
 switched on:
@@ -288,8 +291,8 @@ calibrated against):
 
 | Page | Score | FCP | LCP | TBT | CLS | TTI | script | total (requests) |
 |------|-------|-----|-----|-----|-----|-----|--------|-------|
-| `/?wv=9001` (map view) | 95 | 0.96 s | 1.37 s | 16 ms | 0.006 | 1.52 s | 782.7 kB | 912.3 kB (39) |
-| `/discover?wv=9001` | 93 | 1.17 s | 1.36 s | 0 ms | 0.000 | 1.36 s | 782.7 kB | 985.9 kB (42) |
+| `/wv/9001` (map view) | 95 | 0.96 s | 1.37 s | 16 ms | 0.006 | 1.52 s | 782.7 kB | 912.3 kB (39) |
+| `/discover/wv/9001` | 93 | 1.17 s | 1.36 s | 0 ms | 0.000 | 1.36 s | 782.7 kB | 985.9 kB (42) |
 
 Across the three runs per page the runner's spread was LCP 1.33–1.49 s,
 TBT 0–128 ms, TTI 1.33–1.64 s, and the request count did not move. The
@@ -309,8 +312,8 @@ three, desktop preset, the machine's own Chrome:
 
 | Page | Score | FCP | LCP | TBT | CLS | TTI | script | total (requests) |
 |------|-------|-----|-----|-----|-----|-----|--------|-------|
-| `/?wv=5` (map view — the world painted leaf region by leaf region) | 63 | 1.18 s | 1.78 s | 679 ms | 0.006 | 2.43 s | 782.7 kB | 1 122.3 kB (38) |
-| `/discover?wv=5` | 89 | 1.17 s | 1.58 s | 115 ms | 0.010 | 1.78 s | 782.7 kB | 1 019.4 kB (43) |
+| `/wv/5` (map view — the world painted leaf region by leaf region) | 63 | 1.18 s | 1.78 s | 679 ms | 0.006 | 2.43 s | 782.7 kB | 1 122.3 kB (38) |
+| `/discover/wv/5` | 89 | 1.17 s | 1.58 s | 115 ms | 0.010 | 1.78 s | 782.7 kB | 1 019.4 kB (43) |
 
 Two changes moved the map root's total this week, and the ratchet has taken
 both savings as the floor:
@@ -483,10 +486,12 @@ Filed, and linked here so the baseline is read with them in mind:
 
 - #643 — the whole application is one 2.87 MB chunk;
   the visitor downloads the admin panels to see a map.
-- #644 — a selected region or experience is not in the URL
-  (only `?wv=` is), so a place cannot be shared and the experience card
-  cannot be a Lighthouse page. Until it is, the lane measures the two
-  shells and not the card.
+- #651 — the basemap is OpenStreetMap's public tile server, and on a page
+  whose map sits inside a region it is the largest thing on the wire.
+  Measured on `/wv/9001/r/9001/e/9001` (the fixture's card, not in the lane
+  yet — #669): 392–830 kB over 28–34 tile requests across six runs, against
+  4.0 kB of this repository's own vector tiles and 13.7 kB from the backend.
+  The two shells sit at world zoom and pay a fraction of it.
 - #551 — the region tile LOD ladder: a z3 tile costs hundreds of
   milliseconds of Postgres time for a few kilobytes. The first known breach
   on the backend side; the probe's row for `tile_world_view_root_regions/3/4/2`
@@ -512,9 +517,12 @@ What the lane does not measure, by design or not yet:
   sees the shell. The local run sees the real catalogue on one machine;
   #647 brings production-like data to CI (a scaled fixture on pull
   requests, the golden dump nightly).
-- **Interactions.** Opening a continent, opening a card — the moments the
-  data cost is paid — have no URL (#644) and are not navigations; #646
-  measures them as scripted scenarios in the local run.
+- **A loaded page, and the click itself.** Opening a continent, opening a
+  card — the moments the data cost is paid — are addresses now (#644), so
+  they can be audited as page loads; #669 puts them in the two budgets
+  files, with the finding above to size them against. What a page load
+  cannot show is the cost of the transition; #646 measures those as
+  scripted scenarios in the local run.
 - **Whether the API is still compressed, in CI.** The fixture's responses
   are below the threshold either way, so removing the middleware would not
   move a single number in the CI lane. The backend's unit tests are what

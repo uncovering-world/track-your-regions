@@ -24,12 +24,23 @@ This document describes how experience markers work in both map surfaces:
 `ExperienceProvider` is the source of truth for region exploration state:
 
 - Fetches region experiences with `includeChildren=false` and `limit=WHOLE_REGION_LIMIT` — a region is read whole, never paged. "Whole" is bounded: `WHOLE_REGION_LIMIT` is 5000, equal to the route's ceiling, so a region holding more than that is returned incompletely and neither surface has a paging path to fetch the rest. The largest today holds 661, and `total` is a real count, so crossing that line is detectable rather than silent — but it is a ceiling, not an absence of one. Neither this list nor Discover has a "load more", and the rows come back `ORDER BY e.name`, so a limit under the region's size truncated alphabetically rather than paging: at 200, Europe's 661 ended after "G". The markers are built from this same array, so the cut removed pins as well as rows
-- Stores selection state (`selectedExperienceId`) and the map's one trigger, `flyToExperienceId`.
+- **Derives** the selection (`selectedExperienceId`) from the address rather than storing it: a
+  card is a place, so `/wv/5/r/6737-europe/e/1234-stonehenge` is what says which one is open
+  (#644, [addresses.md](addresses.md)). Opening and closing write the address, pushed, so Back
+  undoes them; a card the region's list turns out not to hold is dropped from the address once
+  that list has answered, in place and in silence. Read only while the provider is on the region
+  the address names — during a restore the region arrives after the address, and the previous
+  region's list must not be asked about the next region's card. A card in the address means the
+  explore panel is open, which is why a link lands on the card rather than on a closed panel
+- Stores the map's one trigger, `flyToExperienceId`.
   There used to be a second, `shouldFitRegion`: closing a card flew the camera back to the whole
   region, on the theory that opening it had flown you in. It is gone. By the time a reader closes
   a card they have usually panned or zoomed for themselves, and refitting threw that away — and
   since #553 it did more than move the camera, because republishing the view changes which rows
   are listed, so closing one card quietly re-filtered the list
+- Carries the **arrival**: the card the page was opened at, until the list has focused it. A
+  reader who followed a link with a keyboard or a screen reader is put in what the link named
+  rather than at the top of the page; once, so a card opened later by a click moves no focus
 
 This lets list and map stay synchronized without prop drilling. Hover is **not** here — it moved
 out, for the reason below.
