@@ -164,8 +164,8 @@ subdivision sources: `uses_hull` is the only other thing it filters on, so a
 request that named no world view answered with the islands of every hull region
 in the database — drawn over whichever world view was open, above the main
 source, and clickable there (#660). It answers an unscoped request with an empty
-tile rather than with everything, which is what the two world-view sources still
-do not do (#662). `parent_id` stays optional and narrows within the world view:
+tile rather than with everything, and the two world-view sources have answered
+the same way since #662. `parent_id` stays optional and narrows within the world view:
 the root of a world view draws all of its hull regions, a selected region draws
 its children's.
 

@@ -27,11 +27,22 @@ import { fileURLToPath } from 'node:url';
  * tile function is listed with the parameters it takes and whether each is
  * required, so a new one — auto-published the moment it exists — has to say
  * which it is rather than inheriting silence.
+ *
+ * The requirement is then written down in three places, and this holds all
+ * three to that one table: the function body, which enforces it; the
+ * `COMMENT ON FUNCTION`, which is what `\df+` shows; and the parameter table in
+ * `martin/README.md` § Function Sources, which is what someone building a tile
+ * URL reads and which `docs/security/SECURITY.md` § Known Gaps cites as the
+ * enumeration of what Martin publishes.
  */
 
 const SCHEMA_PATH = fileURLToPath(new URL('../../../db/init/01-schema.sql', import.meta.url));
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
 const schema = readFileSync(SCHEMA_PATH, 'utf8');
+
+const README_PATH = fileURLToPath(new URL('../../../martin/README.md', import.meta.url));
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path is a literal resolved against this module's own URL
+const readme = readFileSync(README_PATH, 'utf8');
 
 /**
  * Every tile source, with the parameters it reads out of `query_params`.
@@ -131,6 +142,25 @@ function declaredTileFunctions(): string[] {
   return [...new Set([...names].map((m) => m[1]))].sort();
 }
 
+/**
+ * The Parameters cell of each row in `martin/README.md` § Function Sources, by
+ * source name. That table is the reference for the HTTP surface — what someone
+ * building a tile URL reads — and it is the third place the same requirement is
+ * written down, after the function body and its `COMMENT`.
+ */
+function readmeParameterCells(): Map<string, string> {
+  const cells = new Map<string, string>();
+
+  for (const line of readme.split('\n')) {
+    if (!line.startsWith('| `/tile_')) continue;
+    const columns = line.split('|').map((column) => column.trim());
+    const endpoint = columns[1];
+    const start = endpoint.indexOf('/tile_') + 1;
+    cells.set(endpoint.slice(start, endpoint.indexOf('/{', start)), columns[2]);
+  }
+  return cells;
+}
+
 /** The `COMMENT ON FUNCTION` string a source carries, which is what `\df+` shows. */
 function functionComment(name: string): string {
   const header = `COMMENT ON FUNCTION ${name} IS '`;
@@ -177,16 +207,37 @@ describe('tile function scope guards', () => {
     '%s says in its own comment which parameters it requires',
     (name, { required, optional }) => {
       // `COMMENT ON FUNCTION` is what `\df+` shows someone reading the database
-      // rather than this file, and it is the one place the requirement can go
-      // stale silently — a guard added without the marker moving reads as
-      // optional. `martin/README.md` § Function Sources marks the same
-      // parameters the same way for the HTTP surface.
+      // rather than this file, and a guard added without the marker moving
+      // reads as optional there.
       const comment = functionComment(name);
       for (const param of required) expect(comment).toContain(`${param} (required)`);
       for (const param of optional) expect(comment).toContain(`${param} (optional)`);
       if (required.length === 0 && optional.length === 0) {
         expect(comment).not.toContain('Query params');
       }
+    },
+  );
+
+  it('is listed for every source in the Martin parameter table', () => {
+    // `SECURITY.md` § Known Gaps cites that table as the enumeration of what
+    // Martin publishes, so a source missing from it makes a security claim
+    // stale, not just a reference page.
+    expect([...readmeParameterCells().keys()].sort()).toEqual(Object.keys(TILE_SOURCES).sort());
+  });
+
+  it.each(Object.entries(TILE_SOURCES))(
+    '%s is marked the same way in the Martin parameter table',
+    (name, { required, optional }) => {
+      // The third statement of the same fact, and the one furthest from the
+      // code: a reader building a tile URL reads this and never opens the
+      // schema. Held to `TILE_SOURCES` for the reason the `COMMENT` markers
+      // are — a correction that is not pinned drifts back.
+      // The table writes each name as inline code, which the markers sit
+      // outside of: `world_view_id` (required).
+      const cell = readmeParameterCells().get(name);
+      for (const param of required) expect(cell).toContain(`\`${param}\` (required)`);
+      for (const param of optional) expect(cell).toContain(`\`${param}\` (optional)`);
+      if (required.length === 0 && optional.length === 0) expect(cell).toBe('-');
     },
   );
 

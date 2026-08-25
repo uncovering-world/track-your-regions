@@ -227,13 +227,27 @@ The Python service has a smaller surface than the Node backend but introduces ne
   removed 27 table sources including every column of `experiences` — but `functions: true` still
   auto-discovers and publishes every compatible **function** in the database on its own public
   port (`ports:` in `docker-compose.yml`) with no authentication, so a hidden world view's
-  geometry stays fetchable by tile id regardless of `is_public`. Two of those functions do not
-  even ask for the id: `tile_world_view_root_regions` and `tile_world_view_all_leaf_regions`
-  filter on `p_world_view_id IS NULL OR …`, so a request naming no world view answers for all of
-  them at once rather than refusing — on a database where only one world view holds geometry that
-  is the same answer either way, which is why nothing has surfaced it. `tile_region_islands` was
-  the third, and the one the map itself drew unscoped (#660); it now answers a request that names
-  no world view with an empty tile, which is the shape the other two want. That set is discovered, not
+  geometry stays fetchable by tile id regardless of `is_public`. Five of the six published sources
+  now take an id and answer a request that names none with an empty tile; the sixth,
+  `tile_gadm_root_divisions`, takes none by design and draws the root GADM divisions for every
+  caller alike. But the five do not all take the *world view's* id, so what a caller has to know
+  differs by source. The three that answer for one world view take its id: `tile_region_islands`
+  since #660 (the one the map itself drew unscoped), `tile_world_view_root_regions` and
+  `tile_world_view_all_leaf_regions` since #662; until then both filtered on
+  `p_world_view_id IS NULL OR …`, so a request naming no world view answered for all of them at
+  once and a hidden world view's regions came back without anyone having to guess anything.
+  `tile_region_subregions` reads the same table and takes a **region** id instead, with no
+  world-view filter at all, so a hidden world view's subtree is reachable from any region id
+  inside it without its own id ever being known. And the **default** world view is behind no id
+  whatsoever: its map is GADM itself, drawn by `tile_gadm_root_divisions`, which takes no
+  parameter, and `tile_gadm_subdivisions`, which takes a division id — so a default world view
+  whose `is_public` is false is served unauthenticated with nothing to know. `is_public` governs
+  it exactly as it governs any other world view and `is_default` carries no visibility meaning of
+  its own, which is what makes that a reachable state rather than a hypothetical one
+  (`docs/tech/world-views.md` § The default World View). Requiring the parameter narrows this
+  gap; the ids are small integers, and of the six sources
+  only three answer for a named world view at all — two take a different id and one takes none —
+  so it does not close it. That set is discovered, not
   enumerated: it currently resolves to the six `tile_*` functions in `martin/README.md` § Function
   Sources, and a newly added compatible function would be published the same way, with no edit to
   `martin/config.yaml`. A Martin-level `postgres.functions` allowlist could pin those six
@@ -256,6 +270,28 @@ The Python service has a smaller surface than the Node backend but introduces ne
   curl -s localhost:3000/catalog | jq '.tiles | keys'      # function sources only
   curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/experiences.1/14/8186/5447   # 404
   ```
+
+  The scope requirement above has the same property for the same reason, one layer down. A
+  function definition lives in the database, not in the image, so it reaches an existing instance
+  only when `db/init/01-schema.sql` is re-applied there (the signatures do not change, so
+  `CREATE OR REPLACE` carries it and no migration file is involved). And a running Martin holds an
+  in-process tile cache — `cache_size_mb` is unset in `martin/config.yaml`, so its default is in
+  effect — which is keyed on the request URL: measured on the development stack, an unscoped tile
+  already served kept answering `HTTP 200` with the old bytes after the functions were replaced,
+  while an unscoped tile not yet in the cache answered `HTTP 204`. Restart Martin after applying,
+  and verify on a tile the cache cannot already hold:
+
+  ```bash
+  curl -s -o /dev/null -w '%{http_code}\n' \
+    'localhost:3000/tile_world_view_all_leaf_regions/5/16/11'                   # 204
+  curl -s -o /dev/null -w '%{http_code}\n' \
+    'localhost:3000/tile_world_view_all_leaf_regions/5/16/11?world_view_id=5'   # 200
+  ```
+
+  The first line holds anywhere; the second names the development database's world view, and needs
+  substituting for an id whose world view actually has regions inside the tile chosen — the same
+  caveat `docs/tech/performance.md` carries for the probe's defaults. Two `204`s otherwise read as
+  a deploy that did not land, when what they are is an empty tile for a scope with nothing in it.
 - **The `Vary`/`no-store` treatment is on the world view listing only.** The sibling `optionalAuth` reads answer an anonymous caller with *less data* rather than 401 — `listExperiences`, `/experiences/by-region/:regionId` (curator rejection visibility, **and `is_new`, which varies per user rather than per role**), `/experiences/:id` (its `regions[]` filtered by world view visibility), `/experiences/region-counts`, `/experiences/:id/locations`, `/experiences/by-region/:regionId/locations` — and none of them says so in its headers. Same exposure as the listing had: a shared cache in front of the API could serve a curator's or admin's view to an anonymous visitor. The `is_new` flag widens that from three role-shaped variants to one per reader, so a cache keyed on the URL alone would leak one reader's badge state to another — still only their chips, not their data, but it is the first response here whose variance is per identity. Bounded today only by there being no such cache deployed. Tracked in #460 along with the client-side half.
 - cv-python uses `print()` rather than structured `logging`. Acceptable at L2 (no auth/authz events to log), but follow up with a logging adapter once the audit/observability story expands.
 - Python dev tooling (`mypy`, `pytest`, `bandit`) lives in `cv-python/requirements-dev.txt` and requires a venv at `cv-python/.venv` for the local gates — not tools on PATH, which the npm scripts never reach: each one invokes `.venv/bin/<tool>` by path, and `scripts/require-py-tools.sh` now fails the gate outright when they are absent rather than letting it read as environment noise. CI covers both shapes across two jobs: the checks job builds the same venv with `npm run setup:py:dev`, and the Python test job installs into the runner's own interpreter with `actions/setup-python` + pip.

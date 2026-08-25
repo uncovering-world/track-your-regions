@@ -361,7 +361,12 @@ Three consequences worth keeping in mind when touching this path:
   on another world view's region (#660). It now carries `world_view_id`, and the
   ancestors completion above still refuses an answer from a different world view:
   that read is keyed on a region id alone, and what bounds it is what the caller
-  may see, not what their map is showing.
+  may see, not what their map is showing. Since #662 the three world-view sources
+  enforce their half of this: a request that names no world view answers with an
+  empty tile, so the way a forgotten scope now fails is a layer that draws
+  nothing, not one that draws every world view at once. `useTileUrls` is the only
+  place that builds these URLs, and its tests pin the parameter onto each of
+  them.
 
 ## Region visual feedback
 

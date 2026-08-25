@@ -124,7 +124,7 @@ Every world view carries an `is_public` flag (`world_views.is_public`, default `
 - **Defaults hidden** — `is_public` defaults to `false` at the column level, so every newly created world view — imported through any source, or built by hand in the World View Editor — starts hidden. An admin publishes it explicitly.
 - **Toggle** — the world view settings dialog (`HierarchySwitcher.tsx`) has a "Visible to everyone" switch; a hidden world view carries a "Hidden" chip in the picker.
 
-This is **not** a tile boundary. Martin serves vector tiles on its own public port without authentication, so a hidden world view's geometry stays fetchable by anyone who knows its tile id — visibility bounds the REST API, not the tile server. See `docs/security/SECURITY.md` for the known gap and its planned fix.
+This is **not** a tile boundary. Martin serves vector tiles on its own public port without authentication, so a hidden world view's geometry stays fetchable by anyone who knows its tile id — visibility bounds the REST API, not the tile server. The default world view does not even need that much: its map is GADM itself, and `tile_gadm_root_divisions` takes no parameter at all, so hiding it hides it from the REST API and from nothing else. See `docs/security/SECURITY.md` for the known gap and its planned fix.
 
 ---
 

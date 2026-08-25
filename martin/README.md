@@ -124,12 +124,24 @@ curl -s localhost:3000/catalog | jq '.tiles | keys'
 
 | Endpoint | Parameters | Description |
 |----------|------------|-------------|
-| `/tile_world_view_root_regions/{z}/{x}/{y}` | `world_view_id` | Root regions for a world view |
-| `/tile_world_view_all_leaf_regions/{z}/{x}/{y}` | `world_view_id` | All leaf regions (no subregions) for a world view |
-| `/tile_region_subregions/{z}/{x}/{y}` | `parent_id` | Subregions of a parent |
+| `/tile_world_view_root_regions/{z}/{x}/{y}` | `world_view_id` (required) | Root regions for a world view |
+| `/tile_world_view_all_leaf_regions/{z}/{x}/{y}` | `world_view_id` (required) | All leaf regions (no subregions) for a world view |
+| `/tile_region_subregions/{z}/{x}/{y}` | `parent_id` (required) | Subregions of a parent |
 | `/tile_gadm_root_divisions/{z}/{x}/{y}` | - | Root GADM divisions |
-| `/tile_gadm_subdivisions/{z}/{x}/{y}` | `parent_id` | GADM subdivisions of a parent |
-| `/tile_region_islands/{z}/{x}/{y}` | `world_view_id`, `parent_id` (optional) | Real island boundaries for archipelagos |
+| `/tile_gadm_subdivisions/{z}/{x}/{y}` | `parent_id` (required) | GADM subdivisions of a parent |
+| `/tile_region_islands/{z}/{x}/{y}` | `world_view_id` (required), `parent_id` (optional) | Real island boundaries for archipelagos |
+
+**Required** means the function answers a request that omits the parameter with
+an empty tile — HTTP 204 — rather than dropping the filter and answering with
+every row it could have scoped. The same fact is written down three times: in
+the function body, which enforces it; in the function's own `COMMENT`, which is
+what `\df+` shows; and in the table above. `tileScopeGuards.test.ts` holds all
+three to each other, this table included — a row edited here without the
+function moving with it fails that test. A source that takes no parameter
+(`/tile_gadm_root_divisions`) draws the same thing for every caller by
+definition. Until #662 the two world-view sources were the exception: they
+filtered on `p_world_view_id IS NULL OR …`, so a request naming no world view
+answered with all of them at once.
 
 ### Example Usage
 
