@@ -64,14 +64,17 @@ function pickWorldView(worldViews: WorldView[], wvParam: string | null, isAdmin:
  * region for ever.
  */
 function completeSelectionFromAncestor(selected: Region, ancestor: Region): Partial<Region> | null {
-  // The read this answer comes from is keyed on a region id alone, and one layer
-  // can hand over an id belonging to another world view: at the root
-  // `useTileUrls` asks `tile_region_islands` with no scope at all, and that
-  // function filters on `uses_hull` alone — so the islands of every hull region
-  // in the database are drawn over whichever world view is open, and they are
-  // clickable. Completing the selection from an answer about a different world
-  // view would point this one's map at that one's regions. Refuse, and the map
-  // stays where it is. The tile is the thing that should be scoped (#660).
+  // The read this answer comes from is keyed on a region id alone, and it is
+  // bounded by what the caller may see rather than by what their map is showing
+  // (`requireVisibleWorldView`), so it can answer about another world view's
+  // region. Completing the selection from such an answer would point this map at
+  // that world view's regions. Refuse, and the map stays where it is.
+  //
+  // No region layer draws unscoped now — each names either the world view or a
+  // parent id inside one — so no click should reach here with a foreign region
+  // id. (The GADM layers name neither, and need not: they draw divisions, which
+  // belong to no world view.) `tile_region_islands` named neither until #660
+  // scoped it. This is the fence behind that.
   if (ancestor.worldViewId !== selected.worldViewId) return null;
 
   const patch: Partial<Region> = {};

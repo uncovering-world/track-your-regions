@@ -333,3 +333,56 @@ describe('useTileUrls — rootRegionsBorderUrl', () => {
     expect(result.current.rootRegionsBorderUrl).toBeNull();
   });
 });
+
+describe('useTileUrls — islandTileUrl', () => {
+  it('returns null for GADM (non-custom world view)', () => {
+    mockNavigation.selectedWorldViewId = 1;
+    mockNavigation.isCustomWorldView = false;
+
+    const { result } = renderHook(() => useTileUrls('all-leaf', 'root'));
+
+    expect(result.current.islandTileUrl).toBeNull();
+  });
+
+  it('returns null when no world view is selected', () => {
+    mockNavigation.isCustomWorldView = true;
+    mockNavigation.selectedWorldViewId = null;
+
+    const { result } = renderHook(() => useTileUrls('all-leaf', 'root'));
+
+    expect(result.current.islandTileUrl).toBeNull();
+  });
+
+  it('scopes the root island layer to the world view being viewed', () => {
+    mockNavigation.selectedWorldViewId = 2;
+    mockNavigation.isCustomWorldView = true;
+
+    const { result } = renderHook(() => useTileUrls('all-leaf', 'root'));
+
+    // Without the scope the layer draws every hull region in the database, over
+    // whichever world view is open — and its fills are clickable (#660).
+    expect(result.current.islandTileUrl).toContain('tile_region_islands');
+    expect(result.current.islandTileUrl).toContain('world_view_id=2');
+    expect(result.current.islandTileUrl).not.toContain('parent_id=');
+  });
+
+  it('scopes the island layer to the world view when a parent is being viewed', () => {
+    mockNavigation.selectedWorldViewId = 2;
+    mockNavigation.isCustomWorldView = true;
+
+    const { result } = renderHook(() => useTileUrls(5, 'root'));
+
+    expect(result.current.islandTileUrl).toContain('parent_id=5');
+    expect(result.current.islandTileUrl).toContain('world_view_id=2');
+  });
+
+  it('includes tile version in URL for cache busting', () => {
+    mockNavigation.selectedWorldViewId = 2;
+    mockNavigation.isCustomWorldView = true;
+    mockNavigation.tileVersion = 42;
+
+    const { result } = renderHook(() => useTileUrls('all-leaf', 'root'));
+
+    expect(result.current.islandTileUrl).toContain('_v=42');
+  });
+});

@@ -60,13 +60,16 @@ export function useTileUrls(
   const islandTileUrl = useMemo(() => {
     if (!isCustomWorldView || !selectedWorldViewId) return null;
 
-    const versionParam = `&_v=${tileVersion}`;
+    // The world view is not optional here. `tile_region_islands` filters on
+    // `uses_hull` alone, so a request carrying no scope answered with the islands
+    // of every hull region in the database — drawn over whichever world view was
+    // open, and clickable, so a click resolved to another world view's region
+    // (#660). A parent id already belongs to one world view; the root branch is
+    // the one that had no scope at all.
+    const scope = `world_view_id=${selectedWorldViewId}`;
+    const parentParam = viewingRegionId === 'all-leaf' ? '' : `&parent_id=${viewingRegionId}`;
 
-    if (viewingRegionId === 'all-leaf') {
-      return `${MARTIN_URL}/tile_region_islands/{z}/{x}/{y}?_v=${tileVersion}`;
-    } else {
-      return `${MARTIN_URL}/tile_region_islands/{z}/{x}/{y}?parent_id=${viewingRegionId}${versionParam}`;
-    }
+    return `${MARTIN_URL}/tile_region_islands/{z}/{x}/{y}?${scope}${parentParam}&_v=${tileVersion}`;
   }, [isCustomWorldView, selectedWorldViewId, viewingRegionId, tileVersion]);
 
   // Root regions border overlay URL (only at root level for hover highlighting)
