@@ -103,7 +103,6 @@ Every world view carries an `is_public` flag (`world_views.is_public`, default `
   - `GET /api/world-views/:worldViewId/regions`
   - `GET /api/world-views/:worldViewId/regions/root`
   - `GET /api/world-views/:worldViewId/regions/search`
-  - `GET /api/world-views/:worldViewId/regions/leaf`
   - `GET /api/world-views/:worldViewId/regions/root/geometries`
   - `GET /api/world-views/:worldViewId/compute-geometries/status`
   - `POST /api/world-views/:worldViewId/division-usage`
@@ -475,7 +474,7 @@ Handle countries spanning multiple continents:
 - `GET /api/world-views/:worldViewId/regions` - List regions in world view
 - `GET /api/world-views/:worldViewId/regions/root` - List root regions
 - `GET /api/world-views/:worldViewId/regions/search` - Search regions
-- `GET /api/world-views/:worldViewId/regions/leaf` - List leaf regions
+- `GET /api/world-views/regions/:regionId/subregions` - List a region's children (what the map and the list read one level at a time; there is deliberately no "every leaf in the world view" read — see `experience-map-ui.md` § What the map reads at each level)
 - `POST /api/world-views/:worldViewId/regions` - Create region
 - `PUT /api/world-views/regions/:regionId` - Update region
 - `DELETE /api/world-views/regions/:regionId` - Delete region
