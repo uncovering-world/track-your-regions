@@ -46,7 +46,6 @@ export {
   type RegionSearchResult,
   fetchRegions,
   fetchRootRegions,
-  fetchLeafRegions,
   fetchSubregions,
   fetchRegionAncestors,
   createRegion,

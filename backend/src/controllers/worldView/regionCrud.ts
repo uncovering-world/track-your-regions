@@ -119,41 +119,6 @@ export async function getSubregions(req: Request, res: Response): Promise<void> 
 }
 
 /**
- * Get all leaf regions (regions without subregions) in a World View
- * This is used for the default view showing all regions at their finest granularity
- */
-export async function getLeafRegions(req: Request, res: Response): Promise<void> {
-  const worldViewId = parseInt(String(req.params.worldViewId));
-
-  const result = await pool.query(`
-    SELECT
-      cg.id,
-      cg.world_view_id as "worldViewId",
-      cg.name,
-      cg.description,
-      cg.parent_region_id as "parentRegionId",
-      cg.color,
-      cg.is_custom_boundary as "isCustomBoundary",
-      cg.uses_hull as "usesHull",
-      CASE WHEN cg.focus_bbox IS NOT NULL
-        THEN json_build_array(cg.focus_bbox[1], cg.focus_bbox[2], cg.focus_bbox[3], cg.focus_bbox[4])
-        ELSE NULL
-      END as "focusBbox",
-      CASE WHEN cg.anchor_point IS NOT NULL
-        THEN json_build_array(ST_X(cg.anchor_point), ST_Y(cg.anchor_point))
-        ELSE NULL
-      END as "anchorPoint",
-      false as "hasSubregions"
-    FROM regions cg
-    WHERE cg.world_view_id = $1
-      AND cg.is_leaf = true
-    ORDER BY cg.name
-  `, [worldViewId]);
-
-  res.json(result.rows);
-}
-
-/**
  * Get ancestors of a region (from root to the region itself)
  */
 export async function getRegionAncestors(req: Request, res: Response): Promise<void> {
