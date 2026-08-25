@@ -1,10 +1,10 @@
 // @refresh reset - This file exports both a Provider component and a hook
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { AdministrativeDivision, WorldView, Region } from '../types';
 import { fetchWorldViews, fetchDivisionAncestors, fetchRootRegions, fetchRegionAncestors } from '../api';
 import { useAuth } from './useAuth';
+import { useAppAddress } from './useAppAddress';
 import { RegionHoverProvider } from './useRegionHover';
 
 interface NavigationContextType {
@@ -42,12 +42,12 @@ const NavigationContext = createContext<NavigationContextType | null>(null);
 
 /**
  * Which world view to show when the current one is absent from the visible list:
- * the one named in the URL if it is there, otherwise the default (admins) or the
- * first available (everyone else).
+ * the one the address names if it is there, otherwise the default (admins) or
+ * the first available (everyone else).
  */
-function pickWorldView(worldViews: WorldView[], wvParam: string | null, isAdmin: boolean): WorldView | undefined {
-  if (wvParam) {
-    const fromUrl = worldViews.find((w) => w.id === parseInt(wvParam, 10));
+function pickWorldView(worldViews: WorldView[], urlWorldViewId: number | null, isAdmin: boolean): WorldView | undefined {
+  if (urlWorldViewId !== null) {
+    const fromUrl = worldViews.find((w) => w.id === urlWorldViewId);
     if (fromUrl) return fromUrl;
   }
   if (isAdmin) return worldViews.find((w) => w.isDefault) ?? worldViews[0];
@@ -98,9 +98,9 @@ function completeSelectionFromAncestor(selected: Region, ancestor: Region): Part
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
   const { isAdmin, isLoading: authLoading, user } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { address, go } = useAppAddress();
   const [selectedWorldView, setSelectedWorldView] = useState<WorldView | null>(null);
-  /** What `?wv` held the last time the reconciliation ran; see followUrlWorldView. */
+  /** What the address named the last time the reconciliation ran; see followUrlWorldView. */
   const lastSeenUrlWorldViewId = useRef<number | null>(null);
   const [selectedDivision, setSelectedDivision] = useState<AdministrativeDivision | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
@@ -113,17 +113,15 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     setTileVersion(v => v + 1);
   }, []);
 
-  // Get world view ID from URL immediately (before world views load)
-  const urlWorldViewId = useMemo(() => {
-    const wvParam = searchParams.get('wv');
-    return wvParam ? parseInt(wvParam, 10) : null;
-  }, [searchParams]);
+  // The world view the address names, known before anything has loaded. Null
+  // off the map too — the account and admin pages carry no place.
+  const urlWorldViewId = address?.worldViewId ?? null;
 
   // Selected world view ID - available immediately from URL, falls back to selected object
   const selectedWorldViewId = selectedWorldView?.id ?? urlWorldViewId;
 
   // Check if current world view is custom (not GADM default)
-  // URL param presence implies custom (since we don't add ?wv for default)
+  // An address naming a world view implies custom: the default writes no segment.
   const isCustomWorldView = selectedWorldView
     ? !selectedWorldView.isDefault
     : urlWorldViewId !== null;
@@ -246,27 +244,41 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     setRegionBreadcrumbs([]);
   }, []);
 
-  /** Keep `?wv` in step; `null` and the default world view both mean "no param". */
-  const syncWorldViewParam = useCallback((worldView: WorldView | null) => {
-    setSearchParams(prev => {
-      const newParams = new URLSearchParams(prev);
-      if (!worldView || worldView.isDefault) {
-        newParams.delete('wv'); // Don't clutter URL for default
-      } else {
-        newParams.set('wv', worldView.id.toString());
-      }
-      return newParams;
-    }, { replace: true });
-  }, [setSearchParams]);
+  /**
+   * Write the world view into the address, and nothing under it: a switch drops
+   * the region and the card from the address as `clearWorldViewContext` drops
+   * them from state. `null` and the default world view both write no segment.
+   * Off the map — the account and admin pages — there is no place to write.
+   *
+   * Keyed on the mode alone rather than the whole address, so that every
+   * callback built on this one keeps its identity across the addresses it
+   * writes; the reconciliation effect depends on them.
+   */
+  const mode = address?.mode ?? null;
+  const writeWorldView = useCallback((worldView: WorldView | null, replace: boolean) => {
+    if (mode === null) return;
+    go({
+      mode,
+      worldViewId: !worldView || worldView.isDefault ? null : worldView.id,
+      regionId: null,
+      experienceId: null,
+      categoryId: null,
+    }, { replace });
+  }, [mode, go]);
 
   // Everything a world view *change* entails, in one place, so the automatic
-  // reconciliation and the manual switch cannot drift apart.
-  const applyWorldView = useCallback((worldView: WorldView) => {
+  // reconciliation and the manual switch cannot drift apart. `write` says what
+  // happens to the address: a switch the visitor made is pushed, so Back returns
+  // to the world view they left; a correction replaces; and following an address
+  // that already names the world view writes nothing — a write here would drop
+  // the region that address may still carry, before the region's own follow has
+  // had the chance to restore it.
+  const applyWorldView = useCallback((worldView: WorldView, write: 'push' | 'replace' | 'none') => {
     setSelectedWorldView(worldView);
     setTileVersion(worldView.tileVersion ?? 0);
     clearWorldViewContext();
-    syncWorldViewParam(worldView);
-  }, [clearWorldViewContext, syncWorldViewParam]);
+    if (write !== 'none') writeWorldView(worldView, write === 'replace');
+  }, [clearWorldViewContext, writeWorldView]);
 
   /** Nothing is visible: drop the selection, its context, and the stale param. */
   const dropWorldView = useCallback(() => {
@@ -275,34 +287,34 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       clearWorldViewContext();
     }
     // Outside the guard above: with nothing ever selected there is no context to
-    // clear, but `?wv` still names a world view this caller cannot see, and this
-    // is the one branch that never gets a second chance — no selection is made,
-    // so nothing re-runs. Left in place it keeps isCustomWorldView true and
-    // selectedWorldViewId pointing at that id, so rootRegions stays enabled and
-    // 404s on every load, and the address bar goes on advertising it.
-    if (urlWorldViewId !== null) syncWorldViewParam(null);
-  }, [selectedWorldView, urlWorldViewId, clearWorldViewContext, syncWorldViewParam]);
+    // clear, but the address still names a world view this caller cannot see,
+    // and this is the one branch that never gets a second chance — no selection
+    // is made, so nothing re-runs. Left in place it keeps isCustomWorldView true
+    // and selectedWorldViewId pointing at that id, so rootRegions stays enabled
+    // and 404s on every load, and the address bar goes on advertising it.
+    if (urlWorldViewId !== null) writeWorldView(null, true);
+  }, [selectedWorldView, urlWorldViewId, clearWorldViewContext, writeWorldView]);
 
   /**
-   * Reconcile the selection against `?wv`, reporting whether it handled the
-   * state. Reached by editing the address bar, opening a shared link in a tab
-   * that already has a selection, or going back across a switch (#465).
+   * Reconcile the selection against the address, reporting whether it handled
+   * the state. Reached by editing the address bar, opening a shared link in a
+   * tab that already has a selection, or going back across a switch (#465).
    *
-   * Handles two: the param names a visible world view other than the selected
+   * Handles two: the address names a visible world view other than the selected
    * one, which is followed; and it names one this caller cannot see while the
-   * selection is still fine, in which case the param is retired rather than the
-   * selection. Everything else falls through to the reconciliation below.
+   * selection is still fine, in which case the address is retired rather than
+   * the selection. Everything else falls through to the reconciliation below.
    *
-   * Acts only when the param itself moved, which is what `urlChanged` reports.
+   * Acts only when the address itself moved, which is what `urlChanged` reports.
    * Without it the branch cannot tell a URL edit from its own write still in
-   * flight: applyWorldView sets the selection urgently and writes the param
-   * through the router's startTransition, so there is a commit carrying the new
-   * selection beside the old param — and following that would send the user back
-   * to the world view they just left.
+   * flight: a switch sets the selection urgently and writes the address through
+   * the router's startTransition, so there is a commit carrying the new
+   * selection beside the old address — and following that would send the user
+   * back to the world view they just left.
    *
-   * Cannot loop: applyWorldView syncs the param to what it selected, so the next
-   * run finds them equal, or finds no param at all when the world view is the
-   * default one.
+   * Cannot loop: a switch writes the address it selected, so the next run finds
+   * them equal, or finds no world view at all when it is the default one; and
+   * following writes nothing.
    */
   const followUrlWorldView = useCallback((visible: WorldView[], urlChanged: boolean) => {
     if (!urlChanged) return false;
@@ -311,41 +323,41 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
     const fromUrl = visible.find((w: WorldView) => w.id === urlWorldViewId);
     if (fromUrl) {
-      applyWorldView(fromUrl);
+      applyWorldView(fromUrl, 'none');
       return true;
     }
 
-    // Named something this caller cannot see. Retire the param against the
+    // Named something this caller cannot see. Retire the address against the
     // selection — but only while that selection is itself still visible, which
     // is the case this branch is for: nothing downstream corrects it, because
     // the guard below returns precisely because the selection is fine, so the
-    // param would stand until the next full load.
+    // address would stand until the next full load.
     //
     // When neither is visible, say so and fall through. The reconciliation
-    // replaces the selection and rewrites the param in the same pass; retiring
+    // replaces the selection and rewrites the address in the same pass; retiring
     // it here would write an id this caller cannot see either, and cost a
     // second pass to undo.
     if (!visible.some((w: WorldView) => w.id === selectedWorldView.id)) return false;
 
-    syncWorldViewParam(selectedWorldView);
+    writeWorldView(selectedWorldView, true);
     return true;
-  }, [selectedWorldView, urlWorldViewId, applyWorldView, syncWorldViewParam]);
+  }, [selectedWorldView, urlWorldViewId, applyWorldView, writeWorldView]);
 
   /** First pick, not a change: take the world view without clearing anything. */
   const adoptWorldView = useCallback((worldView: WorldView) => {
     setSelectedWorldView(worldView);
     setTileVersion(worldView.tileVersion ?? 0);
 
-    // The region context stays, but the URL must not: `?wv=` still naming a
+    // The region context stays, but the URL must not: an address still naming a
     // world view that was just rejected leaves the picker and the address bar
     // disagreeing, re-shares a dead link, and keeps selectedWorldViewId falling
     // back to that id on every load — one 404 root-regions request per visit
     // before it corrects. Only when the URL named something else, so that a bare
     // `/` stays bare.
     if (urlWorldViewId !== null && urlWorldViewId !== worldView.id) {
-      syncWorldViewParam(worldView);
+      writeWorldView(worldView, true);
     }
-  }, [urlWorldViewId, syncWorldViewParam]);
+  }, [urlWorldViewId, writeWorldView]);
 
   // Set the world view from the URL param or the default — and re-check it
   // whenever the list itself changes, which it does when the identity does.
@@ -379,11 +391,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     // still visible, which is exactly when this case arises, so it used to
     // swallow it and leave the picker and the address bar disagreeing (#465).
     //
-    // Cannot loop. applyWorldView syncs the param to whatever it selected, so the
-    // next run either finds them equal or finds no param at all — a default world
-    // view writes none — and falls through to the guard below.
-    // Read once per run, and only past the guards above, so a param that moves
-    // while the list is still in flight is still pending when it lands.
+    // Cannot loop. Following writes nothing, and a switch writes the address it
+    // selected, so the next run either finds them equal or finds no world view
+    // at all — a default one writes none — and falls through to the guard below.
+    // Read once per run, and only past the guards above, so an address that
+    // moves while the list is still in flight is still pending when it lands.
     const urlChanged = urlWorldViewId !== lastSeenUrlWorldViewId.current;
     lastSeenUrlWorldViewId.current = urlWorldViewId;
 
@@ -391,15 +403,16 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
     if (selectedWorldView && worldViews.some((w: WorldView) => w.id === selectedWorldView.id)) return;
 
-    const worldView = pickWorldView(worldViews, searchParams.get('wv'), isAdmin);
+    const worldView = pickWorldView(worldViews, urlWorldViewId, isAdmin);
     if (!worldView) return;
 
     if (selectedWorldView) {
       // Replacing one the caller can no longer see: a full switch, because
-      // leaving its region and breadcrumbs rendered — with `?wv=` still naming
-      // it — is the outcome this effect exists to remove. Dropping it halfway is
-      // worse than not dropping it at all.
-      applyWorldView(worldView);
+      // leaving its region and breadcrumbs rendered — with the address still
+      // naming it — is the outcome this effect exists to remove. Dropping it
+      // halfway is worse than not dropping it at all. A correction, so the
+      // address is replaced rather than pushed.
+      applyWorldView(worldView, 'replace');
     } else {
       // First pick, not a change: nothing to clear, and clearing would be
       // destructive. rootRegions is enabled from the URL before any world view
@@ -412,7 +425,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, [worldViewsLoaded, worldViewsFetching, visibleWorldViewIds, isAdmin, selectedWorldView,
       urlWorldViewId, dropWorldView, followUrlWorldView, adoptWorldView]);
 
-  const handleSetSelectedWorldView = applyWorldView;
+  // A switch the visitor made: pushed, so Back returns to the world view they left.
+  const handleSetSelectedWorldView = useCallback(
+    (worldView: WorldView) => applyWorldView(worldView, 'push'),
+    [applyWorldView],
+  );
 
   const handleSetSelectedDivision = useCallback((division: AdministrativeDivision | null) => {
     setSelectedDivision(division);

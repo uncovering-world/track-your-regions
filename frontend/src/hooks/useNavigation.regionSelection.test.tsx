@@ -23,7 +23,7 @@ vi.mock('./useAuth', () => ({
 
 import { NavigationProvider, useNavigation } from './useNavigation';
 
-function makeWrapper(entry = '/?wv=5') {
+function makeWrapper(entry = '/wv/5') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
