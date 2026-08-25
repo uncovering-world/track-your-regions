@@ -11,9 +11,8 @@ import {
 import { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../../shared/GuardedMap';
 import { useQuery } from '@tanstack/react-query';
-import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../../../constants/mapStyles';
-import { smartFitBounds } from '../../../utils/mapUtils';
+import { focusFromGeoJson, smartFitBounds } from '../../../utils/mapUtils';
 import {
   fetchRegionMemberGeometries,
   startWorldViewGeometryComputation,
@@ -172,8 +171,10 @@ function fitMapToRegion(
       type: 'FeatureCollection',
       features: [geometryFeature as unknown as GeoJSON.Feature],
     };
-    const bbox = turf.bbox(geojson) as [number, number, number, number];
-    smartFitBounds(map, bbox, { padding: 50, duration, geojson });
+    const focus = focusFromGeoJson(geojson);
+    if (focus) {
+      smartFitBounds(map, focus.bbox, { padding: 50, duration, anchorPoint: focus.anchorPoint });
+    }
   } catch (e) {
     console.error('Failed to fit bounds:', e);
   }
@@ -233,8 +234,9 @@ export function GeometryMapPanel({
 
   const [mapLoaded, setMapLoaded] = useState(false);
 
-  // Fit map bounds — same pattern as RegionMapVT:
-  // prefer pre-computed focusBbox (handles antimeridian), fall back to turf.bbox.
+  // Fit map bounds — same pattern as RegionMapVT: prefer pre-computed
+  // focusBbox, fall back to measuring the geometry with focusFromGeoJson.
+  // Both handle the antimeridian, and by the same rule.
   // Map is always mounted, so we get smooth fly transitions between regions.
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
@@ -478,6 +480,7 @@ export function GeometryMapPanel({
         onConfirm={handleBoundaryConfirm}
         sourceGeometries={stagedGeometries}
         focusBbox={selectedRegion?.focusBbox}
+        anchorPoint={selectedRegion?.anchorPoint}
         title={`Redefine Boundaries for "${selectedRegion?.name || 'Region'}"`}
       />
 

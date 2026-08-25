@@ -1,10 +1,9 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
-import * as turf from '@turf/turf';
 import type { Region, RegionMember } from '../../../../../types';
 import type { SubdivisionGroup } from './types';
 import { fetchDivisionGeometry, fetchRegionMemberGeometries, fetchDescendantMemberGeometries } from '../../../../../api';
-import { smartFitBounds } from '../../../../../utils/mapUtils';
+import { focusFromGeoJson, smartFitBounds } from '../../../../../utils/mapUtils';
 
 interface UseGeometryLoadingParams {
   selectedRegion: Region | null;
@@ -51,8 +50,9 @@ export function useGeometryLoading({
   const getMapCenter = useCallback((): [number, number] => {
     if (mapGeometries && mapGeometries.features.length > 0) {
       try {
-        const bbox = turf.bbox(mapGeometries);
-        return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2];
+        // focusFromGeoJson rather than the midpoint of a raw bbox: over the
+        // dateline that midpoint lands half a world away from the geometry.
+        return focusFromGeoJson(mapGeometries)?.anchorPoint ?? [0, 20];
       } catch {
         return [0, 20];
       }
@@ -239,8 +239,12 @@ export function useGeometryLoading({
     const combined: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: allFeatures };
 
     try {
-      const bbox = turf.bbox(combined) as [number, number, number, number];
-      smartFitBounds(mapRef.current, bbox, { padding: 50, duration: 500, geojson: combined });
+      const focus = focusFromGeoJson(combined);
+      if (focus) {
+        smartFitBounds(mapRef.current, focus.bbox, {
+          padding: 50, duration: 500, anchorPoint: focus.anchorPoint,
+        });
+      }
     } catch (e) {
       console.error('Failed to fit bounds:', e);
     }
