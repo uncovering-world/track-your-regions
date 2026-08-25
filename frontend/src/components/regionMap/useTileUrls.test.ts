@@ -25,6 +25,19 @@ beforeEach(() => {
   mockNavigation.tileVersion = 1;
 });
 
+/**
+ * The scope a tile URL carries, read as a query string rather than searched for
+ * as a substring: `toContain('world_view_id=2')` is also satisfied by
+ * `world_view_id=20`, and `parent_id=5` by `parent_id=50`, so a builder that
+ * appended a digit would pass every one of these assertions.
+ *
+ * The `{z}/{x}/{y}` placeholders sit in the path, so the query parses as one.
+ */
+function scope(url: string | null): URLSearchParams {
+  expect(url).not.toBeNull();
+  return new URLSearchParams(url!.slice(url!.indexOf('?') + 1));
+}
+
 describe('useTileUrls — contextLayers', () => {
   it('returns empty for GADM (non-custom world view)', () => {
     mockNavigation.selectedWorldViewId = 1;
@@ -88,9 +101,9 @@ describe('useTileUrls — contextLayers', () => {
     expect(result.current.contextLayers[0].highlightId).toBe(5);
     expect(result.current.contextLayers[0].url).toContain('tile_world_view_root_regions');
     expect(result.current.contextLayers[1].highlightId).toBe(10);
-    expect(result.current.contextLayers[1].url).toContain('parent_id=5');
+    expect(scope(result.current.contextLayers[1].url).get('parent_id')).toBe('5');
     expect(result.current.contextLayers[2].highlightId).toBe(20);
-    expect(result.current.contextLayers[2].url).toContain('parent_id=10');
+    expect(scope(result.current.contextLayers[2].url).get('parent_id')).toBe('10');
   });
 
   it('returns root regions URL for root-level breadcrumb (parentRegionId=null)', () => {
@@ -103,7 +116,7 @@ describe('useTileUrls — contextLayers', () => {
 
     expect(result.current.contextLayers).toHaveLength(1);
     expect(result.current.contextLayers[0].url).toContain('tile_world_view_root_regions');
-    expect(result.current.contextLayers[0].url).toContain('world_view_id=2');
+    expect(scope(result.current.contextLayers[0].url).get('world_view_id')).toBe('2');
     expect(result.current.contextLayers[0].highlightId).toBe(5);
   });
 
@@ -124,7 +137,7 @@ describe('useTileUrls — contextLayers', () => {
     expect(result.current.contextLayers[0].highlightId).toBe(5);
     // Second layer: nested level
     expect(result.current.contextLayers[1].url).toContain('tile_region_subregions');
-    expect(result.current.contextLayers[1].url).toContain('parent_id=5');
+    expect(scope(result.current.contextLayers[1].url).get('parent_id')).toBe('5');
     expect(result.current.contextLayers[1].highlightId).toBe(10);
   });
 
@@ -143,9 +156,9 @@ describe('useTileUrls — contextLayers', () => {
     expect(result.current.contextLayers).toHaveLength(3);
     expect(result.current.contextLayers[0].highlightId).toBe(5);
     expect(result.current.contextLayers[1].highlightId).toBe(10);
-    expect(result.current.contextLayers[1].url).toContain('parent_id=5');
+    expect(scope(result.current.contextLayers[1].url).get('parent_id')).toBe('5');
     expect(result.current.contextLayers[2].highlightId).toBe(30);
-    expect(result.current.contextLayers[2].url).toContain('parent_id=10');
+    expect(scope(result.current.contextLayers[2].url).get('parent_id')).toBe('10');
   });
 
   it('includes tile version in URL for cache busting', () => {
@@ -272,7 +285,7 @@ describe('useTileUrls — tileUrl', () => {
     const { result } = renderHook(() => useTileUrls('all-leaf', 'root'));
 
     expect(result.current.tileUrl).toContain('tile_world_view_all_leaf_regions');
-    expect(result.current.tileUrl).toContain('world_view_id=2');
+    expect(scope(result.current.tileUrl).get('world_view_id')).toBe('2');
   });
 
   it('returns subregions URL for custom world view with parent', () => {
@@ -282,7 +295,7 @@ describe('useTileUrls — tileUrl', () => {
     const { result } = renderHook(() => useTileUrls(5, 'root'));
 
     expect(result.current.tileUrl).toContain('tile_region_subregions');
-    expect(result.current.tileUrl).toContain('parent_id=5');
+    expect(scope(result.current.tileUrl).get('parent_id')).toBe('5');
   });
 
   it('returns GADM root URL for non-custom world view at root', () => {
@@ -301,7 +314,7 @@ describe('useTileUrls — tileUrl', () => {
     const { result } = renderHook(() => useTileUrls('all-leaf', 100));
 
     expect(result.current.tileUrl).toContain('tile_gadm_subdivisions');
-    expect(result.current.tileUrl).toContain('parent_id=100');
+    expect(scope(result.current.tileUrl).get('parent_id')).toBe('100');
   });
 });
 
@@ -313,6 +326,11 @@ describe('useTileUrls — rootRegionsBorderUrl', () => {
     const { result } = renderHook(() => useTileUrls('all-leaf', 'root'));
 
     expect(result.current.rootRegionsBorderUrl).toContain('tile_world_view_root_regions');
+    // The scope is what the border layer draws, not a refinement of it:
+    // tile_world_view_root_regions answers a request that names no world view
+    // with an empty tile, so a URL that lost the parameter draws nothing at all
+    // (#662). It used to draw every world view's roots at once.
+    expect(scope(result.current.rootRegionsBorderUrl).get('world_view_id')).toBe('2');
   });
 
   it('returns null when not at root level', () => {
@@ -362,8 +380,8 @@ describe('useTileUrls — islandTileUrl', () => {
     // Without the scope the layer draws every hull region in the database, over
     // whichever world view is open — and its fills are clickable (#660).
     expect(result.current.islandTileUrl).toContain('tile_region_islands');
-    expect(result.current.islandTileUrl).toContain('world_view_id=2');
-    expect(result.current.islandTileUrl).not.toContain('parent_id=');
+    expect(scope(result.current.islandTileUrl).get('world_view_id')).toBe('2');
+    expect(scope(result.current.islandTileUrl).get('parent_id')).toBeNull();
   });
 
   it('scopes the island layer to the world view when a parent is being viewed', () => {
@@ -372,8 +390,8 @@ describe('useTileUrls — islandTileUrl', () => {
 
     const { result } = renderHook(() => useTileUrls(5, 'root'));
 
-    expect(result.current.islandTileUrl).toContain('parent_id=5');
-    expect(result.current.islandTileUrl).toContain('world_view_id=2');
+    expect(scope(result.current.islandTileUrl).get('parent_id')).toBe('5');
+    expect(scope(result.current.islandTileUrl).get('world_view_id')).toBe('2');
   });
 
   it('includes tile version in URL for cache busting', () => {
