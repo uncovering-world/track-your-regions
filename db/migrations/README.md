@@ -37,6 +37,15 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`032-antimeridian-focus-data.sql` recomputes `focus_bbox` and `anchor_point` for the
+regions the antimeridian fix in `update_region_focus_data()` reaches (#666). The trigger
+fires only on `geom` and `hull_geom`, so a database already holding rows keeps the wrong
+boxes until something re-fires it: on the dev database the Far Eastern Federal District and
+Fiji each claimed every longitude on Earth and anchored the camera in the wrong ocean. This
+one runs *after* the next re-application of `01-schema.sql`, not before — it needs the fixed
+function to be the one that answers, and its guard refuses to run otherwise rather than
+writing the same wrong boxes back in place. Re-running it is a no-op.
+
 `031-data-assertion-acceptances.sql` adds `data_assertion_acceptances`, the ledger
 behind the admin panel's catalogue checks: one row per act of accepting what an
 assertion currently finds, so the newest row per assertion is the debt this
