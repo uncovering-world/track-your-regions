@@ -278,9 +278,12 @@ Hooks in `frontend/src/hooks/` are app-wide concerns shared across many componen
 
 | Hook | Purpose |
 |------|---------|
+| `useAppAddress` | The app's address, read and written through one door — see [addresses.md](addresses.md). Nothing else touches `useSearchParams` or `navigate` for app state |
+| `useAddressedRegion` | The selected region: the object, the read that restores it from the address, the degradation and the canonical slug |
+| `useDocumentTitle` | The tab names the place the page is showing |
 | `useNavigation` | World views, divisions, breadcrumbs, tile version |
 | `useAuth` | Authentication state, login/logout |
-| `useExperienceContext` | Experiences, selection, what the map is showing |
+| `useExperienceContext` | Experiences, selection (read from the address), what the map is showing |
 | `useHoverContext` | What the pointer is over — a store, not state, and read where it is drawn. Map mode's provider is mounted by `ExperienceProvider`, Discover's by `DiscoverPage` |
 | `useRegionHover` | Which region the pointer is over — the same store shape, mounted by `NavigationProvider`. As context state it re-rendered every `useNavigation` consumer per mouse move |
 | `useSeenWindowIds` | Which rows a windowed list's viewport has held, accumulated and flushed on a timer — what New-badge impressions may honestly report |
@@ -298,6 +301,7 @@ Shared utilities live in `frontend/src/utils/`, one module per concern:
 
 | Module | Purpose |
 |--------|---------|
+| `appUrl.ts` | The URL grammar: parse, build, slugs, the legacy `?wv=` redirect. One module, with a round-trip test |
 | `categoryColors.ts` | Category color mapping, shared color constants |
 | `dateFormat.ts` | Date/time formatting helpers |
 | `imageUrl.ts` | Thumbnail URL generation |

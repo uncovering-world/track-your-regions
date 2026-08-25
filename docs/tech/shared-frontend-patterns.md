@@ -21,6 +21,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 
 | Module | Key exports |
 |--------|-------------|
+| `appUrl.ts` | `parseAppUrl(pathname, search)`, `buildAppUrl(address, names?)`, `legacyRedirect()`, `slugify()`, `slugsOf()` — the app's URL grammar, parse and build together with a round-trip test. Reach for it through `useAppAddress()` (`{ address, go }`) rather than `useSearchParams`/`navigate`: `go` decides push vs replace and keeps the slugs a write does not rename. See [addresses.md](addresses.md) |
 | `categoryColors.ts` | Category color mapping, `VISITED_GREEN` (`#22c55e`), `PARTIAL_AMBER` (`#F59E0B`) |
 | `dateFormat.ts` | `formatRelativeTime()`, `formatDuration(start, end)` |
 | `imageUrl.ts` | `toThumbnailUrl()`, `extractImageUrl()` |
@@ -41,6 +42,7 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 
 | Need | Use this | Instead of |
 |------|----------|------------|
+| Read or write the app's place | `useAppAddress()` → `{ address, go }` | `useSearchParams()` / `useNavigate()`. `go` builds the URL from one grammar, no-ops on the address the page is already at, pushes what the visitor did and replaces what the app corrected, and keeps the slugs of ids it is not renaming. Hand-writing a path drops one of those every time — usually the slug of the id you were not thinking about |
 | Loading spinner | `<LoadingSpinner />` | Inline `<Box sx={{display:'flex', justifyContent:'center'}}><CircularProgress /></Box>` |
 | Preload a card's picture | `preloadCardImage(exp.image_url)` | `new Image()` on `extractImageUrl(exp.image_url)` — that is the *original*, which no surface renders (every one uses a `toThumbnailUrl()` size), and it neither remembers failures nor knows that four urls in five answer 403 |
 | Empty state message | `<EmptyState message="..." />` | Inline `<Typography color="text.secondary">No items.</Typography>` |

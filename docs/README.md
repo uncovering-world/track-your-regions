@@ -27,6 +27,7 @@ docs/
 | [ddd-overview.md](tech/ddd-overview.md) | Domain-Driven Design concepts used in the project |
 | [experiences.md](tech/experiences.md) | Experience sources, sync, region assignment, API |
 | [experience-map-ui.md](tech/experience-map-ui.md) | Map Mode + Discover Mode marker layers, hover/selection sync, multi-location behavior |
+| [addresses.md](tech/addresses.md) | The URL grammar — what a link carries, ids vs slugs, push vs replace, silent degradation, where it is implemented |
 | [world-views.md](tech/world-views.md) | Custom regional hierarchies, geometry computation |
 | [custom-subdivision-map-tools.md](tech/custom-subdivision-map-tools.md) | Create Subregions map tab internals (`assign/split/cut`), geometry loading, pagination |
 | [geometry-columns.md](tech/geometry-columns.md) | Geometry system reference — pipeline rules, columns, triggers, functions, tile cache |
