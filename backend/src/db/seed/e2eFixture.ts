@@ -1,8 +1,9 @@
 /**
  * Deterministic fixture for the Playwright smoke lane.
  *
- * Ids are pinned so the specs can navigate to ?wv=9001 without discovering
- * them at runtime. Derived columns (anchor_point, focus_bbox, geom_area_km2,
+ * Ids are pinned so the specs can navigate to a place by address — /wv/9001,
+ * /wv/9001/r/9001, /wv/9001/r/9001/e/9001 (#644) — without discovering them at
+ * runtime. Derived columns (anchor_point, focus_bbox, geom_area_km2,
  * the 3857 mirror) are deliberately absent: the triggers on `regions` own
  * them, and duplicating that here would create a second, wrong source of truth.
  */

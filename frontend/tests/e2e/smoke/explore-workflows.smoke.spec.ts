@@ -1,18 +1,14 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // Mirrors backend/src/db/seed/e2eFixture.ts — keep in sync.
 const FIXTURE_WORLD_VIEW = 9001;
-const FIXTURE_REGION = 'Testland';
-
-async function selectRootRegion(page: Page) {
-  await page.getByRole('button', { name: FIXTURE_REGION }).click();
-}
+const FIXTURE_REGION_ID = 9001;
 
 test.describe('Explore Workflows @smoke', () => {
   test('map mode can open and close region explore panel', async ({ page }) => {
-    await page.goto('/?wv=' + FIXTURE_WORLD_VIEW);
+    // The region is in the address (#644), so the spec opens it directly.
+    await page.goto('/wv/' + FIXTURE_WORLD_VIEW + '/r/' + FIXTURE_REGION_ID);
 
-    await selectRootRegion(page);
     await expect(page.getByRole('heading', { level: 2 })).not.toHaveText('Select a region');
 
     await page.getByRole('button', { name: 'Explore experiences in this region' }).click();
@@ -26,7 +22,7 @@ test.describe('Explore Workflows @smoke', () => {
   });
 
   test('discover mode opens source workflow from region source tag', async ({ page }) => {
-    await page.goto('/discover?wv=' + FIXTURE_WORLD_VIEW);
+    await page.goto('/discover/wv/' + FIXTURE_WORLD_VIEW);
 
     await expect(page.getByText('Select a category in the tree')).toBeVisible();
 

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // Mirrors backend/src/db/seed/e2eFixture.ts — keep in sync.
 const FIXTURE_WORLD_VIEW = 9001;
+const FIXTURE_REGION_ID = 9001;
 const FIXTURE_REGION = 'Testland';
 
 /**
@@ -41,8 +42,10 @@ async function worstOverlap(page: import('@playwright/test').Page): Promise<Over
 
 test.describe('Experience list layout @smoke', () => {
   test('no row is ever drawn over the row below it while a card opens', async ({ page }) => {
-    await page.goto('/?wv=' + FIXTURE_WORLD_VIEW);
-    await page.getByRole('button', { name: FIXTURE_REGION }).click();
+    // The region is in the address now (#644), so the spec opens it directly
+    // rather than clicking the fixture region's button after a bare goto.
+    await page.goto('/wv/' + FIXTURE_WORLD_VIEW + '/r/' + FIXTURE_REGION_ID);
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(FIXTURE_REGION);
     await page.getByRole('button', { name: 'Explore experiences in this region' }).click();
     await expect(page.getByText(/World Heritage Sites \(\d+\)/)).toBeVisible();
 

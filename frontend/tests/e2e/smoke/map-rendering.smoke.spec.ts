@@ -38,7 +38,7 @@ async function expectPaintedMap(page: Page) {
 
 test.describe('Map rendering @smoke', () => {
   test('map mode paints a map canvas', async ({ page }) => {
-    await page.goto('/?wv=' + FIXTURE_WORLD_VIEW);
+    await page.goto('/wv/' + FIXTURE_WORLD_VIEW);
 
     await expectPaintedMap(page);
 
@@ -54,7 +54,7 @@ test.describe('Map rendering @smoke', () => {
   });
 
   test('discover mode paints a map canvas', async ({ page }) => {
-    await page.goto('/discover?wv=' + FIXTURE_WORLD_VIEW);
+    await page.goto('/discover/wv/' + FIXTURE_WORLD_VIEW);
 
     await expect(page.getByText('Select a category in the tree')).toBeVisible();
     await expectPaintedMap(page);
