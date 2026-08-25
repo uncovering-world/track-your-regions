@@ -60,7 +60,8 @@ export function useRegionMutations({
       console.log('[invalidateWorldViewQueries] Invalidating regions for worldView:', worldView.id);
       queryClient.invalidateQueries({ queryKey: ['regions', worldView.id], refetchType: 'active' });
       queryClient.invalidateQueries({ queryKey: ['rootRegions', worldView.id], refetchType: 'active' });
-      queryClient.invalidateQueries({ queryKey: ['leafRegions', worldView.id], refetchType: 'active' });
+      // Every level the map or the list has read, by parent region id (#649).
+      queryClient.invalidateQueries({ queryKey: ['subregions'], refetchType: 'active' });
     }
 
     if (membersChanged) {
