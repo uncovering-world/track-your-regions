@@ -11,7 +11,7 @@ import { UserMenu } from './auth/UserMenu';
 import { useAppTheme } from '../theme';
 import { useAppAddress } from '../hooks/useAppAddress';
 import { useNavigation } from '../hooks/useNavigation';
-import type { AppAddress, AppMode } from '../utils/appUrl';
+import type { AppMode } from '../utils/appUrl';
 
 export function Header() {
   const { mode, toggleMode } = useAppTheme();
@@ -25,18 +25,26 @@ export function Header() {
 
   // The place carries over between the two views: the world view and the region
   // stay, and so does an open card — Discover finds its category from the
-  // object. Off the map (the review queue, the account page) there is no address
-  // to carry, so the world view comes from the selection instead: a bare `/`
-  // would read as the default world view, which is not the one on screen.
-  const placeIn = (nextMode: AppMode): AppAddress => address
-    ? { ...address, mode: nextMode, categoryId: null }
-    : {
-      mode: nextMode,
-      worldViewId: selectedWorldView && !selectedWorldView.isDefault ? selectedWorldView.id : null,
-      regionId: null,
-      experienceId: null,
-      categoryId: null,
-    };
+  // object. Asked of `go` rather than built from this render's `address`, which
+  // can be one write behind it (see `GoTarget`) — the failure that costs is a
+  // click landing just after the root named its world view, which would carry
+  // over no place at all. Off the map (the review queue, the account page) there
+  // is no address to carry, so the world view comes from the selection instead:
+  // a bare `/` would read as the default world view, which is not the one on
+  // screen.
+  const goToMode = (nextMode: AppMode) => {
+    if (address === null) {
+      go({
+        mode: nextMode,
+        worldViewId: selectedWorldView && !selectedWorldView.isDefault ? selectedWorldView.id : null,
+        regionId: null,
+        experienceId: null,
+        categoryId: null,
+      });
+      return;
+    }
+    go(at => ({ ...at, mode: nextMode, categoryId: null }));
+  };
 
   return (
     <AppBar position="static" color="primary" elevation={1}>
@@ -51,7 +59,7 @@ export function Header() {
             color="inherit"
             size="small"
             startIcon={<MapIcon />}
-            onClick={() => go(placeIn('map'))}
+            onClick={() => goToMode('map')}
             sx={{
               opacity: isDiscover ? 0.7 : 1,
               borderBottom: isDiscover ? 'none' : '2px solid currentColor',
@@ -66,7 +74,7 @@ export function Header() {
             color="inherit"
             size="small"
             startIcon={<ExploreIcon />}
-            onClick={() => go(placeIn('discover'))}
+            onClick={() => goToMode('discover')}
             sx={{
               opacity: isDiscover ? 1 : 0.7,
               borderBottom: isDiscover ? '2px solid currentColor' : 'none',

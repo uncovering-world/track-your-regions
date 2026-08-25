@@ -2,10 +2,13 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { AdministrativeDivision, WorldView, Region } from '../types';
-import { fetchWorldViews, fetchDivisionAncestors, fetchRootRegions, fetchRegionAncestors } from '../api';
+import { fetchWorldViews, fetchDivisionAncestors, fetchRootRegions } from '../api';
 import { useAuth } from './useAuth';
 import { useAppAddress } from './useAppAddress';
+import { useAddressedRegion, type SelectRegionOptions } from './useAddressedRegion';
 import { RegionHoverProvider } from './useRegionHover';
+
+export type { SelectRegionOptions } from './useAddressedRegion';
 
 interface NavigationContextType {
   // World View
@@ -19,9 +22,10 @@ interface NavigationContextType {
   selectedDivision: AdministrativeDivision | null;
   setSelectedDivision: (division: AdministrativeDivision | null) => void;
 
-  // Region (for custom world views)
+  // Region (for custom world views). The selection is in the address — see
+  // `useAddressedRegion` — so setting it writes the address too.
   selectedRegion: Region | null;
-  setSelectedRegion: (region: Region | null) => void;
+  setSelectedRegion: (region: Region | null, options?: SelectRegionOptions) => void;
   rootRegions: Region[];
 
   // Breadcrumbs (works for both GADM divisions and custom regions)
@@ -54,48 +58,6 @@ function pickWorldView(worldViews: WorldView[], urlWorldViewId: number | null, i
   return worldViews[0];
 }
 
-/**
- * What the ancestors read can tell a selection that the tile it was clicked in
- * could not, or `null` when there is nothing left to tell it.
- *
- * Only the missing fields, so that applying the answer is what stops the next
- * run from applying it again: each branch requires the field it fills to be
- * absent, and a patch that filled a field already present would re-select the
- * region for ever.
- */
-function completeSelectionFromAncestor(selected: Region, ancestor: Region): Partial<Region> | null {
-  // The read this answer comes from is keyed on a region id alone, and it is
-  // bounded by what the caller may see rather than by what their map is showing
-  // (`requireVisibleWorldView`), so it can answer about another world view's
-  // region. Completing the selection from such an answer would point this map at
-  // that world view's regions. Refuse, and the map stays where it is.
-  //
-  // No region layer draws unscoped now — each names either the world view or a
-  // parent id inside one — so no click should reach here with a foreign region
-  // id. (The GADM layers name neither, and need not: they draw divisions, which
-  // belong to no world view.) `tile_region_islands` named neither until #660
-  // scoped it. This is the fence behind that.
-  if (ancestor.worldViewId !== selected.worldViewId) return null;
-
-  const patch: Partial<Region> = {};
-
-  if (!selected.focusBbox && ancestor.focusBbox) {
-    patch.focusBbox = ancestor.focusBbox;
-    patch.anchorPoint = ancestor.anchorPoint;
-    patch.hasSubregions = ancestor.hasSubregions;
-  }
-
-  // `tile_region_islands` draws the real coastlines of a hull region and has no
-  // `parent_region_id` column, so a click on one arrives with a null parent —
-  // the very id the map reads to decide which level to draw, and the list reads
-  // to find the region's siblings.
-  if (selected.parentRegionId == null && ancestor.parentRegionId != null) {
-    patch.parentRegionId = ancestor.parentRegionId;
-  }
-
-  return Object.keys(patch).length > 0 ? patch : null;
-}
-
 export function NavigationProvider({ children }: { children: ReactNode }) {
   const { isAdmin, isLoading: authLoading, user } = useAuth();
   const { address, go } = useAppAddress();
@@ -103,9 +65,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   /** What the address named the last time the reconciliation ran; see followUrlWorldView. */
   const lastSeenUrlWorldViewId = useRef<number | null>(null);
   const [selectedDivision, setSelectedDivision] = useState<AdministrativeDivision | null>(null);
-  const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
   const [divisionBreadcrumbs, setDivisionBreadcrumbs] = useState<AdministrativeDivision[]>([]);
-  const [regionBreadcrumbs, setRegionBreadcrumbs] = useState<Region[]>([]);
   const [tileVersion, setTileVersion] = useState(0);
 
   // Increment tile version to force MapLibre to reload tiles
@@ -177,11 +137,12 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     enabled: isCustomWorldView && !!selectedWorldViewId,
   });
 
-  // Fetch ancestors for the selected region (for breadcrumbs in custom world views)
-  const { data: regionAncestors } = useQuery({
-    queryKey: ['regionAncestors', selectedRegion?.id],
-    queryFn: () => fetchRegionAncestors(selectedRegion!.id),
-    enabled: isCustomWorldView && !!selectedRegion,
+  // The region: selected here, named in the address, restored from it. Its
+  // effects are declared before the reconciliation below on purpose — on a
+  // Back across a world-view switch the follow asks for the new region first,
+  // and the switch's clearing of the old context must not cancel that ask.
+  const { selectedRegion, setSelectedRegion, regionBreadcrumbs, clearRegion } = useAddressedRegion({
+    address, go, isCustomWorldView, authLoading,
   });
 
 
@@ -206,31 +167,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
   }, [ancestorData, selectedDivision]);
 
-  // Update region breadcrumbs from ancestors query (for custom world views)
-  // Also enrich selectedRegion with what the map could not know from the tile
-  // it was clicked in. A vector tile carries a region's id, name, colour and —
-  // in most layers — its parent; it never carries `focus_bbox` or
-  // `anchor_point`, and the islands layer carries no parent either. This read
-  // fires on every selection anyway, for the breadcrumbs, and it answers with
-  // the full row: the last entry it returns *is* the selected region.
-  useEffect(() => {
-    if (regionAncestors) {
-      setRegionBreadcrumbs(prev => {
-        if (prev.length === regionAncestors.length && prev.every((r, i) => r.id === regionAncestors[i].id)) {
-          return prev;
-        }
-        return regionAncestors;
-      });
-      const lastAncestor = regionAncestors[regionAncestors.length - 1];
-      if (lastAncestor && selectedRegion && lastAncestor.id === selectedRegion.id) {
-        const patch = completeSelectionFromAncestor(selectedRegion, lastAncestor);
-        if (patch) setSelectedRegion({ ...selectedRegion, ...patch });
-      }
-    } else if (!selectedRegion) {
-      setRegionBreadcrumbs(prev => prev.length === 0 ? prev : []);
-    }
-  }, [regionAncestors, selectedRegion]);
-
   // What a departing world view leaves behind. Separate from applyWorldView
   // because it is also needed when there is nothing to arrive: an empty list
   // still has to drop the old context, and dropping only `selectedWorldView`
@@ -239,10 +175,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // id, leaving rootRegions enabled and requesting it as an anonymous caller.
   const clearWorldViewContext = useCallback(() => {
     setSelectedDivision(null);
-    setSelectedRegion(null);
     setDivisionBreadcrumbs([]);
-    setRegionBreadcrumbs([]);
-  }, []);
+    clearRegion();
+  }, [clearRegion]);
 
   /**
    * Write the world view into the address, and nothing under it: a switch drops
@@ -318,12 +253,37 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
    */
   const followUrlWorldView = useCallback((visible: WorldView[], urlChanged: boolean) => {
     if (!urlChanged) return false;
-    if (!selectedWorldView || urlWorldViewId === null) return false;
+    if (!selectedWorldView) return false;
+    // Two different nulls, and only one of them is an address. A bare `/` names
+    // the default world view — that is what adopting made true, and it is why
+    // Back across a switch away from the default has to land back on it. A page
+    // that carries no place at all (`/account`, `/admin`, `/review`) names
+    // nothing, and reading it as the default would switch an admin off the
+    // world view they were on the moment they open the admin panel.
+    if (address === null) return false;
     if (urlWorldViewId === selectedWorldView.id) return false;
 
-    const fromUrl = visible.find((w: WorldView) => w.id === urlWorldViewId);
+    const fromUrl = urlWorldViewId === null
+      ? pickWorldView(visible, null, isAdmin)
+      : visible.find((w: WorldView) => w.id === urlWorldViewId);
     if (fromUrl) {
-      applyWorldView(fromUrl, 'none');
+      // A bare address can resolve to the world view already selected, which is
+      // no switch at all — and acting on it would clear the region under it.
+      if (fromUrl.id === selectedWorldView.id) return false;
+      // Following writes nothing where the address already says it — which is
+      // what the address naming it means, whichever world view it is. Keyed on
+      // that rather than on `isDefault`, so Back into `/wv/5/r/7100-malta`
+      // leaves the address exactly as it found it: a write there rebuilds it as
+      // the world view alone and the region has to put it back, two navigations
+      // and a replaced history entry where none was needed.
+      //
+      // What still gets written is an address standing in for one that was
+      // never built: a bare `/` resolving to a custom world view, which must be
+      // named or nothing under it is addressable (the hole `adoptWorldView`
+      // climbs out of just below), and an explicit `/wv/1` for the default,
+      // whose canonical form is bare.
+      const wanted = fromUrl.isDefault ? null : fromUrl.id;
+      applyWorldView(fromUrl, urlWorldViewId === wanted ? 'none' : 'replace');
       return true;
     }
 
@@ -341,23 +301,33 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
     writeWorldView(selectedWorldView, true);
     return true;
-  }, [selectedWorldView, urlWorldViewId, applyWorldView, writeWorldView]);
+  }, [selectedWorldView, urlWorldViewId, address, isAdmin, applyWorldView, writeWorldView]);
 
   /** First pick, not a change: take the world view without clearing anything. */
   const adoptWorldView = useCallback((worldView: WorldView) => {
     setSelectedWorldView(worldView);
     setTileVersion(worldView.tileVersion ?? 0);
 
-    // The region context stays, but the URL must not: an address still naming a
-    // world view that was just rejected leaves the picker and the address bar
-    // disagreeing, re-shares a dead link, and keeps selectedWorldViewId falling
-    // back to that id on every load — one 404 root-regions request per visit
-    // before it corrects. Only when the URL named something else, so that a bare
-    // `/` stays bare.
-    if (urlWorldViewId !== null && urlWorldViewId !== worldView.id) {
+    // The address must name the world view that was adopted, whenever it does
+    // not already. A bare `/` stays bare only for the default world view, which
+    // writes no segment: for any other, leaving `/` alone would leave nothing
+    // under the world view addressable at all — `buildAppUrl` drops the region
+    // and card segments without a world view, so a selection could never reach
+    // the address, and the address is now the only store for the open card. The
+    // site root is the entry every visitor without a link uses, and an
+    // anonymous caller is published nothing *but* custom world views.
+    //
+    // A region chosen under a world view the address named and the list then
+    // rejected goes with it: it belongs to a world view this caller cannot see,
+    // and the address now says which world view a region is in. Only then —
+    // this is the first pick, so on a bare `/` there is nothing to clear, and
+    // clearing would be the destructive act the branch above avoids.
+    const wanted = worldView.isDefault ? null : worldView.id;
+    if (urlWorldViewId !== wanted) {
+      if (urlWorldViewId !== null) clearRegion();
       writeWorldView(worldView, true);
     }
-  }, [urlWorldViewId, writeWorldView]);
+  }, [urlWorldViewId, clearRegion, writeWorldView]);
 
   // Set the world view from the URL param or the default — and re-check it
   // whenever the list itself changes, which it does when the identity does.
@@ -401,7 +371,27 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
     if (followUrlWorldView(worldViews, urlChanged)) return;
 
-    if (selectedWorldView && worldViews.some((w: WorldView) => w.id === selectedWorldView.id)) return;
+    if (selectedWorldView && worldViews.some((w: WorldView) => w.id === selectedWorldView.id)) {
+      // The selection stands — but the address has to name it wherever there is
+      // an address to name it in, and two paths arrive here without one.
+      //
+      // A world view adopted on a page that carries no place — `/verify-email`,
+      // the OAuth callback, `/admin` bouncing a non-admin — had nowhere to write
+      // itself, and all three then navigate to `/`. Arriving there is not a
+      // change of world view, so nothing else would ever write it, and the
+      // session would be left with nothing under the world view addressable at
+      // all.
+      //
+      // And an address naming the default explicitly, `/wv/1`, is one
+      // `buildAppUrl` never writes: typed while the default is already
+      // selected, it reads as no switch at all, so this is what retires it.
+      //
+      // Idempotent: the write is skipped once the address agrees, and a page
+      // with no address is left alone.
+      const wanted = selectedWorldView.isDefault ? null : selectedWorldView.id;
+      if (address !== null && urlWorldViewId !== wanted) writeWorldView(selectedWorldView, true);
+      return;
+    }
 
     const worldView = pickWorldView(worldViews, urlWorldViewId, isAdmin);
     if (!worldView) return;
@@ -423,7 +413,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- worldViews by id, not identity
   }, [worldViewsLoaded, worldViewsFetching, visibleWorldViewIds, isAdmin, selectedWorldView,
-      urlWorldViewId, dropWorldView, followUrlWorldView, adoptWorldView]);
+      urlWorldViewId, address, writeWorldView, dropWorldView, followUrlWorldView, adoptWorldView]);
 
   // A switch the visitor made: pushed, so Back returns to the world view they left.
   const handleSetSelectedWorldView = useCallback(
@@ -438,13 +428,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const handleSetSelectedRegion = useCallback((region: Region | null) => {
-    setSelectedRegion(region);
-    if (!region) {
-      setRegionBreadcrumbs([]);
-    }
-  }, []);
-
   const value: NavigationContextType = useMemo(() => ({
     worldViews,
     selectedWorldView,
@@ -454,7 +437,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     selectedDivision,
     setSelectedDivision: handleSetSelectedDivision,
     selectedRegion,
-    setSelectedRegion: handleSetSelectedRegion,
+    setSelectedRegion,
     rootRegions,
     divisionBreadcrumbs,
     regionBreadcrumbs,
@@ -471,7 +454,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     selectedDivision,
     handleSetSelectedDivision,
     selectedRegion,
-    handleSetSelectedRegion,
+    setSelectedRegion,
     rootRegions,
     divisionBreadcrumbs,
     regionBreadcrumbs,

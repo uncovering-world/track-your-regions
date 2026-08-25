@@ -149,6 +149,22 @@ function withSlug(id: number, name: string | null | undefined): string {
 }
 
 /**
+ * The slugs an address carries, '' where a segment has none. What `go` reads
+ * so that a write naming only the card does not strip the region's slug.
+ */
+export function slugsOf(pathname: string): { region: string; experience: string } {
+  const segments = pathname.split('/').filter(Boolean);
+  const after = (key: string): string => {
+    const at = segments.indexOf(key);
+    const segment = at === -1 ? undefined : segments[at + 1];
+    if (!segment || readId(segment) === null) return '';
+    const dash = segment.indexOf('-');
+    return dash === -1 ? '' : segment.slice(dash + 1);
+  };
+  return { region: after('r'), experience: after('e') };
+}
+
+/**
  * Where a legacy `?wv=` address should be sent, or `null` where the address is
  * already canonical or is not a place at all.
  */
