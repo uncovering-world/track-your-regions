@@ -338,7 +338,7 @@ makes anyway for the breadcrumbs, whose last entry *is* the selected region
 round trip for the box of the one region that was clicked, instead of the page
 downloading 3 594 boxes to use one of them.
 
-Two consequences worth keeping in mind when touching this path:
+Three consequences worth keeping in mind when touching this path:
 
 - **Do not fly from tile geometry in a custom world view.** A feature is clipped
   to the tile it was drawn in, and a bbox measured that way puts a region
@@ -351,6 +351,17 @@ Two consequences worth keeping in mind when touching this path:
   coastline of a hull region therefore arrives parentless, and the same
   completion fills it in; without it the map would stay at the level above and
   the list would show root regions where the region's siblings belong.
+- **No region layer draws unscoped**: each names either the world view or a
+  parent id inside one. The two GADM layers in the table above are not an
+  exception to it — they draw administrative divisions, which belong to no world
+  view, so a click on one yields no region id to scope. The island layer named
+  neither, and that function filters on `uses_hull` alone, so it drew the
+  islands of every hull region in the database over whichever world view was
+  open — above the main source, so they won the click, and the selection landed
+  on another world view's region (#660). It now carries `world_view_id`, and the
+  ancestors completion above still refuses an answer from a different world view:
+  that read is keyed on a region id alone, and what bounds it is what the caller
+  may see, not what their map is showing.
 
 ## Region visual feedback
 

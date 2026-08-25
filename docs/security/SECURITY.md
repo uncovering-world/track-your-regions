@@ -227,7 +227,13 @@ The Python service has a smaller surface than the Node backend but introduces ne
   removed 27 table sources including every column of `experiences` — but `functions: true` still
   auto-discovers and publishes every compatible **function** in the database on its own public
   port (`ports:` in `docker-compose.yml`) with no authentication, so a hidden world view's
-  geometry stays fetchable by tile id regardless of `is_public`. That set is discovered, not
+  geometry stays fetchable by tile id regardless of `is_public`. Two of those functions do not
+  even ask for the id: `tile_world_view_root_regions` and `tile_world_view_all_leaf_regions`
+  filter on `p_world_view_id IS NULL OR …`, so a request naming no world view answers for all of
+  them at once rather than refusing — on a database where only one world view holds geometry that
+  is the same answer either way, which is why nothing has surfaced it. `tile_region_islands` was
+  the third, and the one the map itself drew unscoped (#660); it now answers a request that names
+  no world view with an empty tile, which is the shape the other two want. That set is discovered, not
   enumerated: it currently resolves to the six `tile_*` functions in `martin/README.md` § Function
   Sources, and a newly added compatible function would be published the same way, with no edit to
   `martin/config.yaml`. A Martin-level `postgres.functions` allowlist could pin those six
