@@ -13,9 +13,8 @@ import {
 } from '@mui/material';
 import { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from './shared/GuardedMap';
-import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../constants/mapStyles';
-import { smartFitBounds } from '../utils/mapUtils';
+import { focusFromGeoJson, smartFitBounds } from '../utils/mapUtils';
 import {
   fetchRegionGeometry,
   fetchSavedHullParams,
@@ -109,8 +108,12 @@ export function HullEditorDialog({
             type: 'FeatureCollection',
             features: [{ type: 'Feature', properties: {}, geometry: geom }],
           };
-          const bbox = turf.bbox(fc) as [number, number, number, number];
-          smartFitBounds(mapRef.current!, bbox, { padding: 50, duration: 500, geojson: fc });
+          const focus = focusFromGeoJson(fc);
+          if (focus) {
+            smartFitBounds(mapRef.current!, focus.bbox, {
+              padding: 50, duration: 500, anchorPoint: focus.anchorPoint,
+            });
+          }
         }
       } catch (e) {
         console.error('Failed to fit bounds:', e);

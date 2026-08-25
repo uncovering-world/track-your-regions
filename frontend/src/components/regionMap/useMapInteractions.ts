@@ -4,12 +4,11 @@
 
 import { useRef, useEffect, useCallback, useMemo } from 'react';
 import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre';
-import * as turf from '@turf/turf';
 import { useNavigation } from '../../hooks/useNavigation';
 import { useRegionHoverActions } from '../../hooks/useRegionHover';
 import { useExperienceContext } from '../../hooks/useExperienceContext';
 import { fetchDivision, fetchDivisionGeometry } from '../../api';
-import { smartFitBounds } from '../../utils/mapUtils';
+import { focusFromGeoJson, smartFitBounds } from '../../utils/mapUtils';
 import type { Region } from '../../types';
 
 interface ClickMeta {
@@ -44,9 +43,9 @@ function flyToClickedFeature(
   // box is always one read away: the ancestors call the selection makes anyway
   // enriches selectedRegion, and the fly-to effect below flies from it. Flying
   // from tile geometry first would be a second, worse animation — worse because
-  // a feature is clipped to the tile it was drawn in, and because a bbox
-  // measured that way puts a region straddling the antimeridian on the wrong
-  // half of the world. Every region a tile drew has geometry, and the trigger
+  // a feature is clipped to the tile it was drawn in, so the box is the box of
+  // whatever part of the region that tile happened to hold. Every region a tile
+  // drew has geometry, and the trigger
   // that computes geometry computes `focus_bbox` with it (measured on the dev
   // database: of 3 594 leaf regions with geometry, 0 lack focus data), so the
   // enrichment has an answer. A click on a context layer has always taken this
@@ -55,7 +54,10 @@ function flyToClickedFeature(
   // and registers them under the same condition.
   //
   // GADM divisions are the exception and keep the tile-geometry path: they have
-  // no focus data at all, in the tiles or in the API.
+  // no focus data at all, in the tiles or in the API. `focusFromGeoJson` is what
+  // stands in for it — the same antimeridian rule the trigger applies, so the
+  // Far Eastern Federal District is framed the same way in either world view
+  // (#666).
   if (isCustomWorldView || !clickedFeature.geometry) return;
 
   lastMapClickIdRef.current = id;
@@ -64,8 +66,13 @@ function flyToClickedFeature(
       type: 'FeatureCollection',
       features: [clickedFeature as GeoJSON.Feature],
     };
-    const bbox = turf.bbox(featureGeojson) as [number, number, number, number];
-    smartFitBounds(map, bbox, { padding: 60, duration: 400, geojson: featureGeojson });
+    const focus = focusFromGeoJson(featureGeojson);
+    if (!focus) return;
+    smartFitBounds(map, focus.bbox, {
+      padding: 60,
+      duration: 400,
+      anchorPoint: focus.anchorPoint,
+    });
   } catch (e) {
     console.error('Failed to fit bounds from clicked feature:', e);
   }
@@ -196,8 +203,13 @@ export function useMapInteractions({
               type: 'FeatureCollection',
               features: [geom as GeoJSON.Feature],
             };
-            const bbox = turf.bbox(geojson) as [number, number, number, number];
-            smartFitBounds(mapRef.current, bbox, { padding: 100, duration: 500, geojson });
+            const focus = focusFromGeoJson(geojson);
+            if (!focus) return;
+            smartFitBounds(mapRef.current, focus.bbox, {
+              padding: 100,
+              duration: 500,
+              anchorPoint: focus.anchorPoint,
+            });
           } catch (e) {
             console.error('[RegionMapVT] Failed to fit bounds from API geometry:', e);
           }

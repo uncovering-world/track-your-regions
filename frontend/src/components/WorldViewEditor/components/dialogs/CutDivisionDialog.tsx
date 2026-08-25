@@ -30,7 +30,7 @@ import { Source, Layer, NavigationControl, type MapRef, type MapLayerMouseEvent 
 import { GuardedMap as MapGL } from '../../../shared/GuardedMap';
 import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../../../../constants/mapStyles';
-import { smartFitBounds } from '../../../../utils/mapUtils';
+import { focusFromGeoJson, smartFitBounds } from '../../../../utils/mapUtils';
 import type { ImageOverlaySettings } from './CustomSubdivisionDialog/ImageOverlayDialog';
 import {
   splitPolygonWithLine,
@@ -89,8 +89,12 @@ function fitToDivisionGeometry(
   divisionGeometry: GeoJSON.FeatureCollection,
 ): void {
   try {
-    const bbox = turf.bbox(divisionGeometry) as [number, number, number, number];
-    smartFitBounds(map, bbox, { padding: 50, duration: 500, geojson: divisionGeometry });
+    const focus = focusFromGeoJson(divisionGeometry);
+    if (focus) {
+      smartFitBounds(map, focus.bbox, {
+        padding: 50, duration: 500, anchorPoint: focus.anchorPoint,
+      });
+    }
   } catch (e) {
     console.error('Failed to fit bounds:', e);
   }

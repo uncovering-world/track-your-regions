@@ -20,7 +20,7 @@ import { Source, Layer, NavigationControl, type MapRef, type MapLayerMouseEvent 
 import { GuardedMap as MapGL } from './shared/GuardedMap';
 import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../constants/mapStyles';
-import { smartFitBounds } from '../utils/mapUtils';
+import { focusFromGeoJson, smartFitBounds } from '../utils/mapUtils';
 
 type PolyFeature = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
 
@@ -66,6 +66,8 @@ interface CustomBoundaryDialogProps {
   sourceGeometries: GeoJSON.FeatureCollection | null;
   /** Pre-computed focusBbox for proper antimeridian handling */
   focusBbox?: [number, number, number, number] | null;
+  /** Its centre. Required with a crossing focusBbox — smartFitBounds reads it only there. */
+  anchorPoint?: [number, number] | null;
   title?: string;
 }
 
@@ -75,6 +77,7 @@ export function CustomBoundaryDialog({
   onConfirm,
   sourceGeometries,
   focusBbox,
+  anchorPoint,
   title = 'Redefine Boundaries',
 }: CustomBoundaryDialogProps) {
   const mapRef = useRef<MapRef>(null);
@@ -103,11 +106,16 @@ export function CustomBoundaryDialog({
       const timer = setTimeout(() => {
         try {
           if (focusBbox) {
-            smartFitBounds(mapRef.current!, focusBbox, { padding: 50, duration: 500 });
+            smartFitBounds(mapRef.current!, focusBbox, {
+              padding: 50, duration: 500, anchorPoint,
+            });
           } else {
-            const geojson = sourceGeometries as GeoJSON.FeatureCollection;
-            const bbox = turf.bbox(geojson) as [number, number, number, number];
-            smartFitBounds(mapRef.current!, bbox, { padding: 50, duration: 500, geojson });
+            const focus = focusFromGeoJson(sourceGeometries as GeoJSON.FeatureCollection);
+            if (focus) {
+              smartFitBounds(mapRef.current!, focus.bbox, {
+                padding: 50, duration: 500, anchorPoint: focus.anchorPoint,
+              });
+            }
           }
         } catch (e) {
           console.error('Failed to fit bounds:', e);
@@ -115,7 +123,7 @@ export function CustomBoundaryDialog({
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [open, mapLoaded, sourceGeometries, focusBbox]);
+  }, [open, mapLoaded, sourceGeometries, focusBbox, anchorPoint]);
 
   // Handle map click — only during draw step
   const handleMapClick = useCallback((event: MapLayerMouseEvent) => {
