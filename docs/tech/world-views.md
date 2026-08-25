@@ -501,7 +501,7 @@ Handle countries spanning multiple continents:
 - `GET /api/world-views/:worldViewId/compute-geometries/status` - Get computation status
 - `POST /api/world-views/:worldViewId/compute-geometries/cancel` - Cancel computation
 - `GET /api/world-views/:worldViewId/display-geometry-status` - Display geometry status
-- `POST /api/world-views/:worldViewId/regenerate-display-geometries` - Regenerate display geometries
+- `POST /api/world-views/:worldViewId/regenerate-display-geometries` - Regenerate display geometries (`geom_area_km2`, and `anchor_point` + `focus_bbox` by re-firing `update_region_focus_data()` — it does not compute the anchor itself; see `docs/tech/geometry-columns.md` § How a crossing region is told from a global one)
 - `POST /api/world-views/regions/:regionId/hull/preview` - Preview hull geometry
 - `POST /api/world-views/regions/:regionId/hull/save` - Save hull geometry
 
