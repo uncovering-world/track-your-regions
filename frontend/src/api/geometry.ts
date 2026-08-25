@@ -149,11 +149,10 @@ export async function fetchDisplayGeometryStatus(worldViewId: number): Promise<D
 
 export async function regenerateDisplayGeometries(
   worldViewId: number,
-  options: { applyClipping?: boolean; regionId?: number } = {}
+  options: { regionId?: number } = {}
 ): Promise<RegenerateDisplayGeometriesResult> {
-  const { applyClipping = true, regionId } = options;
+  const { regionId } = options;
   const params = new URLSearchParams();
-  if (!applyClipping) params.append('clip', 'false');
   if (regionId) params.append('regionId', String(regionId));
   const queryString = params.toString();
   const querySuffix = queryString ? `?${queryString}` : '';
