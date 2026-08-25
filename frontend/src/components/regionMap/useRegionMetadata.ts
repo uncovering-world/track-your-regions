@@ -56,6 +56,10 @@ function addDivisionToLookup(lookup: MetadataLookup, division: AdministrativeDiv
   lookup[division.id] = {
     name: division.name,
     hasChildren: division.hasChildren,
+    // Stored, like a region's: a click on a division's tile frames from these
+    // (#674), where it used to measure the clipped tile feature it was given.
+    focusBbox: division.focusBbox,
+    anchorPoint: division.anchorPoint,
   };
 }
 
