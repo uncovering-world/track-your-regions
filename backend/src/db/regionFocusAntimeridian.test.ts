@@ -21,7 +21,8 @@ import { join } from 'node:path';
  * still in it. What it can prove properly is the agreement between the three
  * files, which is where this rule is most likely to drift:
  *
- * - `db/init/01-schema.sql`, where the trigger computes the stored box;
+ * - `db/init/01-schema.sql`, where `geometry_focus()` measures and the trigger
+ *   stores the box (#674 moved the measurement out of the trigger);
  * - `frontend/src/utils/mapUtils.ts`, which applies the same rule to a GADM
  *   division, since a division has focus data nowhere — not in the tiles, not
  *   in the API — and framing it from a plain `turf.bbox` reproduced the bug in
@@ -46,17 +47,25 @@ const mapUtils = readFileSync(
   'utf8',
 );
 
-/** The body of update_region_focus_data(), so no assertion below can match another function. */
-const focusFn = (() => {
-  const start = schema.indexOf('CREATE OR REPLACE FUNCTION update_region_focus_data()');
-  expect(start, 'update_region_focus_data() is missing from the schema').toBeGreaterThan(-1);
-  const end = schema.indexOf('$$ LANGUAGE plpgsql;', start);
-  // Without this, a missing terminator gives -1, slice(start, -1) runs to the end of
-  // the file, and a later function can satisfy every assertion below.
-  expect(end, 'update_region_focus_data() has no $$ LANGUAGE plpgsql; terminator')
-    .toBeGreaterThan(start);
+/**
+ * One function's body, so no assertion below can match another function. The
+ * terminator is asserted: a missing one gives -1, slice(start, -1) runs to the
+ * end of the file, and a later function could satisfy every assertion.
+ */
+function functionBody(signature: string, terminator: string): string {
+  const start = schema.indexOf(`CREATE OR REPLACE FUNCTION ${signature}`);
+  expect(start, `${signature} is missing from the schema`).toBeGreaterThan(-1);
+  const end = schema.indexOf(terminator, start);
+  expect(end, `${signature} has no ${terminator} terminator`).toBeGreaterThan(start);
   return schema.slice(start, end);
-})();
+}
+
+/** The trigger: reads geometry_focus(), adds the children aggregation. */
+const focusFn = functionBody('update_region_focus_data()', '$$ LANGUAGE plpgsql;');
+/** The measurement itself (#674). */
+const geometryFocusFn = functionBody('geometry_focus(', 'END; $$;');
+/** The threshold, stated once for both. */
+const nearGlobalFn = functionBody('near_global_deg()', '$$;');
 
 /** The threshold above which a span is the whole world however it is measured. */
 const NEAR_GLOBAL_DEG = 350;
@@ -65,21 +74,25 @@ describe('update_region_focus_data() antimeridian rule', () => {
   it('measures snapped geometry, never the raw geometry', () => {
     // The snap is the whole fix: without it ST_ShiftLongitude carries the
     // overshoot back to -179.9999999999999 and the shifted span is the wider one.
-    expect(focusFn).toContain('measure_geom := ST_SnapToGrid(effective_geom, 1e-9)');
-    expect(focusFn).toContain('ST_ShiftLongitude(measure_geom)');
-    expect(focusFn).not.toContain('ST_ShiftLongitude(effective_geom)');
+    expect(geometryFocusFn).toContain('measure_geom := ST_SnapToGrid(g, 1e-9)');
+    expect(geometryFocusFn).toContain('ST_ShiftLongitude(measure_geom)');
+    expect(geometryFocusFn).not.toContain('ST_ShiftLongitude(g)');
   });
 
   it('never takes a shifted box that is itself near-global', () => {
     // Antarctica's shifted span is 359.9995° against an unshifted 360°:
-    // narrower, and no more of a frame for that. The branch inside the
-    // near-global block is the one that can be handed such a span, and it has
-    // to check before keeping the box.
-    expect(focusFn).toContain('ELSIF shift_span < norm_span AND shift_span <= near_global_deg THEN');
-    // The other shifted branch needs no term of its own and must not grow one:
-    // it is the else-arm of this test, so it only ever sees a span already
-    // below the threshold.
-    expect(focusFn).toContain('IF norm_span > near_global_deg THEN');
+    // narrower, and no more of a frame for that.
+    expect(geometryFocusFn).toContain('IF shift_span < norm_span AND shift_span <= near_global_deg() THEN');
+  });
+
+  it('delegates the measurement to geometry_focus() and adds only the children', () => {
+    // The trigger holds no measurement of its own: one rule, one place (#674).
+    // What it adds needs the regions table, which a pure function cannot see.
+    expect(focusFn).toContain('SELECT * INTO f FROM geometry_focus(effective_geom)');
+    expect(focusFn).toContain('IF f.near_global THEN');
+    expect(focusFn).not.toContain('ST_ShiftLongitude');
+    expect(focusFn).not.toContain('ST_SnapToGrid');
+    expect(focusFn).not.toContain('ST_XMin');
   });
 
   it('refuses to aggregate children when one of them covers the globe', () => {
@@ -91,11 +104,11 @@ describe('update_region_focus_data() antimeridian rule', () => {
     expect(focusFn).toContain('AND NOT child_covers_globe');
   });
 
-  it('states the near-global threshold once, as a constant', () => {
-    expect(focusFn).toContain(`near_global_deg CONSTANT double precision := ${NEAR_GLOBAL_DEG}`);
-    // A bare 350 left behind is a second, unlabelled copy of the threshold.
-    expect(focusFn.replace(/near_global_deg CONSTANT double precision := 350;/, ''))
-      .not.toContain('350');
+  it('states the near-global threshold once, as a function', () => {
+    expect(nearGlobalFn).toContain(`SELECT ${NEAR_GLOBAL_DEG}.0::double precision`);
+    // A bare 350 anywhere else is a second, unlabelled copy of the threshold.
+    expect(geometryFocusFn).not.toContain('350');
+    expect(focusFn).not.toContain('350');
   });
 
   it('agrees with the threshold the frontend applies to a division', () => {
@@ -104,18 +117,16 @@ describe('update_region_focus_data() antimeridian rule', () => {
 });
 
 describe('032-antimeridian-focus-data.sql', () => {
-  it('looks for terms the fixed function actually contains', () => {
-    // The migration refuses to run against a function predating the fix, and it
-    // checks the whole contract rather than one term standing for it: a function
-    // that snaps but keeps a near-global shifted box would pass a one-term guard
-    // and be handed the repair. Each term has to still be in the schema, or the
-    // guard refuses forever and reads as a broken database rather than a stale
-    // guard.
+  it('accepts the trigger the schema now ships', () => {
+    // The migration refuses to run against a function predating the fix. Since
+    // #674 the trigger delegates to geometry_focus(), so the guard has to accept
+    // that shape or refuse forever and read as a broken database rather than a
+    // stale guard. The three #671 terms stay for a database between the two.
+    expect(migration).toContain("NOT LIKE '%geometry_focus(%'");
+    expect(focusFn).toContain('geometry_focus(');
     for (const term of ['ST_SnapToGrid', 'shift_span <= near_global_deg', 'child_covers_globe']) {
-      expect(migration, `migration guard does not check ${term}`)
+      expect(migration, `migration guard dropped the #671 term ${term}`)
         .toContain(`NOT LIKE '%${term}%'`);
-      expect(focusFn, `schema no longer contains ${term}, so the guard can never pass`)
-        .toContain(term);
     }
   });
 

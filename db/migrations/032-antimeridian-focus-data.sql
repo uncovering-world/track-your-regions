@@ -28,13 +28,19 @@ BEGIN;
 -- near-global, and refuse to aggregate a child whose box covers the world. Any of
 -- them missing and this migration is not a repair -- it rewrites stored focus data
 -- with incomplete logic, which looks like one.
+--
+-- #674 moved the measurement out of the trigger into geometry_focus(). A trigger
+-- that calls that function carries the fix by construction, so it is accepted
+-- as well; the three terms below describe the shape #671 shipped and remain
+-- for a database sitting between the two.
 DO $guard$
 DECLARE
   fn text := pg_get_functiondef('update_region_focus_data()'::regprocedure);
 BEGIN
-  IF fn NOT LIKE '%ST_SnapToGrid%'
-     OR fn NOT LIKE '%shift_span <= near_global_deg%'
-     OR fn NOT LIKE '%child_covers_globe%' THEN
+  IF fn NOT LIKE '%geometry_focus(%'
+     AND (fn NOT LIKE '%ST_SnapToGrid%'
+          OR fn NOT LIKE '%shift_span <= near_global_deg%'
+          OR fn NOT LIKE '%child_covers_globe%') THEN
     RAISE EXCEPTION
       'update_region_focus_data() predates the antimeridian fix (#666). Re-apply db/init/01-schema.sql first.';
   END IF;
