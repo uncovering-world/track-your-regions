@@ -21,10 +21,11 @@ npm --prefix frontend install
    9001 (`backend/src/db/seed/e2eFixture.ts`) automatically — the only path
    that seeds it for you (`npm run db:seed:e2e` seeds manually, against
    whatever test DB the backend env names). Pointing Playwright at a dev
-   stack or a restored dump fails: `explore-workflows` selects the fixture
-   via `?wv=9001`, and `shell-navigation`'s first test relies on it being
-   the only non-default world view, since `useNavigation` hides the GADM
-   default from non-admin users.
+   stack or a restored dump fails: `explore-workflows` opens the fixture
+   region at `/wv/9001/r/9001` (an address now, #644), and
+   `shell-navigation`'s first test relies on it being the only non-default
+   world view, since `useNavigation` hides the GADM default from non-admin
+   users.
 
 ## Commands
 
