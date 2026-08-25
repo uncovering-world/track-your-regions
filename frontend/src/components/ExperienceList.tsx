@@ -73,6 +73,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     viewBounds,
     selectedExperienceId,
     toggleSelectedExperience,
+    arrivedAtExperienceId,
+    settleArrival,
     triggerFlyTo,
     setExpandedCategoryNames,
     collapsedExperienceIds,
@@ -304,6 +306,22 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     scrollContainerRef, itemRefs, locationRefs, virtualizer, rowIndexByExperience,
   });
 
+  // The card the page arrived with takes the focus once it has opened, so a
+  // reader who followed a link with a keyboard or a screen reader lands in what
+  // the link named rather than at the top of the page (#644). Once: settling
+  // the arrival forgets it, so a card opened later by a click moves no focus.
+  // Without scrolling — where the card is aimed is the anchor's decision above.
+  const arrivedAtRef = useRef(arrivedAtExperienceId);
+  arrivedAtRef.current = arrivedAtExperienceId;
+  const handleCardOpenedHere = useCallback((experienceId: number) => {
+    handleCardOpened(experienceId);
+    if (experienceId !== arrivedAtRef.current) return;
+    settleArrival();
+    itemRefs.current.get(experienceId)
+      ?.querySelector<HTMLElement>('[data-selected="true"]')
+      ?.focus({ preventScroll: true });
+  }, [handleCardOpened, settleArrival]);
+
   const toggleGroup = (categoryName: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
@@ -488,7 +506,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       onCurate={hasCuratorScope ? handleCurate : undefined}
       onUnreject={hasCuratorScope && rejected && regionId ? handleUnreject : undefined}
       onRemoveFromRegion={hasCuratorScope && rejected && regionId ? handleRemoveFromRegion : undefined}
-      onCardOpened={handleCardOpened}
+      onCardOpened={handleCardOpenedHere}
       // Rejected rows render outside the virtualiser and carry no `data-index`,
       // so there is nothing for it to measure them against.
       onCardLayout={rejected ? undefined : measureRow}

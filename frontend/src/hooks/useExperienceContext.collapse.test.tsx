@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React, { useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router';
 import { ExperienceProvider, useExperienceContext } from './useExperienceContext';
 
 /**
@@ -29,11 +30,13 @@ function wrapperFor(regionId: number | null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <QueryClientProvider client={client}>
-        <ExperienceProvider regionId={regionId} isExploring>
-          {children}
-        </ExperienceProvider>
-      </QueryClientProvider>
+      <MemoryRouter initialEntries={['/wv/5']}>
+        <QueryClientProvider client={client}>
+          <ExperienceProvider regionId={regionId} isExploring>
+            {children}
+          </ExperienceProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
     );
   };
 }
@@ -48,11 +51,13 @@ function MovingRegionWrapper({ children }: { children: React.ReactNode }) {
   const client = useMemo(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }), []);
   return (
-    <QueryClientProvider client={client}>
-      <ExperienceProvider regionId={regionUnderTest} isExploring>
-        {children}
-      </ExperienceProvider>
-    </QueryClientProvider>
+    <MemoryRouter initialEntries={['/wv/5']}>
+      <QueryClientProvider client={client}>
+        <ExperienceProvider regionId={regionUnderTest} isExploring>
+          {children}
+        </ExperienceProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
 

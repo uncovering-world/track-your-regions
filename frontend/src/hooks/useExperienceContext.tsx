@@ -3,7 +3,8 @@
  *
  * Provides:
  * - experiences: fetched when regionId changes
- * - selectedExperienceId: currently expanded/selected experience (shows details in list)
+ * - selectedExperienceId: the open card — what the address names (#644), so a
+ *   card is a place a reader can send, refresh and come back to
  * - what the map is showing, so the list can answer about the view (#553)
  *
  * Hover is deliberately *not* here: what the pointer is over changes on every
@@ -15,9 +16,10 @@
  * records why, and where it happens instead.
  */
 
-import { createContext, useContext, useState, useMemo, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useMemo, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchExperiencesByRegion, WHOLE_REGION_LIMIT, type Experience, type ImageCredit } from '../api/experiences';
+import { useAppAddress } from './useAppAddress';
 import { useCollapsedExperiences } from './useCollapsedExperiences';
 import { HoverProvider } from './useHoverContext';
 import type { ViewBounds } from '../utils/viewBounds';
@@ -53,10 +55,19 @@ interface ExperienceContextType {
   viewBounds: ViewBounds | null;
   setViewBounds: (bounds: ViewBounds | null) => void;
 
-  // Selected/expanded experience (shows inline details in list)
+  // The open card: read from the address, written into it. Opening and closing
+  // are steps the visitor took, so Back undoes them.
   selectedExperienceId: number | null;
   setSelectedExperienceId: (id: number | null) => void;
   toggleSelectedExperience: (id: number) => void;
+
+  /**
+   * The card the page arrived with, until its row has settled it: the list
+   * puts the focus in that card once it opens, so a reader who followed a link
+   * with a keyboard or a screen reader lands in what the link named.
+   */
+  arrivedAtExperienceId: number | null;
+  settleArrival: () => void;
 
   // Map fly-to trigger (set by list click, consumed by map)
   flyToExperienceId: number | null;
@@ -102,7 +113,13 @@ interface ExperienceProviderProps {
 }
 
 export function ExperienceProvider({ regionId, isExploring, children }: ExperienceProviderProps) {
-  const [selectedExperienceId, setSelectedExperienceId] = useState<number | null>(null);
+  const { address, go } = useAppAddress();
+  // The open card is what the address names — and only while this provider is
+  // on the region the address names. During a restore the region arrives after
+  // the address, and this provider is still on the previous region, or on none:
+  // its list must not be asked about a card of the region that is on its way.
+  const onAddressedRegion = address !== null && address.regionId === regionId;
+  const selectedExperienceId = onAddressedRegion ? address.experienceId : null;
   const [flyToExperienceId, setFlyToExperienceId] = useState<number | null>(null);
   const [expandedCategoryNames, setExpandedCategoryNames] = useState<Set<string>>(new Set());
   const [artworkPreview, setArtworkPreview] = useState<ArtworkPreview | null>(null);
@@ -145,6 +162,65 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   });
 
   const experiences = useMemo(() => data?.experiences || [], [data?.experiences]);
+
+  // A card this list does not hold — hidden, rejected, in another region, or
+  // not there at all — is dropped from the address once the list has answered,
+  // in place and in silence: one answer for all four, as the list itself gives.
+  //
+  // Only a *successful* answer counts. Not the empty list that stands in while
+  // the real one loads, and not a failed read either: a read that did not
+  // arrive says nothing about what the region holds, and treating it as "no
+  // such card" would let one 500 rewrite a link somebody shared — and not give
+  // it back when the API recovered, since the card would be gone from the
+  // address the retry reads.
+  useEffect(() => {
+    if (address === null || !onAddressedRegion || selectedExperienceId === null || data === undefined) return;
+    if (experiences.some(e => e.id === selectedExperienceId)) return;
+    go({ ...address, experienceId: null }, { replace: true });
+  }, [address, onAddressedRegion, selectedExperienceId, data, experiences, go]);
+
+  // Bring the card's slug up to date once the list names it. A deep link
+  // carries whatever slug it was made with, or none — which is the shape the
+  // region's own canonicalisation leaves behind, since that write knows the
+  // region's name and not the card's. In place: a correction, not a step.
+  const openCard = selectedExperienceId === null
+    ? undefined
+    : experiences.find(e => e.id === selectedExperienceId);
+  useEffect(() => {
+    if (address === null || !openCard?.name) return;
+    go(address, { replace: true, names: { experience: openCard.name } });
+  }, [address, openCard, go]);
+
+  // The card the page arrived with, forgotten once its row has settled it, or
+  // once the reader has moved to another card before it could open.
+  const [arrivedAtExperienceId, setArrivedAtExperienceId] = useState<number | null>(
+    () => address?.experienceId ?? null,
+  );
+  const settleArrival = useCallback(() => setArrivedAtExperienceId(null), []);
+  useEffect(() => {
+    if (arrivedAtExperienceId === null || !onAddressedRegion) return;
+    if (selectedExperienceId !== arrivedAtExperienceId) setArrivedAtExperienceId(null);
+  }, [arrivedAtExperienceId, onAddressedRegion, selectedExperienceId]);
+
+  // Written through refs so the two setters keep one identity across
+  // addresses and lists: ExperienceMarkers and the list build their handlers
+  // on them, and rebuild everything they draw when those change.
+  const addressRef = useRef(address);
+  addressRef.current = address;
+  const experiencesRef = useRef(experiences);
+  experiencesRef.current = experiences;
+  const selectedRef = useRef(selectedExperienceId);
+  selectedRef.current = selectedExperienceId;
+
+  // Opening and closing a card are steps the visitor took: pushed, so Back
+  // closes what was opened and reopens what was closed. The name rides along
+  // as the slug.
+  const setSelectedExperienceId = useCallback((id: number | null) => {
+    const at = addressRef.current;
+    if (at === null) return;
+    const name = id === null ? undefined : experiencesRef.current.find(e => e.id === id)?.name;
+    go(at2 => ({ ...at2, experienceId: id }), { names: { experience: name } });
+  }, [go]);
   // Zero for almost every region; the list offers the toggle only above zero.
   const lostHidden = data?.lostHidden ?? 0;
 
@@ -166,8 +242,8 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   }, [experiences]);
 
   const toggleSelectedExperience = useCallback((id: number) => {
-    setSelectedExperienceId(prev => prev === id ? null : id);
-  }, []);
+    setSelectedExperienceId(selectedRef.current === id ? null : id);
+  }, [setSelectedExperienceId]);
 
   const triggerFlyTo = useCallback((id: number) => {
     setFlyToExperienceId(id);
@@ -191,6 +267,8 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     selectedExperienceId,
     setSelectedExperienceId,
     toggleSelectedExperience,
+    arrivedAtExperienceId,
+    settleArrival,
     flyToExperienceId,
     triggerFlyTo,
     clearFlyTo,
@@ -201,7 +279,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     toggleCollapsedExperience,
     artworkPreview,
     setArtworkPreview,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, toggleSelectedExperience, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedCategoryNames, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>
