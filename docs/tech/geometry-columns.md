@@ -180,7 +180,8 @@ its children's.
 | `geom` | MultiPolygon | **Primary geometry** from GADM data. Full-resolution boundary. |
 | `geom_simplified_low` | MultiPolygon | Simplified in 4326. Used for GeoJSON API responses. |
 | `geom_simplified_medium` | MultiPolygon | Simplified in 4326. Used for GeoJSON API responses. |
-| `anchor_point` | Point | Label anchor point. |
+| `anchor_point` | Point | The centre of the frame `focus_bbox` describes. Auto-computed by `update_division_focus_data()` from `geometry_focus()` (#674). |
+| `focus_bbox` | double precision[4] | `[west, south, east, north]` for `fitBounds()`. West > east = antimeridian crossing. Auto-computed with `anchor_point`; read by the division lists, so a click frames without downloading the geometry. |
 
 ### Derived 3857 geometries (SRID 3857)
 
@@ -333,51 +334,83 @@ Coverage-aware simplification for **sibling regions** (same parent). Uses `ST_Co
 | `update_simplified_geometries` | `administrative_divisions` | `geom` change | Per-row simplification of 4326 simplified columns. Fallback for individual updates (batch import uses `simplify_coverage_siblings`). |
 | `update_admin_div_geom_3857` | `administrative_divisions` | `geom` or simplified change | Transforms to 3857, computes 3857 simplified columns. |
 | `update_region_metadata` | `regions` | `geom` change | Computes area, detects `uses_hull` on INSERT. |
-| `update_region_focus_data` | `regions` | `geom` or `hull_geom` change | Computes `anchor_point` and `focus_bbox`. See [How a crossing region is told from a global one](#how-a-crossing-region-is-told-from-a-global-one). |
+| `update_region_focus_data` | `regions` | `geom` or `hull_geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`, taking a near-global parent's box from its children instead. See [How a crossing region is told from a global one](#how-a-crossing-region-is-told-from-a-global-one). |
+| `update_division_focus_data` | `administrative_divisions` | `geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`. No children aggregation. Disabled during the bulk GADM load, which computes the columns in one pass (step 1b). |
 | `trg_regions_geom_3857` | `regions` | `geom`, `hull_geom`, or `geom_simplified_low` change | Transforms to 3857, computes all simplified columns (hull-based and real-geom-based), including both cheap rungs. The third condition exists for `simplify_coverage_regions()`, which writes `geom_simplified_low` directly — without it `geom_overview` and `geom_simplified_coarse` would keep the pre-coverage shape and serve it at zoom 0-4. |
 
 ### How a crossing region is told from a global one
 
 `focus_bbox` is `[west, south, east, north]`, and `west > east` says the box
-crosses the antimeridian. Deciding which of the two a region is happens in
-`update_region_focus_data()` and is worth stating in full, because getting it
-wrong is not visible in the data — the row looks like an ordinary box, and only
-the map shows what it claims.
+crosses the antimeridian. Deciding which of the two a shape is happens in
+**one function, `geometry_focus(geom)`**, and is worth stating in full, because
+getting it wrong is not visible in the data — the row looks like an ordinary
+box, and only the map shows what it claims.
 
 The shape is measured twice: once as it stands, and once with negative
 longitudes carried up by 360. Whichever measurement is *tighter* is the truthful
-one. A region crossing the dateline is compact only in the shifted frame; one
+one. A shape crossing the dateline is compact only in the shifted frame; one
 that really wraps the world is wide in both, and keeps a full-width box, because
-no window onto it would be a frame. `near_global_deg` (350°) is where "wide in
-both" begins, and both places that would keep a shifted box check it.
+no window onto it would be a frame. `near_global_deg()` (350°) is where "wide in
+both" begins, stated once for the function and for the children aggregation.
 
-Three things make this harder than it reads:
+Where the answer lives (#674):
+
+- **Stored, for what the database holds.** `update_region_focus_data()` and
+  `update_division_focus_data()` both call `geometry_focus()` and write the two
+  columns at geometry write time, so every read is a column read. The division
+  lists carry them, and the map frames a division from the list entry instead
+  of downloading its geometry to measure it — 17 MB of GeoJSON for the Far
+  Eastern Federal District, on every click, until then. The regions trigger adds
+  the one thing that needs its table: a parent whose own union spans nearly
+  every longitude takes its box from its children (see below). The divisions
+  trigger adds nothing; after the snap, Russia, Oceania and Kiribati measure
+  compact on their own, and the only divisions that are wide either way are the
+  two Antarctica rows.
+- **`focusFromGeoJson()`** (`frontend/src/utils/mapUtils.ts`), for what exists
+  only in the client — a boundary being drawn, a cut in progress, a combined
+  selection of several divisions. The same rule, with a one-way shift, so it
+  needs no snap. `turf.bbox` is not a substitute: it returns the extremes of the
+  raw longitudes, which for a shape over the dateline is `[-180, …, 180]`.
+- **Nothing else decides.** A backend module reads `focus_bbox[1] > focus_bbox[3]`
+  where the stored box describes the shape in question — the region geometry
+  read does, for the hull it serves — or asks `geometry_focus()` in one query
+  where it does not. Two places do the latter: the hull preview on a custom
+  geometry sent in the request, and the hull generator, which measures the very
+  `region_members` points it is about to hull. The generator cannot read the
+  stored box: `focus_bbox` describes `COALESCE(hull_geom, geom)`, the hull is
+  built from members, and `invalidateRegionGeometry()` clears `geom` but not
+  `hull_geom` after a member change — so until the next recompute, which
+  neither hull endpoint runs first, that box describes the *previous* hull.
+  Two detections were retired for reading Antarctica as crossing: an envelope
+  test in the region geometry read, and a ±150° threshold over a hull's point
+  cloud.
+  `backend/src/db/regionFocusAntimeridian.test.ts` holds all of this — the one
+  `ST_ShiftLongitude` in the schema, both triggers, the retired names, the
+  frontend threshold — and fails on the mutation each guard exists for.
+
+Three things make the rule harder than it reads:
 
 - **GADM's geometry overshoots the antimeridian.** Five vertices of the Far
   Eastern Federal District sit at `180.0000000000001`, nine of Fiji's do — 1e-13
   degrees past the meridian, about 11 nanometres on the ground at the equator and
-  less further north. `ST_ShiftLongitude` wraps in *both*
-  directions, so it carried those vertices back to `-179.9999999999999` and the
-  shifted span came out at 370°, wider than the unshifted 360°. Both regions
-  were filed as global and framed as the whole Earth at zoom 1, anchored in the
-  wrong ocean (#666). The function snaps to `1e-9` degrees before measuring —
-  the measurement only; the stored geometry is untouched.
+  less further north. `ST_ShiftLongitude` wraps in *both* directions, so it
+  carried those vertices back to `-179.9999999999999` and the shifted span came
+  out at 370°, wider than the unshifted 360°. Both regions were filed as global
+  and framed as the whole Earth at zoom 1, anchored in the wrong ocean (#666).
+  `geometry_focus()` snaps to `1e-9` degrees before measuring — the measurement
+  only; the stored geometry is untouched.
 - **A parent's box comes from its children** when its own union spans the world,
   because a union of things either side of the dateline spans it by
   construction. That aggregation has to run bottom-up, and it cannot absorb a
   child whose own box is global: shifting one maps both edges onto 180 and it
   collapses to a point, contributing nothing. Antarctica's continent row claimed
-  a 347° window with a 13° gap over Queen Maud Land for exactly that reason.
-- **The trigger fires only on `geom` and `hull_geom`.** An existing database does
-  not heal itself when the function changes; `db/migrations/032-antimeridian-focus-data.sql`
-  is the one-shot that re-fires it over the rows a change can reach.
-
-A GADM division has no focus data anywhere — not in the tiles, not in the API —
-so the frontend measures one itself with `focusFromGeoJson()`
-(`frontend/src/utils/mapUtils.ts`), applying the same rule. `turf.bbox` does not:
-it returns the extremes of the raw longitudes, which for a shape over the
-dateline is `[-180, …, 180]`. `backend/src/db/regionFocusAntimeridian.test.ts`
-holds the SQL and the TypeScript to the same threshold.
+  a 347° window with a 13° gap over Queen Maud Land for exactly that reason. A
+  child crossing Greenwich is the gap that remains (#673).
+- **The triggers fire only on geometry writes.** An existing database does not
+  heal itself when the function changes or a column is added:
+  `db/migrations/032-antimeridian-focus-data.sql` re-fires the regions trigger
+  over the rows a rule change can reach, and `033-division-focus-data.sql` fills
+  the divisions' columns once, in about five minutes over 392 112 rows.
 
 ## Tile cache busting
 
@@ -415,14 +448,17 @@ Martin caches tile responses in memory. When geometry changes, stale tiles must 
 
 ```
 1. init-db.py loads GADM divisions with validate_multipolygon()
-   -> both geometry triggers are DISABLED for the bulk insert
-      (trigger_simplify_geom, trg_admin_div_geom_3857) and re-enabled after
-      step 1b, so neither fires per row
+   -> the three geometry triggers are DISABLED for the bulk insert
+      (trigger_simplify_geom, trg_admin_div_geom_3857,
+      trigger_division_focus_data) and re-enabled after step 1b, so none
+      fires per row
 1b. init-db.py batch-computes the derived columns itself, in one pass:
    -> geom_simplified_low/medium (4326), then geom_3857,
       then geom_simplified_low_3857/medium_3857,
-      then geom_overview_3857 and geom_simplified_coarse_3857 from the low rung
+      then geom_overview_3857 and geom_simplified_coarse_3857 from the low rung,
+      then focus_bbox and anchor_point from geometry_focus() (step 4/4)
 2. precalculate-geometries.py computes parent geometry bottom-up
+   -> triggers are on again, so a parent's focus data is written per row
    -> ST_CoverageUnion for valid coverages, ST_Union fallback
    -> validate_multipolygon() wraps all writes
    -> No simplification applied to geom (Rule 1)
