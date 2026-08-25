@@ -25,7 +25,6 @@ export {
   getRegions,
   getRootRegions,
   getSubregions,
-  getLeafRegions,
   getRegionAncestors,
   searchRegions,
   createRegion,

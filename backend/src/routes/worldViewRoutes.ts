@@ -8,7 +8,6 @@ import {
   getRegions,
   getRootRegions,
   getSubregions,
-  getLeafRegions,
   getRegionAncestors,
   searchRegions,
   createRegion,
@@ -88,7 +87,6 @@ router.delete('/:worldViewId', validate(worldViewIdParamSchema, 'params'), requi
 router.get('/:worldViewId/regions', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getRegions);
 router.get('/:worldViewId/regions/root', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getRootRegions);
 router.get('/:worldViewId/regions/search', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), validate(regionSearchQuerySchema, 'query'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), searchRegions);
-router.get('/:worldViewId/regions/leaf', publicReadLimiter, validate(worldViewIdParamSchema, 'params'), optionalAuth, requireVisibleWorldView('worldViewIdParam'), getLeafRegions);
 // Write operations require admin
 router.post('/:worldViewId/regions', validate(worldViewIdParamSchema, 'params'), requireAuth, requireAdmin, validate(createRegionBodySchema), createRegion);
 

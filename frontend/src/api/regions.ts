@@ -43,10 +43,6 @@ export async function fetchRootRegions(worldViewId: number): Promise<Region[]> {
   return authFetchJson<Region[]>(`${API_URL}/api/world-views/${worldViewId}/regions/root`);
 }
 
-export async function fetchLeafRegions(worldViewId: number): Promise<Region[]> {
-  return authFetchJson<Region[]>(`${API_URL}/api/world-views/${worldViewId}/regions/leaf`);
-}
-
 export async function fetchSubregions(regionId: number): Promise<Region[]> {
   return authFetchJson<Region[]>(`${API_URL}/api/world-views/regions/${regionId}/subregions`);
 }
