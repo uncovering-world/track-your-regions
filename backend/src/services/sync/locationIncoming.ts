@@ -10,6 +10,7 @@
  */
 
 import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
+import { signedLongitudeDelta } from './longitude.js';
 
 /** One point as the source offers it, before anything is known about the store. */
 export interface IncomingLocation {
@@ -108,18 +109,18 @@ export function dedupeByIdentity(incoming: IncomingLocation[]): IncomingLocation
  * the equator.
  *
  * The haversine it replaces was antimeridian-safe for free — `sin(dLon/2)` reads
- * 360° − ε as ε — and a raw subtraction is not, so the difference is normalised
- * to (−180, 180]. Without it, two entries either side of the line and a metre
- * apart measure 40 000 km, both survive the dedupe, both answer the tolerance
- * against one stored row, and the object gains a second row for one place under
- * one reference. Latent rather than live: the catalogue's Pacific sites all sit
- * clear of the line. It is the repo's standing rule regardless (CLAUDE.md
- * § Antimeridian Handling), and this is the file's only distance in JavaScript.
+ * 360° − ε as ε — and a raw subtraction is not, so the longitude difference is
+ * `signedLongitudeDelta`'s, the short way round. Without it, two entries either
+ * side of the line and a metre apart measure 40 000 km, both survive the dedupe,
+ * both answer the tolerance against one stored row, and the object gains a
+ * second row for one place under one reference. Latent rather than live: the
+ * catalogue's Pacific sites all sit clear of the line. It is the repo's standing
+ * rule regardless (CLAUDE.md § Antimeridian Handling).
  */
 function metresBetween(a: IncomingLocation, b: IncomingLocation): number {
   const R = 6371008.8;
   const toRad = Math.PI / 180;
-  const dLon = ((b.lon - a.lon + 540) % 360) - 180;
+  const dLon = signedLongitudeDelta(a.lon, b.lon);
   const x = dLon * toRad * Math.cos((a.lat + b.lat) / 2 * toRad);
   const y = (b.lat - a.lat) * toRad;
   return Math.sqrt(x * x + y * y) * R;

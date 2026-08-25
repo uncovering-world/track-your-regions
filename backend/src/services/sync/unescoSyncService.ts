@@ -23,6 +23,7 @@ import {
 } from './imageCredit.js';
 import { sparqlQuery, SPARQL_WAIT_BUDGET_MS, waitMessage } from './wikidataUtils.js';
 import { WaitBudget } from './sourceRetry.js';
+import { longitudeDelta } from './longitude.js';
 import type {
   SyncProgress,
   UnescoApiRecord,
@@ -280,12 +281,6 @@ function meanLongitude(locations: ParsedLocation[]): number {
   const x = locations.reduce((sum, l) => sum + Math.cos(l.lon * toRad), 0);
   const y = locations.reduce((sum, l) => sum + Math.sin(l.lon * toRad), 0);
   return (Math.atan2(y, x) * 180) / Math.PI;
-}
-
-/** Separation between two longitudes, never more than half a turn. */
-function longitudeDelta(a: number, b: number): number {
-  const diff = Math.abs(a - b) % 360;
-  return diff > 180 ? 360 - diff : diff;
 }
 
 /**
