@@ -70,6 +70,33 @@ describe('useRegionMetadata', () => {
     navState.rootRegions = [EUROPE, AFRICA];
   });
 
+  it("carries a division's stored focus into its lookup entry", async () => {
+    // A division's tile click frames from `meta.focusBbox`, the branch a region
+    // takes; the box comes from the division list, stored beside its geometry
+    // (#674). Without these two fields the click would have nothing to fly
+    // from, since the tile-geometry path that used to stand in is gone.
+    navState.isCustomWorldView = false;
+    navState.selectedWorldView = { id: 1 };
+    mockFetchRootDivisions.mockResolvedValue([{
+      id: 304759,
+      name: 'Far Eastern Federal District',
+      parentId: 304688,
+      hasChildren: true,
+      focusBbox: [105.5235, 42.284584, -169.6526, 76.754166],
+      anchorPoint: [147.9354, 59.5194],
+    }]);
+    const { result } = renderHook(() => useRegionMetadata('all-leaf', 'root'), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.metadataById[304759]).toBeDefined());
+    expect(result.current.metadataById[304759]).toEqual({
+      name: 'Far Eastern Federal District',
+      hasChildren: true,
+      focusBbox: [105.5235, 42.284584, -169.6526, 76.754166],
+      anchorPoint: [147.9354, 59.5194],
+    });
+  });
+
   it('asks for no region list at the world-view root', async () => {
     const { result } = renderHook(() => useRegionMetadata('all-leaf', 'root'), {
       wrapper: makeWrapper(),

@@ -7,8 +7,8 @@ import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import { useNavigation } from '../../hooks/useNavigation';
 import { useRegionHoverActions } from '../../hooks/useRegionHover';
 import { useExperienceContext } from '../../hooks/useExperienceContext';
-import { fetchDivision, fetchDivisionGeometry } from '../../api';
-import { focusFromGeoJson, smartFitBounds } from '../../utils/mapUtils';
+import { fetchDivision } from '../../api';
+import { smartFitBounds } from '../../utils/mapUtils';
 import type { Region } from '../../types';
 
 interface ClickMeta {
@@ -25,57 +25,33 @@ function flyToClickedFeature(
   map: MapRef | null,
   id: number,
   meta: ClickMeta | undefined,
-  isCustomWorldView: boolean,
-  clickedFeature: { geometry?: GeoJSON.Geometry } & object,
   lastMapClickIdRef: React.MutableRefObject<number | null>,
 ): void {
-  if (!map) return;
-  if (meta?.focusBbox) {
-    lastMapClickIdRef.current = id;
-    smartFitBounds(map, meta.focusBbox, {
-      padding: 60,
-      duration: 400,
-      anchorPoint: meta.anchorPoint,
-    });
-    return;
-  }
-  // No tile function carries focusBbox, so in a custom world view the accurate
-  // box is always one read away: the ancestors call the selection makes anyway
-  // enriches selectedRegion, and the fly-to effect below flies from it. Flying
-  // from tile geometry first would be a second, worse animation — worse because
-  // a feature is clipped to the tile it was drawn in, so the box is the box of
-  // whatever part of the region that tile happened to hold. Every region a tile
-  // drew has geometry, and the trigger
-  // that computes geometry computes `focus_bbox` with it (measured on the dev
-  // database: of 3 594 leaf regions with geometry, 0 lack focus data), so the
-  // enrichment has an answer. A click on a context layer has always taken this
-  // path and needs no term of its own: those layers exist only in a custom
-  // world view — `useTileUrls` returns none otherwise, and `RegionMapVT` renders
-  // and registers them under the same condition.
+  if (!map || !meta?.focusBbox) return;
+  // No tile function carries a focus box, so when the metadata has none the
+  // accurate box is always one read away: the ancestors call the selection
+  // makes anyway enriches selectedRegion, and the fly-to effect below flies
+  // from it. Flying from tile geometry first would be a second, worse
+  // animation -- a feature is clipped to the tile it was drawn in, so its box
+  // is the box of whatever part of the region that tile happened to hold.
+  // Every region a tile drew has geometry, and the trigger that computes
+  // geometry computes `focus_bbox` with it (measured on the dev database: of
+  // 3 594 leaf regions with geometry, 0 lack focus data), so the enrichment
+  // has an answer. A click on a context layer has always taken this path and
+  // needs no term of its own: those layers exist only in a custom world view
+  // -- `useTileUrls` returns none otherwise, and `RegionMapVT` renders and
+  // registers them under the same condition.
   //
-  // GADM divisions are the exception and keep the tile-geometry path: they have
-  // no focus data at all, in the tiles or in the API. `focusFromGeoJson` is what
-  // stands in for it — the same antimeridian rule the trigger applies, so the
-  // Far Eastern Federal District is framed the same way in either world view
-  // (#666).
-  if (isCustomWorldView || !clickedFeature.geometry) return;
-
+  // GADM divisions used to be the exception, framed from the clipped tile
+  // feature because they had focus data nowhere. They have it stored now
+  // (#674), the division lists carry it, and `useRegionMetadata` puts it in
+  // `meta` -- so a division takes this branch exactly as a region does.
   lastMapClickIdRef.current = id;
-  try {
-    const featureGeojson: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: [clickedFeature as GeoJSON.Feature],
-    };
-    const focus = focusFromGeoJson(featureGeojson);
-    if (!focus) return;
-    smartFitBounds(map, focus.bbox, {
-      padding: 60,
-      duration: 400,
-      anchorPoint: focus.anchorPoint,
-    });
-  } catch (e) {
-    console.error('Failed to fit bounds from clicked feature:', e);
-  }
+  smartFitBounds(map, meta.focusBbox, {
+    padding: 60,
+    duration: 400,
+    anchorPoint: meta.anchorPoint,
+  });
 }
 
 function resolveClickedRegionParent(
@@ -189,33 +165,31 @@ export function useMapInteractions({
       return;
     }
 
-    console.log('[RegionMapVT] Flying to division from list selection:', selectedDivision.id, selectedDivision.name);
-
-    // A division has no focus box anywhere — not in the tiles, not in the API —
-    // so its geometry is what it is framed from. Asked of the API rather than of
-    // the loaded tiles: the tile query that stood here filtered on `['get',
-    // 'id']` and matched nothing, for the reason given in the effect above.
-    fetchDivisionGeometry(selectedDivision.id, selectedWorldView?.id ?? 1)
-      .then(geom => {
-        if (geom?.geometry && mapRef.current) {
-          try {
-            const geojson: GeoJSON.FeatureCollection = {
-              type: 'FeatureCollection',
-              features: [geom as GeoJSON.Feature],
-            };
-            const focus = focusFromGeoJson(geojson);
-            if (!focus) return;
-            smartFitBounds(mapRef.current, focus.bbox, {
-              padding: 100,
-              duration: 500,
-              anchorPoint: focus.anchorPoint,
-            });
-          } catch (e) {
-            console.error('[RegionMapVT] Failed to fit bounds from API geometry:', e);
-          }
-        }
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on division ID change
+    // A division's focus box is stored beside its geometry, and every read
+    // that can become a selection carries it -- the lists, the breadcrumbs, the
+    // search results (#674). What stood here downloaded the full geometry --
+    // 775 000 vertices for the Far Eastern Federal District -- to measure a box
+    // the database had already measured. A selection handed over without the
+    // box (a producer written before the field existed) is answered with the
+    // by-id read, which carries it: still a read, never a measurement.
+    const { id, name, focusBbox, anchorPoint } = selectedDivision;
+    const map = mapRef.current;
+    const fly = (bbox: [number, number, number, number], anchor: [number, number] | null | undefined) => {
+      console.log('[RegionMapVT] Flying to division from list selection:', id, name);
+      smartFitBounds(map, bbox, { padding: 100, duration: 500, anchorPoint: anchor });
+    };
+    if (focusBbox) {
+      fly(focusBbox, anchorPoint);
+      return;
+    }
+    let stale = false;
+    fetchDivision(id, selectedWorldView?.id ?? 1)
+      .then(division => {
+        if (!stale && division.focusBbox) fly(division.focusBbox, division.anchorPoint);
+      })
+      .catch(e => console.error('[RegionMapVT] Failed to read the division to frame it:', e));
+    return () => { stale = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on division ID change; the box is a property of that id
   }, [selectedDivision?.id, isCustomWorldView, mapLoaded, selectedWorldView?.id]);
 
   // Reset to world view when navigating back to root
@@ -265,14 +239,7 @@ export function useMapInteractions({
       fromContextLayer,
     });
 
-    flyToClickedFeature(
-      mapRef.current,
-      id,
-      meta,
-      isCustomWorldView,
-      clickedFeature,
-      lastMapClickIdRef,
-    );
+    flyToClickedFeature(mapRef.current, id, meta, lastMapClickIdRef);
 
     if (isCustomWorldView && selectedWorldView) {
       const parentRegionId = resolveClickedRegionParent(
@@ -300,6 +267,8 @@ export function useMapInteractions({
         name: meta?.name ?? clickedFeature.properties?.name ?? '',
         parentId: resolveClickedDivisionParent(selectedDivision),
         hasChildren: meta?.hasChildren ?? clickedFeature.properties?.has_children ?? false,
+        focusBbox: meta?.focusBbox,
+        anchorPoint: meta?.anchorPoint,
       });
     }
   }, [selectedDivision, setSelectedDivision, isCustomWorldView, setSelectedRegion, selectedWorldView, metadataById, viewingRegionId, isExploring, mapRef]);

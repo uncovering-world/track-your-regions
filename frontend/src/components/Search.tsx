@@ -37,6 +37,8 @@ export function Search() {
       name: division.name,
       parentId: division.parentId,
       hasChildren: division.hasChildren,
+      focusBbox: division.focusBbox,
+      anchorPoint: division.anchorPoint,
     });
     setQuery('');
   }, [setSelectedDivision]);
