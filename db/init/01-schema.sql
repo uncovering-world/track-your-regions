@@ -79,6 +79,9 @@ CREATE TABLE IF NOT EXISTS administrative_divisions (
     geom_simplified_low GEOMETRY(MultiPolygon, 4326),
     geom_simplified_medium GEOMETRY(MultiPolygon, 4326),
     anchor_point GEOMETRY(Point, 4326),
+    -- [west, south, east, north]; west > east = antimeridian crossing. Written by
+    -- trigger_division_focus_data with anchor_point, from geometry_focus() (#674)
+    focus_bbox DOUBLE PRECISION[],
     geom_area_km2 DOUBLE PRECISION,
     -- Pre-computed normalized name for accent-insensitive matching (generated)
     name_normalized TEXT GENERATED ALWAYS AS (lower(immutable_unaccent(name::text))) STORED,
@@ -97,6 +100,8 @@ CREATE INDEX IF NOT EXISTS idx_admin_divisions_geom ON administrative_divisions 
 CREATE INDEX IF NOT EXISTS idx_admin_divisions_geom_low ON administrative_divisions USING GIST(geom_simplified_low);
 CREATE INDEX IF NOT EXISTS idx_admin_divisions_geom_medium ON administrative_divisions USING GIST(geom_simplified_medium);
 CREATE INDEX IF NOT EXISTS idx_admin_div_anchor_point ON administrative_divisions USING GIST(anchor_point);
+-- Databases that predate #674 gain the column here; 033-division-focus-data.sql fills it
+ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS focus_bbox DOUBLE PRECISION[];
 
 -- =============================================================================
 -- World Views (custom hierarchies)
@@ -793,6 +798,51 @@ CREATE OR REPLACE TRIGGER trigger_update_region_focus_data
   EXECUTE FUNCTION update_region_focus_data();
 
 COMMENT ON FUNCTION update_region_focus_data() IS 'Trigger function to auto-update anchor_point and focus_bbox when region geometry changes.';
+
+-- =============================================================================
+-- Trigger: Update a division's focus_bbox and anchor_point when its geometry changes
+-- =============================================================================
+-- The same measurement regions get, stored once so a read is a column read: a
+-- division used to have focus data nowhere, and framing one meant downloading
+-- its full geometry to measure it in the browser -- 775 000 vertices for the
+-- Far Eastern Federal District, on every click (#674).
+--
+-- No children aggregation here. It exists for a region whose own union spans
+-- nearly every longitude while the boxes beneath it are tighter; after the snap
+-- Russia and Oceania measure compact on their own, and the only divisions that
+-- are wide either way are the two Antarctica rows, which wrap the pole and are
+-- global in truth. 033-division-focus-data.sql lists what comes out global so a
+-- database can check that claim against its own rows.
+--
+-- Disabled during the bulk GADM load, like the two geometry triggers beside it:
+-- init-db.py computes the columns in one pass afterwards (step 4 of its derived
+-- columns). precalculate-geometries.py writes parent geometry with triggers on,
+-- so parents get theirs per row.
+
+CREATE OR REPLACE FUNCTION update_division_focus_data()
+RETURNS TRIGGER AS $$
+DECLARE
+  f record;
+BEGIN
+  IF NEW.geom IS NULL THEN
+    NEW.anchor_point := NULL;
+    NEW.focus_bbox := NULL;
+    RETURN NEW;
+  END IF;
+
+  SELECT * INTO f FROM geometry_focus(NEW.geom);
+  NEW.focus_bbox := ARRAY[f.west, f.south, f.east, f.north];
+  NEW.anchor_point := ST_SetSRID(ST_MakePoint(f.center_lng, f.center_lat), 4326);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trigger_division_focus_data
+  BEFORE INSERT OR UPDATE OF geom ON administrative_divisions
+  FOR EACH ROW
+  EXECUTE FUNCTION update_division_focus_data();
+
+COMMENT ON FUNCTION update_division_focus_data() IS 'Trigger function to auto-update a division''s anchor_point and focus_bbox from geometry_focus() when its geometry changes.';
 
 -- =============================================================================
 -- Function: Search regions (full-text with similarity)
