@@ -382,6 +382,7 @@ Compute merged geometries for regions.
 - Click "Compute" on a specific region
 - Uses SSE (Server-Sent Events) streaming for real-time progress (6-step pipeline)
 - Computes bottom-up: recursively computes children without geometry first, then parent
+- Afterwards every **derived ancestor**'s geometry is nulled: a parent is the union of its children, and one of them has just changed (#667). A hand-drawn boundary is left as drawn and ends the walk there — its outline does not move when a descendant gains one, so nothing above it does either (#283). They are not recomputed on the spot — recomputing a continent is around a hundred seconds of union — so an ancestor is absent from the map until the next world-view run picks it up, and Catalogue Checks reports it meanwhile
 - Pipeline: collect geometries → analyze → snap neighbors → union → clean holes/slivers → save
 - **Except for a region that is exactly one division** (one member, no child regions, no hand-drawn boundary): all three writers — the SSE stream, the `/geometry/compute` endpoint and the bulk core — short-circuit to `computeSingleMemberFastPath`, which copies the member's geometry through the same `validate_multipolygon` normalization the normal path applies and runs none of the six steps, so no simplification is applied and the SSE `complete` event carries no polygon/hole counts. This is deliberate: the single member already *is* the answer, and simplifying it would only degrade it. Common well beyond base-layer imports — it is the shape of any 1:1 match
 - "Skip snapping" checkbox (default: on) skips the expensive neighbor-snapping step for faster computation. Snapping adds shared boundary vertices but is O(n²) on child count — can be slow for continents
@@ -392,6 +393,8 @@ Compute merged geometries for regions.
 **World View-wide Computation:**
 - "Compute All Regions" button (shown when no region is selected)
 - Processes all regions in dependency order (deepest children first)
+- Takes a **closure, not a filter**: every derived region with no geometry *and every derived ancestor of one*, so a run leaves the tree consistent. Selecting `geom IS NULL` alone never revisited a parent that already had geometry, which is how four continents came to draw a fraction of themselves (#667). "Force" takes every region regardless. A user-drawn boundary is never recomputed from members on either arm (#283), and it bounds the closure in both directions: an empty one does not seed it, and one partway up the tree does not pass a child's news any further, because its own outline does not move
+- The selection is evaluated **once per run**, which is why nulling the ancestors belongs to whatever writes `regions.geom` rather than to whichever request finishes. That includes the writes made to a region's *descendants* on the way to it: computing a continent computes its missing countries first, and if only the continent's own success invalidated, those descendant writes would consume the very NULLs the closure seeds on — leaving a continent whose union timed out with nothing NULL beneath it, unreachable by every later run. See `docs/tech/geometry-columns.md` § Region creation workflow for the writer table
 - Shows progress with current region name and percentage
 - Can be cancelled mid-process
 
