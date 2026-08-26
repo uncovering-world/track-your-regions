@@ -80,6 +80,7 @@ const STATUS_LOOK: Record<AssertionStatus, {
 const AREA_LABELS: Record<DataAssertion['area'], string> = {
   places: 'Places',
   regions: 'Regions',
+  boundaries: 'Boundaries',
   pictures: 'Pictures',
 };
 
