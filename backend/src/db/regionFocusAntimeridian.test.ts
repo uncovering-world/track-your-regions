@@ -89,6 +89,8 @@ const divisionFocusFn = functionBody('update_division_focus_data()', '$$ LANGUAG
 const geometryFocusFn = functionBody('geometry_focus(', 'END; $$;');
 /** The threshold, stated once for both. */
 const nearGlobalFn = functionBody('near_global_deg()', '$$;');
+/** The window round a near-global parent's children, as an arc (#673). */
+const childrenArcFn = functionBody('children_focus_arc(', 'END; $$;');
 
 /** The threshold above which a span is the whole world however it is measured. */
 const NEAR_GLOBAL_DEG = 350;
@@ -118,13 +120,24 @@ describe('update_region_focus_data() antimeridian rule', () => {
     expect(focusFn).not.toContain('ST_XMin');
   });
 
-  it('refuses to aggregate children when one of them covers the globe', () => {
-    // Shifting a global child maps both its edges onto 180, so it collapses to
-    // a point and contributes nothing. That is how Antarctica's continent row
-    // came to claim a 347° window with a gap over Queen Maud Land.
-    expect(focusFn).toContain('child_covers_globe');
-    expect(focusFn).toMatch(/BOOL_OR\(\s*c\.focus_bbox\[1\] <= c\.focus_bbox\[3\]/);
-    expect(focusFn).toContain('AND NOT child_covers_globe');
+  it('takes a near-global parent\'s window from its children as an arc, not a MIN/MAX', () => {
+    // The window round a set of intervals on a circle is the complement of the
+    // widest gap between them. MIN and MAX of the shifted edges read a child
+    // crossing Greenwich as two unrelated numbers (#673), and shifting a global
+    // child collapses it to a point -- Antarctica's continent row once claimed
+    // a 347° window with a 13° gap over Queen Maud Land that way.
+    expect(focusFn).toContain('SELECT * INTO ch FROM children_focus_arc(NEW.id)');
+    expect(focusFn).toContain('AND NOT ch.covers_globe');
+    expect(focusFn).not.toContain('MIN(');
+    expect(focusFn).not.toContain('MAX(');
+    expect(childrenArcFn).toContain('ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING');
+    expect(childrenArcFn).toContain('(MIN(s) + 360) - MAX(e)');
+    // The wrap folded back in: a Greenwich-crossing child covers [0, e - 360] too.
+    expect(childrenArcFn).toContain('SELECT 0, s + span - 360 FROM raw WHERE s + span > 360');
+    // A global child needs no term of its own: the arc contains it, so the arc
+    // is global by construction. The two terms are the whole rule.
+    expect(childrenArcFn).not.toContain('BOOL_OR');
+    expect(childrenArcFn).toContain('covers_globe := gap_width <= 0 OR arc_width > near_global_deg()');
   });
 
   it('states the near-global threshold once, as a function', () => {
@@ -132,6 +145,7 @@ describe('update_region_focus_data() antimeridian rule', () => {
     // A bare 350 anywhere else is a second, unlabelled copy of the threshold.
     expect(geometryFocusFn).not.toContain('350');
     expect(focusFn).not.toContain('350');
+    expect(childrenArcFn).not.toContain('350');
   });
 
   it('agrees with the threshold the frontend applies to a division', () => {
