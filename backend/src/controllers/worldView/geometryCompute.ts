@@ -4,6 +4,7 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
+import { invalidateAncestorGeometry } from './helpers.js';
 
 /**
  * The regions in scope, deepest first.
@@ -169,6 +170,13 @@ export async function updateRegionGeometry(req: Request, res: Response): Promise
     `, [JSON.stringify(geometry), isCustomBoundary, regionId]);
   }
 
+  // A redraw moves this region's outline, so everything above it describes a
+  // different world -- the case invalidateAncestorGeometry's unfiltered seed
+  // term exists for, since the region redrawn is usually itself hand-drawn and
+  // the walk has to continue past it. Nothing called it on this path before
+  // (#667): every other caller is a member or structure edit.
+  await invalidateAncestorGeometry(regionId);
+
   res.status(204).send();
 }
 
@@ -222,6 +230,14 @@ export async function resetRegionToGADM(req: Request, res: Response): Promise<vo
   `, [regionId]);
 
   const points = result.rows[0]?.points || 0;
+
+  // The strongest of the redraw cases: this both moves the shape and changes
+  // where the upward walk stops. Before the reset the region was hand-drawn, so
+  // the tree above it was out of reach by design; afterwards it is derived, its
+  // outline differs, and it holds geometry with nothing NULL beneath it -- which
+  // would put every ancestor outside the world-view run's closure for good
+  // (#667).
+  if (result.rows.length > 0) await invalidateAncestorGeometry(regionId);
 
   res.json({
     reset: true,

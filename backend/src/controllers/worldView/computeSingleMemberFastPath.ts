@@ -3,6 +3,7 @@
  */
 
 import { PoolClient } from 'pg';
+import { invalidateAncestorGeometry } from './helpers.js';
 
 /**
  * Fast path for a region that is exactly one division: with no children and no
@@ -68,6 +69,16 @@ export async function computeSingleMemberFastPath(
   }
 
   await client.query('RESET statement_timeout');
+
+  // Copying the member's geometry moves this region's outline exactly as the
+  // six-step union does, so the tree above it is behind either way. It lives
+  // here rather than at the three exits that consume this function, because all
+  // three reach it -- the bulk core returns straight out of it, computeGroupGeom
+  // returns it for a child that the caller's own compute may then fail on, and
+  // the SSE stream folds it into pipelineResult. One writer, one invalidation
+  // (#667).
+  await invalidateAncestorGeometry(regionId);
+
   const points = Number(copied.rows[0].points);
   log(`Single-member fast path: copied ${points} points`);
   return { computed: true, points };
