@@ -259,6 +259,20 @@ Auto-detection for `uses_hull`. Three criteria (any match = true):
 
 Criterion (c) filters out inland enclaves like Vatican (touches Italy).
 
+### `children_focus_arc(p_region_id)`
+
+The smallest longitude window round a region's children's `focus_bbox`es, as an arc on
+the circle: each child contributes `[start, start + span]` with the span measured the
+way its box says (the short way round for a `west > east` box), and one running past 360 is folded back in as `[0, end − 360]`; sorted by start, a
+running maximum of the ends finds every gap the union leaves, the gap between the last
+end and the first start plus 360 closes the circle, and the window starts where the
+widest gap ends. Returns `west, south, east, north, center_lng, center_lat` and
+`covers_globe` — true when the children leave no gap or when the window would exceed
+`near_global_deg()` (a child whose own box is global is one such window by construction);
+then the caller keeps
+`geometry_focus()`'s answer. `update_region_focus_data()` reads it for a near-global
+parent (#673). Nothing else aggregates focus boxes.
+
 ### `refresh_uses_hull_flags(parent_region_id)`
 
 Re-checks all children of a parent region. Called after batch geometry computation since auto-detection depends on sibling geometry existing.
@@ -401,11 +415,18 @@ Three things make the rule harder than it reads:
   only; the stored geometry is untouched.
 - **A parent's box comes from its children** when its own union spans the world,
   because a union of things either side of the dateline spans it by
-  construction. That aggregation has to run bottom-up, and it cannot absorb a
-  child whose own box is global: shifting one maps both edges onto 180 and it
-  collapses to a point, contributing nothing. Antarctica's continent row claimed
-  a 347° window with a 13° gap over Queen Maud Land for exactly that reason. A
-  child crossing Greenwich is the gap that remains (#673).
+  construction. That aggregation has to run bottom-up, and it is not a MIN and a
+  MAX: a child's box is an interval on a circle, and `children_focus_arc()` finds
+  the smallest window round a set of them as the complement of the widest gap
+  between them (#673). MIN/MAX of the shifted edges read a child crossing
+  Greenwich — `west < 0 < east`, which the shift turns into `west + 360 > east` —
+  as two unrelated numbers, so a parent with Russia and France beneath it came
+  out ending at France's western edge; and a child whose own box is global
+  collapsed to a point under the shift, which is how Antarctica's continent row
+  claimed a 347° window with a 13° gap over Queen Maud Land. The arc answers
+  the first with a window — France east through the dateline to Chukotka — and
+  the second with `covers_globe`, where the parent keeps `geometry_focus()`'s
+  answer.
 - **The triggers fire only on geometry writes.** An existing database does not
   heal itself when the function changes or a column is added:
   `db/migrations/032-antimeridian-focus-data.sql` re-fires the regions trigger
