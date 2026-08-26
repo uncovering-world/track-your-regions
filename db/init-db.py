@@ -24,6 +24,12 @@ import psycopg2
 from psycopg2.extras import execute_batch
 from dotenv import load_dotenv
 
+# Which levels of a GADM row are divisions, what each is called and what
+# identifies it, is decided in gadm_levels.py -- one row in, a list of divisions
+# out (#665). PROPERTIES is the set of columns that decision reads, so the
+# SELECT below asks the GeoPackage for exactly them.
+from gadm_levels import PROPERTIES, REMAINDER_SUFFIX, row_divisions
+
 try:
     from osgeo import ogr
     ogr.UseExceptions()
@@ -144,7 +150,8 @@ def get_db_credentials():
 
 class Division:
     """Represents an administrative division with metadata for optimization."""
-    def __init__(self, name, division_id, parent_id, parent_path, parent_name, path):
+    def __init__(self, name, division_id, parent_id, parent_path, parent_name, path,
+                 name_borrowed=False):
         self.name = name
         self.id = division_id
         self.parent_id = parent_id
@@ -153,20 +160,15 @@ class Division:
         self.path = path
         self.children_num = 0
         self.single_child = None
+        # True where GADM named nothing and the name above came from the parent.
+        # `merge_single_children` hands it down: a division that absorbs its
+        # parent takes that parent's name, and whether *that* was borrowed is
+        # what decides if the result still needs labelling (#665).
+        self.name_borrowed = name_borrowed
 
 
 class GADMProcessor:
     """Processes GADM GeoPackage file and loads data into PostgreSQL."""
-
-    # Geographical levels in GADM
-    SUBCOUNTRY_LEVELS = ["SOVEREIGN", "GOVERNEDBY"]
-    GEO_LEVELS = (
-        ["CONTINENT", "SUBCONT"]
-        + SUBCOUNTRY_LEVELS
-        + ["COUNTRY", "REGION"]
-        + [f"NAME_{i}" for i in range(6)]
-    )
-    PROPERTIES = GEO_LEVELS + ["UID"]
 
     # Commit every N records during bulk import to limit transaction size
     COMMIT_INTERVAL = 10000
@@ -187,6 +189,9 @@ class GADMProcessor:
         self.existing_divisions = {}  # path -> Division object
         self.geometries = {}  # gadm_uid -> WKB geometry
         self.single_children = []  # List of divisions that are single children
+        # Divisions GADM did not name: they carry their parent's name, and the
+        # ones that survive merge_single_children are relabelled (#665)
+        self.unnamed_divisions = []
         self.record_count = self._count_records()
 
     def _get_gadm_table_name(self):
@@ -270,14 +275,14 @@ class GADMProcessor:
             """)
             self.pg_conn.commit()
 
-        cols = ", ".join(self.PROPERTIES)
-        # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; cols is the PROPERTIES class constant and table_name is validated against TABLE_NAME_RE in _get_gadm_table_name
+        cols = ", ".join(PROPERTIES)
+        # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; cols is the PROPERTIES module constant and table_name is validated against TABLE_NAME_RE in _get_gadm_table_name
         self.sqlite_cursor.execute(f'SELECT {cols} FROM "{self.table_name}"')
 
         progress = ProgressTracker(self.record_count, "records")
 
         for row in self.sqlite_cursor:
-            self._process_row(dict(zip(self.PROPERTIES, row)))
+            self._process_row(dict(zip(PROPERTIES, row)))
             progress.update()
 
             # Periodic commits to limit transaction size and memory
@@ -306,108 +311,171 @@ class GADMProcessor:
             self.pg_conn.commit()
 
     def _process_row(self, record):
-        """Process a single GADM record."""
-        # Identify subcountry level
-        subcountry_level = None
-        for level in self.SUBCOUNTRY_LEVELS:
-            if record.get(level):
-                subcountry_level = level
-                break
+        """Insert the divisions one GADM record names, and hang its polygon on the leaf.
 
-        division_path_parts = []
-        last_parent_id = None
-        last_parent_path = None
-        last_parent_name = None
+        The record decides nothing here -- `row_divisions` reads it and hands
+        back the divisions it names, outermost first, each already placed under
+        the one above it, with the last carrying this row's polygon (#665). What
+        is left is the bookkeeping: get or create each of them, and remember
+        enough of the tree for `merge_single_children` to collapse a redundant
+        pair afterwards.
+        """
+        uid = record.get("UID")
+        geom = self.geometries.get(uid) if self.include_geometry else None
 
-        # Process each geographical level
-        for level in self.GEO_LEVELS:
-            name = record.get(level)
-            if not name:
+        for row_division in row_divisions(record):
+            division = self.existing_divisions.get(row_division.path)
+            if division is not None:
+                if row_division.is_leaf and geom:
+                    self._attach_own_geometry(division.id, uid, geom)
                 continue
 
-            # Skip unnecessary subcountry levels
-            if level in self.SUBCOUNTRY_LEVELS:
-                if level != subcountry_level:
-                    continue
-                if name == record.get("COUNTRY"):
-                    continue
+            parent = self.existing_divisions.get(row_division.parent_path) if row_division.parent_path else None
+            division_id = self._insert_division(
+                name=row_division.name,
+                parent_id=parent.id if parent else None,
+                has_children=not row_division.is_leaf,
+                gadm_uid=uid if row_division.is_leaf else None,
+                geom=geom if row_division.is_leaf else None,
+            )
 
-            # Skip NAME_0 if it's the same as country and next level exists
-            if level == "NAME_0" and name == record.get("COUNTRY"):
-                if self._has_next_level(record, level):
-                    continue
-                # Update existing country division with geometry
-                uid = record.get("UID")
-                geom = self.geometries.get(uid) if self.include_geometry else None
-                if last_parent_id and geom:
-                    self.pg_cursor.execute("""
-                        UPDATE administrative_divisions
-                        SET gadm_uid = %s,
-                            geom = CASE WHEN %s IS NULL THEN geom ELSE validate_multipolygon(ST_GeomFromWKB(%s, 4326)) END,
-                            has_children = FALSE
-                        WHERE id = %s
-                    """, (uid, geom, geom, last_parent_id))
-                continue
+            division = Division(
+                name=row_division.name,
+                division_id=division_id,
+                parent_id=parent.id if parent else None,
+                parent_path=row_division.parent_path,
+                parent_name=parent.name if parent else None,
+                path=row_division.path,
+                name_borrowed=not row_division.named,
+            )
+            self.existing_divisions[row_division.path] = division
+            self._track_single_child(division, row_division.parent_path)
+            if not row_division.named:
+                self.unnamed_divisions.append(division)
 
-            # Build unique path for this division
-            division_path_parts.append(name)
-            path = "_".join(division_path_parts)
+    def _track_single_child(self, division, parent_path):
+        """Remember a division that is, so far, the only child of its parent.
 
-            # Check if next level exists (determines has_children)
-            has_children = self._has_next_level(record, level)
+        `merge_single_children` collapses the redundant pair a single child of
+        the same name makes — Germany -> Berlin -> Berlin. A parent stops being
+        watched the moment a second child arrives.
+        """
+        if not self.postprocess or not parent_path:
+            return
+        parent_division = self.existing_divisions.get(parent_path)
+        if not parent_division:
+            return
 
-            # Get or create division
-            if path not in self.existing_divisions:
-                division_id = self._insert_division(
-                    name=name,
-                    parent_id=last_parent_id,
-                    has_children=has_children,
-                    gadm_uid=record.get("UID") if not has_children else None,
-                    geom=self.geometries.get(record.get("UID")) if not has_children else None
-                )
+        parent_division.children_num += 1
+        if parent_division.children_num == 1:
+            self.single_children.append(division)
+            parent_division.single_child = division
+        elif parent_division.children_num == 2:
+            sibling = parent_division.single_child
+            if sibling in self.single_children:
+                self.single_children.remove(sibling)
+            parent_division.single_child = None
 
-                division = Division(
-                    name=name,
-                    division_id=division_id,
-                    parent_id=last_parent_id,
-                    parent_path=last_parent_path,
-                    parent_name=last_parent_name,
-                    path=path
-                )
-                self.existing_divisions[path] = division
+    def _attach_own_geometry(self, division_id, uid, geom):
+        """Give a division that already exists the polygon of a row that is its own.
 
-                # Track single children for postprocessing
-                if self.postprocess and last_parent_path:
-                    parent_division = self.existing_divisions.get(last_parent_path)
-                    if parent_division:
-                        parent_division.children_num += 1
-                        if parent_division.children_num == 1:
-                            self.single_children.append(division)
-                            parent_division.single_child = division
-                        elif parent_division.children_num == 2:
-                            # No longer a single child
-                            sibling = parent_division.single_child
-                            if sibling in self.single_children:
-                                self.single_children.remove(sibling)
-                            parent_division.single_child = None
-            else:
-                division = self.existing_divisions[path]
-                division_id = division.id
+        A country whose record names nothing below it is the case this exists
+        for: `COUNTRY` and `NAME_0` are one division, so the row carrying the
+        country's own outline arrives after the rows that created it from below.
 
-            last_parent_id = division_id
-            last_parent_path = path
-            last_parent_name = name
+        Only an empty geometry is filled. Where two records resolve to one
+        division the first polygon stays, which is what the loader did before
+        this was written down — GADM 4.1 has 95 name paths that carry more than
+        one GID, 88 of them in the United Kingdom, and choosing between those
+        rows is a defect of its own (#681) rather than a decision to take here.
+        """
+        self.pg_cursor.execute("""
+            UPDATE administrative_divisions
+            SET gadm_uid = %s,
+                geom = validate_multipolygon(ST_GeomFromWKB(%s, 4326))
+            WHERE id = %s AND geom IS NULL
+        """, (uid, geom, division_id))
 
-    def _has_next_level(self, record, current_level):
-        """Check if there's a non-empty level after current_level."""
-        try:
-            idx = self.GEO_LEVELS.index(current_level)
-            for next_level in self.GEO_LEVELS[idx + 1:]:
-                if record.get(next_level):
-                    return True
-        except (ValueError, IndexError):
-            pass
-        return False
+    def label_surviving_remainders(self):
+        """Relabel an unnamed division that ends up standing beside its siblings.
+
+        A division GADM did not name carries its parent's name, which is right
+        while it is the parent's only row: `merge_single_children` collapses that
+        pair and the polygon surfaces under the name it always had. Where the
+        parent has other children the pair stays, and the tree then offers the
+        same name twice, one inside the other -- and twenty-three Thai districts
+        offer it three times, since a *named* tambon of that name stands there
+        too.
+
+        So this runs after the merge and asks the tree two questions of each
+        candidate: does it still carry the name of the division it sits under,
+        and does that division have other children? Both, and the name is a
+        borrowed one standing beside real ones, so it is replaced. The rule is
+        `remainder_label`'s, spelled in SQL because it runs over every candidate
+        at once; both build the name from `REMAINDER_SUFFIX`, so the wording
+        cannot drift between the loader and the migration that repairs a
+        database already holding these rows.
+
+        What a candidate is cannot be read off the tree, though, and this is where
+        the two rows GADM leaves unnamed *twice* decide it. Sharjah and Ras
+        Al-Khaimah are those: an unnamed district inside an unnamed emirate-level
+        row, so the inner one is the outer one's only child and takes its name,
+        the merge deletes the outer and moves the inner up beside the emirate's
+        named districts -- still called Sharjah, under Sharjah, and needing the
+        label. Russia's 2435 end up in the same *shape* and must be left alone:
+        each absorbed a **named** rayon and carries that rayon's name, which is a
+        real one, and in 31 of them that name happens to equal the oblast's, so a
+        test of "does it match its parent" labels a genuine rayon a remainder.
+        What separates them is where the name came from, which only the load
+        knows -- so `name_borrowed` is carried on the division and handed down by
+        the merge.
+        """
+        candidates = [
+            division.id for division in self.unnamed_divisions if division.name_borrowed
+        ]
+        if not candidates:
+            print("\nNo unnamed divisions to label.")
+            return
+
+        print("\nLabelling unnamed divisions that stand beside named siblings...")
+        self.pg_cursor.execute("""
+            UPDATE administrative_divisions c
+               SET name = p.name || %s, updated_at = NOW()
+              FROM administrative_divisions p
+             WHERE p.id = c.parent_id
+               AND c.id = ANY(%s)
+               AND c.name = p.name
+               AND EXISTS (SELECT 1 FROM administrative_divisions s
+                            WHERE s.parent_id = c.parent_id AND s.id <> c.id)
+        """, (REMAINDER_SUFFIX, candidates))
+        self.pg_conn.commit()
+        print(f"  Labelled {self.pg_cursor.rowcount} of {len(candidates)} unnamed divisions")
+
+    def reconcile_has_children(self):
+        """Make `has_children` say what the tree says, once every row is in.
+
+        The flag is set when a division is first seen, from the record that
+        created it, and no later record revisits it — so a division created by a
+        record that named nothing below it stays a leaf however many children
+        arrive afterwards. That is one half of #665 (the other half, a polygon
+        folded into its parent, `row_divisions` prevents), and it is also what
+        `merge_single_children` leaves behind when it reparents a child. Asking
+        the tree costs one statement and cannot disagree with it.
+        """
+        print("\nReconciling has_children with the tree...")
+        self.pg_cursor.execute("""
+            UPDATE administrative_divisions p
+            SET has_children = child.exists, updated_at = NOW()
+            FROM (
+                SELECT d.id,
+                       EXISTS (SELECT 1 FROM administrative_divisions c
+                                WHERE c.parent_id = d.id) AS exists
+                  FROM administrative_divisions d
+            ) child
+            WHERE child.id = p.id AND p.has_children IS DISTINCT FROM child.exists
+        """)
+        self.pg_conn.commit()
+        print(f"  Corrected {self.pg_cursor.rowcount} divisions")
 
     def _insert_division(self, name, parent_id, has_children, gadm_uid=None, geom=None):
         """Insert an administrative division and return its ID."""
@@ -579,6 +647,9 @@ class GADMProcessor:
 
                 updates.append((new_parent.id if new_parent else None, single_child.id))
                 deletes.append((old_parent.id,))
+                # The child now stands for the parent, under the parent's name,
+                # so whether that name was borrowed is now the child's answer.
+                single_child.name_borrowed = old_parent.name_borrowed
 
                 # Update tracking
                 single_child.parent_id = new_parent.id if new_parent else None
@@ -683,6 +754,12 @@ def main():
 
         # Merge redundant single children (Berlin -> Berlin -> Berlin)
         processor.merge_single_children()
+
+        # After the merge, which is what decides who survived to need a label
+        processor.label_surviving_remainders()
+
+        # Last, because merging reparents children and so changes the answer
+        processor.reconcile_has_children()
 
         print_stats(pg_cur)
 
