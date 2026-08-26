@@ -59,7 +59,11 @@ for tool in "${missing[@]}"; do
     mypy)      commands+=("mypy app") ;;
     bandit)    commands+=("bandit -r app -c pyproject.toml") ;;
     pip-audit) commands+=("pip-audit -r requirements.txt --ignore-vuln GHSA-rrmf-rvhw-rf47") ;;
-    pytest)    commands+=("pytest") ;;
+    # Two lanes: cv-python's own tests, and db/, which tests the part of the
+    # GADM loader that needs neither a database nor GDAL (#665). Naming only the
+    # first would print a command that leaves a gate un-run, which is the
+    # failure this whole script exists to prevent.
+    pytest)    commands+=("pytest" "cd ../db && pytest") ;;
     *)         commands+=("$tool") ;;
   esac
 done
@@ -90,8 +94,10 @@ done
     echo "Either install Python 3.12, or run the gates that did not run against"
     echo "the pinned interpreter in a container:"
     echo ""
-    # Caches redirected out of the mount, and `:z` as every other bind mount in
-    # this repo carries.
+    # The repository root is mounted rather than `cv-python`, because the pytest
+    # lane runs in two directories and a command naming `../db` has to be able
+    # to reach it. Caches redirected out of the mount, and `:z` as every other
+    # bind mount in this repo carries.
     #
     # The container runs as root, so `mypy`'s cache, pytest's cache, the
     # coverage file and CPython's `__pycache__/` would land in the host tree
@@ -105,7 +111,7 @@ done
     echo "    -e MYPY_CACHE_DIR=/tmp/mypy -e PYTEST_ADDOPTS=-p\\ no:cacheprovider \\"
     echo "    -e PYTHONDONTWRITEBYTECODE=1 \\"
     echo "    -e COVERAGE_FILE=/tmp/.coverage \\"
-    echo "    -v \"$(dirname "$SCRIPT_DIR")/cv-python:/w:z\" -w /w python:3.12-slim \\"
+    echo "    -v \"$(dirname "$SCRIPT_DIR"):/w:z\" -w /w/cv-python python:3.12-slim \\"
     printf "    sh -c 'pip install -q -r requirements.txt -r requirements-dev.txt"
     for cmd in "${commands[@]}"; do
       printf " \\\\\n         && %s" "$cmd"

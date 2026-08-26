@@ -69,7 +69,8 @@ Run all automated tests before opening a PR:
 npm run check                  # lint + typecheck + fast security +
                                # knip + circular/shell/docker checks
 TEST_REPORT_LOCAL=1 npm test   # Node unit + integration tests
-npm run test:py                # cv-python pytest (needs setup:py:dev)
+npm run test:py                # cv-python pytest + the GADM loader's tests
+                               # (needs setup:py:dev)
 ```
 
 `npm run check` is the same gate CI runs — a clean local check means
