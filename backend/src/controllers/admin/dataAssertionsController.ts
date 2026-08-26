@@ -79,9 +79,11 @@ function ledgerNotice(error: Error | undefined): string | null {
  * The whole report: every assertion, what it found, and what was accepted.
  * GET /api/admin/data-assertions
  *
- * Seven statements over the catalogue, about 1.5 seconds on the dev database —
- * which is why it sits behind the expensive-admin limiter and is fetched when a
- * person opens the section rather than polled.
+ * A statement per assertion over the catalogue, a couple of seconds on the dev
+ * database — which is why it sits behind the expensive-admin limiter and is
+ * fetched when a person opens the section rather than polled. The count of them
+ * is not written here: a number above a list is what goes stale when a rule
+ * joins it, which is the same reasoning the ASVS note carries.
  *
  * Nothing is filtered out for being clean. A panel that showed only the
  * assertions in trouble would leave an admin unable to tell "nothing is wrong"

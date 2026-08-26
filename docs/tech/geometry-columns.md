@@ -400,7 +400,15 @@ Where the answer lives (#674):
   cloud.
   `backend/src/db/regionFocusAntimeridian.test.ts` holds all of this — the one
   `ST_ShiftLongitude` in the schema, both triggers, the retired names, the
-  frontend threshold — and fails on the mutation each guard exists for.
+  frontend threshold — and fails on the mutation each guard exists for. What
+  none of that can see is a wrong *row*; **Admin panel → Catalogue Checks**
+  asks two questions of these columns independently
+  (`docs/tech/data-assertions.md`): `framed-as-the-world` checks a stored
+  `focus_bbox` claiming every longitude against the geometry, measured by its
+  longitude bands rather than through this function so it cannot agree with the
+  trigger on a row the trigger got wrong; `anchor-far-from-its-region` compares
+  the stored `anchor_point` with the region's own shape, which is a different
+  question and a watch rather than an invariant (#668).
 
 Three things make the rule harder than it reads:
 

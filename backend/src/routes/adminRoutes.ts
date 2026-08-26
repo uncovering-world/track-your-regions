@@ -241,7 +241,7 @@ router.get('/experiences/counts-by-region', validate(experienceCountsQuerySchema
 // =============================================================================
 
 // What the catalogue's own rows say about themselves, and what has been accepted
-// as the debt it carries. Seven statements over the whole catalogue, so it is
+// as the debt it carries. A statement per assertion over the whole catalogue, so it is
 // rate-limited with the other expensive admin work and read when a person opens
 // the section rather than polled.
 router.get('/data-assertions', expensiveAdminLimiter, getDataAssertions);
@@ -253,9 +253,14 @@ router.get('/data-assertions', expensiveAdminLimiter, getDataAssertions);
 // `authenticatedLimiter` and not the expensive one, by the rule in
 // `docs/tech/rate-limiting.md`: 5/min is a ceiling on the *person*, and the
 // state this screen exists for is a database where nobody has answered for
-// anything — six invariants to accept, one press each. One accept runs a single
-// assertion and inserts one row; the seven-statement report beside it is the
-// expensive call, and it keeps the expensive bucket.
+// anything — a press per invariant, one after another, which five a minute
+// would refuse halfway through. One accept re-runs a single assertion and
+// inserts one row. That one statement is not always cheap — the geometry rules
+// added in #668 put one of them near a second — so the two buckets no longer
+// differ by an order of magnitude in database work admitted per minute. They
+// still differ in what they are ceilings on: the report is a whole scan any
+// caller can repeat, while an accept is a person answering for one rule and
+// runs out of rules to answer for.
 router.post(
   '/data-assertions/accept',
   authenticatedLimiter,

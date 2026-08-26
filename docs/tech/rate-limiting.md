@@ -72,11 +72,18 @@ what goes stale when a route is added to the row below (it has already happened 
 | `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/categories/:categoryId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source` |
 
 The catalogue checks split across both buckets on the same rule, and the split is
-the point. `GET /api/admin/data-assertions` runs seven statements over the whole
-catalogue — about 1.5 seconds — so it is expensive on its own and takes the
-five-a-minute bucket. `POST …/accept` runs one of those statements and inserts one
-row, and the state the screen exists for is a database where nobody has answered
-for anything: six invariants, one press each. Every limiter here is keyed by IP,
+the point. `GET /api/admin/data-assertions` runs a statement per assertion over
+the whole catalogue — about 2.5 seconds — so it is expensive on its own and takes
+the five-a-minute bucket. `POST …/accept` runs one of those statements and inserts
+one row, and the state the screen exists for is a database where nobody has
+answered for anything: a press per invariant. No count is written here, for the
+reason the ASVS note gives: a number above a list is what goes stale when a rule
+joins it, and a rule joining moves the statements and the invariants together.
+The two buckets stopped differing by an order of magnitude in work admitted when
+the geometry rules arrived — one of them takes about a second on its own — so
+the distinction that carries the split is what each is a ceiling on: the report
+is a whole scan any caller can repeat at will, while an accept is a person
+answering for one rule and runs out of rules to answer for. Every limiter here is keyed by IP,
 so five a minute is five for the whole address that admin works from — on the
 expensive bucket they would be refused halfway through their first pass, a minute
 at a time, which is the failure the last row of "Adding rate limiting to new
