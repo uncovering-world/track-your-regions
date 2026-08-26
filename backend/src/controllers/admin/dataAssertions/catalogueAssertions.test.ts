@@ -37,9 +37,13 @@ describe('the catalogue assertions as a set', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('holds exactly one watch, and it is the one ADR-0022 makes a count', () => {
+  it('holds exactly two watches, each a count that is expected to be non-zero', () => {
+    // ADR-0022 makes the first a count: a traveller who stood somewhere stood
+    // there. The second is #668's anchor rule: a scattered territory's box centre
+    // is open water, legitimately, so its rows are a number to watch rather than
+    // debt to answer for.
     const watches = catalogueAssertions.filter(a => a.kind === 'watch').map(a => a.id);
-    expect(watches).toEqual(['visits-on-places-no-reader-is-shown']);
+    expect(watches).toEqual(['visits-on-places-no-reader-is-shown', 'anchor-far-from-its-region']);
   });
 
   it('gives every assertion an area, since the list is expected to outgrow one screen', () => {
