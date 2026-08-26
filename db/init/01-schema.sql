@@ -624,7 +624,7 @@ RETURNS double precision
 LANGUAGE sql IMMUTABLE PARALLEL SAFE
 AS $$ SELECT 350.0::double precision $$;
 
-COMMENT ON FUNCTION near_global_deg() IS 'A longitude span this wide is the whole world however it is measured. Stated once, for geometry_focus() and the children aggregation in update_region_focus_data(); NEAR_GLOBAL_DEG in frontend/src/utils/mapUtils.ts mirrors it.';
+COMMENT ON FUNCTION near_global_deg() IS 'A longitude span this wide is the whole world however it is measured. Stated once, for geometry_focus() and children_focus_arc(); NEAR_GLOBAL_DEG in frontend/src/utils/mapUtils.ts mirrors it.';
 
 CREATE OR REPLACE FUNCTION geometry_focus(
   g geometry,
@@ -685,6 +685,118 @@ $$;
 COMMENT ON FUNCTION geometry_focus(geometry) IS 'The one measurement of where a shape is: [west, south, east, north] with west > east for an antimeridian crossing, the centre of that frame, and whether the plain span is near-global. Both focus triggers call it.';
 
 -- =============================================================================
+-- Function: children_focus_arc -- the smallest window round a parent's children
+-- =============================================================================
+-- A region whose own union spans nearly every longitude -- Oceania, whose
+-- members sit either side of the antimeridian -- takes its focus from its
+-- children's boxes instead. Combining those boxes is not MIN and MAX: each is an
+-- interval on a circle, and the window round a set of intervals on a circle is
+-- the complement of the widest gap between them. Taking the least west and the
+-- greatest east of the shifted edges read a child crossing Greenwich (west < 0
+-- < east, which the shift turns into west + 360 > east) as two unrelated
+-- numbers: a parent with Russia [37.54 .. -169.65] and France [-5.1 .. 8.2]
+-- beneath it came out as [37.54 .. -5.1], a window ending at France's western
+-- edge (#673).
+--
+-- Each child contributes [start, start + span] with start in [0, 360) and span
+-- measured the way its box says -- the short way round for a crossing box.
+-- An interval running past 360 is folded back in as [0, end - 360], since the
+-- sweep only looks back. Sorted by start, a running maximum of the ends finds
+-- every gap the union leaves; the gap between the last end and the first start
+-- plus 360 closes the circle. The widest gap is where the window is not; the
+-- window starts where that gap ends. No positive gap, or a window wider than
+-- near_global_deg(), means the parent is global too (covers_globe), and the
+-- caller keeps geometry_focus()'s answer; a child whose own box is global is
+-- one such window by construction.
+
+CREATE OR REPLACE FUNCTION children_focus_arc(
+  p_region_id integer,
+  OUT west double precision,
+  OUT south double precision,
+  OUT east double precision,
+  OUT north double precision,
+  OUT center_lng double precision,
+  OUT center_lat double precision,
+  OUT covers_globe boolean
+)
+LANGUAGE plpgsql STABLE
+AS $$
+DECLARE
+  gap_width double precision;
+  gap_end double precision;   -- where the widest gap ends: the window starts here, in [0, 360)
+  arc_width double precision;
+BEGIN
+  SELECT
+    MIN(c.focus_bbox[2]),
+    MAX(c.focus_bbox[4])
+  INTO south, north
+  FROM regions c
+  WHERE c.parent_region_id = p_region_id
+    AND c.focus_bbox IS NOT NULL;
+
+  IF south IS NULL THEN
+    RETURN;  -- no children with focus data: every OUT stays NULL
+  END IF;
+
+  WITH raw AS (
+    SELECT
+      CASE WHEN c.focus_bbox[1] < 0 THEN c.focus_bbox[1] + 360 ELSE c.focus_bbox[1] END AS s,
+      CASE WHEN c.focus_bbox[1] > c.focus_bbox[3]
+           THEN c.focus_bbox[3] + 360 - c.focus_bbox[1]
+           ELSE c.focus_bbox[3] - c.focus_bbox[1] END AS span
+    FROM regions c
+    WHERE c.parent_region_id = p_region_id
+      AND c.focus_bbox IS NOT NULL
+  ),
+  intervals AS (
+    SELECT s, span FROM raw
+    UNION ALL
+    -- An interval running past 360 comes back round as [0, e - 360]: a
+    -- Greenwich-crossing child starts near 355 and covers the first degrees
+    -- of the circle too. Without this row the sweep, which only looks back,
+    -- would read a gap there that the child fills.
+    SELECT 0, s + span - 360 FROM raw WHERE s + span > 360
+  ),
+  reached AS (
+    SELECT s, s + span AS e,
+           MAX(s + span) OVER (ORDER BY s ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS reach_before
+    FROM intervals
+  ),
+  gaps AS (
+    SELECT s - reach_before AS width, s AS ends_at FROM reached WHERE reach_before IS NOT NULL
+    UNION ALL
+    SELECT (MIN(s) + 360) - MAX(e), MIN(s) FROM reached
+  )
+  SELECT width, ends_at INTO gap_width, gap_end
+  FROM gaps
+  ORDER BY width DESC
+  LIMIT 1;
+
+  -- The arc contains every child, so a child whose own box is global makes
+  -- the arc global by construction -- no term of its own is needed for it.
+  arc_width := 360 - GREATEST(gap_width, 0);
+  covers_globe := gap_width <= 0 OR arc_width > near_global_deg();
+  IF covers_globe THEN
+    RETURN;  -- no window: the caller keeps geometry_focus()'s answer, latitudes included
+  END IF;
+
+  -- Back into [-180, 180]: the arc's end may sit past 360 -- France's western
+  -- edge at 354.9 plus a 195-degree window reaches 550 -- so one subtraction
+  -- is not enough; wrap by however many turns it takes. The two edges close
+  -- the range at opposite ends on purpose. A window that starts on the
+  -- antimeridian stores west = -180 and one that ends on it stores east = 180;
+  -- either edge landing on the other side of the line would put west > east
+  -- and read as a crossing for a box that only touches it.
+  west := gap_end - 360 * floor((gap_end + 180) / 360);
+  east := (gap_end + arc_width) - 360 * ceil((gap_end + arc_width - 180) / 360);
+  center_lng := (gap_end + arc_width / 2) - 360 * ceil((gap_end + arc_width / 2 - 180) / 360);
+  center_lat := (south + north) / 2;
+END;
+$$;
+
+COMMENT ON FUNCTION children_focus_arc(integer) IS 'The smallest longitude window round a region''s children''s focus boxes, as an arc on the circle rather than a MIN/MAX of edges; covers_globe when no window would be a frame.';
+
+-- =============================================================================
 -- Trigger: Update focus_bbox and anchor_point when geometry changes
 -- =============================================================================
 -- The measurement is geometry_focus()'s. What this trigger adds is the one
@@ -696,6 +808,7 @@ RETURNS TRIGGER AS $$
 DECLARE
   effective_geom geometry;  -- hull or raw geom for bounds calculation
   f record;                 -- geometry_focus() of it
+  ch record;                -- children_focus_arc() of NEW.id, for a near-global parent
   -- Final values
   final_west double precision;
   final_east double precision;
@@ -703,12 +816,6 @@ DECLARE
   max_lat double precision;
   center_lng double precision;
   center_lat double precision;
-  -- Children-based focus (for full-globe regions)
-  child_shift_west double precision;
-  child_shift_east double precision;
-  child_min_lat double precision;
-  child_max_lat double precision;
-  child_covers_globe boolean;
 BEGIN
   -- Use hull for hull regions, otherwise raw geometry
   effective_geom := COALESCE(NEW.hull_geom, NEW.geom);
@@ -732,52 +839,23 @@ BEGIN
     -- sides of the antimeridian, or it really does wrap the world.
     -- geometry_focus() has told them apart already -- but children have a
     -- tighter answer first, which they do for a parent whose own union is
-    -- coarser than the boxes underneath it (Oceania).
-    --
-    -- A child whose own box is global cannot be aggregated: shifting it maps
-    -- both edges onto 180 and it collapses to a point, contributing nothing.
-    -- That is how Antarctica's continent row came to claim a 347-degree
-    -- window with a 13-degree gap over Queen Maud Land, which is not a gap in
-    -- Antarctica. Such a parent covers every longitude its child does, so it
-    -- is global too -- child_covers_globe keeps geometry_focus()'s answer.
-    --
-    -- One blind spot is left and is not closed here: a child whose own box
-    -- crosses Greenwich (west < 0 < east) maps to west + 360 > east, an
-    -- inverted interval, and MIN/MAX then read its two edges as unrelated
-    -- numbers. A parent with Russia [37.54 .. -169.65] and France [-5.1 .. 8.2]
-    -- beneath it would come out as [37.54 .. -5.1], a window ending at France's
-    -- western edge. Closing it properly is not another guard but a different
-    -- operation -- the smallest arc covering a set of intervals on a circle,
-    -- which is a sort and a largest-gap search, not MIN and MAX (#673). It needs a
-    -- curated grouping holding both a dateline-crossing and a Greenwich-crossing
-    -- member, which no world view has today: of the 8 near-global parents on the
-    -- dev database, the only child matching west < 0 < east is Antarctica's
-    -- global one, which the term above already catches.
-    SELECT
-      MIN(CASE WHEN c.focus_bbox[1] < 0 THEN c.focus_bbox[1] + 360 ELSE c.focus_bbox[1] END),
-      MAX(CASE WHEN c.focus_bbox[3] < 0 THEN c.focus_bbox[3] + 360 ELSE c.focus_bbox[3] END),
-      MIN(c.focus_bbox[2]),
-      MAX(c.focus_bbox[4]),
-      BOOL_OR(c.focus_bbox[1] <= c.focus_bbox[3]
-              AND c.focus_bbox[3] - c.focus_bbox[1] > near_global_deg())
-    INTO child_shift_west, child_shift_east, child_min_lat, child_max_lat, child_covers_globe
-    FROM regions c
-    WHERE c.parent_region_id = NEW.id
-      AND c.focus_bbox IS NOT NULL;
+    -- coarser than the boxes underneath it (Oceania). children_focus_arc()
+    -- finds the window round them as an arc on the circle, and says
+    -- covers_globe where no window would be a frame: a child whose own box is
+    -- global, or children that between them leave no gap. That is how
+    -- Antarctica's continent row once claimed a 347-degree window with a
+    -- 13-degree gap over Queen Maud Land, and how a parent with Russia and
+    -- France beneath it came out ending at France's western edge (#673).
+    SELECT * INTO ch FROM children_focus_arc(NEW.id);
 
-    IF child_shift_west IS NOT NULL
-       AND NOT child_covers_globe
-       AND child_shift_east - child_shift_west <= near_global_deg() THEN
-      -- Use children's aggregated bbox
-      final_west := CASE WHEN child_shift_west > 180 THEN child_shift_west - 360 ELSE child_shift_west END;
-      final_east := CASE WHEN child_shift_east > 180 THEN child_shift_east - 360 ELSE child_shift_east END;
-      center_lng := (child_shift_west + child_shift_east) / 2;
-      IF center_lng > 180 THEN
-        center_lng := center_lng - 360;
-      END IF;
-      center_lat := (child_min_lat + child_max_lat) / 2;
-      min_lat := child_min_lat;
-      max_lat := child_max_lat;
+    IF ch.west IS NOT NULL AND NOT ch.covers_globe THEN
+      -- Use the children's window
+      final_west := ch.west;
+      final_east := ch.east;
+      center_lng := ch.center_lng;
+      center_lat := ch.center_lat;
+      min_lat := ch.south;
+      max_lat := ch.north;
     END IF;
     -- Otherwise geometry_focus() already answered: a compact crossing window
     -- (the Far Eastern Federal District, Fiji, Russia) or, wide either way,

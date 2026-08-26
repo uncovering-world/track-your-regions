@@ -15,7 +15,7 @@ export interface GeoFocus {
 
 /**
  * A span this wide is the whole world however it is measured, so no window onto
- * it is a frame. Mirrors `near_global_deg` in `update_region_focus_data()`.
+ * it is a frame. Mirrors `near_global_deg()` in the schema, which `geometry_focus()` reads.
  */
 const NEAR_GLOBAL_DEG = 350;
 
