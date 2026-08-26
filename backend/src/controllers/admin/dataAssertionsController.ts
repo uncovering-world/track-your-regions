@@ -128,7 +128,10 @@ export async function getDataAssertions(_req: AuthenticatedRequest, res: Respons
  * re-baselines a regression standing beside it — the one thing this exists to
  * catch. So a person accepts a number they are looking at.
  *
- * A `watch` cannot be accepted at all: its rows are legitimate (ADR-0022) and
+ * A `watch` cannot be accepted at all: its rows are legitimate -- by a decision
+ * for one of them (ADR-0022, a point a source dropped keeps the tick a traveller
+ * earned) and by geography for the other (a scattered territory's box centre is
+ * open water, and the frame is right) -- and
  * its count is a number to watch rather than a debt, so there is nothing to
  * answer for. Refusing is the honest answer to a button that should not exist.
  */

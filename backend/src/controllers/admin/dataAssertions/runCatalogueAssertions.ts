@@ -199,7 +199,8 @@ export function assess(outcomes: AssertionOutcome[], accepted: AcceptedNumbers):
  * showing nothing.
  *
  * Debt that stands still is not one of them, and neither is a `watch` however
- * large it grows: its rows are legitimate by ADR-0022, and calling them a fault
+ * large it grows: its rows are legitimate -- by ADR-0022 for one watch and by
+ * geography for the other -- and calling them a fault
  * would put a red mark on the ordinary state of a catalogue that has travellers
  * in it.
  */
