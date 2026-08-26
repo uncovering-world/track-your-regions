@@ -38,7 +38,7 @@ export interface CatalogueAssertion {
    * *together* -- a bad placement run breaks several at once -- next to each
    * other, where a person can see them as one event rather than five.
    */
-  area: 'places' | 'regions' | 'pictures';
+  area: 'places' | 'regions' | 'boundaries' | 'pictures';
   /** What must be true, in the words of the thing rather than of a rule. */
   title: string;
   /**

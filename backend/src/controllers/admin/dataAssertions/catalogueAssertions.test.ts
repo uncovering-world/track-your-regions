@@ -48,7 +48,7 @@ describe('the catalogue assertions as a set', () => {
 
   it('gives every assertion an area, since the list is expected to outgrow one screen', () => {
     for (const assertion of catalogueAssertions) {
-      expect(['places', 'regions', 'pictures']).toContain(assertion.area);
+      expect(['places', 'regions', 'boundaries', 'pictures']).toContain(assertion.area);
     }
   });
 
