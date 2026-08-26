@@ -81,7 +81,7 @@ jobs:
         working-directory: frontend
 
   python-tests:
-    name: Python Tests (cv-python)
+    name: Python Tests (cv-python + GADM loader)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,6 +103,13 @@ jobs:
       - name: pytest
         run: pytest
         working-directory: cv-python
+
+      # The GADM loader's own lane. It needs no dependency of its own — what is
+      # tested is the part of `db/init-db.py` that reads a row and nothing else
+      # (#665) — so it rides on the interpreter installed above.
+      - name: pytest (GADM loader)
+        run: pytest
+        working-directory: db
 
   build:
     name: Build
