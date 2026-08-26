@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { focusFromGeoJson } from './mapUtils';
+import { focusFromGeoJson, frameGeoJson, smartFitBounds } from './mapUtils';
+import type { MapLike } from './mapUtils';
 
 /**
  * Three shapes have to stay apart, and #666 is what happens when they do not:
@@ -160,5 +161,136 @@ describe('focusFromGeoJson', () => {
 
   it('has no frame for a shape with no coordinates', () => {
     expect(focusFromGeoJson({ type: 'FeatureCollection', features: [] })).toBeNull();
+  });
+});
+
+/**
+ * A map that records what the camera was asked to do. `cameraForBounds` answers
+ * with the box's midpoint and a zoom that says which box it was given, so a
+ * test can tell the shifted [0, 360] box from the plain one.
+ */
+function mockMap() {
+  const calls: { cameraForBounds: unknown[]; flyTo: unknown[]; fitBounds: unknown[] } = {
+    cameraForBounds: [], flyTo: [], fitBounds: [],
+  };
+  const map = {
+    cameraForBounds: (bounds: [[number, number], [number, number]], opts: { maxZoom: number }) => {
+      calls.cameraForBounds.push({ bounds, opts });
+      const [[w, s], [e, n]] = bounds;
+      // A wider box asks for a lower zoom; a world-wide one for less than 1.
+      let zoom = 7;
+      if (e - w > 300) zoom = 0.1;
+      else if (e - w > 100) zoom = 3;
+      return { center: [(w + e) / 2, (s + n) / 2], zoom: Math.min(opts.maxZoom, zoom) };
+    },
+    flyTo: (o: unknown) => { calls.flyTo.push(o); },
+    fitBounds: (b: unknown, o: unknown) => { calls.fitBounds.push({ b, o }); },
+  };
+  return { map: map as unknown as MapLike, calls };
+}
+
+describe('frameGeoJson', () => {
+  it('flies a crossing shape to its anchor, with the zoom of the shifted box', () => {
+    const { map, calls } = mockMap();
+    frameGeoJson(map, ring([
+      [176.8997, -21.0425], [180.0000000000001, -17], [-178.2286, -15], [-179.99999999999994, -12.461724],
+    ]), { padding: 40, duration: 0 });
+
+    // Zoom is asked of the box carried up past 180 — never of [-180 .. 180].
+    const asked = calls.cameraForBounds[0] as { bounds: [[number, number], [number, number]] };
+    expect(asked.bounds[0][0]).toBeCloseTo(176.8997, 4);
+    expect(asked.bounds[1][0]).toBeCloseTo(181.7714, 4);
+    const flown = calls.flyTo[0] as { center: [number, number]; zoom: number; duration: number };
+    expect(flown.center[0]).toBeCloseTo(179.3356, 3);
+    expect(flown.center[1]).toBeCloseTo(-16.7521, 3);
+    expect(flown.duration).toBe(0);
+    expect(calls.fitBounds).toHaveLength(0);
+  });
+
+  it('flies an ordinary shape where cameraForBounds says', () => {
+    const { map, calls } = mockMap();
+    frameGeoJson(map, ring([[-5.1, 42.3], [8.2, 42.3], [8.2, 51.1], [-5.1, 51.1]]), { padding: 40 });
+
+    const asked = calls.cameraForBounds[0] as { bounds: [[number, number], [number, number]] };
+    expect(asked.bounds).toEqual([[-5.1, 42.3], [8.2, 51.1]]);
+    const flown = calls.flyTo[0] as { center: [number, number]; zoom: number };
+    expect(flown.center[0]).toBeCloseTo(1.55, 6);
+    expect(flown.zoom).toBe(7);
+  });
+
+  it('leaves the map alone for a shape with no coordinates', () => {
+    const { map, calls } = mockMap();
+    frameGeoJson(map, { type: 'FeatureCollection', features: [] });
+    frameGeoJson(map, null);
+    frameGeoJson(null, ring([[0, 0], [1, 0], [1, 1], [0, 1]]));
+    expect(calls.cameraForBounds).toHaveLength(0);
+    expect(calls.flyTo).toHaveLength(0);
+  });
+
+  it('accepts the MapLibre map itself, not only the react-map-gl ref', () => {
+    // A ref wraps the map in getMap(); a raw map is the map. Both frame.
+    const { map: raw, calls: rawCalls } = mockMap();
+    const { map: inner, calls: refCalls } = mockMap();
+    const ref = { getMap: () => inner } as unknown as MapLike;
+    const shape = ring([[10, 50], [10.5, 50], [10.5, 50.5], [10, 50.5]]);
+    frameGeoJson(raw, shape);
+    frameGeoJson(ref, shape);
+    expect(rawCalls.flyTo).toHaveLength(1);
+    expect(refCalls.flyTo).toHaveLength(1);
+  });
+
+  it('lets maxZoom lower the size-derived cap, never raise it', () => {
+    const { map, calls } = mockMap();
+    const small = ring([[10, 50], [10.5, 50], [10.5, 50.5], [10, 50.5]]);
+    frameGeoJson(map, small, { maxZoom: 10 });
+    frameGeoJson(map, small, { maxZoom: 20 });
+    const asks = calls.cameraForBounds as { opts: { maxZoom: number } }[];
+    expect(asks[0].opts.maxZoom).toBe(10);
+    expect(asks[1].opts.maxZoom).toBe(12);
+  });
+});
+
+/** A ring round the whole world, with a vertex every 30° along both edges. */
+function worldRing(): GeoJSON.FeatureCollection {
+  const lngs = Array.from({ length: 13 }, (_, i) => -180 + i * 30);
+  return ring([
+    ...lngs.map((lng): [number, number] => [lng, -60]),
+    ...[...lngs].reverse().map((lng): [number, number] => [lng, 80]),
+  ]);
+}
+
+describe('frameGeoJson and the zoom floor', () => {
+  it('fits a world-scale shape at the zoom it asks for, with no floor', () => {
+    // Every region plus every gap of an import, in a half-width pane: the box is
+    // the world, the pane wants zoom 0.1, and a floor of 1 would show half of it.
+    const { map, calls } = mockMap();
+    // Vertices every 30° all the way round: a ring with corners at ±179 alone is
+    // a 2° strip over the dateline to the rule, and one with a vertex every 90°
+    // is a 270° window the other way round — both rightly. Only a shape that is
+    // wide however it is measured is global.
+    const world = worldRing();
+    frameGeoJson(map, world, { padding: 30 });
+    smartFitBounds(map, [-179, -60, 179, 80], { padding: 30 });
+    const flown = calls.flyTo as { zoom: number }[];
+    expect(flown[0].zoom).toBeCloseTo(0.1, 6);
+    expect(flown[1].zoom).toBe(1);
+  });
+
+  it('lets a caller set its own floor', () => {
+    const { map, calls } = mockMap();
+    frameGeoJson(map, worldRing(), { minZoom: 2 });
+    expect((calls.flyTo[0] as { zoom: number }).zoom).toBe(2);
+  });
+});
+
+describe('smartFitBounds', () => {
+  it('frames a crossing box at its anchor only when one is given', () => {
+    // Without an anchor there is nowhere to point the camera; the plain path runs.
+    const { map, calls } = mockMap();
+    smartFitBounds(map, [176.9, -21, -178.2, -12.5], { anchorPoint: [179.34, -16.75] });
+    smartFitBounds(map, [176.9, -21, -178.2, -12.5]);
+    const flown = calls.flyTo as { center: [number, number] }[];
+    expect(flown[0].center).toEqual([179.34, -16.75]);
+    expect(flown[1].center[0]).not.toBeCloseTo(179.34, 1);
   });
 });

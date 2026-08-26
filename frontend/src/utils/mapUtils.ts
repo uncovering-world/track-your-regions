@@ -86,26 +86,43 @@ export function focusFromGeoJson(geojson: GeoJSON.GeoJSON): GeoFocus | null {
   };
 }
 
+/** A react-map-gl ref or the MapLibre map behind it — whichever a surface holds. */
+export type MapLike = MapRef | ReturnType<MapRef['getMap']>;
+
+export interface FrameOptions {
+  padding?: number;
+  duration?: number;
+  /** Caps the size-derived max zoom (12 / 6 / 4); it can only lower it. */
+  maxZoom?: number;
+  /**
+   * The floor under the zoom the box asks for. `smartFitBounds` defaults it to 1:
+   * a stored region on the main map is one region, and framing it at zoom 0
+   * shows the globe instead. `frameGeoJson` defaults it to 0: a shape a surface
+   * holds may be world-scale on purpose -- every region plus every gap of an
+   * import, in a half-width pane -- and a floor would crop what it was asked to
+   * show.
+   */
+  minZoom?: number;
+}
+
 /**
  * Smart bounds fitting that handles antimeridian-crossing regions.
  *
  * The bbox uses the convention [west, south, east, north] where west > east
- * indicates the region crosses the antimeridian. MapLibre's fitBounds handles
- * this natively when passed [[west, south], [east, north]].
+ * indicates the region crosses the antimeridian. MapLibre's `cameraForBounds`
+ * does not handle that on its own, so a crossing box needs its `anchorPoint`
+ * passed with it: the camera goes there, and the zoom comes from the box
+ * measured in [0, 360] space.
  *
- * For very large regions (continent-scale), zoom is clamped to a minimum of 1
- * to avoid showing the entire globe.
+ * For very large regions (continent-scale), zoom is floored at `minZoom`,
+ * 1 by default, to avoid showing the entire globe for one region.
  */
 export function smartFitBounds(
-  mapRef: MapRef,
+  mapLike: MapLike,
   bbox: [number, number, number, number], // [west, south, east, north]
-  options: {
-    padding?: number;
-    duration?: number;
-    anchorPoint?: [number, number] | null;
-  } = {}
+  options: FrameOptions & { anchorPoint?: [number, number] | null } = {}
 ) {
-  const { padding = 50, duration = 500, anchorPoint } = options;
+  const { padding = 50, duration = 500, anchorPoint, minZoom = 1 } = options;
   const [west, south, east, north] = bbox;
 
   const crossesAntimeridian = west > east;
@@ -116,8 +133,9 @@ export function smartFitBounds(
   let effectiveMaxZoom = 12;
   if (lngSpan > 100 || latSpan > 50) effectiveMaxZoom = 4;
   else if (lngSpan > 50 || latSpan > 30) effectiveMaxZoom = 6;
+  if (options.maxZoom !== undefined) effectiveMaxZoom = Math.min(effectiveMaxZoom, options.maxZoom);
 
-  const map = mapRef.getMap();
+  const map = 'getMap' in mapLike ? mapLike.getMap() : mapLike;
 
   if (crossesAntimeridian && anchorPoint) {
     // MapLibre's cameraForBounds doesn't handle antimeridian correctly.
@@ -129,7 +147,7 @@ export function smartFitBounds(
       [[shiftedWest, south], [shiftedEast, north]],
       { padding, maxZoom: effectiveMaxZoom }
     );
-    const zoom = Math.max(1, cam?.zoom ?? 2);
+    const zoom = Math.max(minZoom, cam?.zoom ?? 2);
     map.flyTo({ center: anchorPoint as [number, number], zoom, duration });
   } else {
     // Normal region: cameraForBounds works correctly
@@ -139,14 +157,36 @@ export function smartFitBounds(
     );
 
     if (cam && cam.zoom !== undefined) {
-      const zoom = Math.max(1, cam.zoom);
+      const zoom = Math.max(minZoom, cam.zoom);
       map.flyTo({ center: cam.center, zoom, duration });
     } else {
       // Fallback: direct fitBounds (shouldn't normally happen)
-      mapRef.fitBounds(
+      map.fitBounds(
         [[west, south], [east, north]],
         { padding, duration, maxZoom: effectiveMaxZoom }
       );
     }
   }
+}
+
+/**
+ * Frame a shape: measure it with `focusFromGeoJson` and fly with
+ * `smartFitBounds`. The one camera call a surface makes for a shape it holds
+ * (#672) — a `turf.bbox` handed to `fitBounds` frames the whole world for
+ * anything over the dateline, and a hand-rolled min/max is the same
+ * measurement under another name. A shape with no coordinates has no frame,
+ * and the map is left where it is.
+ *
+ * A stored region or division carries `focusBbox` and `anchorPoint` already:
+ * frame those with `smartFitBounds` directly, and measure nothing.
+ */
+export function frameGeoJson(
+  mapLike: MapLike | null | undefined,
+  geojson: GeoJSON.GeoJSON | null | undefined,
+  options: FrameOptions = {},
+): void {
+  if (!mapLike || !geojson) return;
+  const focus = focusFromGeoJson(geojson);
+  if (!focus) return;
+  smartFitBounds(mapLike, focus.bbox, { minZoom: 0, ...options, anchorPoint: focus.anchorPoint });
 }
