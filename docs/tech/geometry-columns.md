@@ -49,7 +49,7 @@ This document describes the geometry pipeline: columns, rules, functions, trigge
 | `hull_geom` | MultiPolygon | **Concave hull** generated for hull regions. Provides territorial extent for scattered island groups. |
 | `hull_params` | JSONB | Parameters used to generate the hull (buffer, concavity, simplify tolerance). |
 | `anchor_point` | Point | Label anchor point. Auto-computed by `update_region_focus_data()` trigger. |
-| `focus_bbox` | double precision[4] | `[west, south, east, north]` for `fitBounds()`. West > east = antimeridian crossing. |
+| `focus_bbox` | double precision[4] | `[west, south, east, north]` for `smartFitBounds()`, never for a raw `fitBounds()` — a `west > east` box, which says antimeridian crossing, is what that call cannot frame (#666). |
 
 ### Derived 3857 geometries (SRID 3857 — Web Mercator)
 
@@ -181,7 +181,7 @@ its children's.
 | `geom_simplified_low` | MultiPolygon | Simplified in 4326. Used for GeoJSON API responses. |
 | `geom_simplified_medium` | MultiPolygon | Simplified in 4326. Used for GeoJSON API responses. |
 | `anchor_point` | Point | The centre of the frame `focus_bbox` describes. Auto-computed by `update_division_focus_data()` from `geometry_focus()` (#674). |
-| `focus_bbox` | double precision[4] | `[west, south, east, north]` for `fitBounds()`. West > east = antimeridian crossing. Auto-computed with `anchor_point`; read by the division lists, so a click frames without downloading the geometry. |
+| `focus_bbox` | double precision[4] | `[west, south, east, north]` for `smartFitBounds()`, never for a raw `fitBounds()` — a `west > east` box, which says antimeridian crossing, is what that call cannot frame (#666). Auto-computed with `anchor_point`; read by the division lists, so a click frames without downloading the geometry. |
 
 ### Derived 3857 geometries (SRID 3857)
 
