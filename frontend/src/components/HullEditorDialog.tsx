@@ -14,7 +14,7 @@ import {
 import { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from './shared/GuardedMap';
 import { MAP_STYLE } from '../constants/mapStyles';
-import { focusFromGeoJson, smartFitBounds } from '../utils/mapUtils';
+import { frameGeoJson, smartFitBounds } from '../utils/mapUtils';
 import {
   fetchRegionGeometry,
   fetchSavedHullParams,
@@ -104,16 +104,8 @@ export function HullEditorDialog({
             padding: 50, duration: 500, anchorPoint: anchorPoint ?? undefined,
           });
         } else {
-          const fc: GeoJSON.FeatureCollection = {
-            type: 'FeatureCollection',
-            features: [{ type: 'Feature', properties: {}, geometry: geom }],
-          };
-          const focus = focusFromGeoJson(fc);
-          if (focus) {
-            smartFitBounds(mapRef.current!, focus.bbox, {
-              padding: 50, duration: 500, anchorPoint: focus.anchorPoint,
-            });
-          }
+          // A region's own shape, framed like its stored box would be: floor 1.
+          frameGeoJson(mapRef.current, geom, { padding: 50, duration: 500, minZoom: 1 });
         }
       } catch (e) {
         console.error('Failed to fit bounds:', e);

@@ -17,8 +17,8 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../../../shared/GuardedMap';
 import type maplibregl from 'maplibre-gl';
-import * as turf from '@turf/turf';
 import { fetchGeoshape, getChildrenRegionGeometry } from '../../../../api/admin/worldViewImport';
+import { frameGeoJson } from '../../../../utils/mapUtils';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const CHILD_COLORS = ['#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd', '#aa3366', '#55bb88', '#8866cc', '#dd5555', '#44bbaa', '#7766bb', '#bb8844'];
@@ -108,18 +108,7 @@ function GeoshapeMapContent({ geoshapeLoading, geoshapeData, geoshapeMapRef }: G
       </Box>
     );
   }
-  const handleLoad = () => {
-    if (!geoshapeMapRef.current) return;
-    try {
-      const bbox = turf.bbox(geoshapeData) as [number, number, number, number];
-      geoshapeMapRef.current.fitBounds(
-        [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-        { padding: 40, duration: 0 },
-      );
-    } catch (e) {
-      console.error('Failed to fit geoshape bounds:', e);
-    }
-  };
+  const handleLoad = () => frameGeoJson(geoshapeMapRef.current, geoshapeData, { padding: 40, duration: 0 });
   return (
     <MapGL
       unavailableCompact
@@ -225,14 +214,7 @@ function DivisionsMapPanel({ mapRef, geometry, aiSuggestedIds, aiRejectedIds, ai
       initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
       style={{ width: '100%', height: '100%' }}
       mapStyle={MAP_STYLE}
-      onLoad={() => {
-        if (mapRef.current) {
-          try {
-            const bbox = turf.bbox(geoData) as [number, number, number, number];
-            mapRef.current.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, duration: 0 });
-          } catch (e) { console.error('Failed to fit bounds:', e); }
-        }
-      }}
+      onLoad={() => frameGeoJson(mapRef.current, geoData, { padding: 40, duration: 0 })}
     >
       <NavigationControl position="top-right" showCompass={false} />
       <Source id="preview-division" type="geojson" data={geoData}>
@@ -317,14 +299,7 @@ function ChildrenMapPanel({ childRegions, loading, geometry }: {
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           cursor={tooltip ? 'pointer' : 'grab'}
-          onLoad={() => {
-            if (mapRef.current && fitData) {
-              try {
-                const bbox = turf.bbox(fitData) as [number, number, number, number];
-                mapRef.current.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, duration: 0 });
-              } catch { /* ignore */ }
-            }
-          }}
+          onLoad={() => frameGeoJson(mapRef.current, fitData, { padding: 40, duration: 0 })}
         >
           <NavigationControl position="top-right" showCompass={false} />
           {colored.map((c, i) => (
@@ -378,6 +353,16 @@ export function DivisionPreviewDialog({
 }: DivisionPreviewDialogProps) {
   const mapRef = useRef<MapRef>(null);
   const geoshapeMapRef = useRef<MapRef>(null);
+  const transferMapRef = useRef<MapRef>(null);
+  const pointsMapRef = useRef<MapRef>(null);
+  const markerPointsData = useMemo((): GeoJSON.FeatureCollection => ({
+    type: 'FeatureCollection',
+    features: (markerPoints ?? []).map(p => ({
+      type: 'Feature' as const,
+      properties: { name: p.name },
+      geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
+    })),
+  }), [markerPoints]);
   const [geoshapeData, setGeoshapeData] = useState<GeoJSON.FeatureCollection | null>(null);
   const [geoshapeLoading, setGeoshapeLoading] = useState(false);
   const [geoshapeError, setGeoshapeError] = useState(false);
@@ -447,7 +432,7 @@ export function DivisionPreviewDialog({
       donor: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'donor') },
       moving: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'moving') },
       outline: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'target_outline') },
-      bounds: turf.bbox(fc) as [number, number, number, number],
+      all: fc,
     };
   }, [isTransferPreview, geometry]);
 
@@ -506,10 +491,12 @@ export function DivisionPreviewDialog({
           <Box>
             <Box sx={{ width: '100%', height: 400 }}>
               <MapGL
+                ref={transferMapRef}
                 unavailableDetail="The transfer can still be confirmed — this map only previews which divisions move where."
-                initialViewState={{ bounds: transferData.bounds, fitBoundsOptions: { padding: 40 } }}
+                initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
                 style={{ width: '100%', height: '100%' }}
                 mapStyle={MAP_STYLE}
+                onLoad={() => frameGeoJson(transferMapRef.current, transferData.all, { padding: 40, duration: 0 })}
               >
                 <NavigationControl position="top-right" />
                 <Source id="donor" type="geojson" data={transferData.donor}>
@@ -612,28 +599,15 @@ export function DivisionPreviewDialog({
             <Box sx={{ flex: 1, borderRight: 1, borderColor: 'divider' }}>
               <MapGL
                 unavailableCompact
+                ref={pointsMapRef}
                 unavailableDetail="Marker points are plotted on a map only; their coordinates remain in the data beside it."
-                initialViewState={{
-                  bounds: [
-                    Math.min(...markerPoints.map(p => p.lon)) - 0.5,
-                    Math.min(...markerPoints.map(p => p.lat)) - 0.5,
-                    Math.max(...markerPoints.map(p => p.lon)) + 0.5,
-                    Math.max(...markerPoints.map(p => p.lat)) + 0.5,
-                  ] as [number, number, number, number],
-                  fitBoundsOptions: { padding: 40 },
-                }}
+                initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
+                onLoad={() => frameGeoJson(pointsMapRef.current, markerPointsData, { padding: 40, duration: 0, maxZoom: 8 })}
                 style={{ width: '100%', height: '100%' }}
                 mapStyle={MAP_STYLE}
               >
                 <NavigationControl position="top-right" />
-                <Source id="marker-points" type="geojson" data={{
-                  type: 'FeatureCollection',
-                  features: markerPoints.map(p => ({
-                    type: 'Feature' as const,
-                    properties: { name: p.name },
-                    geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
-                  })),
-                }}>
+                <Source id="marker-points" type="geojson" data={markerPointsData}>
                   <Layer id="marker-circles" type="circle" paint={{
                     'circle-radius': 5,
                     'circle-color': '#e65100',

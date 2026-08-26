@@ -27,7 +27,6 @@ import CheckIcon from '@mui/icons-material/Check';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
 import { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../shared/GuardedMap';
-import * as turf from '@turf/turf';
 import {
   type DivisionOverlapResult,
   getOverlapDivisionChildren,
@@ -38,6 +37,7 @@ import { getChildrenRegionGeometry } from '../../api/admin/wvImportCoverage';
 import type { SiblingRegionGeometry } from '../../api/admin/wvImportCoverage';
 import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
+import { frameGeoJson } from '../../utils/mapUtils';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -272,10 +272,7 @@ export function OverlapResolutionDialog({
     if (!selected || !mapRef.current) return;
     const geo = divisionGeometries.get(selected.divisionId);
     if (!geo) return;
-    try {
-      const [minLng, minLat, maxLng, maxLat] = turf.bbox(geo as GeoJSON.GeoJsonProperties as GeoJSON.Geometry);
-      mapRef.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 40, maxZoom: 10 });
-    } catch { /* ignore bbox errors */ }
+    frameGeoJson(mapRef.current, geo as GeoJSON.Geometry, { padding: 40, maxZoom: 10 });
   }, [selected, divisionGeometries]);
 
   // Build GeoJSON for child region backgrounds

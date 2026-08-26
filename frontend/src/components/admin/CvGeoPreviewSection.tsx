@@ -38,6 +38,7 @@ import { CvMatchMap, CV_MAP_STYLE } from './CvMatchMap';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 import { detectSpatialAnomaliesClient } from '../../utils/spatialAnomalyDetector';
 import type { AdjacencyEdge as ClientAdjEdge, DivisionAssignment as ClientDivAssignment } from '../../utils/spatialAnomalyDetector';
+import { frameGeoJson } from '../../utils/mapUtils';
 
 // ─── Geo Preview (map + source image) ───────────────────────────────────────
 
@@ -49,37 +50,9 @@ export interface CvGeoPreviewSectionProps {
   invalidateTree: (regionId?: number) => void;
 }
 
-// Collect every [lng,lat] coordinate pair from a GeoJSON FeatureCollection
-// (Polygon + MultiPolygon only). Used for fitBounds calculations.
-function collectCoordinates(fc: GeoJSON.FeatureCollection): [number, number][] {
-  const coords: [number, number][] = [];
-  const addRing = (ring: GeoJSON.Position[]) => {
-    for (const pt of ring) coords.push(pt as [number, number]);
-  };
-  for (const f of fc.features) {
-    if (f.geometry.type === 'Polygon') {
-      for (const ring of (f.geometry as GeoJSON.Polygon).coordinates) addRing(ring);
-    } else if (f.geometry.type === 'MultiPolygon') {
-      for (const poly of (f.geometry as GeoJSON.MultiPolygon).coordinates) {
-        for (const ring of poly) addRing(ring);
-      }
-    }
-  }
-  return coords;
-}
-
-// Given the Wikivoyage mapshape preview, fit the map bounds around all features.
+// Given the Wikivoyage mapshape preview, frame the map around all features.
 function fitMapToPreview(map: maplibregl.Map, wvPreview: GeoJSON.FeatureCollection) {
-  try {
-    const coords = collectCoordinates(wvPreview);
-    if (coords.length === 0) return;
-    const lngs = coords.map(c => c[0]);
-    const lats = coords.map(c => c[1]);
-    map.fitBounds(
-      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 30, duration: 0 },
-    );
-  } catch { /* ignore */ }
+  frameGeoJson(map, wvPreview, { padding: 30, duration: 0 });
 }
 
 // Build a FeatureCollection of centroid points with title properties for

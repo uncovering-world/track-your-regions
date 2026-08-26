@@ -20,7 +20,7 @@ import { Source, Layer, NavigationControl, type MapRef, type MapLayerMouseEvent 
 import { GuardedMap as MapGL } from './shared/GuardedMap';
 import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../constants/mapStyles';
-import { focusFromGeoJson, smartFitBounds } from '../utils/mapUtils';
+import { frameGeoJson, smartFitBounds } from '../utils/mapUtils';
 
 type PolyFeature = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
 
@@ -110,12 +110,8 @@ export function CustomBoundaryDialog({
               padding: 50, duration: 500, anchorPoint,
             });
           } else {
-            const focus = focusFromGeoJson(sourceGeometries as GeoJSON.FeatureCollection);
-            if (focus) {
-              smartFitBounds(mapRef.current!, focus.bbox, {
-                padding: 50, duration: 500, anchorPoint: focus.anchorPoint,
-              });
-            }
+            // A region's own shape, framed like its stored box would be: floor 1.
+            frameGeoJson(mapRef.current, sourceGeometries, { padding: 50, duration: 500, minZoom: 1 });
           }
         } catch (e) {
           console.error('Failed to fit bounds:', e);

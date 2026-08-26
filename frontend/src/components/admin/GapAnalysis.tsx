@@ -28,6 +28,7 @@ import { Tooltip, type ShadowInsertion } from './treeNodeShared';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
 import { plural } from '../../utils/plural';
+import { frameGeoJson } from '../../utils/mapUtils';
 
 // Inlined here instead of importing from ImportTreeDialogs — that module
 // re-imports GapDivisionTree + GapContextMap from this file, so sharing the
@@ -303,28 +304,24 @@ export function GapContextMap({ gapDivisions, siblingRegions, worldViewId, highl
     })),
   [activeRegions, selectedRegionId]);
 
-  // Compute bounds from all geometries
-  const combinedBbox = useMemo(() => {
+  // Everything drawn, as one shape to frame
+  const combined = useMemo((): GeoJSON.FeatureCollection | null => {
     const geoms: GeoJSON.Geometry[] = [];
     for (const s of activeRegions) geoms.push(s.geometry);
     for (const g of gapDivisions) if (g.geometry) geoms.push(g.geometry);
     if (geoms.length === 0) return null;
-    const fc: GeoJSON.FeatureCollection = {
+    return {
       type: 'FeatureCollection',
       features: geoms.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g })),
     };
-    return turf.bbox(fc) as [number, number, number, number];
   }, [activeRegions, gapDivisions]);
 
-  const fitToBounds = useCallback((bbox: [number, number, number, number] | null) => {
-    if (!mapRef.current || !bbox) return;
-    mapRef.current.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 30, duration: 300 });
-  }, []);
-
-  const fitMap = useCallback(() => fitToBounds(combinedBbox), [fitToBounds, combinedBbox]);
+  const fitMap = useCallback(() => {
+    frameGeoJson(mapRef.current, combined, { padding: 30, duration: 300 });
+  }, [combined]);
 
   // Refit when drill level changes
-  useEffect(() => { fitToBounds(combinedBbox); }, [combinedBbox, fitToBounds]);
+  useEffect(() => { fitMap(); }, [fitMap]);
 
   // Drill down into a sibling region — if it has children, drill; otherwise select as target
   const handleRegionClick = useCallback(async (regionId: number) => {

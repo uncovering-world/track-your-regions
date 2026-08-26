@@ -14,7 +14,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
 import { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../shared/GuardedMap';
-import * as turf from '@turf/turf';
+import { frameGeoJson } from '../../utils/mapUtils';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -109,23 +109,7 @@ export function SmartFlattenPreviewDialog({
                   initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
                   style={{ width: '100%', height: hasSideBySide ? 'calc(100% - 20px)' : '100%' }}
                   mapStyle={MAP_STYLE}
-                  onLoad={() => {
-                    if (mapRef.current && geometry) {
-                      try {
-                        const fc: GeoJSON.FeatureCollection = {
-                          type: 'FeatureCollection',
-                          features: [{ type: 'Feature', properties: {}, geometry }],
-                        };
-                        const bbox = turf.bbox(fc) as [number, number, number, number];
-                        mapRef.current.fitBounds(
-                          [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-                          { padding: 40, duration: 500 },
-                        );
-                      } catch (e) {
-                        console.error('Failed to fit bounds:', e);
-                      }
-                    }
-                  }}
+                  onLoad={() => frameGeoJson(mapRef.current, geometry, { padding: 40, duration: 500 })}
                 >
                   <NavigationControl position="top-right" showCompass={false} />
                   <Source
