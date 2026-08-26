@@ -69,6 +69,8 @@ accepted debt, and a fresh checkout of the code inherits none.
 | regions | A region whose anchor point is more than 500 km from its own geometry | watch |
 | regions | A parent region whose geometry covers less than nine tenths of what its children hold | invariant |
 | regions | A region with no geometry, in a world view whose geometry has been computed | invariant |
+| boundaries | A division stored as a leaf while divisions hang beneath it | invariant |
+| boundaries | A division holding a single source polygon while divisions hang beneath it | invariant |
 | pictures | A picture shown with nobody credited | invariant |
 
 The first two are the detection half of
@@ -175,6 +177,35 @@ rule whenever anything under it is computed, and stays there until the next
 world-view run takes it bottom-up. That is the design and not a defect: a region
 with nothing on the map is exactly what the panel should say out loud, and the
 count falls back on its own.
+
+**The two boundary rules** watch the set everything else is built on.
+`administrative_divisions` is GADM, loaded once, and a region's geometry is the
+union of the divisions it holds — so a defect there is not one wrong row but a
+hole in every polygon above it, in every world view built on it, at every zoom.
+That is #665: the loader folded 2831 rows whose deepest name GADM left empty into
+their parents, and 86 divisions ended up stored as leaves holding one tambon's
+polygon while their real children hung beneath them, reaching no ancestor.
+Thailand's country polygon carried 54 interior rings, 20 742 km² of them, and the
+map showed white patches inside the region fill around Nakhon Ratchasima and
+Surin. Every run had reported success; a person looking at the map found it.
+
+They ask that defect two ways on purpose, and today they answer with the same
+rows. The first reads the **flag** — a division marked as having no children that
+has them — and the second reads the **geometry**: a division still carrying the
+`gadm_uid` of one source polygon while children hang beneath it, where a parent's
+geometry is a union and has no source row of its own. The two come apart the
+moment something repairs one half: a `has_children` corrected in place leaves the
+polygon where it was, so the map keeps its hole while the first rule reports
+clear.
+
+Neither compares areas, which is how the same question is asked of regions.
+`administrative_divisions.geom_area_km2` is declared and never written — nothing
+fills it — and measuring 392 112 polygons on the fly costs eight seconds against
+a report that answers in two and a half. It would also not fire: a country is
+short by its holes, and Thailand's 20 742 km² are 4 % of it, well inside the nine
+tenths the region rule allows. What separates these rows is exact and costs an
+index lookup, so that is what is asked — about a second for the pair, measured.
+`db/migrations/034-unnamed-gadm-rows.sql` is the repair, and both rules name it.
 
 The last is a licence obligation rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask

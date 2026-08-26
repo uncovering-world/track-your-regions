@@ -37,6 +37,40 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`034-unnamed-gadm-rows.sql` gives back the polygons the loader folded into their parents,
+and fills the holes they left above them (#665). GADM 4.1 leaves the deepest `NAME` empty on
+2831 rows that carry a valid `GID` and a polygon; the loader read only the names, so such a
+row ended one level early and its polygon was stored on the division above it — which then
+sat as a leaf holding one tambon while its named siblings arrived as its children and reached
+no ancestor at all. 86 divisions on the dev database are in that state (66 Thai districts,
+all 16 Uruguayan departments, 4 in the United Arab Emirates), and Thailand's country polygon
+carries 54 interior rings, 20 742 km² of them. The file materialises each folded polygon as a
+division of its own — called after the row it was folded into with `" (rest)"` on the end, since
+that is what it holds and the row it hangs under has other children by definition — rebuilds the row above it from its children, and unions the missing area
+back into every ancestor — *unions* rather than recomputes, because rebuilding a continent from
+its countries is precisely what times out (#459), while what the ancestors lack is area and
+nothing else. The regions built on those divisions are the one thing it does not union: they are
+rebuilt from what they are made of, their members together with the regions under them and
+deepest first, because unioning a region computed from its provinces with district polygons of
+another provenance leaves thousands of interior rings along the seams. A region whose whole
+boundary a curator drew is skipped and listed for a person, as the compute path skips it. The geometry triggers stay enabled and the
+coverage-aware pass (`simplify_coverage_siblings`, the same function
+`precalculate-geometries.py` calls) puts the touched sibling groups back to gap-free borders.
+What it cannot repair is a polygon that never reached the database: 24 of GADM's 356 508 did
+not, 21 of them to name paths resolving to more than one GID and 3 where the folded district
+had a single same-named child and `merge_single_children` deleted it, polygon included. The
+loader change recovers those 3 on the next load; the 21 want their own repair (#681), and they are
+why Thailand keeps two interior rings (379 km², at Bang Sai in Phra Nakhon Si Ayutthaya)
+where 54 and 20 742 km² stood before.
+It may run before or after the next re-application of `01-schema.sql` — it adds no DDL — and
+a re-run is inert: a repaired row is no longer a leaf and carries no `gadm_uid`, and a row it
+could not rebuild — one whose children carry no geometry, which is every folded row on a
+database loaded without `-g` — keeps its flag and its uid on purpose, so the checks go on
+naming it, while the insert that gave it a child declines to repeat. Its closing statements report
+what it changed, every leaf that still has children (zero, or the repair missed one), and any
+region whose member is a curator's hand-drawn cut of a division that has just changed shape:
+those are deliberately left alone and want recomputing by hand.
+
 `033-division-focus-data.sql` fills `administrative_divisions.focus_bbox` and `anchor_point` —
 the focus data regions have always had, now stored for divisions too (#674) — from
 `geometry_focus()`, the one rule, for every division with geometry. It writes the two columns
