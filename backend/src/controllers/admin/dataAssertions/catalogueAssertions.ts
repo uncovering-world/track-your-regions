@@ -65,6 +65,7 @@ import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
 
 import { count, text } from './assertion.js';
 import type { AssertionRow, CatalogueAssertion } from './assertion.js';
+import { divisionTreeAssertions } from './divisionTreeAssertions.js';
 import { regionGeometryAssertions } from './regionGeometryAssertions.js';
 
 export type { AssertionRow, CatalogueAssertion } from './assertion.js';
@@ -529,5 +530,6 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   heldByNoRegion,
   offeredPlaceInNoRegion,
   ...regionGeometryAssertions,
+  ...divisionTreeAssertions,
   pictureWithNobodyCredited,
 ];
