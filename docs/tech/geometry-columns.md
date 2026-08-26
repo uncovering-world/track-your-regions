@@ -464,12 +464,113 @@ Martin caches tile responses in memory. When geometry changes, stale tiles must 
 6. Compute leaf geometry (manual trigger or on-the-fly cache)
    -> Triggers fire: metadata, focus_data, 3857+simplified
    -> uses_hull auto-detected on INSERT
-7. Parent geometry auto-cascades up (children_only source)
-   -> Each level recomputes from children
-8. Hull auto-generated for detected uses_hull regions
+7. Every derived ancestor's geometry is nulled: it is the union of its
+   children and one of them just changed (invalidateAncestorGeometry).
+   A hand-drawn boundary is left as drawn, and stops the walk there
+8. The next world-view run computes what has no geometry AND every
+   derived ancestor of one, deepest first, so a parent is unioned after
+   the children it is the union of
+9. Hull auto-generated for detected uses_hull regions
    -> hull_geom stored, triggers update simplified columns from hull
-9. Post-batch: refresh_uses_hull_flags() corrects detection
+10. Post-batch: refresh_uses_hull_flags() corrects detection
 ```
+
+**Steps 7 and 8 are what makes the tree converge, and both were missing
+until #667.** A compute did nothing to its parent but simplify the siblings'
+coverage, and a run selected `geom IS NULL`, which never revisits a parent that
+already has geometry. A child computed after its parent therefore stayed outside
+the parent's outline for good: the Administrative world view's North America drew
+Mexico and the Caribbean, 18.3 % of what it contains, because the import attached
+the members of countries split across continents three days after the continents
+were computed. An ancestor is nulled rather than recomputed on the spot —
+recomputing Asia is around a hundred seconds of union, which a curator computing
+one Russian oblast should not wait for — so a continent is absent from the map
+until the next run, and Catalogue Checks reports it in the meantime
+(`region-without-geometry`, `parent-short-of-its-children`).
+
+Both steps stop at a **hand-drawn boundary** (`is_custom_boundary`, #283), in
+both directions. Such a region's outline is drawn rather than unioned from its
+members, so a descendant gaining geometry does not move it — and if it does not
+move, nothing above it moves either. It is therefore neither nulled by step 7,
+nor selected by step 8, nor walked *through* by either: an empty hand-drawn
+region asks for no recompute above it, and one partway up the tree ends the walk
+rather than passing a child's news to the continent overhead.
+
+**Step 7 belongs to whatever writes `regions.geom`, not to whichever request
+finishes.** The run's selection in step 8 is evaluated once, so a write that
+skipped it would break convergence rather than merely delay it: a parent whose
+own union times out keeps its stale outline, nothing beneath it is `NULL` any
+more, and no later run selects it again while every run reports Complete. The
+writers, and each is its own invalidation point:
+
+| writer | writes | used by |
+|---|---|---|
+| `computeSingleMemberFastPath` | a region that is exactly one division | all three paths |
+| `computeGroupGeom` | the six-step union | the endpoint, and each descendant `computeBottomUp` visits |
+| `computeRegionGeometryCore` | the six-step union | a world-view run |
+| `recomputeRegionGeometry` | a plain member union | the SSE stream's descendant pre-step |
+| `runUnionPipelineSteps` | the six-step union | the SSE stream |
+| `updateRegionGeometry` | a hand-drawn shape | `PUT /regions/:id/geometry` (admin) |
+| `resetRegionToGADM` | a member union, dropping a hand-drawn shape | `POST /regions/:id/geometry/reset` (admin) |
+| `createRegion` | a hand-drawn shape, on insert | the create-from-staged and single-division custom dialogs |
+
+**One writer is deliberately not on that list.** `getSubregionGeometries`
+(`geometryRead.ts`) caches a missing child's geometry as a side effect of a
+public `GET`, fire-and-forget. Invalidating from there would let an anonymous
+read blank a continent for every visitor, which is a worse answer than the stale
+parent it would be curing; the honest fix is for a read path not to write
+geometry at all. Recorded on #680 rather than papered over here. It has no
+consumer in the frontend today — `fetchSubregionGeometries` is exported and
+called by nothing — so the hole is cold, not live. (`getRootRegionGeometries`
+writes only rows with no parent, so it has no ancestor to leave behind.)
+
+A lock or deadlock on the invalidation is **raised**, not swallowed, and the
+split is by what a lost invalidation costs rather than by compute versus edit.
+Every caller of `invalidateAncestorGeometry` has already committed its write —
+nothing on these paths opens a transaction — so losing the invalidation leaves
+the ancestors stale against a child that has changed, with nothing `NULL`
+beneath them and nothing that ever revisits them. `invalidateRegionGeometry`,
+which member and structure edits call without having written any geometry, still
+swallows one; that is a tolerance carried over from #283 rather than a
+guarantee, and `parent-short-of-its-children` is what watches it. #680 removes
+the choice.
+
+Raising is only worth anything if the raise escapes, so the failure is wrapped
+as `AncestorInvalidationFailed` and callers that answer their *own* failures
+softly let it through. It is the opposite state to a failed pipeline and must
+not share an outcome with one: a pipeline that fails wrote nothing, so the
+region stays `NULL` and the next run takes it, which is why
+`computeRegionGeometryCore` answers that with `{ computed: false }` and the run
+tallies a *skip* and still reports Complete. An invalidation fails after the
+write committed. Downgrading it would hand back the exact state raising exists
+to prevent — so the core rethrows it, and the run counts it in `errors`. The run
+still finishes as `Complete`: that string is what keys the display-geometry
+regeneration and cannot carry the news, and the per-group status line naming the
+region is overwritten before any poll can read it. What a curator sees is the
+completion alert, which shows the count and turns amber when it is non-zero;
+what the server keeps is the `console.error` and the run's own log line. The
+rows it left behind are `parent-short-of-its-children`. `createRegion` is the
+single documented exception to rethrowing, for the reason given at its call
+site.
+
+Each invalidates where it writes, and nowhere else. Nothing on these paths opens
+a transaction, so the `UPDATE` is committed the moment it returns while the heavy
+PostGIS that follows — `generateSingleHull` on an archipelago,
+`simplify_coverage_regions` over a continent's children — can still throw;
+invalidating at the writer is what keeps such a throw from leaving a region
+written and its ancestors stale. Neither of those later steps makes an ancestor
+stale in its own right: `simplify_coverage_regions` writes only the render
+columns (`geom_simplified_low`, `geom_simplified_medium`, `geom_overview`) and
+hull generation writes `hull_geom`, while a parent's union reads `geom` and
+nothing else.
+
+The descendant writers are the subtle half. Computing a region computes its
+missing descendants first, so a curator who clicks Compute on a continent writes
+geometry to every country under it *before* the continent's own union runs — and
+that union is the expensive one, the one that hits the 300 s timeout (#459). Were
+only the successful top-level compute to invalidate, those descendant writes
+would have consumed the very `NULL`s step 8 seeds on, and the attempt to repair a
+continent would be what put it beyond the reach of every later run.
 
 ---
 

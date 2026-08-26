@@ -149,7 +149,8 @@ of it (Tasmania at 510 km, Portugal at 509), which a watch tolerates.
 than `ST_Area` on the fly — the stored area is stale exactly when the geometry
 is, which is the question, and it costs milliseconds where the measurement costs
 a minute. Today it reports #667's class: North America at 18.3 % of its children,
-Europe 41.2 %, South America 42.5 %, Asia 58.2 %. Nine tenths, because a parent's
+Europe 41.2 %, Asia 58.2 % — three of the four it opened with, South America
+having been repaired once its union finished inside the timeout. Nine tenths, because a parent's
 union legitimately loses slivers and holes its children's outlines carry. A row
 has a second possible cause, and the panel's own sentence says so: summing the
 children double-counts a division two of them hold, nothing enforces a partition
@@ -165,11 +166,15 @@ and it has to measure the world view rather than the existence of one computed
 region: geometry is computed one region at a time on demand, so a curator's
 first click on the in-flight Wikivoyage import (4 301 regions, none computed)
 would otherwise turn this rule into four thousand rows of the wrong question. The
-Administrative world view sits at 99.9 % and answers Canada and Chile, two rows
-of its 3 831. A region awaiting recompute appears here too, and should: editing a
-region nulls its geometry and every ancestor's, so an edit parks a continent on
-this rule until compute is run — the panel reporting it is the reminder to finish
-the job, and the count falls back on its own.
+Administrative world view sits at 99.9 % and answers Canada, one row of its
+3 831. A region awaiting recompute appears here too, and should — by two routes
+now. Editing a region nulls its geometry and every derived ancestor's; and
+since #667 an ordinary **compute** nulls the ancestors as well, since a parent
+is the union of children one of which has just changed. So a continent parks on this
+rule whenever anything under it is computed, and stays there until the next
+world-view run takes it bottom-up. That is the design and not a defect: a region
+with nothing on the map is exactly what the panel should say out loud, and the
+count falls back on its own.
 
 The last is a licence obligation rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask

@@ -177,8 +177,9 @@ const anchorFarFromItsRegion: CatalogueAssertion = {
  * accepts a match its own coverage check flagged as a conflict — so a row can
  * also mean overlapping siblings rather than a stale parent, which is why the
  * meaning says to look before recomputing. No such pair exists on the dev
- * catalogue today (measured: 0 sibling pairs share a division), and the four
- * rows it reports are all #667's. The stored areas are compared —
+ * catalogue today (measured: 0 sibling pairs share a division), so the rows it
+ * reports are all #667's — three of them at the last measurement, down from the
+ * four it opened with as each continent's union finishes inside the timeout. The stored areas are compared —
  * `geom_area_km2` is written by the metadata trigger beside the geometry, so it
  * is stale exactly when the geometry is, which is what this asks about —
  * rather than ST_Area on the fly,
@@ -230,11 +231,15 @@ const parentShortOfItsChildren: CatalogueAssertion = {
  * demand, so a curator's first click on the in-flight Wikivoyage import (4 301
  * regions, none computed) would turn this rule into four thousand rows of the
  * wrong question. The Administrative world view sits at 99.9 % and answers
- * Canada and Chile, two rows of 3 831 (#667).
+ * Canada, one row of 3 831 (#667).
  *
- * A region awaiting recompute still shows here, and should:
+ * A region awaiting recompute still shows here, and should — by two routes.
  * `invalidateRegionGeometry()` nulls the edited region's geometry and every
- * ancestor's, so an edit parks a continent on this rule until compute is run.
+ * derived ancestor's, so an edit parks a continent on this rule until compute is
+ * run; and since #667 an ordinary compute does the same to the ancestors alone
+ * (`invalidateAncestorGeometry()`), because a parent is the union of children one
+ * of which has just changed. Computing anything under a continent therefore
+ * parks the continent here until the next world-view run takes it bottom-up.
  * That *is* a region with nothing on the map — the panel reporting it is the
  * reminder to finish the job, and the count falls back on its own.
  */
