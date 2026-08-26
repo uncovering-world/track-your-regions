@@ -15,7 +15,7 @@ This document covers the map tab internals for the Create Subregions dialog:
 
 Fallback fetches run in batches (`batchSize = 12`) to avoid long sequential waits when many divisions are present.
 
-The map refits using `smartFitBounds(...)` when geometries are ready.
+The map refits through `frameGeoJson(...)` when geometries are ready, with the region floor of 1 (#672).
 
 ## Split tool behavior
 

@@ -271,7 +271,7 @@ Clicking the map icon on any suggestion or assigned division opens a preview dia
    - Backend proxy needed because `maps.wikimedia.org/geoshape` requires `User-Agent` + `Referer` headers
 
 3. **Marker points fallback** (no `regionMapUrl`, no `wikidataId` or geoshape unavailable, `markerPoints` present) — widens to `md`, shows two maps side-by-side:
-   - **Left map**: orange circle markers from Wikivoyage `{{marker}}`/`{{geo}}` templates, labeled "Marker points (N)", auto-fit bounds with maxZoom=10
+   - **Left map**: orange circle markers from Wikivoyage `{{marker}}`/`{{geo}}` templates, labeled "Marker points (N)", framed through `frameGeoJson` with `maxZoom: 8`, so a single marker still shows where it sits (#672)
    - **Right map**: GADM division polygon
    - `markerPoints` are stored in `region_import_state.marker_points` (JSONB) after a Point Match operation and returned with the tree API
 
