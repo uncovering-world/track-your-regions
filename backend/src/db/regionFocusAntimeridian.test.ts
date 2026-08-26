@@ -55,6 +55,7 @@ const schemaCode = collapse(
 
 /** Every file under a directory, for the guards that hold a rule across a package. */
 function filesUnder(dir: string, ext: string): string[] {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- every caller passes a path built from repoRoot and literals
   return readdirSync(dir, { recursive: true, encoding: 'utf8' })
     .filter(name => name.endsWith(ext))
     .map(name => join(dir, name));
@@ -200,6 +201,39 @@ describe('the antimeridian is decided in two places, and nowhere else', () => {
     expect(declarations.map(file => file.slice(repoRoot.length + 1)))
       .toEqual(['frontend/src/utils/mapUtils.ts']);
     expect(mapUtils).toContain(`const NEAR_GLOBAL_DEG = ${NEAR_GLOBAL_DEG};`);
+  });
+
+  it('lets no surface measure its own frame', () => {
+    // #672: every camera goes through frameGeoJson, which measures with
+    // focusFromGeoJson and flies with smartFitBounds. A turf.bbox or a min/max
+    // over raw longitudes handed to fitBounds frames the whole world for
+    // anything over the dateline; twenty-one sites did that in eleven files.
+    // Each rule names the one file allowed to contain the pattern: the helper
+    // itself, and the one measurement that frames nothing -- a bbox diagonal
+    // that sizes a cut line.
+    const rules: Array<{ label: string; pattern: RegExp; allowed?: string }> = [
+      { label: 'fitBounds', pattern: /\.fitBounds\s*\(/, allowed: 'frontend/src/utils/mapUtils.ts' },
+      { label: 'turf.bbox', pattern: /turf\.bbox\s*\(/, allowed: 'frontend/src/components/WorldViewEditor/components/dialogs/polygonCutUtils.ts' },
+      { label: 'LngLatBounds', pattern: /new\s+(maplibregl\.)?LngLatBounds\s*\(/ },
+      // Anchored on the property name, not its position in the object literal, and
+      // across one nested literal -- `fitBoundsOptions: { padding }` accompanies
+      // `bounds` and may precede it.
+      { label: 'initialViewState.bounds', pattern: /initialViewState\s*=\s*\{\{(?:[^{}]|\{[^{}]*\})*\bbounds\s*:/s },
+      // The helper's own body, written out by hand: measure, then fly with the box.
+      { label: 'focusFromGeoJson + smartFitBounds', pattern: /smartFitBounds\s*\([^;]*\bfocus\.bbox/s, allowed: 'frontend/src/utils/mapUtils.ts' },
+    ];
+    const frontendSrc = join(repoRoot, 'frontend', 'src');
+    const offenders: string[] = [];
+    for (const file of filesUnder(frontendSrc, '.ts').concat(filesUnder(frontendSrc, '.tsx'))) {
+      if (/\.test\.tsx?$/.test(file)) continue;
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
+      const text = readFileSync(file, 'utf8');
+      const rel = file.slice(repoRoot.length + 1);
+      for (const rule of rules) {
+        if (rule.allowed !== rel && rule.pattern.test(text)) offenders.push(`${rel}: ${rule.label}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("frames the map's own division paths from the stored box, not a measurement", () => {
