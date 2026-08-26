@@ -65,6 +65,10 @@ accepted debt, and a fresh checkout of the code inherits none.
 | places | Visits recorded against a place no reader-facing read offers | watch |
 | regions | An object offered to readers that no region holds | invariant |
 | regions | A place the source still offers that no region holds | invariant |
+| regions | A region framed as the whole world while its geometry is not | invariant |
+| regions | A region whose anchor point is more than 500 km from its own geometry | watch |
+| regions | A parent region whose geometry covers less than nine tenths of what its children hold | invariant |
+| regions | A region with no geometry, in a world view whose geometry has been computed | invariant |
 | pictures | A picture shown with nobody credited | invariant |
 
 The first two are the detection half of
@@ -103,6 +107,70 @@ estuary, four of the D-Day beaches. Water. A boundary set built from land
 polygons has nowhere to put them (#470), and a point a few metres outside a
 coastline has the same problem for a different reason (#469).
 
+The four geometry rules exist because two defects were found in one week by a
+person looking at a map and by nothing else in the repository (#668): three
+regions framed as the whole world (#666), and four continents holding a fraction
+of what their countries hold (#667). Every run had reported success.
+
+**Framed as the whole world** asks whether a stored `focus_bbox` claiming every
+longitude is telling the truth, and it asks in a way that is deliberately *not*
+`geometry_focus()`'s: a second copy of the trigger's arithmetic would agree with
+the trigger on every row the trigger got wrong. Instead the region's parts are
+dumped, the 10° bands of longitude each part touches are collected, and the
+widest run of empty bands round the circle is found; 20° or more with no part of
+the region in them means a window of 340° or less existed. Nothing is excluded by
+name: Antarctica is measured like every other row and comes out quiet because its
+parts touch all 36 bands, which is the honest reason a continent round the pole
+keeps a full-width box — an exclusion by id would also hide a real defect in that
+row. It sweeps
+`COALESCE(hull_geom, geom)` and takes the 350° threshold from `near_global_deg()`
+— sharing the trigger's *input* and its constant is not sharing its arithmetic,
+and sweeping the geometry alone would report a hull region whose box is right,
+since a concave hull covers longitudes the parts it wraps do not. It reports
+nothing today, since #671; Fiji's box forced back to
+global answers "340° of longitude hold no part of it", which is what a
+regression of the trigger would look like here.
+
+**Anchor far from its region** is a watch, and reading its 18 rows as a
+traveller says why. The United Kingdom's anchor is 2 932 km from its nearest
+edge because the Falklands and Saint Helena are in the box and its centre is the
+Atlantic; France's is 2 224 km out for Réunion and French Guiana; Japan's for
+the Ogasawara islands; Antarctica's continent row because the centre of a box
+round the pole is the Southern Ocean. Those anchors are right — a crossing box
+is framed from its anchor, and the frame is right — so there is nothing to
+answer for, and what carries meaning is a *mainland* name appearing: the Far
+Eastern Federal District (off Shetland) and Fiji (off Namibia) were on this list
+until #671. It is measured on the 3857 low rung with the tolerance scaled by
+latitude, a quarter of a second where the exact distance on geography costs
+sixteen; Mercator puts a row within a few kilometres of the line on either side
+of it (Tasmania at 510 km, Portugal at 509), which a watch tolerates.
+
+**Parent short of its children** reads from the stored `geom_area_km2` rather
+than `ST_Area` on the fly — the stored area is stale exactly when the geometry
+is, which is the question, and it costs milliseconds where the measurement costs
+a minute. Today it reports #667's class: North America at 18.3 % of its children,
+Europe 41.2 %, South America 42.5 %, Asia 58.2 %. Nine tenths, because a parent's
+union legitimately loses slivers and holes its children's outlines carry. A row
+has a second possible cause, and the panel's own sentence says so: summing the
+children double-counts a division two of them hold, nothing enforces a partition
+within a world view, and the Wikivoyage import accepts a match its own coverage
+check flagged as a conflict. That case wants the children checked for a shared
+member rather than a recompute — the parent's own area is the union and is
+right, so recomputing will not clear it. No such pair exists on the dev catalogue
+today (measured: 0 sibling pairs share a division).
+
+**Region without geometry** asks only of a world view *most* of which has been
+computed — the qualifier is what separates a hole from an import that never ran,
+and it has to measure the world view rather than the existence of one computed
+region: geometry is computed one region at a time on demand, so a curator's
+first click on the in-flight Wikivoyage import (4 301 regions, none computed)
+would otherwise turn this rule into four thousand rows of the wrong question. The
+Administrative world view sits at 99.9 % and answers Canada and Chile, two rows
+of its 3 831. A region awaiting recompute appears here too, and should: editing a
+region nulls its geometry and every ancestor's, so an edit parks a continent on
+this rule until compute is run — the panel reporting it is the reminder to finish
+the job, and the count falls back on its own.
+
 The last is a licence obligation rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask
 that its author be named wherever it appears, and UNESCO's syndication terms ask
@@ -124,13 +192,23 @@ it" are different afternoons.
 
 ## Adding an assertion
 
-Add an object to `catalogueAssertions` in
-`backend/src/controllers/admin/dataAssertions/catalogueAssertions.ts`: an id, an
-area, the sentence a person reads, `invariant` or `watch`, what a matching row
-means and who has to do what about it, the query, and how to say one of its rows
-out loud. Nothing else needs touching — the panel groups by area on its own, and
-the new assertion arrives with no accepted number, so its first appearance
-states the debt it found.
+Write a `CatalogueAssertion` — an id, an area, the sentence a person reads,
+`invariant` or `watch`, what a matching row means and who has to do what about
+it, the query, and how to say one of its rows out loud — and put it in the
+`catalogueAssertions` array in
+`backend/src/controllers/admin/dataAssertions/catalogueAssertions.ts`. Nothing
+else needs touching: the panel groups by area on its own, and the new assertion
+arrives with no accepted number, so its first appearance states the debt it
+found.
+
+A rule need not live in that file. Where a subject brings several at once, they
+go in a file of their own beside it, exporting an array the registry imports and
+spreads — `regionGeometryAssertions.ts` is the first, four rules about a
+region's shape, its focus box and its anchor. Two things follow for that shape:
+the type and the row helpers come from `assertion.ts` rather than from the
+registry, so the two files do not import each other; and the tests live beside
+the rules, with `catalogueAssertions.test.ts` keeping only what it asserts about
+the set as a whole (unique ids, an area each, which rules are watches).
 
 Two rules about the SQL:
 
@@ -141,7 +219,12 @@ Two rules about the SQL:
   question than the read it guards is worse than no assertion, because it
   reports clear while the screens disagree. This is why the assertions live in
   the controller layer: the service layer may not import a controller, and these
-  have to read the real predicates rather than copies of them.
+  have to read the real predicates rather than copies of them. The one
+  exception is deliberate and is the opposite rule: an assertion that exists to
+  catch a *writer* being wrong must not compose that writer's own logic, or it
+  agrees with it on every row it got wrong. The world-frame rule reads the
+  geometry by its longitude bands rather than through `geometry_focus()` for
+  exactly that reason, and its test pins that it never names the trigger.
 - **Say the row the way a person would say it.** "A museum's place is marked as
   withdrawn while its replacement is 1.2 cm away", not a rule id and two primary
   keys. The sentence is built on the server, so there is one place that knows
@@ -152,7 +235,7 @@ Two rules about the SQL:
 Two endpoints, both admin-only, rate-limited apart from each other:
 
 - `GET /api/admin/data-assertions` — every assertion, what it found, up to ten
-  rows of it as sentences, and what was accepted. About 1.5 seconds over 1604
+  rows of it as sentences, and what was accepted. About 2.5 seconds over 1604
   objects, 6693 places and 8132 regions, so the panel reads it when somebody
   opens the section rather than polling.
 - `POST /api/admin/data-assertions/accept` — record what one assertion currently
@@ -162,7 +245,7 @@ Two endpoints, both admin-only, rate-limited apart from each other:
 The report carries `expensiveAdminLimiter` (5/min), with the other expensive
 admin work; the acceptance carries `authenticatedLimiter` (60/min) instead,
 because the state this screen exists for is a database where nobody has
-answered for anything — six invariants, one press each — and five a minute is
+answered for anything — a press per invariant — and five a minute is
 five for the whole address an admin works from. See
 `docs/tech/rate-limiting.md`.
 

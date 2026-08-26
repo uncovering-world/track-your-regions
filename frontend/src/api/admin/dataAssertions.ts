@@ -70,7 +70,7 @@ export interface DataAssertionReport {
   acceptancesUnavailable: string | null;
 }
 
-/** Seven statements over the whole catalogue — about a second and a half. */
+/** A statement per assertion over the whole catalogue — a couple of seconds. */
 export async function getDataAssertions(): Promise<DataAssertionReport> {
   return authFetchJson(`${API_URL}/api/admin/data-assertions`);
 }

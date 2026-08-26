@@ -149,8 +149,8 @@ async function readLedger(): Promise<AcceptedNumbers> {
  *
  * A query that *fails* is carried in the outcome rather than thrown. An
  * assertion whose table was renamed away under it must not take the others off
- * the report — the point of the lane is what the database holds, and six
- * answers plus a named failure is more of that than one stack trace.
+ * the report — the point of the lane is what the database holds, and every
+ * other answer plus a named failure is more of that than one stack trace.
  */
 export async function runCatalogueAssertions(
   assertions: CatalogueAssertion[] = catalogueAssertions,
