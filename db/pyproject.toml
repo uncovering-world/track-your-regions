@@ -1,0 +1,7 @@
+# The loader's own test lane. `db/init-db.py` and `db/precalculate-geometries.py`
+# need a database, a GeoPackage and GDAL to run at all, so what is tested here is
+# the part that needs none of them: `gadm_levels.py`, which decides what one GADM
+# row says about the divisions it names (#665).
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
