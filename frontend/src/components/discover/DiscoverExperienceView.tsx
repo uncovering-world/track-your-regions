@@ -35,6 +35,23 @@ import { isWebGLAvailable } from '../../utils/webgl';
 import { SOURCE_ID, HIGHLIGHT_SOURCE_ID } from './discoverMapLayers';
 import { useDiscoverMap } from './useDiscoverMap';
 import { useDiscoverHover } from './useDiscoverHover';
+import { frameGeoJson } from '../../utils/mapUtils';
+
+/**
+ * A set of places as one shape to frame. `LngLatBounds.extend` was the
+ * measurement here before, and it is a min/max over raw longitudes: places
+ * either side of the dateline came out as the whole world (#672).
+ */
+function pointsOf(places: ReadonlyArray<{ lng: number; lat: number }>): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: places.map(p => ({
+      type: 'Feature' as const,
+      properties: {},
+      geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+    })),
+  };
+}
 
 /** Discover shows one category at a time, so the builder's filter has nothing to do. */
 const NO_CATEGORY_FILTER: Set<string> = new Set();
@@ -275,9 +292,7 @@ export function DiscoverExperienceView({
           if (locs.length === 1) {
             map.easeTo({ center: [locs[0].lng, locs[0].lat], duration: 400 });
           } else {
-            const bounds = new maplibregl.LngLatBounds();
-            for (const l of locs) bounds.extend([l.lng, l.lat]);
-            map.fitBounds(bounds, { padding: 60, maxZoom: 12, duration: 400 });
+            frameGeoJson(map, pointsOf(locs), { padding: 60, maxZoom: 12, duration: 400 });
           }
         }
       }, 250);
@@ -368,11 +383,7 @@ export function DiscoverExperienceView({
         fittedForRef.current = experiences;
         fittedWithPlacesRef.current = locationsResolved;
         movedByReaderRef.current = false;
-        const bounds = new maplibregl.LngLatBounds();
-        for (const f of features) {
-          bounds.extend(f.geometry.coordinates as [number, number]);
-        }
-        map.fitBounds(bounds, { padding: 40, maxZoom: 10, duration: 800 });
+        frameGeoJson(map, { type: 'FeatureCollection', features }, { padding: 40, maxZoom: 10, duration: 800 });
       }
     };
 
@@ -481,9 +492,7 @@ export function DiscoverExperienceView({
             duration: 800,
           });
         } else {
-          const bounds = new maplibregl.LngLatBounds();
-          for (const l of selectedExperienceLocations) bounds.extend([l.lng, l.lat]);
-          map.fitBounds(bounds, { padding: 60, maxZoom: 12, duration: 800 });
+          frameGeoJson(map, pointsOf(selectedExperienceLocations), { padding: 60, maxZoom: 12, duration: 800 });
         }
       }
     }, 350);

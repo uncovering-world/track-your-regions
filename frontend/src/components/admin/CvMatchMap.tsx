@@ -13,6 +13,7 @@ import * as turf from '@turf/turf';
 import type { ClusterGeoInfo, SiblingRegionGeometry } from '../../api/admin/worldViewImport';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
+import { frameGeoJson } from '../../utils/mapUtils';
 
 /** Merge multiple geometries into one using turf.union. Returns null if no valid geometries. */
 export function mergeGeometries(geoms: GeoJSON.Geometry[]): GeoJSON.Geometry | null {
@@ -340,14 +341,7 @@ export function CvMatchMap({ geoPreview, onAccept, onReject, onClusterReassign, 
         onClick={handleMapClick}
         cursor={paintClusterId != null ? 'crosshair' : undefined}
         onLoad={() => {
-          if (mapRef.current && geoPreview.featureCollection.features.length > 0) {
-            try {
-              const bbox = turf.bbox(geoPreview.featureCollection) as [number, number, number, number];
-              mapRef.current.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 30, duration: 0 });
-            } catch (e) {
-              console.error('Failed to fit CV preview bounds:', e);
-            }
-          }
+          frameGeoJson(mapRef.current, geoPreview.featureCollection, { padding: 30, duration: 0 });
         }}
       >
         <NavigationControl position="top-right" showCompass={false} />

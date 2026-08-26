@@ -3,7 +3,7 @@ import type { MapRef } from 'react-map-gl/maplibre';
 import type { Region, RegionMember } from '../../../../../types';
 import type { SubdivisionGroup } from './types';
 import { fetchDivisionGeometry, fetchRegionMemberGeometries, fetchDescendantMemberGeometries } from '../../../../../api';
-import { focusFromGeoJson, smartFitBounds } from '../../../../../utils/mapUtils';
+import { focusFromGeoJson, frameGeoJson } from '../../../../../utils/mapUtils';
 
 interface UseGeometryLoadingParams {
   selectedRegion: Region | null;
@@ -238,16 +238,8 @@ export function useGeometryLoading({
     ];
     const combined: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: allFeatures };
 
-    try {
-      const focus = focusFromGeoJson(combined);
-      if (focus) {
-        smartFitBounds(mapRef.current, focus.bbox, {
-          padding: 50, duration: 500, anchorPoint: focus.anchorPoint,
-        });
-      }
-    } catch (e) {
-      console.error('Failed to fit bounds:', e);
-    }
+    // One region's members, framed like the region: floor 1.
+    frameGeoJson(mapRef.current, combined, { padding: 50, duration: 500, minZoom: 1 });
   }, [mapLoaded, mapGeometries, descendantGeometries, mapRef]);
 
   return {

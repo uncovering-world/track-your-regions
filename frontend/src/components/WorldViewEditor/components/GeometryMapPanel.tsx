@@ -12,7 +12,7 @@ import { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/mapl
 import { GuardedMap as MapGL } from '../../shared/GuardedMap';
 import { useQuery } from '@tanstack/react-query';
 import { MAP_STYLE } from '../../../constants/mapStyles';
-import { focusFromGeoJson, smartFitBounds } from '../../../utils/mapUtils';
+import { frameGeoJson, smartFitBounds } from '../../../utils/mapUtils';
 import {
   fetchRegionMemberGeometries,
   startWorldViewGeometryComputation,
@@ -166,18 +166,10 @@ function fitMapToRegion(
     });
     return;
   }
-  try {
-    const geojson: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: [geometryFeature as unknown as GeoJSON.Feature],
-    };
-    const focus = focusFromGeoJson(geojson);
-    if (focus) {
-      smartFitBounds(map, focus.bbox, { padding: 50, duration, anchorPoint: focus.anchorPoint });
-    }
-  } catch (e) {
-    console.error('Failed to fit bounds:', e);
-  }
+  // The same region as the branch above, framed from its shape instead of its
+  // stored box: the floor of 1 holds on both sides, since one region at zoom 0
+  // is the globe.
+  frameGeoJson(map, geometryFeature as GeoJSON.Feature, { padding: 50, duration, minZoom: 1 });
 }
 
 export interface GeometryMapPanelProps {

@@ -52,6 +52,7 @@ import {
   collectSubtreeIds,
   allLeavesApplied,
 } from './coverageResolveUtils';
+import { frameGeoJson } from '../../utils/mapUtils';
 
 interface CoverageResolveDialogProps {
   open: boolean;
@@ -203,22 +204,10 @@ export function CoverageResolveDialog({
         units: 'kilometers',
         steps: 64,
       });
-      const bbox = turf.bbox(circleFeature) as [number, number, number, number];
-      map.fitBounds(
-        [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-        { padding: 40, duration: 500 },
-      );
+      frameGeoJson(map, circleFeature, { padding: 40, duration: 500 });
     } else {
       // Fit to gap geometry
-      const gapFC: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: [{ type: 'Feature', properties: {}, geometry: gapGeom }],
-      };
-      const bbox = turf.bbox(gapFC) as [number, number, number, number];
-      map.fitBounds(
-        [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-        { padding: 40, duration: 500 },
-      );
+      frameGeoJson(map, gapGeom, { padding: 40, duration: 500 });
     }
   }, [gapGeom, suggGeom, selectedNodeId, nodeSuggestions]);
 

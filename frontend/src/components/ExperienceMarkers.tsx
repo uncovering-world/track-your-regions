@@ -36,6 +36,7 @@ import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../h
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience } from '../api/experiences';
 import { locationLabel } from '../utils/locationLabel';
+import { frameGeoJson } from '../utils/mapUtils';
 
 interface ExperienceLocation {
   id: number;
@@ -349,12 +350,16 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       const flyLocs = shownPlacesFor(flyToExperienceId) ?? [];
 
       if (flyLocs.length > 1) {
-        const lngs = flyLocs.map(loc => loc.longitude);
-        const lats = flyLocs.map(loc => loc.latitude);
-        map.fitBounds(
-          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-          { padding: 80, duration: 800, maxZoom: 12 }
-        );
+        // Framed like any shape, so places either side of the dateline are a
+        // window across it rather than the whole world (#672).
+        frameGeoJson(map, {
+          type: 'FeatureCollection',
+          features: flyLocs.map(loc => ({
+            type: 'Feature' as const,
+            properties: {},
+            geometry: { type: 'Point' as const, coordinates: [loc.longitude, loc.latitude] },
+          })),
+        }, { padding: 80, duration: 800, maxZoom: 12 });
       } else if (flyLocs.length === 1) {
         map.flyTo({
           center: [flyLocs[0].longitude, flyLocs[0].latitude],

@@ -30,7 +30,6 @@ import CheckIcon from '@mui/icons-material/Check';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
 import { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../shared/GuardedMap';
-import * as turf from '@turf/turf';
 import {
   detectSmartSimplify,
   applySmartSimplifyMove,
@@ -41,6 +40,7 @@ import { getChildrenRegionGeometry } from '../../api/admin/wvImportCoverage';
 import type { SiblingRegionGeometry } from '../../api/admin/wvImportCoverage';
 import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
+import { frameGeoJson } from '../../utils/mapUtils';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -199,18 +199,10 @@ export function SmartSimplifyDialog({
     const geoms = selectedMove.divisions
       .map(d => divisionGeometries.get(d.divisionId))
       .filter((g): g is GeoJSONGeometry => !!g);
-    if (geoms.length === 0) return;
-    try {
-      const fc: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: geoms.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g as GeoJSON.Geometry })),
-      };
-      const bounds = turf.bbox(fc) as [number, number, number, number];
-      mapRef.current.fitBounds(
-        [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
-        { padding: 60, duration: 500 },
-      );
-    } catch { /* ignore */ }
+    frameGeoJson(mapRef.current, {
+      type: 'FeatureCollection',
+      features: geoms.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g as GeoJSON.Geometry })),
+    }, { padding: 60, duration: 500 });
   }, [selectedMove, divisionGeometries]);
 
   // Fly to selected anomaly's divisions when geometries are ready
@@ -219,40 +211,19 @@ export function SmartSimplifyDialog({
     const geoms = selectedAnomaly.divisions
       .map(d => divisionGeometries.get(d.divisionId))
       .filter((g): g is GeoJSONGeometry => !!g);
-    if (geoms.length === 0) return;
-    try {
-      const fc: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: geoms.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g as GeoJSON.Geometry })),
-      };
-      const bounds = turf.bbox(fc) as [number, number, number, number];
-      mapRef.current.fitBounds(
-        [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
-        { padding: 60, duration: 500 },
-      );
-    } catch { /* ignore */ }
+    frameGeoJson(mapRef.current, {
+      type: 'FeatureCollection',
+      features: geoms.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g as GeoJSON.Geometry })),
+    }, { padding: 60, duration: 500 });
   }, [selectedAnomaly, divisionGeometries]);
 
   // Fit map bounds when geometries load
   useEffect(() => {
-    if (!childGeometries || childGeometries.length === 0 || !mapRef.current) return;
-    try {
-      const fc: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: childGeometries.map((c) => ({
-          type: 'Feature' as const,
-          properties: {},
-          geometry: c.geometry,
-        })),
-      };
-      const bounds = turf.bbox(fc) as [number, number, number, number];
-      mapRef.current.fitBounds(
-        [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
-        { padding: 40, duration: 500 },
-      );
-    } catch (e) {
-      console.error('Failed to fit bounds:', e);
-    }
+    if (!childGeometries || childGeometries.length === 0) return;
+    frameGeoJson(mapRef.current, {
+      type: 'FeatureCollection',
+      features: childGeometries.map((c) => ({ type: 'Feature' as const, properties: {}, geometry: c.geometry })),
+    }, { padding: 40, duration: 500 });
   }, [childGeometries]);
 
   // Build a color map: regionId -> color
@@ -479,24 +450,11 @@ export function SmartSimplifyDialog({
                     style={{ width: '100%', height: '100%' }}
                     mapStyle={MAP_STYLE}
                     onLoad={() => {
-                      if (mapRef.current && childGeometries && childGeometries.length > 0) {
-                        try {
-                          const fc: GeoJSON.FeatureCollection = {
-                            type: 'FeatureCollection',
-                            features: childGeometries.map((c) => ({
-                              type: 'Feature' as const,
-                              properties: {},
-                              geometry: c.geometry,
-                            })),
-                          };
-                          const bounds = turf.bbox(fc) as [number, number, number, number];
-                          mapRef.current.fitBounds(
-                            [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
-                            { padding: 40, duration: 500 },
-                          );
-                        } catch (e) {
-                          console.error('Failed to fit bounds on load:', e);
-                        }
+                      if (childGeometries && childGeometries.length > 0) {
+                        frameGeoJson(mapRef.current, {
+                          type: 'FeatureCollection',
+                          features: childGeometries.map((c) => ({ type: 'Feature' as const, properties: {}, geometry: c.geometry })),
+                        }, { padding: 40, duration: 500 });
                       }
                     }}
                   >

@@ -17,7 +17,6 @@ import LinkIcon from '@mui/icons-material/Link';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../shared/GuardedMap';
-import * as turf from '@turf/turf';
 import { type searchDivisions } from '../../api/divisions';
 import type {
   RenameDialogState,
@@ -30,6 +29,7 @@ import type {
 import { GapDivisionTree, GapContextMap } from './GapAnalysis';
 import { mergeGeometries, mergeGeomsIntoSibling } from './CvMatchMap';
 import { type MatchTreeNode, type ReviewChildAction, getChildrenRegionGeometry } from '../../api/admin/worldViewImport';
+import { frameGeoJson } from '../../utils/mapUtils';
 
 // COVERAGE_MAP_STYLE is duplicated in GapAnalysis.tsx to break the circular
 // import between these two modules (they mutually import component helpers).
@@ -331,20 +331,18 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
 
   // Fit both maps to the combined extent
   const allGeometries = [data?.parentGeometry, data?.childrenGeometry, data?.geoshapeGeometry].filter(Boolean) as GeoJSON.Geometry[];
-  const combinedBbox = useMemo(() => {
+  const combined = useMemo((): GeoJSON.FeatureCollection | null => {
     if (allGeometries.length === 0) return null;
-    const fc: GeoJSON.FeatureCollection = {
+    return {
       type: 'FeatureCollection',
       features: allGeometries.map(g => ({ type: 'Feature' as const, properties: {}, geometry: g })),
     };
-    return turf.bbox(fc) as [number, number, number, number];
   // eslint-disable-next-line react-hooks/exhaustive-deps -- allGeometries is derived from these three deps each render; recomputing only when geometries actually change
   }, [data?.parentGeometry, data?.childrenGeometry, data?.geoshapeGeometry]);
 
   const fitToAll = useCallback((mapRef: React.RefObject<MapRef | null>) => {
-    if (!mapRef.current || !combinedBbox) return;
-    mapRef.current.fitBounds([[combinedBbox[0], combinedBbox[1]], [combinedBbox[2], combinedBbox[3]]], { padding: 40, duration: 0 });
-  }, [combinedBbox]);
+    frameGeoJson(mapRef.current, combined, { padding: 40, duration: 0 });
+  }, [combined]);
 
   return (
     <Dialog open={data != null} onClose={onClose} maxWidth="lg" fullWidth>
