@@ -87,3 +87,61 @@ describe('computeSingleRegionGeometrySSE reaches the same fast path', () => {
     expect(sqls.some((s) => s.includes('ST_Collect'))).toBe(false);
   });
 });
+
+/**
+ * Regression test: the union path invalidates where it writes, not two awaits
+ * downstream.
+ *
+ * Nothing on this path opens a transaction, so step 6's UPDATE is committed the
+ * moment it returns — while the heavy PostGIS that follows can still throw:
+ * generateSingleHull on an archipelago, simplify_coverage_regions over a
+ * continent's children. A throw there used to leave the region written and its
+ * ancestors holding stale outlines with nothing NULL beneath them, which is the
+ * state no later world-view run can select out of (#667).
+ */
+describe('the SSE union path marks the ancestors stale from its own write (#667)', () => {
+  beforeEach(() => {
+    client.query.mockReset();
+    poolQuery.mockReset();
+    client.query.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('member_points')) {
+        // Several members and children: not a single-division region, so the
+        // six-step union runs rather than the fast path.
+        return { rows: [{ member_points: '900000', child_points: '9000', child_count: '4', child_row_count: '4', member_count: '9' }] };
+      }
+      if (s.includes('collected_geom')) return { rows: [{ collected_geom: 'COLLECTED', geom_count: '13' }] };
+      if (s.includes('union_geom')) return { rows: [{ union_geom: 'UNIONED' }] };
+      if (s.includes('cleaned_geom')) {
+        return { rows: [{ cleaned_geom: 'CLEANED', holes_before: '2', num_polygons: '3', num_rings: '4', num_points: '4200' }] };
+      }
+      if (s.includes('UPDATE regions')) return { rows: [{ points: 4200, uses_hull: false }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    poolQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('is_custom_boundary') && s.includes('uses_hull')) {
+        return { rows: [{ is_custom_boundary: false, name: 'North America', has_geom: true, uses_hull: false }] };
+      }
+      if (s.includes('is_custom_boundary') && s.includes('parent_region_id')) return { rows: [] };
+      if (s.includes('parent_region_id FROM regions')) return { rows: [{ parent_region_id: 7 }] };
+      if (s.includes('simplify_coverage_regions')) {
+        // The sibling-coverage step throws, so the downstream invalidation in
+        // applyCoverageAndFetchFocus is never reached.
+        throw new Error('canceling statement due to statement timeout');
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  });
+
+  it('invalidates even when a later step throws before the downstream call', async () => {
+    const req = { params: { regionId: '42' }, query: {} } as unknown as Request;
+    const { res } = createSSERes();
+
+    await computeSingleRegionGeometrySSE(req, res as unknown as Response);
+
+    const invalidations = poolQuery.mock.calls.filter(([sql]) => String(sql).includes('RECURSIVE ancestors'));
+    expect(invalidations).toHaveLength(1);
+    expect(invalidations[0][1]).toEqual([42]);
+  });
+});

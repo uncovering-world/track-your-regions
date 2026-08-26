@@ -5,7 +5,7 @@
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 import { notFound } from '../../middleware/errorHandler.js';
-import { invalidateRegionGeometry } from './helpers.js';
+import { invalidateAncestorGeometry, invalidateRegionGeometry } from './helpers.js';
 
 /**
  * Get all regions in a World View
@@ -328,6 +328,28 @@ export async function createRegion(req: Request, res: Response): Promise<void> {
     } catch (err) {
       console.error(`[CreateRegion] SQL Error:`, err);
       throw err;
+    }
+
+    // A region born with a drawn shape has geometry from the moment it exists,
+    // so it never seeds the world-view run's closure -- and its parent already
+    // had geometry, so neither does that. Without this the parent is short of
+    // its children for good, reachable only by a forced run: #667's shape,
+    // reached from the "create from staged" and single-division custom dialogs
+    // rather than from an import. The branch below needs nothing: a region born
+    // with no geometry seeds the closure by itself.
+    //
+    // The one caller that logs the failure instead of raising it. Everywhere
+    // else the raise buys a retry -- a redraw or a recompute re-writes the same
+    // shape and tries again -- but an INSERT is not idempotent: the row is
+    // already committed, so a 500 here would skip the client's onSuccess (which
+    // adds the members), leave a region with a boundary and nothing in it, and
+    // make the retry create a second one. The staleness is the same either way;
+    // only the damage differs. Reported by Catalogue Checks meanwhile
+    // (parent-short-of-its-children), and #680 removes the choice.
+    try {
+      await invalidateAncestorGeometry(result.rows[0].id);
+    } catch (err) {
+      console.error('[CreateRegion] Ancestors left stale for region', result.rows[0].id, err);
     }
   } else {
     result = await pool.query(`

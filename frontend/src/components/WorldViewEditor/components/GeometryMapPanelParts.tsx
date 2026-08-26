@@ -312,9 +312,20 @@ export function BatchProgressSection({
     );
   }
   if (!isComputing && computationStatus?.status === 'Complete') {
+    // A run that hit errors still finishes as 'Complete' -- the status string is
+    // what keys the display-geometry regeneration, so it cannot carry the news.
+    // Without the count here a run that left a continent's ancestors stale read
+    // as a green "Complete!", which is the phrase for the outcome the whole
+    // convergence mechanism exists to prevent (#667).
+    const errors = computationStatus.errors ?? 0;
     return (
-      <Alert severity="success" sx={{ mx: 2, my: 0.5, py: 0 }} onClose={onClearStatus}>
+      <Alert
+        severity={errors > 0 ? 'warning' : 'success'}
+        sx={{ mx: 2, my: 0.5, py: 0 }}
+        onClose={onClearStatus}
+      >
         Complete! Computed: {computationStatus.computed ?? 0}, Skipped: {computationStatus.skipped ?? 0}
+        {errors > 0 && `, Errors: ${errors} \u2014 see the server log, and Catalogue Checks for what it left behind`}
       </Alert>
     );
   }
