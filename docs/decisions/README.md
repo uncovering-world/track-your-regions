@@ -45,6 +45,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0032](0032-a-rule-stays-absolute-and-the-debt-is-recorded.md) | A rule about the catalogue stays absolute, and the debt is recorded beside it | Accepted | 2026-08-24 |
 | [0033](0033-lighthouse-through-its-node-api-with-lighthouse-ci-budgets.md) | Lighthouse is driven through its Node API, and the budgets keep Lighthouse CI's syntax | Accepted | 2026-08-24 |
 | [0034](0034-a-place-has-an-address.md) | A place has an address, and ids decide it | Accepted | 2026-08-25 |
+| [0035](0035-ancestor-geometry-invalidation-lives-in-the-database.md) | Ancestor geometry invalidation lives in the database | Accepted | 2026-08-27 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

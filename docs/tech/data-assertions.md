@@ -170,10 +170,12 @@ region: geometry is computed one region at a time on demand, so a curator's
 first click on the in-flight Wikivoyage import (4 301 regions, none computed)
 would otherwise turn this rule into four thousand rows of the wrong question. The
 Administrative world view sits at 99.9 % and answers Canada, one row of its
-3 831. A region awaiting recompute appears here too, and should — by two routes
-now. Editing a region nulls its geometry and every derived ancestor's; and
-since #667 an ordinary **compute** nulls the ancestors as well, since a parent
-is the union of children one of which has just changed. So a continent parks on this
+3 831. A region awaiting recompute appears here too, and should. Any write to
+`regions.geom` nulls the derived ancestors above it — the database does that,
+from `trg_regions_geom_invalidates_parent` ([ADR-0035](../decisions/0035-ancestor-geometry-invalidation-lives-in-the-database.md)),
+since a parent is the union of children one of which has just changed — and
+editing a region's members nulls that region's own geometry too, which is the
+same kind of write and so reaches the same ancestors. So a continent parks on this
 rule whenever anything under it is computed, and stays there until the next
 world-view run takes it bottom-up. That is the design and not a defect: a region
 with nothing on the map is exactly what the panel should say out loud, and the
