@@ -14,9 +14,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, Divider, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchReviewQueue, type ReviewQueueKind } from '../../api/experiences';
+import { fetchReviewQueue, type ReviewQueueItem, type ReviewQueueKind } from '../../api/experiences';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import {
@@ -24,7 +24,9 @@ import {
 } from './queueRows';
 import { ReviewQueueList } from './ReviewQueueList';
 import { ReviewBench } from './ReviewBench';
+import { AnsweredSection } from './AnsweredSection';
 import { KeptOutCard } from './ReviewQueue';
+import { AnsweredWithdrawalCard } from './WithdrawnPoints';
 
 /**
  * What to add to "nothing here has changed what visitors see", which is not always true.
@@ -59,12 +61,9 @@ export function ReviewPage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  // Collapsed by default. These are answered, and a curator opening this page is here to
-  // work through what is not — but they must still be one click from reach, because no
-  // other surface shows them at all.
-  const [showKeptOut, setShowKeptOut] = useState(false);
-  // One offset per kind: the queue is eight queries with eight limits, and a shared number
-  // made "show more" under one heading page every other section past its own first page.
+  // One offset per kind: the queue is one query with one limit per kind, and a shared
+  // number made "show more" under one heading page every other section past its own first
+  // page.
   const [offsets, setOffsets] = useState<Partial<Record<ReviewQueueKind, number>>>({});
 
   const { data, isLoading, isError, error } = useQuery({
@@ -159,23 +158,88 @@ export function ReviewPage() {
     );
   }
 
+  /**
+   * The two lists of answered work, which are not questions and do not join `rows`.
+   *
+   * Same shape and same reason — a row that is answered appears on no other surface, so
+   * this page is the only place a mis-click can be undone — one about an object a rule
+   * refused, one about a point a curator decided about (#544). Written as a list rather
+   * than as two blocks, because everything below treats them alike: the block at the foot,
+   * and the way back from a page of them that came back empty.
+   */
   const keptOut = data?.keptOut ?? [];
+  const answeredWithdrawals = data?.answeredWithdrawals ?? [];
+  const answeredLists: Array<{
+    kind: ReviewQueueKind;
+    /** The noun the toggle offers, addressed to the curator. */
+    label: string;
+    /**
+     * The same list named for the stranded row, which supplies "on this page of" itself
+     * — so "what you have kept out — previous" would say half of it twice.
+     */
+    shortLabel: string;
+    explanation: string;
+    items: ReviewQueueItem[];
+    /**
+     * How many the toggle says the block holds, **in the unit its label names**.
+     *
+     * Not `items.length` for both, because the two lists count different things. A
+     * kept-out row is one object and one kept-out thing, so the rows are the number. An
+     * answered withdrawal is one *object* carrying up to a page of answered *places*, and
+     * the label says places — so the rows would read "(1)" over a serial nomination
+     * holding ninety-three of them, and the number that corrects it would appear only
+     * after the click, which is the one thing the count exists to prevent.
+     *
+     * Both count this page rather than the whole backlog, as the block's pager implies.
+     */
+    count: number;
+    card: (item: ReviewQueueItem) => React.ReactNode;
+  }> = [
+    {
+      kind: 'keptOut',
+      label: 'what you have kept out',
+      shortLabel: 'kept out',
+      explanation: 'Answered, so not waiting on you — listed because this page is the only '
+        + 'place they appear at all. A kept-out row is hidden from every list and gives '
+        + 'nothing back at its own address, so if one of these was a mis-click, this is '
+        + 'where it comes back.',
+      items: keptOut,
+      count: keptOut.length,
+      card: item => <KeptOutCard key={item.id} item={item} onDone={refresh} />,
+    },
+    {
+      kind: 'answeredWithdrawals',
+      label: 'the lost places you have answered',
+      shortLabel: 'lost places you have answered',
+      explanation: 'Answered, so not waiting on you — and here for the same reason as the '
+        + 'block above: a point with a verdict on it is on no other screen. Readers stopped '
+        + 'seeing it, and it gives nothing back at its own address. Each answer is taken '
+        + 'back on its own, and the place returns to the map only once nothing is left '
+        + 'holding it.',
+      items: answeredWithdrawals,
+      count: answeredWithdrawals.reduce(
+        (n, item) => n + (item.answered_points_total ?? item.answered_points?.length ?? 0), 0),
+      card: item => <AnsweredWithdrawalCard key={item.id} item={item} onDone={refresh} />,
+    },
+  ];
+
   /**
    * Kinds paged forward whose page came back empty.
    *
    * Their own pager renders under the last row of that kind, so with no rows it renders
    * nowhere and the offset is stranded: answer the five rows on page 2 of the refusals and
-   * the twenty-five in front of them are unreachable without a reload. `keptOut` belongs in
-   * the same list — its whole collapsed block disappears when its page empties.
+   * the twenty-five in front of them are unreachable without a reload. The answered lists
+   * belong in the same list — a collapsed block disappears whole when its page empties,
+   * taking its pager with it.
    */
   const stranded: Array<{ label: string; behind: readonly ReviewQueueKind[] }> = [
     ...ROW_KINDS
       .filter(kind => !rows.some(r => r.kind === kind)
         && KINDS_BEHIND[kind].some(k => pageOf(k).offset > 0))
       .map(kind => ({ label: KIND_NAME[kind], behind: KINDS_BEHIND[kind] })),
-    ...(keptOut.length === 0 && pageOf('keptOut').offset > 0
-      ? [{ label: 'kept out', behind: ['keptOut'] as const }]
-      : []),
+    ...answeredLists
+      .filter(list => list.items.length === 0 && pageOf(list.kind).offset > 0)
+      .map(list => ({ label: list.shortLabel, behind: [list.kind] as const })),
   ];
   // `ROW_KINDS` rather than the same literal written again: the list's order is a product
   // decision that lives in one place, and two copies of it drift.
@@ -259,30 +323,17 @@ export function ReviewPage() {
         </Stack>
       )}
 
-      {keptOut.length > 0 && (
-        <>
-          <Divider sx={{ mt: 4 }} />
-          <Button size="small" sx={{ mt: 2 }} onClick={() => setShowKeptOut(v => !v)}>
-            {showKeptOut ? 'Hide' : 'Show'} what you have kept out ({keptOut.length})
-          </Button>
-          {showKeptOut && (
-            <>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-                Answered, so not waiting on you — listed because this page is the only place
-                they appear at all. A kept-out row is hidden from every list and gives
-                nothing back at its own address, so if one of these was a mis-click, this is
-                where it comes back.
-              </Typography>
-              <Stack spacing={2}>
-                {keptOut.map(item => (
-                  <KeptOutCard key={item.id} item={item} onDone={refresh} />
-                ))}
-              </Stack>
-              {pagerOver(['keptOut'])}
-            </>
-          )}
-        </>
-      )}
+      {answeredLists.filter(list => list.items.length > 0).map(list => (
+        <AnsweredSection
+          key={list.kind}
+          label={list.label}
+          count={list.count}
+          explanation={list.explanation}
+          pager={pagerOver([list.kind])}
+        >
+          {list.items.map(list.card)}
+        </AnsweredSection>
+      ))}
     </Box>
   );
 }

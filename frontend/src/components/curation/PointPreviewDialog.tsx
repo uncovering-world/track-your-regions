@@ -7,11 +7,15 @@
  *
  * A dialog rather than a map on every card, and the reason is a hard limit rather than
  * taste: each MapLibre instance holds its own WebGL context, browsers keep about a dozen
- * per tab, and this page renders up to 25 cards *per kind* across eight kinds. Mounting
- * one map per card would evict the earlier contexts and blank the maps — the failure
- * looks like a rendering bug and is really a resource cap. One dialog can only ever be
- * open once, so the count is one by construction, and nothing loads until it is asked
- * for.
+ * per tab, and this page renders up to 25 cards *per kind*, across every kind the queue
+ * returns. Stated as a rule and not a number because the number keeps growing, and the
+ * newest kind grows it fastest: an answered withdrawal is one card holding up to 25
+ * points, each with a dialog of its own, where a withdrawal card holds one per lost part.
+ * Mounting one map per card would evict the earlier contexts and blank the maps — the
+ * failure looks like a rendering bug and is really a resource cap. The conclusion is
+ * unmoved by any of that arithmetic: MUI's `Dialog` mounts no children while closed and
+ * only one can be open, so the count is one by construction, and nothing loads until it
+ * is asked for.
  *
  * When the bench arrives (queue left, object right) this moves there and stays open for
  * the selected item — the layout that makes a permanent map affordable is the one where

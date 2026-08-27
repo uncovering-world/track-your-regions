@@ -1,5 +1,6 @@
 /**
- * The parts of an object the source stopped offering, one verdict each.
+ * The parts of an object the source stopped offering, one verdict each — and, below the
+ * card that asks, the list of the verdicts already given.
  *
  * A withdrawn point has been recorded since ADR-0022 and asked about nowhere: the row
  * carries `missing_since`, every reader-facing read hides it, and no screen said so. The
@@ -21,7 +22,11 @@
  * the past: answering one "false alarm" clears `missing_since` and leaves two visible rows
  * a centimetre apart under one reference, so the next run pairs one and withdraws the
  * other, and the card returns. Honest each time and unsettleable here — settling it means
- * deciding which row a traveller's record belongs to, which is #544's surface.
+ * deciding which of two rows a traveller's record belongs to, and no card in this file
+ * asks that. **Not** what `AnsweredWithdrawalCard` below does either, which is worth
+ * saying because this note used to point forward at #544 as the place it would be
+ * settled: that list takes a verdict back, on the row it was given about, and the loop
+ * comes round again after it exactly as before.
  *
  * Those two are not the whole list, and the list is not the thing to memorise: the backend
  * comment above the subquery filling `replacedMetres` enumerates every route a short
@@ -307,6 +312,230 @@ export function WithdrawnCard({ item, onDone }: {
             the response. Reload the page.
           </Alert>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+type AnsweredPoint = NonNullable<ReviewQueueItem['answered_points']>[number];
+
+/**
+ * Whether one take-back would put the point back in front of readers.
+ *
+ * The endpoint's own two rules read forward: a reader sees a point where the withdrawal
+ * flag is clear and nothing has declared it gone (`offeredLocationSql`), and the flag is
+ * cleared by exactly one thing — an answer that leaves both axes clean. Repeated here
+ * rather than imported for the reason `SAME_POINT_METRES` is: the frontend cannot reach
+ * `backend/src`.
+ *
+ * It has to be computed rather than assumed, because the two verdicts do not behave alike
+ * and neither does one taken back. Taking `lost` off a point whose `former` still stands
+ * leaves it hidden — the flag holds it — while taking it off a point the source has since
+ * offered again reveals it, the flag being clear already. A card promising one where the
+ * other happens is wrong about the only thing a curator is deciding.
+ */
+export function wouldReveal(point: AnsweredPoint, axis: 'membership' | 'existence'): boolean {
+  const membership = axis === 'membership' ? 'present' : point.sourceMembership;
+  const existence = axis === 'existence' ? 'extant' : point.existence;
+  const flagClear = (membership === 'present' && existence === 'extant')
+    || point.missingSince === null;
+  return flagClear && existence !== 'lost';
+}
+
+/**
+ * The two verdicts a point can be carrying, and the way back from each.
+ *
+ * One at a time, because they are independent claims and a curator may want only one of
+ * them undone: `former` is about the source's list, `lost` about the world. The labels
+ * are the ones the product uses for the same act on an object — "It is still listed",
+ * "It does still exist" — so the same correction reads the same wherever it is made.
+ */
+const TAKE_BACK = [
+  {
+    axis: 'membership' as const,
+    holds: (p: AnsweredPoint) => p.sourceMembership === 'former',
+    recorded: 'Recorded as dropped by the source',
+    label: 'It is still listed',
+    decision: { membership: 'present' as const },
+  },
+  {
+    axis: 'existence' as const,
+    holds: (p: AnsweredPoint) => p.existence === 'lost',
+    recorded: 'Recorded as no longer existing',
+    label: 'It does still exist',
+    decision: { existence: 'extant' as const },
+  },
+];
+
+/**
+ * What a curator is told about the standing answer before they undo it.
+ *
+ * The date and the name where they exist, and no filler where they do not: a verdict from
+ * a region this reader does not cover comes back with no name at all (the log is scoped,
+ * `reviewQueueContents.ts` says why), and "a curator" is the honest form of that —
+ * somebody decided, and who is not this reader's to see.
+ *
+ * The note is the opposite: it comes off `state_note`, which carries no region, so this
+ * reader sees wording whose *act* they cannot open. That is why the help text does not
+ * promise the history keeps it unconditionally — the log row holding it is dropped by
+ * `getCurationLog` for exactly the reader whose card says "a curator", and a promise is
+ * worse than none where the person it is made to is the one it fails for.
+ */
+export function answeredLine(point: AnsweredPoint): string {
+  const when = point.decidedAt ? ` on ${formatDateTime(point.decidedAt)}` : '';
+  const who = ` by ${point.decidedBy ?? 'a curator'}`;
+  const note = point.note ? ` — “${point.note}”` : '';
+  return `Answered${when}${who}${note}.`;
+}
+
+const TAKE_BACK_HELP = 'These are answered, so they are not waiting on you. They are here '
+  + 'because a point with a verdict on it is on no other screen: readers do not see it, and '
+  + 'it gives nothing back at its own address — so if one of these was a mis-click, this is '
+  + 'where it comes back. Each answer is taken back on its own, and the point returns to the '
+  + 'map only once nothing is left holding it. If the source still does not list it, the next '
+  + 'run will mark it again and it will come back as a question. Taking one back makes you the '
+  + 'author of where the point now stands, so the note above it goes with the answer it '
+  + 'explained — the wording stays in this object’s history wherever the act that wrote it is '
+  + 'one your scope can see, which is the same reach that decides whether a name appears above.';
+
+/**
+ * One answered point, and the way back from each verdict standing on it.
+ *
+ * Its own component rather than a loop body, for the reason `PointVerdict` is: each point
+ * carries a map a curator may have opened, and holding that in the card would make
+ * opening one point's place close another's.
+ */
+function AnsweredVerdict({ item, point, onDone }: {
+  item: ReviewQueueItem;
+  point: AnsweredPoint;
+  onDone: (message?: string, experienceId?: number) => void;
+}) {
+  const [showMap, setShowMap] = useState(false);
+  const hasPoint = typeof point.latitude === 'number' && typeof point.longitude === 'number';
+
+  const takeBack = useMutation({
+    mutationFn: (decision: { membership?: 'present' | 'former'; existence?: 'extant' | 'lost' }) =>
+      setLocationState(point.id, {
+        ...decision,
+        // The row as this card is showing it, both axes and the flag. Compared under
+        // the write lock, and it is the whole of what stops a card drawn before a run
+        // re-listed the point from undoing a verdict its author never saw.
+        expected: {
+          membership: point.sourceMembership,
+          existence: point.existence,
+          flagged: point.missingSince !== null,
+        },
+      }),
+    onSettled: (data, error) => onDone(
+      error ? messageFor(item, error) : placementNotice(item, data), item.id),
+  });
+
+  const standing = TAKE_BACK.filter(v => v.holds(point));
+
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Typography variant="subtitle2">{pointTitle(point)}</Typography>
+      <Typography variant="body2" color="text.secondary">
+        {answeredLine(point)}
+      </Typography>
+
+      {point.visited && (
+        <Alert severity="info" sx={{ mt: 1, py: 0 }}>
+          Someone has been here. Their record is kept whatever you decide — it is the spot
+          that stops being shown, not the visit.
+        </Alert>
+      )}
+
+      {hasPoint && (
+        <>
+          <Button
+            size="small"
+            startIcon={<PlaceIcon fontSize="small" />}
+            onClick={() => setShowMap(true)}
+            sx={{ p: 0, minWidth: 0, textTransform: 'none', mt: 0.5 }}
+          >
+            See where it was
+          </Button>
+          <PointPreviewDialog
+            open={showMap}
+            onClose={() => setShowMap(false)}
+            name={pointTitle(point)}
+            latitude={point.latitude as number}
+            longitude={point.longitude as number}
+          />
+        </>
+      )}
+
+      {standing.map(verdict => (
+        <Stack
+          key={verdict.axis}
+          direction="row"
+          spacing={1}
+          flexWrap="wrap"
+          useFlexGap
+          alignItems="center"
+          sx={{ mt: 1 }}
+        >
+          <Typography variant="body2">{verdict.recorded}.</Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            disabled={takeBack.isPending}
+            onClick={() => takeBack.mutate(verdict.decision)}
+          >
+            {verdict.label}
+          </Button>
+          {/* What the click does to what a visitor sees, said before it is clicked. The
+              two verdicts differ here and so does one taken back: undoing a `lost` while
+              a `former` still stands leaves the point hidden, and a card that promised
+              the map would get it back would be wrong about the whole decision. */}
+          <Typography variant="caption" color="text.secondary">
+            {wouldReveal(point, verdict.axis)
+              ? 'Puts it back on the map.'
+              : 'It stays hidden: the other answer is still holding it.'}
+          </Typography>
+        </Stack>
+      ))}
+    </Box>
+  );
+}
+
+/**
+ * Every answered point of one object, grouped, with the object above them.
+ *
+ * Grouped like the open card and for the same reason — the queue is a list of objects and
+ * a serial site can lose two parts in one run — and through the same `ItemHeader`, so a
+ * curator looking for something they answered a moment ago recognises it by the same line
+ * they answered it under.
+ */
+export function AnsweredWithdrawalCard({ item, onDone }: {
+  item: ReviewQueueItem;
+  onDone: (message?: string, experienceId?: number) => void;
+}) {
+  const points = item.answered_points ?? [];
+  const total = item.answered_points_total ?? points.length;
+
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <ItemHeader item={item} />
+        {/* The cap said rather than implied. This list only grows — a point enters when
+            it is answered and leaves only if the verdict is taken back — so an object
+            worked through over months can hold more answered places than a card should
+            show, and a list quietly standing for the rest is the failure the counted
+            `contents` card exists to avoid. */}
+        {total > points.length && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            The {points.length} most recently answered of {total}.
+          </Typography>
+        )}
+        {points.map((point, index) => (
+          <Box key={point.id}>
+            {index > 0 && <Divider sx={{ mb: 2 }} />}
+            <AnsweredVerdict item={item} point={point} onDone={onDone} />
+          </Box>
+        ))}
+        <RuleHelp text={TAKE_BACK_HELP} />
       </CardContent>
     </Card>
   );

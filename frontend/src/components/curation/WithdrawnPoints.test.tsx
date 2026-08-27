@@ -15,7 +15,9 @@ vi.mock('../../api/experiences', () => ({
   setLocationState: vi.fn(),
 }));
 
-import { WithdrawnCard, pointTitle, withdrawalStory, placementNotice } from './WithdrawnPoints';
+import {
+  WithdrawnCard, AnsweredWithdrawalCard, pointTitle, withdrawalStory, placementNotice, wouldReveal,
+} from './WithdrawnPoints';
 import { setLocationState } from '../../api/experiences';
 import type { ReviewQueueItem } from '../../api/experiences';
 
@@ -27,6 +29,7 @@ beforeEach(() => {
 });
 
 type Point = NonNullable<ReviewQueueItem['withdrawn_points']>[number];
+type AnsweredPoint = NonNullable<ReviewQueueItem['answered_points']>[number];
 
 /** Bilbao's own withdrawn point, which is the only one the catalogue has. */
 function point(over: Partial<Point> = {}): Point {
@@ -329,5 +332,178 @@ describe('WithdrawnCard', () => {
     renderCard({ withdrawn_points: [] });
 
     expect(screen.getByText(/Reload the page/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Tests for the answered half: a verdict standing on a point, and the way back from it.
+ *
+ * What is worth pinning is the promise the card makes before a click, because a point is
+ * hidden by two independent axes and one taken back does not always reveal it — a card
+ * saying "puts it back on the map" over an answer that leaves it hidden would be wrong
+ * about the only thing the curator is deciding. And that a take-back sends the row as the
+ * card is showing it, since that comparison is what stops one undoing a verdict its
+ * author never saw.
+ */
+describe('an answered withdrawal', () => {
+  /** The same Bilbao point, one verdict later: the source dropped it, flag standing. */
+  function answered(over: Partial<AnsweredPoint> = {}): AnsweredPoint {
+    return {
+      id: 13211,
+      name: null,
+      externalRef: 'Q127064',
+      missingSince: '2026-08-10T20:03:01.941Z',
+      latitude: 43.265974,
+      longitude: -2.93785,
+      sourceMembership: 'former',
+      existence: 'extant',
+      decidedAt: '2026-08-15T09:12:00.000Z',
+      note: null,
+      decidedBy: 'Nikolay',
+      visited: false,
+      ...over,
+    };
+  }
+
+  function renderAnswered(
+    points: AnsweredPoint[],
+    onDone: (message?: string, experienceId?: number) => void = () => {},
+  ) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={client}>
+        <AnsweredWithdrawalCard
+          item={item({ kind: 'withdrawn-answered', withdrawn_points: null, answered_points: points })}
+          onDone={onDone}
+        />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('offers a way back from each verdict that stands, and only those', () => {
+    // The two are independent claims — one about the source's list, one about the world —
+    // so a card offering both on a point carrying one would invite an answer to a
+    // question nobody asked, in the shape the endpoint answers 409 to.
+    renderAnswered([answered()]);
+
+    expect(screen.getByRole('button', { name: /it is still listed/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /it does still exist/i })).not.toBeInTheDocument();
+  });
+
+  it('offers both where both stand, and promises the map back from neither', () => {
+    // A point recorded delisted *and* gone: taking either back leaves the other holding
+    // it, so both sentences have to say so. This is the case a single "put it back"
+    // button would have got wrong twice.
+    renderAnswered([answered({ existence: 'lost' })]);
+
+    expect(screen.getByRole('button', { name: /it is still listed/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /it does still exist/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/stays hidden/i)).toHaveLength(2);
+    expect(screen.queryByText(/puts it back on the map/i)).not.toBeInTheDocument();
+  });
+
+  it('promises the map back where the take-back is the last thing holding it', () => {
+    renderAnswered([answered()]);
+
+    expect(screen.getByText(/puts it back on the map/i)).toBeInTheDocument();
+  });
+
+  it('reveals a lost point whose flag a run has already cleared', () => {
+    // The case a flag-only reading gets wrong: the source offered the point again and the
+    // writer's `returned` arm cleared `missing_since`, so nothing but the `lost` verdict
+    // is hiding it and taking that back puts it straight back on the map.
+    renderAnswered([answered({ sourceMembership: 'present', existence: 'lost', missingSince: null })]);
+
+    expect(screen.getByText(/puts it back on the map/i)).toBeInTheDocument();
+  });
+
+  it('sends the row as the card is showing it, so a stale card collides', () => {
+    renderAnswered([answered()]);
+    fireEvent.click(screen.getByRole('button', { name: /it is still listed/i }));
+
+    return waitFor(() => expect(mockedState).toHaveBeenCalledWith(13211, expect.objectContaining({
+      membership: 'present',
+      expected: { membership: 'former', existence: 'extant', flagged: true },
+    })));
+  });
+
+  it('says how many it is not showing, because this list only grows', () => {
+    // A point enters when it is answered and leaves only if the verdict is taken back, so
+    // an object worked through over months holds more than a card should show. A list
+    // quietly standing for the rest is the failure the counted `contents` card avoids.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AnsweredWithdrawalCard
+          item={item({
+            kind: 'withdrawn-answered',
+            withdrawn_points: null,
+            answered_points: [answered()],
+            answered_points_total: 93,
+          })}
+          onDone={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText(/1 most recently answered of 93/)).toBeInTheDocument();
+  });
+
+  it('says nothing about a cap that did not cut anything', () => {
+    renderAnswered([answered()]);
+
+    expect(screen.queryByText(/most recently answered of/)).not.toBeInTheDocument();
+  });
+
+  it('says when it was answered and by whom, and does not invent a name', () => {
+    // The log is scoped per region, so a verdict from a region this curator does not
+    // cover comes back with no name. "a curator" is the honest form of that: somebody
+    // decided, and who is not this reader's to see.
+    const { rerender } = renderAnswered([answered({ note: 'delisted in run 64' })]);
+    expect(screen.getByText(/by Nikolay/)).toBeInTheDocument();
+    expect(screen.getByText(/delisted in run 64/)).toBeInTheDocument();
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    rerender(
+      <QueryClientProvider client={client}>
+        <AnsweredWithdrawalCard
+          item={item({
+            kind: 'withdrawn-answered',
+            withdrawn_points: null,
+            answered_points: [answered({ decidedBy: null })],
+          })}
+          onDone={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText(/by a curator/)).toBeInTheDocument();
+  });
+});
+
+describe('wouldReveal', () => {
+  const base = {
+    id: 1, name: null, externalRef: null, latitude: null, longitude: null,
+    decidedAt: null, note: null, decidedBy: null, visited: false,
+  };
+
+  it('keeps a point hidden while the other axis still holds it', () => {
+    // `offeredLocationSql` is two terms, and the flag only clears where both axes come
+    // out clean — so undoing one of two verdicts moves nothing a reader can see.
+    const both = { ...base, sourceMembership: 'former' as const, existence: 'lost' as const, missingSince: 'x' };
+    expect(wouldReveal(both, 'membership')).toBe(false);
+    expect(wouldReveal(both, 'existence')).toBe(false);
+  });
+
+  it('reveals a point once nothing is left holding it', () => {
+    const former = { ...base, sourceMembership: 'former' as const, existence: 'extant' as const, missingSince: 'x' };
+    expect(wouldReveal(former, 'membership')).toBe(true);
+  });
+
+  it('reveals a lost point whose flag is already clear, where the flag rule alone would not', () => {
+    // The combination the endpoint's own comment names: `former` inherited, so the answer
+    // does not clear the flag — but the flag is NULL already, so the point becomes
+    // visible and the verdict is a placement event.
+    const returned = { ...base, sourceMembership: 'former' as const, existence: 'lost' as const, missingSince: null };
+    expect(wouldReveal(returned, 'existence')).toBe(true);
   });
 });
