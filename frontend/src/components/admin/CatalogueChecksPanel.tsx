@@ -81,6 +81,7 @@ const AREA_LABELS: Record<DataAssertion['area'], string> = {
   places: 'Places',
   regions: 'Regions',
   boundaries: 'Boundaries',
+  objects: 'Objects',
   pictures: 'Pictures',
 };
 

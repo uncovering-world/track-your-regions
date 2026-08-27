@@ -29,7 +29,7 @@ export type AssertionStatus =
 export interface DataAssertion {
   id: string;
   /** What the assertion is about, so a growing list stays readable. */
-  area: 'places' | 'regions' | 'boundaries' | 'pictures';
+  area: 'places' | 'regions' | 'boundaries' | 'objects' | 'pictures';
   title: string;
   /** A `watch` is a number to watch rather than a debt, and cannot be accepted. */
   kind: 'invariant' | 'watch';

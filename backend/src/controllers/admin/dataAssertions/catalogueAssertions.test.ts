@@ -48,7 +48,7 @@ describe('the catalogue assertions as a set', () => {
 
   it('gives every assertion an area, since the list is expected to outgrow one screen', () => {
     for (const assertion of catalogueAssertions) {
-      expect(['places', 'regions', 'boundaries', 'pictures']).toContain(assertion.area);
+      expect(['places', 'regions', 'boundaries', 'objects', 'pictures']).toContain(assertion.area);
     }
   });
 
@@ -315,5 +315,52 @@ describe('a picture with nobody credited', () => {
     expect(assertion.describe({
       holder: 'work', row_id: 88, row_name: 'The Night Watch', host: 'upload.wikimedia.org',
     })).toBe('The Night Watch: a picture from upload.wikimedia.org with nobody credited (work 88)');
+  });
+});
+
+describe('the danger flag against its tag', () => {
+  const assertion = byId('danger-flag-disagrees-with-its-tag');
+  const sql = collapse(assertion.sql);
+
+  it('reads a null tag column as no tag, rather than dropping the row', () => {
+    // `tags` is nullable and reachable as null -- `createManualExperience`
+    // writes NULL for an object created with none -- and `NULL ? 'in_danger'`
+    // is NULL, so `NULL <> FALSE` is neither true nor false and Postgres drops
+    // the row. That would lose the direction this rule calls the worse one: a
+    // hand-made object flagged in danger with nothing tagging it. Measured
+    // against the live catalogue with one such row inserted in a transaction:
+    // uncoalesced finds nothing, this finds it.
+    expect(sql).toContain("COALESCE(e.tags ? 'in_danger', FALSE) <> COALESCE(e.metadata->'inDanger' = 'true'::jsonb, FALSE)");
+  });
+
+  it('asks the two stored columns, not UNESCO\'s own field', () => {
+    // A rule about this catalogue's two copies of one fact. Re-reading
+    // `dangerList` here would make the assertion a second copy of the
+    // importer's reading, which is the copy that would rot.
+    expect(sql).toContain("e.tags ? 'in_danger'");
+    expect(sql).toContain("e.metadata->'inDanger' = 'true'::jsonb");
+  });
+
+  it('catches the disagreement whichever half is missing', () => {
+    // Tagged and not flagged is the shape 035 repaired; flagged and not tagged
+    // is a badge on a site nothing lists, and a one-sided test would report the
+    // catalogue clean while a traveller is told a place is in peril.
+    expect(sql).toMatch(/<>/);
+    expect(assertion.describe({
+      experience_id: 21, experience_name: 'Ancient City of Aleppo',
+      tagged: true, flagged: false, listing: 'Y 2013',
+    })).toBe('Ancient City of Aleppo: tagged as in danger since 2013, with no badge on it '
+      + '(experience 21)');
+    expect(assertion.describe({
+      experience_id: 764, experience_name: 'Belize Barrier Reef Reserve System',
+      tagged: false, flagged: true, listing: null,
+    })).toBe('Belize Barrier Reef Reserve System: badged as in danger with nothing in the '
+      + 'catalogue listing it (experience 764)');
+  });
+
+  it('says the year only where the listing carries one', () => {
+    expect(assertion.describe({
+      experience_id: 1, experience_name: 'A site', tagged: true, flagged: false, listing: null,
+    })).toBe('A site: tagged as in danger, with no badge on it (experience 1)');
   });
 });
