@@ -37,6 +37,23 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`035-in-danger-flag.sql` sets `metadata.inDanger` on the sites the catalogue already
+tags as `in_danger` (#600). One fact is stored twice and the import wrote the two halves
+from different fields: the tag from either of UNESCO's, the flag from the boolean alone —
+compared against the number `1` while the portal sends the string `"True"`. So the tag was
+right on 58 of 1272 rows and the flag was false on all of them, and the "In Danger" badge
+three surfaces draw off the flag has never appeared for anyone. The reading was widened on
+2026-08-21 and both writers now ask one predicate, which fixes what a run imports and
+nothing that is already stored — and on a gated source a run cannot fix it: `inDanger` is
+not a key a run owns outright, so the hold refuses to overwrite a row a reader can see and
+the 58 flips would queue as 58 major changes for a curator to answer for. They are not the
+source changing its mind. Keyed on the tag rather than on UNESCO's field, so the file
+speaks about two columns of one catalogue; the two agree on every row today (58 tagged, 58
+carrying a dated listing, 58 flagged `True` in `whc001` itself, measured 2026-08-27) and
+the query at the end reports any row where they do not rather than repairing a shape
+nobody has seen. A repair of data and not of shape, so it may run in either order against
+`01-schema.sql`, any number of times.
+
 `034-unnamed-gadm-rows.sql` gives back the polygons the loader folded into their parents,
 and fills the holes they left above them (#665). GADM 4.1 leaves the deepest `NAME` empty on
 2831 rows that carry a valid `GID` and a polygon; the loader read only the names, so such a
