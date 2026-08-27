@@ -6,7 +6,7 @@ import { Request, Response } from 'express';
 import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
-import { invalidateAncestorGeometry, recomputeRegionGeometry } from './helpers.js';
+import { recomputeRegionGeometry } from './helpers.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
 
 interface ProgressEvent {
@@ -423,11 +423,13 @@ async function applyCoverageAndFetchFocus(
     if (coverageCount > 0) {
       logStep('Coverage simplification applied to siblings', { siblings: coverageCount });
     }
-    // No ancestor invalidation here: runUnionPipelineSteps, the fast path and
-    // recomputeRegionGeometry each do it where they write, and
+    // No ancestor invalidation here, and none needed: the geometry writes this
+    // follows carried it from inside their own statements
+    // (trg_regions_geom_invalidates_parent, ADR-0035), and
     // simplify_coverage_regions above touches only the render columns
     // (geom_simplified_low/medium, geom_overview) -- never geom, which is the
-    // only thing a parent's union reads (#667).
+    // only thing a parent's union reads, and the only thing the trigger watches
+    // (#667).
   }
 
   const focusResult = await pool.query(`
@@ -529,15 +531,6 @@ async function runUnionPipelineSteps(
   const finalPoints = updateResult.rows[0]?.points;
   const usesHull = !!updateResult.rows[0]?.uses_hull;
   logStep('Step 6/6: Complete', { finalPoints });
-
-  // Here rather than at the caller downstream: nothing on this path opens a
-  // transaction, so the UPDATE above is already committed, while the two heavy
-  // PostGIS steps that follow -- generateSingleHull on an archipelago and
-  // simplify_coverage_regions over a continent's children -- can both throw. A
-  // throw there would leave this region written and its ancestors holding stale
-  // outlines with nothing NULL beneath them, which is the state no later run
-  // can select out of (#667).
-  if (updateResult.rows.length > 0) await invalidateAncestorGeometry(regionId);
 
   return { finalPoints, usesHull, numPolygons: cleaned.numPolygons, numHoles: cleaned.numHoles };
 }

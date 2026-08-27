@@ -5,7 +5,7 @@
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
 import { notFound } from '../../middleware/errorHandler.js';
-import { invalidateAncestorGeometry, invalidateRegionGeometry } from './helpers.js';
+import { invalidateRegionGeometry } from './helpers.js';
 
 /**
  * Get all regions in a World View
@@ -329,28 +329,6 @@ export async function createRegion(req: Request, res: Response): Promise<void> {
       console.error(`[CreateRegion] SQL Error:`, err);
       throw err;
     }
-
-    // A region born with a drawn shape has geometry from the moment it exists,
-    // so it never seeds the world-view run's closure -- and its parent already
-    // had geometry, so neither does that. Without this the parent is short of
-    // its children for good, reachable only by a forced run: #667's shape,
-    // reached from the "create from staged" and single-division custom dialogs
-    // rather than from an import. The branch below needs nothing: a region born
-    // with no geometry seeds the closure by itself.
-    //
-    // The one caller that logs the failure instead of raising it. Everywhere
-    // else the raise buys a retry -- a redraw or a recompute re-writes the same
-    // shape and tries again -- but an INSERT is not idempotent: the row is
-    // already committed, so a 500 here would skip the client's onSuccess (which
-    // adds the members), leave a region with a boundary and nothing in it, and
-    // make the retry create a second one. The staleness is the same either way;
-    // only the damage differs. Reported by Catalogue Checks meanwhile
-    // (parent-short-of-its-children), and #680 removes the choice.
-    try {
-      await invalidateAncestorGeometry(result.rows[0].id);
-    } catch (err) {
-      console.error('[CreateRegion] Ancestors left stale for region', result.rows[0].id, err);
-    }
   } else {
     result = await pool.query(`
       INSERT INTO regions (world_view_id, name, description, parent_region_id, color)
@@ -485,10 +463,24 @@ export async function updateRegion(req: Request, res: Response): Promise<void> {
 
   // Parent change: move the corresponding GADM division membership too.
   // This handles regions created via "Also create as subregion" checkbox.
+  //
+  // All three rows are named explicitly, because a structural move is the one
+  // thing the geometry trigger cannot see: no geometry is written, and both
+  // parents' unions change all the same -- one loses a child and the members
+  // that moved with it, the other gains them. The moved region's own
+  // invalidation reaches the new parent through the trigger *when it writes a
+  // row*, which it does not for a hand-drawn region (nothing derived from
+  // members may wipe a drawn shape, #283) -- and a parent's union does include
+  // a hand-drawn child, since it collects every child with geometry and filters
+  // none out. Leaving the third call to that path would put a continent beyond
+  // the reach of every later run whenever a curator moved a drawn region into
+  // it. Same reason deleteRegion names its parent: a DELETE fires no trigger on
+  // geom either.
   if (newParentId !== undefined && oldParentId !== newParentId) {
     await moveDivisionMembershipsForParentChange(oldParentId, newParentId, regionName);
     await invalidateRegionGeometry(regionId);
     if (oldParentId) await invalidateRegionGeometry(oldParentId);
+    if (newParentId) await invalidateRegionGeometry(newParentId);
   }
 
   res.json(result.rows[0]);
