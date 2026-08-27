@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveMainPoint, buildUnescoTags, imageCreditOf } from './unescoSyncService.js';
+import { resolveMainPoint, buildUnescoTags, imageCreditOf, isInDanger, transformRecord } from './unescoSyncService.js';
 import type { UnescoApiRecord, ParsedLocation } from './types.js';
 
 function record(overrides: Partial<UnescoApiRecord> = {}): UnescoApiRecord {
@@ -164,5 +164,62 @@ describe('the tags a site carries', () => {
     // alive through the four years the flag was never read.
     expect(buildUnescoTags(record({ danger: 'False', danger_list: 'Y 2003' })))
       .toEqual(['in_danger']);
+  });
+});
+
+describe('whether a site is listed in danger', () => {
+  it('reads the flag the portal sets on all 58 of them', () => {
+    expect(isInDanger(record({ danger: 'True' }))).toBe(true);
+  });
+
+  it('reads the dated listing too, so one field emptied cannot end the answer', () => {
+    // The flag went unread for four years because it was compared against the
+    // number 1 while the portal sends the string "True". `danger_list` is what
+    // kept the tag alive through it, and the badge now stands on both.
+    expect(isInDanger(record({ danger: 'False', danger_list: 'Y 2003' }))).toBe(true);
+  });
+
+  it('leaves a site the source has taken off the list alone', () => {
+    // Belize Barrier Reef Reserve System, delisted in 2018: the portal answers
+    // `danger: "False"` with an empty `danger_list`, and a site off the list
+    // must not be badged as on it.
+    expect(isInDanger(record({ id_no: '764', danger: 'False', danger_list: null }))).toBe(false);
+  });
+
+  it('is the same answer the tag carries', () => {
+    // Two representations of one fact, written from one predicate: a database
+    // whose tag and whose flag disagree about the same site is what this pins.
+    for (const r of [
+      record({ danger: 'True', danger_list: 'Y 2013' }),
+      record({ danger: 'False', danger_list: 'Y 2003' }),
+      record({ danger: 'False', danger_list: null }),
+    ]) {
+      expect(buildUnescoTags(r).includes('in_danger')).toBe(isInDanger(r));
+    }
+  });
+});
+
+describe('the row a record becomes', () => {
+  it('carries the danger listing the badge reads, and the year under it', () => {
+    // Ancient City of Aleppo, danger-listed since 2013. `metadata.inDanger` is
+    // the field every "In Danger" surface keys on; it was false on all 1272
+    // rows in the catalogue, Aleppo included.
+    const aleppo = transformRecord(record({
+      id_no: '21',
+      name_en: 'Ancient City of Aleppo',
+      danger: 'True',
+      danger_list: 'Y 2013',
+      coordinates: { lat: 36.199, lon: 37.163 },
+    }));
+
+    expect(aleppo?.metadata.inDanger).toBe(true);
+    expect(aleppo?.metadata.dangerList).toBe('Y 2013');
+    expect(aleppo?.tags).toContain('in_danger');
+  });
+
+  it('leaves the flag false for a site nothing lists', () => {
+    const garamba = transformRecord(record({ coordinates: { lat: 4.1, lon: 29.5 } }));
+
+    expect(garamba?.metadata.inDanger).toBe(false);
   });
 });
