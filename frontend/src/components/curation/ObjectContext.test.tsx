@@ -92,7 +92,8 @@ describe('ObjectContext', () => {
     render(<ObjectContext item={item({ latitude: 14.1303, longitude: 38.7186 })} />);
 
     // Each map holds a WebGL context and browsers keep about a dozen per tab, while this
-    // page renders up to 25 cards per kind across eight kinds. Mounting one per card
+    // page renders up to 25 cards per kind across every kind the queue returns — and one
+    // of those cards can hold 25 dialogs of its own. Mounting one per card
     // would evict the earlier contexts and blank the maps, so nothing is built until the
     // button is pressed — and a dialog can only be open once, which caps it at one.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

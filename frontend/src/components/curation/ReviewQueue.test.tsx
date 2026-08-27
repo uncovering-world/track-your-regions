@@ -19,6 +19,7 @@ vi.mock('../../api/experiences', () => ({
   fetchReviewQueue: vi.fn(),
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
+  setLocationState: vi.fn(),
   acceptSourceValue: vi.fn(),
   declineSourceValue: vi.fn(),
   publishExperience: vi.fn(),
@@ -26,8 +27,8 @@ vi.mock('../../api/experiences', () => ({
 }));
 
 import {
-  fetchReviewQueue, setExperienceState, setExperienceAdmission, acceptSourceValue, declineSourceValue,
-  publishExperience, fetchExperience,
+  fetchReviewQueue, setExperienceState, setExperienceAdmission, setLocationState,
+  acceptSourceValue, declineSourceValue, publishExperience, fetchExperience,
 } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ReviewPage } from './ReviewPage';
@@ -37,6 +38,7 @@ const mockedState = setExperienceState as unknown as ReturnType<typeof vi.fn>;
 const mockedAccept = acceptSourceValue as unknown as ReturnType<typeof vi.fn>;
 const mockedDecline = declineSourceValue as unknown as ReturnType<typeof vi.fn>;
 const mockedAdmission = setExperienceAdmission as unknown as ReturnType<typeof vi.fn>;
+const mockedLocationState = setLocationState as unknown as ReturnType<typeof vi.fn>;
 const mockedPublish = publishExperience as unknown as ReturnType<typeof vi.fn>;
 const mockedExperience = fetchExperience as unknown as ReturnType<typeof vi.fn>;
 const mockedInvalidate = invalidateExperiences as unknown as ReturnType<typeof vi.fn>;
@@ -169,6 +171,9 @@ describe('ReviewQueue', () => {
     mockedDecline.mockReset().mockResolvedValue({ experienceId: 88, declined: ['name'], fromSyncLogId: 41 });
     mockedAdmission.mockReset().mockResolvedValue({
       experienceId: 99, admission: 'refused', published: false,
+    });
+    mockedLocationState.mockReset().mockResolvedValue({
+      locationId: 13211, experienceId: 1592, offeredToReaders: true,
     });
     mockedPublish.mockReset().mockResolvedValue(PUBLISHED);
     mockedInvalidate.mockReset();
@@ -757,6 +762,119 @@ describe('ReviewQueue', () => {
 
       await screen.findByRole('button', { name: /former/i });
       expect(screen.queryByRole('button', { name: /kept out/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('a withdrawn point the curator has answered', () => {
+    /** Bilbao's point, one verdict later: the source dropped it, the flag still standing. */
+    const ANSWERED = {
+      ...MISSING,
+      id: 1592,
+      name: 'Bilbao Fine Arts Museum',
+      kind: 'withdrawn-answered' as const,
+      missing_since: null,
+      answered_points: [{
+        id: 13211,
+        name: null,
+        externalRef: 'Q127064',
+        missingSince: '2026-08-10T20:03:01.941Z',
+        latitude: 43.265974,
+        longitude: -2.93785,
+        sourceMembership: 'former' as const,
+        existence: 'extant' as const,
+        decidedAt: '2026-08-15T09:12:00.000Z',
+        note: null,
+        decidedBy: 'Nikolay',
+        visited: false,
+      }],
+    };
+
+    beforeEach(() => {
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [],
+        answeredWithdrawals: [ANSWERED], limit: 25, offset: 0,
+      });
+    });
+
+    it('stays out of the way until asked for, like the block above it', async () => {
+      renderQueue();
+
+      // Answered work. A curator opening this page is here for what is not.
+      await screen.findByRole('button', { name: /former/i });
+      expect(screen.queryByRole('button', { name: /it is still listed/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /show the lost places you have answered/i }))
+        .toBeInTheDocument();
+    });
+
+    it('offers the way back, because no other screen shows the point at all', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the lost places you have answered/i }));
+
+      expect(await screen.findByRole('button', { name: /it is still listed/i })).toBeInTheDocument();
+      expect(screen.getByText(/by Nikolay/)).toBeInTheDocument();
+    });
+
+    it('sends the verdict back to the point’s own endpoint', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole(
+        'button', { name: /show the lost places you have answered/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /it is still listed/i }));
+
+      // Per point, not per object: the object-level verdict is a different row and a
+      // different endpoint, and sending it there would answer about the whole museum.
+      await waitFor(() => expect(mockedLocationState).toHaveBeenCalledWith(
+        13211, expect.objectContaining({ membership: 'present' })));
+      expect(mockedState).not.toHaveBeenCalled();
+    });
+
+    it('counts places on the toggle, because that is what its label names', async () => {
+      // One row here is one *object* holding up to a page of answered *places*, unlike the
+      // kept-out block where a row is the thing itself. Counting rows would offer "(1)"
+      // over a serial nomination holding ninety-three, and the number that corrects it is
+      // inside the card — visible only after the click the count exists to inform.
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [],
+        answeredWithdrawals: [{ ...ANSWERED, answered_points_total: 93 }],
+        limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      expect(await screen.findByRole(
+        'button', { name: /show the lost places you have answered \(93\)/i })).toBeInTheDocument();
+    });
+
+    it('falls back to the points it was sent where no total came with them', async () => {
+      renderQueue();
+
+      expect(await screen.findByRole(
+        'button', { name: /show the lost places you have answered \(1\)/i })).toBeInTheDocument();
+    });
+
+    it('shows nothing at all when no point carries a verdict', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [],
+        answeredWithdrawals: [], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      await screen.findByRole('button', { name: /former/i });
+      expect(screen.queryByRole('button', { name: /lost places you have answered/i }))
+        .not.toBeInTheDocument();
+    });
+
+    it('leaves a way back when its own page comes back empty', async () => {
+      // The block renders whole or not at all, and its pager renders inside it — so a
+      // page answered down to nothing takes the only control that could go back with it.
+      mockedFetch.mockResolvedValue({
+        missing: [MISSING], refused: [], keptOut: [], conflicts: [],
+        answeredWithdrawals: [], limit: 25, offset: 0,
+        paging: { answeredWithdrawals: { offset: 25, hasMore: false } },
+      });
+      renderQueue();
+
+      expect(await screen.findByRole(
+        'button', { name: /lost places you have answered — previous/i })).toBeInTheDocument();
     });
   });
 
