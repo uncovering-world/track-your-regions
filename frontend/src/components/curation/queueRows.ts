@@ -1,7 +1,7 @@
 /**
  * The queue as one list of questions, which is how a curator works it.
  *
- * The response arrives as eight arrays because they are eight queries; a curator does not
+ * The response arrives as one array per kind because each is its own query; a curator does not
  * think in arrays. They work down a list, and what they need from each entry before opening
  * it is which object it is about and what is being asked — enough to skip one, which is the
  * whole reason a list beats a stack of cards.
@@ -63,8 +63,8 @@ function rowFor(kind: Exclude<RowKind, 'waiting'>, item: ReviewQueueItem): Queue
  * A missing row changes nothing until answered. The list is worked from the top, so the
  * order is the claim about what matters most.
  *
- * `keptOut` is absent on purpose: it is answered work, and the page keeps it collapsed at
- * the foot where a mis-click can be undone.
+ * `keptOut` and `answeredWithdrawals` are absent on purpose: both are answered work, and
+ * the page keeps each collapsed at the foot where a mis-click can be undone.
  */
 export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
   if (!data) return [];
