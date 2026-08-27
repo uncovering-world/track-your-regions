@@ -11,12 +11,15 @@
 -- like the rungs below it (rule 15), so a border is one line again.
 --
 -- Why a rung is being added. The 5 km rung served zoom 3-4 and cost 483 ms to
--- answer one 103 kB tile of the administrative mirror, because neither
--- ST_SimplifyVW nor the topology-preserving variants delete a ring: the mirror's
--- leaves hold 117,100 pieces, and four points each is a floor of half a million
--- vertices no tolerance can get under. The coarse rung drops the pieces a reader
--- cannot see (100 km^2, one square pixel at zoom 3) and answers the same tile
--- from 183,052 vertices instead of 773,264. See ADR-0031.
+-- answer one 103 kB tile of the administrative mirror, because the topology-
+-- preserving variants do not delete a ring: the mirror's leaves hold 117,100
+-- pieces, and four points each is a floor of half a million vertices no
+-- tolerance can get under. (This read "neither ST_SimplifyVW nor" until
+-- ADR-0036 measured otherwise -- plain VW did delete rings, 436 of Asia's
+-- 26,151 pieces at the 1 km rung. The floor stated here is unaffected.) The
+-- coarse rung drops the pieces a reader cannot see (100 km^2, one square pixel
+-- at zoom 3) and answers the same tile from 183,052 vertices instead of
+-- 773,264. See ADR-0031.
 --
 -- Apply after re-applying 01-schema.sql, which adds the columns, the
 -- drop_small_parts() helper and the trigger lines that maintain both rungs:
