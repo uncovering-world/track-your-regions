@@ -12,6 +12,7 @@ import {
 } from './experienceLifecycle.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
+import { dangerSelectSql, withDangerFields } from './experienceDanger.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 
 interface ListExperiencesFilters {
@@ -149,7 +150,7 @@ export async function listExperiences(req: Request, res: Response): Promise<void
       -- showing a picture: that whoever took it is named wherever it appears.
       e.metadata->'imageCredit' as image_credit,
       e.metadata->>'dateInscribed' as date_inscribed,
-      e.metadata->>'inDanger' as in_danger,
+      ${dangerSelectSql('e')},
       ${readerPositionSql('e')},
       s.name as category_name,
       s.display_priority as category_priority
@@ -165,10 +166,7 @@ export async function listExperiences(req: Request, res: Response): Promise<void
   const countResult = await pool.query(countQuery, params);
 
   res.json({
-    experiences: result.rows.map(row => ({
-      ...row,
-      in_danger: row.in_danger === 'true',
-    })),
+    experiences: result.rows.map(withDangerFields),
     total: parseInt(countResult.rows[0].count),
     limit,
     offset,
@@ -328,10 +326,7 @@ export async function getExperiencesByRegion(req: AuthenticatedRequest, res: Res
 
   res.json({
     region: regionResult.rows[0],
-    experiences: result.rows.map(row => ({
-      ...row,
-      in_danger: row.in_danger === 'true',
-    })),
+    experiences: result.rows.map(withDangerFields),
     total: countResult.rows[0].total,
     // How many this region holds that no longer exist *and is not showing*.
     // Zero for almost every region, which is the point: the page offers the
