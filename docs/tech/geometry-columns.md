@@ -465,7 +465,8 @@ Martin caches tile responses in memory. When geometry changes, stale tiles must 
    -> Triggers fire: metadata, focus_data, 3857+simplified
    -> uses_hull auto-detected on INSERT
 7. Every derived ancestor's geometry is nulled: it is the union of its
-   children and one of them just changed (invalidateAncestorGeometry).
+   children and one of them just changed. The database does it, from
+   trg_regions_geom_invalidates_parent, one level per firing.
    A hand-drawn boundary is left as drawn, and stops the walk there
 8. The next world-view run computes what has no geometry AND every
    derived ancestor of one, deepest first, so a parent is unioned after
@@ -496,81 +497,127 @@ nor selected by step 8, nor walked *through* by either: an empty hand-drawn
 region asks for no recompute above it, and one partway up the tree ends the walk
 rather than passing a child's news to the continent overhead.
 
-**Step 7 belongs to whatever writes `regions.geom`, not to whichever request
-finishes.** The run's selection in step 8 is evaluated once, so a write that
-skipped it would break convergence rather than merely delay it: a parent whose
-own union times out keeps its stale outline, nothing beneath it is `NULL` any
-more, and no later run selects it again while every run reports Complete. The
-writers, and each is its own invalidation point:
+**Step 7 belongs to the statement that writes `regions.geom`, and is enforced
+by the database** ([ADR-0035](../decisions/0035-ancestor-geometry-invalidation-lives-in-the-database.md)).
+The run's selection in step 8 is evaluated once, so a write that skipped it
+would break convergence rather than merely delay it: a parent whose own union
+times out keeps its stale outline, nothing beneath it is `NULL` any more, and no
+later run selects it again while every run reports Complete.
 
-| writer | writes | used by |
-|---|---|---|
-| `computeSingleMemberFastPath` | a region that is exactly one division | all three paths |
-| `computeGroupGeom` | the six-step union | the endpoint, and each descendant `computeBottomUp` visits |
-| `computeRegionGeometryCore` | the six-step union | a world-view run |
-| `recomputeRegionGeometry` | a plain member union | the SSE stream's descendant pre-step |
-| `runUnionPipelineSteps` | the six-step union | the SSE stream |
-| `updateRegionGeometry` | a hand-drawn shape | `PUT /regions/:id/geometry` (admin) |
-| `resetRegionToGADM` | a member union, dropping a hand-drawn shape | `POST /regions/:id/geometry/reset` (admin) |
-| `createRegion` | a hand-drawn shape, on insert | the create-from-staged and single-division custom dialogs |
+`trg_regions_geom_invalidates_parent` (`AFTER UPDATE OF geom`, `WHEN OLD.geom IS
+DISTINCT FROM NEW.geom`) and `trg_regions_geom_insert_invalidates_parent`
+(`AFTER INSERT`, `WHEN NEW.geom IS NOT NULL`) both run
+`invalidate_parent_region_geometry()`, which nulls **the immediate parent only**:
 
-**One writer is deliberately not on that list.** `getSubregionGeometries`
-(`geometryRead.ts`) caches a missing child's geometry as a side effect of a
-public `GET`, fire-and-forget. Invalidating from there would let an anonymous
-read blank a continent for every visitor, which is a worse answer than the stale
-parent it would be curing; the honest fix is for a read path not to write
-geometry at all. Recorded on #680 rather than papered over here. It has no
-consumer in the frontend today — `fetchSubregionGeometries` is exported and
-called by nothing — so the hole is cold, not live. (`getRootRegionGeometries`
-writes only rows with no parent, so it has no ancestor to leave behind.)
+```sql
+UPDATE regions
+SET geom = NULL, geom_3857 = NULL,
+    geom_simplified_low = NULL, geom_simplified_medium = NULL
+WHERE id = NEW.parent_region_id
+  AND is_custom_boundary IS NOT TRUE
+  AND geom IS NOT NULL;
+```
 
-A lock or deadlock on the invalidation is **raised**, not swallowed, and the
-split is by what a lost invalidation costs rather than by compute versus edit.
-Every caller of `invalidateAncestorGeometry` has already committed its write —
-nothing on these paths opens a transaction — so losing the invalidation leaves
-the ancestors stale against a child that has changed, with nothing `NULL`
-beneath them and nothing that ever revisits them. `invalidateRegionGeometry`,
-which member and structure edits call without having written any geometry, still
-swallows one; that is a tolerance carried over from #283 rather than a
-guarantee, and `parent-short-of-its-children` is what watches it. #680 removes
-the choice.
+The walk upward is the cascade: nulling the parent is itself a write to
+`regions.geom`, so the trigger fires again for the grandparent, and again, until
+one of the two guards writes no row. `is_custom_boundary IS NOT TRUE` is the
+step-7 half of the hand-drawn stop above; `geom IS NOT NULL` ends the climb at an
+ancestor already waiting to be recomputed, and is also what makes a cycle in
+`parent_region_id` terminate, where a recursive CTE would not.
 
-Raising is only worth anything if the raise escapes, so the failure is wrapped
-as `AncestorInvalidationFailed` and callers that answer their *own* failures
-softly let it through. It is the opposite state to a failed pipeline and must
-not share an outcome with one: a pipeline that fails wrote nothing, so the
-region stays `NULL` and the next run takes it, which is why
-`computeRegionGeometryCore` answers that with `{ computed: false }` and the run
-tallies a *skip* and still reports Complete. An invalidation fails after the
-write committed. Downgrading it would hand back the exact state raising exists
-to prevent — so the core rethrows it, and the run counts it in `errors`. The run
-still finishes as `Complete`: that string is what keys the display-geometry
-regeneration and cannot carry the news, and the per-group status line naming the
-region is overwritten before any poll can read it. What a curator sees is the
-completion alert, which shows the count and turns amber when it is non-zero;
-what the server keeps is the `console.error` and the run's own log line. The
-rows it left behind are `parent-short-of-its-children`. `createRegion` is the
-single documented exception to rethrowing, for the reason given at its call
-site.
+`IS DISTINCT FROM` on `geometry` is exact equality in PostGIS, not a
+bounding-box test — a collinear redraw of the same outline reads as a change, an
+identical geometry does not — so a write that changes nothing invalidates
+nothing. Only four columns are cleared because a cleared `geom` does not clear
+its own derivatives: `trg_regions_geom_3857` recomputes those only from a
+geometry that is there. The two cheap rungs do follow, since that trigger sees
+`geom_simplified_low` go to `NULL` and clears `geom_overview` and
+`geom_simplified_coarse` with it.
 
-Each invalidates where it writes, and nowhere else. Nothing on these paths opens
-a transaction, so the `UPDATE` is committed the moment it returns while the heavy
-PostGIS that follows — `generateSingleHull` on an archipelago,
-`simplify_coverage_regions` over a continent's children — can still throw;
-invalidating at the writer is what keeps such a throw from leaving a region
-written and its ancestors stale. Neither of those later steps makes an ancestor
-stale in its own right: `simplify_coverage_regions` writes only the render
-columns (`geom_simplified_low`, `geom_simplified_medium`, `geom_overview`) and
-hull generation writes `hull_geom`, while a parent's union reads `geom` and
-nothing else.
+**Until #680 this was eight calls in TypeScript, one per writer.** The review of
+#679 found seven writers beyond the one #667 described, one round at a time, and
+every miss was permanent in the way the paragraph above describes. Enforcing it
+in the database ends the counting: `computeSingleMemberFastPath`,
+`computeGroupGeom`, `computeRegionGeometryCore`, `recomputeRegionGeometry`,
+`runUnionPipelineSteps`, `updateRegionGeometry`, `resetRegionToGADM` and
+`createRegion` now write and nothing more, and a writer added tomorrow carries
+the rule without knowing it exists.
 
-The descendant writers are the subtle half. Computing a region computes its
-missing descendants first, so a curator who clicks Compute on a continent writes
-geometry to every country under it *before* the continent's own union runs — and
-that union is the expensive one, the one that hits the 300 s timeout (#459). Were
-only the successful top-level compute to invalidate, those descendant writes
-would have consumed the very `NULL`s step 8 seeds on, and the attempt to repair a
-continent would be what put it beyond the reach of every later run.
+It also ends two problems the calls had. The invalidation could **fail on its
+own**, after the write it belonged to had committed, leaving the ancestors stale
+with nothing `NULL` beneath them; it was raised rather than swallowed for that
+reason, and `createRegion` could not even raise, since an `INSERT` is not
+idempotent and a 500 after the row had committed would have made a retry create
+a second region. Inside the statement there is no separate failure to handle. And
+`getSubregionGeometries` (`geometryRead.ts`), which cached a missing child's
+geometry as a side effect of a public `GET`, no longer writes geometry at all —
+neither does `getRootRegionGeometries`. Storing a bare union there took the
+region out of step 8's closure, so the pipeline never computed the good geometry;
+under the trigger it would have blanked a continent for every visitor as well.
+A read path does not write `regions.geom`.
+
+What still lives in TypeScript is the *other* half: `invalidateRegionGeometry`,
+which a member or structure edit calls when nothing wrote a geometry but what the
+region's outline is derived from changed. It nulls that one region by primary key
+— and since that is itself a write to `regions.geom`, the trigger takes it
+upward from there. A lock or deadlock on it is swallowed, a tolerance carried
+over from #283 rather than a guarantee, with `parent-short-of-its-children`
+watching.
+
+**A structural change names its rows itself, because the trigger cannot see
+one.** No geometry is written, and the unions change all the same:
+
+- `deleteRegion` nulls the departed region's parent, since a `DELETE` fires no
+  trigger on `geom`;
+- `updateRegion` nulls the moved region, the old parent **and** the new parent
+  when a reparent happens. The third is not redundant. The moved region's own
+  call reaches the new parent through the trigger only while it writes a row,
+  and for a hand-drawn region it writes none — nothing derived from members may
+  wipe a drawn shape (#283) — while a parent's union *does* hold a hand-drawn
+  child, since it collects every child that has geometry and filters none out.
+  Without the explicit call, moving a drawn region into a continent would leave
+  that continent short of what it holds, with geometry of its own and nothing
+  `NULL` beneath it: outside every later run's closure, exactly the state this
+  whole mechanism exists to prevent. `deleteRegion`'s move-children-to-parent
+  branch is covered by the same call, since the parent it nulls is the parent
+  those children move to.
+
+Those two are the World View Editor's, and they are **not the whole set**. The
+import-review tree operations move and delete regions without invalidating
+anything, and always have — among them `reparentRegion`,
+`mergeChildIntoParent`, `removeRegionFromImport`, `dismissChildren` and
+`pruneToLeaves`. **#496** tracks them, and the list there is open rather than an
+inventory: an inventory that reads as complete is how the last one went stale
+one round at a time. A trigger on `regions.geom` cannot close that door, because
+a structural change goes through it without writing any geometry.
+
+A failed *pipeline* is still answered softly, and is now the only kind of failure
+`computeRegionGeometryCore` has to answer: it wrote nothing, so the region stays
+`NULL`, the next run takes it, and the run tallies a skip and reports Complete.
+
+Neither of the heavy steps that follow a write makes an ancestor stale in its own
+right, which is why they are not writers: `simplify_coverage_regions` writes only
+the render columns (`geom_simplified_low`, `geom_simplified_medium`,
+`geom_overview`) and hull generation writes `hull_geom`, while a parent's union
+reads `geom` and nothing else. Neither fires the trigger.
+
+The descendant writers were the subtle half of the old arrangement and are now
+the ordinary case. Computing a region computes its missing descendants first, so
+a curator who clicks Compute on a continent writes geometry to every country
+under it *before* the continent's own union runs — and that union is the
+expensive one, the one that hits the 300 s timeout (#459). Each of those child
+writes marks the tree above it stale by being a write, so the attempt to repair a
+continent cannot be what puts it beyond the reach of every later run.
+
+**Cost.** Measured on the dev database over 400 real regions of the
+Administrative world view (3 831 regions, maximum depth 3): 0.53 ms per `geom`
+write, 6.1 % over a write that itself costs 8.7 ms — some two seconds added to a
+run that writes every region, against per-region unions measured in seconds and
+minutes. The trigger's behaviour is verified by a probe run by hand against the
+dev database in a rolled-back transaction, since the mocked `pg` lane cannot see
+a trigger and the repository has no executable SQL lane (#522);
+`backend/src/db/regionAncestorInvalidation.test.ts` is the text-level guard that
+the rule keeps having exactly one implementation.
 
 ---
 
