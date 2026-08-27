@@ -69,6 +69,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | regions | A region whose anchor point is more than 500 km from its own geometry | watch |
 | regions | A parent region whose geometry covers less than nine tenths of what its children hold | invariant |
 | regions | A region with no geometry, in a world view whose geometry has been computed | invariant |
+| regions | A display rung drawing holes its source has not, or missing pieces its source has | invariant |
 | boundaries | A division stored as a leaf while divisions hang beneath it | invariant |
 | boundaries | A division holding a single source polygon while divisions hang beneath it | invariant |
 | objects | A site whose danger tag and whose In Danger badge disagree | invariant |
@@ -110,10 +111,12 @@ estuary, four of the D-Day beaches. Water. A boundary set built from land
 polygons has nowhere to put them (#470), and a point a few metres outside a
 coastline has the same problem for a different reason (#469).
 
-The four geometry rules exist because two defects were found in one week by a
-person looking at a map and by nothing else in the repository (#668): three
-regions framed as the whole world (#666), and four continents holding a fraction
-of what their countries hold (#667). Every run had reported success.
+The five geometry rules exist because defects keep being found by a person
+looking at a map and by nothing else in the repository (#668): three regions
+framed as the whole world (#666), four continents holding a fraction of what
+their countries hold (#667), and the rung the map serves drawing 66 holes over
+north-eastern Thailand where the data has 8 (#685). Every run had reported
+success.
 
 **Framed as the whole world** asks whether a stored `focus_bbox` claiming every
 longitude is telling the truth, and it asks in a way that is deliberately *not*
@@ -181,6 +184,54 @@ world-view run takes it bottom-up. That is the design and not a defect: a region
 with nothing on the map is exactly what the panel should say out loud, and the
 count falls back on its own.
 
+**A rung unlike its source** asks something exact rather than a proportion —
+as `region-without-geometry` does, where the nine tenths is a scope and the
+violation is `geom IS NULL` — and it can: simplification makes an outline coarser,
+it does not add rings to it, and the rungs at 5 km and finer keep every part
+(rule 12). The pass that #685 removed failed the same shape both ways — it
+carried 1,933 interior rings across the eight root regions of the Administrative
+world view where they hold 610, and it dropped 436 of Asia's 26,151 pieces at the
+1 km rung — so the rule is asked twice, once for holes gained and once for pieces
+lost. The two cheap rungs are asked only the first: dropping a piece below their
+own scale is
+[ADR-0031](../decisions/0031-a-display-rung-drops-what-a-reader-cannot-see.md)
+decision 1, not a defect.
+
+The pieces half is also what a *library* change would trip.
+`ST_CoverageSimplify` drops neither a piece nor a hole on PostGIS 3.5.6 /
+GEOS 3.14.1 — measured, a 100 m speck 50 km from a square and a 200 m lake inside
+it both survive a 5 km pass — but that is a measurement rather than a documented
+guarantee, and `docker-compose.yml` pins `postgis/postgis:17-3.5-alpine`, which
+floats GEOS. This rule is what notices the day it stops holding
+([ADR-0036](../decisions/0036-a-rung-carries-the-holes-its-source-has.md)).
+
+It counts rings and parts rather than re-deriving a rung, so it cannot agree with
+a broken writer, and it compares each rung against the shape *that rung* is made
+from: a hull region's low and medium rungs come from its hull, and a concave hull
+can enclose a lagoon the geometry leaves open, so measuring them against
+`geom_3857` would report every hull region whose rungs are right. Ten questions
+off one bad pass are one defect, so the report names the worst rung of a region
+rather than ten lines of it.
+
+It is also the only rule that reads a full-resolution column for *every* row, and
+that is the whole of its cost: one PostGIS call over `regions.geom_3857` detoasts
+11.7 M points and takes 2.6 s, against 0.35 s for all six rungs together. Two of
+the rules above read a geometry column as well — `framed-as-the-world` dumps
+`COALESCE(hull_geom, geom)`, but only for the rows whose stored box is already
+global, and `anchor-far-from-its-region` measures on the 5 km rung — so what
+separates this one is not that it touches geometry but that nothing narrows it
+first. And there is no stored ring count to read instead, the way
+`parent-short-of-its-children` reads `geom_area_km2`, so what can be avoided is
+reading it *again per rung*, which `MATERIALIZED` does: 8 s a run rather than 20.
+Hoisting each column's two calls into a lateral so they might share one detoast
+does not help (8.1 s against 8.4 s), because each call detoasts on its own. That is what this
+rule adds to a report that answered in 2.5 s without it.
+`administrative_divisions` is not covered and comes off the same function:
+reading its full-resolution column would cost this report an order of magnitude
+more than it answers in today, its eight root divisions weighing 386 MB between
+them, so what holds the rule there is `renderedRungTopology.test.ts` over the
+schema text.
+
 **The two boundary rules** watch the set everything else is built on.
 `administrative_divisions` is GADM, loaded once, and a region's geometry is the
 union of the divisions it holds — so a defect there is not one wrong row but a
@@ -203,8 +254,9 @@ clear.
 
 Neither compares areas, which is how the same question is asked of regions.
 `administrative_divisions.geom_area_km2` is declared and never written — nothing
-fills it — and measuring 392 112 polygons on the fly costs eight seconds against
-a report that answers in two and a half. It would also not fire: a country is
+fills it — and measuring 392 112 polygons on the fly costs eight seconds, which is what one
+rule reading a full-resolution column already costs this report. It would also
+not fire: a country is
 short by its holes, and Thailand's 20 742 km² are 4 % of it, well inside the nine
 tenths the region rule allows. What separates these rows is exact and costs an
 index lookup, so that is what is asked — about a second for the pair, measured.
@@ -257,8 +309,8 @@ found.
 
 A rule need not live in that file. Where a subject brings several at once, they
 go in a file of their own beside it, exporting an array the registry imports and
-spreads — `regionGeometryAssertions.ts` is the first, four rules about a
-region's shape, its focus box and its anchor. Two things follow for that shape:
+spreads — `regionGeometryAssertions.ts` is the first, five rules about a
+region's shape, its focus box, its anchor and the rungs the map draws it from. Two things follow for that shape:
 the type and the row helpers come from `assertion.ts` rather than from the
 registry, so the two files do not import each other; and the tests live beside
 the rules, with `catalogueAssertions.test.ts` keeping only what it asserts about
@@ -290,8 +342,11 @@ Two endpoints, both admin-only, rate-limited apart from each other:
 
 - `GET /api/admin/data-assertions` — every assertion, what it found, up to ten
   rows of it as sentences, and what was accepted. About 2.5 seconds over 1604
-  objects, 6693 places and 8132 regions, so the panel reads it when somebody
-  opens the section rather than polling.
+  objects, 6693 places and 8132 regions until the rung rule was added, and about
+  11 with it — that rule alone is 8 s, because it reads a full-resolution
+  geometry column for every row. `framed-as-the-world` reads one too, but only
+  for the rows that already failed a cheap predicate on the stored box. Either
+  way the panel reads it when somebody opens the section rather than polling.
 - `POST /api/admin/data-assertions/accept` — record what one assertion currently
   finds. Refuses an unknown id, refuses a `watch`, and records nothing for an
   assertion whose query could not run.

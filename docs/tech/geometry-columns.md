@@ -21,16 +21,16 @@ This document describes the geometry pipeline: columns, rules, functions, trigge
 ### Coastline & Island Rules
 
 12. **Never drop small islands entirely** — minimum vertex floor (>=4 vertices per polygon); if simplified polygon degenerates, keep unsimplified. **Narrowed by ADR-0031 for the two cheap rungs**: `geom_overview` and `geom_simplified_coarse` drop the parts below their own scale (the tolerance squared) and keep the largest part unconditionally, so a region that *is* an archipelago never simplifies to nothing. The rungs at 5 km and finer, and everything at zoom 5 and beyond, keep every part. This is the rule that made the ladder expensive: no simplification deletes a ring, so preserving every ring put a floor of half a million vertices under the mirror's leaves that no tolerance could get under.
-13. **Use Visvalingam-Whyatt for coastlines** — `ST_SimplifyVW` preserves coastal shape character better than Douglas-Peucker (area-based vs distance-based elimination).
+13. **Use Visvalingam-Whyatt for coastlines** — area-based elimination preserves coastal shape character better than Douglas-Peucker's distance-based one. **Narrowed by ADR-0036 to its topology-preserving form**: the call is `ST_CoverageSimplify`, which GEOS implements with `TPVWSimplifier`, and never `ST_SimplifyVW`. Plain VW moves each ring on its own, so the simplified outline crosses itself and two parts that were disjoint come to overlap — and rule 2's `ST_MakeValid` then resolves each overlap the only way it can, by carving it out as an interior ring. That is why the rung the map serves drew 66 holes over north-eastern Thailand where the data has 8, and why it dropped 436 of Asia's 26,151 pieces against rule 12 (#685). A row's parts are disjoint polygons — a coverage by construction — so the pass applies to one row the way rule 15 applies it to a sibling set.
 14. **Coverage-aware simplification for GADM siblings** — `ST_CoverageSimplify` for GADM import ensures gap-free borders between adjacent divisions (`simplify_coverage_siblings()`).
 15. **Coverage-aware simplification for region siblings** — `simplify_coverage_regions()` runs `ST_CoverageSimplify` on sibling regions (same parent) to eliminate slivers between adjacent regions at simplified zoom levels. Called automatically after geometry computation. **All four derived rungs go through it**, the two cheap ones included (ADR-0031): they were per-row Douglas-Peucker until then, which is why the world map drew Scandinavia as shards and put white cracks between neighbours. What it makes gap-free is a border *inside* one sibling set. Three kinds of border are outside it, and ADR-0031 decision 3 measures what each costs: **across two sibling sets** (`tile_world_view_all_leaf_regions` draws every set of a world view on one layer, so a border between leaves with different parents spans two runs — about 1.4 km apart on the Grand Est / Rheinland-Pfalz border, 0.15 of a pixel at zoom 3), **a world view's root regions** (the pass is keyed on a parent id and they have none), and **every rendered rung of `administrative_divisions`** (its own pass runs on the 4326 columns instead). All three predate this change and belong to #560. Per-row simplification is what a row outside a sibling set falls back to.
-16. **Area-proportional tolerance** — small islands get gentler simplification scaled to their bounding box.
+16. **Area-proportional tolerance** — small islands got gentler simplification scaled to their bounding box. **Retired by ADR-0036.** Its only implementation was `simplify_for_zoom()`'s second stage, which retried at a tenth of the largest part's envelope width when the first stage came back empty — and it existed because plain `ST_SimplifyVW` could annihilate a part below its tolerance. Coverage simplification does not, so there is nothing left to retry at a gentler tolerance; `renderedRungTopology.test.ts` fails if the stage comes back. What still protects a small island is rule 12's vertex floor and, at the two cheap rungs, `drop_small_parts()` keeping the largest part unconditionally.
 
 ### Hull Rules
 
 17. **Single flag: `uses_hull`** — controls hull display in tile functions, simplified column derivation, and island tile source filtering. Auto-detected on INSERT only, preserved across geometry recomputation (invalidate→recompute cycles don't reset it). Manually editable.
 18. **Hull is for overview, real geometry for detail** — hull provides territorial extent at z0-8; real coastlines at z9+.
-19. **Simplified columns derive from hull when `uses_hull = true`** — `COALESCE(hull_geom_3857, geom_3857)` for z0-8 overview.
+19. **Simplified columns derive from hull when `uses_hull = true`** — `COALESCE(hull_geom_3857, geom_3857)` for z0-8 overview. Because the flag *chooses* the input, changing it alone rebuilds the four derived rungs: `trg_regions_geom_3857` tests `uses_hull` for a change beside `geom` and `hull_geom`. The invalidation is the database's rather than a caller's, for ADR-0035's reason — `updateRegion` writes the flag by itself, and a writer that has to remember is a writer that will forget.
 20. **Real geometry must be accessible at all zoom levels** — the island tile source serves real coastlines with zoom-appropriate simplification (pre-computed `geom_simplified_*_real` columns).
 21. **Auto-detection with three criteria** — see `should_use_hull()` function.
 22. **Post-batch refresh** — `refresh_uses_hull_flags()` re-checks after all siblings are computed.
@@ -53,7 +53,7 @@ This document describes the geometry pipeline: columns, rules, functions, trigge
 
 ### Derived 3857 geometries (SRID 3857 — Web Mercator)
 
-Auto-maintained by the `trg_regions_geom_3857` trigger whenever source geometries change — or when `geom_simplified_low` is written directly, which `simplify_coverage_regions()` does.
+Auto-maintained by the `trg_regions_geom_3857` trigger whenever source geometries change, when `uses_hull` changes — the flag chooses which source the rungs are made of (rule 19), and `updateRegion` writes it on its own — or when `geom_simplified_low` is written directly, which `simplify_coverage_regions()` does.
 
 | Column | Type | Derived from | Description |
 |--------|------|-------------|-------------|
@@ -83,9 +83,16 @@ Zoom 9+:   geom_3857 (real geometry) — unless the row exceeds the display budg
 #### Why the two cheap rungs exist, and why there are two of them
 
 Tile cost is proportional to what `ST_AsMVTGeom` is handed, and what it is handed
-is dominated by *pieces*, not by outline detail. No simplification PostGIS offers
-deletes a ring: `ST_SimplifyVW`, `ST_SimplifyPreserveTopology` and
-`ST_CoverageSimplify` all keep every polygon at a minimum of four points. The
+is dominated by *pieces*, not by outline detail. No simplification this pipeline
+uses deletes a ring: `ST_SimplifyPreserveTopology` keeps every polygon at a
+minimum of four points, which PostGIS documents, and `ST_CoverageSimplify` does
+the same — measured rather than documented, which is why the catalogue check
+`rung-unlike-its-source` asks the rungs at 5 km and finer whether they still hold
+every piece their source has (see the function's own entry below). (Plain `ST_SimplifyVW` did delete
+one — a part below its tolerance came back degenerate and the vertex floor then
+dropped it, which cost Asia 436 of its 26,151 pieces at the 1 km rung against
+rule 12. That was a defect, not a saving: it went with ADR-0036 and the rungs got
+*cheaper*.) The
 mirror's 3,594 leaves hold 117,100 pieces between them, so the 5 km rung's
 773,264 vertices are mostly a floor that no tolerance can lower — 50 km of
 topology-preserving simplification still leaves 576,428. That is why the rungs
@@ -279,10 +286,45 @@ Re-checks all children of a parent region. Called after batch geometry computati
 
 ### `simplify_for_zoom(geom, tolerance, min_area, smooth_iterations)`
 
-Three-stage pipeline:
-1. **Stage 1 — Simplify**: `ST_SimplifyVW` at tolerance^2 (Visvalingam-Whyatt, area-based). Better coastal shape preservation than Douglas-Peucker.
-2. **Stage 2 — Fallback**: If Stage 1 produced NULL (small islands), retry with tolerance scaled to `max_polygon_width / 10`. Minimum vertex floor: >=4 vertices per polygon.
-3. **Stage 3 — Smooth**: `ST_ChaikinSmoothing` if `smooth_iterations > 0`.
+Fills the four rungs derived from full resolution: `geom_simplified_low` /
+`geom_simplified_medium` and the `_real` pair on `regions`, and
+`geom_simplified_low_3857` / `geom_simplified_medium_3857` on
+`administrative_divisions`.
+
+`ST_CoverageSimplify` at the tolerance, wrapped in `validate_multipolygon()`.
+The row goes through the pass as **one element**: the parts of a valid
+MultiPolygon are disjoint polygons, which is what a coverage is, so they stop
+colliding with each other as they are simplified. This is rule 13's algorithm —
+GEOS implements the call with `TPVWSimplifier`, topology-preserving
+Visvalingam-Whyatt — and it is the same call `simplify_coverage_regions()` makes
+over a whole sibling set. What that function makes shared *between* two rows,
+this makes consistent *within* one; neither does the other's job, and this stays
+what a row outside a sibling set falls back to.
+
+The tolerance is passed as the distance it is. `ST_SimplifyVW` reads an *area*
+and was handed the square; `ST_CoverageSimplify` reads a distance and squares it
+itself for the same Visvalingam-Whyatt criterion, so 1 km still means 1 km —
+Asia's 1 km rung is 243,877 points against VW's 247,651.
+
+It used to be `ST_SimplifyVW`, which is where the holes on the map came from:
+1,933 interior rings across the eight root regions of the Administrative world
+view at the 1 km rung, against the 610 they hold (#685, ADR-0036). Both rungs
+now come back with exactly 610, for 1.1 % and 2.1 % *fewer* vertices, and with
+every part kept.
+
+`min_area` and `smooth_iterations` are passed as 0 by every caller. They stay in
+the signature because narrowing it would leave the four-argument function behind
+on every database that already holds it, beside the new one — the same hazard
+`simplify_coverage_regions()` names about widening its own.
+
+The two fallback stages are gone. Measured on PostGIS 3.5.6 / GEOS 3.14.1,
+coverage simplification drops neither a part nor a hole — a 100 m speck 50 km
+from a square and a 200 m lake inside it both survive a 5 km pass — so the retry
+at a tolerance scaled to the largest part's width has nothing left to catch. That
+is a measurement, not a documented guarantee, and the image tag floats GEOS: the
+catalogue check `rung-unlike-its-source` is what notices if it stops holding, and
+the last resort stays — a rung that came back empty keeps the unsimplified shape
+rather than nothing.
 
 ### `drop_small_parts(geom, min_part_area)`
 
@@ -301,16 +343,19 @@ Fills both cheap rungs: `geom_overview` / `geom_overview_3857` at 50 km, and
 this order:
 
 1. **Floor** — `drop_small_parts(geom, tolerance²)`. The parts go first because
-   they are the cost: nothing PostGIS offers deletes a ring, so a rung that keeps
-   every piece cannot get under four points per piece however wide its tolerance.
+   they are the cost: no simplification this pipeline uses deletes a ring, so a
+   rung that keeps every piece cannot get under four points per piece however
+   wide its tolerance.
 2. **Simplify** — `ST_SimplifyPreserveTopology` at the tolerance, wrapped in
    `validate_multipolygon()`. The topology-preserving variant because what
    survived the floor is what a reader looks for, and it must not be annihilated;
    the fallback stages the Douglas-Peucker version needed are gone with it.
 
 The floor is the tolerance squared — the area of a tolerance-sized square — so
-one knob sets a rung's scale for both outlines and pieces, the way
-`ST_SimplifyVW` already reads its tolerance as an area (rule 13). One of the two
+one knob sets a rung's scale for both outlines and pieces. The two are different
+kinds of number, deliberately: `ST_SimplifyPreserveTopology` takes a distance,
+and the part floor takes the area a piece of that size covers on the screen.
+One of the two
 callers passes one screen pixel at the finest zoom its rung serves: the coarse
 rung's 10 km against zoom 3's 9,784 m. The overview rung passes the 50 km it has
 always had, which is 2.5 pixels at zoom 2 with a floor of 6.5 square pixels —
@@ -326,7 +371,7 @@ the pass on, and every row of `administrative_divisions`.
 
 ### `simplify_coverage_siblings(parent_division_id, tolerance_low, tolerance_medium)`
 
-Coverage-aware simplification using `ST_CoverageSimplify` (PostGIS 3.6+, GEOS 3.14+). Produces gap-free simplified versions of adjacent GADM divisions. Called from `precalculate-geometries.py` after computing parent geometries.
+Coverage-aware simplification using `ST_CoverageSimplify` (PostGIS 3.4+, GEOS 3.12+ — see PostGIS requirements below). Produces gap-free simplified versions of adjacent GADM divisions. Called from `precalculate-geometries.py` after computing parent geometries.
 
 ### `simplify_coverage_regions(parent_region_id, tolerance_low, tolerance_medium)`
 
@@ -350,7 +395,7 @@ Coverage-aware simplification for **sibling regions** (same parent). Uses `ST_Co
 | `update_region_metadata` | `regions` | `geom` change | Computes area, detects `uses_hull` on INSERT. |
 | `update_region_focus_data` | `regions` | `geom` or `hull_geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`, taking a near-global parent's box from its children instead. See [How a crossing region is told from a global one](#how-a-crossing-region-is-told-from-a-global-one). |
 | `update_division_focus_data` | `administrative_divisions` | `geom` change | Stores `anchor_point` and `focus_bbox` from `geometry_focus()`. No children aggregation. Disabled during the bulk GADM load, which computes the columns in one pass (step 1b). |
-| `trg_regions_geom_3857` | `regions` | `geom`, `hull_geom`, or `geom_simplified_low` change | Transforms to 3857, computes all simplified columns (hull-based and real-geom-based), including both cheap rungs. The third condition exists for `simplify_coverage_regions()`, which writes `geom_simplified_low` directly — without it `geom_overview` and `geom_simplified_coarse` would keep the pre-coverage shape and serve it at zoom 0-4. |
+| `trg_regions_geom_3857` | `regions` | `geom`, `hull_geom`, `uses_hull`, or `geom_simplified_low` change | Transforms to 3857, computes all simplified columns (hull-based and real-geom-based), including both cheap rungs. `uses_hull` is there because it *chooses* the input the rungs are made of (rule 19) and is manually editable (rule 17): `updateRegion` writes the flag on its own, and without this arm a region toggled to hull display kept rungs traced from its real outline while the island tile source switched to the hull at once. `geom_simplified_low` is there for `simplify_coverage_regions()`, which writes that column directly — without it `geom_overview` and `geom_simplified_coarse` would keep the pre-coverage shape and serve it at zoom 0-4. |
 
 ### How a crossing region is told from a global one
 
@@ -445,7 +490,7 @@ Three things make the rule harder than it reads:
 
 Martin caches tile responses in memory. When geometry changes, stale tiles must be invalidated.
 
-- **`world_views.tile_version`** — integer column, incremented by the backend when geometry is computed (SSE single-region compute, batch compute), and by the two backfills (`008-overview-lod-backfill.sql`, `030-cheap-rungs-coverage-and-floor.sql`), each of which changes the geometry a whole band of tiles is built from without changing any tile URL. The backend's three sites each bump one world view (`WHERE id = $1`); the migration's is unqualified and bumps every row at once, because the backfill rewrites both `regions` and `administrative_divisions`. They are also the only incrementers an operator runs by hand. 008 bumps only when it actually filled rows, so a re-run leaves a warm cache alone; 030 recomputes rather than fills, so it bumps every time it is run.
+- **`world_views.tile_version`** — integer column, incremented by the backend when geometry is computed (SSE single-region compute, batch compute) or when a `uses_hull` flip rebuilds a region's rungs (`updateRegion`, rule 19 — compared against the stored value, so a form saved unchanged does not bust every tile URL), and by the three recomputing migrations (`008-overview-lod-backfill.sql`, `030-cheap-rungs-coverage-and-floor.sql`, `037-topology-preserving-rungs.sql`), each of which changes the geometry a whole band of tiles is built from without changing any tile URL. The backend's four sites each bump one world view (`WHERE id = $1`); the migrations' is unqualified and bumps every row at once, because they rewrite both `regions` and `administrative_divisions`. They are also the only incrementers an operator runs by hand. 008 bumps only when it actually filled rows, so a re-run leaves a warm cache alone; 030 and 037 recompute rather than fill, so they bump every time they are run. **Bumping is not a rule the writers of `geom` and `hull_geom` follow as a class, and the exceptions have not been counted.** The compute paths bump; the editing endpoints do not — `updateRegionGeometry` and `resetRegionToGADM` (`geometryCompute.ts`), `saveHullGeometry` (`services/hull/generator.ts`), `createRegion` with a drawn boundary — and a grep for writes of those two columns finds them across sixteen files, so any list here would be the kind that turns out short one round at a time (#679's shape). What each of them costs is the same: the acting session is covered by `invalidateTileCache()` when the editor closes, and every *other* session keeps the pre-edit shape at unchanged `_v` URLs until something else bumps the world view. #688 carries the audit and the decision it needs — whether the bump belongs in a statement-level trigger, the way ADR-0035 settled ancestor invalidation, or at each writer.
 - **Frontend initialization** — `useNavigation` reads `tileVersion` from the world view API response and initializes the in-memory `tileVersion` state from it. This ensures fresh page loads use the correct version.
 - **Frontend increment** — `invalidateTileCache()` increments `tileVersion` by 1 (called when the WorldView Editor closes). The `_v` query param on Martin tile URLs changes, bypassing Martin's cache.
 - **Why not timestamps?** — Using `Date.now()` would break caching entirely. The version must be a stable integer that only changes when geometry actually changes.
@@ -650,7 +695,17 @@ the rule keeps having exactly one implementation.
 
 ## PostGIS requirements
 
-**PostGIS 3.4+ with GEOS 3.12+** required for (we use 3.5 / GEOS 3.13):
-- `ST_CoverageSimplify` — gap-free sibling simplification
+**PostGIS 3.4+ with GEOS 3.12+** is the floor, and `docker-compose.yml` pins
+`postgis/postgis:17-3.5-alpine` to clear it — the Debian image's GEOS 3.9 lacks
+`ST_CoverageSimplify` entirely. Measured here at PostGIS 3.5.6 / GEOS 3.14.1;
+the tag floats within 3.5, which is why what the pass does about pieces and
+holes is watched by a catalogue check rather than asserted from a version. What
+needs it:
+- `ST_CoverageSimplify` — the four rungs `simplify_for_zoom()` fills (ADR-0036):
+  topology-preserving Visvalingam-Whyatt within one row. It is also what
+  `simplify_coverage_regions()` runs over a sibling set, which is where a border
+  is made gap-free and where the two cheap rungs get it too; outside such a set —
+  a world view's root regions, a lone child, a hull region, every row of
+  `administrative_divisions` — those two are `ST_SimplifyPreserveTopology`, from
+  `simplify_for_overview()`
 - `ST_CoverageUnion` — faster parent geometry merging
-- Improved `ST_SimplifyVW` — Visvalingam-Whyatt area-based simplification

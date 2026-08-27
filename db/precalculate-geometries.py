@@ -342,7 +342,7 @@ def _simplify_worker(parent_ids_chunk, db_params):
 def run_coverage_simplification(conn, cursor, workers=8):
     """Apply coverage-aware simplification to sibling divisions.
 
-    Uses ST_CoverageSimplify (PostGIS 3.6+) to create gap-free simplified
+    Uses ST_CoverageSimplify (PostGIS 3.4+, GEOS 3.12+) to create gap-free simplified
     versions of adjacent divisions that share borders. This replaces the
     per-row trigger-based simplification with topology-preserving results.
 
