@@ -71,6 +71,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | regions | A region with no geometry, in a world view whose geometry has been computed | invariant |
 | boundaries | A division stored as a leaf while divisions hang beneath it | invariant |
 | boundaries | A division holding a single source polygon while divisions hang beneath it | invariant |
+| objects | A site whose danger tag and whose In Danger badge disagree | invariant |
 | pictures | A picture shown with nobody credited | invariant |
 
 The first two are the detection half of
@@ -206,6 +207,21 @@ short by its holes, and Thailand's 20 742 km² are 4 % of it, well inside the ni
 tenths the region rule allows. What separates these rows is exact and costs an
 index lookup, so that is what is asked — about a second for the pair, measured.
 `db/migrations/034-unnamed-gadm-rows.sql` is the repair, and both rules name it.
+
+**The danger rule** is about one fact stored twice. A World Heritage site in
+danger is written into the row as the `in_danger` tag and as the
+`metadata.inDanger` flag the badge keys on, and the two disagreed on every row
+for four years while every sync run reported success — a run compares what it
+fetched against what it stored, and both halves were stored exactly as the
+importer meant them. The tag was right on 58 sites, the flag was false on all
+1272, and the badge appeared for nobody (#600). It asks the two stored columns
+rather than UNESCO's own field, which is what keeps it a rule about this
+catalogue instead of a second copy of the importer's reading — the copy that
+would rot — and it asks in **both** directions, because the halves fail
+differently: tagged with no flag is the danger-listed site showing nothing
+that `035-in-danger-flag.sql` repaired, while flagged with no tag tells a
+traveller a place is in peril on no evidence at all. It reports nothing today;
+the migration left the two agreeing on every row.
 
 The last is a licence obligation rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask
