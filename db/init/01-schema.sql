@@ -1484,6 +1484,7 @@ DECLARE
     effective_geom geometry;
     geom_changed boolean;
     hull_changed boolean;
+    hull_flag_changed boolean;
     low_changed boolean;
 BEGIN
     geom_changed := (TG_OP = 'INSERT' AND NEW.geom IS NOT NULL)
@@ -1500,6 +1501,16 @@ BEGIN
     -- overview a second time on every ordinary geometry change.
     low_changed := (TG_OP = 'UPDATE'
                     AND NEW.geom_simplified_low IS DISTINCT FROM OLD.geom_simplified_low);
+
+    -- uses_hull chooses which shape the four rungs below are made from, so
+    -- flipping it changes them without touching a geometry. It is documented as
+    -- manually editable (rule 17) and updateRegion writes it on its own, so
+    -- without this a region toggled to hull display keeps rungs traced from its
+    -- real outline while the island tile source switches to the hull at once --
+    -- two layers drawing two different shapes for one region. The writer owns
+    -- its invalidation and the writer here is the database (ADR-0035).
+    hull_flag_changed := (TG_OP = 'UPDATE'
+                          AND NEW.uses_hull IS DISTINCT FROM OLD.uses_hull);
 
     -- Transform changed geometries to 3857
     IF geom_changed AND NEW.geom IS NOT NULL THEN
@@ -1531,7 +1542,7 @@ BEGIN
 
     -- Hull-based simplified (for main tile source overview)
     -- For uses_hull regions, simplified columns derive from hull (correct overview)
-    IF geom_changed OR hull_changed THEN
+    IF geom_changed OR hull_changed OR hull_flag_changed THEN
         effective_geom := CASE WHEN NEW.uses_hull THEN COALESCE(NEW.hull_geom_3857, NEW.geom_3857) ELSE NEW.geom_3857 END;
         IF effective_geom IS NOT NULL THEN
             NEW.geom_simplified_low := simplify_for_zoom(effective_geom, 5000, 0, 0);
