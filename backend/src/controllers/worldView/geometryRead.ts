@@ -172,9 +172,24 @@ export async function getRegionGeometry(req: Request, res: Response): Promise<vo
 }
 
 /**
- * Get geometries for all root regions in a world view
- * Computes merged geometry on-the-fly if not cached
- * Includes both direct member regions AND subregion geometries
+ * Get geometries for all root regions in a world view.
+ * Computes merged geometry on the fly if not cached.
+ * Includes both direct member regions AND subregion geometries.
+ *
+ * Computes and answers; it does not store what it computed. A read is not a
+ * writer of regions.geom, and this one is public. The shape it merges here is a
+ * bare union with none of the pipeline's work -- no snapping, no hull handling,
+ * no coverage simplification, no uses_hull refresh -- and the moment it were
+ * stored, geom would stop being NULL and the region would drop out of the
+ * world-view run's closure (loadGroupsToCompute selects on geom IS NULL), so
+ * the good geometry would never be computed and only a forced run could recover
+ * it: #667's failure mode, reached from an anonymous request.
+ *
+ * Nothing above it would go with it, since every row this handler could write
+ * is a root (parent_region_id IS NULL) and the trigger's WHERE would match
+ * nothing -- unlike getSubregionGeometries below, whose rows have parents. That
+ * is the difference between the two, not a reason for one of them to write
+ * (#680, ADR-0035).
  */
 export async function getRootRegionGeometries(req: Request, res: Response): Promise<void> {
   const worldViewId = parseInt(String(req.params.worldViewId));
@@ -237,13 +252,6 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
 
         if (singleResult.rows.length > 0) {
           geometry = singleResult.rows[0].geometry;
-
-          // Cache for next time — trigger handles 3857 + simplified columns
-          pool.query(`
-            UPDATE regions
-            SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1))
-            WHERE id = $2
-          `, [JSON.stringify(geometry), group.id]).catch(() => {});
         }
       } else {
         // Multiple geometries - need to merge direct members + child group geometries
@@ -275,13 +283,6 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
 
         if (mergedResult.rows.length > 0 && mergedResult.rows[0].geometry) {
           geometry = mergedResult.rows[0].geometry;
-
-          // Cache for next time — trigger handles 3857 + simplified columns
-          pool.query(`
-            UPDATE regions
-            SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1))
-            WHERE id = $2
-          `, [JSON.stringify(geometry), group.id]).catch(() => {});
         }
       }
     }
@@ -316,6 +317,12 @@ export async function getRootRegionGeometries(req: Request, res: Response): Prom
  * Get geometries for subregions of a region
  * Computes merged geometry on-the-fly if not cached
  * Includes both direct member regions AND child region geometries
+ *
+ * Does not store what it computed, for the reasons on getRootRegionGeometries
+ * above. This is the handler those reasons were first written about (#680):
+ * unlike that one, the rows it would write have parents, so a cached shape here
+ * would blank a continent for every visitor as well as steal the region out of
+ * the next run's closure.
  */
 export async function getSubregionGeometries(req: Request, res: Response): Promise<void> {
   const regionId = parseInt(String(req.params.regionId));
@@ -406,13 +413,6 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
 
         if (singleResult.rows.length > 0) {
           geometry = singleResult.rows[0].geometry;
-
-          // Cache for next time — trigger handles 3857 + simplified columns
-          pool.query(`
-            UPDATE regions
-            SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1))
-            WHERE id = $2
-          `, [JSON.stringify(geometry), group.id]).catch(() => {});
         }
       } else {
         // Multiple geometries - need to merge direct members + child group geometries
@@ -444,13 +444,6 @@ export async function getSubregionGeometries(req: Request, res: Response): Promi
 
         if (mergedResult.rows.length > 0 && mergedResult.rows[0].geometry) {
           geometry = mergedResult.rows[0].geometry;
-
-          // Cache for next time — trigger handles 3857 + simplified columns
-          pool.query(`
-            UPDATE regions
-            SET geom = validate_multipolygon(ST_GeomFromGeoJSON($1))
-            WHERE id = $2
-          `, [JSON.stringify(geometry), group.id]).catch(() => {});
         }
       }
     }
