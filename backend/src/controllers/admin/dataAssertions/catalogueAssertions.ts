@@ -62,6 +62,7 @@ import {
 } from '../../experience/experienceLifecycle.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
+import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 
 import { count, text } from './assertion.js';
 import type { AssertionRow, CatalogueAssertion } from './assertion.js';
@@ -512,10 +513,72 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
 };
 
 /**
+ * One fact, stored twice, asked whether the two copies still agree.
+ *
+ * A World Heritage site in danger is written into the row as the `in_danger`
+ * tag and as the `metadata.inDanger` flag the badge keys on. They came from
+ * different halves of the source and disagreed on every row for four years: the
+ * tag was right on 58 sites, the flag was false on all 1272, and the badge three
+ * surfaces draw off the flag appeared for nobody (#600). Every sync run reported
+ * success throughout, because a run compares what it fetched with what it
+ * stored and both halves were stored exactly as the importer meant them.
+ *
+ * Asked of the two stored columns and not of UNESCO's vocabulary, which is what
+ * makes it a rule about this catalogue rather than a second copy of the
+ * importer's reading. The import writes both from one predicate now, so a row
+ * here means either that predicate came apart again or something wrote one half
+ * on its own.
+ *
+ * Both directions, because the two halves fail differently. Tagged and not
+ * flagged is the shape 035 repaired -- a site listed in danger showing nothing.
+ * Flagged and not tagged is a badge on a site nothing lists, which is the worse
+ * of the two on the ground: it tells a traveller a place is in peril on no
+ * evidence at all.
+ */
+const dangerFlagAgainstItsTag: CatalogueAssertion = {
+  id: 'danger-flag-disagrees-with-its-tag',
+  area: 'objects',
+  title: 'A site whose danger tag and whose In Danger badge disagree',
+  kind: 'invariant',
+  meaning:
+    'One fact about the site is stored twice and the two copies say different things, so the '
+    + 'badge a traveller sees does not follow from what the catalogue holds. Tagged with no flag '
+    + 'is a danger-listed site showing nothing — the shape migration 035 repaired, and a sign the '
+    + 'import has come apart again if it returns. Flagged with no tag is the opposite and the '
+    + 'worse of the two: a site badged as in peril with nothing in the catalogue saying it is.',
+  // Both sides coalesced, and the tag side is not the decorative half of that.
+  // `tags` is nullable and reachable as null — `createManualExperience` writes
+  // NULL for an object a curator made without any — and `NULL ? 'in_danger'` is
+  // NULL, which makes `NULL <> FALSE` neither true nor false, so the row is
+  // dropped from the result. That silently loses exactly the direction this rule
+  // calls the worse one: a hand-made object carrying the flag with nothing
+  // tagging it. Verified against the live catalogue: with one such row inserted
+  // in a transaction, the uncoalesced form finds nothing and this one finds it.
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               COALESCE(e.tags ? 'in_danger', FALSE) AS tagged,
+               COALESCE(e.metadata->'inDanger' = 'true'::jsonb, FALSE) AS flagged,
+               e.metadata->>'dangerList' AS listing
+          FROM experiences e
+         WHERE COALESCE(e.tags ? 'in_danger', FALSE)
+               <> COALESCE(e.metadata->'inDanger' = 'true'::jsonb, FALSE)
+         ORDER BY e.name`,
+  describe: row => {
+    const since = parseDangerListing(row.listing)?.since;
+    const dated = since ? ` since ${since}` : '';
+    const state = row.tagged === true
+      ? `tagged as in danger${dated}, with no badge on it`
+      : 'badged as in danger with nothing in the catalogue listing it';
+    return `${text(row, 'experience_name')}: ${state} `
+      + `(experience ${count(row, 'experience_id')})`;
+  },
+};
+
+/**
  * The list, in the order a person reads it: the two that say a place is stored
  * twice, the one that says an object has nowhere to go, the count that is not
- * a violation, the two about where things are, and the one about whose
- * photograph is on the page.
+ * a violation, the two about where things are, the one about a fact stored
+ * twice, and the one about whose photograph is on the page.
  *
  * Adding to it is the whole extension mechanism — an object with an id, an
  * area, a sentence, a query and a way to say one of its rows out loud. Nothing
@@ -531,5 +594,6 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   offeredPlaceInNoRegion,
   ...regionGeometryAssertions,
   ...divisionTreeAssertions,
+  dangerFlagAgainstItsTag,
   pictureWithNobodyCredited,
 ];
