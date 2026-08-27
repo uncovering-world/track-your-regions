@@ -45,6 +45,13 @@ export interface Experience {
   image_credit?: ImageCredit | null;
   date_inscribed?: string;
   in_danger: boolean;
+  /**
+   * The year the site was inscribed on the List of World Heritage in Danger,
+   * read on the server out of the listing the source sent ("Y 2013"). Null
+   * where the listing carries no year, and absent from a read that does not
+   * carry the field -- `inDangerLabel` treats the two the same way.
+   */
+  danger_since?: number | null;
   longitude: number;
   latitude: number;
   category_name: string;

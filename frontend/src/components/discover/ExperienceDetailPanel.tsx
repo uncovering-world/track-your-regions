@@ -54,6 +54,7 @@ import { EmptyState } from '../shared/EmptyState';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ContentTile } from './ContentTile';
 import { locationLabel } from '../../utils/locationLabel';
+import { inDangerLabel } from '../../utils/dangerLabel';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 const CONTENTS_COLLAPSE_THRESHOLD = 15;
@@ -209,7 +210,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
             <Chip key={i} label={name} size="small" variant="outlined" />
           ))}
           {experience.in_danger && (
-            <Chip label="In Danger" size="small" color="error" />
+            <Chip label={inDangerLabel(experience.danger_since)} size="small" color="error" />
           )}
         </Box>
 
