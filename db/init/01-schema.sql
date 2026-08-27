@@ -878,6 +878,91 @@ CREATE OR REPLACE TRIGGER trigger_update_region_focus_data
 COMMENT ON FUNCTION update_region_focus_data() IS 'Trigger function to auto-update anchor_point and focus_bbox when region geometry changes.';
 
 -- =============================================================================
+-- Trigger: A region that gains a geometry leaves its parent describing less
+-- =============================================================================
+-- A region's outline is the union of its children and of its own member
+-- divisions, so whatever writes regions.geom leaves every derived ancestor
+-- covering a smaller world than it contains. Those ancestors are nulled rather
+-- than recomputed on the spot -- recomputing Asia is a hundred seconds of union
+-- and a curator computing one oblast should not wait for it -- and the next
+-- world-view run rebuilds them bottom-up, its closure being every derived
+-- region with no geometry and every derived ancestor of one. Catalogue Checks
+-- reports the gap meanwhile: loud and absent beats quiet and wrong (#667).
+--
+-- The rule lives here rather than at each writer because there is no count of
+-- writers to keep correct. #679 enforced it in TypeScript and the review found
+-- seven writers beyond the one the issue described, one round at a time; a
+-- write that skipped the call consumed the NULL its own convergence depended
+-- on, and the run went on reporting Complete. Here it runs inside the writing
+-- statement, so no writer can bypass it and it cannot fail separately from the
+-- write it belongs to. ADR-0035; the same reasoning that keeps the antimeridian
+-- rule in geometry_focus() rather than in each reader (#674).
+--
+-- Only the immediate parent, because the walk upward IS the cascade: nulling
+-- the parent is itself an UPDATE OF geom that changes the value, so this fires
+-- again for the grandparent. It stops where the hand-written walk stopped:
+--
+--   * at a hand-drawn boundary -- is_custom_boundary IS NOT TRUE writes no row,
+--     so nothing fires above it. Its outline is drawn rather than unioned, so a
+--     descendant gaining geometry cannot have moved it, and nothing over it is
+--     stale either. The same stop loadGroupsToCompute() makes on both arms of
+--     its closure (#283);
+--   * at an ancestor that is already NULL -- geom IS NOT NULL writes no row.
+--     That is also what makes a cycle in parent_region_id terminate, where the
+--     recursive CTE this replaces would not.
+--
+-- Four columns, because a cleared geom does not clear its own derivatives:
+-- trg_regions_geom_3857 only recomputes them from a geometry that is there.
+-- The two cheap rungs do follow on their own -- that trigger sees
+-- geom_simplified_low go to NULL (low_changed) and clears geom_overview and
+-- geom_simplified_coarse with it.
+--
+-- Locks are taken strictly upward, child before parent before grandparent, so
+-- two concurrent computes under one parent queue rather than deadlock.
+
+CREATE OR REPLACE FUNCTION invalidate_parent_region_geometry() RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE regions
+  SET geom = NULL,
+      geom_3857 = NULL,
+      geom_simplified_low = NULL,
+      geom_simplified_medium = NULL
+  WHERE id = NEW.parent_region_id
+    AND is_custom_boundary IS NOT TRUE
+    AND geom IS NOT NULL;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION invalidate_parent_region_geometry() IS 'Trigger function: a write to regions.geom marks the derived ancestors above it stale, one level per firing (ADR-0035).';
+
+-- Two triggers on one function rather than AFTER INSERT OR UPDATE OF geom: OLD
+-- is not available in an INSERT trigger's WHEN clause, so the two conditions
+-- cannot be one expression -- and an unconditional INSERT arm would call the
+-- function for every row of an import, thousands of times, to do nothing.
+
+-- IS DISTINCT FROM on geometry is exact equality in PostGIS, not a bounding-box
+-- test (verified on 3.5.6): a collinear redraw of the same outline reads as a
+-- change and an identical geometry does not. So this is a real change test,
+-- and a write that changes nothing invalidates nothing.
+CREATE OR REPLACE TRIGGER trg_regions_geom_invalidates_parent
+  AFTER UPDATE OF geom ON regions
+  FOR EACH ROW
+  WHEN (OLD.geom IS DISTINCT FROM NEW.geom)
+  EXECUTE FUNCTION invalidate_parent_region_geometry();
+
+-- A region born with a drawn shape -- createRegion from the create-from-staged
+-- and single-division custom dialogs. It has geometry from the moment it
+-- exists, so it never seeds the run's closure, and its parent already had one,
+-- so neither does that. A region born without geometry seeds the closure by
+-- itself and needs nothing here.
+CREATE OR REPLACE TRIGGER trg_regions_geom_insert_invalidates_parent
+  AFTER INSERT ON regions
+  FOR EACH ROW
+  WHEN (NEW.geom IS NOT NULL)
+  EXECUTE FUNCTION invalidate_parent_region_geometry();
+
+-- =============================================================================
 -- Trigger: Update a division's focus_bbox and anchor_point when its geometry changes
 -- =============================================================================
 -- The same measurement regions get, stored once so a read is a column read: a

@@ -37,6 +37,21 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`036-parent-geometry-invalidation-trigger.sql` moves ancestor geometry invalidation into
+the database, so that no writer of `regions.geom` can bypass it (#680). A region's outline
+is the union of what is under it, so a write leaves every derived ancestor covering a
+smaller world than it contains; #667 established that the writer nulls those ancestors and
+the next world-view run rebuilds them bottom-up, and #679 enforced that by hand at each
+writer — whose review found seven writers beyond the one the issue described, one round at
+a time. A write that skipped the call consumed the `NULL` its own convergence depended on:
+the parent kept a stale outline with nothing `NULL` beneath it and fell outside every later
+run's closure, while every run reported Complete. The file adds one trigger function and
+its two arms (`UPDATE OF geom`, and `INSERT` for a region born with a drawn shape), which
+`01-schema.sql` carries as well; it repairs no row and touches no data, so it may run in
+either order against that file, any number of times. What it has not repaired it reports:
+the closing queries name the parents still short of their children and the derived regions
+still holding no geometry — #667's rows, waiting on #459.
+
 `035-in-danger-flag.sql` sets `metadata.inDanger` on the sites the catalogue already
 tags as `in_danger` (#600). One fact is stored twice and the import wrote the two halves
 from different fields: the tag from either of UNESCO's, the flag from the boolean alone —
