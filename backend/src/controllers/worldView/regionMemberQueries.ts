@@ -102,7 +102,13 @@ export async function getRegionMemberGeometries(req: Request, res: Response): Pr
       ad.id as division_id,
       COALESCE(rm.custom_name, ad.name) as name,
       ST_AsGeoJSON(
-        ST_Simplify(
+        -- Topology-preserving, like every other simplification here (ADR-0036):
+        -- plain ST_Simplify lets an outline cross itself, and returns NULL for a
+        -- member narrower than the tolerance — which the filter below then drops,
+        -- so a curator edits a region with one of its members missing from the map.
+        -- 17 of GADM's divisions are inside 0.001°, and every one of them came
+        -- back NULL; none does under this call.
+        ST_SimplifyPreserveTopology(
           CASE
             -- Custom cut geometries may be invalid and need normalization
             WHEN rm.custom_geom IS NOT NULL THEN ST_MakeValid(rm.custom_geom)
@@ -161,7 +167,11 @@ export async function getDescendantMemberGeometries(req: Request, res: Response)
       rm.region_id,
       dr.root_ancestor_id,
       ST_AsGeoJSON(
-        ST_Simplify(
+        -- Same reasoning as getRegionMemberGeometries above, and five times the
+        -- tolerance, which is where it stops being hypothetical: 3,366 of GADM's
+        -- divisions are inside 0.005° — Rwandan cells, Philippine barangays —
+        -- and plain ST_Simplify returned NULL for all 3,366 (ADR-0036).
+        ST_SimplifyPreserveTopology(
           CASE
             WHEN rm.custom_geom IS NOT NULL THEN ST_MakeValid(rm.custom_geom)
             ELSE ad.geom
