@@ -66,7 +66,12 @@ export interface UnescoApiRecord {
   date_inscribed?: string | number;
   /** `"True"` / `"False"` — the portal's booleans are strings. See `isSet`. */
   danger?: string | number | boolean;
-  danger_list?: string;
+  /**
+   * The dated listing: `"Y 2013"` for a site on the List of World Heritage in
+   * Danger, and an explicit `null` for one that is not — including a site taken
+   * off the list, whose entry the portal empties rather than negating.
+   */
+  danger_list?: string | null;
   /**
    * The inscription criteria, as "(i)(ii)(iii)(iv)".
    *

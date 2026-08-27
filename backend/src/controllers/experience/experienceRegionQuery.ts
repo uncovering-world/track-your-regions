@@ -20,6 +20,7 @@ import {
   readerRegionMembershipSql,
 } from './experienceLifecycle.js';
 import { isNewSql } from './experienceNewBadge.js';
+import { dangerSelectSql } from './experienceDanger.js';
 
 /**
  * The two statements a region read needs, and their parameters.
@@ -126,7 +127,7 @@ export function buildRegionQueries(opts: {
         e.metadata->'imageCredit' as image_credit,
         e.created_at,
       ${readerPositionSql('e')},
-        e.metadata->>'inDanger' as in_danger,
+        ${dangerSelectSql('e')},
         -- Unconditional, and with no curator relaxation, unlike the count of
         -- an experience in this same read: this is a per-object number a
         -- region-wide list shows every caller the same way. It can disagree
@@ -193,7 +194,7 @@ export function buildRegionQueries(opts: {
         e.metadata->'imageCredit' as image_credit,
         e.created_at,
       ${readerPositionSql('e')},
-        e.metadata->>'inDanger' as in_danger,
+        ${dangerSelectSql('e')},
         -- Unconditional, and with no curator relaxation, unlike the count of
         -- an experience in this same read: this is a per-object number a
         -- region-wide list shows every caller the same way. It can disagree
