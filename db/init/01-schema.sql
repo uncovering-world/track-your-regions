@@ -1151,9 +1151,10 @@ ALTER TABLE administrative_divisions ADD COLUMN IF NOT EXISTS geom_simplified_me
 -- Helper function: drop the parts of a MultiPolygon too small to be seen.
 --
 -- The weight of an overview rung is not in the detail of its outlines, it is in
--- the number of rings it carries: neither ST_SimplifyVW nor the topology-
--- preserving variants ever delete a ring, so both bottom out at roughly four
--- points per ring no matter the tolerance. Europe's root region holds 84,217
+-- the number of rings it carries: no simplification this pipeline uses deletes a
+-- ring, so they bottom out at roughly four points per ring no matter the
+-- tolerance. (Plain ST_SimplifyVW did delete one, which is a defect rather than
+-- a saving and went with ADR-0036 -- see simplify_for_zoom below.) Europe's root region holds 84,217
 -- points and still holds 49,942 after Douglas-Peucker at 50 km, because it is
 -- some twelve thousand pieces. Dropping the pieces is the only thing that makes
 -- an overview rung cheap.
@@ -1193,8 +1194,10 @@ COMMENT ON FUNCTION drop_small_parts IS 'Keeps the parts of a MultiPolygon at or
 -- what a reader looks for on the map, and it must not be annihilated.
 --
 -- The floor is the tolerance squared — the area of a tolerance-sized square, so
--- one knob sets the rung's scale for both outlines and pieces, the way
--- ST_SimplifyVW already reads its own tolerance as an area (rule 13).
+-- one knob sets the rung's scale for both outlines and pieces. The two are
+-- different kinds of number, deliberately: ST_SimplifyPreserveTopology takes a
+-- distance, and the part floor takes the area a piece of that size covers on
+-- the screen.
 --
 -- Both cheap rungs come from here. geom_simplified_coarse is called at one
 -- screen pixel of the finest zoom it serves — 10 km against the 9,784 m zoom 3
@@ -1241,13 +1244,48 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
--- Helper function: simplify geometry with fallback for small islands, smooth corners.
--- Three-stage pipeline:
---   Stage 1: ST_SimplifyVW at requested tolerance (area-based, better coastal preservation)
---            VW tolerance is area-based: DP distance `d` → VW area `d²`
---   Stage 2: If nothing survived (small islands), retry with tolerance scaled
---            to the largest polygon's width. Minimum vertex floor: ≥4 vertices per polygon.
---   Stage 3: ST_ChaikinSmoothing to round off angular artifacts
+-- Helper function: reduce a row's outlines to a display rung, without changing
+-- what the shape is made of.
+--
+-- ST_CoverageSimplify is topology-preserving Visvalingam-Whyatt (GEOS
+-- TPVWSimplifier) -- rule 13's algorithm, carrying the guarantee ST_SimplifyVW
+-- does not. VW moves every ring on its own, so a simplified outline crosses
+-- itself and two parts that were disjoint come to overlap. The ST_MakeValid that
+-- every geometry write ends with then resolves the overlap the only way it can:
+-- by carving it out as an interior ring. That is where the holes on the map came
+-- from. Australia's continent row carried 328 of them at the 1 km rung against
+-- the single lake its full-resolution geometry holds, and the rung a visitor
+-- reads over north-eastern Thailand drew 66 where the data has 8 (#685).
+--
+-- The parts of a valid MultiPolygon are a coverage by construction -- disjoint
+-- polygons -- so the row goes through the pass as one element, the way
+-- simplify_coverage_regions() puts a whole sibling set through it (rule 15).
+-- What that function makes shared between two rows, this makes consistent within
+-- one, and neither can do the other's job. Measured over the eight root regions
+-- of the Administrative world view, which hold 610 interior rings between them:
+-- the 1 km rung carried 1,933 and the 5 km rung 7,057, and both come back with
+-- 610 -- for 1.1 % and 2.1 % fewer vertices rather than more. See ADR-0036.
+--
+-- Nothing is annihilated, which is what the two fallback stages the VW version
+-- carried existed for. Measured on PostGIS 3.5.6 / GEOS 3.14.1, coverage
+-- simplification drops neither a part nor a hole: a 100 m speck 50 km from a
+-- square and a 200 m lake inside it both survive a 5 km pass, and all 26,151 of
+-- Asia's pieces survive both rungs. VW did not -- it dropped 436 of them at the
+-- 1 km rung on the vertex floor below, against rule 12. docker-compose.yml pins
+-- postgis/postgis:17-3.5-alpine, which floats GEOS, so the day that stops being
+-- true is caught by the catalogue check rung-unlike-its-source rather than by
+-- this comment. The last resort below stays for the same reason: a rung that
+-- came back empty keeps the unsimplified shape rather than nothing.
+--
+-- The tolerance is now passed as the distance it is. ST_SimplifyVW reads an area
+-- and was handed the square; ST_CoverageSimplify reads a distance and squares it
+-- itself for the same Visvalingam-Whyatt criterion, so the rung keeps its scale
+-- rather than becoming a thousand times finer -- 243,877 points for Asia at the
+-- 1 km rung against VW's 247,651.
+--
+-- min_area and smooth_iterations are passed as 0 by every caller. They stay in
+-- the signature because narrowing it would leave the four-argument function
+-- behind on every database that already holds it, beside the new one.
 CREATE OR REPLACE FUNCTION simplify_for_zoom(
     geom geometry,
     tolerance double precision,
@@ -1256,63 +1294,38 @@ CREATE OR REPLACE FUNCTION simplify_for_zoom(
 ) RETURNS geometry AS $$
 DECLARE
     result geometry;
-    max_poly_width double precision;
-    vw_tolerance double precision;
 BEGIN
-    -- Convert DP-style distance tolerance to VW area tolerance
-    vw_tolerance := tolerance * tolerance;
-
-    -- Stage 1: simplify at requested tolerance, filter small polygons,
-    -- enforce minimum vertex floor (≥4 vertices per polygon)
-    SELECT ST_Multi(ST_CollectionExtract(
-        ST_MakeValid(ST_Collect(dump.geom)), 3))
-    INTO result
-    FROM (
-        SELECT (ST_Dump(
-            ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_SimplifyVW(geom, vw_tolerance)), 3))
-        )).geom
-    ) AS dump
-    WHERE ST_Area(dump.geom) >= min_area
-      AND ST_NPoints(dump.geom) >= 4;
-
-    -- Stage 2: if nothing survived (geometry smaller than tolerance), retry
-    -- with tolerance scaled to the largest individual polygon's width
-    IF result IS NULL OR ST_IsEmpty(result) THEN
-        SELECT max(sqrt(ST_Area(ST_Envelope(d.geom))))
-        INTO max_poly_width
-        FROM (SELECT (ST_Dump(geom)).geom) AS d;
-
-        IF max_poly_width IS NOT NULL AND max_poly_width > 0 THEN
-            vw_tolerance := (max_poly_width / 10.0) * (max_poly_width / 10.0);
-            SELECT ST_Multi(ST_CollectionExtract(
-                ST_MakeValid(ST_Collect(dump.geom)), 3))
-            INTO result
-            FROM (
-                SELECT (ST_Dump(
-                    ST_Multi(ST_CollectionExtract(ST_MakeValid(
-                        ST_SimplifyVW(geom, vw_tolerance)
-                    ), 3))
-                )).geom
-            ) AS dump
-            WHERE NOT ST_IsEmpty(dump.geom)
-              AND ST_NPoints(dump.geom) >= 4;
-        END IF;
+    IF geom IS NULL THEN
+        RETURN NULL;
     END IF;
 
-    -- If still nothing survived, return the original unsimplified geometry
-    -- (small islands that can't be simplified without degenerating)
+    SELECT validate_multipolygon(ST_Collect(part.geom))
+    INTO result
+    FROM (
+        SELECT (ST_Dump(pass.simplified)).geom
+        FROM (
+            SELECT ST_CoverageSimplify(src.g, tolerance) OVER () AS simplified
+            FROM (SELECT geom AS g) AS src
+        ) AS pass
+    ) AS part
+    WHERE ST_Area(part.geom) >= min_area
+      AND ST_NPoints(part.geom) >= 4;
+
+    -- Only a floor can empty this now, and no caller passes one. Keep the
+    -- unsimplified shape rather than annihilate the row (rule 12).
     IF result IS NULL OR ST_IsEmpty(result) THEN
         result := geom;
     END IF;
 
-    -- Stage 3: smooth corners
-    IF smooth_iterations > 0 AND result IS NOT NULL AND NOT ST_IsEmpty(result) THEN
+    IF smooth_iterations > 0 THEN
         result := ST_ChaikinSmoothing(result, smooth_iterations);
     END IF;
 
     RETURN result;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
+
+COMMENT ON FUNCTION simplify_for_zoom IS 'Simplifies a row''s outlines with ST_CoverageSimplify, so a rung carries the interior rings its source has and no others (ADR-0036)';
 
 -- Coverage-aware simplification for GADM sibling divisions.
 -- Uses ST_CoverageSimplify (requires GEOS 3.12+) for gap-free borders.
