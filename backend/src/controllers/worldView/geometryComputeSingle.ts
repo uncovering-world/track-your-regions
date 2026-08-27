@@ -11,7 +11,6 @@ import { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
-import { AncestorInvalidationFailed, invalidateAncestorGeometry } from './helpers.js';
 import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
 
 const GEOMETRY_QUERY_TIMEOUT_MS = 300000;
@@ -48,25 +47,18 @@ function classifyPipelineError(
 /**
  * What a throw inside computeRegionGeometryCore means for the run.
  *
- * A failed *pipeline* wrote nothing, so the region stays NULL and the next run
+ * A failed pipeline wrote nothing, so the region stays NULL and the next run
  * takes it: a soft result is right, and computeOneGroup tallying it as skipped
  * while the run reports Complete is right with it.
  *
- * A failed *invalidation* is the opposite state -- it happens after the geometry
- * UPDATE has committed, so the region is fine and the tree above it is silently
- * wrong for good, with nothing NULL beneath it for any later closure to find.
- * Downgrading that to a skip would hand back the exact state raising exists to
- * prevent, so it is rethrown: processGroups logs it and counts it in the run's
- * `errors`, which the completion alert shows and turns amber (#667). The run
- * still finishes as 'Complete' -- that string is what keys the display-geometry
- * regeneration and cannot carry the news -- and the status line naming the
- * region is overwritten before any poll can read it, so the count is what a
- * curator actually sees. This covers the single-division fast path too, which
- * invalidates from inside computeSingleMemberFastPath.
+ * There is no second kind of failure to tell it apart from any more. Marking
+ * the ancestors stale used to be a statement of its own here, made after the
+ * geometry UPDATE had committed, so losing it was the opposite state -- the
+ * region fine and the tree above it silently wrong for good -- and it had to be
+ * rethrown rather than softened. Since #680 that work runs inside the UPDATE
+ * itself, as a trigger, so it fails only by failing the write (ADR-0035).
  */
 function coreFailure(err: unknown, regionId: number, logPrefix: string): PipelineResult {
-  if (err instanceof AncestorInvalidationFailed) throw err;
-
   const errorMessage = err instanceof Error ? err.message : String(err);
   // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number, and logPrefix is either the '[Compute]' default or computationProgress.ts's `[Geometry <n>/<m>]` built from two numbers; neither can hold a specifier
   console.error(`${logPrefix} Error computing region ${regionId}:`, errorMessage);
@@ -269,14 +261,6 @@ async function computeGroupGeom(client: PoolClient, gId: number): Promise<Pipeli
     logStep(`Step 6/6: Complete! ${points} points`);
     await client.query('RESET statement_timeout');
 
-    // computeBottomUp calls this for every descendant that has no geometry, so
-    // most writes here are a *child's*, made while the region the curator asked
-    // for has not been computed yet. If that one then fails, the children's
-    // writes have consumed the NULLs the run's closure seeds on, and nothing
-    // would ever select the failed parent again. Marking the ancestors stale
-    // from the writer keeps that from depending on which call succeeded (#667).
-    if (updateResult.rows.length > 0) await invalidateAncestorGeometry(gId);
-
     return { computed: updateResult.rows.length > 0, points };
   } catch (err) {
     try {
@@ -420,10 +404,13 @@ async function applyCoverageAndTileVersion(
     if (coverageCount > 0) {
       console.log(`[ComputeSingle] Coverage simplification applied to ${coverageCount} siblings under ${parentRegionId}`);
     }
-    // No ancestor invalidation here: computeGroupGeom and the fast path each do
-    // it where they write, and simplify_coverage_regions above touches only the
-    // render columns (geom_simplified_low/medium, geom_overview) -- never geom,
-    // which is the only thing a parent's union reads (#667).
+    // No ancestor invalidation here, and none needed: the geometry writes this
+    // follows carried it from inside their own statements
+    // (trg_regions_geom_invalidates_parent, ADR-0035), and
+    // simplify_coverage_regions above touches only the render columns
+    // (geom_simplified_low/medium, geom_overview) -- never geom, which is the
+    // only thing a parent's union reads, and the only thing the trigger watches
+    // (#667).
   }
 
   const worldViewResult = await pool.query(
@@ -748,16 +735,6 @@ export async function computeRegionGeometryCore(
 
     const points = updateResult.rows[0]?.points;
     log(`Complete! ${points} points`);
-
-    // The writer the world-view run goes through. Its siblings do this from
-    // their own writes too -- computeGroupGeom and runUnionPipelineSteps;
-    // leaving it out here would make the run's
-    // closure depend on some descendant staying NULL until the next selection.
-    // A parent whose own union times out keeps its stale outline, nothing under
-    // it is NULL any more, and the run never selects it again -- which is how
-    // North America would sit at 18.3 % of itself for good, with every run
-    // reporting Complete (#667).
-    await invalidateAncestorGeometry(regionId);
 
     return { computed: true, points };
   } catch (err) {

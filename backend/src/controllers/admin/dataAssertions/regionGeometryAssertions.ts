@@ -233,13 +233,14 @@ const parentShortOfItsChildren: CatalogueAssertion = {
  * wrong question. The Administrative world view sits at 99.9 % and answers
  * Canada, one row of 3 831 (#667).
  *
- * A region awaiting recompute still shows here, and should — by two routes.
- * `invalidateRegionGeometry()` nulls the edited region's geometry and every
- * derived ancestor's, so an edit parks a continent on this rule until compute is
- * run; and since #667 an ordinary compute does the same to the ancestors alone
- * (`invalidateAncestorGeometry()`), because a parent is the union of children one
- * of which has just changed. Computing anything under a continent therefore
- * parks the continent here until the next world-view run takes it bottom-up.
+ * A region awaiting recompute still shows here, and should. Any write to
+ * `regions.geom` marks the derived ancestors above it stale — the database does
+ * it, from `trg_regions_geom_invalidates_parent` (ADR-0035) — because a parent
+ * is the union of children one of which has just changed; and an edit to a
+ * region's members nulls that region's own geometry too
+ * (`invalidateRegionGeometry()`), which is the same write and so reaches the
+ * same ancestors. Computing anything under a continent therefore parks the
+ * continent here until the next world-view run takes it bottom-up.
  * That *is* a region with nothing on the map — the panel reporting it is the
  * reminder to finish the job, and the count falls back on its own.
  */
