@@ -30,7 +30,7 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
 function queue(over: Partial<ReviewQueue> = {}): ReviewQueue {
   return {
     missing: [], refused: [], keptOut: [], conflicts: [],
-    arrivals: [], held: [], contents: [], withdrawn: [],
+    arrivals: [], held: [], contents: [], withdrawn: [], answeredWithdrawals: [],
     limit: 25,
     paging: {} as ReviewQueue['paging'],
     ...over,

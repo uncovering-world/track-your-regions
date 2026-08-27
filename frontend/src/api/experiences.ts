@@ -421,7 +421,7 @@ export interface ReviewQueueItem {
   category_name: string;
   /**
    * The lifecycle axes, on **every** kind rather than only the two whose cards
-   * are about them. Required here and therefore selected by all eight queries
+   * are about them. Required here and therefore selected by every one of the queries
    * (`lifecycleSelectSql`), because the alternative — required in the type and absent
    * from the kinds whose cards are not about it — is the trap that reads as a working
    * comparison:
@@ -432,10 +432,10 @@ export interface ReviewQueueItem {
   source_membership: 'present' | 'former';
   existence: 'extant' | 'lost';
   kind: 'missing' | 'conflict' | 'refused' | 'kept-out' | 'arrival' | 'held' | 'contents'
-    | 'withdrawn';
+    | 'withdrawn' | 'withdrawn-answered';
   /**
    * What the object is, carried on every kind for the same reason the lifecycle axes
-   * are: one fragment feeds all eight queries, so a card cannot show less about an
+   * are: one fragment feeds every one of the queries, so a card cannot show less about an
    * object than its neighbour. Every one of them is genuinely optional in the data —
    * 14 of 1604 rows have no image, and a landmark commonly has no website — so the
    * card renders what exists rather than reserving space for what does not.
@@ -640,6 +640,60 @@ export interface ReviewQueueItem {
      */
     replacedMetres: number | null;
   }> | null;
+  /**
+   * The points this object lost that a curator has *answered*, and which no reader can
+   * see as a result. `withdrawn-answered` items only.
+   *
+   * The same rows one verdict later, and the reason they need their own list is that the
+   * verdict is what removed them from the one above: the queue asks about a flagged point
+   * whose axes are still clean, and answering either axis takes the row out of it. No
+   * other surface shows them — a point is not reachable at its own address, and every
+   * reader-facing read hides one that is withdrawn or declared gone — so this list is
+   * where a mis-click is taken back (#544).
+   *
+   * Both axes travel with each point because the card offers a way back from each one
+   * separately, and because they are what the endpoint's `expected` is built from: a card
+   * drawn before someone else answered collides rather than overwrites.
+   *
+   * No `replacedMetres` here, though the open card carries it: that field tells a
+   * rewritten coordinate from a component that really moved, which is the question this
+   * list is not re-asking.
+   *
+   * At most the first `CONTENTS_ROWS_SHOWN` of `answered_points_total`, newest answer
+   * first. Capped where `withdrawn_points` is not, because this list only ever grows: a
+   * point enters when it is answered and leaves only if the verdict is taken back.
+   */
+  answered_points?: Array<{
+    id: number;
+    name: string | null;
+    externalRef: string | null;
+    /** `null` where a later run found the point again and cleared the flag. */
+    missingSince: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    sourceMembership: 'present' | 'former';
+    existence: 'extant' | 'lost';
+    /** When the standing answer was recorded. */
+    decidedAt: string | null;
+    /** What the curator wrote with it, if anything. */
+    note: string | null;
+    /**
+     * Who last decided, read from the curation log under the log's own scope — `null`
+     * where the act belongs to a region this reader does not cover, or predates the log.
+     * The card says "a curator" then, because someone still decided.
+     */
+    decidedBy: string | null;
+    /** Whether anyone had been there. The visit survives either answer (ADR-0022). */
+    visited: boolean;
+  }> | null;
+  /**
+   * How many answered points the object holds in all. `withdrawn-answered` items only.
+   *
+   * The whole number, beside a list that is the first `CONTENTS_ROWS_SHOWN` of it — the
+   * pair `contents` carries, for the reason it carries it: a list without its total is a
+   * silent cap, and this list is the one that only ever grows.
+   */
+  answered_points_total?: number;
 }
 
 export interface ReviewQueue {
@@ -671,6 +725,13 @@ export interface ReviewQueue {
    * serial site can lose two components in one run — and the verdict is per point.
    */
   withdrawn: ReviewQueueItem[];
+  /**
+   * The withdrawn points a curator has answered, carried for the reason `keptOut` is —
+   * one level down. Answering is what took them out of `withdrawn`, and every
+   * reader-facing read hides a point that is withdrawn or declared gone, so without this
+   * list a verdict on a point could never be taken back (#544).
+   */
+  answeredWithdrawals: ReviewQueueItem[];
   limit: number;
   /**
    * Where each kind is and whether it has another page.
@@ -682,9 +743,10 @@ export interface ReviewQueue {
   paging: Record<ReviewQueueKind, { offset: number; hasMore: boolean }>;
 }
 
-/** The eight arrays the queue returns, each paged on its own. */
+/** The arrays the queue returns, each paged on its own. */
 export type ReviewQueueKind =
-  'missing' | 'refused' | 'keptOut' | 'conflicts' | 'arrivals' | 'held' | 'contents' | 'withdrawn';
+  'missing' | 'refused' | 'keptOut' | 'conflicts' | 'arrivals' | 'held' | 'contents'
+  | 'withdrawn' | 'answeredWithdrawals';
 
 /**
  * What needs a curator's judgement, within their scope.
@@ -693,8 +755,8 @@ export async function fetchReviewQueue(params: {
   categoryId?: number;
   limit?: number;
   /**
-   * Where each kind is, by kind. Eight numbers rather than one, because the queue is
-   * eight queries with eight limits: a single offset moved all of them at once, so a
+   * Where each kind is, by kind. One number per kind rather than one shared, because the
+   * queue is one query with one limit per kind: a single offset moved all of them at once, so a
    * kind whose page was full had a page 2 no control could ask for.
    */
   offsets?: Partial<Record<ReviewQueueKind, number>>;
