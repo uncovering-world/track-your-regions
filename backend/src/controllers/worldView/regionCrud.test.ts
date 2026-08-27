@@ -129,3 +129,90 @@ describe('deleteRegion invalidates the parent it left behind (#680)', () => {
     expect(invalidatedIds()).toEqual([]);
   });
 });
+
+/**
+ * A `uses_hull` flip is a geometry write, and this one bumps the tile version
+ * beside it.
+ *
+ * Not because every writer of a rendered rung does — they do not, and
+ * `regionCrud.ts` records which ones. The flag chooses what the four derived
+ * rungs are made of (rule 19) and
+ * `trg_regions_geom_3857` rebuilds them on it, so the tiles are built from
+ * different geometry at unchanged URLs — which without a bump a reader gets back
+ * out of Martin's cache at cache speed, reading as the change having landed.
+ * Compared against the stored value rather than fired on the field's presence,
+ * or a form saved unchanged would bust every tile URL of the world view.
+ */
+describe('updateRegion bumps the tile version when the hull flag flips (#685)', () => {
+  const REGION = 42;
+  const WORLD_VIEW = 5;
+
+  /** The world-view ids whose tile_version the handler bumped, in order. */
+  function bumpedWorldViews(): unknown[] {
+    return poolQuery.mock.calls
+      .filter(([sql]) => /UPDATE world_views SET tile_version/.test(String(sql)))
+      .map(([, params]) => (params as unknown[])[0]);
+  }
+
+  function mockRegion(usesHull: boolean): void {
+    poolQuery.mockReset();
+    client.query.mockReset();
+    client.query.mockResolvedValue({ rows: [] });
+    poolQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      // The stored flag is named in the matcher, not just in the row: without it
+      // a handler that stopped selecting uses_hull would still be handed one
+      // here, read undefined as false, and pass the flip-off case by accident.
+      if (s.includes('SELECT id, world_view_id, name, parent_region_id, uses_hull')) {
+        return {
+          rows: [{
+            id: REGION, world_view_id: WORLD_VIEW, name: 'Fiji',
+            parent_region_id: 9, uses_hull: usesHull,
+          }],
+        };
+      }
+      if (s.includes('UPDATE regions') && s.includes('RETURNING id, world_view_id')) {
+        return { rows: [{ id: REGION, worldViewId: WORLD_VIEW, name: 'Fiji', usesHull: !usesHull }] };
+      }
+      if (s.includes('UPDATE world_views SET tile_version')) {
+        return { rows: [{ tile_version: 12 }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  }
+
+  async function setUsesHull(usesHull: boolean, stored: boolean): Promise<unknown> {
+    mockRegion(stored);
+    const json = vi.fn();
+    await updateRegion(
+      { params: { regionId: String(REGION) }, body: { usesHull } } as unknown as Request,
+      { json } as unknown as Response,
+    );
+    return json.mock.calls[0]?.[0];
+  }
+
+  it('bumps the world view and answers with the new version', async () => {
+    const body = await setUsesHull(true, false) as { tileVersion?: number };
+    expect(bumpedWorldViews()).toEqual([WORLD_VIEW]);
+    expect(body.tileVersion).toBe(12);
+  });
+
+  it('bumps it turning the flag off as well as on', async () => {
+    await setUsesHull(false, true);
+    expect(bumpedWorldViews()).toEqual([WORLD_VIEW]);
+  });
+
+  it('leaves the version alone when the flag is sent unchanged', async () => {
+    await setUsesHull(true, true);
+    expect(bumpedWorldViews()).toEqual([]);
+  });
+
+  it('leaves it alone for a write that does not name the flag', async () => {
+    mockRegion(false);
+    await updateRegion(
+      { params: { regionId: String(REGION) }, body: { name: 'Fiji' } } as unknown as Request,
+      { json: vi.fn() } as unknown as Response,
+    );
+    expect(bumpedWorldViews()).toEqual([]);
+  });
+});
