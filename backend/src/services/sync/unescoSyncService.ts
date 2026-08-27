@@ -24,6 +24,7 @@ import {
 import { sparqlQuery, SPARQL_WAIT_BUDGET_MS, waitMessage } from './wikidataUtils.js';
 import { WaitBudget } from './sourceRetry.js';
 import { longitudeDelta } from './longitude.js';
+import { parseDangerListing } from './dangerListing.js';
 import type {
   SyncProgress,
   UnescoApiRecord,
@@ -206,9 +207,32 @@ export function buildUnescoTags(record: UnescoApiRecord): string[] {
       tags.push(...criteriaMatches.map(c => `criterion_${c.replace(/[()]/g, '').toLowerCase()}`));
     }
   }
-  if (isSet(record.danger) || record.danger_list) tags.push('in_danger');
+  if (isInDanger(record)) tags.push('in_danger');
   if (isSet(record.transboundary)) tags.push('transboundary');
   return tags;
+}
+
+/**
+ * Whether the site is on the List of World Heritage in Danger, from both fields
+ * the export states it in.
+ *
+ * One predicate, because the answer is stored twice -- as the `in_danger` tag
+ * and as the `metadata.inDanger` flag the badge keys on -- and a catalogue whose
+ * tag and whose flag disagree about Aleppo has no way to say which is right.
+ * They did disagree, on every row: the flag was read from `danger` alone and
+ * `danger` was compared against the number 1 while the portal sends the string
+ * "True", so 58 danger-listed sites carried the tag and not one carried the flag
+ * (#600). Widening `isSet` fixed the reading; taking both fields is what keeps
+ * one of them emptied from ending the answer.
+ *
+ * Not merely "the dated field is filled in": that field's vocabulary is Y/N, and
+ * a site the source has taken off the list must not be badged as on it. It is
+ * emptied rather than negated today -- Belize Barrier Reef, delisted in 2018,
+ * answers `danger: "False"` with `danger_list: null` -- so the distinction costs
+ * nothing and is what an N would need.
+ */
+export function isInDanger(record: UnescoApiRecord): boolean {
+  return isSet(record.danger) || parseDangerListing(record.danger_list)?.listed === true;
 }
 
 /** UNESCO returns either a plain URL, a JSON-stringified object, or an object literal. */
@@ -310,7 +334,7 @@ export function imageCreditOf(record: UnescoApiRecord, imageUrl: string | null):
 /**
  * Transform UNESCO API record to our internal format
  */
-function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): ProcessedExperience | null {
+export function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): ProcessedExperience | null {
   const locations = parseComponentsList(record.components_list);
   const point = resolveMainPoint(record, locations);
   if (!point) {
@@ -322,7 +346,7 @@ function transformRecord(record: UnescoApiRecord, wikipediaUrl?: string): Proces
 
   const metadata: Record<string, unknown> = {
     dateInscribed: record.date_inscribed,
-    inDanger: isSet(record.danger),
+    inDanger: isInDanger(record),
     dangerList: record.danger_list || null,
     criteria: record.criteria_txt,
     region: record.region,
