@@ -31,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { cardImageUrl, isImagePreloaded, preloadImage } from '../../utils/imagePreload';
+import { inDangerLabel } from '../../utils/dangerLabel';
 import { useAuth } from '../../hooks/useAuth';
 import {
   type Experience,
@@ -279,7 +280,7 @@ function ExperienceExpandedDetailsComponent({
           <Chip label={experience.country_names[0]} size="small" variant="outlined" />
         )}
         {experience.in_danger && (
-          <Chip label="In Danger" size="small" color="error" />
+          <Chip label={inDangerLabel(experience.danger_since)} size="small" color="error" />
         )}
         {/* Only once the batch has settled. `inRegionCount` comes from it while
             `totalLocations` falls back to `experience.location_count`, so before

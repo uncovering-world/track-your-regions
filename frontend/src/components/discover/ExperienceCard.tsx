@@ -11,6 +11,7 @@ import BlockIcon from '@mui/icons-material/Block';
 import PlaceIcon from '@mui/icons-material/Place';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { CATEGORY_COLORS, VISITED_GREEN } from '../../utils/categoryColors';
+import { inDangerLabel } from '../../utils/dangerLabel';
 import type { Experience } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
 
@@ -247,7 +248,7 @@ export function ExperienceCard({
             />
           )}
           {experience.in_danger && (
-            <Tooltip title="In Danger">
+            <Tooltip title={inDangerLabel(experience.danger_since)}>
               <WarningAmberIcon sx={{ fontSize: 12, color: 'error.main' }} />
             </Tooltip>
           )}
