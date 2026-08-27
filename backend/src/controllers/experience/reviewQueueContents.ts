@@ -1,16 +1,21 @@
 /**
- * The two queue kinds that ask about what an object *holds*.
+ * The queue lists that are about what an object *holds* rather than about the object.
  *
  * Split out of `reviewQueueController.ts` when the itemised `contents` card took
  * that file past the eight-hundred-line line `docs/tech/development-guide.md`
- * draws (#569). They belong together and away from the rest: both read
- * `experience_locations` rather than `experiences`, both are about a component
+ * draws (#569). They belong together and away from the rest: they read
+ * `experience_locations` rather than `experiences`, they are about a component
  * rather than an object, and between them they carry the only per-row lists the
  * queue returns — so the cap that bounds those lists lives here too.
  *
+ * Two of them ask a question — `contents`, unread rows under a visible object, and
+ * `withdrawn`, a point the source stopped offering. The third asks nothing:
+ * `answeredWithdrawals` is the withdrawn card's own answered half, carried because
+ * answering one takes the point off every screen there is (#544).
+ *
  * Each takes what the handler already computed for every kind — the scope
  * fragments, their parameters, the page size and this kind's own offset — and
- * returns the rows. Nothing here decides who may see what: the scope fragment is
+ * returns the rows. Nothing here decides who may see what: the scope fragments are
  * built once, in the handler, from `resolveExperienceScope`'s answer.
  */
 
@@ -41,6 +46,18 @@ export interface QueueQueryContext {
   params: unknown[];
   pageSize: number;
   offset: number;
+}
+
+/**
+ * The one query here that names a person, and therefore the one that needs the log's
+ * own scope predicate beside the object's.
+ *
+ * Built in the handler like every other fragment, because it is the same predicate
+ * `getCurationLog` and the conflict card use, and three copies of it is how they would
+ * come to disagree.
+ */
+export interface AnsweredQueryContext extends QueueQueryContext {
+  logScopeFilter: string;
 }
 
 export async function queryContents(
@@ -313,4 +330,189 @@ export async function queryWithdrawn(
     ORDER BY e.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
   `, [...params, pageSize, offset]);
+}
+
+/**
+ * The actions a verdict on a point writes, which is what the log has to be asked for.
+ *
+ * All four, not only the two that hide a point: the question this list answers is *who
+ * last decided*, and taking one axis back is as much a decision as setting it — a curator
+ * who undid a `lost` while a `former` still stands is the person the next reader of the
+ * card should be shown. Kept beside the query that reads them rather than imported from
+ * the writer, because `locationStateController.ts` names them one branch at a time and
+ * there is no list there to import.
+ */
+const POINT_VERDICT_ACTIONS = [
+  'location_marked_former', 'location_marked_lost',
+  'location_state_restored', 'location_missing_dismissed',
+];
+
+/**
+ * The points a curator has answered, and which no reader can see — the only surface
+ * they appear on at all (#544).
+ *
+ * The mirror of `keptOut` one level down, and it exists for the same reason that list
+ * does. Answering a withdrawal is what removes the row from `queryWithdrawn`: that query
+ * asks about a flagged point whose two axes are still clean, so a verdict on either axis
+ * takes it out — by design, or a card would come back with its own answer written on it.
+ * Nothing then showed it. A point is not reachable at its own address, and every
+ * reader-facing read carries `offeredLocationSql`, so an answered-and-hidden point was
+ * on no screen in the product and the verdict could not be taken back from it.
+ *
+ * **Two predicates, and both halves matter.** A verdict *stands* — `former` or `lost` —
+ * and no reader can see the point.
+ *
+ * The first is what there is to take back, and it is also what makes this row not a
+ * waiting one: `queryWithdrawn` asks about a flagged point whose two axes are still
+ * clean, so the two sets are disjoint by construction rather than by a guard either one
+ * carries. It is asked of the axes rather than of `state_decided_at`, though that column
+ * has a single writer and would answer nearly the same question, because the axes are
+ * *themselves* the record of a person: no arm of `locationWriter` ever writes `former` or
+ * `lost` — the schema comments on both columns say "set by a curator only", and ADR-0026
+ * decision 6 has the restore move toward `present` and never away. A row carrying a
+ * verdict and no timestamp would be a bug, and hiding it from the only screen that can
+ * undo it is the wrong way to answer one.
+ *
+ * The second is what makes this list the only way back rather than a second copy of the
+ * map, and it earns its place on one state: `{former, extant, flag NULL}`, which is
+ * visible, because membership is in no reader-facing read. A point in it is on the map at
+ * its own address, where its standing claim can be read, so listing it here would put a
+ * reachable point in a list whose whole premise is that nothing else reaches it.
+ *
+ * **No run produces that state**, and it is worth saying which does, since a wrong example
+ * here is what the next reader would build the next criterion from. Every arm of
+ * `locationWriter` that clears the flag restores membership in the same statement — the
+ * `returned` arm writes `missing_since = NULL` and `source_membership = 'present'`
+ * together, and its own note says why (a row returning visible while recorded as delisted
+ * could never be asked about again). What reaches it is a *person*: `POST
+ * /locations/:locationId/state` accepts `former` on a row whose flag is already clear, and
+ * leaves it clear, because only an answer with both axes clean clears anything. No card in
+ * the product sends that — the open card asks about flagged points and this one sends
+ * take-backs — so it is the documented endpoint's other clients, the audience
+ * `locationStateController.ts` names for its own unreachable-from-a-card branch.
+ *
+ * The pair also decides what one card can offer. Each standing verdict is taken back on
+ * its own, and the point returns to readers only where both axes come clear — which is
+ * `offeredLocationSql` read forward rather than a rule this list invents.
+ *
+ * **No object-level lifecycle guards, unlike every kind above.** `hidePendingSql`,
+ * `hideRefusedSql` and `e.missing_since IS NULL` are on the queue's questions so that one
+ * row never raises two cards whose answers contradict each other. This asks nothing, so
+ * there is nothing to contradict — and each of those guards hides the *object* from
+ * readers, which makes the point inside it more unreachable rather than less. Scope is
+ * the one filter that stays, because it is about who may look rather than about what is
+ * being asked.
+ *
+ * **`replacedMetres` is deliberately absent**, though `queryWithdrawn` carries it: that
+ * field exists to tell a rewritten coordinate from a component that really moved, which
+ * is the open question. This card is not re-asking it — it says what was answered and
+ * offers the way back — so paying for a nearest-neighbour distance per point would buy
+ * a sentence nobody is deciding from.
+ *
+ * **Capped like `contents` and unlike `withdrawn`**, and the difference between those two
+ * is why. A withdrawal card drains: a run raises it, a curator answers it, the row leaves.
+ * This one only ever *grows* — a point enters when it is answered and leaves only if the
+ * verdict is taken back — so on the catalogue's largest serial nomination, 758 points, a
+ * curator working through components over months would accumulate the answered ones into
+ * a single card, each row carrying its own state and its own map. The cap is
+ * `CONTENTS_ROWS_SHOWN` with the whole number beside it, which is the module's own rule:
+ * a list without its total is a silent cap.
+ */
+export async function queryAnsweredWithdrawals(
+  { scopeFilter, categoryFilter, logScopeFilter, params, pageSize, offset }: AnsweredQueryContext,
+): Promise<QueryResult> {
+  return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+    SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
+           ${lifecycleSelectSql()}, ${objectContextSelectSql()},
+           'withdrawn-answered' AS kind,
+           answered.total AS answered_points_total,
+           answered.items AS answered_points,
+           NULL::jsonb AS proposed
+    FROM experiences e
+    JOIN experience_categories c ON c.id = e.category_id
+    -- A lateral rather than a join and a GROUP BY, for the cap: the rows have to be
+    -- numbered before they are aggregated, or the list cannot be cut without cutting
+    -- the count with it. queryContents above has the same shape for the same reason.
+    CROSS JOIN LATERAL (
+      SELECT COUNT(*)::int AS total,
+             -- Newest answer first, which is the opposite of the queue's own ordering
+             -- and for the opposite reason: this list is not walked down. Someone comes
+             -- to it having just noticed a mis-click, and the row they want is the last
+             -- one they touched — which is also what makes the cap take the right rows.
+             MAX(decided_at) AS newest,
+             COALESCE(jsonb_agg(jsonb_build_object(
+               'id', id,
+               'name', name,
+               'externalRef', external_ref,
+               'missingSince', missing_since,
+               'latitude', lat,
+               'longitude', lon,
+               -- Both axes, because the card offers a way back from each one separately
+               -- and the point returns to readers only where both come clear. They are
+               -- also what the endpoint's own expected block is built from, so a card
+               -- drawn before someone else answered collides rather than overwrites.
+               'sourceMembership', source_membership,
+               'existence', existence,
+               'decidedAt', decided_at,
+               'note', note,
+               'decidedBy', decided_by,
+               'visited', visited
+             ) ORDER BY decided_at DESC NULLS LAST, id)
+               FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
+      FROM (
+        SELECT el.id, el.name, el.external_ref, el.missing_since,
+               ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
+               el.source_membership, el.existence,
+               el.state_decided_at AS decided_at, el.state_note AS note,
+               -- Who answered, read from the log rather than from
+               -- el.state_decided_by, and the difference is the scope. A curation act
+               -- belongs to the region it was made in, and the log endpoint drops an act
+               -- made by a curator of region B for a reader scoped only to A; the column
+               -- carries no region and would name them anyway. The conflict card takes
+               -- the same care with the same predicate, for the same reason.
+               --
+               -- NULL where the act is out of this reader's scope, or predates the log:
+               -- the card says "a curator" then, because someone still decided.
+               --
+               -- **The scope test is in the select list, not in the WHERE**, and the
+               -- difference is which act gets named. In the WHERE it picks the newest
+               -- act this reader may see; here it picks the newest act, then decides
+               -- whether it can be named. Those differ exactly when the newest act is
+               -- out of scope and an older one is not — and the row's own columns are
+               -- not scoped at all, so the WHERE form composed a sentence no single act
+               -- performed: curator A of R1 marks a point former, curator B of R2 marks
+               -- it lost with a note, and a reader scoped to R1 is shown B's timestamp
+               -- and B's words under A's name. Worse than no name, because it is a
+               -- claim rather than a gap. The conflict card takes its by and at off the
+               -- same log row and so cannot have this; here two of the three fields
+               -- come from experience_locations.
+               (SELECT CASE WHEN ${logScopeFilter} THEN u.display_name END
+                  FROM experience_curation_log log
+                  JOIN users u ON u.id = log.curator_id
+                 WHERE log.experience_id = e.id
+                   AND log.action = ANY($${params.length + 1}::text[])
+                   -- Compared as text rather than cast to int: the audit row is written
+                   -- by hand as JSON, and a cast is a statement-level error on any row
+                   -- whose value is not a number, where a comparison is simply false.
+                   AND log.details->>'locationId' = el.id::text
+                 ORDER BY log.created_at DESC, log.id DESC
+                 LIMIT 1) AS decided_by,
+               -- Whether anyone had been there, as the open card carries it: the visit
+               -- survives either answer (ADR-0022) and it is the weight of the decision
+               -- being taken back.
+               EXISTS (SELECT 1 FROM user_visited_locations v
+                        WHERE v.location_id = el.id) AS visited,
+               row_number() OVER (
+                 ORDER BY el.state_decided_at DESC NULLS LAST, el.id) AS rn
+        FROM experience_locations el
+        WHERE el.experience_id = e.id
+          AND (el.source_membership = 'former' OR el.existence = 'lost')
+          AND NOT (${offeredLocationSql('el')})
+      ) el
+    ) answered
+    WHERE answered.total > 0
+      AND ${scopeFilter} ${categoryFilter}
+    ORDER BY answered.newest DESC NULLS LAST, e.id
+    LIMIT $${params.length + 2} OFFSET $${params.length + 3}
+  `, [...params, POINT_VERDICT_ACTIONS, pageSize, offset]);
 }

@@ -20,13 +20,13 @@ import { ACCEPTABLE_FIELDS } from './acceptableFields.js';
 import {
   objectContextSelectSql, countedWorksSelectSql, QUEUE_PAGE_SIZE,
 } from './reviewQueueContext.js';
-import { queryContents, queryWithdrawn } from './reviewQueueContents.js';
+import { queryAnsweredWithdrawals, queryContents, queryWithdrawn } from './reviewQueueContents.js';
 
 /**
  * The decisions waiting for a curator, scoped to what they cover.
  * GET /api/experiences/review/queue?categoryId=&limit=&<kind>Offset=
  *
- * Seven kinds of open question, and one list that is not a question at all:
+ * Seven kinds of open question, and two lists that are not questions at all:
  *
  * - **gone from the source** — a run stamped `missing_since` and stopped there.
  *   Users still see the object exactly as before; nothing about it changes
@@ -67,8 +67,10 @@ import { queryContents, queryWithdrawn } from './reviewQueueContents.js';
  *   is, and it is answered at a different endpoint —
  *   `POST /locations/:locationId/state`.
  *
- * `keptOut` is the exception to all of it: those rows are answered, not
- * waiting, and are carried here only because nowhere else can show them.
+ * `keptOut` and `answeredWithdrawals` are the exception to all of it: those rows
+ * are answered, not waiting, and are carried here only because nowhere else can
+ * show them — one at the level of an object a rule kept out, one at the level of
+ * a point a curator answered and thereby left on no screen (#544).
  */
 export async function getReviewQueue(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
@@ -76,7 +78,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const { categoryId, limit = QUEUE_PAGE_SIZE } = req.query as {
     categoryId?: number; limit?: number;
   };
-  // Eight offsets, because they are eight queries with eight LIMITs. One shared number
+  // One offset per kind, because they are one query with one LIMIT each. A shared number
   // moved all of them at once, so a full page of one kind hid a page 2 that no control
   // could ask for.
   const q = req.query as Record<string, number | undefined>;
@@ -89,6 +91,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     held: q.heldOffset ?? 0,
     contents: q.contentsOffset ?? 0,
     withdrawn: q.withdrawnOffset ?? 0,
+    answeredWithdrawals: q.answeredWithdrawalsOffset ?? 0,
   };
 
   // Asked for one more than the page, so "is there another page" is answered by the rows
@@ -478,6 +481,11 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   const queryContext = { scopeFilter, categoryFilter, params, pageSize };
   const contents = await queryContents({ ...queryContext, offset: offsets.contents });
   const withdrawn = await queryWithdrawn({ ...queryContext, offset: offsets.withdrawn });
+  // The answered half of the one above, and the only list here that names a curator,
+  // which is why it takes the log's scope predicate as well as the object's.
+  const answeredWithdrawals = await queryAnsweredWithdrawals({
+    ...queryContext, logScopeFilter, offset: offsets.answeredWithdrawals,
+  });
 
   const pages = {
     missing: paged(missing.rows),
@@ -488,6 +496,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     held: paged(held.rows),
     contents: paged(contents.rows),
     withdrawn: paged(withdrawn.rows),
+    answeredWithdrawals: paged(answeredWithdrawals.rows),
   };
 
   // The arrays keep their names and their place at the top level — every reader of this
@@ -503,6 +512,7 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
     held: pages.held.items,
     contents: pages.contents.items,
     withdrawn: pages.withdrawn.items,
+    answeredWithdrawals: pages.answeredWithdrawals.items,
     limit: Number(limit),
     paging: Object.fromEntries(
       Object.entries(pages).map(([kind, page]) => [

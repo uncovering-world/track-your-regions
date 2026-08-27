@@ -402,13 +402,16 @@ export const cacheTtlBodySchema = z.object({
 });
 
 /**
- * The queue's eight kinds page independently, which is why there are eight offsets.
+ * The queue's kinds page independently, which is why there is an offset per kind.
  *
- * One shared offset was the defect: the kinds are eight separate queries with eight
- * separate LIMITs, so "next" moved all of them at once and a kind whose page was full had
+ * One shared offset was the defect: the kinds are separate queries with separate
+ * LIMITs, so "next" moved all of them at once and a kind whose page was full had
  * a page 2 no control could ask for. Nothing was unreachable while the largest kind held 19
  * against a limit of 25 — but the first gated round is measured at 139 cards, and at that
  * size the page silently hides work.
+ *
+ * Stated as a rule rather than as a tally: `answeredWithdrawals` is the ninth, and the
+ * next list added is a line here rather than three sentences to renumber.
  *
  * `limit` stays shared: it is a page size, and one number is what a reader means by it.
  */
@@ -425,6 +428,7 @@ export const reviewQueueQuerySchema = z.object({
   heldOffset: z.coerce.number().int().min(0).default(0),
   contentsOffset: z.coerce.number().int().min(0).default(0),
   withdrawnOffset: z.coerce.number().int().min(0).default(0),
+  answeredWithdrawalsOffset: z.coerce.number().int().min(0).default(0),
 });
 
 /**
