@@ -3,7 +3,7 @@
  *
  * Its own module because two files build queue rows now — the handler and the
  * contents/withdrawn queries beside it — and these fragments are what stop the
- * eight cards drifting into showing different amounts about the same object. A
+ * cards drifting into showing different amounts about the same object. A
  * shared fragment imported by both is the only arrangement in which that cannot
  * happen; keeping it in either file would have made the other import a
  * controller, or copy it.
@@ -29,7 +29,7 @@ export const QUEUE_PAGE_SIZE = 25;
  * showed the thing being judged: no picture, no coordinates, no way to open the source
  * page. Deciding meant leaving the queue.
  *
- * Carried on every kind through one fragment rather than added per query, so the eight
+ * Carried on every kind through one fragment rather than added per query, so the queue's
  * cards cannot drift into showing different amounts about the same object. It costs each
  * query only columns off the row it already reads plus one region lookup; the regions are
  * a list because an object crosses them, and their names are what a curator recognises —

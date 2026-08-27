@@ -1,9 +1,9 @@
 /**
- * Tests for the review queue's eight kinds.
+ * Tests for the review queue's kinds.
  *
  * Split out of `lifecycleController.test.ts` when that file passed eslint's
  * `max-lines` (1000, comments and blanks excluded). The seam was already there:
- * the queue is one read with eight independent queries, and everything left
+ * the queue is one read with an independent query per kind, and everything left
  * behind is a curator write under a row lock — and #526 split the controllers
  * along the same seam, so this file now sits beside the module it tests.
  *
@@ -22,6 +22,8 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { getReviewQueue } from './reviewQueueController.js';
+import { offeredLocationSql } from './experienceLifecycle.js';
+import { CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -192,7 +194,7 @@ describe('getReviewQueue', () => {
       makeRes() as never,
     );
 
-    // Eight queries with eight LIMITs: one shared offset moved all of them at once, so a
+    // One query with one LIMIT per kind: a shared offset moved all of them at once, so a
     // kind whose page was full had a page 2 no control could ask for.
     const [, refusedParams] = callMatching("e.admission = 'refused'\n      AND NOT");
     const [, conflictParams] = callMatching("'conflict' AS kind");
@@ -218,11 +220,15 @@ describe('getReviewQueue', () => {
     expect(answered.refused).toHaveLength(3);
     expect(answered.paging.refused).toEqual({ offset: 0, hasMore: true });
     expect(answered.paging.missing).toEqual({ offset: 0, hasMore: false });
-    // Still one query per kind and no ninth: "is there another page" is answered by the
-    // extra row, so no count query joins the eight. (The contents query counts a *row's*
+    // Still one query per kind and not one more: "is there another page" is answered by
+    // the extra row, so no count query joins them. (The contents query counts a *row's*
     // points and works, and the withdrawal query counts the points it still offers —
     // different numbers, both about one row, and both stay.)
-    expect(mockedQuery.mock.calls).toHaveLength(8);
+    //
+    // Counted off `paging` rather than written as a number, so a kind added is a line
+    // in the handler rather than a tally here to renumber — which is what a `9` would
+    // have become the moment `answeredWithdrawals` landed.
+    expect(mockedQuery.mock.calls).toHaveLength(Object.keys(answered.paging).length);
     // And every one of them asked for `limit + 1`. The mock answers with four rows whatever
     // it is asked, so without this the page size could regress to `limit` and the three
     // items plus `hasMore: true` above would still be produced — by the mock, not the code.
@@ -737,9 +743,9 @@ describe('getReviewQueue', () => {
     expect(body.withdrawn).toEqual([
       expect.objectContaining({ id: 502, name: 'Bilbao Fine Arts Museum' }),
     ]);
-    // Eight queries with eight LIMITs, so eight offsets: one shared number moved
-    // all of them at once, and a full page of one kind hid a page 2 no control
-    // could ask for.
+    // One query with one LIMIT per kind, so one offset per kind: a shared number
+    // moved all of them at once, and a full page of one kind hid a page 2 no
+    // control could ask for.
     expect(body.paging.withdrawn).toEqual({ offset: 0, hasMore: false });
   });
 
@@ -758,5 +764,119 @@ describe('getReviewQueue', () => {
       held: [],
       contents: [],
     }));
+  });
+
+  describe('the withdrawals a curator has already answered', () => {
+    it('asks for the points whose verdict stands and which no reader can see', async () => {
+      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+      // Both halves of the criterion, and neither alone is it. A verdict stands —
+      // which is what there is to take back, and what no arm of `locationWriter`
+      // can produce, both columns being a curator's by the schema's own comment —
+      // and no reader-facing read shows the point, which is what makes this list
+      // the only way back rather than a second copy of the map. One whose verdict
+      // a run has since overtaken fails the second half and is on the map.
+      const [answeredSql] = callMatching("'withdrawn-answered' AS kind");
+      expect(answeredSql).toContain(
+        "(el.source_membership = 'former' OR el.existence = 'lost')");
+      expect(answeredSql).toContain(
+        `NOT (${offeredLocationSql('el')})`);
+    });
+
+    it('cannot show a point the card above is still asking about', async () => {
+      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+      // Disjoint by construction rather than by a guard: the waiting query wants
+      // both axes clean, this one wants either set. It has to be construction,
+      // because a point can be answered and then withdrawn *again* — a false
+      // alarm clears the flag, the source drops the point once more, and the run
+      // re-flags a row that already carries a decision date. Keyed on that date
+      // the same point would raise two cards at once, one of them with nothing on
+      // it to take back.
+      const [answeredSql] = callMatching("'withdrawn-answered' AS kind");
+      const [waitingSql] = callMatching("'withdrawn' AS kind");
+      expect(waitingSql).toContain("el.source_membership = 'present'");
+      expect(waitingSql).toContain("el.existence = 'extant'");
+      expect(answeredSql).not.toContain('el.state_decided_at IS NOT NULL');
+    });
+
+    it('carries no object-level guard, because it asks nothing', async () => {
+      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+      // The queue's questions exclude a refused, unread or missing *object* so
+      // that one row never raises two cards whose answers contradict each other.
+      // This list asks nothing, so there is nothing to contradict — and each of
+      // those guards hides the object from readers, which makes the point inside
+      // it more unreachable rather than less. Pinned because dropping them was
+      // the deliberate part: copied from the card above, the guards would take a
+      // verdict off the only screen that can undo it.
+      const [answeredSql] = callMatching("'withdrawn-answered' AS kind");
+      expect(answeredSql).not.toContain("e.admission <> 'refused'");
+      expect(answeredSql).not.toContain('e.missing_since IS NULL');
+    });
+
+    it('names the curator through the log, under the log’s own scope', async () => {
+      await getReviewQueue({ user: CURATOR, query: {} } as never, makeRes() as never);
+
+      // A curation act belongs to the region it was made in: the log endpoint
+      // drops an act made by a curator of region B for a reader scoped only to A,
+      // and the conflict card takes the same care. `state_decided_by` carries no
+      // region and would name them anyway, which is why this reads the log.
+      const [answeredSql] = callMatching("'withdrawn-answered' AS kind");
+      expect(answeredSql).toContain('experience_curation_log log');
+      expect(answeredSql).toContain('log.region_id IN (SELECT id FROM curator_scoped_regions)');
+      expect(answeredSql).not.toContain('JOIN users u ON u.id = el.state_decided_by');
+    });
+
+    it('picks the newest verdict first and only then asks whether it can be named', async () => {
+      await getReviewQueue({ user: CURATOR, query: {} } as never, makeRes() as never);
+
+      // The scope test belongs in the select list, not in the subquery's WHERE, and the
+      // difference is which act gets named. In the WHERE it returns the newest act this
+      // reader may *see*; in the select list it returns the newest act, named or not.
+      // Those differ exactly when the newest act is out of scope and an older one is
+      // not — and `decidedAt` and `note` come off `experience_locations`, which carries
+      // no region, so the WHERE form composed one sentence out of two acts: an earlier
+      // curator's name over a later curator's timestamp and words.
+      const [answeredSql] = callMatching("'withdrawn-answered' AS kind");
+      expect(answeredSql).toMatch(/SELECT CASE WHEN [\s\S]*? THEN u\.display_name END/);
+      // ...and the scope term appears once, so it cannot also still be narrowing the rows.
+      expect(answeredSql.split('log.region_id IS NULL')).toHaveLength(2);
+    });
+
+    it('caps the points it lists, and says how many there are', async () => {
+      await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+      // Capped where the waiting card is not, and the difference is that this list only
+      // grows: a point enters when it is answered and leaves only if the verdict is taken
+      // back. On the catalogue's largest serial nomination, 758 points, an object worked
+      // through over months would arrive as one card of hundreds of rows. The total sits
+      // beside the list because a list without one is a silent cap — the module's own rule.
+      const [answeredSql] = callMatching("'withdrawn-answered' AS kind");
+      expect(answeredSql).toContain(`FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN})`);
+      expect(answeredSql).toContain('answered.total AS answered_points_total');
+    });
+
+    it('returns them under their own key, with their own pager', async () => {
+      const res = makeRes();
+      mockedQuery.mockImplementation(async (sql: string) => (
+        String(sql).includes("'withdrawn-answered' AS kind")
+          ? { rows: [{ id: 1592, name: 'Bilbao Fine Arts Museum' }] }
+          : { rows: [] }
+      ));
+
+      await getReviewQueue({ user: ADMIN, query: { answeredWithdrawalsOffset: 25 } } as never, res as never);
+
+      const body = res.json.mock.calls[0][0];
+      expect(body.answeredWithdrawals).toEqual([
+        expect.objectContaining({ id: 1592, name: 'Bilbao Fine Arts Museum' }),
+      ]);
+      // Its own offset like every other kind, and it needs one for the same
+      // reason `keptOut` does: the page renders this list in a block of its own,
+      // so a shared number would page it whenever a curator paged the work.
+      expect(body.paging.answeredWithdrawals).toEqual({ offset: 25, hasMore: false });
+      const [, params] = callMatching("'withdrawn-answered' AS kind");
+      expect(params[params.length - 1]).toBe(25);
+    });
   });
 });
