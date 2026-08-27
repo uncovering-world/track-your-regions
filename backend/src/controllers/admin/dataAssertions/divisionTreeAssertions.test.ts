@@ -7,7 +7,8 @@
  * copy of the other would look clean while halving what is watched: a
  * `has_children` corrected in place without moving the polygon leaves the map's
  * hole exactly where it was. Both also have to stay cheap enough for a report
- * that answers in two and a half seconds, which is why neither may reach for
+ * that answers in about eleven seconds, eight of which one rule already spends
+ * reading a full-resolution column, which is why neither may reach for
  * `ST_Area`.
  */
 import { describe, it, expect } from 'vitest';
