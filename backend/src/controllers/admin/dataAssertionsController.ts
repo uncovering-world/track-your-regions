@@ -79,8 +79,10 @@ function ledgerNotice(error: Error | undefined): string | null {
  * The whole report: every assertion, what it found, and what was accepted.
  * GET /api/admin/data-assertions
  *
- * A statement per assertion over the catalogue, a couple of seconds on the dev
- * database — which is why it sits behind the expensive-admin limiter and is
+ * A statement per assertion over the catalogue, about eleven seconds on the dev
+ * database — eight of them one rule reading a full-resolution geometry column
+ * (`rung-unlike-its-source`) — which is why it sits behind the expensive-admin
+ * limiter and is
  * fetched when a person opens the section rather than polled. The count of them
  * is not written here: a number above a list is what goes stale when a rule
  * joins it, which is the same reasoning the ASVS note carries.

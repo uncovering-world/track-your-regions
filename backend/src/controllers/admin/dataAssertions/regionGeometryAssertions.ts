@@ -8,8 +8,11 @@
  * the North Sea (#666). Four of the eight top-level regions of the same world
  * view held a geometry covering a fraction of what they contain — North America
  * is 18.3 % of its children — and two countries carried no geometry at all
- * (#667). Every run had reported success. These four rules are the resting-state
- * check the other lanes cannot be: they read the rows.
+ * (#667). A third arrived the same way: the rung the map serves drew 66 holes
+ * over north-eastern Thailand where the data has 8, because the simplification
+ * that made it was not topology-preserving (#685). Every run had reported
+ * success. These five rules are the resting-state check the other lanes cannot
+ * be: they read the rows.
  *
  * The first is the one that must not be a second copy of the trigger's own
  * arithmetic, or it would agree with the trigger on every row the trigger got
@@ -277,9 +280,152 @@ const regionWithoutGeometry: CatalogueAssertion = {
   },
 };
 
+/**
+ * A display rung that is not the shape it was made from, only coarser.
+ *
+ * The fifth rule, and the one a person found by looking at the map rather than
+ * at anything here: north-eastern Thailand was drawn with 66 holes in it where
+ * the data has 8 (#685). `ST_SimplifyVW` moves every ring on its own, so a
+ * simplified outline crosses itself and two parts that were disjoint come to
+ * overlap — and the `ST_MakeValid` every geometry write ends with then resolves
+ * the overlap the only way it can, by carving it out as an interior ring. The
+ * eight root regions of the Administrative world view hold 610 interior rings
+ * between them and their 1 km rung carried 1,933.
+ *
+ * That pass failed the same shape twice, so the rule is asked twice. It also
+ * **annihilated** a ring narrower than its tolerance, and the vertex floor then
+ * dropped what came back degenerate: 436 of Asia's 26,151 pieces went at the
+ * 1 km rung, against rule 12. So a rung may not gain a hole, and may not lose a
+ * piece — except at the two cheap rungs, where dropping a piece below the rung's
+ * own scale is the decision ADR-0031 took, and where only the holes half is
+ * asked.
+ *
+ * Both halves are exact rather than thresholds, because simplification does not
+ * add rings and the rungs at 5 km and finer keep every part. And the second half
+ * is what a *library* change would trip: `ST_CoverageSimplify` neither drops a
+ * piece nor closes a hole on PostGIS 3.5.6 / GEOS 3.14.1 — measured, a 100 m
+ * speck 50 km from a square and a 200 m lake inside it both survive a 5 km
+ * pass — but `docker-compose.yml` pins `postgis/postgis:17-3.5-alpine`, which
+ * floats GEOS. This is the rule that notices when it stops being true.
+ *
+ * Counting rings and parts is not a second copy of what the pass computes, so
+ * this cannot agree with a broken writer the way a re-derivation would. What it
+ * does share is the *input*: the low and medium rungs of a hull region come from
+ * its hull, so comparing them against `geom_3857` would report every hull region
+ * whose rungs are right — a concave hull bridges the gaps between the parts it
+ * wraps and can enclose a lagoon the geometry leaves open. Sharing the trigger's
+ * input is not sharing its arithmetic, the same distinction `framedAsTheWorld`
+ * makes above. The `_real` pair is always made from the real geometry, hull or
+ * no hull, so it is compared against that.
+ *
+ * It is the only rule here that reads a full-resolution column for *every* row —
+ * `framedAsTheWorld` above reads one too, but only for the rows whose stored box
+ * is already global — and that is the whole of its cost: one PostGIS call over `regions.geom_3857` detoasts
+ * 11.7 M points and takes 2.6 s, against 0.35 s for all six rungs together, and
+ * there is no stored ring count to read instead the way
+ * `parentShortOfItsChildren` reads `geom_area_km2`. Two things were tried and
+ * only one paid. `MATERIALIZED` is load-bearing: without it the planner inlines
+ * the CTE and re-reads the source for every rung named below, 20 s a run against
+ * 8. Hoisting each column's two calls into a lateral so they might share one
+ * detoast is not — measured at 8.1 s against 8.4 s, because each call detoasts
+ * on its own regardless — so the plainer form stands.
+ *
+ * `administrative_divisions` is not covered, and its rendered rungs come off the
+ * same function. Reading its full-resolution column is what would cost: the
+ * eight root divisions weigh 386 MB between them (ADR-0031 decision 5) against
+ * a report that answers in seconds. What holds the rule there is
+ * `renderedRungTopology.test.ts`, which reads the schema rather than the rows.
+ */
+const rungUnlikeItsSource: CatalogueAssertion = {
+  id: 'rung-unlike-its-source',
+  area: 'regions',
+  title: 'A display rung drawing holes its source has not, or missing pieces its source has',
+  kind: 'invariant',
+  meaning:
+    'The map draws white blobs inside the region at the zooms that rung serves, or leaves out '
+    + 'islands the region has — neither is in any data, only in the pass that made the rung. '
+    + 'Rebuild the rungs with db/migrations/037-topology-preserving-rungs.sql (#685, ADR-0036). '
+    + 'A row still here after that means whatever wrote the rung is losing shape again, rather '
+    + 'than a backlog — and a missing piece on a rung of 5 km or finer is the shape a PostGIS or '
+    + 'GEOS upgrade would arrive in, since the image tag floats.',
+  sql: `WITH shape AS MATERIALIZED (
+          SELECT r.id, r.name, r.world_view_id,
+                 ST_NRings(eff.g) - ST_NumGeometries(eff.g)             AS own_rings,
+                 ST_NumGeometries(eff.g)                                AS own_parts,
+                 ST_NRings(r.geom_3857) - ST_NumGeometries(r.geom_3857) AS real_rings,
+                 ST_NumGeometries(r.geom_3857)                          AS real_parts,
+                 ST_NRings(r.geom_simplified_medium)
+                   - ST_NumGeometries(r.geom_simplified_medium)         AS medium_rings,
+                 ST_NumGeometries(r.geom_simplified_medium)             AS medium_parts,
+                 ST_NRings(r.geom_simplified_low)
+                   - ST_NumGeometries(r.geom_simplified_low)            AS low_rings,
+                 ST_NumGeometries(r.geom_simplified_low)                AS low_parts,
+                 ST_NRings(r.geom_simplified_coarse)
+                   - ST_NumGeometries(r.geom_simplified_coarse)         AS coarse_rings,
+                 ST_NRings(r.geom_overview)
+                   - ST_NumGeometries(r.geom_overview)                  AS overview_rings,
+                 ST_NRings(r.geom_simplified_medium_real)
+                   - ST_NumGeometries(r.geom_simplified_medium_real)    AS medium_real_rings,
+                 ST_NumGeometries(r.geom_simplified_medium_real)        AS medium_real_parts,
+                 ST_NRings(r.geom_simplified_low_real)
+                   - ST_NumGeometries(r.geom_simplified_low_real)       AS low_real_rings,
+                 ST_NumGeometries(r.geom_simplified_low_real)           AS low_real_parts
+            FROM regions r
+            CROSS JOIN LATERAL (
+                  SELECT CASE WHEN COALESCE(r.uses_hull, false)
+                              THEN COALESCE(r.hull_geom_3857, r.geom_3857)
+                              ELSE r.geom_3857 END AS g
+                 ) eff
+           WHERE r.geom_3857 IS NOT NULL
+        ),
+        rung AS (
+          SELECT s.id, s.name, s.world_view_id, v.label, v.counted, v.drawn, v.held
+            FROM shape s
+            CROSS JOIN LATERAL (VALUES
+              ('1 km rung',        'holes',  s.medium_rings,      s.own_rings),
+              ('5 km rung',        'holes',  s.low_rings,         s.own_rings),
+              ('10 km rung',       'holes',  s.coarse_rings,      s.own_rings),
+              ('50 km rung',       'holes',  s.overview_rings,    s.own_rings),
+              ('1 km island rung', 'holes',  s.medium_real_rings, s.real_rings),
+              ('5 km island rung', 'holes',  s.low_real_rings,    s.real_rings),
+              -- The two cheap rungs are absent here on purpose: dropping a piece
+              -- below their own scale is ADR-0031 decision 1, not a defect.
+              ('1 km rung',        'pieces', s.medium_parts,      s.own_parts),
+              ('5 km rung',        'pieces', s.low_parts,         s.own_parts),
+              ('1 km island rung', 'pieces', s.medium_real_parts, s.real_parts),
+              ('5 km island rung', 'pieces', s.low_real_parts,    s.real_parts)
+            ) AS v(label, counted, drawn, held)
+           WHERE (v.counted = 'holes'  AND v.drawn > v.held)
+              OR (v.counted = 'pieces' AND v.drawn < v.held)
+        )
+        SELECT worst.region_id, worst.region_name, worst.world_view_name,
+               worst.rung, worst.counted, worst.drawn, worst.held
+          FROM (
+            SELECT DISTINCT ON (x.id)
+                   x.id AS region_id, x.name AS region_name, w.name AS world_view_name,
+                   x.label AS rung, x.counted, x.drawn, x.held,
+                   abs(x.drawn - x.held) AS off_by
+              FROM rung x
+              JOIN world_views w ON w.id = x.world_view_id
+             ORDER BY x.id, abs(x.drawn - x.held) DESC
+          ) worst
+         ORDER BY worst.off_by DESC, worst.region_name`,
+  describe: (row) => {
+    // One invented hole, or one lost island, is the smallest this rule can
+    // report — and it is the shape a regression arrives in before it is 555.
+    const drawn = count(row, 'drawn');
+    const counted = text(row, 'counted');
+    const noun = drawn === 1 ? counted.replace(/s$/, '') : counted;
+    return `${text(row, 'region_name')} (${text(row, 'world_view_name')}): the ${text(row, 'rung')} `
+      + `draws ${drawn} ${noun} where the shape it is made from has `
+      + `${count(row, 'held')} (region ${count(row, 'region_id')})`;
+  },
+};
+
 export const regionGeometryAssertions: CatalogueAssertion[] = [
   framedAsTheWorld,
   anchorFarFromItsRegion,
   parentShortOfItsChildren,
   regionWithoutGeometry,
+  rungUnlikeItsSource,
 ];

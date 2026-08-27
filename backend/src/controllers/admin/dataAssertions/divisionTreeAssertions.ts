@@ -27,8 +27,9 @@
  * Neither can be answered by comparing areas, which is how the same question is
  * asked of regions. `administrative_divisions.geom_area_km2` is declared and
  * never written — no trigger fills it — and measuring 392 112 polygons on the
- * fly costs eight seconds against a report that answers in two and a half. It
- * would also not fire: a country is short by its holes, and Thailand's 20 742
+ * fly costs eight seconds, which is what one rule reading a full-resolution
+ * column already costs this report (`rung-unlike-its-source`). It would also not
+ * fire: a country is short by its holes, and Thailand's 20 742
  * km² are 4 % of it, far inside the nine tenths that rule allows. What separates
  * these rows is exact and costs an index lookup, so that is what is asked.
  */

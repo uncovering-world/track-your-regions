@@ -18,7 +18,7 @@ const byId = (id: string) => {
 };
 const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
 
-describe('the four geometry assertions', () => {
+describe('the five geometry assertions', () => {
   it('all live in the regions area, with a title and a meaning', () => {
     for (const a of regionGeometryAssertions) {
       expect(a.area).toBe('regions');
@@ -134,5 +134,109 @@ describe('region-without-geometry', () => {
       .toBe('Canada (Administrative): no geometry at all, under North America (region 7456)');
     expect(rule.describe({ region_id: 5201, region_name: 'Antarctica', world_view_name: 'Administrative', parent_name: null }))
       .toBe('Antarctica (Administrative): no geometry at all (region 5201)');
+  });
+});
+
+describe('rung-unlike-its-source', () => {
+  const rule = byId('rung-unlike-its-source');
+  const sql = collapse(rule.sql);
+
+  it('is exact rather than a threshold, in both directions', () => {
+    // Simplification makes an outline coarser: it cannot add a ring, and the
+    // rungs at 5 km and finer cannot lose a part (rule 12). So there is no
+    // proportion to tolerate here, unlike the parent/children rule above.
+    expect(rule.kind).toBe('invariant');
+    expect(sql).toContain("WHERE (v.counted = 'holes' AND v.drawn > v.held)");
+    expect(sql).toContain("OR (v.counted = 'pieces' AND v.drawn < v.held)");
+    expect(sql).not.toContain('0.9');
+  });
+
+  it('counts rings and parts rather than re-deriving the rung', () => {
+    // A second copy of the pass would agree with a broken writer on every row
+    // it got wrong.
+    expect(sql).toContain('ST_NRings(');
+    expect(sql).toContain('ST_NumGeometries(');
+    expect(sql).not.toContain('simplify_for_zoom');
+    expect(sql).not.toContain('ST_CoverageSimplify');
+    expect(sql).not.toContain('ST_SimplifyVW');
+  });
+
+  it('compares each rung against the shape that rung is made from', () => {
+    // A hull region's low and medium rungs come from its hull, and a concave
+    // hull can enclose a lagoon the geometry leaves open — so comparing them
+    // against geom_3857 would report every hull region whose rungs are right.
+    expect(sql).toContain('THEN COALESCE(r.hull_geom_3857, r.geom_3857)');
+    expect(sql).toContain('ELSE r.geom_3857 END AS g');
+    // The island source is always made from the real geometry, hull or no hull.
+    expect(sql).toContain("('1 km island rung', 'holes', s.medium_real_rings, s.real_rings)");
+    expect(sql).toContain("('5 km island rung', 'pieces', s.low_real_parts, s.real_parts)");
+  });
+
+  it('asks every rendered rung for its holes, the two cheap ones included', () => {
+    // The count and the comparison, not just the count: reading a column proves
+    // nothing if the rung it belongs to was dropped from the VALUES list below.
+    for (const [label, column, rings, source] of [
+      ['1 km rung', 'geom_simplified_medium', 'medium_rings', 'own_rings'],
+      ['5 km rung', 'geom_simplified_low', 'low_rings', 'own_rings'],
+      ['10 km rung', 'geom_simplified_coarse', 'coarse_rings', 'own_rings'],
+      ['50 km rung', 'geom_overview', 'overview_rings', 'own_rings'],
+      ['1 km island rung', 'geom_simplified_medium_real', 'medium_real_rings', 'real_rings'],
+      ['5 km island rung', 'geom_simplified_low_real', 'low_real_rings', 'real_rings'],
+    ]) {
+      expect(sql, `no rung counts ${column}`).toContain(`ST_NRings(r.${column})`);
+      expect(sql, `${label} is not compared for holes`)
+        .toContain(`('${label}', 'holes', s.${rings}, s.${source})`);
+    }
+  });
+
+  it('asks only the rungs at 5 km and finer for their pieces', () => {
+    // Dropping a piece below its own scale is what the two cheap rungs are for
+    // (ADR-0031 decision 1), so asking them would report the decision as a bug.
+    for (const rung of ['1 km rung', '5 km rung', '1 km island rung', '5 km island rung']) {
+      expect(sql, `${rung} is not asked for its pieces`).toContain(`('${rung}', 'pieces'`);
+    }
+    for (const rung of ['10 km rung', '50 km rung']) {
+      expect(sql, `${rung} must not be asked for its pieces`).not.toContain(`('${rung}', 'pieces'`);
+    }
+  });
+
+  it('reads each geometry once, which is the difference between 8 and 20 seconds', () => {
+    // Without MATERIALIZED the planner inlines the CTE and re-reads the
+    // full-resolution column for every rung the comparison below names.
+    expect(sql).toContain('WITH shape AS MATERIALIZED (');
+    // The comparison is over integers: no geometry column reaches the VALUES list.
+    const from = sql.indexOf('CROSS JOIN LATERAL (VALUES');
+    const to = sql.indexOf('AS v(label');
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    expect(sql.slice(from, to)).not.toContain('geom');
+  });
+
+  it('reports one row per region, the worst of its rungs', () => {
+    // Ten questions off one bad pass are one defect, not ten lines of a report.
+    expect(sql).toContain('DISTINCT ON (x.id)');
+    expect(sql).toContain('ORDER BY x.id, abs(x.drawn - x.held) DESC');
+  });
+
+  it('says the row as what is drawn against what the source holds', () => {
+    expect(rule.describe({
+      region_id: 5212, region_name: 'Asia', world_view_name: 'Administrative',
+      rung: '1 km rung', counted: 'holes', drawn: 555, held: 35,
+    })).toBe('Asia (Administrative): the 1 km rung draws 555 holes where the shape it is made from has 35 (region 5212)');
+    expect(rule.describe({
+      region_id: 5212, region_name: 'Asia', world_view_name: 'Administrative',
+      rung: '1 km rung', counted: 'pieces', drawn: 25715, held: 26151,
+    })).toBe('Asia (Administrative): the 1 km rung draws 25715 pieces where the shape it is made from has 26151 (region 5212)');
+  });
+
+  it('says one of a thing as one, which is the size a regression arrives in', () => {
+    expect(rule.describe({
+      region_id: 5648, region_name: 'Mongolia', world_view_name: 'Administrative',
+      rung: '1 km rung', counted: 'holes', drawn: 1, held: 0,
+    })).toBe('Mongolia (Administrative): the 1 km rung draws 1 hole where the shape it is made from has 0 (region 5648)');
+    expect(rule.describe({
+      region_id: 7100, region_name: 'Malta', world_view_name: 'Administrative',
+      rung: '5 km rung', counted: 'pieces', drawn: 1, held: 2,
+    })).toBe('Malta (Administrative): the 5 km rung draws 1 piece where the shape it is made from has 2 (region 7100)');
   });
 });

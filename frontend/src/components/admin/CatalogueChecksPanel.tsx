@@ -228,7 +228,7 @@ export function CatalogueChecksPanel() {
       });
       // The endpoint answers with the check it just recorded, so the one line
       // that changed is written into the cache. Invalidating instead would
-      // re-run every statement per press — a couple of seconds of database
+      // re-run every statement per press — about eleven seconds of database
       // work, and a second request against the limiter, for an answer the
       // server has already given.
       queryClient.setQueryData(['admin', 'data-assertions'], (previous?: DataAssertionReport) => {

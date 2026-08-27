@@ -255,11 +255,13 @@ router.get('/data-assertions', expensiveAdminLimiter, getDataAssertions);
 // state this screen exists for is a database where nobody has answered for
 // anything — a press per invariant, one after another, which five a minute
 // would refuse halfway through. One accept re-runs a single assertion and
-// inserts one row. That one statement is not always cheap — the geometry rules
-// added in #668 put one of them near a second — so the two buckets no longer
-// differ by an order of magnitude in database work admitted per minute. They
-// still differ in what they are ceilings on: the report is a whole scan any
-// caller can repeat, while an accept is a person answering for one rule and
+// inserts one row. That one statement is not always cheap — the rung rule reads
+// a full-resolution geometry column and takes eight seconds (#685) — so the
+// order the two buckets were in has inverted: 60 presses a minute is up to eight
+// minutes of database work per minute from one address, against the report
+// bucket's five scans of about eleven seconds. What holds is not the ratio but
+// what each is a ceiling on: the report is a whole scan any caller can repeat,
+// while an accept is a person answering for one rule and
 // runs out of rules to answer for.
 router.post(
   '/data-assertions/accept',
