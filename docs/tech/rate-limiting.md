@@ -73,17 +73,21 @@ what goes stale when a route is added to the row below (it has already happened 
 
 The catalogue checks split across both buckets on the same rule, and the split is
 the point. `GET /api/admin/data-assertions` runs a statement per assertion over
-the whole catalogue — about 2.5 seconds — so it is expensive on its own and takes
-the five-a-minute bucket. `POST …/accept` runs one of those statements and inserts
+the whole catalogue — about 11 seconds, of which the rung rule is 8 because it
+reads a full-resolution geometry column for every row — so it is expensive on its
+own and takes the five-a-minute bucket. `POST …/accept` runs one of those statements and inserts
 one row, and the state the screen exists for is a database where nobody has
 answered for anything: a press per invariant. No count is written here, for the
 reason the ASVS note gives: a number above a list is what goes stale when a rule
 joins it, and a rule joining moves the statements and the invariants together.
-The two buckets stopped differing by an order of magnitude in work admitted when
-the geometry rules arrived — one of them takes about a second on its own — so
-the distinction that carries the split is what each is a ceiling on: the report
-is a whole scan any caller can repeat at will, while an accept is a person
-answering for one rule and runs out of rules to answer for. Every limiter here is keyed by IP,
+The order the two buckets were in has since inverted, and the split survives it.
+One statement now takes eight seconds on its own — the rung rule, which reads a
+full-resolution geometry column (#685) — so the 60-a-minute bucket admits up to
+eight minutes of database work per minute against the five-a-minute bucket's five
+scans of about eleven seconds. What carries the split was never the ratio: it is
+what each is a ceiling on. The report is a whole scan any caller can repeat at
+will, while an accept is a person answering for one rule and runs out of rules to
+answer for, and pressing the same one again records the same number. Every limiter here is keyed by IP,
 so five a minute is five for the whole address that admin works from — on the
 expensive bucket they would be refused halfway through their first pass, a minute
 at a time, which is the failure the last row of "Adding rate limiting to new
