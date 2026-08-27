@@ -37,6 +37,24 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`037-topology-preserving-rungs.sql` rebuilds every rendered rung of `regions` and
+`administrative_divisions` (#685). `simplify_for_zoom()` simplified with `ST_SimplifyVW`,
+which moves each ring on its own: the simplified outline crosses itself, two parts that
+were disjoint come to overlap, and the `ST_MakeValid` every geometry write ends with then
+resolves the overlap by carving it out as an interior ring. So each rung drew holes that
+are in no data, and more of them the coarser the rung — 1,933 across the eight root regions
+of the Administrative world view, which hold 610, and 66 over north-eastern Thailand where
+the data has 8. The function now uses `ST_CoverageSimplify` (ADR-0036) and this file
+recomputes what the old one wrote: per row first, then the coverage pass over each sibling
+set, because only that pass can keep a border shared between two rows (rule 15). It repairs
+no data and drops no column — every value in it is derived, and a second run arrives at the
+same shapes. It refuses to run against the old function definition, since it would
+otherwise spend its whole runtime writing back the shapes it exists to replace, and it
+checks the rows before committing. It is hours rather than minutes — 2 h 24 m on a development
+database, since every rung is recomputed from full resolution — and raises a NOTICE with the
+elapsed time as each pass finishes, so a long run can be told from a stuck one. Follow it with
+`VACUUM (ANALYZE)` on both tables, as 008 and 030 say.
+
 `036-parent-geometry-invalidation-trigger.sql` moves ancestor geometry invalidation into
 the database, so that no writer of `regions.geom` can bypass it (#680). A region's outline
 is the union of what is under it, so a write leaves every derived ancestor covering a
