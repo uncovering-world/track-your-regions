@@ -288,6 +288,16 @@ const requiredUrl = (max: number, isStorable: (value: string) => boolean, messag
 
 const requiredSafeUrlSchema = requiredUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
 
+/**
+ * A link that may be left unsaid but not emptied: a region's source page
+ * (#703). `safeUrlSchema` reads '' as "clear the field", which fits a curator's
+ * form, where the controller turns it into NULL. Nothing does for
+ * `source_url` -- the rename handler writes the value it is given, and every
+ * reader of the column tests it for truthiness -- so a page is either named or
+ * not sent, and '' stays refused, the way `z.string().url()` refused it.
+ */
+const optionalSafeUrlSchema = requiredSafeUrlSchema.optional();
+
 export const editExperienceBodySchema = z.object({
   name: z.string().min(1).max(500).optional(),
   shortDescription: z.string().max(1000).optional(),
@@ -790,7 +800,9 @@ const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
     regionMapUrl: safeUrlSchema,
     mapImageCandidates: z.array(requiredSafeUrlSchema).max(20).optional(),
     wikidataId: z.string().regex(/^Q\d+$/).optional(),
-    sourceUrl: z.string().url().max(2000).optional(),
+    // The one url of the three that reaches an <a href>, where a scheme that
+    // executes does so on click (#703). Same rule, in its link form.
+    sourceUrl: optionalSafeUrlSchema,
     children: z.array(importTreeNodeSchema).default([]),
   }),
 );
@@ -935,7 +947,7 @@ export const wvImportAddChildSchema = z.object({
   parentRegionId: z.coerce.number().int().positive(),
   // Inserted verbatim as the new child's regions.name.
   name: z.string().min(1).max(255),
-  sourceUrl: z.string().url().max(2000).optional(),
+  sourceUrl: optionalSafeUrlSchema,
   sourceExternalId: z.string().max(100).optional(),
 });
 
@@ -949,7 +961,7 @@ export const wvImportRenameRegionSchema = z.object({
   regionId: z.coerce.number().int().positive(),
   // Written straight into regions.name.
   name: z.string().min(1).max(255),
-  sourceUrl: z.string().url().max(2000).optional(),
+  sourceUrl: optionalSafeUrlSchema,
   sourceExternalId: z.string().max(100).optional(),
 });
 

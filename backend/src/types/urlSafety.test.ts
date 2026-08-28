@@ -24,6 +24,8 @@ import {
   wvImportBodySchema,
   wvImportSelectMapImageSchema,
   wvImportVisionMatchSchema,
+  wvImportAddChildSchema,
+  wvImportRenameRegionSchema,
 } from './index.js';
 import { isStorableHttpUrl, isStorableImageUrl } from './urlSafety.js';
 
@@ -259,6 +261,82 @@ describe("a region's imported map is held to the same rule", () => {
 });
 
 /**
+ * A region's source page is the third url an import tree carries, and the only
+ * one that reaches an `<a href>` (#703). It arrives three ways -- a node of an
+ * import tree, a child added during review, and a rename that enriches a
+ * region with the page an AI review found -- and each of them used to be
+ * `z.string().url()`, the same check #694 replaced for the two picture fields
+ * two lines above it in the same schema. What makes it a different class from
+ * the map: `javascript:` in an `img src` has not executed since Netscape 4,
+ * but in an `href` it runs on click, in the admin's session, on every browser.
+ */
+describe("a region's source page is held to the link rule", () => {
+  const WIKIVOYAGE_PAGE = 'https://en.wikivoyage.org/wiki/Saharan_Atlas';
+
+  const tree = (node: Record<string, unknown>) =>
+    wvImportBodySchema.safeParse({ name: 'A world view', tree: { name: 'Root', ...node } });
+  const addChild = (sourceUrl: unknown) =>
+    wvImportAddChildSchema.safeParse({ parentRegionId: 1, name: 'Saharan Atlas', sourceUrl });
+  const rename = (sourceUrl: unknown) =>
+    wvImportRenameRegionSchema.safeParse({ regionId: 1, name: 'Saharan Atlas', sourceUrl });
+
+  it('refuses every spelling of a script-bearing scheme, by every route the page arrives', () => {
+    for (const value of SCRIPT_SCHEMES) {
+      expect(tree({ sourceUrl: value }).success, value).toBe(false);
+      expect(addChild(value).success, value).toBe(false);
+      expect(rename(value).success, value).toBe(false);
+    }
+  });
+
+  it('refuses the scheme wherever it sits in the tree, not only at the root', () => {
+    const deep = tree({
+      children: [{ name: 'Algeria', children: [{ name: 'Saharan Atlas', sourceUrl: 'javascript:alert(document.cookie)' }] }],
+    });
+    expect(deep.success).toBe(false);
+  });
+
+  it('refuses a path, which names no page to open', () => {
+    expect(tree({ sourceUrl: '/wiki/Saharan_Atlas' }).success).toBe(false);
+    for (const value of FOREIGN_AUTHORITY_PATHS) {
+      expect(tree({ sourceUrl: value }).success, value).toBe(false);
+    }
+  });
+
+  it('accepts the Wikivoyage url every stored page actually is, and stores it as the parser read it', () => {
+    const parsed = wvImportBodySchema.parse({
+      name: 'A world view',
+      tree: { name: 'Root', sourceUrl: ` ${WIKIVOYAGE_PAGE} ` },
+    });
+    expect(parsed.tree.sourceUrl).toBe(WIKIVOYAGE_PAGE);
+    const renamed = wvImportRenameRegionSchema.parse({
+      regionId: 1,
+      name: 'Saharan Atlas',
+      sourceUrl: 'HTTPS://en.wikivoyage.org/wiki/Saharan_Atlas',
+    });
+    expect(renamed.sourceUrl).toBe(WIKIVOYAGE_PAGE);
+    expect(addChild(WIKIVOYAGE_PAGE).success).toBe(true);
+  });
+
+  it('accepts a node, a child and a rename that name no page', () => {
+    expect(tree({}).success).toBe(true);
+    expect(addChild(undefined).success).toBe(true);
+    expect(rename(undefined).success).toBe(true);
+  });
+
+  it('still refuses an empty value, which no reader of source_url means anything by', () => {
+    // `safeUrlSchema` reads '' as "clear the field", which fits a curator's
+    // form: the curation controller turns it into NULL. Nothing does here --
+    // the rename handler writes the value it is given, and every reader of the
+    // column (`importer.ts`, `pointMatcher.ts`, the sync-to-instances lookup)
+    // tests it for truthiness -- so a page is either named or not sent, and
+    // '' stays refused, the way `z.string().url()` refused it.
+    expect(tree({ sourceUrl: '' }).success).toBe(false);
+    expect(addChild('').success).toBe(false);
+    expect(rename('').success).toBe(false);
+  });
+});
+
+/**
  * The defect this file exists for was not a wrong rule but a second copy of it:
  * `safeUrl` and `isUnsafeUrl` were the same denylist two files apart, and only
  * one of them trimmed. A third copy would put the divergence straight back, so
@@ -363,4 +441,5 @@ describe('the rule is declared once', () => {
 
     expect(offenders, 'a stored picture is drawn through toThumbnailUrl or extractImageUrl, never raw').toEqual([]);
   });
+
 });
