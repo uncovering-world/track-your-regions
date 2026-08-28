@@ -18,7 +18,13 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { editExperienceBodySchema, createManualExperienceBodySchema } from './index.js';
+import {
+  editExperienceBodySchema,
+  createManualExperienceBodySchema,
+  wvImportBodySchema,
+  wvImportSelectMapImageSchema,
+  wvImportVisionMatchSchema,
+} from './index.js';
 import { isStorableHttpUrl, isStorableImageUrl } from './urlSafety.js';
 
 /** Spellings of a script-bearing scheme that a URL parser resolves all the same. */
@@ -163,6 +169,92 @@ describe('the rule the curation controller shares with the schema', () => {
     for (const value of FOREIGN_AUTHORITY_PATHS) {
       expect(isStorableImageUrl(value), value).toBe(false);
     }
+  });
+});
+
+/**
+ * A region's imported map is the other stored picture (#694). It arrives three
+ * ways -- a node of an import tree, a pick among that node's candidates, and
+ * the url a vision match is asked to look at -- and each of them used to be
+ * `z.string().url()`, which is `new URL()` in a try/catch and not a protocol
+ * allowlist: it accepts `javascript:` and `data:` as readily as `https:`.
+ * Unlike an experience's picture, nothing legitimate here is a local path: the
+ * only writer builds a Commons `Special:FilePath` url for every map it finds.
+ */
+describe("a region's imported map is held to the same rule", () => {
+  const COMMONS_MAP = 'https://commons.wikimedia.org/wiki/Special:FilePath/Algeria_regions_map.png';
+
+  const tree = (node: Record<string, unknown>) =>
+    wvImportBodySchema.safeParse({ name: 'A world view', tree: { name: 'Root', ...node } });
+
+  it('refuses every spelling of a script-bearing scheme on a node', () => {
+    for (const value of SCRIPT_SCHEMES) {
+      expect(tree({ regionMapUrl: value }).success, value).toBe(false);
+    }
+  });
+
+  it('refuses the scheme wherever it sits in the tree, not only at the root', () => {
+    const deep = tree({
+      children: [{ name: 'Algeria', children: [{ name: 'Saharan Atlas', regionMapUrl: 'javascript:alert(1)' }] }],
+    });
+    expect(deep.success).toBe(false);
+  });
+
+  it('refuses a candidate that carries the scheme, since the picker draws every candidate', () => {
+    for (const value of SCRIPT_SCHEMES) {
+      expect(tree({ mapImageCandidates: [COMMONS_MAP, value] }).success, value).toBe(false);
+    }
+  });
+
+  it('refuses a path, which no map hosted anywhere can be', () => {
+    expect(tree({ regionMapUrl: '/images/maps/algeria.png' }).success).toBe(false);
+    expect(tree({ mapImageCandidates: ['/images/maps/algeria.png'] }).success).toBe(false);
+    for (const value of FOREIGN_AUTHORITY_PATHS) {
+      expect(tree({ regionMapUrl: value }).success, value).toBe(false);
+    }
+  });
+
+  it('accepts the Commons url every stored map actually is, and stores it as the parser read it', () => {
+    const parsed = wvImportBodySchema.parse({
+      name: 'A world view',
+      tree: { name: 'Root', regionMapUrl: ` ${COMMONS_MAP} `, mapImageCandidates: [COMMONS_MAP, 'HTTPS://commons.wikimedia.org/wiki/Special:FilePath/Algeria_map.svg'] },
+    });
+    expect(parsed.tree.regionMapUrl).toBe(COMMONS_MAP);
+    expect(parsed.tree.mapImageCandidates).toEqual([
+      COMMONS_MAP,
+      'https://commons.wikimedia.org/wiki/Special:FilePath/Algeria_map.svg',
+    ]);
+  });
+
+  it('accepts a node that names no map at all', () => {
+    expect(tree({}).success).toBe(true);
+  });
+
+  it('refuses the scheme on a pick among the candidates', () => {
+    for (const value of SCRIPT_SCHEMES) {
+      expect(wvImportSelectMapImageSchema.safeParse({ regionId: 1, imageUrl: value }).success, value).toBe(false);
+    }
+    expect(wvImportSelectMapImageSchema.safeParse({ regionId: 1, imageUrl: COMMONS_MAP }).success).toBe(true);
+    expect(wvImportSelectMapImageSchema.safeParse({ regionId: 1, imageUrl: null }).success).toBe(true);
+  });
+
+  it('leaves a pick spelled as the candidate row it names', () => {
+    // The controller keeps a pick only where it equals a stored candidate, and
+    // a candidate stored before the rule may carry a non-ASCII file name that
+    // the parser would percent-encode. A pick is a row's own spelling, so it
+    // is judged and not rewritten.
+    const raw = 'https://commons.wikimedia.org/wiki/Special:FilePath/Île-De-France-Map.png';
+    expect(new URL(raw).href).not.toBe(raw);
+    const parsed = wvImportSelectMapImageSchema.parse({ regionId: 1, imageUrl: raw });
+    expect(parsed.imageUrl).toBe(raw);
+  });
+
+  it('refuses the scheme on the url a vision match is asked to look at', () => {
+    const body = (imageUrl: string) => ({ divisionIds: [1], regionId: 1, imageUrl });
+    for (const value of SCRIPT_SCHEMES) {
+      expect(wvImportVisionMatchSchema.safeParse(body(value)).success, value).toBe(false);
+    }
+    expect(wvImportVisionMatchSchema.safeParse(body(COMMONS_MAP)).success).toBe(true);
   });
 });
 

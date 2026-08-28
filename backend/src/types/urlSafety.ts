@@ -14,6 +14,10 @@
  * allowlist, which is what the rendering path chose for the same values
  * (`isRenderableImageUrl`, frontend/src/utils/imageUrl.ts, #692) — a denylist
  * has to anticipate each evasion, and this one had two.
+ *
+ * The other stored picture, a region's imported map, is held to the link form
+ * of the same rule (#694): it arrives in an admin's import tree as wiki
+ * content, and no map is a path on our own origin.
  */
 
 /** The only protocols a stored url may name. */
