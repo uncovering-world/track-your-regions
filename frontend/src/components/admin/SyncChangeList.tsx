@@ -193,7 +193,8 @@ export function SyncChangeList({ logId }: { logId: number }) {
       // — and filtering on it would hide everything a run is actually reporting. What the server drops is a minor
       // field edit that moved nothing else — a row whose contents moved stays,
       // because `significance` weighs fields only and that row is the only record
-      // anywhere that a component arrived (ADR-0026).
+      // anywhere that a component arrived (ADR-0026), and so does an updated row
+      // where the source ran into a curator's claim, however minor the field (#516).
       ...(significantOnly ? { significantOnly: true } : {}),
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
