@@ -27,6 +27,27 @@ npm --prefix frontend install
    world view, since `useNavigation` hides the GADM default from non-admin
    users.
 
+   `TEST_REPORT_LOCAL=1`, the documented way to run the unit lanes without
+   Docker, has no meaning here and is refused: on the host the runner would
+   skip `scripts/test-stack.sh` and browse the dev stack instead, which is
+   the failure the paragraph above describes. Run the lane without the
+   variable — it brings the stack up and seeds the fixture itself.
+
+   Invoking Playwright directly is the same trap by another door: its
+   `baseURL` defaults to `http://localhost:5173`, the **dev** stack, while
+   the test stack's frontend answers on `TEST_FRONTEND_PORT` (5174). A hand
+   run — for `--ui`, or a `--grep` while writing a spec — says which stack
+   it means, after `npm run test:stack:up` has started and seeded one:
+
+   ```bash
+   npm run test:stack:up
+   cd frontend && E2E_BASE_URL=http://localhost:5174 npx playwright test --project=smoke
+   ```
+
+   `frontend`'s own `test:e2e` script is that bare invocation under a name
+   that reads like the lane — it is not one, and it takes the default
+   `baseURL`. Nothing calls it; whether it should exist is #699.
+
 ## Commands
 
 From repo root:

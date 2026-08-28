@@ -236,8 +236,11 @@ jobs:
       # on the runner uses.
       #
       # No root/backend/frontend `npm ci` either: `npm run test:e2e:smoke`
-      # runs scripts/test-report.mjs, which for e2e-smoke always takes the
-      # container branch and shells out to scripts/test-stack.sh - every
+      # runs scripts/test-report.mjs, which with TEST_REPORT_LOCAL unset - as
+      # it is here - takes the container branch and shells out to
+      # scripts/test-stack.sh. Setting the variable does not move the job to
+      # the host: e2e-smoke is `containerOnly`, so the run would refuse and
+      # exit 1 rather than browse a stack that was never started (#432). Every
       # service under test installs its own dependencies inside its own
       # container image (backend/Dockerfile, frontend/Dockerfile). Host
       # node_modules are never read on this path.
