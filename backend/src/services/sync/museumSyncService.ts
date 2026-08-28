@@ -552,6 +552,7 @@ export async function fixMuseumImages(_triggeredBy: number | null): Promise<void
     unchanged: 0,
     missing: 0,
     curatedConflicts: 0,
+    held: 0,
     filtered: 0,
     errors: 0,
     currentItem: '',

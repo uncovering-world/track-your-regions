@@ -32,7 +32,7 @@ function httpError(status: number, headers: Record<string, string> = {}): Respon
 function makeProgress(): SyncProgress {
   return {
     cancel: false, status: 'fetching', statusMessage: '', progress: 0, total: 0,
-    created: 0, updated: 0, unchanged: 0, missing: 0, curatedConflicts: 0,
+    created: 0, updated: 0, unchanged: 0, missing: 0, curatedConflicts: 0, held: 0,
     filtered: 0, errors: 0, currentItem: '', logId: null, dryRun: false,
   };
 }

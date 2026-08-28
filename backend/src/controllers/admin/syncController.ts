@@ -7,6 +7,7 @@
 import { Request, Response } from 'express';
 import { isTerminalSyncStatus } from '../../services/sync/types.js';
 import { isCancellable } from '../../services/sync/syncOrchestrator.js';
+import { CHANGESET_LOST_MARKER } from '../../services/sync/syncLogMarkers.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { waitingCountsByCategory } from '../experience/waitingCounts.js';
 import {
@@ -200,6 +201,7 @@ export async function getSyncStatus(req: Request, res: Response): Promise<void> 
       unchanged: status.unchanged,
       missing: status.missing,
       curatedConflicts: status.curatedConflicts,
+      held: status.held,
       filtered: status.filtered,
       errors: status.errors,
       currentItem: status.currentItem,
@@ -288,6 +290,7 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
       l.total_unchanged,
       l.total_missing,
       l.total_curated_conflicts,
+      l.total_held,
       l.total_filtered,
       l.total_errors,
       l.is_dry_run,
@@ -297,8 +300,14 @@ export async function getSyncLogs(req: Request, res: Response): Promise<void> {
       -- A run from before change provenance: its total_updated counted every
       -- row the upsert touched, so it is not comparable with later ones. After
       -- slice 1 any run that changed something also wrote a changeset, so the
-      -- absence of one alongside a non-zero count is the marker.
-      EXISTS (SELECT 1 FROM experience_sync_changes c WHERE c.sync_log_id = l.id) AS has_changeset
+      -- absence of one alongside a non-zero count is the marker -- unless the
+      -- changeset insert threw, which is the next column.
+      EXISTS (SELECT 1 FROM experience_sync_changes c WHERE c.sync_log_id = l.id) AS has_changeset,
+      -- The changeset insert threw, so the record is missing or short: it goes
+      -- in batches with no transaction around them. Read from the marker the
+      -- orchestrator leaves, because has_changeset alone cannot tell a lost
+      -- record from an old run, nor a partial landing from a whole one.
+      COALESCE(l.error_details @> '[${JSON.stringify(CHANGESET_LOST_MARKER)}]', FALSE) AS changeset_lost
     FROM experience_sync_logs l
     JOIN experience_categories s ON l.category_id = s.id
     LEFT JOIN users u ON l.triggered_by = u.id
@@ -346,7 +355,8 @@ export async function getSyncLogDetails(req: Request, res: Response): Promise<vo
       l.*,
       s.name as category_name,
       u.display_name as triggered_by_name,
-      EXISTS (SELECT 1 FROM experience_sync_changes c WHERE c.sync_log_id = l.id) AS has_changeset
+      EXISTS (SELECT 1 FROM experience_sync_changes c WHERE c.sync_log_id = l.id) AS has_changeset,
+      COALESCE(l.error_details @> '[${JSON.stringify(CHANGESET_LOST_MARKER)}]', FALSE) AS changeset_lost
      FROM experience_sync_logs l
      JOIN experience_categories s ON l.category_id = s.id
      LEFT JOIN users u ON l.triggered_by = u.id

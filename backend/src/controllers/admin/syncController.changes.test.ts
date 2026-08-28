@@ -49,6 +49,25 @@ describe('sync log queries', () => {
 
     expect(String(mockedQuery.mock.calls[0][0])).toContain('AS has_changeset');
   });
+
+  it('says whether the changeset insert threw, from the marker the run leaves', async () => {
+    // has_changeset alone reads a lost record as an old run and a partial
+    // landing as a whole one; the marker is what the orchestrator stamps when
+    // records existed and did not land, and both admin surfaces read it.
+    const { getSyncLogs, getSyncLogDetails } = await import('./syncController.js');
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 9 }] });
+
+    await getSyncLogs({ query: {} } as never, makeRes() as never);
+    await getSyncLogDetails(makeReq(), makeRes() as never);
+
+    for (const call of [mockedQuery.mock.calls[0][0], mockedQuery.mock.calls[2][0]]) {
+      expect(String(call)).toContain('AS changeset_lost');
+      expect(String(call)).toContain('{"externalId":"changeset"}');
+    }
+  });
 });
 
 describe('getSyncLogChanges', () => {

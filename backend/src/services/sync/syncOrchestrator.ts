@@ -135,12 +135,27 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
     unchanged: 0,
     missing: 0,
     curatedConflicts: 0,
+    held: 0,
     filtered: 0,
     errors: 0,
     currentItem: '',
     logId: null,
     dryRun,
   };
+}
+
+/**
+ * The category's gate kept every proposed write out of a row a reader can
+ * already see: nothing moved, and a verdict is waiting (#519).
+ *
+ * The one predicate behind two readers — the changeset row's word and the run's
+ * `held` counter — so the two can never disagree, which migration 038 relies on
+ * to fill the counter for runs that predate it from the rows they recorded.
+ * Not `heldFields` alone: a created row under a gate is written pending rather
+ * than refused, and `created` already carries that news.
+ */
+function wasHeld(result: ProcessItemResult): boolean {
+  return result.outcome === 'unchanged' && result.changeSet.heldFields.length > 0;
 }
 
 /**
@@ -178,7 +193,7 @@ function resolveChangeType(
   result: ProcessItemResult,
   contents: ContentsByKind | null,
 ): ChangeRecord['changeType'] {
-  if (result.outcome === 'unchanged' && result.changeSet.heldFields.length > 0) return 'held';
+  if (wasHeld(result)) return 'held';
   if (result.returnedFromMissing && result.outcome !== 'created') return 'returned';
   if (result.outcome === 'unchanged' && result.changeSet.curatedConflicts.length > 0) return 'conflict';
   if (result.outcome === 'unchanged' && contents !== null) return 'contents';
@@ -218,6 +233,15 @@ function recordItemOutcome<T>(
   if (result.outcome === 'created') progress.created++;
   else if (result.outcome === 'updated') progress.updated++;
   else progress.unchanged++;
+
+  // Counted again, inside `unchanged` rather than beside it (#523): that
+  // counter's meaning is already fixed by its column comment. `curatedConflicts`
+  // above is the precedent for counting a refusal on top of the outcome
+  // buckets, not for the arithmetic — it counts claimed fields, on updated rows
+  // too, where this counts rows, and only inside `unchanged`. Without this a
+  // gated run reads as a run that touched nothing — run 68 held all 1272
+  // UNESCO sites and reported "unchanged 1272".
+  if (wasHeld(result)) progress.held++;
 
   if (progress.logId === null) return;
 
@@ -505,6 +529,7 @@ async function recordSyncFailure<T>(
       unchanged: progress.unchanged,
       missing: progress.missing,
       curatedConflicts: progress.curatedConflicts,
+      held: progress.held,
       filtered: progress.filtered,
       errors: progress.errors,
     }, errorDetails);
@@ -631,7 +656,8 @@ export async function orchestrateSync<T>(
     finishedStatus = finalStatus === 'failed' ? 'failed' : 'complete';
     const verdict = finalStatus === 'success' ? 'Complete' : `Complete (${finalStatus})`;
     progress.statusMessage = `${verdict}: ${progress.created} created, ${progress.updated} updated, `
-      + `${progress.unchanged} unchanged, ${progress.missing} missing, ${progress.errors} errors`;
+      + `${progress.unchanged} unchanged (${progress.held} held), ${progress.missing} missing, `
+      + `${progress.errors} errors`;
 
     await updateSyncLog(categoryId, progress.logId, finalStatus, {
       fetched: fetchedCount,
@@ -640,12 +666,13 @@ export async function orchestrateSync<T>(
       unchanged: progress.unchanged,
       missing: progress.missing,
       curatedConflicts: progress.curatedConflicts,
+      held: progress.held,
       filtered: progress.filtered,
       errors: progress.errors,
       detectionSkippedReason,
     }, errorDetails.length > 0 ? errorDetails : undefined);
 
-    console.log(`${logPrefix} Complete: created=${progress.created}, updated=${progress.updated}, unchanged=${progress.unchanged}, missing=${progress.missing}, errors=${progress.errors}`);
+    console.log(`${logPrefix} Complete: created=${progress.created}, updated=${progress.updated}, unchanged=${progress.unchanged}, held=${progress.held}, missing=${progress.missing}, errors=${progress.errors}`);
 
   } catch (err) {
     // Decided here, before the call: `recordSyncFailure` awaits `updateSyncLog`,
