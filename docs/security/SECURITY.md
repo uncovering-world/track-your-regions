@@ -221,6 +221,20 @@ The Python service has a smaller surface than the Node backend but introduces ne
   through the documented pre-push tier was covered; the exposure was anything
   merged on CI-green alone. Recorded because "the check was green" is not
   evidence for that period.
+- **One of the two stored picture urls is checked where it is drawn; the other is
+  not.** An experience's or treasure's `image_url` passes `extractImageUrl` /
+  `toThumbnailUrl` (`frontend/src/utils/imageUrl.ts`), which keep only an
+  absolute http(s) url or a path whose origin survives resolution. A region's
+  imported map (`region_map_url`) has no such check on either side: its schema
+  is `z.string().url()`, which in Zod 3 is `new URL()` in a try/catch and
+  accepts `javascript:` and `data:`, and seven curator and admin dialogs
+  interpolate the value straight into a `src` (#694). Its source is wiki
+  content, not an operator's own typing. Nothing executes from either — a
+  `javascript:` url in an `img src` has not run in a browser since Netscape 4,
+  and an SVG loaded through `<img>` runs no script — so what this costs is the
+  claim rather than a live hole. The write-path denylist on `image_url` is
+  weaker than it reads for the same family of reasons: `safeUrl` matches the
+  value as sent, so one leading space carries a scheme past it (#693).
 - **World view visibility does not reach the tile server.** `requireVisibleWorldView` and
   `getWorldViews` bound the REST API (see the security stack table above). Martin no longer
   auto-publishes tables — `martin/config.yaml` carries `auto_publish: { tables: false }`, which
