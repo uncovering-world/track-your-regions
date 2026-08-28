@@ -39,6 +39,7 @@ import type { CvMatchDialogState } from './useCvMatchPipeline';
 import { detectSpatialAnomaliesClient } from '../../utils/spatialAnomalyDetector';
 import type { AdjacencyEdge as ClientAdjEdge, DivisionAssignment as ClientDivAssignment } from '../../utils/spatialAnomalyDetector';
 import { frameGeoJson } from '../../utils/mapUtils';
+import { safeHref } from '../../utils/safeHref';
 
 // ─── Geo Preview (map + source image) ───────────────────────────────────────
 
@@ -506,6 +507,11 @@ export function CvClusterSuggestionsSection({
     }
   }, [modelPickerSelected, setAiModelOverride, setModelPickerOpen, setCVMatchDialog]);
 
+  // The stored source page, opened only where it is a page a reader may be
+  // sent to (#703). `window.open` is the one sink React does not guard: a
+  // `javascript:` url handed to it runs in this origin, on every browser.
+  const sourceHref = safeHref(cvMatchDialog.sourceUrl);
+
   return (
     <Box sx={{ mb: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
@@ -516,9 +522,9 @@ export function CvClusterSuggestionsSection({
           size="small"
           variant="outlined"
           sx={{ fontSize: '0.7rem', py: 0.25, px: 0.75, textTransform: 'none' }}
-          disabled={!cvMatchDialog.sourceUrl}
-          onClick={() => cvMatchDialog.sourceUrl && window.open(cvMatchDialog.sourceUrl, '_blank')}
-          title={cvMatchDialog.sourceUrl ? 'Open Wikivoyage page to see region names' : 'No source URL available'}
+          disabled={!sourceHref}
+          onClick={() => sourceHref && window.open(sourceHref, '_blank', 'noopener,noreferrer')}
+          title={sourceHref ? 'Open Wikivoyage page to see region names' : 'No source URL available'}
         >
           View source page
         </Button>

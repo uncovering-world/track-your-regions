@@ -442,4 +442,114 @@ describe('the rule is declared once', () => {
     expect(offenders, 'a stored picture is drawn through toThumbnailUrl or extractImageUrl, never raw').toEqual([]);
   });
 
+  /**
+   * The link side of the same rule is `safeHref` (frontend/src/utils/safeHref.ts),
+   * and the five surfaces of #703 never asked it: a region's source page went
+   * into an `<a href>` -- and once into `window.open`, where a `javascript:`
+   * url runs just the same -- as the string the row carried. What is looked at
+   * is every module that carries a stored link at all, by the names the
+   * links travel under -- a region's `sourceUrl`, a credit's `licenseUrl`
+   * and `detailsUrl` -- a hook as much as a component, since `window.open`
+   * is imperative and lives as naturally in one -- and in such a module every
+   * dynamic `href={…}`, every `window.open(…)` and every `.href = …`
+   * assignment, whatever it names: the
+   * value reaches a link through a prop as often as directly
+   * (`<SourcePageLink url={node.sourceUrl} />`, then `href={url}`), so an
+   * href that names the stored link is not the shape to pin. What reaches the
+   * sink must be a `safeHref(…)` call and nothing else -- `safeHref(x) || x`
+   * hands the refused value straight back -- or the file's own spelling. A
+   * bare name is followed to every binding the file gives it -- a long module
+   * holds several components, and a name that is safe in one may be raw in
+   * the next -- and a name the file binds to nothing is whatever the caller
+   * passed.
+   */
+  /** The door: what reaches the sink is a `safeHref(…)` call, whole, with one level of parentheses of its own. */
+  // eslint-disable-next-line security/detect-unsafe-regex -- the two alternatives inside the star are disjoint on their first character (`(` against not-`(`), so the match is linear
+  const throughTheRule = /^safeHref\s*\((?:[^()]|\([^()]*\))*\)$/;
+  /** A url the file spells itself -- a string literal, or a template that opens on a scheme of its own. */
+  const ownSpelling = /^(['"]|`https?:\/\/)/;
+  const linksRaw = (expression: string): boolean => !ownSpelling.test(expression) && !throughTheRule.test(expression);
+
+  /** Every dynamic href, every `window.open` and every `.href = …` in a file, as the expression that reaches it. */
+  const linkSites = (text: string): Array<{ site: string; expression: string }> => [
+    // A JSX expression may hold one level of braces of its own.
+    // eslint-disable-next-line security/detect-unsafe-regex -- the two alternatives inside the star are disjoint on their first character (`{` against not-`{`), so no input matches two ways and there is no catastrophic backtracking
+    ...[...text.matchAll(/\bhref=\{((?:[^{}]|\{[^{}]*\})*)\}/g)].map(m => ({ site: `href={${m[1].trim()}}`, expression: m[1].trim() })),
+    // The first argument of `window.open`, up to the top-level comma that
+    // ends it; one level of parentheses of its own, for `safeHref(x)`.
+    // eslint-disable-next-line security/detect-unsafe-regex -- the two alternatives are disjoint on their first character (`(` against not-`(`), so the match is linear
+    ...[...text.matchAll(/\bwindow\.open\(\s*((?:[^(),]|\([^()]*\))+)/g)].map(m => ({ site: `window.open(${m[1].trim()}`, expression: m[1].trim() })),
+    // `location.href = …` -- the same navigation, reached without JSX and
+    // without `window.open`; a `javascript:` value assigned there runs too.
+    // The value starts at its first non-blank character, so the match is linear.
+    ...[...text.matchAll(/\.href\s*=\s*(\S[^;]*);/g)].map(m => ({ site: `.href = ${m[1].trim()}`, expression: m[1].trim() })),
+  ];
+
+  /**
+   * Everything the file binds a bare name to -- all of it, since a second
+   * component in the same module may bind the same name to the raw value --
+   * or nothing, for an expression or a name it never binds. Every binding is
+   * read with one fixed pattern and the name compared afterwards, rather than
+   * spliced into a pattern of its own; the value starts at its first
+   * non-blank character, so the blanks before it belong to one token only and
+   * the match is linear.
+   */
+  const bindingsOf = (text: string, expression: string): string[] => {
+    if (!/^[A-Za-z_$][\w$]*$/.test(expression)) return [];
+    const bindings: string[] = [];
+    for (const m of text.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(\S[^;]*);/g)) {
+      if (m[1] === expression) bindings.push(m[2]);
+    }
+    return bindings;
+  };
+
+  /** The sinks in a module that a stored link could reach raw. */
+  const rawLinkSites = (text: string): string[] =>
+    linkSites(text)
+      .filter(({ expression }) => {
+        const bindings = bindingsOf(text, expression);
+        return linksRaw(expression) && (bindings.length === 0 || bindings.some(linksRaw));
+      })
+      .map(({ site }) => site);
+
+  it('tells a link offered through the rule from one that is not', () => {
+    // Through the rule: the call itself, or a name bound to it.
+    expect(rawLinkSites('<a href={safeHref(node.sourceUrl)} />')).toEqual([]);
+    expect(rawLinkSites('const href = safeHref(node.sourceUrl);\n<a href={href} />')).toEqual([]);
+    expect(rawLinkSites("const href = safeHref(node.sourceUrl);\nwindow.open(href, '_blank', 'noopener')")).toEqual([]);
+    expect(rawLinkSites("window.open(safeHref(node.sourceUrl), '_blank')")).toEqual([]);
+    // The file's own spelling: a literal, or a template that opens on a scheme.
+    expect(rawLinkSites('<a href="https://example.org/" />')).toEqual([]);
+    expect(rawLinkSites('<a href={`https://www.wikidata.org/wiki/${node.wikidataId}`} />')).toEqual([]);
+    // Raw: the stored value, a name bound to it, a name bound to nothing.
+    expect(rawLinkSites('<a href={node.sourceUrl} />')).toEqual(['href={node.sourceUrl}']);
+    expect(rawLinkSites('const url = node.sourceUrl;\n<a href={url} />')).toEqual(['href={url}']);
+    expect(rawLinkSites('<a href={url} />')).toEqual(['href={url}']);
+    expect(rawLinkSites("window.open(node.sourceUrl, '_blank')")).toEqual(['window.open(node.sourceUrl']);
+    expect(rawLinkSites('window.location.href = node.sourceUrl;')).toEqual(['.href = node.sourceUrl']);
+    expect(rawLinkSites('const href = safeHref(node.sourceUrl);\nwindow.location.href = href;')).toEqual([]);
+    // Raw: a name safe in one component of the module and raw in the next.
+    expect(rawLinkSites('const href = safeHref(node.sourceUrl);\n<a href={href} />\nconst href = action.sourceUrl;\n<a href={href} />')).toEqual(['href={href}', 'href={href}']);
+    // Raw all the same: the rule asked and its answer thrown away.
+    expect(rawLinkSites('<a href={safeHref(node.sourceUrl) || node.sourceUrl} />')).toEqual(['href={safeHref(node.sourceUrl) || node.sourceUrl}']);
+    expect(rawLinkSites('const href = safeHref(node.sourceUrl) ?? node.sourceUrl;\n<a href={href} />')).toEqual(['href={href}']);
+    expect(rawLinkSites("window.open(safeHref(node.sourceUrl) || node.sourceUrl, '_blank')")).toEqual(['window.open(safeHref(node.sourceUrl) || node.sourceUrl']);
+  });
+
+  it('lets no module that carries a stored link put an href of its own on screen', () => {
+    const frontendSrc = join(backendSrc, '..', '..', 'frontend', 'src');
+    /** A stored link: a region's source page, and a picture credit's licence and details pages, by the names every prop and every row carry them under. */
+    const storedLink = /\b(?:sourceUrl|source_url|licenseUrl|detailsUrl)\b/;
+
+    const offenders: string[] = [];
+    for (const name of readdirSync(frontendSrc, { recursive: true, encoding: 'utf8' })) {
+      if (!/\.tsx?$/.test(name) || /\.test\.tsx?$/.test(name)) continue;
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
+      const text = readFileSync(join(frontendSrc, name), 'utf8');
+      if (!storedLink.test(text)) continue;
+      offenders.push(...rawLinkSites(text).map(site => `${name}: ${site}`));
+    }
+
+    expect(offenders, 'a stored link is offered through safeHref, never raw').toEqual([]);
+  });
 });

@@ -16,34 +16,12 @@
 
 import { Box, Link, Typography, type TypographyProps } from '@mui/material';
 import type { ImageCredit } from '../../api/experiences';
-
-/**
- * A URL only if a reader may safely be sent to it.
- *
- * The server already stores nothing but `http`/`https` here, and this checks
- * again: these values come from a wiki field anybody may edit, they reached the
- * database through one import and could reach it through another, and the cost
- * of asking twice is a `try`. A URL that fails becomes plain text — the credit
- * still names whom it must, without offering a link.
- */
-function safeHref(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    // No base URL. With one, a *relative* value from somebody else's metadata
-    // would resolve against our own origin and the credit would link back to
-    // this site — a credit pointing at us credits nobody. An absolute URL with a
-    // scheme is unaffected by a base either way, so dropping it costs nothing
-    // and closes that case.
-    const parsed = new URL(value);
-    // `http` as well as `https`: these are licence URLs from wiki metadata, some
-    // of them old, and a licence is a fact about the picture rather than a link
-    // the catalogue vouches for. The schemes that execute are what matter here,
-    // and neither of these is one.
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
-  } catch {
-    return null;
-  }
-}
+// The server already stores nothing but `http`/`https` here, and `safeHref`
+// checks again: these values come from a wiki field anybody may edit, they
+// reached the database through one import and could reach it through another,
+// and the cost of asking twice is a `try`. A URL that fails becomes plain text
+// — the credit still names whom it must, without offering a link.
+import { safeHref } from '../../utils/safeHref';
 
 /**
  * The licence, linked to its own terms where the source gave a URL.

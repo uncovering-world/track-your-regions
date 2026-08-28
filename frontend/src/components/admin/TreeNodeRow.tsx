@@ -19,6 +19,7 @@ import { Tooltip, type ShadowInsertion } from './treeNodeShared';
 import { TreeNodeActions } from './TreeNodeActions';
 import { TreeNodeContent } from './TreeNodeContent';
 import { countDirectChildrenResolved } from './importTreeUtils';
+import { safeHref } from '../../utils/safeHref';
 
 export interface TreeNodeRowProps {
   node: MatchTreeNode;
@@ -255,12 +256,18 @@ function HierarchyWarningIcon({ node }: { node: MatchTreeNode }): ReactElement |
   );
 }
 
-/** External source link glyph. */
+/**
+ * External source link glyph. Offered only for a page a reader may be sent
+ * to: the value is what an import tree posted, and a `javascript:` href runs
+ * on click (#703). A page the rule refuses gets no glyph -- there is nothing
+ * to open.
+ */
 function SourcePageLink({ url }: { url: string | null | undefined }): ReactElement | null {
-  if (!url) return null;
+  const href = safeHref(url);
+  if (!href) return null;
   return (
     <Link
-      href={url}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}

@@ -34,6 +34,7 @@ import { getGroupColor } from './types';
 import { ImageOverlayDialog, type ImageOverlaySettings } from './ImageOverlayDialog';
 import { CutDivisionDialog } from '../CutDivisionDialog';
 import { extractImageUrl } from '../../../../../utils/imageUrl';
+import { safeHref } from '../../../../../utils/safeHref';
 import { useGeometryLoading } from './useGeometryLoading';
 
 function renameGroupAtIndex(groups: SubdivisionGroup[], idx: number, name: string): SubdivisionGroup[] {
@@ -271,6 +272,11 @@ export function MapViewTab({
     };
   }, [hoveredDivisionId, mapGeometries, getDivisionGroupIdx, subdivisionGroups]);
 
+  // The stored source page, offered only where it is a page a reader may be
+  // sent to (#703): the value is what an import tree posted, and a
+  // `javascript:` href runs on click. Refused, the button is not shown.
+  const sourceHref = safeHref(selectedRegion?.sourceUrl);
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: 550 }}>
       {/* Controls bar */}
@@ -386,12 +392,12 @@ export function MapViewTab({
 
         {/* Region link + Image overlay button + display mode toggle */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {selectedRegion?.sourceUrl && (
+          {sourceHref && (
             <Tooltip title="Open source page">
               <IconButton
                 size="small"
                 component="a"
-                href={selectedRegion.sourceUrl}
+                href={sourceHref}
                 target="_blank"
                 rel="noopener noreferrer"
               >
