@@ -43,6 +43,7 @@ import {
 import type { PendingQuestion, RegionPreview } from '../../api/admin/wikivoyageExtract';
 import { WorldViewImportReview } from './WorldViewImportReview';
 import { ImportSourcePanel } from './ImportSourcePanel';
+import { safeHref } from '../../utils/safeHref';
 
 type AnswerAction = { questionId: number; action: 'accept' | 'skip' | 'answer' | 'delete_rule'; answer?: string; ruleId?: number };
 
@@ -213,13 +214,18 @@ function QuestionCard({ q, isAnswering, showCustomInputOpen, customAnswer, onSho
   onAnswer: (action: AnswerAction) => void;
   answerError: { questionId: number; message: string } | null;
 }) {
+  // Built on the server from the page's title today, and held to what a link
+  // may be all the same (#703): a page the rule refuses is named, not linked.
+  const sourceHref = safeHref(q.sourceUrl);
   return (
     <Paper variant="outlined" sx={{ p: 1.5, borderColor: 'warning.main' }}>
       {/* Header: page title + link */}
       <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-        <a href={q.sourceUrl} target="_blank" rel="noopener noreferrer">
-          {q.pageTitle}
-        </a>
+        {sourceHref ? (
+          <a href={sourceHref} target="_blank" rel="noopener noreferrer">
+            {q.pageTitle}
+          </a>
+        ) : q.pageTitle}
       </Typography>
 
       <ExtractedRegionsPreview regions={q.extractedRegions} />

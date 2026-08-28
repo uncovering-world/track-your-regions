@@ -31,6 +31,7 @@ import { mergeGeometries, mergeGeomsIntoSibling } from './CvMatchMap';
 import { type MatchTreeNode, type ReviewChildAction, getChildrenRegionGeometry } from '../../api/admin/worldViewImport';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { safeHref } from '../../utils/safeHref';
 
 // COVERAGE_MAP_STYLE is duplicated in GapAnalysis.tsx to break the circular
 // import between these two modules (they mutually import component helpers).
@@ -537,13 +538,16 @@ export function AISuggestChildrenDialog({ state, onClose, onToggle, onSubmit, is
 
   const renderEnrichment = (action: ReviewChildAction) => {
     if (action.type === 'remove' || !action.verified) return null;
+    // Built on the server from a Wikivoyage title today, and held to what a
+    // link may be all the same: a page the rule refuses is not offered (#703).
+    const sourceHref = safeHref(action.sourceUrl);
     return (
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-        {action.sourceUrl && (
+        {sourceHref && (
           <Typography variant="caption" color="text.secondary">
             <LinkIcon sx={{ fontSize: 12, mr: 0.25, verticalAlign: 'middle' }} />
-            <MuiLink href={action.sourceUrl} target="_blank" rel="noopener" sx={{ fontSize: 'inherit' }}>
-              {decodeURIComponent(action.sourceUrl.split('/wiki/')[1] ?? '')}
+            <MuiLink href={sourceHref} target="_blank" rel="noopener" sx={{ fontSize: 'inherit' }}>
+              {decodeURIComponent(sourceHref.split('/wiki/')[1] ?? '')}
             </MuiLink>
           </Typography>
         )}
