@@ -559,8 +559,9 @@ no chip, telling the curator that the held value was the one now live. `conflict
 the case: that word means a person
 claimed the field, so the stored value won on purpose and nothing is waiting, while a held row is
 waiting on a verdict nobody has given (#519). A row carrying both is `held`, because the held half
-is the part still unanswered. Counted as `unchanged`, exactly as a `conflict` row is — there is no
-per-run held counter yet (#523), and the changeset rows are the record; the run report's default
+is the part still unanswered. Counted as `unchanged`, exactly as a `conflict` row is, and counted
+again in the run's own `total_held` (#523; the counters section below), so the summary and the
+changeset rows agree on how many rows a run held; the run report's default
 view keeps them regardless of significance, since what it drops is a minor `updated` row that moved
 nothing else — a denylist naming one case rather than a list of the cases worth showing. A row whose
 *contents* moved stays even when its only field edit was minor, because `significance` weighs fields
@@ -626,15 +627,48 @@ curator saw it, and its row, its id and its region assignments are the same ones
 **`total_updated` changed meaning.** It used to count every row that passed through
 `ON CONFLICT DO UPDATE`, identical or not. Since migration 009 it counts rows that actually
 changed, and `total_unchanged` absorbs the rest. Logs 1–4 are therefore not comparable with
-later ones. A row a gated source proposed a change to and the gate held is one of the rows
-`total_unchanged` absorbs — nothing was written to it — and it is the changeset's `held` row, not
-the counters, that says a decision is waiting. `total_curated_conflicts` stays claims-only for the
-same reason: nobody has claimed a held field. That leaves a gated run's four totals silent about how
-many proposals are waiting, which reads as an omission next to `total_curated_conflicts` rather than
-as a model: **issue #523** tracks giving the log its own `total_held`, and it has to land before a
-source is gated for real (#500) — measured on Top Art Museums run 53, which created 18 and updated
-24, a gated report of the same run would have read "created 18 · updated 0 · unchanged 82" with 24
-proposals waiting behind it.
+later ones.
+
+**A held row is counted twice: inside `total_unchanged`, and again in `total_held`** (#523). A row
+a gated source proposed a change to and the gate held is one of the rows `total_unchanged` absorbs —
+nothing was written to it — and the run's totals were silent about how many such rows it left:
+UNESCO run 68 (2026-08-22) held all 1272 sites and reported `created 0 · updated 0 · unchanged
+1272`, a run that touched nothing, while every one of the 1272 was a proposal waiting in the
+curator's queue — which the admin reading the run list may not be the person watching. `total_held`
+is a subset of `unchanged` rather than a fifth bucket beside it, for the reason `total_updated`
+above gives: a stored counter must not acquire a second meaning. `total_curated_conflicts` is the
+precedent for counting a refusal on top of the outcome buckets rather than instead of one, and no
+more than that: it counts claimed **fields**, on `updated` rows as well as `unchanged` ones — 100
+unchanged rows carrying two claimed fields each is 200 conflicts beside 100 unchanged — where
+`total_held` counts **rows**, only inside `unchanged`. The two tiles sit side by side on the run
+card, so the unit is on screen: Held 1,272 is 1,272 sites, Conflicts 3 is three fields. That
+counter stays claims-only — nobody has claimed a held field — so the two never share a field, and
+a row carrying both a claim and a hold is counted in both. The
+increment and the changeset row's `held` word come from one predicate, `wasHeld` in
+`syncOrchestrator.ts`: the row came through `unchanged` with something in `heldFields`. Structural
+rather than empirical — `computeChangeSet` files every unclaimed diff of a held row under
+`heldFields`, so its `changedFields` is empty and its `changeType` is `unchanged`; and an insert
+under a gate is written `pending` rather than refused, so a `created` row is never held, and the
+queue's `arrival` card already carries it. Nor is new *content* under a gate: a point or a work
+arriving on a visible object is written `pending` too (`locationWriter.ts`, `museum/treasureWriter.ts`),
+files as a `contents` row, and is not in this count — so the number is of held **changes**, and a
+run that only hung twelve unread paintings in the Louvre reports Held 0. The count of all three
+waiting kinds — arrivals, held changes, unread contents — is per source, not per run:
+`waitingCountsByCategory` (`waitingCounts.ts`), which the gate panel shows. The counter is the
+number of rows the run held, written from memory when the log closes; wherever the changeset
+landed whole, that is also the number of `held` rows on record, which is how migration 038 filled
+it for the runs that predate the column. A run from before the column whose changeset was lost, or
+landed only in part — the insert goes in batches of 500 with no transaction around them — the
+migration leaves at 0 and names with the held rows that did land, because a count from a partial
+record would read as exact everywhere afterwards; a run after it carries the number it wrote
+itself, whatever became of its record. Both admin reads answer `changeset_lost` beside
+`has_changeset`, derived from the `CHANGESET_LOST_MARKER` the orchestrator leaves in
+`error_details`, so the run card's note and the run list's not-comparable asterisk read one
+predicate rather than inferring the record's fate from `has_changeset` and the counters — which
+read a lost record as an old run, and a partial landing as a whole one. The admin's run list
+carries it as a **Held** column beside Updated, the run's card as a tile beside Unchanged, and the
+live status while a run is going (`held` on `GET /api/admin/sync/categories/:categoryId/status`).
+Not touched by it: the default "Significant only" view of the per-object report, which #516 tracks.
 
 **Two lifecycle axes** on `experiences`. `existence` is curator-only. So is `former` — a
 source outage must never change what users see — but `present` can also be restored by the
