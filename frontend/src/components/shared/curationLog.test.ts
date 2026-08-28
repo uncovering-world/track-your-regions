@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ACTION_LABELS, formatLogDetails } from './CurationDialog';
+import { ACTION_LABELS, formatLogDetails } from './curationLog';
 
 /** A verdict as `locationStateController.ts` writes it. */
 function entry(action: string, details: Record<string, unknown>) {
