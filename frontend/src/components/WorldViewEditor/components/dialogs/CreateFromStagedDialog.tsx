@@ -18,6 +18,7 @@ import DrawIcon from '@mui/icons-material/Draw';
 import type { AdministrativeDivision, Region } from '../../../../types';
 import { CustomBoundaryDialog } from '../../../CustomBoundaryDialog';
 import { fetchDivisionGeometry } from '../../../../api';
+import { findCommonPrefix } from '../../utils';
 
 export interface CreateFromStagedResult {
   name: string;
@@ -241,25 +242,4 @@ export function CreateFromStagedDialog({
       />
     </>
   );
-}
-
-// Helper function to find common prefix in an array of strings
-function findCommonPrefix(strings: string[]): string {
-  if (strings.length === 0) return '';
-  if (strings.length === 1) return strings[0];
-
-  const minLen = Math.min(...strings.map(s => s.length));
-
-  let prefix = '';
-  for (let i = 0; i < minLen; i++) {
-    const char = strings[0][i];
-    if (strings.every(s => s[i] === char)) {
-      prefix += char;
-    } else {
-      break;
-    }
-  }
-
-  // eslint-disable-next-line sonarjs/slow-regex -- bounded character class anchored to end-of-string; input is a common prefix derived from staged region names (≤ a few hundred chars)
-  return prefix.replace(/[\s\-_,.:;]+$/, '').trim();
 }
