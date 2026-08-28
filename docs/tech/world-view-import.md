@@ -89,12 +89,23 @@ Uploaded JSON trees are validated with a recursive Zod schema:
 ```typescript
 {
   name: string,          // 1-255 chars (the width of regions.name)
-  regionMapUrl?: string, // valid URL, max 2000 chars
-  mapImageCandidates?: string[], // max 20 URLs
+  regionMapUrl?: string, // absolute http(s) URL, max 2000 chars once normalised
+  mapImageCandidates?: string[], // max 20, each an absolute http(s) URL
   wikidataId?: string,   // Q-ID format (Q\d+)
   children: TreeNode[]   // recursive, default []
 }
 ```
+
+`regionMapUrl` and every candidate are pictures a dialog draws, so they are
+held to what a stored url may be — the rule declared once in
+`backend/src/types/urlSafety.ts` and described in
+[experiences.md](experiences.md) § "What a URL field may hold" — in its link
+form: an absolute `http(s)` URL and nothing else, since no map is a path on our
+own origin. The value is judged by the URL parser rather than by a pattern, and
+stored in the form the parser read (`HTTPS://…` becomes `https://…`, a
+non-ASCII file name is percent-encoded). The schema used to be
+`z.string().url()`, which is `new URL()` in a try/catch and accepts
+`javascript:` and `data:` as readily as `https:` (#694).
 
 Additional limits enforced in the controller:
 - **Max 50,000 nodes** — prevents memory exhaustion
@@ -260,7 +271,7 @@ Implementation: **in-memory** undo store (`Map<worldViewId, UndoEntry>`), one en
 
 Clicking the map icon on any suggestion or assigned division opens a preview dialog showing the GADM division polygon on an interactive map. The dialog supports four modes depending on available data:
 
-1. **Region map image** (`regionMapUrl` present) — widens to `md`, shows the Wikivoyage region map image on the left and the GADM polygon on the right. ~1,066 regions have static map images.
+1. **Region map image** (`regionMapUrl` present, and one `toThumbnailUrl` will draw) — widens to `md`, shows the Wikivoyage region map image on the left and the GADM polygon on the right. ~1,066 regions have static map images.
 
 2. **Wikidata geoshape fallback** (`wikidataId` present, no `regionMapUrl`) — widens to `md`, shows two maps side-by-side:
    - **Left map**: Wikivoyage (Wikidata) geoshape — red fill + outline, labeled "Source region", auto-fit bounds
@@ -348,11 +359,11 @@ The admin reviews candidates via a **picker dialog** in the match review tree:
 - **Image button** (camera icon) appears on tree rows with more than one candidate
 - **Warning color** when unreviewed, **success color** after admin confirmation
 - **Preview interception** — clicking a division preview on an unreviewed region opens the picker first
-- **Picker dialog** shows a 3-column thumbnail grid; admin selects the correct map or marks "none are maps"
+- **Picker dialog** shows a 3-column thumbnail grid; admin selects the correct map or marks "none are maps". Each candidate is drawn through `toThumbnailUrl` (`frontend/src/utils/imageUrl.ts`), like every other stored picture, and a candidate it refuses — anything but an absolute http(s) url on a trusted host — is not offered at all: a picture no `<img>` may draw is not a map to choose. The same function sizes the map in every dialog that shows it beside a division (`?width=500`, which is what those dialogs used to append by hand), and `extractImageUrl` judges it, unsized, for the editor's image overlay (#694)
 - Selection saves `region_import_state.region_map_url` and sets `map_image_reviewed = true`
 - "None are maps" clears `regionMapUrl` and marks reviewed
 
-API: `POST /api/admin/wv-import/matches/:worldViewId/select-map-image` with `{ regionId, imageUrl }` (imageUrl validated against candidates list).
+API: `POST /api/admin/wv-import/matches/:worldViewId/select-map-image` with `{ regionId, imageUrl }`. `imageUrl` is held to the absolute-http(s) rule and then compared, as sent, against the candidates list — judged but not rewritten, because a candidate stored before the rule may carry a non-ASCII file name that normalising would percent-encode, and a pick names a row in that row's own spelling.
 
 ### Link validation and missing pages
 

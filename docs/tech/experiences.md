@@ -1330,6 +1330,11 @@ rule — which is why the picture is checked again where it is drawn
 (`frontend/src/utils/imageUrl.ts`, #692), and why that check is not a duplicate
 of this one.
 
+The other stored picture, a region's imported map, is held to the link form of
+the same rule on both sides — an absolute `http(s)` URL and nothing else, since
+no map is a path on our own origin — see
+[world-view-import.md](world-view-import.md) § "JSON Tree Validation" (#694).
+
 ## The "New" chip
 
 `is_new` is decided server-side and means **the reader could first see it recently** — not
