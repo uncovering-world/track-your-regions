@@ -412,8 +412,21 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
   // a minor edit — UNESCO 1239 gaining Waldsiedlung Zehlendorf in a run that also
   // rewrote its `nameLocal` — and that row is the only record anywhere that the
   // component arrived (ADR-0026).
+  //
+  // The fourth term is the same shape for a curator's claim (#516). A row where the
+  // source ran into one is `conflict` only when nothing else on it moved; when the
+  // run also applied an ordinary edit it is `updated`, and `significance` weighs the
+  // refused field like any other — so a claimed `metadata.website` or
+  // `shortDescription` beside an applied `nameLocal` computes 'minor' and the first
+  // three terms drop it. That row is the one in the run where a machine and a person
+  // disagreed, which is exactly what an admin opens the report to find. The
+  // containment test is the idiom the queue and the two verdict endpoints already
+  // read the stored field with.
   if (significantOnly === 'true') {
-    conditions.push(`(significance = 'major' OR change_type <> 'updated' OR contents IS NOT NULL)`);
+    conditions.push(
+      `(significance = 'major' OR change_type <> 'updated' OR contents IS NOT NULL`
+      + ` OR changed_fields @> '[{"curatedConflict": true}]')`,
+    );
   }
   // Assembled from literal fragments only; every value travels as a parameter.
   const where = conditions.join(' AND ');
@@ -438,6 +451,9 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
                 -- edits: a contents delta is the row's news, and under
                 -- significantOnly it is the only reason the row is in the list at all.
                 WHEN contents IS NOT NULL THEN 1
+                -- Likewise a refused claim on an otherwise routine edit: beside the
+                -- conflict rows, since it is one (#516).
+                WHEN changed_fields @> '[{"curatedConflict": true}]' THEN 1
                 ELSE 2
               END, change_type, external_id
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,

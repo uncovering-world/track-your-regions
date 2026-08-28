@@ -423,9 +423,11 @@ export function computeChangeSet(
 
   // Significance covers both kinds of refusal as well as applied changes. A row
   // where the source proposed a major change the run refused and a minor one it
-  // applied would otherwise be filed as 'minor' and dropped from the default
-  // view — the refused half, which is the part needing a decision, would be the
-  // hidden one.
+  // applied would otherwise weigh 'minor' — the refused half, which is the part
+  // needing a decision, would be the one the `?significance=major` filter and
+  // the row's major chip never saw. Whether the row shows in the report's
+  // default view is decided there, not here: that view keeps a row carrying a
+  // refused claim, or a held one, whatever this weighs (#516).
   const weighed = [...changedFields, ...curatedConflicts, ...heldFields];
   let significance: FieldSignificance | null = null;
   if (weighed.length > 0) {
