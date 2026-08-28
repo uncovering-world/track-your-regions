@@ -13,6 +13,23 @@ const RESULTS_DIR = path.join(ROOT_DIR, '.test-results');
 const TEST_STACK_SCRIPT = path.join(ROOT_DIR, 'scripts', 'test-stack.sh');
 const RUN_CONTAINER_TESTS = process.env.TEST_REPORT_LOCAL !== '1';
 
+// `containerOnly` marks a lane that has no host-side shape at all. The
+// variable is a documented idiom for the unit lanes (CLAUDE.md,
+// CONTRIBUTING.md), and it used to reach these too: the branch above is
+// global, so `TEST_REPORT_LOCAL=1 npm run test:e2e:smoke` skipped
+// test-stack.sh and browsed whatever dev stack happened to be up, failing on
+// the missing fixture with nothing naming the cause (#432). Such a lane is
+// refused up front, with its reason, rather than running something else under
+// the same name.
+const E2E_CONTAINER_ONLY =
+  'the specs browse the isolated stack seeded with world view 9001 '
+  + '(backend/src/db/seed/e2eFixture.ts); on the host they browse whatever dev '
+  + 'stack is up and fail on the fixture that is not there';
+const PERF_CONTAINER_ONLY =
+  'the lane measures a production build served inside the test stack, by the '
+  + "stack's own pinned Chromium; no host-side shape of it produces comparable "
+  + 'numbers';
+
 fs.mkdirSync(RESULTS_DIR, { recursive: true });
 
 const STEP_TEMPLATES = {
@@ -55,6 +72,7 @@ const STEP_TEMPLATES = {
     kind: 'playwright',
     packageDir: 'frontend',
     project: 'smoke',
+    containerOnly: E2E_CONTAINER_ONLY,
   },
   'e2e-full': {
     id: 'e2e-full',
@@ -63,6 +81,7 @@ const STEP_TEMPLATES = {
     kind: 'playwright',
     packageDir: 'frontend',
     project: 'full',
+    containerOnly: E2E_CONTAINER_ONLY,
   },
   perf: {
     id: 'perf',
@@ -75,6 +94,7 @@ const STEP_TEMPLATES = {
     // the step, because a container already up in the other shape is left
     // alone by the step's own `up` (TEST_STACK_SKIP_UP).
     frontendMode: 'preview',
+    containerOnly: PERF_CONTAINER_ONLY,
     // A "test" here is one assertion on one URL; the listed items are the
     // measured pages and the assertions that spoke.
     filesLabel: 'Pages',
@@ -122,6 +142,25 @@ const steps = selectedStepIds.map((stepId) => {
   }
   return { ...template };
 });
+
+// Before anything is started: a lane with no host-side shape says so and
+// stops, instead of taking the host branch and reporting a failure that
+// describes the wrong stack.
+if (!RUN_CONTAINER_TESTS) {
+  const refused = steps.filter((step) => step.containerOnly);
+  if (refused.length > 0) {
+    printError(
+      `TEST_REPORT_LOCAL=1 does not apply to mode "${mode}": the lanes below run only against the isolated test stack.`,
+    );
+    for (const step of refused) {
+      printError(`  ${step.label}: ${step.containerOnly}.`);
+    }
+    printError(
+      'Unset TEST_REPORT_LOCAL and re-run — the lane starts and seeds the stack itself (Docker required).',
+    );
+    process.exit(1);
+  }
+}
 
 const startedAt = Date.now();
 const stepResults = [];
@@ -199,20 +238,12 @@ async function runStep(step, activeMode, index) {
       if (step.coverage) {
         args.push('--coverage');
       }
-    } else if (step.kind === 'playwright') {
-      command = resolveLocalBinary(step.packageDir, 'playwright');
-      args = ['test', `--project=${step.project}`, '--reporter=list,json'];
-      env = { PLAYWRIGHT_JSON_OUTPUT_FILE: jsonPath };
-    } else if (step.kind === 'lighthouse') {
-      // The lane measures a production build served inside the test stack,
-      // by the stack's own pinned Chromium; there is no host-side shape of
-      // it that would produce comparable numbers. Say so instead of running
-      // something else under the same name.
-      throw new Error(
-        'The performance lane runs only against the isolated test stack; unset TEST_REPORT_LOCAL.',
-      );
     } else {
-      throw new Error(`Unsupported step kind: ${step.kind}`);
+      // Only the unit lanes have a host shape. The playwright and lighthouse
+      // ones are `containerOnly` and were refused before anything started, so
+      // there is deliberately no host arm for them to fall into: a branch
+      // that quietly ran the wrong stack is what #432 was.
+      throw new Error(`Unsupported step kind on the host: ${step.kind}`);
     }
   }
 
