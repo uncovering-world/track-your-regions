@@ -24,6 +24,13 @@ export interface SyncProgress {
   missing: number;
   /** Field-level divergences the curated_fields guard refused to apply. */
   curatedConflicts: number;
+  /**
+   * Rows a reader can already see whose every proposed change the category's
+   * gate kept out, so a verdict is waiting on each (#523). A subset of
+   * `unchanged` — nothing was written — counted again so a gated run stops
+   * reading as one that touched nothing.
+   */
+  held: number;
   /** Entities the source offered that this category does not hold. Not errors. */
   filtered: number;
   errors: number;

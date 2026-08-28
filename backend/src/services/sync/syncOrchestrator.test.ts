@@ -103,6 +103,7 @@ function makeProgress(overrides: Partial<SyncProgress> = {}): SyncProgress {
     unchanged: 0,
     missing: 0,
     curatedConflicts: 0,
+    held: 0,
     filtered: 0,
     errors: 0,
     currentItem: '',
@@ -598,6 +599,123 @@ describe('orchestrateSync changeset recording', () => {
       TEST_CATEGORY_ID, 42, 'success',
       expect.objectContaining({ curatedConflicts: 0 }),
       undefined,
+    );
+  });
+
+  it('counts a held row as held, and still as unchanged', async () => {
+    const config = makeConfig({ processItem: vi.fn().mockResolvedValue(heldRun()) });
+
+    await orchestrateSync(config, 1);
+
+    // The one number the summary lacked (#523): run 68 held all 1272 UNESCO
+    // sites and reported "unchanged 1272", which reads as a run that touched
+    // nothing. Held stays inside `unchanged` — nothing about the row moved, and
+    // that counter's meaning is already fixed — and is counted again here, per
+    // row, where `curatedConflicts` counts per claimed field.
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success',
+      expect.objectContaining({ held: 2, unchanged: 2, updated: 0 }),
+      undefined,
+    );
+  });
+
+  it('keeps a claim-only refusal out of the held counter', async () => {
+    const conflicted = processed('unchanged');
+    conflicted.changeSet.curatedConflicts = [{
+      field: 'shortDescription', old: 'ours', new: 'theirs',
+      significance: 'minor' as const, curatedConflict: true, held: false,
+    }];
+    const config = makeConfig({ processItem: vi.fn().mockResolvedValue(conflicted) });
+
+    await orchestrateSync(config, 1);
+
+    // A claim has had its answer — the curator's value won on purpose — so
+    // nothing is waiting, and a count of the decisions the run left open must
+    // not include it.
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success',
+      expect.objectContaining({ held: 0, curatedConflicts: 2, unchanged: 2 }),
+      undefined,
+    );
+  });
+
+  it('does not count a row the gate wrote pending as held', async () => {
+    // No service produces a created result with held fields — an insert writes
+    // every column, and `computeChangeSet` returns none for it — but the
+    // predicate must not lean on that: a held field on a created row is still
+    // a row that landed, and a `wasHeld` that dropped its outcome check would
+    // count it. The negative case is the one the guard exists for.
+    const createdUnderGate = processed('created');
+    createdUnderGate.changeSet.heldFields = [HELD_FIELD];
+    const config = makeConfig({ processItem: vi.fn().mockResolvedValue(createdUnderGate) });
+
+    await orchestrateSync(config, 1);
+
+    // An arrival under a gate lands unread rather than refused: `created`
+    // already reports it and the queue raises an `arrival` card for it.
+    // Counting it here too would report the run's news twice.
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success',
+      expect.objectContaining({ created: 2, held: 0 }),
+      undefined,
+    );
+  });
+
+  it('reports exactly as many held as it records held rows', async () => {
+    const conflicted = processed('unchanged');
+    conflicted.changeSet.curatedConflicts = [{
+      field: 'shortDescription', old: 'ours', new: 'theirs',
+      significance: 'minor' as const, curatedConflict: true, held: false,
+    }];
+    const gained = processed('unchanged');
+    gained.contents = {
+      locations: { added: [{ name: 'Waldsiedlung Zehlendorf', ref: '1239-006' }], withdrawn: [], returned: [], changed: [] },
+    };
+    const config = makeConfig({
+      fetchItems: vi.fn().mockResolvedValue({
+        items: ['1', '2', '3', '4', '5', '6'].map((id) => ({ id, name: `Item ${id}` })),
+        fetchedCount: 6,
+      }),
+      processItem: vi.fn()
+        .mockResolvedValueOnce(heldRun())
+        .mockResolvedValueOnce(processed('created'))
+        .mockResolvedValueOnce(conflicted)
+        .mockResolvedValueOnce(gained)
+        .mockResolvedValueOnce(processed('updated'))
+        .mockResolvedValueOnce(heldRun()),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const heldRows = recorded.filter((c: { changeType: string }) => c.changeType === 'held').length;
+    // Migration 038 fills the counter for the runs that predate it from the
+    // rows they recorded, so the number and the rows have to be one decision:
+    // the increment and the row's word come from the same predicate.
+    expect(heldRows).toBe(2);
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success',
+      expect.objectContaining({ held: heldRows, unchanged: 4, created: 1, updated: 1 }),
+      undefined,
+    );
+  });
+
+  it('carries the held count onto a run that was then cancelled', async () => {
+    const config = makeConfig({
+      processItem: vi.fn().mockImplementation(async (_item, progress) => {
+        progress.cancel = true;
+        return heldRun();
+      }),
+    });
+
+    await expect(orchestrateSync(config, 1)).rejects.toThrow('Sync cancelled');
+
+    // The failure path writes its own stats, and a proposal the run held before
+    // it stopped is still waiting on somebody.
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'cancelled',
+      expect.objectContaining({ held: 1, unchanged: 1 }),
+      expect.anything(),
     );
   });
 
