@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toThumbnailUrl, extractImageUrl } from './useExperienceContext';
+import { toThumbnailUrl, extractImageUrl } from './imageUrl';
 
 describe('toThumbnailUrl', () => {
   it('appends width param to Special:FilePath URLs', () => {
