@@ -327,7 +327,24 @@ the difference between 138 withdrawn links and none.
 
 - `curator_assignments`: scoped permissions (`global`, `region`, `category`)
 - `experience_rejections`: region-scoped hidden items for non-curators
-- `experience_curation_log`: audit trail (`created`, `edited`, `rejected`, `unrejected`, `added_to_region`, `removed_from_region`)
+- `experience_curation_log`: audit trail of twenty actions — the curator's own edits
+  (`created`, `edited`, `rejected`, `unrejected`, `added_to_region`,
+  `removed_from_region`), the answers to a source's proposal (`accepted_source`,
+  `declined_source`), the verdicts on a rule's refusal (`admission_confirmed`,
+  `admission_overridden`), `published`, and the lifecycle verdicts on the object
+  (`marked_former`, `marked_lost`, `state_restored`, `missing_dismissed`) and on one of
+  its points (the same four, `location_`-prefixed, plus `location_edited`). The list is
+  closed by a CHECK in `db/init/01-schema.sql`, so an action cannot be recorded until it
+  is named there. What one row *reads as* is `frontend/src/components/shared/curationLog.ts`
+  — the chip's words for every action, and the line under it for those whose `details`
+  carry something a reader wants — and both screens that name one of these rows with a
+  chip take an act's words from there: an object's History and the admin panel's curator
+  activity. The queue's `ProvenanceTrail` is the exception on purpose: it puts the two
+  source verdicts in a sentence with the person who answered, which a chip's noun phrase
+  cannot fill.
+  `backend/src/db/curationLogActionLabels.test.ts` requires the CHECK and the label table
+  to be equal, since the nine that once printed their column value on screen were each
+  added by widening the constraint while nothing compared the two lists
 
 ## Sync Architecture
 
