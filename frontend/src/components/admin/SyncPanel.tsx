@@ -308,6 +308,10 @@ function SourceCard({ source }: SourceCardProps) {
             <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
               <Typography variant="caption">Created: {status.created || 0}</Typography>
               <Typography variant="caption">Updated: {status.updated || 0}</Typography>
+              {/* Under a gate this is the number that moves while Updated
+                  stays at zero; without it a gated run looks idle from start
+                  to finish (#523). */}
+              <Typography variant="caption">Held: {status.held || 0}</Typography>
               <Typography variant="caption">Errors: {status.errors || 0}</Typography>
             </Box>
           </Box>
