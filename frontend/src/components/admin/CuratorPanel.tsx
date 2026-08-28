@@ -60,6 +60,7 @@ import { searchRegions, type RegionSearchResult } from '../../api/regions';
 import type { CuratorInfo, CuratorScope, CuratorActivityEntry } from '../../api/admin';
 import { formatDateTime } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { ACTION_LABELS } from '../shared/curationLog';
 
 // =============================================================================
 // Main Panel
@@ -578,24 +579,31 @@ function ActivityRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const actionColors: Record<string, 'error' | 'success' | 'info' | 'warning' | 'default'> = {
-    rejected: 'error',
-    unrejected: 'success',
-    created: 'success',
-    edited: 'info',
-    added_to_region: 'info',
-    removed_from_region: 'warning',
-  };
+  // The same words the object's own History uses, from the same table. This screen
+  // asks a different question — what has this curator done, rather than what was done
+  // to this object — but the rows are the rows, and it had its own six-entry colour map
+  // and `action.replace(/_/g, ' ')`, which named fourteen of the twenty acts as
+  // "admission overridden" and "location marked former". Two renderings of one act is
+  // how the two came to disagree, and one of them is enough (#691).
+  //
+  // The detail below stays raw JSON: an admin reading a curator's trail is auditing it,
+  // and the whole payload is the point. `formatLogDetails` says what a curator meant;
+  // this says what was written.
+  const named = ACTION_LABELS[entry.action];
 
   return (
     <>
       <TableRow hover>
         <TableCell>
           <Chip
-            label={entry.action.replace(/_/g, ' ')}
+            label={named?.label ?? entry.action.replace(/_/g, ' ')}
             size="small"
-            color={actionColors[entry.action] || 'default'}
             variant="outlined"
+            sx={named ? {
+              color: named.color,
+              bgcolor: `${named.color}14`,
+              borderColor: `${named.color}55`,
+            } : undefined}
           />
         </TableCell>
         <TableCell>
