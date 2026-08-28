@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -54,25 +54,25 @@ export function CreateFromStagedDialog({
   const [drawingOpen, setDrawingOpen] = useState(false);
   const [sourceGeometries, setSourceGeometries] = useState<GeoJSON.FeatureCollection | null>(null);
 
-  // Initialize region name from common prefix when dialog opens
-  // (using stagedDivisions which are set before dialog opens)
-  const initializeName = useCallback(() => {
-    if (stagedDivisions.length > 0 && !regionName) {
-      const names = stagedDivisions.map(d => d.name);
-      const prefix = findCommonPrefix(names);
-      if (prefix) {
-        setRegionName(prefix);
-      }
+  // The suggestion is what the staged names share. It is offered once, on the
+  // opening, and never again while the dialog is up: after that the field is
+  // the admin's, and an emptied field stays empty (#282 -- seeding on every
+  // empty render put it straight back). The gate is the false-to-true
+  // transition of `open`, so neither a parent re-render nor a changed staged
+  // set can reseed over what the admin typed.
+  const suggestedName = useMemo(
+    () => findCommonPrefix(stagedDivisions.map(d => d.name)),
+    [stagedDivisions],
+  );
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setRegionName(suggestedName);
     }
-  }, [stagedDivisions, regionName]);
-
-  // Call on each render when open (cheap, sets state only if needed)
-  if (open && stagedDivisions.length > 0 && !regionName) {
-    initializeName();
-  }
+    wasOpen.current = open;
+  }, [open, suggestedName]);
 
   const handleClose = () => {
-    setRegionName('');
     setUseCustomBoundary(false);
     setCustomBoundaryGeometry(null);
     setSourceGeometries(null);
@@ -89,7 +89,6 @@ export function CreateFromStagedDialog({
     });
 
     // Clear internal state after confirm
-    setRegionName('');
     setUseCustomBoundary(false);
     setCustomBoundaryGeometry(null);
     setSourceGeometries(null);
