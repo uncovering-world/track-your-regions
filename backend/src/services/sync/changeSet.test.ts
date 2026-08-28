@@ -185,7 +185,9 @@ describe('computeChangeSet', () => {
     const result = computeChangeSet(snapshot(), incoming, ['name'], WROTE);
 
     // The applied half is minor; the refused half is the part needing a
-    // decision, and filing the row as minor would hide it from the default view
+    // decision, and filing the row as minor would hide it from `?significance=major`
+    // and take the major chip off it. The report's default view keeps a row with
+    // a refused claim on its own terms (#516), so it is not what this protects.
     expect(result.changeType).toBe('updated');
     expect(result.significance).toBe('major');
   });
@@ -257,8 +259,9 @@ describe('a gated source over a row a reader can already see', () => {
 
   it('weighs a held field, so the proposal is not the hidden half', () => {
     // `name` is major. A held row whose significance came out null or minor
-    // would drop out of the run report's default view — the same argument the
-    // curated-conflict half already makes, one bucket over.
+    // would read as routine under `?significance=major` and carry no major chip
+    // — the same argument the curated-conflict half already makes, one bucket
+    // over. The report's default view keeps a `held` row either way.
     const incoming = snapshot({ name: 'Serengeti NP (renamed upstream)' });
     const result = computeChangeSet(snapshot(), incoming, [], HELD);
 

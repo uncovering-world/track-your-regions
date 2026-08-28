@@ -126,7 +126,13 @@ describe('getSyncLogChanges', () => {
 
     await getSyncLogChanges(makeReq({ significantOnly: 'false' }), makeRes() as never);
 
-    expect(String(mockedQuery.mock.calls[0][0])).not.toContain("change_type <> 'updated'");
+    const countSql = String(mockedQuery.mock.calls[0][0]);
+    expect(countSql).not.toContain("change_type <> 'updated'");
+    // The conflict term travels with the other three: a copy that escaped the
+    // `if` would turn the unfiltered view into conflicts only. The count
+    // statement, since the rows statement ranks by the same term in its ORDER BY
+    // whether or not the filter is on.
+    expect(countSql).not.toContain('curatedConflict');
   });
 
   it('keeps created, missing and failed rows under the significant filter', async () => {
@@ -202,6 +208,42 @@ describe('getSyncLogChanges', () => {
     expect(sql).not.toMatch(/change_type IN \(/);
   });
 
+  it('keeps an updated row where the source ran into a curator\'s claim, whatever its significance', async () => {
+    // The filed case (#516): the run refused a claimed `metadata.website` and rewrote
+    // `nameLocal` on the same row. Both fields weigh 'minor', the applied one makes
+    // the row `updated`, and the first three terms of the filter drop it — the one row
+    // in the run where a machine and a person disagreed. Not a counter beside the
+    // claim: `artworkCount` is sync-owned and reported nowhere (#571).
+    const conflictRow = {
+      id: 11, experience_id: 6184, external_id: 'Q19675', name_snapshot: 'Louvre',
+      change_type: 'updated', significance: 'minor',
+      changed_fields: [
+        { field: 'nameLocal', old: 'Musée du Louvre', new: 'Louvre', significance: 'minor', curatedConflict: false, held: false },
+        { field: 'metadata.website', old: 'https://www.louvre.fr/en', new: 'https://www.louvre.fr/zh-hans', significance: 'minor', curatedConflict: true, held: false },
+      ],
+      contents: null,
+      error: null,
+    };
+    mockedQuery.mockResolvedValueOnce({ rows: [{ total: '1' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [conflictRow] });
+    const res = makeRes();
+
+    await getSyncLogChanges(makeReq({ significantOnly: 'true' }), res as never);
+
+    // The containment test over the stored `changed_fields` is the shape the queue
+    // and both verdict endpoints already read the flag with, so the report and the
+    // curator's card agree on what a conflict is. Both statements, for the reason the
+    // contents test gives: a count with no rows under it.
+    const term = `changed_fields @> '[{"curatedConflict": true}]'`;
+    expect(String(mockedQuery.mock.calls[0][0])).toContain(term);
+    const rowsSql = String(mockedQuery.mock.calls[1][0]);
+    expect(rowsSql.slice(0, rowsSql.indexOf('ORDER BY'))).toContain(term);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      total: 1,
+      changes: [expect.objectContaining({ change_type: 'updated', significance: 'minor' })],
+    }));
+  });
+
   it('ranks major changes first, then everything that is not a routine edit', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
     mockedQuery.mockResolvedValueOnce({ rows: [] });
@@ -214,6 +256,9 @@ describe('getSyncLogChanges', () => {
     const sql = String(mockedQuery.mock.calls[1][0]);
     expect(sql).toContain("WHEN significance = 'major' THEN 0");
     expect(sql).toContain("WHEN change_type <> 'updated' THEN 1");
+    // A refused claim on an otherwise routine edit sits with the conflict rows, not
+    // among the minor edits it would otherwise be filed under (#516).
+    expect(sql).toContain(`WHEN changed_fields @> '[{"curatedConflict": true}]' THEN 1`);
   });
 
   it('scopes every query to the requested run', async () => {
