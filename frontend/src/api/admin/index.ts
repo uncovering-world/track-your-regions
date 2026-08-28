@@ -65,6 +65,8 @@ export interface SyncStatus {
   unchanged?: number;
   missing?: number;
   curatedConflicts?: number;
+  /** Rows the gate held whole so far — inside `unchanged`, and the part of it that is waiting on a person. */
+  held?: number;
   filtered?: number;
   errors?: number;
   currentItem?: string;
@@ -89,12 +91,23 @@ export interface SyncLog {
   total_unchanged: number;
   total_missing: number;
   total_curated_conflicts: number;
+  /**
+   * Rows a reader can already see whose every proposed change the gate kept out: a
+   * verdict is waiting on each. A subset of `total_unchanged`, counted again (#523).
+   */
+  total_held: number;
   total_filtered: number;
   total_errors: number;
   is_dry_run: boolean;
   detection_skipped_reason: string | null;
   /** False on runs that predate change provenance, whose counters mean something else. */
   has_changeset: boolean;
+  /**
+   * The changeset insert threw, so the per-object record is missing or short — it
+   * goes in batches with no transaction around them. Derived from the marker the
+   * run leaves, which is the evidence `has_changeset` and the counters are not.
+   */
+  changeset_lost: boolean;
   triggered_by: number | null;
   triggered_by_name: string | null;
 }

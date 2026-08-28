@@ -83,6 +83,7 @@ export function SyncHistoryPanel() {
               <TableCell align="right">Fetched</TableCell>
               <TableCell align="right">Created</TableCell>
               <TableCell align="right">Updated</TableCell>
+              <TableCell align="right">Held</TableCell>
               <TableCell align="right">Errors</TableCell>
               <TableCell>Triggered By</TableCell>
               <TableCell></TableCell>
@@ -98,7 +99,7 @@ export function SyncHistoryPanel() {
             ))}
             {(!data?.logs || data.logs.length === 0) && (
               <TableRow>
-                <TableCell colSpan={10} align="center">
+                <TableCell colSpan={11} align="center">
                   <Typography color="text.secondary" sx={{ py: 4 }}>
                     No sync history found
                   </Typography>
@@ -163,10 +164,23 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
       <TableCell align="right">{(log.total_created ?? 0).toLocaleString()}</TableCell>
       <TableCell align="right">
         {(log.total_updated ?? 0).toLocaleString()}
-        {!log.has_changeset && log.total_updated > 0 && (
+        {/* Not on a lost record: that run counted the new way and merely
+            failed to keep its changeset, and its card says so. Starring it
+            here would have the list and the card disagree about one run. */}
+        {!log.has_changeset && !log.changeset_lost && log.total_updated > 0 && (
           <Tooltip title="Counted every row touched, not only those that changed — not comparable with later runs">
             <Typography component="span" color="text.secondary" sx={{ ml: 0.5 }}>*</Typography>
           </Tooltip>
+        )}
+      </TableCell>
+      <TableCell align="right">
+        {/* A chip above zero, like Errors, because it is the same kind of
+            number: how much of this run is still waiting on a person. A gated
+            run used to read "Updated 0" here and nothing else (#523). */}
+        {log.total_held > 0 ? (
+          <Chip label={log.total_held.toLocaleString()} color="warning" size="small" />
+        ) : (
+          '0'
         )}
       </TableCell>
       <TableCell align="right">
@@ -192,32 +206,54 @@ interface SyncLogDialogProps {
 }
 
 /**
- * Why a run has no per-object record, which is not one question but three.
+ * Why a run's per-object record is missing or short, which is not one question
+ * but four.
  *
  * A missing changeset means "no record kept", and that has separate causes with
  * separate consequences: a run from before this slice existed, a run whose
  * changeset write failed minutes ago, and a run that legitimately had nothing
- * to record. Only the first says anything about what `Changed` means.
+ * to record. Only the first says anything about what `Changed` means. The
+ * fourth is a record that is there and short: the insert goes in batches of
+ * 500 with no transaction around them, so a failure on the third batch of run
+ * 68's 1272 rows leaves a thousand committed under the same lost-changeset
+ * marker, and `has_changeset` alone cannot tell that list from a whole one.
  */
-export function changesetNote(log: SyncLog & { error_details?: unknown[] }) {
-  if (log.has_changeset) return null;
-
-  const touched = log.total_created + log.total_updated + log.total_missing;
-  if (touched === 0) return null; // nothing happened; "no changes" is accurate
-
-  const writeFailed = (log.error_details ?? []).some(
-    (e) => typeof e === 'object' && e !== null
-      && (e as { externalId?: string }).externalId === 'changeset',
-  );
-
-  if (writeFailed) {
+export function changesetNote(log: SyncLog) {
+  // `changeset_lost` is the server's reading of the marker the run leaves, and
+  // it is proof where the counters and `has_changeset` are inference:
+  // `recordSyncChanges` inserts in batches and an empty changeset cannot
+  // throw, so the marker is only ever stamped when records existed and did
+  // not land — some, or all of them. Asked first for that reason, ahead even
+  // of `has_changeset`: a partial landing has rows to list, and a list drawn
+  // over them with no note reads as the whole run beside a Held tile saying
+  // 1,272. And a gated run from before migration 038 that held every row and
+  // lost its record has every counter at 0 — the migration leaves marker runs
+  // unfilled — so read off the counters alone it would say nothing at all
+  // under a Held tile of 0, which is the conflation this function exists to
+  // prevent.
+  if (log.changeset_lost) {
     return (
       <Alert severity="warning" sx={{ mb: 2 }}>
-        This run&apos;s per-object record could not be written, so the breakdown below is missing
-        even though the counters above are real. See the error details.
+        {log.has_changeset ? (
+          <>This run&apos;s per-object record could not be written in full: the breakdown at the
+            bottom is missing the rows that did not land, and its total counts only those that
+            did. The counters below are the run&apos;s own. See the error details.</>
+        ) : (
+          <>This run&apos;s per-object record could not be written, so the breakdown is missing
+            even though the counters below are real. See the error details.</>
+        )}
       </Alert>
     );
   }
+
+  if (log.has_changeset) return null;
+
+  // Every counter a stored row could stand behind, the two refusals included,
+  // so that a run that only refused things is not called a run with nothing
+  // to record.
+  const touched = log.total_created + log.total_updated + log.total_missing
+    + log.total_held + log.total_curated_conflicts;
+  if (touched === 0) return null; // nothing happened; "no changes" is accurate
 
   return (
     <Alert severity="info" sx={{ mb: 2 }}>
@@ -281,11 +317,15 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
 
             {changesetNote(log)}
 
-            <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(4, 1fr)', mb: 3 }}>
+            {/* Three columns for nine tiles. Held sits right after Unchanged
+                because it is the part of Unchanged that is waiting on a person
+                rather than a fifth bucket beside it (#523). */}
+            <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(3, 1fr)', mb: 3 }}>
               <Tile value={log.total_fetched} label="Fetched" bg="grey.100" />
               <Tile value={log.total_created} label="Created" bg="success.light" />
               <Tile value={log.total_updated} label="Changed" bg="info.light" />
               <Tile value={log.total_unchanged} label="Unchanged" bg="grey.100" />
+              <Tile value={log.total_held} label="Held" bg={log.total_held > 0 ? 'warning.light' : 'grey.100'} />
               <Tile value={log.total_missing} label="Missing" bg={log.total_missing > 0 ? 'warning.light' : 'grey.100'} />
               <Tile value={log.total_curated_conflicts} label="Conflicts" bg={log.total_curated_conflicts > 0 ? 'warning.light' : 'grey.100'} />
               <Tile value={log.total_filtered} label="Filtered" bg="grey.100" />
