@@ -46,8 +46,8 @@ The import accepts a JSON tree where each node represents a region:
 | `children` | array | No | Child region nodes (same structure, recursive) |
 | `sourceUrl` | string | No | URL to the original source page (e.g., Wikivoyage article) |
 | `wikidataId` | string | No | Wikidata entity ID (e.g., `"Q980"`). Used for geoshape fallback in preview |
-| `regionMapUrl` | string | No | URL to a map image showing this region's subdivisions |
-| `mapImageCandidates` | string[] | No | Alternative map image URLs for admin review (picker dialog) |
+| `regionMapUrl` | string | No | Absolute http(s) URL of a map image showing this region's subdivisions |
+| `mapImageCandidates` | string[] | No | Alternative map image URLs for admin review (picker dialog); each an absolute http(s) URL |
 
 ### Field Behavior
 
@@ -55,8 +55,8 @@ The import accepts a JSON tree where each node represents a region:
 - **`children`** — if present, creates child regions under this node. Leaf nodes (no children) are the primary targets for GADM matching.
 - **`sourceUrl`** — stored in `region_import_state.source_url`. Displayed as a link in the match review tree. Used to identify duplicate instances of the same region across the tree (for the "Sync to other instances" feature).
 - **`wikidataId`** — stored in `region_import_state.source_external_id`. Used by the Division Preview Dialog to fetch a Wikidata geoshape overlay for visual comparison with GADM boundaries.
-- **`regionMapUrl`** — stored in `region_import_state.region_map_url`. Shown as a reference image alongside GADM boundaries in the preview dialog. Also available as an overlay in the Custom Subregions dialog's Map View.
-- **`mapImageCandidates`** — stored in `region_map_images` table (1:N). When more than one candidate exists, the admin picks the correct map image via a picker dialog before previewing divisions.
+- **`regionMapUrl`** — stored in `region_import_state.region_map_url`. Shown as a reference image alongside GADM boundaries in the preview dialog. Also available as an overlay in the Custom Subregions dialog's Map View. Refused at upload unless it is an absolute http(s) URL, and drawn only from a host the app trusts for pictures — Wikimedia Commons, which is where every map imported so far lives (`Special:FilePath/…` gets sized with `?width=`; another trusted host goes through the image proxy). A map hosted anywhere else is stored but never shown (#694).
+- **`mapImageCandidates`** — stored in `region_map_images` table (1:N). When more than one candidate exists, the admin picks the correct map image via a picker dialog before previewing divisions. Held to the same rule as `regionMapUrl`, since the picker draws every candidate; one it cannot draw is not offered.
 
 ## Match Status Lifecycle
 
