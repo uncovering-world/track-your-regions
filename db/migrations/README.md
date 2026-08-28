@@ -37,6 +37,20 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`038-sync-log-total-held.sql` adds `experience_sync_logs.total_held` — how many rows a reader
+can already see the run proposed a change to and the gate kept whole, each waiting on a verdict —
+and fills it for the runs that predate the column from the `held` rows they recorded (#523). A
+subset of `total_unchanged`, counted again, because a held row moved nothing and that counter's
+meaning is fixed; the code writes it from the same predicate that files a changeset row as `held`,
+so the count and the rows are one decision and the fill is exact wherever the changeset landed. On
+the dev database: UNESCO run 68 reported `unchanged 1272` about 1272 held sites, Public Art run 67
+held 199 of its 200, museum run 64 held 15. A run whose changeset was lost, or landed only in part
+— the insert goes in batches of 500 with no transaction around them — is left at 0 and listed by
+the closing query with the held rows that did land, because a count taken from a partial record
+would read as exact everywhere afterwards. Adds the column itself, so it may run before or after
+the next re-application of `01-schema.sql`, any number of times — a second run finds nothing to
+fill.
+
 `037-topology-preserving-rungs.sql` rebuilds every rendered rung of `regions` and
 `administrative_divisions` (#685). `simplify_for_zoom()` simplified with `ST_SimplifyVW`,
 which moves each ring on its own: the simplified outline crosses itself, two parts that
