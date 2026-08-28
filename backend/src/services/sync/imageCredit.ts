@@ -39,6 +39,7 @@ import {
   type SourceWait,
 } from './sourceRetry.js';
 import { pool } from '../../db/index.js';
+import { isStorableHttpUrl } from '../../types/urlSafety.js';
 
 const LOG_PREFIX = '[Image Credit]';
 
@@ -199,15 +200,17 @@ export function creditText(html: string | null | undefined): string | null {
  * of the schemes a blacklist has to remember. `Artist` two functions above is
  * reduced to text for the same reason; this is the same care applied to the
  * other half of the same answer.
+ *
+ * Which two schemes those are is not decided here. `isStorableHttpUrl` holds
+ * that for every url the backend stores, curator input included, so a policy
+ * written twice cannot come to be enforced twice over (#693). What this adds is
+ * the normalising: the value kept is the one the parser made, not the string it
+ * arrived as.
  */
 export function safeHttpUrl(value: string | null | undefined): string | null {
   if (!value) return null;
-  try {
-    const parsed = new URL(value.trim());
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
-  } catch {
-    return null;
-  }
+  const trimmed = value.trim();
+  return isStorableHttpUrl(trimmed) ? new URL(trimmed).href : null;
 }
 
 interface ExtMetadataValue { value?: string }
