@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import {
+  isStorableHttpUrl,
+  isStorableImageUrl,
+  normalizeStorableUrl,
+  STORABLE_HTTP_URL_MESSAGE,
+  STORABLE_IMAGE_URL_MESSAGE,
+} from './urlSafety.js';
 
 /**
  * Types for Track Your Regions Backend
@@ -243,18 +250,27 @@ export const assignExperienceBodySchema = z.object({
 });
 
 /**
- * A URL field that refuses script-bearing schemes, bounded by whatever holds
- * it. Most of these end up inside the `metadata` JSONB, which has no width, so
- * they keep the generic 2000; `imageUrl` is stored in `experiences.image_url`
- * and takes that column's 1000 instead.
+ * A URL field bounded by whatever holds it, kept to the shapes that field can
+ * legitimately take. Most of these end up inside the `metadata` JSONB, which
+ * has no width, so they keep the generic 2000; `imageUrl` is stored in
+ * `experiences.image_url` and takes that column's 1000 instead.
+ *
+ * The value is judged, then rewritten to the form the parser read, and that is
+ * what gets stored: `validate()` puts the parsed object back on the request, so
+ * no consumer downstream sees a spelling this rule did not read. The width is
+ * measured last, on that stored form, because percent-encoding can make it
+ * longer than what arrived.
  */
-const safeUrl = (max: number) => z.string().max(max).optional().refine(
-  (val) => !val || !/^(javascript|data|vbscript|blob):/i.test(val),
-  { message: 'URL uses an unsafe scheme' },
-);
+const boundedUrl = (max: number, isStorable: (value: string) => boolean, message: string) =>
+  z.string().trim().optional()
+    .refine((val) => !val || isStorable(val), { message })
+    .transform((val) => (val === undefined ? val : normalizeStorableUrl(val)))
+    .refine((val) => !val || val.length <= max, {
+      message: `URL must be at most ${max} characters once normalised`,
+    });
 
-const safeUrlSchema = safeUrl(2000);
-const safeImageUrlSchema = safeUrl(1000);
+const safeUrlSchema = boundedUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
+const safeImageUrlSchema = boundedUrl(1000, isStorableImageUrl, STORABLE_IMAGE_URL_MESSAGE);
 
 export const editExperienceBodySchema = z.object({
   name: z.string().min(1).max(500).optional(),

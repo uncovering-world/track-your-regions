@@ -116,6 +116,17 @@ function manualExperience(override: Record<string, unknown>): unknown {
 }
 
 /**
+ * An https url of exactly the requested length. `imageUrl` is no longer filler
+ * with a bound on it: it has to be an absolute http(s) url or a path on our own
+ * origin (#693), so a run of `x` would be refused for its shape and the width
+ * this case exists to measure would go unmeasured.
+ */
+function imageUrlOfLength(length: number): string {
+  const prefix = 'https://upload.wikimedia.org/';
+  return prefix + 'a'.repeat(length - prefix.length);
+}
+
+/**
  * Every bounded request field that lands in a VARCHAR column of the tables
  * above — a field writing two of them appears once per column. Fields writing
  * TEXT or JSONB (source_url, an experience's description, the website and
@@ -314,6 +325,7 @@ const CASES: BoundCase[] = [
     table: 'experiences',
     column: 'image_url',
     build: (value) => ({ imageUrl: value }),
+    fill: imageUrlOfLength,
   },
   {
     field: 'createManualExperienceBodySchema.name',
@@ -343,6 +355,7 @@ const CASES: BoundCase[] = [
     table: 'experiences',
     column: 'image_url',
     build: (value) => manualExperience({ imageUrl: value }),
+    fill: imageUrlOfLength,
   },
   {
     // Stored as one element of a VARCHAR(10)[] / VARCHAR(255)[].
