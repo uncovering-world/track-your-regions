@@ -21,11 +21,27 @@ import {
 import { METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
 import { WIKIDATA_USER_AGENT } from '../../services/sync/wikidataUtils.js';
+import {
+  isStorableHttpUrl,
+  isStorableImageUrl,
+  STORABLE_HTTP_URL_MESSAGE,
+  STORABLE_IMAGE_URL_MESSAGE,
+} from '../../types/urlSafety.js';
 
-const UNSAFE_URL_SCHEMES = /^(javascript|data|vbscript|blob):/i;
-
-function isUnsafeUrl(url: string): boolean {
-  return UNSAFE_URL_SCHEMES.test(url.trim());
+/**
+ * The same rule the request schema applied, asked again where the value is
+ * written. Both routes below run `validate()` first, so this is a second layer
+ * and not the only one — but it is the layer a direct call to the controller
+ * still passes through, and it reads the rule and its wording from
+ * `urlSafety.ts` rather than restating either: the two spellings that used to
+ * sit here and in the schema disagreed about whitespace, which is how a scheme
+ * behind one space was stored (#693).
+ *
+ * It covers the picture as well as the two links. It did not, which left the
+ * second layer absent from the one field that bug was actually about.
+ */
+function refusalFor(value: unknown, isStorable: (url: string) => boolean, message: string): string | null {
+  return typeof value === 'string' && value && !isStorable(value) ? message : null;
 }
 
 /**
@@ -350,12 +366,11 @@ function parseEditPayload(body: Record<string, unknown>): EditPayload {
 
 function validateEditPayload(payload: EditPayload): string | null {
   const { websiteUrl, wikipediaUrl, updates, hasWebsiteUpdate, hasWikipediaUpdate } = payload;
-  if (typeof websiteUrl === 'string' && websiteUrl && isUnsafeUrl(websiteUrl)) {
-    return 'Invalid URL scheme';
-  }
-  if (typeof wikipediaUrl === 'string' && wikipediaUrl && isUnsafeUrl(wikipediaUrl)) {
-    return 'Invalid URL scheme';
-  }
+  const imageUrl = updates.find(u => u.column === 'image_url')?.value;
+  const refusal = refusalFor(websiteUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
+    ?? refusalFor(wikipediaUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
+    ?? refusalFor(imageUrl, isStorableImageUrl, STORABLE_IMAGE_URL_MESSAGE);
+  if (refusal) return refusal;
   const hasMetadataUpdate = hasWebsiteUpdate || hasWikipediaUpdate;
   if (updates.length === 0 && !hasMetadataUpdate) {
     return 'No fields to update';
@@ -687,12 +702,10 @@ function validateCreateManualInput(body: CreateManualBody): string | null {
   if (!body.name || body.longitude == null || body.latitude == null) {
     return 'name, longitude, and latitude are required';
   }
-  if (typeof body.websiteUrl === 'string' && body.websiteUrl && isUnsafeUrl(body.websiteUrl)) {
-    return 'Invalid URL scheme';
-  }
-  if (typeof body.wikipediaUrl === 'string' && body.wikipediaUrl && isUnsafeUrl(body.wikipediaUrl)) {
-    return 'Invalid URL scheme';
-  }
+  const refusal = refusalFor(body.websiteUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
+    ?? refusalFor(body.wikipediaUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
+    ?? refusalFor(body.imageUrl, isStorableImageUrl, STORABLE_IMAGE_URL_MESSAGE);
+  if (refusal) return refusal;
   if (!body.regionId) {
     return 'regionId is required for initial region assignment';
   }
