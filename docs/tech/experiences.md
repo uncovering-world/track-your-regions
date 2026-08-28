@@ -1334,6 +1334,11 @@ The other stored picture, a region's imported map, is held to the link form of
 the same rule on both sides — an absolute `http(s)` URL and nothing else, since
 no map is a path on our own origin — see
 [world-view-import.md](world-view-import.md) § "JSON Tree Validation" (#694).
+A region's source page is held to it on the way **out** as well, offered only
+through `safeHref` (`frontend/src/utils/safeHref.ts`) — the same function a
+picture credit's licence link already asked (#703). `websiteUrl` and
+`wikipediaUrl` are not yet: the three surfaces that link them take the stored
+value as it is, which is what #708 is for.
 
 ## The "New" chip
 
