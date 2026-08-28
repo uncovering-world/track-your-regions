@@ -1242,6 +1242,36 @@ not on this list: the first three are `TEXT`/`JSONB` columns and the last two
 live inside the `metadata` JSONB, so none of them has a width to align with.
 `backend/src/types/columnBounds.test.ts` holds every entry above to its column.
 
+### What a URL field may hold
+
+`imageUrl`, `websiteUrl` and `wikipediaUrl` are held to a shape as well as a
+width, and the shape is decided by the URL parser rather than by a pattern over
+the string: a link must be an absolute `http(s)` URL, and a picture must be that
+or a path that stays on our own origin (`/images/…`, for a file we host
+ourselves). The rule is declared once, in `backend/src/types/urlSafety.ts`, and
+read from there by both the request schema and the curation controller, wording
+of the refusal included. The value is trimmed, judged, and then **stored in the
+form the parser read** rather than the form it arrived in — `HTTPS://…` becomes
+`https://…`, an interior tab is dropped — because the check that draws the
+picture tests `startsWith('https://')` and would otherwise refuse a value this
+one accepted, saving a picture that never appears. A path on our own origin is
+stored untouched. The width is measured last, on the stored form: percent-encoding
+can only make a url longer, and the column is what has to hold it.
+
+It is an allowlist because the denylist it replaced leaked twice. A URL parser
+drops leading whitespace, and ASCII tab, LF and CR from anywhere in the value,
+before it decides what the scheme is — so `" javascript:…"` and
+`"java<tab>script:…"` are both `javascript:` URLs that a pattern over the raw
+string does not see. The two copies of that pattern, one in the schema and one
+in the controller, disagreed about which of them trimmed, which is how a scheme
+behind a single space reached `experiences.image_url` (#693).
+
+The rule binds what a **curator** sends. A sync writes these columns directly,
+through no request schema, and the rows already in the database predate the
+rule — which is why the picture is checked again where it is drawn
+(`frontend/src/utils/imageUrl.ts`, #692), and why that check is not a duplicate
+of this one.
+
 ## The "New" chip
 
 `is_new` is decided server-side and means **the reader could first see it recently** — not
