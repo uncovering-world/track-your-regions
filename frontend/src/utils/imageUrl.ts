@@ -37,10 +37,12 @@ function isRemoteHttpUrl(url: string): boolean {
  * An allowlist of what is renderable, not a denylist of what is not: a stored
  * image url is either an absolute http(s) url or a path on our own origin, and
  * everything else is refused — `javascript:`, `data:`, `vbscript:`, `blob:`,
- * and equally a scheme nobody has thought of yet. The write path does not
- * already hold this line for `image_url`: `safeUrl` matches its denylist
- * against the value as sent, so `" javascript:…"` is stored today (#693). This
- * is the check that runs where the value meets the DOM (#449).
+ * and equally a scheme nobody has thought of yet. The write path holds the same
+ * line for a curator's `image_url` since #693 — the same allowlist, put to the
+ * same parser. This check is load-bearing all the same: a sync writes that
+ * column through no request schema at all, and every row already stored was
+ * written before the rule. This is the check that runs where the value meets
+ * the DOM (#449).
  */
 function isRenderableImageUrl(url: string): boolean {
   if (isRemoteHttpUrl(url)) return true;

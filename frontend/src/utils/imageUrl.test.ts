@@ -111,10 +111,10 @@ describe('extractImageUrl', () => {
 
 // Both functions hand their answer straight to an `<img src>`, so what they do
 // not recognise they must refuse rather than pass on (#449). No sync writes
-// such a value, and the API refuses the plain forms on the way in — but only
-// the plain ones: `safeUrl` matches its denylist against the value as sent, so
-// a leading space carries one past it (#693). These cases are what runs where
-// the value meets the DOM.
+// such a value, and since #693 the API refuses every spelling of one on the way
+// in — but a sync writes `image_url` through no request schema at all, and the
+// rows already stored predate the rule. These cases are what runs where the
+// value meets the DOM.
 describe('unrenderable URLs', () => {
   const FOREIGN_SCHEMES = [
     'javascript:alert(1)',
