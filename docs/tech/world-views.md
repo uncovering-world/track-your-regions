@@ -314,6 +314,8 @@ Creating "Kazakhstan" (spans Europe and Asia in GADM):
 3. Click "Create Region"
 4. Both portions combine into one region
 
+The dialog suggests a name: what the staged names share, less any trailing separator (`findCommonPrefix` in `WorldViewEditor/utils`) -- "Kazakhstan" for the two rows above, "M" for Monroe County and Miami-Dade County. The suggestion is seeded once, when the dialog opens, and the field is the admin's from then on: it can be replaced or cleared, and a cleared field stays cleared (#282 -- seeding on every empty render put it straight back). The next staging gets its own suggestion; the detour through the boundary-drawing dialog keeps whatever was typed.
+
 ### 6. Flatten Subregions
 
 Convert subregions back to simple administrative division members.
