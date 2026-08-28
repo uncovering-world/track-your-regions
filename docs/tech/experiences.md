@@ -565,7 +565,13 @@ changeset rows agree on how many rows a run held; the run report's default
 view keeps them regardless of significance, since what it drops is a minor `updated` row that moved
 nothing else — a denylist naming one case rather than a list of the cases worth showing. A row whose
 *contents* moved stays even when its only field edit was minor, because `significance` weighs fields
-alone and that row is the only record anywhere that a component arrived.
+alone and that row is the only record anywhere that a component arrived. So does an `updated` row
+where the source ran into a curator's claim (#516): the refused field is weighed like any other, so a
+claimed `shortDescription` or `metadata.website` beside an applied `nameLocal` computes `minor`, and the
+view reads the stored `curatedConflict` flag — the containment test the queue and both verdict
+endpoints already use — to keep the one row in a run where a machine and a person disagreed. A row
+whose *only* difference was refused is `conflict` and was never at risk; it is the row that also
+carries an ordinary edit that the first three terms filed under routine.
 
 The same reasoning holds against `returned`: a row can come back from missing while a hold from
 this very run is still sitting on it, and the hold is again the half nobody has answered.
@@ -668,7 +674,8 @@ predicate rather than inferring the record's fate from `has_changeset` and the c
 read a lost record as an old run, and a partial landing as a whole one. The admin's run list
 carries it as a **Held** column beside Updated, the run's card as a tile beside Unchanged, and the
 live status while a run is going (`held` on `GET /api/admin/sync/categories/:categoryId/status`).
-Not touched by it: the default "Significant only" view of the per-object report, which #516 tracks.
+Not touched by it: the default "Significant only" view of the per-object report, whose own rule is
+above.
 
 **Two lifecycle axes** on `experiences`. `existence` is curator-only. So is `former` — a
 source outage must never change what users see — but `present` can also be restored by the
