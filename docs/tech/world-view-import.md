@@ -107,6 +107,22 @@ non-ASCII file name is percent-encoded). The schema used to be
 `z.string().url()`, which is `new URL()` in a try/catch and accepts
 `javascript:` and `data:` as readily as `https:` (#694).
 
+`sourceUrl` is the third url a node carries and the only one that becomes a
+link, and it reads the same link form of the rule — as do the `sourceUrl` of
+`POST /add-child-region` and `POST /rename-region`, which write the same
+column during review (#703). What makes it a different class from the map:
+a `javascript:` value in an `img src` draws nothing, but in an `href` it runs
+on click, in the admin's session. So the page is offered on screen only
+through `safeHref` (`frontend/src/utils/safeHref.ts`) — the glyph in the
+review tree, the source-page button of the Custom Subregions map view, the
+"View source page" button of the CV match review (which opens it with
+`window.open`, the one sink React does not guard), an AI Review action's page
+link and an extraction question's title — and a page the rule refuses is not
+linked at all. An empty `sourceUrl` stays refused, as `z.string().url()`
+refused it: the rename route writes what it is given, so `''` would land in
+the column as a value rather than as NULL, and no reader means anything by
+it — a page is either named or not sent.
+
 Additional limits enforced in the controller:
 - **Max 50,000 nodes** — prevents memory exhaustion
 - **Max 15 levels deep** — prevents stack overflow
