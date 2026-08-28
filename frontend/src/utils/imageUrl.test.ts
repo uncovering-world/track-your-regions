@@ -166,3 +166,32 @@ describe('unrenderable URLs', () => {
     expect(toThumbnailUrl('https://evil.example.com/wiki/Special:FilePath/Louvre.jpg')).toBe('');
   });
 });
+
+// A region's imported map (`region_map_url`) is the other stored picture, and
+// it is wiki content too: the Wikivoyage extractor names a Commons
+// `Special:FilePath` file for every map it finds. Seven dialogs used to build
+// its `src` by hand (`${url}?width=500`) and one loader handed it to a
+// `new Image()` untouched (#694). They all go through these two functions
+// now, so what the functions make of that url is what the dialogs draw --
+// and `backend/src/types/urlSafety.test.ts` holds every component to that,
+// by reading the source, since only the backend's test tree can read files.
+describe("a region's imported map", () => {
+  const COMMONS_MAP = 'https://commons.wikimedia.org/wiki/Special:FilePath/Algeria_regions_map.png';
+
+  it('is sized the way the dialogs used to size it by hand', () => {
+    expect(toThumbnailUrl(COMMONS_MAP, 500)).toBe(`${COMMONS_MAP}?width=500`);
+  });
+
+  it('keeps a non-ASCII file name as stored, since the browser encodes it on the way out', () => {
+    const raw = 'https://commons.wikimedia.org/wiki/Special:FilePath/Île-De-France-Map.png';
+    expect(toThumbnailUrl(raw, 500)).toBe(`${raw}?width=500`);
+  });
+
+  it('is handed to the overlay loader at full size, as it was', () => {
+    // The overlay is calibrated against division boundaries, so it wants the
+    // original rather than a sized thumbnail: extractImageUrl answers with the
+    // url itself once it has judged it, and with nothing otherwise.
+    expect(extractImageUrl(COMMONS_MAP)).toBe(COMMONS_MAP);
+    expect(extractImageUrl('javascript:alert(1)')).toBeNull();
+  });
+});
