@@ -30,6 +30,7 @@ import { GapDivisionTree, GapContextMap } from './GapAnalysis';
 import { mergeGeometries, mergeGeomsIntoSibling } from './CvMatchMap';
 import { type MatchTreeNode, type ReviewChildAction, getChildrenRegionGeometry } from '../../api/admin/worldViewImport';
 import { frameGeoJson } from '../../utils/mapUtils';
+import { toThumbnailUrl } from '../../utils/imageUrl';
 
 // COVERAGE_MAP_STYLE is duplicated in GapAnalysis.tsx to break the circular
 // import between these two modules (they mutually import component helpers).
@@ -837,6 +838,9 @@ export function GapAnalysisDialog({ state, tree, worldViewId, highlightedGapId, 
 
   if (!effectiveState) return null;
 
+  // The stored map is wiki content: drawn only as toThumbnailUrl allows (#694).
+  const mapSrc = effectiveState.regionMapUrl ? toThumbnailUrl(effectiveState.regionMapUrl, 800) : '';
+
   const subtreeRegions = (() => {
     if (!tree) return [];
     const findNode = (nodes: MatchTreeNode[]): MatchTreeNode | null => {
@@ -871,11 +875,11 @@ export function GapAnalysisDialog({ state, tree, worldViewId, highlightedGapId, 
       <DialogTitle sx={{ pb: 1, flexShrink: 0 }}>Coverage Gap Analysis: {effectiveState.regionName}</DialogTitle>
       {/* Top: source image + context map side by side (sticky) */}
       <Box sx={{ display: 'flex', gap: 1, px: 3, pb: 1, flexShrink: 0, minHeight: 0 }}>
-        {effectiveState.regionMapUrl && (
+        {mapSrc && (
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Box
               component="img"
-              src={`${effectiveState.regionMapUrl}?width=800`}
+              src={mapSrc}
               alt={`${effectiveState.regionName} region map`}
               sx={{ width: '100%', maxHeight: 300, objectFit: 'contain', borderRadius: 1, border: 1, borderColor: 'divider' }}
             />

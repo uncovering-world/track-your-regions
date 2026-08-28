@@ -38,6 +38,7 @@ import type { SiblingRegionGeometry } from '../../api/admin/wvImportCoverage';
 import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
 import { frameGeoJson } from '../../utils/mapUtils';
+import { toThumbnailUrl } from '../../utils/imageUrl';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -166,6 +167,8 @@ export function OverlapResolutionDialog({
   onApplied,
 }: OverlapResolutionDialogProps) {
   const mapRef = useRef<MapRef>(null);
+  // The stored map is wiki content: drawn only as toThumbnailUrl allows (#694).
+  const mapSrc = regionMapUrl ? toThumbnailUrl(regionMapUrl, 500) : '';
 
   // Data state
   const [childGeometries, setChildGeometries] = useState<SiblingRegionGeometry[] | null>(null);
@@ -468,10 +471,10 @@ export function OverlapResolutionDialog({
             {/* Map panels */}
             <Box sx={{ display: 'flex', gap: 1.5, flex: '1 1 60%', minHeight: 0 }}>
               {/* Left: static region map */}
-              {regionMapUrl && (
+              {mapSrc && (
                 <Box sx={{ flex: '0 0 42%', border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <img
-                    src={`${regionMapUrl}?width=500`}
+                    src={mapSrc}
                     alt={parentRegionName}
                     style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                   />

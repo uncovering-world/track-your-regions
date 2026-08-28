@@ -41,6 +41,7 @@ import type { SiblingRegionGeometry } from '../../api/admin/wvImportCoverage';
 import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
 import { frameGeoJson } from '../../utils/mapUtils';
+import { toThumbnailUrl } from '../../utils/imageUrl';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -335,7 +336,9 @@ export function SmartSimplifyDialog({
     return set;
   }, [selectedMove, selectedAnomaly]);
 
-  const hasSideBySide = !!regionMapUrl;
+  // The stored map is wiki content: drawn only as toThumbnailUrl allows (#694).
+  const mapSrc = regionMapUrl ? toThumbnailUrl(regionMapUrl, 500) : '';
+  const hasSideBySide = !!mapSrc;
   const pendingMoves = moves ? moves.filter((m) => !appliedGadmParentIds.has(m.gadmParentId)).length : 0;
 
   // Division overlay color: in "proposed" mode, show in the target's color; in "current", show in the source's color
@@ -410,7 +413,7 @@ export function SmartSimplifyDialog({
                   </Typography>
                   <Box
                     component="img"
-                    src={`${regionMapUrl}?width=500`}
+                    src={mapSrc}
                     alt="Region map"
                     sx={{
                       maxWidth: '100%',

@@ -303,4 +303,64 @@ describe('the rule is declared once', () => {
 
     expect(offenders, 'which protocols may be stored is decided in urlSafety.ts and read from there').toEqual([]);
   });
+
+  /**
+   * The read side of the same rule lives in `frontend/src/utils/imageUrl.ts`,
+   * and the seven dialogs of #694 were not wrong about it; they never asked
+   * it. A stored picture reaching a `src` through a template literal of its
+   * own is the shape every one of them had, so it is refused at the source
+   * rather than found again in review. Asserted from here because only this
+   * test tree can read files: the frontend's compiles without Node's types.
+   *
+   * What is looked at is the `src` expression -- a JSX `src={…}` or an
+   * imperative `.src = …`, which is how a debug window draws -- and, where
+   * that is a bare name, the one binding the file gives it: `const mapSrc = …;
+   * src={mapSrc}` is the shape the fix itself uses everywhere, and a later
+   * edit narrowing that binding to the raw value would otherwise pass. Two
+   * levels of indirection still would; the guard pins the shapes that have
+   * actually occurred.
+   */
+  it('lets no component put a stored picture into a src of its own', () => {
+    const frontendSrc = join(backendSrc, '..', '..', 'frontend', 'src');
+    /**
+     * A stored picture: a region's map, by the name every prop carries it
+     * under, or an experience's or a work's picture as the column it comes
+     * from. The camelCase `imageUrl` is left out on purpose: under that name
+     * the tree holds prepared values as often as stored ones -- the overlay's
+     * FileReader data url, the hover store's ready thumbnail -- and a pattern
+     * that flagged those would be answered with exemptions, not with the rule.
+     */
+    const storedPicture = /\b(regionMapUrl|region_map_url)\b|\.image_url\b/;
+    /** The doors: an expression that names a stored picture must call one of them, or the card helper built on both. */
+    const throughTheRule = /\b(toThumbnailUrl|extractImageUrl|cardImageUrl)\s*\(/;
+    /** `${url}?width=300`: a picture sized by hand rather than by toThumbnailUrl. */
+    const sizedByHand = /`[^`]*\$\{[^}]*\}[^`]*\?width=/;
+    const drawsRaw = (expression: string): boolean =>
+      sizedByHand.test(expression) || (storedPicture.test(expression) && !throughTheRule.test(expression));
+
+    const offenders: string[] = [];
+    for (const name of readdirSync(frontendSrc, { recursive: true, encoding: 'utf8' })) {
+      if (!name.endsWith('.tsx') || name.endsWith('.test.tsx')) continue;
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from a literal root
+      const text = readFileSync(join(frontendSrc, name), 'utf8');
+      // A JSX expression may hold one level of braces of its own: `${url}` is
+      // exactly the shape being looked for, and would otherwise end the match.
+      // eslint-disable-next-line security/detect-unsafe-regex -- the two alternatives inside the star are disjoint on their first character (`{` against not-`{`), so no input matches two ways and there is no catastrophic backtracking
+      const jsxSrc = [...text.matchAll(/\bsrc=\{((?:[^{}]|\{[^{}]*\})*)\}/g)].map(m => ({ site: `src={${m[1].trim()}}`, expression: m[1].trim() }));
+      // `img.src = …;` -- the same sink, reached without JSX. The value starts
+      // at its first non-blank character, so the blanks before it belong to
+      // one token only and the match is linear.
+      const assignedSrc = [...text.matchAll(/\.src\s*=\s*(\S[^;]*);/g)].map(m => ({ site: `.src = ${m[1].trim()}`, expression: m[1].trim() }));
+      for (const { site, expression } of [...jsxSrc, ...assignedSrc]) {
+        if (drawsRaw(expression)) offenders.push(`${name}: ${site}`);
+        if (!/^[A-Za-z_$][\w$]*$/.test(expression)) continue;
+        // A bare name: what the file binds it to is what reaches the src.
+        // eslint-disable-next-line security/detect-non-literal-regexp -- the name is an identifier matched by the anchored test above, so it carries no regex syntax
+        const binding = new RegExp(`\\b(?:const|let|var)\\s+${expression}\\s*=\\s*([^;]*);`).exec(text);
+        if (binding && drawsRaw(binding[1])) offenders.push(`${name}: ${expression} = ${binding[1].trim()}`);
+      }
+    }
+
+    expect(offenders, 'a stored picture is drawn through toThumbnailUrl or extractImageUrl, never raw').toEqual([]);
+  });
 });

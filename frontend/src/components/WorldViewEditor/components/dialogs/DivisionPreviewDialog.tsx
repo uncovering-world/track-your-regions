@@ -19,6 +19,7 @@ import { GuardedMap as MapGL } from '../../../shared/GuardedMap';
 import type maplibregl from 'maplibre-gl';
 import { fetchGeoshape, getChildrenRegionGeometry } from '../../../../api/admin/worldViewImport';
 import { frameGeoJson } from '../../../../utils/mapUtils';
+import { extractImageUrl, toThumbnailUrl } from '../../../../utils/imageUrl';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const CHILD_COLORS = ['#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd', '#aa3366', '#55bb88', '#8866cc', '#dd5555', '#44bbaa', '#7766bb', '#bb8844'];
@@ -439,7 +440,9 @@ export function DivisionPreviewDialog({
   // Build list of available left-panel sources
   const geoshapeHasFeatures = !!geoshapeData && geoshapeData.features.length > 0;
   const geoshapeAvailable = !!wikidataId && !geoshapeError && (geoshapeLoading || geoshapeHasFeatures);
-  const imageAvailable = !!regionMapUrl;
+  // The stored map is wiki content: drawn only as toThumbnailUrl allows (#694).
+  const mapSrc = regionMapUrl ? toThumbnailUrl(regionMapUrl, 500) : '';
+  const imageAvailable = !!mapSrc;
   const pointsAvailable = !!markerPoints && markerPoints.length > 0;
 
   const availableSources = useMemo(() => {
@@ -566,7 +569,7 @@ export function DivisionPreviewDialog({
             }}>
               <Box
                 component="img"
-                src={`${regionMapUrl}?width=500`}
+                src={mapSrc}
                 alt="Region map"
                 sx={{
                   maxWidth: '100%',
@@ -669,8 +672,17 @@ export function DivisionPreviewDialog({
               const doc = w.document;
               const root = doc.createElement('div');
               Object.assign(root.style, { display: 'flex', gap: '16px', padding: '16px', fontFamily: 'sans-serif', background: '#f5f5f5', minHeight: '100vh' });
-              const entries: [string, string][] = [['Image 1: Region Map', aiDebugImages.regionMap], ['Image 2: Numbered Divisions', aiDebugImages.divisionsMap]];
+              // The region map comes back from the server as the stored url it
+              // was sent, sized -- a stored picture, so it is judged like one
+              // (#694): extractImageUrl keeps what it was, or answers nothing
+              // and the column is left out. The divisions map is a data url the
+              // server drew itself.
+              const entries: [string, string][] = [
+                ['Image 1: Region Map', extractImageUrl(aiDebugImages.regionMap) ?? ''],
+                ['Image 2: Numbered Divisions', aiDebugImages.divisionsMap],
+              ];
               for (const [title, src] of entries) {
+                if (!src) continue;
                 const col = doc.createElement('div');
                 col.style.flex = '1';
                 const h = doc.createElement('h3');

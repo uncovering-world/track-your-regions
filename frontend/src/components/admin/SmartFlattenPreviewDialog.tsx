@@ -15,6 +15,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import { frameGeoJson } from '../../utils/mapUtils';
+import { toThumbnailUrl } from '../../utils/imageUrl';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -42,7 +43,9 @@ export function SmartFlattenPreviewDialog({
   confirming,
 }: SmartFlattenPreviewDialogProps) {
   const mapRef = useRef<MapRef>(null);
-  const hasSideBySide = !!regionMapUrl;
+  // The stored map is wiki content: drawn only as toThumbnailUrl allows (#694).
+  const mapSrc = regionMapUrl ? toThumbnailUrl(regionMapUrl, 500) : '';
+  const hasSideBySide = !!mapSrc;
 
   return (
     <Dialog
@@ -84,7 +87,7 @@ export function SmartFlattenPreviewDialog({
               </Typography>
               <Box
                 component="img"
-                src={`${regionMapUrl}?width=500`}
+                src={mapSrc}
                 alt="Region map"
                 sx={{
                   maxWidth: '100%',

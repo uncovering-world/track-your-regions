@@ -33,6 +33,7 @@ import type { SubdivisionGroup, MapTool } from './types';
 import { getGroupColor } from './types';
 import { ImageOverlayDialog, type ImageOverlaySettings } from './ImageOverlayDialog';
 import { CutDivisionDialog } from '../CutDivisionDialog';
+import { extractImageUrl } from '../../../../../utils/imageUrl';
 import { useGeometryLoading } from './useGeometryLoading';
 
 function renameGroupAtIndex(groups: SubdivisionGroup[], idx: number, name: string): SubdivisionGroup[] {
@@ -87,6 +88,10 @@ export function MapViewTab({
   regionMapUrl,
 }: MapViewTabProps) {
   const mapRef = useRef<MapRef>(null);
+  // The stored map is wiki content, and the overlay wants it at full size, so it
+  // is judged rather than sized: extractImageUrl answers with the url itself or
+  // with nothing (#694). What the button promises is what the dialog can load.
+  const regionMapSrc = regionMapUrl ? extractImageUrl(regionMapUrl) : null;
   const [selectedGroupIdx, setSelectedGroupIdx] = useState<number | 'unassigned' | null>(null);
   const [hoveredDivisionId, setHoveredDivisionId] = useState<number | null>(null);
   const [editingGroupNameInMap, setEditingGroupNameInMap] = useState<number | null>(null);
@@ -399,11 +404,11 @@ export function MapViewTab({
           {(() => {
             let overlayTooltip = "Add reference image overlay";
             if (imageOverlaySettings) overlayTooltip = "Edit reference image overlay";
-            else if (regionMapUrl) overlayTooltip = "Load region map overlay";
+            else if (regionMapSrc) overlayTooltip = "Load region map overlay";
 
             let overlayColor: 'primary' | 'secondary' | 'default' = 'default';
             if (imageOverlaySettings) overlayColor = 'primary';
-            else if (regionMapUrl) overlayColor = 'secondary';
+            else if (regionMapSrc) overlayColor = 'secondary';
             return (
               <Tooltip title={overlayTooltip}>
                 <IconButton
@@ -853,7 +858,7 @@ export function MapViewTab({
         initialZoom={4}
         existingSettings={imageOverlaySettings}
         regionGeometries={mapGeometries}
-        regionMapUrl={regionMapUrl}
+        regionMapUrl={regionMapSrc}
       />
 
       {/* Cut Division Dialog */}

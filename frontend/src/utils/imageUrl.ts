@@ -1,5 +1,6 @@
 /**
- * Image URL utilities for experience images
+ * Image URL utilities for stored pictures: an experience's or a work's
+ * `image_url`, and a region's imported map (`region_map_url`, #694).
  *
  * Handles trusted domain validation, Wikimedia thumbnail URLs, and image proxying.
  * Extracted from useExperienceContext for reuse across components.
