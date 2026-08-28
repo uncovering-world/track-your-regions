@@ -1,43 +1,106 @@
 /**
- * What an object's History makes of the trail `experience_curation_log` holds.
+ * What a screen makes of the trail `experience_curation_log` holds.
  *
- * Each entry gets two things: a chip naming the act, and a line under it saying what the
- * row carries that the chip cannot — the note a curator typed, the values an edit moved.
+ * The table records twenty distinct actions, and two screens name one as a chip: an
+ * object's own History, which is the only place a verdict's note is readable at all, and
+ * the admin's curator-activity table, which asks what one curator has done. Both take an
+ * act's words from here. The History adds a line under the chip saying what the row
+ * carries that the chip cannot — the note a curator typed, the fields a publication
+ * applied, the value taken from the source; the admin table shows the payload itself,
+ * being an audit.
  *
- * Its own module rather than a block inside `CurationDialog`, because the presentation is
- * not the dialog's: the cross-curator feed (#611) is to render the same rows, and a
- * second rendering of a curator's act is how the two would come to disagree.
+ * `ProvenanceTrail` is the deliberate exception, and stays one. It reads the same two
+ * source verdicts off the same table and puts them in a sentence — the curator's name,
+ * then "refused the source's value on 14 August" — where a chip's noun phrase cannot go:
+ * "Kept ours" names an act on its own, and a clause needs a verb with the person in
+ * front of it. What must not diverge is which answer a row records, and that is the
+ * action itself, which both read straight.
+ *
+ * Both halves used to fall short of the table. Nine actions reached the chip's fallback
+ * and printed the column value itself, so the History said `admission_overridden` on a
+ * screen a person reads, and twelve carried details nothing rendered — including the
+ * six that hold a curator's note, which the cards that ask for one promise "in this
+ * object's curation history" and which reached no screen at all (#691).
+ *
+ * Its own module rather than a block inside `CurationDialog`, because the presentation
+ * is not the dialog's — the admin table proves it, and the cross-curator feed (#611) is
+ * to render these rows as well. A second rendering of a curator's act is how the two
+ * that existed came to disagree.
  */
 
+import { fieldLabel } from '../curation/fieldLabel';
+import { plural } from '../../utils/plural';
 import type { CurationLogEntry } from '../../api/experiences';
 
+// Six hues, and the sense each carries. The colour is the reader's first cue down a
+// column of chips, so two acts that mean opposite things must not share one.
+/** The object is out: refused, kept out, or gone from the world. */
+const RED = '#EF4444';
+/** Something was withheld or dropped — a region, the source's word, the source's listing. */
+const AMBER = '#F59E0B';
+/** It is in, or back in. */
+const GREEN = '#22C55E';
+/** Values moved. */
+const BLUE = '#3B82F6';
+/** It entered the catalogue: made, or made visible. */
+const VIOLET = '#8B5CF6';
+/** Its regions changed. */
+const TEAL = '#0D9488';
+
 export const ACTION_LABELS: Record<string, { label: string; color: string }> = {
-  rejected: { label: 'Rejected', color: '#EF4444' },
-  unrejected: { label: 'Unrejected', color: '#22C55E' },
-  edited: { label: 'Edited', color: '#3B82F6' },
-  created: { label: 'Created', color: '#8B5CF6' },
-  added_to_region: { label: 'Added to region', color: '#0D9488' },
-  removed_from_region: { label: 'Removed from region', color: '#F59E0B' },
+  rejected: { label: 'Rejected', color: RED },
+  unrejected: { label: 'Unrejected', color: GREEN },
+  edited: { label: 'Edited', color: BLUE },
+  created: { label: 'Created', color: VIOLET },
+  added_to_region: { label: 'Added to region', color: TEAL },
+  removed_from_region: { label: 'Removed from region', color: AMBER },
   // The verdicts on one point (ADR-0026). Unlabelled, the row printed the raw
   // `location_marked_former` through the fallback below, which is machine noise on a
   // screen a person reads — and this is the only screen that has a point's verdict at
   // all, since answering one takes it off every list (#544).
-  location_marked_former: { label: 'Place: source dropped it', color: '#F59E0B' },
-  location_marked_lost: { label: 'Place: no longer exists', color: '#EF4444' },
-  location_state_restored: { label: 'Place: verdict taken back', color: '#22C55E' },
-  location_missing_dismissed: { label: 'Place: false alarm', color: '#22C55E' },
+  location_marked_former: { label: 'Place: source dropped it', color: AMBER },
+  location_marked_lost: { label: 'Place: no longer exists', color: RED },
+  location_state_restored: { label: 'Place: verdict taken back', color: GREEN },
+  location_missing_dismissed: { label: 'Place: false alarm', color: GREEN },
   // The fifth member of the same family (ADR-0029) and the one that lands in this list
   // beside the four above, so leaving it out would have the History read "Place: source
-  // dropped it" on one row and `location_edited` on the next. The nine other unlabelled
-  // actions this code writes are a different family and stay as they were.
-  location_edited: { label: 'Place corrected', color: '#3B82F6' },
+  // dropped it" on one row and `location_edited` on the next.
+  location_edited: { label: 'Place corrected', color: BLUE },
+  // The same four verdicts about the whole object, and deliberately the same words
+  // without the prefix: the prefix is the entire difference between a component's
+  // departure and the whole site's (ADR-0026), and two sentences that differ in more
+  // than that would hide it rather than show it.
+  marked_former: { label: 'Source dropped it', color: AMBER },
+  marked_lost: { label: 'No longer exists', color: RED },
+  state_restored: { label: 'Verdict taken back', color: GREEN },
+  missing_dismissed: { label: 'False alarm', color: GREEN },
+  // The catalogue's own acts, in the words their cards use: the queue's buttons say
+  // "take this" and "keep this" about a source's proposal, and "keep it out" / "put it
+  // back" about a refusal.
+  published: { label: 'Published', color: VIOLET },
+  accepted_source: { label: 'Took the source’s', color: BLUE },
+  declined_source: { label: 'Kept ours', color: AMBER },
+  admission_confirmed: { label: 'Kept out', color: RED },
+  admission_overridden: { label: 'Put back', color: GREEN },
 };
 
-/** The four actions above, as the detail formatter has to recognise them. */
+/**
+ * The verdict actions, in the two families the prefix keeps apart (ADR-0026).
+ *
+ * One formatter serves both — an object's verdict is a point's without the place — but
+ * the sets stay separate because everything else about them does: they are written by
+ * different endpoints, answered on different cards, and mean different things.
+ */
 const POINT_VERDICT_ACTIONS = new Set([
   'location_marked_former', 'location_marked_lost',
   'location_state_restored', 'location_missing_dismissed',
 ]);
+
+const OBJECT_VERDICT_ACTIONS = new Set([
+  'marked_former', 'marked_lost', 'state_restored', 'missing_dismissed',
+]);
+
+const ADMISSION_ACTIONS = new Set(['admission_confirmed', 'admission_overridden']);
 
 /**
  * A value as text, and the one shape `String()` cannot render: a coordinate pair.
@@ -61,7 +124,12 @@ function truncate40(value: unknown): string {
     && typeof pair.lat === 'number' && typeof pair.lon === 'number') {
     return `${pair.lat}, ${pair.lon}`;
   }
-  const str = String(value || '(empty)');
+  // Absent rather than falsy. `metadata.inDanger` is a boolean and the counters are
+  // numbers, so a source proposal this catalogue really receives — `inDanger: false`,
+  // `artworkCount: 0` — read as "(empty)" under `value || …`, which is not what the row
+  // says. Only a value that is genuinely missing is called empty; an empty string is,
+  // since a field cleared and a field never set look the same to a reader.
+  const str = value === null || value === undefined || value === '' ? '(empty)' : String(value);
   return str.length > 40 ? str.slice(0, 40) + '...' : str;
 }
 
@@ -76,29 +144,154 @@ function formatEditedChanges(d: Record<string, unknown>): string | null {
 }
 
 /**
- * A verdict on one point, in the two facts the label cannot carry.
+ * A verdict, in the two facts the label cannot carry.
  *
- * Which place, and what the curator wrote about it. The transition is not repeated: the
- * chip beside this already names it, and `details` carries both axes whether or not the
- * act moved them, so printing them would say `existence: extant → extant` beside a
- * membership verdict.
+ * Which place — where the act was about one — and what the curator wrote about it. The
+ * transition is not repeated: the chip beside this already names it, and `details`
+ * carries both axes whether or not the act moved them, so printing them would say
+ * `existence: extant → extant` beside a membership verdict.
  *
  * This is the note's **only** screen, which is what makes it worth a branch of its own.
  * The row's `state_note` holds the standing answer, and taking a verdict back moves
  * `state_decided_by` and `state_decided_at` to whoever took it — so the note goes with
  * the answer it explained rather than being reattributed, and the wording survives here
- * or nowhere (#544).
+ * or nowhere (#544). The card that asks for the note says as much on the field: "Kept
+ * with your answer in this object's curation history."
  *
  * The place is a bare id because the log has no name to give: the audit row hangs off the
  * experience and names the point in `details.locationId`, which is what stops a serial
  * site's seven components recording seven indistinguishable verdicts. Printed as an id
- * and said to be one, rather than as a number a reader has to guess the meaning of.
+ * and said to be one, rather than as a number a reader has to guess the meaning of. An
+ * object's own verdict names none, and prints the note alone.
  */
-function formatPointVerdict(d: Record<string, unknown>): string | null {
+function formatVerdict(d: Record<string, unknown>): string | null {
   const parts: string[] = [];
   if (d.locationId !== undefined && d.locationId !== null) parts.push(`Place #${d.locationId}`);
   if (d.note) parts.push(`“${d.note}”`);
   return parts.length > 0 ? parts.join(' — ') : null;
+}
+
+/** A count the details carry, or zero — `details` is untyped JSON and an old row may lack it. */
+function countOf(value: unknown): number {
+  if (typeof value === 'number') return value;
+  return Array.isArray(value) ? value.length : 0;
+}
+
+/** The field names an action applied, refused or left alone, as the changeset names them. */
+function fieldNames(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((f): f is string => typeof f === 'string') : [];
+}
+
+/** The per-field records `accept-source` and `decline-source` write, each with its value. */
+function fieldEntries(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is Record<string, unknown> =>
+    !!entry && typeof entry === 'object' && typeof (entry as { field?: unknown }).field === 'string');
+}
+
+/**
+ * What a publication released, in the numbers the queue's own sentence uses.
+ *
+ * The two work counts are the same works from two sides — the link says a work has been
+ * passed *here*, the work says it has been passed at all — so this is one number for a
+ * curator, not two, exactly as `publishOutcomeFor` renders it on the card that published.
+ * `withdrawalsReleased` is the one fact nothing else records: a point the source replaced
+ * stops being shown at this moment, and the run that proposed the replacement says
+ * nothing about when it took effect.
+ */
+function releasedContents(d: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+  const released: string[] = [];
+  const points = countOf(d.locations);
+  const works = Math.max(countOf(d.treasureLinks), countOf(d.treasures));
+  if (points > 0) released.push(plural(points, 'point'));
+  if (works > 0) released.push(plural(works, 'work'));
+  if (released.length > 0) lines.push(`${released.join(' and ')} now visible`);
+  if (countOf(d.withdrawalsReleased) > 0) {
+    lines.push(`${plural(countOf(d.withdrawalsReleased), 'replaced point')} no longer shown`);
+  }
+  return lines;
+}
+
+/**
+ * A publication, in what it wrote and what it made visible.
+ *
+ * Field names through `fieldLabel` for the reason the cards' are: the queue names them
+ * the way the changeset does — `shortDescription`, `metadata.dateInscribed` — and that is
+ * our word for a column, not a curator's for a thing. The skipped list is not decoration:
+ * it is the difference between a publication that overwrote a curator's text and one that
+ * left it standing, which the entry would otherwise be read as having done either way.
+ */
+function formatPublished(d: Record<string, unknown>): string | null {
+  const lines: string[] = [];
+  const applied = fieldNames(d.fields);
+  const kept = fieldNames(d.claimedFieldsSkipped);
+  if (applied.length > 0) lines.push(`Applied: ${applied.map(fieldLabel).join(', ')}`);
+  if (kept.length > 0) lines.push(`Kept as curated: ${kept.map(fieldLabel).join(', ')}`);
+  lines.push(...releasedContents(d));
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * A source value taken, per field, with what landed.
+ *
+ * Two kinds of acceptance, because the endpoint has two: five fields are written on the
+ * spot and the rest are handed back for the next run to apply, which is a promise about
+ * the future rather than a value in the row — so an entry that printed a value for them
+ * would claim something that has not happened yet.
+ *
+ * The pin and the credit are side effects on things the card never mentioned: accepting a
+ * coordinate hands back a pin the curator moved, and accepting a picture deletes the
+ * credit their own edit wrote. A history that leaves them out is where a curator goes
+ * looking when the map or the line under the picture changed and nothing says why.
+ */
+function formatAcceptedSource(d: Record<string, unknown>): string | null {
+  const lines = fieldEntries(d.fields).map(entry => (entry.appliesAtNextSync
+    ? `${fieldLabel(entry.field as string)}: at the next sync`
+    : `${fieldLabel(entry.field as string)}: "${truncate40(entry.applied)}"`));
+  // Either array, not only the second, and moved first: the server derives one from the
+  // other today, and a line that goes silent about a pin that moved is what this exists
+  // to prevent — not something to make conditional on that relationship holding.
+  const moved = countOf(d.movedPoints);
+  const handed = countOf(d.releasedPoints);
+  if (moved > 0) lines.push(`${plural(moved, 'point')} moved back to the source’s coordinate`);
+  else if (handed > 0) lines.push(`${plural(handed, 'point')} handed back to the source`);
+  if (d.releasedCredit) lines.push('Picture credit dropped with it');
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * A source value refused, per field, with the value that was refused.
+ *
+ * The stored value already wins every time — `curated_fields` decides that — so what this
+ * records is that somebody stood by it, and against what. Without the proposal the entry
+ * says only that a field was discussed.
+ */
+function formatDeclinedSource(d: Record<string, unknown>): string | null {
+  const lines = fieldEntries(d.fields).map(entry =>
+    `${fieldLabel(entry.field as string)}: source proposed "${truncate40(entry.declined)}"`);
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * A verdict on a rule's refusal: what the rule objected to, and what the curator made of it.
+ *
+ * The reason is the whole point of the card this answers, and it stays the point
+ * afterwards — a run of near-identical objections in a category's history is how a bad
+ * rule is found. It reads correctly under either chip: the rule said this, and it was
+ * either upheld or overruled.
+ *
+ * An override is also a publication (ADR-0025 § 4.5) — the object becomes visible in the
+ * same transaction — and that is not something to leave a reader to infer from a category
+ * of act. It is said, with the contents it released beside it.
+ */
+function formatAdmission(d: Record<string, unknown>): string | null {
+  const lines: string[] = [];
+  if (d.reason) lines.push(`The rule said: ${d.reason}`);
+  if (d.note) lines.push(`“${d.note}”`);
+  if (d.published) lines.push('Published');
+  lines.push(...releasedContents(d));
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 export function formatLogDetails(entry: CurationLogEntry): string | null {
@@ -108,7 +301,9 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (entry.action === 'rejected' && d.reason) return `Reason: ${d.reason}`;
   if (entry.action === 'edited') return formatEditedChanges(d);
   if (entry.action === 'created' && d.name) return `Name: ${d.name}`;
-  if (POINT_VERDICT_ACTIONS.has(entry.action)) return formatPointVerdict(d);
+  if (POINT_VERDICT_ACTIONS.has(entry.action) || OBJECT_VERDICT_ACTIONS.has(entry.action)) {
+    return formatVerdict(d);
+  }
   // A correction rather than a verdict, so it has values to show — and `details` carries
   // only the keys the edit actually changed, which is what lets the shared formatter run
   // over it without inventing a coordinate move out of a rename.
@@ -118,5 +313,12 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
       formatEditedChanges(d),
     ].filter(Boolean).join(' — ') || null;
   }
+  if (entry.action === 'published') return formatPublished(d);
+  if (entry.action === 'accepted_source') return formatAcceptedSource(d);
+  if (entry.action === 'declined_source') return formatDeclinedSource(d);
+  if (ADMISSION_ACTIONS.has(entry.action)) return formatAdmission(d);
+  // `unrejected`, `added_to_region` and `removed_from_region` never reach this line:
+  // their writers insert no `details` at all, and the region their act was about is
+  // already rendered beside the curator's name from the entry's own `region_name`.
   return null;
 }
