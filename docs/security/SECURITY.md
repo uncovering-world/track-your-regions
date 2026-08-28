@@ -232,9 +232,12 @@ The Python service has a smaller surface than the Node backend but introduces ne
   content, not an operator's own typing. Nothing executes from either — a
   `javascript:` url in an `img src` has not run in a browser since Netscape 4,
   and an SVG loaded through `<img>` runs no script — so what this costs is the
-  claim rather than a live hole. The write-path denylist on `image_url` is
-  weaker than it reads for the same family of reasons: `safeUrl` matches the
-  value as sent, so one leading space carries a scheme past it (#693).
+  claim rather than a live hole. A curator's `image_url` no longer belongs on
+  this list on the way in: the write path stopped denying schemes and now
+  allows only what a picture can be — an absolute http(s) url, or a path whose
+  origin survives resolution, which is what `/images/…` is and carries no scheme
+  at all (`backend/src/types/urlSafety.ts`, #693). That leaves `region_map_url`
+  as the only picture with a gap on both sides.
 - **World view visibility does not reach the tile server.** `requireVisibleWorldView` and
   `getWorldViews` bound the REST API (see the security stack table above). Martin no longer
   auto-publishes tables — `martin/config.yaml` carries `auto_publish: { tables: false }`, which
