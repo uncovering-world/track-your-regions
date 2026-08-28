@@ -272,6 +272,22 @@ const boundedUrl = (max: number, isStorable: (value: string) => boolean, message
 const safeUrlSchema = boundedUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
 const safeImageUrlSchema = boundedUrl(1000, isStorableImageUrl, STORABLE_IMAGE_URL_MESSAGE);
 
+/**
+ * The same rule for a url that has to be there: an element of a list, or a
+ * value a route acts on at once. `boundedUrl` reads an absent or empty value
+ * as "leave the field alone" or "clear it", which an element of a list cannot
+ * mean -- a candidate that is nothing is not a candidate.
+ */
+const requiredUrl = (max: number, isStorable: (value: string) => boolean, message: string) =>
+  z.string().trim()
+    .refine(isStorable, { message })
+    .transform(normalizeStorableUrl)
+    .refine((val) => val.length <= max, {
+      message: `URL must be at most ${max} characters once normalised`,
+    });
+
+const requiredSafeUrlSchema = requiredUrl(2000, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE);
+
 export const editExperienceBodySchema = z.object({
   name: z.string().min(1).max(500).optional(),
   shortDescription: z.string().max(1000).optional(),
@@ -768,8 +784,11 @@ const importTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
     // Every node becomes a region, so the bound is regions.name.
     name: z.string().min(1).max(255),
-    regionMapUrl: z.string().url().max(2000).optional(),
-    mapImageCandidates: z.array(z.string().url().max(2000)).max(20).optional(),
+    // Both are pictures a dialog draws, so both are held to what a stored url
+    // may be (#694) -- and to the link form of it: unlike an experience's
+    // picture, no map is a path on our own origin.
+    regionMapUrl: safeUrlSchema,
+    mapImageCandidates: z.array(requiredSafeUrlSchema).max(20).optional(),
     wikidataId: z.string().regex(/^Q\d+$/).optional(),
     sourceUrl: z.string().url().max(2000).optional(),
     children: z.array(importTreeNodeSchema).default([]),
@@ -902,7 +921,14 @@ export const wvImportMarkManualFixSchema = z.object({
 
 export const wvImportSelectMapImageSchema = z.object({
   regionId: z.coerce.number().int().positive(),
-  imageUrl: z.string().url().nullable(),
+  // Judged by the same rule as the candidates it picks among, but not
+  // rewritten: the controller keeps a pick only where it equals a stored
+  // candidate, and a candidate stored before the rule may carry a non-ASCII
+  // file name that normalising would percent-encode. A pick names a row, in
+  // that row's own spelling.
+  imageUrl: z.string().trim().max(2000)
+    .refine(isStorableHttpUrl, { message: STORABLE_HTTP_URL_MESSAGE })
+    .nullable(),
 });
 
 export const wvImportAddChildSchema = z.object({
@@ -999,7 +1025,9 @@ export const wvImportSplitDeeperSchema = z.object({
 export const wvImportVisionMatchSchema = z.object({
   divisionIds: z.array(z.coerce.number().int().positive()).min(1).max(200),
   regionId: z.coerce.number().int().positive(),
-  imageUrl: z.string().url(),
+  // The region's map, handed to a vision model to look at: the same rule as
+  // the field it was read from.
+  imageUrl: requiredSafeUrlSchema,
 });
 
 // ---------------------------------------------------------------------------
