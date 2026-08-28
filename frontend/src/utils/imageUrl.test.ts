@@ -108,3 +108,61 @@ describe('extractImageUrl', () => {
     expect(extractImageUrl(json)).toBeNull();
   });
 });
+
+// Both functions hand their answer straight to an `<img src>`, so what they do
+// not recognise they must refuse rather than pass on (#449). No sync writes
+// such a value, and the API refuses the plain forms on the way in — but only
+// the plain ones: `safeUrl` matches its denylist against the value as sent, so
+// a leading space carries one past it (#693). These cases are what runs where
+// the value meets the DOM.
+describe('unrenderable URLs', () => {
+  const FOREIGN_SCHEMES = [
+    'javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'vbscript:msgbox(1)',
+    'blob:https://evil.example.com/9f2c',
+    'JavaScript:alert(1)',
+    ' javascript:alert(1)',
+  ];
+
+  // Paths that look local and name a host: a browser rewrites `\` to `/` and
+  // drops tab, LF and CR before parsing, so every one of these resolves to
+  // evil.example.com rather than to us.
+  const FOREIGN_AUTHORITIES = [
+    '//evil.example.com/malicious.jpg',
+    '/\\evil.example.com/malicious.jpg',
+    '/\t/evil.example.com/malicious.jpg',
+    '/\n/evil.example.com/malicious.jpg',
+    '/\r/evil.example.com/malicious.jpg',
+  ];
+
+  // Resolved against whatever route the visitor happens to be on, which is
+  // never where a picture lives.
+  const RELATIVE = ['malicious.jpg'];
+
+  const UNRENDERABLE = [...FOREIGN_SCHEMES, ...FOREIGN_AUTHORITIES, ...RELATIVE];
+
+  it.each(UNRENDERABLE)('extractImageUrl refuses %j', url => {
+    expect(extractImageUrl(url)).toBeNull();
+  });
+
+  it.each(UNRENDERABLE)('extractImageUrl refuses %j inside the JSON form', url => {
+    expect(extractImageUrl(JSON.stringify({ url }))).toBeNull();
+  });
+
+  it.each(UNRENDERABLE)('toThumbnailUrl refuses %j', url => {
+    expect(toThumbnailUrl(url)).toBe('');
+  });
+
+  it.each(FOREIGN_AUTHORITIES)('the browser really does read %j as a foreign host', url => {
+    expect(new URL(url, 'https://ours.example').origin).toBe('https://evil.example.com');
+  });
+
+  it('toThumbnailUrl refuses a scheme that carries the Special:FilePath words', () => {
+    expect(toThumbnailUrl("javascript:alert('Special:FilePath')")).toBe('');
+  });
+
+  it('toThumbnailUrl refuses an untrusted host on the Special:FilePath path', () => {
+    expect(toThumbnailUrl('https://evil.example.com/wiki/Special:FilePath/Louvre.jpg')).toBe('');
+  });
+});
