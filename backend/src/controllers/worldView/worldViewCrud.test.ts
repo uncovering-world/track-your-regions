@@ -10,7 +10,7 @@ import { getWorldViews, createWorldView, updateWorldView } from './worldViewCrud
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
 function makeRes() {
-  return { json: vi.fn(), status: vi.fn().mockReturnThis(), setHeader: vi.fn(), vary: vi.fn() };
+  return { json: vi.fn(), status: vi.fn().mockReturnThis() };
 }
 
 describe('getWorldViews visibility', () => {
@@ -37,18 +37,10 @@ describe('getWorldViews visibility', () => {
     expect(params).toEqual([true]);
   });
 
-  it('forbids caching a response whose body depends on the caller', async () => {
-    // Express sends an ETag and `Vary: Origin` by default and says nothing about
-    // who asked. That is enough for a proxy or CDN to serve an admin's list —
-    // including the unpublished world views — to an anonymous visitor.
-    const res = makeRes();
-    await getWorldViews({ user: { role: 'admin' } } as never, res as never);
-
-    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
-    // vary() rather than setHeader('Vary'): CORS has already put Origin there,
-    // and setHeader would replace it instead of adding to it.
-    expect(res.vary).toHaveBeenCalledWith('Authorization');
-  });
+  // The cache headers that keep a shared cache from serving an admin's list to
+  // a visitor are no longer this controller's to set: `optionalAuth` on the
+  // route sets them for every caller-shaped read (middleware/auth.test.ts),
+  // and routes/callerShapedReads.test.ts holds that this route carries it.
 
   it('returns isPublic to the client', async () => {
     const res = makeRes();

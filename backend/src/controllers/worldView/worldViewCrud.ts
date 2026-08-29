@@ -15,18 +15,9 @@ import { notFound } from '../../middleware/errorHandler.js';
  * dropdown — it is absent from the response.
  */
 export async function getWorldViews(req: AuthenticatedRequest, res: Response): Promise<void> {
-  // This response body depends on who is asking, so it must not be treated as a
-  // shared, cacheable representation of one URL. Express sends an ETag and
-  // `Vary: Origin` by default and says nothing about the caller, which is enough
-  // for a proxy — or a future CDN — to hand an admin's list, including the
-  // unpublished world views, to an anonymous visitor. `Vary: Authorization` is
-  // the correct answer for a token-bearing client; `private, no-store` says the
-  // rest of the truth for anything in between.
-  res.setHeader('Cache-Control', 'private, no-store');
-  // `res.vary` appends; `setHeader('Vary', …)` replaces. CORS already puts
-  // `Origin` there, and clobbering it would trade one caching bug for another.
-  res.vary('Authorization');
-
+  // The rows depend on who is asking. The headers that keep a shared cache
+  // from serving an admin's list to a visitor come from `optionalAuth` on the
+  // route, as on every read whose answer is shaped by the caller.
   const isAdmin = req.user?.role === 'admin';
   const result = await pool.query(`
     SELECT id, name, description, source, is_default as "isDefault",
