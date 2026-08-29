@@ -82,8 +82,33 @@ export function requireAdmin(req: AuthenticatedRequest, res: Response, next: Nex
 /**
  * Attempts to authenticate the user but doesn't fail if no auth provided.
  * Useful for endpoints that behave differently for authenticated users.
+ *
+ * Which is why it also marks the response private to its caller. A handler
+ * behind this middleware reads `req.user` to shape its answer — curator
+ * rejection visibility, an admin's 200 where a visitor gets 404, a reader's
+ * own `is_new` — so the body is not a shared representation of one URL, and
+ * Express's default ETag + `Vary: Origin` says nothing about who asked. A
+ * proxy, or a future CDN, could store one caller's answer under the URL alone
+ * and hand it to the next. `private` forbids that for any shared cache;
+ * `no-cache` (not `no-store`) leaves the browser its revalidation round-trip —
+ * a region's list, its locations and its geometry all answer 304 to a
+ * conditional request today, and the origin answers every revalidation for
+ * the *current* caller, so a stored variant is never served to the wrong one.
+ * `Vary: Authorization` keys whatever private cache does store it on the
+ * caller — which also bounds the round-trip for a signed-in reader: a stored
+ * variant is selectable only under the token it was stored with, and the
+ * access token rotates every 15 minutes, so they get the 304 within one
+ * token's lifetime and a full body on the first read after each refresh. An
+ * anonymous reader, who sends no token, keeps it unconditionally. The rule
+ * lives here rather than on each route so a read added tomorrow carries it
+ * by carrying the middleware (#597).
  */
-export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction): void {
+export function optionalAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  res.setHeader('Cache-Control', 'private, no-cache');
+  // `res.vary` appends; `setHeader('Vary', …)` replaces. CORS already puts
+  // `Origin` there, and clobbering it would trade one caching bug for another.
+  res.vary('Authorization');
+
   const authHeader = req.headers.authorization;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
