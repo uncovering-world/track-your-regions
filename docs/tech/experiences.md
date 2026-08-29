@@ -1185,6 +1185,8 @@ the control that would not compete with its category filters.
 
 ### Public browse
 
+Every read below except `/search` and `/categories` carries `optionalAuth`, because its answer is shaped by who asks — a curator's rejected rows, a curator's or admin's whole `regions[]`, a gated museum's unread treasures, a reader's own `is_new` — and `optionalAuth` says so in the headers: `Cache-Control: private, no-cache` and `Vary: Authorization`, so a shared cache cannot store one caller's answer and serve it to the next, while the browser keeps its ETag round-trip (#597; the reasoning is in `docs/security/SECURITY.md` § Headers). `backend/src/routes/callerShapedReads.test.ts` holds that each of these routes carries the middleware.
+
 | Method | Endpoint | Notes |
 |--------|----------|-------|
 | GET | `/api/experiences` | Filters: `categoryId`, `category`, `country`, `regionId`, `search`, `bbox`, `includeLost`, `limit`, `offset`. `bbox` matches a place the same caller may see, and the object's own coordinate only where it has none — the same set of places the position is drawn from (ADR-0028), so a box can no longer match an object on a coordinate the row does not answer with. What one coordinate per row still cannot promise is that the pin is *inside* the box: a serial site matched on one part is answered with the part nearest its anchor, which may be another one — four of the 47 objects an Alps-sized box holds, the Beech Forests among them, matched in the Alps and answered in the Carpathians. Drawing every part is [#558](https://github.com/uncovering-world/track-your-regions/issues/558). A box with `west > east` crosses the antimeridian and is matched as its two halves. Also excludes `pending` rows unconditionally — no `includeUnread` toggle exists |

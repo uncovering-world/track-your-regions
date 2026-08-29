@@ -387,6 +387,11 @@ chapters:
       level: 1
       status: pass
       notes: "User travel data, visited regions, auth tokens identified as sensitive"
+    V14.2.2:
+      desc: "Sensitive data not cached in server components (load balancers, application caches)"
+      level: 2
+      status: pass
+      notes: "No shared cache is deployed in front of the API today, and the responses now say what one may do with them rather than relying on that. Every response shaped by the caller — the world view listing, the seven optionalAuth experience reads, every read behind requireVisibleWorldView — is marked Cache-Control: private, no-cache with Authorization appended to Vary, by optionalAuth itself (backend/src/middleware/auth.ts), so a proxy or CDN cannot store an admin's or a curator's answer under the URL alone and hand it to a visitor; auth.test.ts holds the headers on the wire beside CORS's own Vary, and routes/callerShapedReads.test.ts walks both routers so a caller-shaped read cannot drop the middleware unnoticed. 2026-08-29, #597 (the listing alone had it since #460). The requireAuth reads carry the access token in Authorization, which RFC 9111 § 3.5 already keeps out of a shared cache. What they lack is the browser-side half — 5.0's 14.3.2, anti-caching headers so sensitive data is not cached in browsers: the visited-data reads on userRoutes.ts answer with an ETag and no Cache-Control, so a traveller's history sits in the disk cache after sign-out. Recorded here and in SECURITY.md § Known Gaps rather than under its own key, because this file's V14.3.2 holds a different requirement; tracked in #710."
     V14.3.1:
       desc: "Sensitive data not stored in browser storage unencrypted"
       level: 1
