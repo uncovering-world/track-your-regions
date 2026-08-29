@@ -33,10 +33,12 @@ import {
 } from '../services/authService.js';
 import { sendVerificationEmail } from '../services/emailService.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { markTokenResponse } from '../middleware/cacheHeaders.js';
 import { validate } from '../middleware/errorHandler.js';
 import { registerSchema, loginSchema, changePasswordSchema, verifyEmailSchema, resendVerificationSchema } from '../types/auth.js';
 
 const router = Router();
+
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -209,6 +211,7 @@ router.post('/login', loginLimiter, validate(loginSchema), (req: Request, res: R
       // Set refresh token as httpOnly cookie
       setRefreshCookie(res, tokens.refreshToken);
 
+      markTokenResponse(res);
       return res.json({
         accessToken: tokens.accessToken,
         user: toPublicUser(fullUser),
@@ -243,6 +246,7 @@ router.post('/verify-email', verifyEmailLimiter, validate(verifyEmailSchema), as
     const tokens = await generateTokenPair(user);
     setRefreshCookie(res, tokens.refreshToken);
 
+    markTokenResponse(res);
     res.json({
       accessToken: tokens.accessToken,
       user: toPublicUser(user),
@@ -324,6 +328,7 @@ router.post('/refresh', refreshLimiter, async (req: Request, res: Response): Pro
     // Set new refresh token as httpOnly cookie
     setRefreshCookie(res, newRefreshToken);
 
+    markTokenResponse(res);
     res.json({
       accessToken,
       user: toPublicUser(user),
@@ -441,6 +446,7 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     const tokens = await generateTokenPair(user);
     setRefreshCookie(res, tokens.refreshToken);
 
+    markTokenResponse(res);
     res.json({
       accessToken: tokens.accessToken,
       message: 'Password changed successfully. All other sessions have been logged out.',
@@ -476,6 +482,7 @@ router.post('/exchange-code', exchangeCodeLimiter, async (req: Request, res: Res
   // Set refresh token as httpOnly cookie
   setRefreshCookie(res, pending.refreshToken);
 
+  markTokenResponse(res);
   res.json({ accessToken: pending.accessToken });
 });
 

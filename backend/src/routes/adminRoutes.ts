@@ -698,6 +698,7 @@ router.get('/image-proxy', validate(imageProxyQuerySchema, 'query'), async (req:
       return;
     }
     res.setHeader('Content-Type', contentType);
+    // eslint-disable-next-line no-restricted-syntax -- the proxy returns a Wikimedia Commons picture unchanged: public data with no caller in it, and the one response here fetched with an Authorization header, so RFC 9111 § 3.5 governs it and `public` is the deliberate opt-in
     res.setHeader('Cache-Control', 'public, max-age=86400');
     const buffer = Buffer.from(await response.arrayBuffer());
     res.send(buffer);

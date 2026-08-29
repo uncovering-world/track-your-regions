@@ -8,6 +8,7 @@
 import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
+import { markPublicReferenceBody } from '../../middleware/cacheHeaders.js';
 import {
   startImport,
   getLatestImportStatus,
@@ -27,6 +28,11 @@ import { IMPORT_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTy
  * that browsers won't send cross-origin, so we proxy through the backend.
  */
 export async function getGeoshape(req: AuthenticatedRequest, res: Response): Promise<void> {
+  // Wikimedia's boundary for a Wikidata id: the same bytes for every caller,
+  // admin-gated because the editor is the one that asks (see
+  // `middleware/cacheHeaders.ts`). The dialog re-requests it on every open.
+  markPublicReferenceBody(res);
+
   const { wikidataId } = req.params;
 
   try {

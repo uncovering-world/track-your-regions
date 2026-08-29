@@ -48,6 +48,7 @@ if (!G.__cvReady) {
 // with phase modules that need the type (cluster/helpers/meanshift).
 export type { PipelineContext } from './wvImportMatchContext.js';
 import type { PipelineContext } from './wvImportMatchContext.js';
+import { markStreamBody } from '../../middleware/cacheHeaders.js';
 
 // =============================================================================
 // colorMatchDivisionsSSE helpers — phase functions
@@ -72,7 +73,7 @@ type PushDebugImage = (label: string, dataUrl: string) => Promise<void>;
 /** Configure SSE response headers and return the raw sendEvent + logStep helpers. */
 function createSseHelpers(res: Response, startTime: number): { sendEvent: SendEvent; logStep: LogStep } {
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  markStreamBody(res);
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   // CORS is handled globally by the cors() middleware (origin: FRONTEND_ORIGIN,

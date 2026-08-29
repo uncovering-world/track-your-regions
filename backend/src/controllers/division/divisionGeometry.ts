@@ -4,11 +4,24 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../../db/index.js';
+import { markPublicReferenceBody } from '../../middleware/cacheHeaders.js';
+
+/**
+ * These three reads answer with GADM's own boundaries — the same shapes for
+ * every caller, at full resolution: 2.8 MB of GeoJSON text for France alone,
+ * and the whole world for `/root/geometries`. They sit behind `requireAuth` +
+ * `requireAdmin` (`routes/index.ts`) because only the editor asks for them,
+ * not because the answer is anyone's own, so each says what that makes it —
+ * see `middleware/cacheHeaders.ts` for the rule and its reasons, including
+ * why the `Vary: Authorization` the middleware appended is left alone.
+ */
 
 /**
  * Get geometry for a division
  */
 export async function getGeometry(req: Request, res: Response): Promise<void> {
+  markPublicReferenceBody(res);
+
   const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
 
   const result = await pool.query(
@@ -32,6 +45,8 @@ export async function getGeometry(req: Request, res: Response): Promise<void> {
  * Get geometries for all direct subdivisions of a division
  */
 export async function getSubdivisionGeometries(req: Request, res: Response): Promise<void> {
+  markPublicReferenceBody(res);
+
   const divisionId = parseInt(String(req.params.divisionId || req.params.regionId));
 
   const query = `
@@ -72,6 +87,8 @@ export async function getSubdivisionGeometries(req: Request, res: Response): Pro
  * Get geometries for root divisions (continents)
  */
 export async function getRootGeometries(req: Request, res: Response): Promise<void> {
+  markPublicReferenceBody(res);
+
   const query = `
     SELECT
       id,

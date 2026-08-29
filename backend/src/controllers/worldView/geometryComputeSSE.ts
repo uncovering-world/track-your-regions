@@ -8,6 +8,7 @@ import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
 import { recomputeRegionGeometry } from './helpers.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
+import { markStreamBody } from '../../middleware/cacheHeaders.js';
 
 interface ProgressEvent {
   type: 'progress' | 'complete' | 'error';
@@ -31,7 +32,7 @@ interface SSEContext {
 
 function startSSEStream(res: Response, regionId: number): SSEContext {
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  markStreamBody(res);
   res.setHeader('Connection', 'keep-alive');
   // CORS is handled globally by the cors() middleware (origin: FRONTEND_ORIGIN,
   // credentials: true). Setting Access-Control-Allow-Origin: * here would both

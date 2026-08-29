@@ -9,7 +9,7 @@
  * the pattern would agree with itself while the gate let anything through.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { ESLint } from 'eslint';
 
 const eslint = new ESLint();
@@ -25,6 +25,16 @@ async function reported(code: string): Promise<string[]> {
 const HEADER = "import { pool } from './index.js';\n";
 
 describe('a transaction opened through the pool fails the lint', () => {
+  // ESLint's first run in a worker loads the whole config and its plugins,
+  // which costs more than a test's default 5s under a full parallel suite —
+  // the first row would time out where the rest pass in milliseconds, and the
+  // name it fails under says the transaction selector broke. Pay it once, with
+  // a timeout of its own. A second config-loading spec joined the suite with
+  // the cache rule (#710), which is what made a latent flake worth closing.
+  beforeAll(async () => {
+    await reported(`${HEADER}async function f() { await pool.query('SELECT 1'); }\n`);
+  }, 60000);
+
   it.each([
     ["pool.query('BEGIN')", "await pool.query('BEGIN');"],
     ['a template literal', 'await pool.query(`BEGIN`);'],

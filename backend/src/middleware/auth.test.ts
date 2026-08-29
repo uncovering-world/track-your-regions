@@ -14,13 +14,26 @@ vi.mock('../services/authService.js', () => ({
 }));
 
 import { verifyAccessToken } from '../services/authService.js';
-import { optionalAuth } from './auth.js';
-import { publicReadLimiter } from './rateLimiter.js';
+import { optionalAuth, requireAuth } from './auth.js';
+import { publicReadLimiter, authenticatedLimiter } from './rateLimiter.js';
 
 const mockedVerify = verifyAccessToken as unknown as ReturnType<typeof vi.fn>;
 
 function makeRes() {
-  return { setHeader: vi.fn(), vary: vi.fn() };
+  const res = { setHeader: vi.fn(), vary: vi.fn(), status: vi.fn(), json: vi.fn() };
+  res.status.mockReturnValue(res);
+  return res;
+}
+
+function headersOf(port: number, path: string, headers: Record<string, string>): Promise<Record<string, string | string[] | undefined>> {
+  return new Promise((resolve, reject) => {
+    const req = request({ port, path, method: 'GET', headers }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.headers));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 /**
@@ -107,26 +120,129 @@ describe('optionalAuth on the wire', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  function get(headers: Record<string, string>): Promise<Record<string, string | string[] | undefined>> {
-    return new Promise((resolve, reject) => {
-      const req = request({ port, path: '/read', method: 'GET', headers }, (res) => {
-        res.resume();
-        res.on('end', () => resolve(res.headers));
-      });
-      req.on('error', reject);
-      req.end();
-    });
-  }
-
   it('composes with the Vary CORS already wrote rather than replacing it', async () => {
     // A cache keyed on Authorization but not Origin, or the other way round,
     // is the failure both headers exist to prevent; the test holds the two
     // together on a real response, where `res.vary`'s append is what matters.
-    const headers = await get({ origin: 'http://localhost:5173' });
+    const headers = await headersOf(port, '/read', { origin: 'http://localhost:5173' });
 
     expect(headers['cache-control']).toBe('private, no-cache');
     const vary = String(headers.vary).split(',').map((v) => v.trim().toLowerCase());
     expect(vary).toContain('origin');
     expect(vary).toContain('authorization');
+  });
+});
+
+/**
+ * `requireAuth` is the other half of the same rule (#710). What it fronts is
+ * the caller's own data — visited regions and experiences, a profile with its
+ * email, an admin's or a curator's screen — which `docs/security/asvs-checklist.yaml`
+ * V14.2.1 classifies as sensitive. A shared cache is kept out of most of it by
+ * RFC 9111 § 3.5, since the access token travels in `Authorization` — but not
+ * of the callers that cannot send a header — the streams `EventSource` opens
+ * and the three admin images loaded as `<img src>` — whose token rides in the
+ * query string instead; `private` is what forbids it there. The browser's own cache is kept out by
+ * neither, and with Express's defaults — an ETag and no freshness —
+ * it stores the body and serves it back on `304` after sign-out, on whatever
+ * machine the traveller signed in from. `no-store` is what keeps it out.
+ */
+describe('requireAuth marks the response the caller\'s own: no-store', () => {
+  beforeEach(() => {
+    mockedVerify.mockReset();
+  });
+
+  it('refuses every cache, the browser\'s included, for a bearer token that verifies', () => {
+    mockedVerify.mockReturnValue({ sub: 7, uuid: 'u', role: 'user' });
+    const res = makeRes();
+    const next = vi.fn();
+    requireAuth({ headers: { authorization: 'Bearer x' }, query: {} } as never, res as never, next);
+
+    // `no-store`, not `no-cache`: optionalAuth keeps the revalidation
+    // round-trip because its bodies are public data and large. These are
+    // one reader's own and small — an id list, a profile — and a 304 here
+    // is the history served from disk.
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+    expect(res.vary).toHaveBeenCalledWith('Authorization');
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the same for the SSE shape, where the token rides in the query string', () => {
+    mockedVerify.mockReturnValue({ sub: 7, uuid: 'u', role: 'admin' });
+    const res = makeRes();
+    const next = vi.fn();
+    requireAuth({ headers: {}, query: { token: 'x' } } as never, res as never, next);
+
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+    expect(res.vary).toHaveBeenCalledWith('Authorization');
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the 401 too, whether the token is missing or does not verify', () => {
+    // The header goes on before the token is read, so no path out of the
+    // middleware answers with Express's defaults — the rule is the
+    // middleware's, not the happy path's.
+    mockedVerify.mockReturnValue(null);
+    for (const req of [{ headers: {}, query: {} }, { headers: { authorization: 'Bearer bad' }, query: {} }]) {
+      const res = makeRes();
+      const next = vi.fn();
+      requireAuth(req as never, res as never, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+      expect(res.vary).toHaveBeenCalledWith('Authorization');
+      expect(next).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('requireAuth on the wire', () => {
+  let server: Server;
+  let port: number;
+
+  beforeAll(async () => {
+    mockedVerify.mockReturnValue({ sub: 7, uuid: 'u', role: 'user' });
+    const app = express();
+    app.disable('x-powered-by');
+    app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+    // The chain as userRoutes.ts wires it: limiter, then identity, then the
+    // handler (the limiter is router-level there; inline here for CodeQL's
+    // missing-rate-limiting query, which reads the route in isolation).
+    app.get('/mine', authenticatedLimiter, requireAuth, (_req, res) => {
+      res.json({ visited: [1, 2, 3] });
+    });
+    // The three SSE streams set their own Cache-Control after the middleware,
+    // the way geometryComputeSSE.ts does; `setHeader` replaces, so the stream
+    // keeps the `no-cache` EventSource proxies expect — and the `private`
+    // beside it, since the stream's token rides in the query string and RFC
+    // 9111 § 3.5 excludes nothing for a request with no Authorization header.
+    app.get('/stream', authenticatedLimiter, requireAuth, (_req, res) => {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'private, no-cache');
+      res.write('data: {}\n\n');
+      res.end();
+    });
+    server = app.listen(0);
+    await new Promise<void>((resolve) => server.once('listening', resolve));
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('composes with the Vary CORS already wrote rather than replacing it', async () => {
+    const headers = await headersOf(port, '/mine', { origin: 'http://localhost:5173', authorization: 'Bearer x' });
+
+    expect(headers['cache-control']).toBe('private, no-store');
+    const vary = String(headers.vary).split(',').map((v) => v.trim().toLowerCase());
+    expect(vary).toContain('origin');
+    expect(vary).toContain('authorization');
+  });
+
+  it('lets an SSE handler keep the value it sets after the middleware', async () => {
+    const headers = await headersOf(port, '/stream', { origin: 'http://localhost:5173', authorization: 'Bearer x' });
+
+    expect(headers['content-type']).toMatch(/^text\/event-stream/);
+    expect(headers['cache-control']).toBe('private, no-cache');
   });
 });
