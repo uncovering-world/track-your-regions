@@ -10,6 +10,7 @@ import { Response } from 'express';
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { syncImportMatchStatus } from '../worldView/helpers.js';
+import { markStreamBody } from '../../middleware/cacheHeaders.js';
 
 // =============================================================================
 // Coverage gap subtree helper
@@ -316,7 +317,7 @@ function startCoverageSSE(res: Response, worldViewId: number) {
   // Access-Control-Allow-Origin: * here would BOTH widen the policy AND
   // break credentialed SSE (browsers reject '*' with credentials).
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  markStreamBody(res);
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 

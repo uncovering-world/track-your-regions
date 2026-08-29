@@ -125,7 +125,8 @@ describe('responseCompression on a live server', () => {
     app.get('/api/auth/login', (_req, res) => { res.json(bigBody); });
     app.get('/api/stream', (_req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
+      // `private` beside it, as the three real streams say since #710.
+      res.setHeader('Cache-Control', 'private, no-cache');
       res.flushHeaders();
       res.write(`data: ${JSON.stringify({ type: 'progress', step: 'first' })}\n\n`);
       // Deliberately left open: the point is that the first event arrives

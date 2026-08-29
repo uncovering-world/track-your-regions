@@ -17,8 +17,56 @@ export interface AuthenticatedRequest extends Request {
 /**
  * Requires a valid JWT access token.
  * Populates req.user with the authenticated user.
+ *
+ * And marks the response the caller's own, so no cache keeps it — the
+ * browser's included. What sits behind this middleware is one reader's data:
+ * their visited regions and experiences, their profile with its email, an
+ * admin's or a curator's screen — what `docs/security/asvs-checklist.yaml`
+ * V14.2.1 classifies as sensitive. A shared cache is already kept out of most
+ * of it by RFC 9111 § 3.5, which excludes the answer to a request that carried
+ * `Authorization` — though not from everything this middleware fronts: it
+ * takes the token from the query string too (below), and two kinds of caller
+ * use that branch because they cannot send a header at all — the streams
+ * `EventSource` opens, and the three admin images loaded as `<img src>`
+ * through `withTokenQuery`. Their requests carry no `Authorization`, so
+ * `private` rather than § 3.5 is what forbids the shared cache there, and the
+ * `Vary` appended below selects nothing for them. The browser's private cache is not
+ * kept out by either, and with Express's defaults — an ETag, no freshness —
+ * it stores the body and serves it back on `304` after sign-out, on whatever
+ * machine the traveller signed in from. `no-store` where `optionalAuth` says
+ * `no-cache`: those bodies are public data shaped by the caller, large, and
+ * worth a revalidation round-trip; the ones this rule is *for* are the
+ * caller's own and small — an id list, a profile.
+ *
+ * Not everything behind this middleware is. Some of it is public reference
+ * data that happens to be admin-gated — GADM's boundaries at full resolution
+ * and Wikimedia's geoshape for a Wikidata id, gated because the editor is the
+ * only caller rather than because the answer is anyone's own. Those four reads
+ * say `private, no-cache` back through `markPublicReferenceBody`
+ * (`middleware/cacheHeaders.ts`), which is where that rule and its reasons
+ * live. That is the shape every exception takes — set after the middleware,
+ * where `setHeader` replaces: those four, the three streams' `private,
+ * no-cache` through `markStreamBody`, the admin images' `max-age`. All but one
+ * keep `private` deliberately, since replacing the value drops it along with
+ * the `no-store`; the exception is the admin image proxy, which answers
+ * `public, max-age=86400` because what it returns is a Wikimedia Commons
+ * picture unchanged, with the reason on its own line. That division is
+ * enforced rather than described: `no-restricted-syntax` in
+ * `backend/eslint.config.mjs` fails any `Cache-Control` written here that
+ * drops `private`, or that it cannot find `private` in at all, and
+ * `middleware/cacheOverrides.test.ts`
+ * holds the half a linter cannot — that the handlers which answer with
+ * something other than `no-store` still say so.
+ * The header itself goes on ahead of the token check, so every
+ * answer out of here carries it, the 401s included (#710, the `requireAuth`
+ * half of #597's rule).
  */
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  res.setHeader('Cache-Control', 'private, no-store');
+  // `res.vary` appends; `setHeader('Vary', …)` would replace the `Origin`
+  // CORS put there.
+  res.vary('Authorization');
+
   const authHeader = req.headers.authorization;
 
   // Support token in query parameter for SSE (EventSource can't send headers)
