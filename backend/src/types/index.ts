@@ -555,6 +555,53 @@ export const declineSourceBodySchema = z.object({
   expectedSyncLogId: z.number().int().positive().max(2147483647),
 });
 
+
+/**
+ * One part of a held proposal, as a request names it (#722).
+ *
+ * The record names a part and never identifies it (ADR-0026 decision 4), so a
+ * request does the same: the kind it was filed under, and the reference and name
+ * the record carries. Both halves are nullable there — most UNESCO components
+ * carry a reference and no name of their own, and one point carries neither — so
+ * both are nullable here, and the server matches on the pair because neither is
+ * an identity alone.
+ *
+ * Shared by the two endpoints that answer a held row, so a card cannot name a
+ * part one way to publish it and another way to refuse it.
+ */
+const heldPartSelectionSchema = z.object({
+  kind: z.enum(['locations', 'treasures']),
+  ref: z.string().max(255).nullable().optional(),
+  name: z.string().max(500).nullable().optional(),
+  fields: z.array(z.string().min(1).max(100)).min(1).max(50),
+});
+
+/**
+ * Which rows of a held proposal a curator is refusing.
+ * POST /api/experiences/:id/decline-held
+ *
+ * The mirror of the held selection on `publishExperienceBodySchema`, and named
+ * the same way for the same reason. At least one row: "refuse nothing" is not an
+ * answer, and a call that reported success over it would leave a card looking
+ * settled while it stands. The `.refine` is what says "at least one" across two
+ * optional arrays, which neither array's own `.min(1)` can.
+ *
+ * `expectedSyncLogId` is required rather than optional, unlike on publishing: a
+ * held card always names the run whose proposal it shows, so a caller that
+ * cannot name one is not answering a card. The cost of getting it wrong is the
+ * same as on `decline-source` — refusing the wrong run silences a proposal
+ * nobody read — and it is re-resolved under the write lock and refused rather
+ * than substituted.
+ */
+export const declineHeldBodySchema = z.object({
+  fields: z.array(z.string().min(1).max(100)).min(1).max(50).optional(),
+  parts: z.array(heldPartSelectionSchema).min(1).max(50).optional(),
+  expectedSyncLogId: z.number().int().positive().max(2147483647),
+}).refine(
+  b => b.fields !== undefined || b.parts !== undefined,
+  { message: 'name at least one held field or part to refuse' },
+);
+
 export const publishExperienceBodySchema = z.object({
   /**
    * Which unread points to publish. Naming any (with or without `treasureIds`
@@ -594,7 +641,7 @@ export const publishExperienceBodySchema = z.object({
    * say with this field — that is what leaving it absent already means — so a
    * caller either sends it true or does not send it.
    *
-   * Four shapes for what a body can mean, spelled out because "absent means
+   * Five shapes for what a body can mean, spelled out because "absent means
    * all of it" is exactly the inference that produced the defect above:
    * - absent, with no ids: an object publish — the experience and every
    *   pending content row it holds. The arrival case.
@@ -603,6 +650,10 @@ export const publishExperienceBodySchema = z.object({
    *   untouched.
    * - `{ fieldsOnly: true }`: the object's held fields and none of its unread
    *   contents — the field below, and the mirror of `contentsOnly`.
+   * - `{ heldFields }` / `{ heldParts }` (or both) with `expectedSyncLogId`:
+   *   that mirror narrowed to the held rows named, the rest left open (#722).
+   *   The run id is required here and nowhere else in this schema, because a
+   *   per-row answer is about the proposal one run made.
    */
   contentsOnly: z.literal(true).optional(),
   /**
@@ -623,6 +674,43 @@ export const publishExperienceBodySchema = z.object({
    */
   fieldsOnly: z.literal(true).optional(),
   /**
+   * The held fields of the object's own this call answers, rather than all of
+   * them (#722).
+   *
+   * The fields publish narrowed the way `locationIds` narrows the contents one,
+   * and for the same reason: the endpoint has always been able to answer part of
+   * a proposal, and it was the screen that could not say "this one". What is not
+   * named stays open and keeps the pointer, so the card comes back with the rows
+   * still waiting rather than being cleared unanswered.
+   *
+   * `.min(1)` for the reason the id arrays carry it: an empty array would mean
+   * "answer exactly nothing, and do not answer the card either", which no caller
+   * can want and which would report success over a click that did nothing.
+   * Bounded above the widest proposal a run can make — thirteen field names in
+   * `CURATED_KEY_BY_FIELD` — with room for a vocabulary that grows.
+   *
+   * `fieldsOnly` beside it is allowed and does nothing, unlike the pairs the
+   * `.refine`s below forbid: those say one thing twice with no rule for which
+   * wins, while this one has a single reading — the fields half, these rows —
+   * and refusing a body that merely restates its own half would be a rule
+   * without a defect behind it.
+   */
+  heldFields: z.array(z.string().min(1).max(100)).min(1).max(50).optional(),
+  /**
+   * The same, one level down: the held fields of the object's parts, each named
+   * by the part as the record names it (ADR-0026 decision 4, ADR-0037).
+   *
+   * `ref` and `name` are the record's own two halves and both are nullable there,
+   * so both are nullable here; neither is an identity alone, which is why the
+   * server matches on the pair. Nothing is looked up by id, and the value each
+   * row proposes is read off the locked proposal rather than from this body.
+   *
+   * Bounded at the page a card shows: a serial site can hold hundreds of points,
+   * but the card lists `CONTENTS_ROWS_SHOWN` of them, so a request naming more
+   * parts than that is not answering a card anyone was looking at.
+   */
+  heldParts: z.array(heldPartSelectionSchema).min(1).max(50).optional(),
+  /**
    * The run whose held proposal the caller was looking at.
    *
    * Compared under the write lock against `experiences.pending_change_sync_log_id`
@@ -638,6 +726,16 @@ export const publishExperienceBodySchema = z.object({
    */
   expectedSyncLogId: z.number().int().positive().max(2147483647).optional(),
 }).refine(
+  b => !((b.heldFields !== undefined || b.heldParts !== undefined)
+    && (b.contentsOnly === true || b.locationIds !== undefined || b.treasureIds !== undefined)),
+  {
+    // Naming held rows already says "the fields half", so a contents shape
+    // beside it asks for two different publishes in one body. Refused on the
+    // same ground as the pair below: inventing a rule for which wins is worse
+    // than refusing the ambiguity.
+    message: 'heldFields and heldParts already publish the fields half; a contents publish beside either is two answers in one body',
+  },
+).refine(
   b => !(b.fieldsOnly === true
     && (b.contentsOnly === true || b.locationIds !== undefined || b.treasureIds !== undefined)),
   {
@@ -653,6 +751,18 @@ export const publishExperienceBodySchema = z.object({
     // caller could not have said with one of them, and inventing a rule for
     // which one wins is worse than refusing the ambiguity.
     message: 'contentsOnly already means every pending content row; naming locationIds or treasureIds beside it is redundant',
+  },
+).refine(
+  b => (b.heldFields === undefined && b.heldParts === undefined)
+    || b.expectedSyncLogId !== undefined,
+  {
+    // Naming rows is answering a card, and a held card always names the run
+    // whose proposal it shows — `declineHeldBodySchema` requires the same for
+    // the same reason. Without the pair, a selection sent at a row whose
+    // pointer has since been cleared passes every gate the endpoint has and
+    // reports success over a card that is not there: the staleness check is
+    // skipped precisely because nothing would be written.
+    message: 'heldFields and heldParts answer a card, which names its run: send expectedSyncLogId with them',
   },
 ).refine(
   b => b.expectedSyncLogId === undefined
