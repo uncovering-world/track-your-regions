@@ -63,6 +63,25 @@ describe('the waiting predicates', () => {
     expect(sql).toMatch(/'treasures'/);
   });
 
+  it('stops counting a held row once a curator has answered it, by value', () => {
+    // #722: publishing one field of six clears that row and leaves the rest, and
+    // refusing one clears it without writing anything. Either way the panel's
+    // number has to fall, or a curator is sent to a queue whose card no longer
+    // has that row on it — and where it was the only row, to a queue with no card.
+    const sql = heldWaitingSql();
+    expect(sql).toContain('experience_held_decisions');
+    // By value, not by field: a source that comes back with something different
+    // is asking a new question and must be counted again. COALESCE because a
+    // proposal can carry no value at all — a dropped metadata key — and the
+    // answer stores a jsonb null for it, which SQL NULL would never equal.
+    expect(sql).toMatch(/d\.value = COALESCE\([^)]*->'new', 'null'::jsonb\)/);
+    // Both levels, keyed differently: the object's own field carries no part,
+    // and a part's is found by the pair the record names.
+    expect(sql).toContain('d.part_kind IS NULL');
+    expect(sql).toContain('d.part_ref IS NOT DISTINCT FROM');
+    expect(sql).toContain('d.part_name IS NOT DISTINCT FROM');
+  });
+
   it('asks both content axes, and only about points the source still offers', () => {
     const sql = contentsWaitingSql();
     // A visible row: an unread row itself is an arrival, counted once above.

@@ -512,6 +512,26 @@ describe('getReviewQueue', () => {
     expect(sql).not.toContain('curatedConflict');
   });
 
+  it('drops a held row the curator has already answered, at either level', async () => {
+    // #722: publishing one field of six leaves the pointer standing for the
+    // other five, and refusing one writes nothing at all — so the card cannot
+    // be keyed on the pointer alone any more. A row that was answered has to
+    // leave the card, or the curator meets a value they have applied or refused
+    // being proposed to them again.
+    //
+    // Both halves carry it, keyed differently: the object's own field by name,
+    // a part's by the pair the record names. And by value on both, so a source
+    // that comes back with something different is heard.
+    const sql = await capturedQueueSql('held');
+    expect(sql).toContain('experience_held_decisions');
+    expect(sql).toContain('d.part_kind IS NULL');
+    expect(sql).toContain('d.part_ref IS NOT DISTINCT FROM');
+    expect(sql).toMatch(/d\.value = COALESCE\([^)]*->'new', 'null'::jsonb\)/);
+    // The row-level guard as well as the field-level one: a card whose every
+    // held row is answered must not stand with nothing on it.
+    expect(sql).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM experience_held_decisions/);
+  });
+
   it('does not offer an acceptable flag on a held field', async () => {
     // 'acceptable' is the conflict path's concept — accept-source's own
     // lookup requires a curatedConflict:true field, which held's now

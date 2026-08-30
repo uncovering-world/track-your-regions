@@ -20,6 +20,9 @@ import {
   publishedContentSql,
 } from '../../experience/experienceLifecycle.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
+import {
+  heldFieldAnsweredSql, heldFieldRefusedSql, heldPartRefusedSql,
+} from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
 import { catalogueAssertions } from './catalogueAssertions.js';
 
@@ -329,6 +332,22 @@ describe('a picture with nobody credited', () => {
     })).not.toContain('waiting');
   });
 
+  it('stops saying "waiting" only for a credit a curator refused, not for one they published', () => {
+    // The one reader that deliberately does not ask the queue's question (#722).
+    // Publishing the object's `metadata` row while its picture is still open and
+    // different withholds the run's credit on purpose (`creditPin`: a prior
+    // publication is not evidence the column holds it), and publishing the
+    // picture afterwards finishes it — so a *published* credit is still one click
+    // from being written, and reading it as settled sends an admin to find a
+    // photographer the queue could have named. Probed live: with a `published`
+    // answer recorded against Ancient City of Damascus the answered predicate
+    // says "not waiting" and the refused one says "waiting"; with a `refused`
+    // answer both say "not waiting".
+    expect(sql).toContain(collapse(heldFieldRefusedSql('e.id')));
+    expect(sql).toContain(collapse(heldPartRefusedSql('e.id', "'treasures'")));
+    expect(sql).not.toContain(collapse(heldFieldAnsweredSql('e.id')));
+  });
+
   it('names the host, since which licence applies depends on where the picture is from', () => {
     expect(assertion.describe({
       holder: 'work', row_id: 88, row_name: 'The Night Watch', host: 'upload.wikimedia.org',
@@ -368,6 +387,12 @@ describe('the danger flag against its tag', () => {
     expect(sql).toContain("AND f->>'field' = 'metadata.inDanger')");
     expect(sql).not.toContain("'metadata')");
     expect(sql).not.toContain('AND e.pending_change_sync_log_id IS NULL');
+    // Excused on *any* answer, which is where this parts company with the credit
+    // check one assertion over (#722): a published flag is a flag that landed, so
+    // the two halves agree and there is nothing left to reconcile. A published
+    // credit is not — see `heldFieldRefusedSql`.
+    expect(sql).toContain(collapse(heldFieldAnsweredSql('e.id')));
+    expect(sql).not.toContain(collapse(heldFieldRefusedSql('e.id')));
     expect(sql).toContain("e.metadata->'inDanger' = 'true'::jsonb");
   });
 

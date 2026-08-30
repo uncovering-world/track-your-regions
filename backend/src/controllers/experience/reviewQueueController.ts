@@ -24,6 +24,7 @@ import {
   heldPartsSelectSql, queryAnsweredWithdrawals, queryContents, queryWithdrawn,
 } from './reviewQueueContents.js';
 import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
+import { heldFieldAnsweredSql } from './heldDecisions.js';
 import { withDangerFields } from './experienceDanger.js';
 
 /**
@@ -55,8 +56,11 @@ import { withDangerFields } from './experienceDanger.js';
  *   `pending_change_sync_log_id` names the run whose proposal is waiting. This
  *   is distinct from `conflicts`: a `curated_fields` claim is answered through
  *   `accept-source`, while a gate-held field is answered through
- *   `POST /:id/publish`, which is what clears this pointer in response to a
- *   person. A later run proposing nothing clears it too, on its own.
+ *   `POST /:id/publish` — writing the value — or `POST /:id/decline-held` —
+ *   refusing it, writing nothing (#722). Either clears this pointer in
+ *   response to a person, and only once nothing on the card is left open, so a
+ *   card answered one row at a time keeps the rest findable. A later run
+ *   proposing nothing clears it too, on its own.
  * - **a visible row is holding unread contents** — its points or its works
  *   arrived `pending` while the experience itself was already published.
  *   Counted *and* listed: the count is the whole number and the list is its first
@@ -437,12 +441,14 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // the source has stopped offering is `missing`'s question, not this one,
   // and showing both would ask two things about one row.
   //
-  // `POST /:id/publish` is what clears this pointer in response to a person —
-  // under its own staleness check, whenever a curator's `expectedSyncLogId`
-  // matches what is stored (or the call has nothing left to be stale about).
-  // `syncUtils.ts` is the only other thing that ever clears it, and only when
-  // a *later run* proposes nothing at all (the source came back to what is
-  // stored). Answering a refusal at `POST /:id/admission` does not, even
+  // `POST /:id/publish` and `POST /:id/decline-held` are what clear this
+  // pointer in response to a person — under the same staleness check, whenever
+  // a curator's `expectedSyncLogId` matches what is stored (or, for a publish,
+  // the call has nothing left to be stale about) — and only once nothing on
+  // the card is left open, so answering one row of six leaves the other five
+  // findable (#722). `syncUtils.ts` is the only other thing that ever clears
+  // it, and only when a *later run* proposes nothing at all (the source came
+  // back to what is stored). Answering a refusal at `POST /:id/admission` does not, even
   // though an override can publish the same row: admitting it says the object
   // belongs, not what a later proposal against it holds, and that stays a
   // separate question with its own card for a curator to answer through
@@ -472,7 +478,8 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              ch.sync_log_id, 'held' AS kind,
              (SELECT jsonb_agg(f) FROM jsonb_array_elements(ch.changed_fields) AS f
-               WHERE (f->>'held')::boolean) AS proposed,
+               WHERE (f->>'held')::boolean
+                 AND NOT ${heldFieldAnsweredSql('e.id')}) AS proposed,
              ${heldPartsSelectSql('ch', 'e')}
       FROM experiences e
       JOIN experience_categories c ON c.id = e.category_id

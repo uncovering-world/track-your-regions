@@ -213,6 +213,10 @@ export async function publishWaiting(req: AuthenticatedRequest, res: Response): 
   // nowhere else. Losing the count costs a sentence; losing the report costs the only
   // copy of it. So `null` means "could not be counted", which the panel says outright:
   // a `0` there would be a claim about the source that nothing checked.
+  // What is left is what a card can still show, which since #722 is narrower than
+  // what the runs held: a row a curator published or refused one field at a time
+  // is answered, and `heldWaitingSql` drops it. The number stays the one this
+  // batch is explaining — go and look at the queue, there are this many cards.
   let heldLeftForReview: number | null = null;
   try {
     const heldLeft = await pool.query(

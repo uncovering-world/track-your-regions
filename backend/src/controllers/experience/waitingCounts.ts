@@ -9,7 +9,7 @@
  * | kind | a row counts when |
  * |---|---|
  * | `arrival` | nobody has read the row itself |
- * | `held` | a run's proposal against a *visible* row was refused by the gate |
+ * | `held` | a run's proposal against a *visible* row was refused by the gate, and no curator has published or refused it |
  * | `contents` | a visible row holds unread points or unread works |
  *
  * **Where this cannot share the queue's spelling, and what would catch a drift.**
@@ -30,6 +30,7 @@
 
 import { pool } from '../../db/index.js';
 import { hideRefusedSql, offeredLocationSql } from './experienceLifecycle.js';
+import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 
 /** A row nobody has read yet, and that the source still offers. */
 export function arrivalWaitingSql(alias = 'e'): string {
@@ -37,27 +38,37 @@ export function arrivalWaitingSql(alias = 'e'): string {
 }
 
 /**
- * Whether a changeset row carries a field of the object's own the gate held.
+ * Whether a changeset row carries a field of the object's own the gate held and
+ * nobody has answered.
  *
  * `held: true` on the field itself rather than the absence of a curator's claim
  * (#519): a field can be refused for either reason, and only the gate's refusal
  * is answerable by publishing. `alias` is the `experience_sync_changes` alias.
+ *
+ * Answered means published — which clears the flag by clearing the proposal —
+ * or refused (#722), which writes nothing and records the value. The second is
+ * what this predicate adds: a curator who says "not this" to a run's only
+ * proposal has answered the card, and a count that went on including it would
+ * send them back to a queue with nothing in it.
  */
 export function heldFieldExistsSql(alias = 'ch'): string {
   return `EXISTS (
       SELECT 1 FROM jsonb_array_elements(${alias}.changed_fields) AS f
       WHERE (f->>'held')::boolean
+        AND NOT ${heldFieldAnsweredSql(`${alias}.experience_id`)}
     )`;
 }
 
 /**
  * Whether a changeset row carries a field of one of the object's *parts* the
- * gate held — a place's name, a work's attribution (ADR-0037).
+ * gate held and nobody has answered (ADR-0037) — a place's name, a work's
+ * attribution.
  *
  * The record keys contents by kind, so both kinds are asked by name; a kind the
  * run did nothing to is absent, which the COALESCE reads as an empty list. The
  * same positive flag as above, for the same reason: a part's field a claim
- * refused is the conflict card's, and never counted here.
+ * refused is the conflict card's, and never counted here. And the same refusal
+ * clause, keyed on the part the record names as well as on the field.
  */
 export function heldPartExistsSql(alias = 'ch'): string {
   return `EXISTS (
@@ -66,6 +77,7 @@ export function heldPartExistsSql(alias = 'ch'): string {
         COALESCE(${alias}.contents -> k.kind -> 'changed', '[]'::jsonb)) AS c
       CROSS JOIN LATERAL jsonb_array_elements(c -> 'fields') AS f
       WHERE (f->>'held')::boolean
+        AND NOT ${heldPartAnsweredSql(`${alias}.experience_id`, 'k.kind')}
     )`;
 }
 

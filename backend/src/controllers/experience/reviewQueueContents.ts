@@ -27,6 +27,7 @@ import {
 } from './experienceLifecycle.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
+import { heldPartAnsweredSql } from './heldDecisions.js';
 
 /**
  * The held fields of an object's parts, as the held card carries them.
@@ -47,6 +48,11 @@ import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
  * conflict card's, and answering it here would apply a curator's own value
  * back as though a source had sent it.
  *
+ * Unanswered entries only, in the same two places and for the same reason
+ * (#722): a field a curator has refused by value is settled, so it leaves the
+ * group, and a part whose every held field is refused leaves the card. The
+ * predicate is `heldDecisions.ts`'s, the one the count and publishing read.
+ *
  * The row is found through `partRecord.ts`, the rule publishing resolves the
  * same entry by, so the row the card opens is the row publishing writes. Where
  * no stored row answers — a place the source has since withdrawn — the entry
@@ -66,7 +72,8 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
                         'kind', k.kind,
                         'item', c -> 'item',
                         'fields', (SELECT jsonb_agg(f) FROM jsonb_array_elements(c -> 'fields') AS f
-                                    WHERE (f->>'held')::boolean),
+                                    WHERE (f->>'held')::boolean
+                                      AND NOT ${heldPartAnsweredSql(`${experience}.id`, 'k.kind')}),
                         'locationId', loc.id, 'latitude', loc.latitude, 'longitude', loc.longitude,
                         'ordinal', loc.ordinal,
                         'treasureId', work.id, 'artist', work.artist, 'year', work.year,
@@ -78,7 +85,8 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
                  LEFT JOIN LATERAL (${location}) AS loc ON k.kind = 'locations'
                  LEFT JOIN LATERAL (${treasure}) AS work ON k.kind = 'treasures'
                 WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(c -> 'fields') AS f
-                               WHERE (f->>'held')::boolean)
+                               WHERE (f->>'held')::boolean
+                                 AND NOT ${heldPartAnsweredSql(`${experience}.id`, 'k.kind')})
              ) AS parts) AS proposed_parts`;
 }
 

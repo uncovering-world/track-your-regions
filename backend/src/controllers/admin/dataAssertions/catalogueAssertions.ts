@@ -61,6 +61,9 @@ import {
   publishedContentSql,
 } from '../../experience/experienceLifecycle.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
+import {
+  heldFieldAnsweredSql, heldFieldRefusedSql, heldPartRefusedSql,
+} from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '../../../services/sync/changeSet.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 
@@ -492,6 +495,21 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
   // credit fetched for a picture the row already shows is written, not held, so
   // a work with a picture and no credit is "go and fetch one" unless its picture
   // is itself waiting on a curator.
+  //
+  // Waiting, and not merely proposed: a credit a curator refused (#722) is
+  // settled, no card offers it any more, and reporting the row as waiting would
+  // point at a screen that has nothing to say about it.
+  //
+  // **Refused, not merely answered** — the one place this asks a narrower
+  // question than the queue does, and the reason is `creditPin`'s: publishing the
+  // object's `metadata` row while its picture is still open and different
+  // deliberately withholds the run's credit, and publishing the picture
+  // afterwards finishes what that call had to leave. So a *published* credit can
+  // still be one click from being written, and reading it as settled would drop
+  // "waiting on a curator" from a row that is — sending an admin to find a
+  // photographer the queue could have named. A refusal is the only answer after
+  // which nothing will come. Keyed on the field on one side and on the part on
+  // the other, from the same module the queue and the count compose.
   sql: `SELECT 'object' AS holder, e.id AS row_id, e.name AS row_name,
                split_part(split_part(e.image_url, '//', 2), '/', 1) AS host,
                (${heldWaitingSql('e')}
@@ -500,6 +518,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                              WHERE ch.experience_id = e.id
                                AND ch.sync_log_id = e.pending_change_sync_log_id
                                AND (f->>'held')::boolean
+                               AND NOT ${heldFieldRefusedSql('e.id')}
                                AND f->'new' ? 'imageCredit')) AS credit_waiting
           FROM experiences e
          WHERE e.image_url IS NOT NULL AND e.image_url <> ''
@@ -525,6 +544,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                           AND c -> 'item' ->> 'ref' = t.external_id
                           AND f ->> 'field' = 'metadata.imageCredit'
                           AND (f->>'held')::boolean
+                          AND NOT ${heldPartRefusedSql('e.id', "'treasures'")}
                           AND jsonb_typeof(f -> 'new') = 'object') AS credit_waiting
           FROM treasures t
          WHERE t.image_url IS NOT NULL AND t.image_url <> ''
@@ -580,6 +600,11 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
  * The flag is a major key, reported under its own name and never inside the
  * `metadata` catch-all (`changeSet.ts`), which is why the catch-all is not in
  * the test: naming it there would exclude every row holding a criteria string.
+ *
+ * And it is the flag still *waiting*, not one that was answered. A curator who
+ * refuses the proposed flag (#722) has decided the tag and the badge will go on
+ * disagreeing, and no card will ever come round to fix it — which is a
+ * disagreement this check is for rather than one to keep excusing.
  */
 const dangerFlagAgainstItsTag: CatalogueAssertion = {
   id: 'danger-flag-disagrees-with-its-tag',
@@ -619,6 +644,7 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
               WHERE ch.experience_id = e.id
                 AND ch.sync_log_id = e.pending_change_sync_log_id
                 AND (f->>'held')::boolean
+                AND NOT ${heldFieldAnsweredSql('e.id')}
                 AND f->>'field' = 'metadata.inDanger')
          ORDER BY e.name`,
   describe: row => {
