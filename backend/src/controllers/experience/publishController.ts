@@ -33,25 +33,32 @@
  */
 
 import { Response } from 'express';
+import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
-import { heldFieldWrites, publicationAssignments } from './publishHeldFields.js';
+import { heldFieldWrites, publicationAssignments, type HeldFieldWrites } from './publishHeldFields.js';
 import {
-  applyHeldPartWrites, planHeldPartWrites, type AppliedPart, type PartNotFound,
+  applyHeldPartWrites, planHeldPartWrites,
+  type AppliedPart, type HeldPartPlan, type PartNotFound,
 } from './publishHeldParts.js';
+import { recordHeldAnswers } from './heldDecisions.js';
+import type { HeldSelection, SelectedPart } from './heldSelection.js';
 
 /**
  * What the curator asked to be published.
  *
- * Four shapes, and each names its own intent rather than leaving one
+ * Five shapes, and each names its own intent rather than leaving one
  * inferred from what is missing — see `publishExperienceBodySchema` for why:
  * absent everything is an object publish, `contentsOnly` is every pending
  * content row with the object untouched, `locationIds`/`treasureIds` name
- * exactly which rows with the object untouched the same way, and `fieldsOnly`
- * is the mirror — the object's held fields with its contents untouched.
+ * exactly which rows with the object untouched the same way, `fieldsOnly`
+ * is the mirror — the object's held fields with its contents untouched — and
+ * `heldFields`/`heldParts` narrow that mirror to the held rows named, which is
+ * why they carry `expectedSyncLogId`: a per-row answer is about one run's
+ * proposal (#722).
  */
 interface PublishRequest {
   locationIds?: number[];
@@ -59,6 +66,17 @@ interface PublishRequest {
   contentsOnly?: true;
   /** The object's held fields, and none of its unread contents (#524). */
   fieldsOnly?: true;
+  /**
+   * The held rows this call answers, rather than all of them (#722) — the
+   * object's own fields by name, its parts' by the part the record names.
+   *
+   * Naming either makes this a fields publish, the way naming ids makes a body a
+   * contents publish: what is written is a held proposal, and the unread points
+   * and works are a different question. What is not named stays open, which is
+   * what keeps the card standing for the rest of it.
+   */
+  heldFields?: string[];
+  heldParts?: SelectedPart[];
   expectedSyncLogId?: number;
 }
 
@@ -112,6 +130,19 @@ function refusedBeforeWriting(
 }
 
 /**
+ * The rows this call answers, or null for the whole card.
+ *
+ * Built once, here, so every reader of it — the two planners and the pointer —
+ * asks the same question. Null rather than an empty object for "all of it":
+ * an empty selection would read as "answer nothing", which the schema refuses
+ * for the same reason it refuses an empty id array.
+ */
+function selectionOf({ heldFields, heldParts }: PublishRequest): HeldSelection | null {
+  if (heldFields === undefined && heldParts === undefined) return null;
+  return { fields: heldFields, parts: heldParts };
+}
+
+/**
  * Which of the three publishes this was, for the trail.
  *
  * Said rather than inferred from which counts came out zero: publishing an object
@@ -148,6 +179,15 @@ interface PublishResult {
   partsNotFound?: PartNotFound[];
   /** The run whose held proposal was applied, or null when none was held. */
   fromSyncLogId: number | null;
+  /**
+   * Held rows this call left open, at both levels (#722).
+   *
+   * Non-zero exactly when the pointer stayed, so the card is still standing and
+   * the page should say what is still waiting rather than reporting the object
+   * answered. Zero on every call that names no selection, which is every call
+   * that existed before per-row answers.
+   */
+  heldLeftOpen: number;
   locationsPublished: number;
   treasureLinksPublished: number;
   treasuresPublished: number;
@@ -183,7 +223,8 @@ interface PublishRefusal {
 /**
  * Publish an experience, every one of its unread contents, or a named subset.
  * POST /api/experiences/:id/publish
- * Body: { contentsOnly?: true, fieldsOnly?: true, locationIds?: number[], treasureIds?: number[], expectedSyncLogId?: number }
+ * Body: { contentsOnly?: true, fieldsOnly?: true, locationIds?: number[], treasureIds?: number[],
+ *         heldFields?: string[], heldParts?: SelectedPart[], expectedSyncLogId?: number }
  *
  * An empty body publishes the object: its held fields, its own state, and
  * every unread point and work it holds — the arrival case. `contentsOnly` or
@@ -193,10 +234,18 @@ interface PublishRefusal {
  * § 4.4). `fieldsOnly` is the mirror: the held fields alone, so one doubtful
  * sentence stops holding back twelve checked works (#524) — and on a `pending`
  * row it answers 409, because a row nobody has read has no fields to publish
- * on their own. See `publishExperienceBodySchema` for why the four shapes are
+ * on their own. See `publishExperienceBodySchema` for why the five shapes are
  * asked for explicitly rather than one of them inferred from the others being
  * absent — that inference is what let a contents-only card publish the object
  * by accident.
+ *
+ * `heldFields` / `heldParts` narrow the fields publish the way the id arrays
+ * narrow the contents one (#722): those rows of the held proposal, and the rest
+ * left open. What is left open is what keeps `pending_change_sync_log_id`, so
+ * publishing one row of six leaves the card standing with the other five on it
+ * rather than clearing them unanswered. Naming either makes the call a fields
+ * publish, so it is refused on a `pending` row for the same reason `fieldsOnly`
+ * is, and it may not accompany a contents shape.
  */
 export async function publishExperience(req: AuthenticatedRequest, res: Response): Promise<void> {
   const experienceId = parseInt(String(req.params.id));
@@ -290,6 +339,96 @@ function staleProposalRefusal(
 }
 
 /**
+ * The held half of a publish: what this call will write, or the reason it cannot.
+ *
+ * Its own function because it is its own decision and because the transaction
+ * shell around it had reached the density the linter draws a line at. Reads and
+ * locks only — the caller still refuses with nothing to roll back but locks —
+ * and every refusal it returns is a 409 about the state of the row rather than
+ * about the request's shape.
+ */
+async function planHeldAnswer(
+  client: PoolClient,
+  experienceId: number,
+  pointer: number | null,
+  before: { metadata?: unknown; image_url?: unknown },
+  claimed: string[],
+  selection: HeldSelection | null,
+  expectedSyncLogId: number | undefined,
+): Promise<{
+  refusal?: string;
+  write: HeldFieldWrites;
+  parts: HeldPartPlan;
+}> {
+  const write = await heldFieldWrites(client, experienceId, pointer, before, claimed, selection);
+  // The parts' half of the same proposal (ADR-0037): resolved and locked now,
+  // written after the object by the caller. It takes the answers the object's
+  // half already read — one query, one lock, and no chance of the two halves
+  // disagreeing about what is still open.
+  const parts = await planHeldPartWrites(
+    client, experienceId, write.contents, write.answered, selection,
+  );
+
+  const staleness = staleProposalRefusal(write, parts.heldAny, pointer, expectedSyncLogId);
+  if (staleness) return { refusal: staleness.error, write, parts };
+
+  if (write.proposalMissing) {
+    // The pointer names a run whose changeset row is not there, so there is
+    // nothing to apply and nothing to show a curator either. Reading that as an
+    // empty proposal would clear the pointer and answer 200: the card
+    // disappears, the values are never written, and the only record that
+    // anything was held goes with it. `accept-source` refuses the same case, and
+    // two endpoints disagreeing about it is worse than either answer. Leaving
+    // the pointer standing costs a card that returns; the next run re-proposes
+    // and records it properly.
+    return {
+      refusal: 'The proposal this card names is no longer on record — reload to see where this stands',
+      write, parts,
+    };
+  }
+
+  // A selection that reached nothing is refused before anything is written
+  // (#722). The rows it named were answered by someone else, or published, or
+  // the run has stopped proposing them — either way the card the curator clicked
+  // is not the one the row is in, and reporting success would leave them
+  // believing they had answered it.
+  const unmatched = [...write.unmatched, ...parts.unmatched];
+  if (unmatched.length > 0) {
+    return {
+      refusal: `Nothing is waiting on you for ${unmatched.join(', ')} — reload to see where this stands`,
+      write, parts,
+    };
+  }
+
+  // Either half's unwritable field refuses the whole call; a part's is named
+  // with its part, so the message says which.
+  //
+  // Nothing held may be dropped in silence. Clearing the pointer over a value
+  // this code could not write would leave that value proposed by every run from
+  // here on and applied by none — the escape the gate closes for
+  // `accept-source`'s six unwritable fields, reopened. Reached today only by a
+  // coordinate the changeset did not record as a pair of numbers; a field name
+  // outside `CURATED_KEY_BY_FIELD` would land here too, which is why a test
+  // feeds this endpoint every field `computeChangeSet` can actually emit and
+  // requires all of them to be applied. Iterating the map instead would prove
+  // nothing: the map is the side that could be missing an entry.
+  //
+  // A field in that position is unanswerable, not merely unapplied — the refusal
+  // leaves the pointer standing, so the card cannot be cleared by any route.
+  // That is the deliberate trade (no value is ever dropped in silence) and the
+  // reason the test guards the differ rather than the map.
+  const unwritable = [...write.unwritable, ...parts.unwritable];
+  if (unwritable.length > 0) {
+    return {
+      refusal: `Publishing cannot write what this run proposed for ${unwritable.join(', ')} — nothing was published`,
+      write, parts,
+    };
+  }
+
+  return { write, parts };
+}
+
+/**
  * The publication itself, in one transaction under the row lock.
  *
  * Everything the decision rests on is read in here rather than before: the
@@ -314,7 +453,13 @@ export async function publishUnderLock(
   logRegionId: number | null,
   body: PublishRequest,
 ): Promise<{ result?: PublishResult; refusal?: PublishRefusal }> {
-  const { locationIds, treasureIds, contentsOnly: bareContentsOnly, fieldsOnly, expectedSyncLogId } = body;
+  const { locationIds, treasureIds, contentsOnly: bareContentsOnly, expectedSyncLogId } = body;
+  const selection = selectionOf(body);
+  // Naming held rows is a fields publish, said once here rather than tested for
+  // at each of the three places that ask: the unread points and works are a
+  // different question, and answering one row of a proposal must not release
+  // twelve paintings as a side effect (#524).
+  const fieldsOnly = body.fieldsOnly ?? (selection ? true as const : undefined);
   // Three ways a body can ask for contents only, all mutually exclusive by the
   // schema's `.refine` — the bare flag for "every pending row, object
   // untouched", or naming either array. Object and contents publish are one
@@ -339,7 +484,11 @@ export async function publishUnderLock(
     };
 
     const locked = await client.query(
-      `SELECT curation_state, curated_fields, metadata, admission, pending_change_sync_log_id
+      // `image_url` joins the read for the credit rule (#722): the credit a run
+      // fetched belongs to the picture that run offers, so deciding whether it
+      // may be written means comparing that picture with the stored one.
+      `SELECT curation_state, curated_fields, metadata, image_url, admission,
+              pending_change_sync_log_id
          FROM experiences WHERE id = $1 ${OBJECT_LOCK}`,
       [experienceId],
     );
@@ -365,6 +514,7 @@ export async function publishUnderLock(
     let heldFrom: number | null = null;
     let appliedParts: AppliedPart[] = [];
     let partsNotFound: PartNotFound[] = [];
+    let heldLeftOpen = 0;
 
     if (!contentsOnly) {
       const pointer = (before.pending_change_sync_log_id as number | null) ?? null;
@@ -400,60 +550,20 @@ export async function publishUnderLock(
       // whether the check applies at all — a pointer whose one held field a
       // curator already claimed writes nothing, and per ADR-0025 § 4.4 there is
       // nothing for such a call to be stale about.
-      const write = await heldFieldWrites(client, experienceId, pointer, before, claimed);
-      // The parts' half of the same proposal (ADR-0037): resolved and locked
-      // now, written after the object below. Reads only, so a refusal on
-      // either half still has nothing to roll back but locks.
-      const parts = await planHeldPartWrites(client, experienceId, write.contents);
-      const staleness = staleProposalRefusal(write, parts.heldAny, pointer, expectedSyncLogId);
-      if (staleness) {
-        return await refuse(409, staleness.error, staleness.pendingChangeSyncLogId);
-      }
+      const held = await planHeldAnswer(
+        client, experienceId, pointer, before, claimed, selection, expectedSyncLogId,
+      );
+      if (held.refusal) return await refuse(409, held.refusal, pointer);
+      const { write, parts } = held;
       heldFrom = pointer;
 
-      if (write.proposalMissing) {
-        // The pointer names a run whose changeset row is not there, so there is
-        // nothing to apply and nothing to show a curator either. Reading that as
-        // an empty proposal would clear the pointer and answer 200: the card
-        // disappears, the values are never written, and the only record that
-        // anything was held goes with it. `accept-source` refuses the same case,
-        // and two endpoints disagreeing about it is worse than either answer.
-        // Leaving the pointer standing costs a card that returns; the next run
-        // re-proposes and records it properly.
-        return await refuse(409,
-          'The proposal this card names is no longer on record — reload to see where this stands',
-          pointer);
-      }
-
-      // Either half's unwritable field refuses the whole call, for the reason
-      // below; a part's is named with its part, so the message says which.
-      const unwritable = [...write.unwritable, ...parts.unwritable];
-      if (unwritable.length > 0) {
-        // Nothing held may be dropped in silence. Clearing the pointer over a
-        // value this code could not write would leave that value proposed by
-        // every run from here on and applied by none — the escape the gate
-        // closes for `accept-source`'s six unwritable fields, reopened. Reached
-        // today only by a coordinate the changeset did not record as a pair of
-        // numbers; a field name outside `CURATED_KEY_BY_FIELD` would land here
-        // too, which is why a test feeds this endpoint every field
-        // `computeChangeSet` can actually emit and requires all of them to be
-        // applied. Iterating the map instead would prove nothing: the map is the
-        // side that could be missing an entry.
-        //
-        // A field in that position is unanswerable, not merely unapplied — the
-        // refusal leaves the pointer standing, so the card cannot be cleared by
-        // any route. That is the deliberate trade (no value is ever dropped in
-        // silence) and the reason the test guards the differ rather than the map.
-        return await refuse(409,
-          `Publishing cannot write what this run proposed for ${unwritable.join(', ')} — nothing was published`,
-          pointer);
-      }
       applied = write.applied;
       claimedFieldsSkipped = write.claimedFieldsSkipped;
+      heldLeftOpen = write.leftOpen.length + parts.leftOpen.length;
 
       await client.query(
         `UPDATE experiences
-         SET ${[...write.assignments, ...publicationAssignments(before)].join(',\n             ')},
+         SET ${[...write.assignments, ...publicationAssignments(before, heldLeftOpen)].join(',\n             ')},
              updated_at = NOW()
          WHERE id = $1`,
         write.params,
@@ -464,6 +574,14 @@ export async function publishUnderLock(
       // a proposal answered and still asked.
       appliedParts = await applyHeldPartWrites(client, parts);
       partsNotFound = parts.notFound;
+
+      // What was answered, by value, in the same transaction as the write it
+      // records (#722). It matters only where the pointer stayed — the card is
+      // still standing, and without this it would go on offering the value it
+      // has just applied — but it is written either way, because a rule that
+      // fires only in the case that needs it is a rule nobody exercises.
+      await recordHeldAnswers(client, experienceId, userId, 'published',
+        [...write.written, ...parts.written]);
     }
 
     // A fields-only publish leaves every unread point and work exactly where it
@@ -489,6 +607,11 @@ export async function publishUnderLock(
       parts: appliedParts,
       partsNotFound,
       fromSyncLogId: heldFrom,
+      // How much of the card this answer did not reach. A trail that recorded
+      // only what landed would read the same for "published the whole proposal"
+      // and "published one row of six", which is the difference a person
+      // reconstructing the decision months later is looking for.
+      heldLeftOpen,
       locations: locationsPublished,
       treasureLinks: treasureLinksPublished,
       treasures: treasuresPublished,
@@ -540,6 +663,7 @@ export async function publishUnderLock(
         appliedParts,
         ...(partsNotFound.length === 0 ? {} : { partsNotFound }),
         fromSyncLogId: heldFrom,
+        heldLeftOpen,
         locationsPublished,
         treasureLinksPublished,
         treasuresPublished,

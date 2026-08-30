@@ -23,6 +23,8 @@
 
 import type { PoolClient } from 'pg';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
+import { heldRowKey, type HeldAnswer, type HeldRowRef } from './heldDecisions.js';
+import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelection.js';
 import type { ContentKind, ContentsByKind, ContentItemChange } from '../../services/sync/types.js';
 
 /** One part publishing wrote to, as the response and the audit row name it. */
@@ -54,12 +56,21 @@ export interface HeldPartPlan {
   /** Held part fields this writer cannot produce, named with their part. Any at all refuses the call. */
   unwritable: string[];
   /**
-   * Whether the record holds anything on a part at all, found or not — the
-   * staleness check's question, which has to be asked of the proposal rather
-   * than of the writes, or a proposal whose every part has since been withdrawn
-   * would be published under a pointer nobody checked.
+   * Whether the record holds anything unanswered on a part at all, found or not
+   * — the staleness check's question, which has to be asked of the proposal
+   * rather than of the writes, or a proposal whose every part has since been
+   * withdrawn would be published under a pointer nobody checked.
    */
   heldAny: boolean;
+  /**
+   * What this call writes, as the answer record names it (#722) — so a card that
+   * keeps its pointer stops offering an attribution it has already applied.
+   */
+  written: Array<{ row: HeldRowRef; value: unknown }>;
+  /** Open part rows this call does not answer. They are what keeps the pointer. */
+  leftOpen: HeldRowRef[];
+  /** Part rows the caller named that carry no open held proposal. Any at all refuses the call. */
+  unmatched: string[];
 }
 
 /** The columns publishing may write on each kind of part, per its `curated_fields` vocabulary. */
@@ -82,10 +93,29 @@ function labelOf(entry: ContentItemChange): string {
   return entry.item.name ?? entry.item.ref ?? 'an unnamed part';
 }
 
-/** The entries of one kind that carry a held field, with only those fields. */
-function heldEntries(contents: ContentsByKind | null, kind: ContentKind): ContentItemChange[] {
+/** How the answer record names one field of one part. */
+function partRow(kind: ContentKind, entry: ContentItemChange, field: string): HeldRowRef {
+  return { kind, ref: entry.item.ref, name: entry.item.name, field };
+}
+
+/**
+ * The entries of one kind that carry a held field nobody has answered, with only
+ * those fields.
+ *
+ * Answered rows are dropped here rather than filtered downstream so that every
+ * count this plan reports — what is open, what the staleness check has to be
+ * about, what a not-found part is holding — is taken from the same list the
+ * card's own query builds (#722).
+ */
+function heldEntries(
+  contents: ContentsByKind | null, kind: ContentKind, answered: ReadonlyMap<string, HeldAnswer>,
+): ContentItemChange[] {
   return (contents?.[kind]?.changed ?? [])
-    .map(entry => ({ ...entry, fields: entry.fields.filter(field => field.held) }))
+    .map(entry => ({
+      ...entry,
+      fields: entry.fields.filter(field => field.held
+        && !answered.has(heldRowKey(partRow(kind, entry, field.field)))),
+    }))
     .filter(entry => entry.fields.length > 0);
 }
 
@@ -119,7 +149,7 @@ async function lockPart(
  * with its skipped fields so the curator sees why.
  */
 function writeFor(
-  kind: ContentKind, rowId: number, entry: ContentItemChange, writable: ContentItemChange['fields'],
+  kind: ContentKind, rowId: number, writable: ContentItemChange['fields'],
 ): { sql: string; params: unknown[] } | null {
   if (writable.length === 0) return null;
   const params: unknown[] = [rowId];
@@ -152,50 +182,146 @@ function writeFor(
 }
 
 /**
- * Resolve every held part of the proposal to its row, lock it, and decide the
- * writes — without running one.
+ * Split one part's held fields into what this call answers and what it leaves.
+ *
+ * Done before anything is looked up: a part none of whose fields this call names
+ * is not a part it should lock, refuse over, or report.
+ */
+function splitBySelection(
+  kind: ContentKind, entry: ContentItemChange, names: (row: HeldRowRef) => boolean,
+): { selected: ContentItemChange['fields']; leftOpen: HeldRowRef[] } {
+  const selected = entry.fields.filter(field => names(partRow(kind, entry, field.field)));
+  const leftOpen = entry.fields
+    .filter(field => !selected.includes(field))
+    .map(field => partRow(kind, entry, field.field));
+  return { selected, leftOpen };
+}
+
+/** What this call comes to for one part it answers: a write, a miss, or a refusal. */
+interface PartPlan {
+  write?: PlannedWrite;
+  written?: Array<{ row: HeldRowRef; value: unknown }>;
+  notFound?: PartNotFound;
+  unwritable?: string[];
+}
+
+/**
+ * Resolve one part the call answers, lock it, and decide its write.
+ *
+ * Unwritable first, before any row is looked for: a field this writer cannot
+ * produce refuses the whole call, and a lock taken for a call about to be
+ * refused is a lock for nothing.
+ */
+async function planOnePart(
+  client: PoolClient,
+  experienceId: number,
+  kind: ContentKind,
+  entry: ContentItemChange,
+  selected: ContentItemChange['fields'],
+): Promise<PartPlan> {
+  const name = labelOf(entry);
+  const unwritable = selected.filter(field => !WRITABLE[kind].has(field.field));
+  if (unwritable.length > 0) {
+    return { unwritable: unwritable.map(field => `${field.field} of ${name}`) };
+  }
+
+  const answering = { ...entry, fields: selected };
+  const row = await lockPart(client, experienceId, kind, answering);
+  if (!row) return { notFound: { kind, name } };
+
+  // A claim made since the run is an answer someone already gave about whose
+  // value this is; publishing answers a different question, so a claimed field
+  // is skipped rather than a reason to refuse.
+  const claimed = selected.filter(field => row.curated_fields.includes(claimKeyOf(field.field)));
+  const writable = selected.filter(field => !claimed.includes(field));
+  const part: AppliedPart = {
+    kind, name,
+    fields: writable.map(field => field.field),
+    claimedFieldsSkipped: claimed.map(field => field.field),
+  };
+  const write = writeFor(kind, row.id, writable);
+  return {
+    write: { part, sql: write?.sql ?? '', params: write?.params ?? [] },
+    written: writable.map(field => ({ row: partRow(kind, entry, field.field), value: field.new })),
+  };
+}
+
+/**
+ * Rows the caller named that no open held proposal answers to.
+ *
+ * Reported rather than ignored, for the reason the object's half reports its
+ * own: a click that answered nothing must not come back as success.
+ */
+function unmatchedParts(selection: HeldSelection | null, reached: ReadonlySet<string>): string[] {
+  const unmatched: string[] = [];
+  for (const part of selection?.parts ?? []) {
+    for (const field of part.fields) {
+      const row: HeldRowRef = {
+        kind: part.kind, ref: part.ref ?? null, name: part.name ?? null, field,
+      };
+      // The matcher widens across the picture/credit pair, so this asks the
+      // same question through the same function rather than a second copy of
+      // it: naming a work's picture where the run held only its credit (or the
+      // other way about) reaches a row, and reporting the partner unmatched
+      // would refuse the whole call.
+      if (!namedRowReached(reached, row)) {
+        unmatched.push(`${field} of ${part.name ?? part.ref ?? 'an unnamed part'}`);
+      }
+    }
+  }
+  return unmatched;
+}
+
+/** Every held, unanswered entry of the record, paired with the kind it was filed under. */
+function heldEntriesByKind(
+  contents: ContentsByKind | null, answered: ReadonlyMap<string, HeldAnswer>,
+): Array<{ kind: ContentKind; entry: ContentItemChange }> {
+  return (['locations', 'treasures'] as const).flatMap(kind =>
+    heldEntries(contents, kind, answered).map(entry => ({ kind, entry })));
+}
+
+/** Fold one part's plan into the whole: the four arms are independent and all optional. */
+function merge(plan: HeldPartPlan, one: PartPlan): void {
+  if (one.unwritable) plan.unwritable.push(...one.unwritable);
+  if (one.notFound) plan.notFound.push(one.notFound);
+  if (one.write) plan.writes.push(one.write);
+  if (one.written) plan.written.push(...one.written);
+}
+
+/**
+ * Resolve every open held part of the proposal to its row, lock it, and decide
+ * the writes — without running one.
+ *
+ * `answered` is what the curator has already settled at this level, and
+ * `selection` is what this call answers, or null for the whole card (#722). A
+ * selection narrows the same three things it narrows one level up: what is
+ * written, what an unwritable field may refuse the call over, and what is left
+ * open for the pointer.
  */
 export async function planHeldPartWrites(
   client: PoolClient,
   experienceId: number,
   contents: ContentsByKind | null,
+  answered: ReadonlyMap<string, HeldAnswer> = new Map(),
+  selection: HeldSelection | null = null,
 ): Promise<HeldPartPlan> {
-  const plan: HeldPartPlan = { writes: [], notFound: [], unwritable: [], heldAny: false };
+  const plan: HeldPartPlan = {
+    writes: [], notFound: [], unwritable: [], heldAny: false,
+    written: [], leftOpen: [], unmatched: [],
+  };
+  const names = selectedFilter(selection);
+  const reached = new Set<string>();
 
-  for (const kind of ['locations', 'treasures'] as const) {
-    for (const entry of heldEntries(contents, kind)) {
-      plan.heldAny = true;
-      const name = labelOf(entry);
-
-      // Unwritable first, before any row is looked for: a field this writer
-      // cannot produce refuses the whole call, and a lock taken for a call
-      // about to be refused is a lock for nothing.
-      const unwritable = entry.fields.filter(field => !WRITABLE[kind].has(field.field));
-      if (unwritable.length > 0) {
-        plan.unwritable.push(...unwritable.map(field => `${field.field} of ${name}`));
-        continue;
-      }
-
-      const row = await lockPart(client, experienceId, kind, entry);
-      if (!row) {
-        plan.notFound.push({ kind, name });
-        continue;
-      }
-
-      // A claim made since the run is an answer someone already gave about
-      // whose value this is; publishing answers a different question, so a
-      // claimed field is skipped rather than a reason to refuse.
-      const claimed = entry.fields.filter(field => row.curated_fields.includes(claimKeyOf(field.field)));
-      const writable = entry.fields.filter(field => !claimed.includes(field));
-      const part: AppliedPart = {
-        kind, name,
-        fields: writable.map(field => field.field),
-        claimedFieldsSkipped: claimed.map(field => field.field),
-      };
-      const write = writeFor(kind, row.id, entry, writable);
-      plan.writes.push({ part, sql: write?.sql ?? '', params: write?.params ?? [] });
-    }
+  for (const { kind, entry } of heldEntriesByKind(contents, answered)) {
+    plan.heldAny = true;
+    const { selected, leftOpen } = splitBySelection(kind, entry, names);
+    plan.leftOpen.push(...leftOpen);
+    if (selected.length === 0) continue;
+    for (const field of selected) reached.add(heldRowKey(partRow(kind, entry, field.field)));
+    merge(plan, await planOnePart(client, experienceId, kind, entry, selected));
   }
+
+  plan.unmatched = unmatchedParts(selection, reached);
   return plan;
 }
 

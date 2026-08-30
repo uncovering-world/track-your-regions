@@ -15,6 +15,10 @@
 
 import { CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, claimKeyFor } from '../../services/sync/changeSet.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
+import {
+  answeredHeldRows, heldRowKey, type HeldAnswer, type HeldRowRef,
+} from './heldDecisions.js';
+import { selectedFilter, type HeldSelection } from './heldSelection.js';
 import type { PoolClient } from 'pg';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
@@ -102,11 +106,139 @@ function assignmentFor(field: string, value: unknown, bind: (value: unknown) => 
   }
 }
 
+/**
+ * The key a hosted picture's credit lives under, and how to read it.
+ *
+ * `computeChangeSet` reports the credit inside the `metadata` catch-all rather
+ * than as a field of its own — `CURATED_KEY_BY_FIELD` names only `metadata`,
+ * `metadata.inDanger` and `metadata.dateInscribed` — so it has no answer cell
+ * of its own on the card, and the rule that keeps it with its picture has to be
+ * written here rather than as a coupling of two selections.
+ */
+const CREDIT_KEY = 'imageCredit';
+
+function creditOf(metadata: unknown): unknown {
+  const bag = metadata as Record<string, unknown> | null;
+  if (!bag || typeof bag !== 'object') return undefined;
+  return bag[CREDIT_KEY];
+}
+
+/** What the credit must become, or null where the catch-all may decide it. */
+type CreditPin = { value: unknown } | null;
+
+/**
+ * Whether this call has to overrule the catch-all about the credit, and with
+ * what.
+ *
+ * The rule is one sentence — **the stored credit is the credit of the stored
+ * picture** — and it bites in three shapes, all of them requiring the run to
+ * have proposed a metadata row at all:
+ *
+ * - this call writes the picture, so the row is about to show the run's
+ *   photograph and must carry the credit that row gives for it — or none,
+ *   where that row drops the key: no credit beats the last photographer's name
+ *   under a photograph they did not take;
+ * - the same, where a curator has **refused** that row. The refused value may
+ *   not be written, because refusing writes nothing (ADR-0038 decision 2), and
+ *   the stored one names a photograph nobody will see any more — so the row is
+ *   published with nobody credited, which `picture-with-nobody-credited`
+ *   reports. The one place a refusal reaches what a reader sees, and object-
+ *   only: `PAIRED_WITH` makes a part's credit unrefusable without its picture;
+ * - the run offers a *different* picture and this call is not writing it, so
+ *   the row keeps the one it shows and the stored credit with it.
+ *
+ * A prior **publication** of the metadata row is deliberately not a fourth
+ * shape. The arm above may have withheld the run's credit when that row was
+ * answered, on a card whose picture was still open and different, so "published"
+ * is no evidence that the column holds it; publishing the picture afterwards
+ * finishes what that call had to leave, and `creditMoves` is what keeps it from
+ * writing where the column already agrees.
+ *
+ * Everywhere else the pin is null and the catch-all decides — the run that
+ * proposes no metadata row at all included, which is the run *asserting* the
+ * stored credit rather than offering none. That is not a corner but the ordinary
+ * case: measured on this catalogue, 1413 of the 1414 cards holding a credit hold
+ * no picture change at all — the run fetched the photographer for the picture
+ * the page has been showing all along, and publishing that change is what
+ * finally names them (`data-assertions.md` § picture-with-nobody-credited). A
+ * rule that fired there would delete the credit and mark the row answered, so no
+ * later run would offer it again.
+ *
+ * A picture the run proposes that already equals the stored one is the same
+ * ordinary case: the row already shows what the run offers, so the credit beside
+ * it belongs to what a reader is looking at.
+ */
+function creditPin(
+  proposal: { picture?: ProposedField; metadata?: ProposedField; metadataAnswer?: HeldAnswer },
+  stored: { imageUrl: unknown; credit: unknown },
+  writesPicture: boolean,
+): CreditPin {
+  // A run that proposes no `metadata` row at all is asserting the metadata that
+  // is stored, credit included: `computeChangeSet` emits the catch-all only
+  // where the two stripped objects differ. So there is nothing to overrule —
+  // reading the absent row as "the run offers no credit" would delete one the
+  // run is still standing behind, on any call that publishes the picture.
+  if (proposal.metadata === undefined) return null;
+
+  if (writesPicture) {
+    // Refused, and the picture is landing anyway — two clicks a curator can
+    // really make, "not this" on the source data and then "publish this" on
+    // the photograph. The run's credit may not be written, because refusing
+    // writes nothing (ADR-0038 decision 2); the stored one may not stay,
+    // because it names the photographer of a picture nobody will see any more.
+    // So the row shows the new photograph with nobody credited, which is the
+    // honest outcome and which `picture-with-nobody-credited` reports.
+    if (proposal.metadataAnswer === 'refused') return { value: undefined };
+    // Otherwise the row takes what the run's metadata row gives — or none,
+    // where that row drops the key. Including where the row was *published*
+    // earlier: the credit may have been held back then, by the arm below, on a
+    // card whose picture was still open and different, so "published" is no
+    // evidence that the column holds it. `creditMoves` is what keeps this from
+    // writing where it already does.
+    return { value: creditOf(proposal.metadata.new) };
+  }
+
+  if (proposal.picture === undefined) return null;
+  const offered = JSON.stringify(proposal.picture.new ?? null);
+  return offered === JSON.stringify(stored.imageUrl ?? null) ? null : { value: stored.credit };
+}
+
 /** Keys a curator claimed individually, as bare key names. */
 function claimedMetadataKeys(claimed: string[]): string[] {
   return claimed
     .filter(key => key.startsWith(METADATA_CLAIM_PREFIX))
     .map(key => key.slice(METADATA_CLAIM_PREFIX.length));
+}
+
+/**
+ * The object the selected metadata entries come to, before the credit rule and
+ * before the claims.
+ *
+ * Its own function because it is the awkward half and `nextMetadata` now has
+ * two decisions on top of it: the catch-all is replaced wholesale rather than
+ * merged, and each per-key entry then decides its own key.
+ */
+function metadataFromEntries(
+  left: Record<string, unknown>, entries: ProposedField[],
+): Record<string, unknown> {
+  const catchAll = entries.find(field => field.field === 'metadata');
+  const next = catchAll
+    ? {
+      ...Object.fromEntries(Object.entries(left)
+        .filter(([key]) => !Object.hasOwn((catchAll.old ?? {}) as Record<string, unknown>, key))),
+      ...((catchAll.new ?? {}) as Record<string, unknown>),
+    }
+    : { ...left };
+
+  for (const entry of entries) {
+    if (entry.field === 'metadata') continue;
+    const key = entry.field.slice(METADATA_CLAIM_PREFIX.length);
+    // Absent and null are one case here, not two: `computeChangeSet` treats
+    // both as absent, so a diff reporting either means the key is going.
+    if (entry.new === undefined || entry.new === null) delete next[key];
+    else next[key] = entry.new;
+  }
+  return next;
 }
 
 /**
@@ -142,32 +274,40 @@ function nextMetadata(
   stored: unknown,
   published: ProposedField[],
   claimed: string[],
+  pin: CreditPin,
 ): Record<string, unknown> | null {
   const entries = published.filter(field => isMetadataField(field.field));
-  if (entries.length === 0) return null;
+  const storedCredit = creditOf(stored);
+  // A pin can force a write with no metadata entry selected at all: publishing
+  // the picture alone has to carry the credit the run fetched for it.
+  const creditMoves = pin !== null
+    && JSON.stringify(pin.value ?? null) !== JSON.stringify(storedCredit ?? null);
+  if (entries.length === 0 && !creditMoves) return null;
 
   const left = (stored ?? {}) as Record<string, unknown>;
-  const catchAll = entries.find(field => field.field === 'metadata');
-  let next: Record<string, unknown>;
-  if (catchAll) {
-    const spokenFor = (catchAll.old ?? {}) as Record<string, unknown>;
-    next = {
-      ...Object.fromEntries(Object.entries(left).filter(([key]) => !Object.hasOwn(spokenFor, key))),
-      ...((catchAll.new ?? {}) as Record<string, unknown>),
-    };
-  } else {
-    next = { ...left };
+  const next = metadataFromEntries(left, entries);
+
+  // The credit, where and only where leaving it to the catch-all would make it
+  // describe a picture the row does not show (#722). `imageUrl` and `metadata`
+  // are two answerable rows, so publishing the picture alone used to leave the
+  // credit naming the *previous* photograph's author, and publishing the
+  // source's data alone credited a photographer for a picture nobody is shown.
+  //
+  // Not a coupling of the two rows — the catch-all also carries the criteria
+  // and the region, which have nothing to do with the picture — and not a rule
+  // that fires on every call either: `creditPin` returns null wherever the
+  // run's credit is already the stored picture's, which is 1413 of the 1414
+  // cards holding a credit on this catalogue. There the catch-all decides, as
+  // it always did.
+  if (pin !== null) {
+    if (pin.value === undefined || pin.value === null) delete next[CREDIT_KEY];
+    else next[CREDIT_KEY] = pin.value;
   }
 
-  for (const entry of entries) {
-    if (entry.field === 'metadata') continue;
-    const key = entry.field.slice(METADATA_CLAIM_PREFIX.length);
-    // Absent and null are one case here, not two: `computeChangeSet` treats
-    // both as absent, so a diff reporting either means the key is going.
-    if (entry.new === undefined || entry.new === null) delete next[key];
-    else next[key] = entry.new;
-  }
-
+  // Last, and after the credit on purpose: a curator who claimed the credit on
+  // its own (`editExperience` claims `metadata.imageCredit` where the edit put
+  // a value in it) has answered this question already, and their value wins
+  // over the rule above exactly as it wins over the catch-all.
   for (const key of claimedMetadataKeys(claimed)) {
     if (Object.hasOwn(left, key)) next[key] = left[key];
   }
@@ -175,7 +315,7 @@ function nextMetadata(
 }
 
 /** What writing the held proposal comes to: the SQL, and what it decided. */
-interface HeldFieldWrites {
+export interface HeldFieldWrites {
   assignments: string[];
   /** `$1` is the experience id; the rest is whatever the assignments bound. */
   params: unknown[];
@@ -206,6 +346,39 @@ interface HeldFieldWrites {
    * twice: one row, one read, under the one lock.
    */
   contents: ContentsByKind | null;
+  /**
+   * The held rows of this proposal — both levels — that already carry an answer
+   * (#722). Read here for the same reason `contents` is: one lock, one read, and
+   * the parts' planner takes it rather than asking again.
+   */
+  answered: Map<string, HeldAnswer>;
+  /**
+   * What this call writes, as the answer record names it. Written after the
+   * UPDATE lands, so a card that keeps its pointer stops offering a value it has
+   * already applied.
+   */
+  written: Array<{ row: HeldRowRef; value: unknown }>;
+  /**
+   * Held fields of the object's own that this call does not answer — open before
+   * it and open after it.
+   *
+   * Empty for a call that names no selection, which answers the whole card. What
+   * this decides is the pointer: it is cleared only where nothing on the card is
+   * left open at either level, so publishing one row of six leaves the other
+   * five on the card rather than clearing them unanswered.
+   */
+  leftOpen: HeldRowRef[];
+  /**
+   * Rows the caller named that carry no open held proposal. Any at all refuses
+   * the call, for the reason `unwritable` does: a click that answered nothing
+   * must not come back as success.
+   */
+  unmatched: string[];
+}
+
+/** How the answer record names one of the object's own fields. */
+function objectRow(field: string): HeldRowRef {
+  return { kind: null, ref: null, name: null, field };
 }
 
 /**
@@ -214,21 +387,37 @@ interface HeldFieldWrites {
  * Reads the changeset inside the caller's transaction, under the lock the caller
  * already holds, so the proposal that is written is the one the pointer named at
  * lock time rather than whatever was newest when the request arrived.
+ *
+ * `selection` is the rows the curator answered, or null for the whole card
+ * (#722). A selection narrows three things and nothing else: what is written,
+ * what an unwritable field can refuse the call over — a field this call does not
+ * name is not this call's problem — and what is left open afterwards, which is
+ * what decides the pointer.
  */
 export async function heldFieldWrites(
   client: PoolClient,
   experienceId: number,
   pointer: number | null,
-  before: { metadata?: unknown },
+  before: { metadata?: unknown; image_url?: unknown },
   claimed: string[],
+  selection: HeldSelection | null = null,
 ): Promise<HeldFieldWrites> {
   const params: unknown[] = [experienceId];
   const bind = (value: unknown) => `$${params.push(value)}`;
   const writes: HeldFieldWrites = {
     assignments: [], params, applied: [], claimedFieldsSkipped: [], unwritable: [],
-    proposalMissing: false, contents: null,
+    proposalMissing: false, contents: null, answered: new Map(), written: [],
+    leftOpen: [], unmatched: [],
   };
-  if (pointer === null) return writes;
+  // A row holding nothing reaches none of the rows a selection names, and the
+  // caller has to be told rather than answered with a success that wrote
+  // nothing: the card they clicked was answered by somebody else, or a later
+  // run withdrew it. Computed before the early return, since everything below
+  // it reads a proposal that is not there. The parts' half needs no equivalent
+  // — its planner walks an empty record and reports every named part row.
+  if (pointer === null) {
+    return { ...writes, unmatched: [...(selection?.fields ?? [])] };
+  }
 
   const proposal = await client.query(
     `SELECT changed_fields, contents FROM experience_sync_changes
@@ -249,14 +438,33 @@ export async function heldFieldWrites(
   // writes all eleven content columns.
   const held = proposed.filter(field => field.held === true);
 
+  // A row the curator has already answered — published one field of six last
+  // week, or refused this one — is settled, and the queue's card has dropped it
+  // (#722). Skipped here for the same reason a claim is skipped: this endpoint
+  // writes what the card showed, and nothing beside it.
+  writes.answered = await answeredHeldRows(client, experienceId, pointer);
+  const open = held.filter(field => !writes.answered.has(heldRowKey(objectRow(field.field))));
+
+  // What this call answers: the rows it named, or all of them where it named
+  // none. What it does not name stays open, which is what keeps the pointer.
+  const names = selectedFilter(selection);
+  const selected = open.filter(field => names(objectRow(field.field)));
+  writes.leftOpen = open
+    .filter(field => !selected.includes(field))
+    .map(field => objectRow(field.field));
+  if (selection) {
+    const reached = new Set(selected.map(field => field.field));
+    writes.unmatched = (selection.fields ?? []).filter(field => !reached.has(field));
+  }
+
   // A claim made since the run is an answer someone already gave about whose
   // text this is, and publishing answers a different question — may readers see
   // this. So a claimed field is skipped by the writer, and is not a reason to
   // refuse the request: both questions can be open at once.
-  writes.claimedFieldsSkipped = held
+  writes.claimedFieldsSkipped = selected
     .filter(field => claimed.includes(claimKeyFor(field.field)))
     .map(field => field.field);
-  const writable = held.filter(field => !writes.claimedFieldsSkipped.includes(field.field));
+  const writable = selected.filter(field => !writes.claimedFieldsSkipped.includes(field.field));
 
   for (const field of writable) {
     if (isMetadataField(field.field)) continue;
@@ -268,11 +476,34 @@ export async function heldFieldWrites(
     }
   }
 
-  const metadata = nextMetadata(before.metadata, writable, claimed);
+  // Both halves read off the *whole* held set rather than off what this call
+  // selected: a curator publishing the picture alone still gets the credit the
+  // run fetched for it, and one publishing the source's data has to be measured
+  // against the picture the run is offering whether or not they answered it.
+  const pin = creditPin(
+    {
+      picture: held.find(field => field.field === 'imageUrl'),
+      metadata: held.find(field => field.field === 'metadata'),
+      // Read off the *whole* held set, then asked what answer stands against
+      // it: the row may have been answered already, and a refused proposal
+      // must not steer a rule about what the column may hold.
+      metadataAnswer: writes.answered.get(heldRowKey(objectRow('metadata'))),
+    },
+    { imageUrl: before.image_url, credit: creditOf(before.metadata) },
+    writes.applied.includes('imageUrl'),
+  );
+  const metadata = nextMetadata(before.metadata, writable, claimed, pin);
   if (metadata !== null) {
     writes.assignments.push(`metadata = ${bind(JSON.stringify(metadata))}::jsonb`);
     writes.applied.push(...writable.filter(field => isMetadataField(field.field)).map(f => f.field));
   }
+  // The answer record, keyed on what the run proposed rather than on what landed
+  // in the column: the readers compare against the proposal, and `metadata` is
+  // written as a whole object no single entry describes.
+  writes.written = writes.applied.map(name => ({
+    row: objectRow(name),
+    value: writable.find(field => field.field === name)?.new,
+  }));
   return writes;
 }
 
@@ -298,12 +529,21 @@ export async function heldFieldWrites(
  *
  * Clearing the pointer is the line that makes a `held` card answerable at all.
  * Before it, only a later run proposing nothing ever cleared one.
+ *
+ * `leftOpen` is what makes that clear conditional (#722). The pointer is what
+ * the card is keyed on, so clearing it takes the whole card away — right for the
+ * call that answers all of it, and wrong for one that answers one row of six:
+ * the other five would leave the queue unanswered and unfindable, since nothing
+ * else names the run they belong to. A call that names no selection leaves
+ * nothing open and clears the pointer exactly as every call did before.
  */
-export function publicationAssignments(before: { curation_state?: unknown }): string[] {
+export function publicationAssignments(
+  before: { curation_state?: unknown }, leftOpen = 0,
+): string[] {
   const assignments = [`curation_state = 'verified'`];
   if (before.curation_state === 'pending') {
     assignments.push('published_at = COALESCE(published_at, NOW())');
   }
-  assignments.push('pending_change_sync_log_id = NULL');
+  if (leftOpen === 0) assignments.push('pending_change_sync_log_id = NULL');
   return assignments;
 }

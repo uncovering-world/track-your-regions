@@ -126,6 +126,142 @@ describe('publishing the held fields of an object\'s parts', () => {
     }));
   });
 
+  it('publishes one field of one part, named as the record names it', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { treasures: { changed: [WINE_GLASS] } },
+      parts: { treasure: WINE_GLASS_ROW },
+    });
+
+    const res = await publish({
+      heldParts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['image_url', 'metadata.imageCredit'] }],
+      expectedSyncLogId: 64,
+    }, client);
+
+    // #722, and the case ADR-0037 was written from: Wikidata moved this
+    // painting to an obscure namesake and changed its photograph in the same
+    // run. The picture can be taken and the attribution left standing.
+    const write = only(queries, 'UPDATE treasures SET image_url');
+    expect(write.sql).not.toContain('artist = ');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      appliedParts: [{
+        kind: 'treasures', name: 'The Wine Glass',
+        fields: ['image_url', 'metadata.imageCredit'], claimedFieldsSkipped: [],
+      }],
+      heldLeftOpen: 1,
+    }));
+    // The attribution is still the open question, so the card stays.
+    expect(only(queries, 'UPDATE experiences').sql)
+      .not.toContain('pending_change_sync_log_id = NULL');
+  });
+
+  it('takes a work\'s picture and its credit as one answer', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { treasures: { changed: [WINE_GLASS] } },
+      parts: { treasure: WINE_GLASS_ROW },
+    });
+
+    const res = await publish({
+      heldParts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['image_url'] }],
+      expectedSyncLogId: 64,
+    }, client);
+
+    // A hosted picture carries a credit, and a per-row answer must not be the
+    // thing that separates them (#722): naming one names the other, so the work
+    // cannot end up showing a new photograph under the old photographer's name.
+    // The attribution, which is a different fact, stays open.
+    const write = only(queries, 'UPDATE treasures SET image_url');
+    expect(write.sql).toContain(`'imageCredit'`);
+    expect(write.sql).not.toContain('artist = ');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      appliedParts: [{
+        kind: 'treasures', name: 'The Wine Glass',
+        fields: ['image_url', 'metadata.imageCredit'], claimedFieldsSkipped: [],
+      }],
+      heldLeftOpen: 1,
+    }));
+  });
+
+  it('accepts a selection naming both halves of the pair where the run held one', async () => {
+    grantScope();
+    // The record's own shape decides which rows exist: a run that changed a
+    // work's picture without changing its credit holds one of the two. A card
+    // echoing the pair back must not be refused for naming the row the matcher
+    // already reached through its partner — an unmatched entry refuses the
+    // whole call.
+    const PICTURE_ONLY: ProposedPart = {
+      item: { name: 'The Wine Glass', ref: 'Q782639' },
+      fields: [{ field: 'image_url', old: OLD_FILE, new: NEW_FILE, held: true }],
+    };
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { treasures: { changed: [PICTURE_ONLY] } },
+      parts: { treasure: WINE_GLASS_ROW },
+    });
+
+    const res = await publish({
+      heldParts: [{
+        kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass',
+        fields: ['image_url', 'metadata.imageCredit'],
+      }],
+      expectedSyncLogId: 64,
+    }, client);
+
+    expect(res.status).not.toHaveBeenCalledWith(409);
+    expect(only(queries, 'UPDATE treasures SET image_url').params).toEqual([3102, NEW_FILE]);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      appliedParts: [{
+        kind: 'treasures', name: 'The Wine Glass',
+        fields: ['image_url'], claimedFieldsSkipped: [],
+      }],
+    }));
+  });
+
+  it('does not lock a part no row of the selection names', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { locations: { changed: [MONTSEGUR] }, treasures: { changed: [WINE_GLASS] } },
+      parts: { location: MONTSEGUR_ROW, treasure: WINE_GLASS_ROW },
+    });
+
+    await publish({
+      heldParts: [{ kind: 'locations', ref: '1755-004', name: 'Château de Montésgur', fields: ['name'] }],
+      expectedSyncLogId: 64,
+    }, client);
+
+    // A lock taken for a row this call does not answer is a lock for nothing,
+    // and it would hold a work's row for the length of an unrelated write.
+    expect(none(queries, 'FROM treasures t')).toBe(true);
+  });
+
+  it('skips a part field somebody already answered', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { treasures: { changed: [WINE_GLASS] } },
+      parts: { treasure: WINE_GLASS_ROW },
+      answered: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', field: 'artist' }],
+    });
+
+    const res = await publish({ expectedSyncLogId: 64 }, client);
+
+    // Refused: the namesake is not the painter. The picture and its credit are
+    // still the run's to give, and the whole-card button writes those alone.
+    const write = only(queries, 'UPDATE treasures SET image_url');
+    expect(write.sql).not.toContain('artist = ');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      appliedParts: [{
+        kind: 'treasures', name: 'The Wine Glass',
+        fields: ['image_url', 'metadata.imageCredit'], claimedFieldsSkipped: [],
+      }],
+      heldLeftOpen: 0,
+    }));
+  });
+
   it('leaves a part\'s field the curator has since claimed as they wrote it, and says so', async () => {
     grantScope();
     const { client, queries } = makeClient({
