@@ -22,6 +22,7 @@ import {
   undoEntries,
   computeGeoSimilarityIfNeeded,
 } from './wvImportUtils.js';
+import { invalidateRegionGeometry } from '../worldView/helpers.js';
 
 // =============================================================================
 // Flatten and grouping endpoints
@@ -471,6 +472,15 @@ export async function smartFlatten(req: AuthenticatedRequest, res: Response): Pr
         descendantMembers: descMembersResult.rows as Array<{ region_id: number; division_id: number }>,
         childSnapshots: [],
       });
+
+      // The region absorbed the divisions of the descendants it deleted, so
+      // its union is neither what it was nor what the descendants drew. Named
+      // here for the reason the tree operations name theirs: a structural
+      // change writes no geometry, so trg_regions_geom_invalidates_parent never
+      // sees it, and a parent left holding a stale outline with nothing NULL
+      // beneath it falls outside every later run's closure (ADR-0035, #496).
+      // Ancestors are the trigger's, reached because this is a geometry write.
+      await invalidateRegionGeometry(regionId);
 
       console.log(`[WV Import] Smart flatten: absorbed ${descendantIds.length} descendants (${uniqueDivisionIds.length} divisions) into region ${regionId}`);
       res.json({

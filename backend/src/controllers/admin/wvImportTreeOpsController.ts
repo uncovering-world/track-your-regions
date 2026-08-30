@@ -29,6 +29,37 @@ export { checkDivisionOverlap, getOverlapDivisionChildren, resolveOverlap } from
 // =============================================================================
 // Tree structure manipulation endpoints
 // =============================================================================
+//
+// Every handler below moves or deletes regions, and each names the rows whose
+// union it changed so the next run recomputes them (#496).
+//
+// Since ADR-0035 a *geometry* write needs no such call: nulling a region's geom
+// fires trg_regions_geom_invalidates_parent, which nulls the parent, which is
+// itself a geometry write -- the walk upward is the cascade. A structural
+// change writes no geometry at all, so the trigger never sees it, and the
+// decision leaves that case to the caller. What each handler has to name is
+// therefore only the rows the cascade cannot reach on its own: the ones whose
+// own union changed. Ancestors are never named here.
+//
+// Missing the call is permanent rather than late. An ordinary run's closure is
+// every region with no geometry and every ancestor of one
+// (`loadGroupsToCompute`), so a parent left holding a stale outline with
+// nothing NULL beneath it is not selected again, and every run reports
+// Complete. It is harmless only while the tree has no geometry yet, which stops
+// being true the moment a curator presses Compute Geometries mid-review.
+//
+// The call is made after COMMIT, and after the undo entry where the handler
+// stores one -- dismissChildren and pruneToLeaves do; mergeChildIntoParent and
+// removeRegionFromImport offer no undo at all. Matching `regionCrud`, it is a
+// second statement that can fail on its own, and the operation it follows has
+// already happened. It is the one thing here that can
+// throw past a COMMIT, so a failure reaches the handler's catch and asks a
+// closed transaction to ROLLBACK -- a no-op the server answers with a warning
+// -- and then answers 500 for an operation that did happen. That is the trade
+// ADR-0035 records rather than an oversight: a swallowed failure would leave
+// exactly the silent stale outline this call exists to prevent, and loud beats
+// quiet and wrong. `invalidateRegionGeometry` still swallows a lock or
+// deadlock, the tolerance it carries from #283.
 
 /**
  * Merge a single-child parent's only child into the parent.
@@ -164,6 +195,11 @@ export async function mergeChildIntoParent(req: AuthenticatedRequest, res: Respo
 
     await client.query('COMMIT');
 
+    // The parent absorbed the child's members and grandchildren. The
+    // grandchildren changed parents but kept every member they had, so their
+    // own outlines still hold; the child no longer exists.
+    await invalidateRegionGeometry(regionId);
+
     console.log(`[WV Import] Merged child "${childName}" (${childId}) into parent ${regionId}`);
     res.json({ merged: true, childId, childName });
   } catch (err) {
@@ -227,6 +263,13 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
 
       await client.query('COMMIT');
+
+      // The parent lost a child and gained its children, and may have gained
+      // its divisions as well. The children that moved up kept their own
+      // members, so only the parent's union changed. A removed root has no
+      // parent to go stale.
+      if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId);
+
       console.log(`[WV Import] Removed region "${regionName}" (${regionId}), reparented ${reparented.rowCount} children, ${divisionsReparented} divisions`);
       res.json({ removed: true, regionName, childrenReparented: reparented.rowCount, divisionsReparented });
     } else {
@@ -254,6 +297,10 @@ export async function removeRegionFromImport(req: AuthenticatedRequest, res: Res
       await client.query('DELETE FROM regions WHERE id = $1', [regionId]);
 
       await client.query('COMMIT');
+
+      // The whole branch is gone, so the parent covers less than it did.
+      if (parentRegionId != null) await invalidateRegionGeometry(parentRegionId);
+
       console.log(`[WV Import] Removed region "${regionName}" (${regionId}) and ${descendantIds.length} descendant(s)`);
       res.json({ removed: true, regionName, descendantsRemoved: descendantIds.length });
     }
@@ -397,6 +444,10 @@ export async function dismissChildren(req: AuthenticatedRequest, res: Response):
       childSnapshots: [],
     });
 
+    // The descendants are deleted outright and nothing moves up, so the region
+    // they were part of now covers only its own members.
+    await invalidateRegionGeometry(regionId);
+
     console.log(`[WV Import] Dismissed ${descendantIds.length} descendants of region ${regionId}`);
     res.json({ dismissed: descendantIds.length, undoAvailable: true });
   } catch (err) {
@@ -444,14 +495,17 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
     }
     const childIds = directChildren.rows.map(r => r.id as number);
 
-    // Get grandchildren+ (descendants of the direct children, NOT the children themselves)
+    // Get grandchildren+ (descendants of the direct children, NOT the children themselves).
+    // Each row carries the direct child it hangs under, so the invalidation
+    // below names only the children that actually lose something: a direct
+    // child with no descendants of its own draws exactly what it drew before.
     const grandDescendants = await client.query(`
       WITH RECURSIVE desc_regions AS (
-        SELECT id, 1 AS depth FROM regions WHERE parent_region_id = ANY($1)
+        SELECT id, parent_region_id AS root_child, 1 AS depth FROM regions WHERE parent_region_id = ANY($1)
         UNION ALL
-        SELECT r.id, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
+        SELECT r.id, d.root_child, d.depth + 1 FROM regions r JOIN desc_regions d ON r.parent_region_id = d.id
       )
-      SELECT id FROM desc_regions
+      SELECT id, root_child FROM desc_regions
     `, [childIds]);
 
     if (grandDescendants.rows.length === 0) {
@@ -516,6 +570,17 @@ export async function pruneToLeaves(req: AuthenticatedRequest, res: Response): P
       descendantMembers: descMembersResult.rows as Array<{ region_id: number; division_id: number }>,
       childSnapshots: [],
     });
+
+    // The children that lost descendants, and only those: it is their unions
+    // that changed rather than the pruned region's own -- and clearing a child
+    // is a geometry write, so the trigger takes the news up from there. A child
+    // with a hand-drawn boundary is skipped by the helper and stops the walk,
+    // which is right: its outline is drawn rather than unioned, so deleting what
+    // was under it does not move it, and nothing above it moved either (#283).
+    const prunedChildIds = [...new Set(grandDescendants.rows.map(r => r.root_child as number))];
+    for (const childId of prunedChildIds) {
+      await invalidateRegionGeometry(childId);
+    }
 
     console.log(`[WV Import] Pruned ${grandDescIds.length} grandchildren+ from region ${regionId} (kept ${childIds.length} direct children)`);
     res.json({ pruned: grandDescIds.length, undoAvailable: true });
