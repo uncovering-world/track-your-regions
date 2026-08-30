@@ -76,6 +76,9 @@ function assignmentFor(field: string, value: unknown, bind: (value: unknown) => 
     // writes through the same columns, so a published value and a run's own are
     // the same value.
     case 'nameLocal':
+    // Still reachable for cards filed before tags stopped being held (#570):
+    // a changeset records what its run did, and publishing writes what it
+    // proposed. No run files a tags row any more.
     case 'tags':
       return `${column} = ${bind(JSON.stringify(value ?? null))}::jsonb`;
     case 'location': {

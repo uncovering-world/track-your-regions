@@ -632,15 +632,35 @@ describe('a gated run holds a visible row content, not a pending one', () => {
     // test with one column unguarded. Each column's own expression is examined,
     // so a lost hold on `description` cannot pass by matching the text of
     // `short_description`'s arm.
+    // `tags` is not in this list, and its absence is the point of the test
+    // below this one: derived labels nobody reads are written past the gate.
     for (const column of [
       'name', 'name_local', 'description', 'short_description', 'category',
-      'tags', 'location', 'country_codes', 'country_names', 'image_url', 'metadata',
+      'location', 'country_codes', 'country_names', 'image_url', 'metadata',
     ]) {
       const arm = assigned.get(column);
       expect(arm, `${column} is not assigned`).toBeDefined();
       expect(arm, `${column} has no CASE arm`).toMatch(/^CASE/);
       expect(arm, `${column} is not held`).toContain(HOLD);
     }
+  });
+
+  it('writes tags past the gate and keeps them behind a claim', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [returnedRow()] });
+
+    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    const arm = assignmentsOf(mockedQuery.mock.calls[0][0]).get('tags');
+    // Derived from facts the row stores by name and returned by no reader-facing
+    // read, so the gate has nothing to protect: held, they filed 3785 rows that
+    // restated the row beside them (#570). The claim stays, because a curator
+    // can set tags through the edit endpoint and a person's write is not a
+    // measurement. Both halves examined, since an arm that dropped the claim
+    // with the hold would also pass a test that only checked the hold was gone.
+    expect(arm).toBeDefined();
+    expect(arm).not.toContain(HOLD);
+    expect(arm).toContain("experiences.curated_fields ? 'tags'");
+    expect(arm).toMatch(/THEN experiences\.tags ELSE EXCLUDED\.tags END/);
   });
 
   it('answers the hold once, in RETURNING, with the guards\' own expression', async () => {
@@ -650,7 +670,7 @@ describe('a gated run holds a visible row content, not a pending one', () => {
 
     const text = String(mockedQuery.mock.calls[0][0]);
     const returning = text.slice(text.indexOf('RETURNING'), text.indexOf('SELECT ins.*'));
-    // Character-identical to what guards the eleven content columns, so the
+    // Character-identical to what guards the ten held content columns, so the
     // report cannot disagree with the write about whether the write happened.
     expect(returning).toContain(`${HOLD} AS was_held`);
     // And read from the row this statement locked, not from the `before` CTE's

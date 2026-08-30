@@ -534,6 +534,25 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
  * Flagged and not tagged is a badge on a site nothing lists, which is the worse
  * of the two on the ground: it tells a traveller a place is in peril on no
  * evidence at all.
+ *
+ * Except while the flag itself is held. Under a gated category the run writes
+ * tags past the gate -- labels nothing renders, derived from facts the row
+ * stores by name (#570) -- and holds the flag with the rest of the row for a
+ * curator, so a site the Committee has just listed carries the tag ahead of
+ * the flag until the card is published, and a site just delisted the other
+ * way round. That is the two halves apart by design, not the import coming
+ * apart, and it is invisible to readers, since the badge follows the flag.
+ *
+ * The exclusion is the held flag, not the held row. `pending_change_sync_log_id`
+ * is set by *any* held field, and on this database every one of the 1272
+ * UNESCO rows carries it -- the criteria and a picture credit are held on all
+ * of them -- so leaving out every row with a pointer would switch this check
+ * off for the whole category it was written for. Asking the pointed-at
+ * changeset whether it holds `metadata.inDanger` leaves out the 58 rows whose
+ * flag is actually waiting on a curator and keeps the guard over the rest.
+ * The flag is a major key, reported under its own name and never inside the
+ * `metadata` catch-all (`changeSet.ts`), which is why the catch-all is not in
+ * the test: naming it there would exclude every row holding a criteria string.
  */
 const dangerFlagAgainstItsTag: CatalogueAssertion = {
   id: 'danger-flag-disagrees-with-its-tag',
@@ -562,6 +581,18 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
           FROM experiences e
          WHERE COALESCE(e.tags ? 'in_danger', FALSE)
                <> COALESCE(e.metadata->'inDanger' = 'true'::jsonb, FALSE)
+           -- Not while a curator holds the flag itself: the tag moved ahead of
+           -- it by design (#570), and the badge follows the flag. The pointed-at
+           -- changeset is asked, not the pointer: any held field sets the
+           -- pointer, and on this database every UNESCO row has one.
+           AND NOT EXISTS (
+             SELECT 1
+               FROM experience_sync_changes ch
+              CROSS JOIN LATERAL jsonb_array_elements(ch.changed_fields) f
+              WHERE ch.experience_id = e.id
+                AND ch.sync_log_id = e.pending_change_sync_log_id
+                AND (f->>'held')::boolean
+                AND f->>'field' = 'metadata.inDanger')
          ORDER BY e.name`,
   describe: row => {
     const since = parseDangerListing(row.listing)?.since;

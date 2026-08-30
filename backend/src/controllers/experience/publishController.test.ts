@@ -517,10 +517,13 @@ describe('publishing a held proposal', () => {
     // feeding the writer fields no card ever showed.
     expect(diff.changedFields).toEqual([]);
     // A guard on the fixture, not on the code: a snapshot pair that stopped
-    // differing everywhere would quietly narrow what this test covers.
+    // differing everywhere would quietly narrow what this test covers. `tags`
+    // is not in the list because no run proposes it any more (#570); the test
+    // below keeps the writer able to apply the rows earlier runs filed.
     expect(names).toEqual(expect.arrayContaining(
-      ['name', 'nameLocal', 'description', 'shortDescription', 'category', 'tags',
+      ['name', 'nameLocal', 'description', 'shortDescription', 'category',
         'location', 'countryCodes', 'countryNames', 'imageUrl', 'metadata']));
+    expect(names).not.toContain('tags');
 
     grantScope();
     const { client } = makeClient({
@@ -533,6 +536,27 @@ describe('publishing a held proposal', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: expect.arrayContaining(names),
     }));
+  });
+
+  it('still writes a tags row a run filed before tags stopped being held', async () => {
+    // 3785 such rows sit in this database's log. A changeset records what its run
+    // did (ADR-0026), and a card a curator publishes writes what that run
+    // proposed — the writer keeps its `tags` arm for them even though no run
+    // files one now (#570).
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53, curated_fields: [] },
+      proposal: [{ field: 'tags', old: [], new: ['criterion_ii', 'criterion_iv'], held: true }],
+    });
+
+    const res = await publish({ expectedSyncLogId: 53 }, client);
+
+    const update = only(queries, 'UPDATE experiences');
+    expect(update.sql).toContain('tags = ');
+    // The value, not only the assignment: an arm that bound nothing would still
+    // read `tags = ` and apply an empty list over the proposal.
+    expect(update.params).toContain(JSON.stringify(['criterion_ii', 'criterion_iv']));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ appliedFields: ['tags'] }));
   });
 
   it('leaves a field the curator claims alone, and publishes anyway', async () => {

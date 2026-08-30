@@ -204,7 +204,9 @@ export async function getExperience(req: AuthenticatedRequest, res: Response): P
       e.description,
       e.short_description,
       e.category,
-      e.tags,
+      -- No tags: labels the import derives from facts the row already carries by
+      -- name, rendered by nothing, and since #570 written past the curation gate
+      -- -- which they can be only while no reader-facing read returns them.
       e.country_codes,
       e.country_names,
       e.image_url,

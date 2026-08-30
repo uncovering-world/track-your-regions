@@ -101,11 +101,23 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
  * One level down the same rule is already SQL: the treasures upsert writes
  * `sitelinks_count` unconditionally, "a measurement, not a judgement".
  *
- * `admittedFor` is derived too and is deliberately not here: it names the most
- * famous work a museum holds, which is the reason the row exists at all, and is
- * worth a look when it changes.
+ * The rule's general form, stated by the maintainer on #570: **a person is
+ * asked only about what a reader can eventually see; what the import works out
+ * on the way there is not a question.** Two more keys fall under it than #571
+ * named. `sitelinksCount` on a landmark is the same measurement as the museums'
+ * sum, one object up — how many Wikipedia editions have an article, which is
+ * what the import ranks by; sixteen of its moves had reached curators' cards.
+ * `admittedFor` was held out on purpose the first time, as "the reason the row
+ * exists and worth a look when it changes" — but it is the work with the most
+ * language links among the ones the pass placed, no reader sees it, and the
+ * look it was kept for is already taken by the admission rule itself, which is
+ * re-run against live data every pass and files a refusal card the moment a
+ * museum stops qualifying. A curator has no decision on the name of the work
+ * that did the qualifying.
  */
-export const SYNC_OWNED_METADATA_KEYS = ['artworkCount', 'totalArtworkSitelinks'] as const;
+export const SYNC_OWNED_METADATA_KEYS = [
+  'artworkCount', 'totalArtworkSitelinks', 'sitelinksCount', 'admittedFor',
+] as const;
 
 /** Whether a metadata key belongs to the run rather than to the object. */
 function isSyncOwned(key: string): boolean {
@@ -337,9 +349,17 @@ function collectDifferences(
     diffs.push({ field: 'nameLocal', old: before.nameLocal, new: incoming.nameLocal, significance: 'minor' });
   }
 
-  if (!setEquals(before.tags, incoming.tags)) {
-    diffs.push({ field: 'tags', old: before.tags, new: incoming.tags, significance: 'minor' });
-  }
+  // Tags are compared nowhere. The import derives them from facts it also
+  // stores by name -- `criterion_ii` from the criteria string, `in_danger`
+  // from the danger listing, `monument` from the landmark's type -- and no
+  // reader-facing read returns them (the by-id read did, rendered by nothing,
+  // until #570 took the column out), so a tags row on a card restated the row
+  // beside it to a person who could change nothing a reader sees by answering
+  // (3785 such rows in this database's log). The upsert writes them past the
+  // gate for the same reason, and keeps a curator's claim on them for a
+  // different one: a person's deliberate write is not a measurement. A claimed
+  // value the source disagrees with is therefore kept and not reported either
+  // -- there is no decision in it, since nobody reads the outcome (#570).
 
   for (const field of ['countryCodes', 'countryNames'] as const) {
     if (!setEquals(before[field], incoming[field])) {
