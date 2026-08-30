@@ -64,12 +64,23 @@ export async function ensureRegionMember(regionId: number, divisionId: number): 
  * region it does not.
  *
  * The World View Editor's two are not the whole set. The import-review tree
- * operations move and delete regions without calling this at all, and always
- * have -- among them reparentRegion, mergeChildIntoParent,
- * removeRegionFromImport, dismissChildren and pruneToLeaves; #496 tracks them,
- * and that list is open rather than an inventory. Their parents are left
- * holding outlines with nothing NULL beneath them, which is the state the
- * trigger closes for a geometry write and cannot close for a structural one.
+ * operations move and delete regions too, and called nothing at all until #496:
+ * reparentRegion, mergeChildIntoParent, removeRegionFromImport, dismissChildren,
+ * pruneToLeaves and smartFlatten, the last of which the issue's own list did not
+ * have. Each now names the rows whose union it changed and no others -- the
+ * ancestors above them are the trigger's. Their undo paths name nothing, and
+ * are right not to: every region they recreate arrives with geom NULL, which is
+ * what seeds the run's closure, so the tree above it is recomputed without
+ * anybody asking.
+ *
+ * What is still open there is the *member* half, #718: a dozen import-review
+ * routes rewrite region_members *without* moving or deleting a region --
+ * accepting a match, clearing members, resolving an overlap, collapsing a
+ * parent -- and not one of them calls this, leaving a region drawing divisions
+ * it no longer holds. The three handlers above that move members as part of a
+ * structural change are covered by the call they already make. Same permanence,
+ * and the same "harmless until Compute Geometries runs" that made #496 easy to
+ * miss.
  *
  * A lock or deadlock is swallowed, on the reasoning that what races a member
  * edit is another edit nulling the same rows. That is a tolerance carried over

@@ -8,6 +8,7 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { pool } from '../../db/index.js';
+import { invalidateRegionGeometry } from '../worldView/helpers.js';
 
 // ---------------------------------------------------------------------------
 // Rename
@@ -142,6 +143,18 @@ export async function reparentRegion(
     'UPDATE regions SET parent_region_id = $1 WHERE id = $2',
     [newParentId, regionId],
   );
+
+  // Both parents are named, because a structural move writes no geometry for
+  // trg_regions_geom_invalidates_parent to see while changing what two unions
+  // hold: one parent loses a child, the other gains it (ADR-0035, #496).
+  //
+  // The moved region is not named, and that is where this differs from
+  // regionCrud.updateRegion. There the move carries a division membership
+  // between the two parents, so the region's own union changes too; here the
+  // statement above writes parent_region_id and nothing else, leaving every
+  // member and child the region's outline is made of exactly as they were.
+  if (oldParentId != null) await invalidateRegionGeometry(oldParentId);
+  if (newParentId != null) await invalidateRegionGeometry(newParentId);
 
   res.json({ reparented: true, regionId, oldParentId, newParentId });
 }
