@@ -270,8 +270,10 @@ describe('an answer to what a source proposed', () => {
       ],
     })) as string;
 
-    expect(line).toContain('in danger (source data): source proposed "false"');
-    expect(line).toContain('artwork count (source data): source proposed "0"');
+    // The names are the facts' own (#570): where a value lives is what the card's
+    // hint says, not a suffix on every mention of it.
+    expect(line).toContain('in danger: source proposed "false"');
+    expect(line).toContain('works placed: source proposed "0"');
     expect(line).not.toContain('(empty)');
   });
 
