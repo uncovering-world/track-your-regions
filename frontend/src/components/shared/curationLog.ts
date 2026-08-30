@@ -75,8 +75,8 @@ export const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   state_restored: { label: 'Verdict taken back', color: GREEN },
   missing_dismissed: { label: 'False alarm', color: GREEN },
   // The catalogue's own acts, in the words their cards use: the queue's buttons say
-  // "take this" and "keep this" about a source's proposal, and "keep it out" / "put it
-  // back" about a refusal.
+  // "take the source’s" and "keep this" about a source's proposal, and "keep it out" /
+  // "put it back" about a refusal.
   published: { label: 'Published', color: VIOLET },
   accepted_source: { label: 'Took the source’s', color: BLUE },
   declined_source: { label: 'Kept ours', color: AMBER },

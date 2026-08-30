@@ -284,16 +284,38 @@ describe('ReviewQueue', () => {
   it('shows both versions in full before asking anyone to choose', async () => {
     renderQueue();
 
-    // Whole values, side by side under their own labels — not the two ellipses the
+    // Whole values, side by side in their own columns — not the two ellipses the
     // 120-character summary used to give. The words themselves are split across marked
     // and unmarked runs, so this asks the rendered text for them rather than one node.
-    const yours = await screen.findByText('yours');
-    const source = screen.getByText('the source proposes');
-    expect(yours.parentElement?.textContent).toContain('Curator wording');
-    expect(source.parentElement?.textContent).toContain('Renamed upstream');
-    // Each value stays under its own heading: a comparison that put the source's text on
+    await screen.findByRole('columnheader', { name: 'as curated' });
+    expect(screen.getByRole('columnheader', { name: 'the source proposes' })).toBeInTheDocument();
+    const cells = screen.getAllByRole('cell').map(cell => cell.textContent ?? '');
+    const yours = cells.find(text => text.includes('Curator wording'));
+    expect(yours).toBeDefined();
+    expect(cells.some(text => text.includes('Renamed upstream'))).toBe(true);
+    // Each value stays in its own column: a comparison that put the source's text on
     // the curator's side would read as their own words being replaced by themselves.
-    expect(yours.parentElement?.textContent).not.toContain('Renamed upstream');
+    expect(yours).not.toContain('Renamed upstream');
+  });
+
+  it('says what a conflict over the catalogue’s own labels is, instead of "proposes nothing"', async () => {
+    // A changeset an earlier run filed can carry a tags conflict, and the conflict query
+    // surfaces it while the claim on tags stands (#570). No rows to table, and the two
+    // live buttons must not sit under "proposes nothing".
+    mockedFetch.mockResolvedValue({
+      missing: [],
+      conflicts: [{ ...CONFLICT, proposed: [
+        { field: 'tags', old: ['a'], new: ['b'], acceptable: true, claim: { by: 'Dana', at: '2026-08-04T12:29:32Z' } },
+      ] }],
+      refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25, offset: 0,
+    });
+    renderQueue();
+
+    expect(await screen.findByText(/proposes only the catalogue’s own labels, which nothing readers see, over an edit claimed by Dana/))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/proposes nothing/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /take all of the source/i })).toBeEnabled();
   });
 
   it('compares an added value against nothing, instead of calling it a shape difference', async () => {
@@ -328,7 +350,7 @@ describe('ReviewQueue', () => {
     // A run improves and damages in the same breath: a better description arriving with
     // a mangled name was one button that took both or neither. The endpoint always
     // accepted a list — the screen could not say "this one".
-    const takeThese = await screen.findAllByRole('button', { name: 'take this' });
+    const takeThese = await screen.findAllByRole('button', { name: 'take the source’s' });
     fireEvent.click(takeThese[1]);
 
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['shortDescription'], 41));
@@ -393,7 +415,7 @@ describe('ReviewQueue', () => {
 
     // In the reader's words, and naming the run — so a curator meeting the field again
     // later is being told the source changed its mind, not that the click failed.
-    expect(await screen.findByText(/short description — yours stands/)).toBeInTheDocument();
+    expect(await screen.findByText(/short description — kept as curated/)).toBeInTheDocument();
     expect(screen.getByText(/run 41/)).toBeInTheDocument();
   });
 
@@ -420,9 +442,18 @@ describe('ReviewQueue', () => {
     // named the run only after acting. Now the trail says whose text stands, when the
     // source proposed otherwise, and what was answered here before.
     expect(await screen.findByText(/Claimed by Dana/)).toBeInTheDocument();
-    expect(screen.getByText(/Proposed by the run that finished/)).toBeInTheDocument();
+    // The run is named once, in the line above the table, rather than under every field.
+    expect(screen.getByText(/The run that finished .* proposes/)).toBeInTheDocument();
     expect(screen.getByText(/admin took the source’s value/)).toBeInTheDocument();
     expect(screen.queryByText(/Keep my edit/)).not.toBeInTheDocument();
+    // Nor in any newer spelling: the summary names whose edit the source proposes
+    // over, and the per-field answer keeps "this" rather than "mine".
+    expect(screen.getByText(/over an edit claimed by Dana/)).toBeInTheDocument();
+    // Nowhere on the card: not the summary, not the column, not the per-field or the
+    // whole-card answer, not the note under them.
+    expect(screen.queryByText(/of yours|keep mine|all of mine|keeping yours/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'yours' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'as curated' })).toBeInTheDocument();
   });
 
   it('accepts exactly the fields the source proposed', async () => {
@@ -447,7 +478,7 @@ describe('ReviewQueue', () => {
     // The coordinate says it in its own words, because it is the one field that
     // sits across the line: the pin moves on the spot, the object's position
     // waits for the run. Told before the click, where the decision is made.
-    expect(await screen.findByText(/the point moves back to the source’s coordinate now/))
+    expect(await screen.findByText(/moves the pin now/))
       .toBeInTheDocument();
     expect(screen.getByText(/object’s own position follows at the next sync/)).toBeInTheDocument();
     // Still answerable: releasing the claim is what takes it off the queue,
@@ -459,7 +490,9 @@ describe('ReviewQueue', () => {
     mockedFetch.mockResolvedValue({
       missing: [],
       conflicts: [{ ...CONFLICT, proposed: [
-        { field: 'tags', old: ['a'], new: ['b'], acceptable: false },
+        // Not `tags`: those are no longer a row at all (#570). The country codes are the
+        // other array the endpoint cannot write on the spot.
+        { field: 'countryCodes', old: ['FR'], new: ['BE'], acceptable: false },
       ] }],
       limit: 25,
       offset: 0,
@@ -978,6 +1011,58 @@ describe('ReviewQueue', () => {
       expect(mockedAccept).not.toHaveBeenCalled();
     });
 
+    it('says up front when everything on a held card arrives rather than changes', async () => {
+      // Bamiyan's card from run 68, which is the shape of 1272 cards on this catalogue:
+      // the criteria and a picture credit appear where there was nothing. A value
+      // replacing one readers can see is a different question, and the card says
+      // which it is before the rows (#570).
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], contents: [], limit: 25, offset: 0,
+        held: [{
+          ...HELD,
+          proposed: [
+            { field: 'tags', old: [], new: ['criterion_i', 'in_danger'], held: true },
+            { field: 'metadata', old: { website: 'https://whc.unesco.org/en/list/208' },
+              new: { website: 'https://whc.unesco.org/en/list/208', criteria: '(i)(ii)' }, held: true },
+          ],
+        }],
+      });
+      renderQueue();
+
+      // Tags are not a row, so the count is the one fact that arrives, and the line
+      // says outright that readers see nothing different.
+      const count = await screen.findByText('1 new');
+      expect(count.parentElement?.textContent).toContain('inscription criteria');
+      expect(screen.getByText('· nothing readers see changes')).toBeInTheDocument();
+    });
+
+    it('says what a card holding only the catalogue’s labels is, instead of "proposes nothing"', async () => {
+      // Tags are not a row (#570), so a card an earlier run filed with tags alone has
+      // no table to draw. It must not read as a run proposing nothing over an empty
+      // table while its button writes the labels.
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], contents: [], limit: 25, offset: 0,
+        held: [{ ...HELD, proposed: [{ field: 'tags', old: [], new: ['criterion_ii'], held: true }] }],
+      });
+      renderQueue();
+
+      expect(await screen.findByText(/Run 47 proposed only the catalogue’s own labels/)).toBeInTheDocument();
+      expect(screen.queryByText(/proposes/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /publish the change/i })).toBeInTheDocument();
+    });
+
+    it('says nothing of the kind when a value readers see is being replaced', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], held: [HELD], contents: [], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      await screen.findByRole('button', { name: /publish the change/i });
+      expect(screen.getByText('1 changed')).toBeInTheDocument();
+      expect(screen.queryByText(/nothing readers see changes/)).not.toBeInTheDocument();
+    });
+
     it('names no run for an arrival, whose own run id points at nothing held', async () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25, offset: 0,
@@ -1240,7 +1325,7 @@ describe('ReviewQueue', () => {
       // `sync_log_id` is optional on the type; printing the literal word
       // "undefined" for a row that somehow lacks it is worse than naming no
       // run at all.
-      expect(await screen.findByText(/Proposed by an earlier run/)).toBeInTheDocument();
+      expect(await screen.findByText(/An earlier run proposes/)).toBeInTheDocument();
       expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
     });
   });

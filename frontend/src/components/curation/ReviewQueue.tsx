@@ -22,7 +22,7 @@
 import { useState } from 'react';
 import {
   Box, Typography, Card, CardContent, Button, Stack,
-  TextField, Divider,
+  TextField,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 import {
@@ -37,10 +37,10 @@ import { publishOutcomeFor } from './WaitingToPublish';
 import { formatDateTime } from '../../utils/dateFormat';
 import { worldViewList } from '../../utils/worldViewList';
 import { ItemHeader, messageFor } from './queueCard';
-import { FieldDiff } from './FieldDiff';
-import { fieldLabel } from './fieldLabel';
+import { FactTable, ProposalSummary } from './FactTable';
+import { rowsFor } from './factRows';
+import { fieldLabel } from './fieldMeaning';
 import { RefusalLine } from './RefusalLine';
-import { ProvenanceTrail } from './ProvenanceTrail';
 
 
 /**
@@ -251,6 +251,15 @@ export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
  */
 export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const proposed = item.proposed ?? [];
+  const context = { proposed, inDanger: item.in_danger, dangerSince: item.danger_since };
+  const rows = rowsFor(proposed, context);
+  // Whose edit the source is proposing over, by name. The queue selects the claimant
+  // precisely so this card stops calling another curator's work "mine"; a card that
+  // said "of yours" over Dana's claim would undo that in the summary line.
+  const claimants = [...new Set(proposed.map(f => f.claim?.by).filter((by): by is string => !!by))];
+  const overWhose = claimants.length > 0
+    ? `over an edit claimed by ${claimants.join(', ')}`
+    : 'over a curator’s edit';
   // A moved coordinate or a metadata key is not written to the object here, but
   // accepting still releases the claim, and the next run applies it. Editing
   // would not: every other path that touches `curated_fields` only ever adds to
@@ -279,47 +288,61 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
       <CardContent>
         <ItemHeader item={item} />
 
-        <Stack divider={<Divider flexItem />} spacing={1.5} sx={{ mb: 2 }}>
-          {proposed.map((field) => (
-            <Box key={field.field}>
-              <FieldDiff
-                field={field}
-                // One field at a time, because a run improves and damages in the same
-                // breath: a better description arriving with a mangled name used to be
-                // one button that took both or neither. The endpoint has always accepted
-                // a list — it was the screen that could not say "this one".
-                // The label names the direction and the scope, because the button sits
-                // between two columns and "take this one" answered neither: take what,
-                // and whose? A field the endpoint cannot write says so in the same
-                // breath, since the note underneath is easy to read past when a button
-                // beside it promises something immediate.
-                // Each answer under the value it applies. Every field is refusable,
-                // including the ones whose acceptance says "at next sync": refusing
-                // writes nothing, so there is no field this answer cannot reach.
-                keepAction={(
-                  <Button
-                    size="small"
-                    color="inherit"
-                    disabled={busy}
-                    onClick={() => decline.mutate([field.field])}
-                  >
-                    keep this
-                  </Button>
-                )}
-                takeAction={(
-                  <Button
-                    size="small"
-                    disabled={busy}
-                    onClick={() => accept.mutate([field.field])}
-                  >
-                    {field.acceptable === false ? 'take this (at next sync)' : 'take this'}
-                  </Button>
-                )}
-              />
-              <ProvenanceTrail field={field} runCompletedAt={item.run_completed_at} />
-            </Box>
-          ))}
-        </Stack>
+        {/* The claimed half of the shape WaitingToPublish has a branch for: a changeset
+            an earlier run filed can carry a tags conflict (curatedConflict on a field
+            no run reports now), and the conflict query surfaces it while the claim on
+            tags stands. No rows to table, and "proposes nothing" over the two live
+            buttons would be false — either answer settles it, and neither changes what
+            readers see. */}
+        {rows.length === 0 && (
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            The source proposes only the catalogue’s own labels, which nothing readers see
+            {claimants.length > 0 ? `, over an edit claimed by ${claimants.join(', ')}` : ''}.
+            Either answer settles it and changes nothing readers see.
+          </Typography>
+        )}
+        {rows.length > 0 && (
+        <ProposalSummary
+          lead={item.run_completed_at
+            ? `The run that finished ${formatDateTime(item.run_completed_at)} proposes`
+            : 'The source proposes'}
+          rows={rows}
+          trailing={overWhose}
+        />
+        )}
+        {rows.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <FactTable
+            groups={[{ subject: { kind: 'object', label: item.name }, rows }]}
+            // "as curated", not "yours": the value that stands was claimed by a curator,
+            // and the trail under it says which one — the queue selects the claimant
+            // precisely so this card stops calling another curator's work "mine".
+            labels={{ before: 'as curated', after: 'the source proposes' }}
+            context={context}
+            // One field at a time, because a run improves and damages in the same
+            // breath: a better description arriving with a mangled name used to be
+            // one button that took both or neither. The endpoint has always accepted
+            // a list — it was the screen that could not say "this one". The answer
+            // sits in its own column, spanning every row the field made: a key inside
+            // the source data is answered with the field, never on its own. Every
+            // field is refusable, including the ones whose acceptance says "at next
+            // sync": refusing writes nothing, so there is no field this answer cannot
+            // reach.
+            answer={(field, fieldRows) => (
+              <Stack spacing={0.5}>
+                {/* "this", not "mine": the standing value may be another curator's,
+                    and the trail under it says whose. */}
+                <Button size="small" variant="outlined" color="inherit" disabled={busy} onClick={() => decline.mutate([field])}>
+                  keep this
+                </Button>
+                <Button size="small" variant="outlined" disabled={busy} onClick={() => accept.mutate([field])}>
+                  {fieldRows[0].acceptable === false ? 'take the source’s (at next sync)' : 'take the source’s'}
+                </Button>
+              </Stack>
+            )}
+          />
+        </Box>
+        )}
 
         {/* Same order as the columns above and as the per-field buttons: what is stored
             first, what is proposed second. And neither is a primary — one of them being
@@ -332,7 +355,7 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
             disabled={busy || proposed.length === 0}
             onClick={() => decline.mutate(proposed.map(f => f.field))}
           >
-            Keep all of mine
+            Keep all as curated
           </Button>
           <Button
             variant="outlined"
@@ -349,11 +372,11 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
               that line: the object's own position waits for the run, its pin does not. Refusing writes nothing at
               all, so readers stay on the curator's version; what it changes is the
               asking, and only for the text being refused — the sentence that stops a
-              curator wondering whether "keep mine" hides a source that later changes
+              curator wondering whether "keep this" hides a source that later changes
               its mind. Doing nothing is still possible and still keeps what is
               stored; it is no longer the only way to say so. */}
           <Typography variant="caption" color="text.secondary">
-            Accepting puts the source’s text on the site. Keeping yours changes nothing
+            Accepting puts the source’s text on the site. Keeping what stands changes nothing
             readers see and settles the question — the source has to propose something
             different to ask again.
           </Typography>
@@ -378,7 +401,7 @@ export function refusalOutcomeFor(
   // "not asked about again", not "not proposed again": the source goes on proposing it
   // every run and each one still records a changeset row an admin can see. What the
   // refusal ends is the question, which is the whole of what this feature does.
-  return `${item.name}: ${data.declined.map(fieldLabel).join(', ')} — yours stands, `
+  return `${item.name}: ${data.declined.map(fieldLabel).join(', ')} — kept as curated, `
     + `and run ${data.fromSyncLogId}’s version will not be asked about again.`;
 }
 
