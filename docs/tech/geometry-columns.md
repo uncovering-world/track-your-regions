@@ -627,14 +627,48 @@ one.** No geometry is written, and the unions change all the same:
   branch is covered by the same call, since the parent it nulls is the parent
   those children move to.
 
-Those two are the World View Editor's, and they are **not the whole set**. The
-import-review tree operations move and delete regions without invalidating
-anything, and always have — among them `reparentRegion`,
-`mergeChildIntoParent`, `removeRegionFromImport`, `dismissChildren` and
-`pruneToLeaves`. **#496** tracks them, and the list there is open rather than an
-inventory: an inventory that reads as complete is how the last one went stale
-one round at a time. A trigger on `regions.geom` cannot close that door, because
-a structural change goes through it without writing any geometry.
+Those two are the World View Editor's, and they were **not the whole set**. The
+import-review tree operations move and delete regions too, and invalidated
+nothing until **#496**. Six of them do now, each naming the rows whose own union
+changed and leaving the ancestors to the trigger:
+
+| Handler | What changed | What it nulls |
+|---|---|---|
+| `reparentRegion` | a region changes parents | the old parent and the new one |
+| `mergeChildIntoParent` | the parent absorbs its only child's members and grandchildren | the parent |
+| `removeRegionFromImport` | a region is deleted, its children and divisions moved up or deleted with it | the parent, when there is one |
+| `dismissChildren` | every descendant is deleted and nothing moves up | the region they were under |
+| `pruneToLeaves` | every grandchild and deeper is deleted | each direct child that lost descendants |
+| `smartFlatten` | the descendants are deleted and their divisions absorbed | the region that absorbed them |
+
+`reparentRegion` names two rows where `updateRegion` names three, and the
+difference is not an omission: the editor's reparent also carries a division
+membership between the two parents, so the moved region's own union changes,
+while the import statement writes `parent_region_id` and nothing else.
+`pruneToLeaves` names the direct children that actually lost descendants —
+carried out of its recursive CTE as `root_child` — and not every direct child,
+since one that was already a leaf draws exactly what it drew. `#496`'s own list
+had five handlers; `smartFlatten` was the sixth, found by reading every
+statement that deletes a region rather than by trusting the list — an inventory
+that reads as complete is how the last one went stale one round at a time.
+
+Their **undo** paths name nothing, deliberately. Every region an undo recreates
+arrives with `geom NULL`, which is exactly what seeds a run's closure, so the
+restored rows are selected and every ancestor of one with them. Restore a
+snapshot of `geom` there and that stops being true;
+`wvImportStructuralInvalidation.test.ts` fails if the restoring `INSERT` ever
+names a geometry column.
+
+What is still open in that path is the **member** half, **#718**: a dozen
+import-review routes rewrite `region_members` *without* moving or deleting a
+region — accepting a match, clearing members, resolving an overlap, collapsing a
+parent, and the three undo arms that restore members without recreating one —
+and not one of them calls `invalidateRegionGeometry`, leaving a region drawing
+divisions it no longer holds. The three handlers in the table above that move
+members as part of a structural change are covered by the call they already
+make. A trigger on `regions.geom` closes neither half, because neither
+writes any geometry; a trigger on `region_members` could close the member one,
+which is the question #718 carries and an ADR's to answer.
 
 A failed *pipeline* is still answered softly, and is now the only kind of failure
 `computeRegionGeometryCore` has to answer: it wrote nothing, so the region stays
