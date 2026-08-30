@@ -20,7 +20,10 @@ import { ACCEPTABLE_FIELDS } from './acceptableFields.js';
 import {
   objectContextSelectSql, countedWorksSelectSql, QUEUE_PAGE_SIZE,
 } from './reviewQueueContext.js';
-import { queryAnsweredWithdrawals, queryContents, queryWithdrawn } from './reviewQueueContents.js';
+import {
+  heldPartsSelectSql, queryAnsweredWithdrawals, queryContents, queryWithdrawn,
+} from './reviewQueueContents.js';
+import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
 import { withDangerFields } from './experienceDanger.js';
 
 /**
@@ -445,38 +448,42 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // separate question with its own card for a curator to answer through
   // `/publish`.
   //
-  // What actually excludes an empty proposal is the `WHERE` above, not the
-  // `q.proposed IS NOT NULL` below. `CROSS JOIN LATERAL` plus a per-field
-  // predicate drops the rows before `GROUP BY` runs, so a changeset whose only
-  // fields were claimed — or whose `changed_fields` is `[]` — forms no group at
-  // all and `jsonb_agg` is never called on an empty set. Measured against a
-  // real database: the result is byte-identical with the guard removed.
+  // Two halves to one card since ADR-0037: the object's own held fields
+  // (`proposed`, off `changed_fields`) and the held fields of its parts
+  // (`proposed_parts`, off the contents record — a place renamed, a work
+  // re-attributed — resolved to the stored rows so the card can open them;
+  // `heldPartsSelectSql` says how). A row is a card where either half holds
+  // something, which is the pair `heldWaitingSql` counts by, so the panel's
+  // number and the queue's cards agree.
   //
-  // It stays as a floor, and this comment exists so the next reader is not
-  // misled about which line is doing the work: the guard starts mattering the
-  // moment this becomes a `LEFT JOIN LATERAL`, or the field predicate moves into
-  // a `FILTER`, either of which would keep the group and hand `jsonb_agg` an
-  // empty set — and NULL there would render a card with nothing on it, which is
-  // worse than no card. The neighbouring `conflict` kind is the opposite case:
-  // there the same guard is load-bearing, because it wraps a correlated
-  // subquery that genuinely returns NULL for a row that exists.
+  // Both halves are scalar subqueries rather than a lateral join with a `GROUP
+  // BY`, which is what the object's half used to be, and the change moves where
+  // the empty case is decided. A lateral over `changed_fields` filtered on the
+  // flag dropped a row with nothing held before any aggregate ran; a scalar
+  // `jsonb_agg` over an empty set answers NULL instead, on a row the `WHERE`
+  // has already admitted for its *other* half. So NULL here is ordinary — the
+  // object's half of a card about a part, or the reverse — and the guard below
+  // is what keeps a row with nothing on either half from rendering a card with
+  // nothing on it, which is worse than no card. Load-bearing now, where it used
+  // to be a floor; the neighbouring `conflict` kind's guard has always been.
   const held = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
       SELECT e.id, e.external_id, e.name, e.category_id, c.name AS category_name,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
-             ch.sync_log_id, 'held' AS kind, jsonb_agg(f) AS proposed
+             ch.sync_log_id, 'held' AS kind,
+             (SELECT jsonb_agg(f) FROM jsonb_array_elements(ch.changed_fields) AS f
+               WHERE (f->>'held')::boolean) AS proposed,
+             ${heldPartsSelectSql('ch', 'e')}
       FROM experiences e
       JOIN experience_categories c ON c.id = e.category_id
       JOIN experience_sync_changes ch ON ch.experience_id = e.id
                                      AND ch.sync_log_id = e.pending_change_sync_log_id
-      CROSS JOIN LATERAL jsonb_array_elements(ch.changed_fields) AS f
       WHERE e.pending_change_sync_log_id IS NOT NULL
         AND ${hideRefusedSql()}
         AND e.missing_since IS NULL
-        AND (f->>'held')::boolean
+        AND (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')})
         AND ${scopeFilter} ${categoryFilter}
-      GROUP BY e.id, e.external_id, e.name, e.category_id, c.name, ch.sync_log_id
-    ) q WHERE q.proposed IS NOT NULL
+    ) q WHERE (q.proposed IS NOT NULL OR q.proposed_parts IS NOT NULL)
     ORDER BY q.sync_log_id DESC, q.id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
   `, [...params, pageSize, offsets.held]);

@@ -26,6 +26,61 @@ import {
   hidePendingSql, hideRefusedSql, lifecycleSelectSql, offeredLocationSql,
 } from './experienceLifecycle.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
+import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
+
+/**
+ * The held fields of an object's parts, as the held card carries them.
+ *
+ * A run records what moved *inside* an object as `contents.<kind>.changed[]`,
+ * each entry naming the part and carrying the same `fields[]` shape the
+ * object's own changes use; since ADR-0037 a field of a part readers can see is
+ * held like the object's own, and the card shows it as a group under the
+ * part's name. This is what feeds that group: one element per part with a held
+ * field, carrying the record's name and reference, the held fields alone, and
+ * the stored row behind the record — a coordinate and an ordinal for a place,
+ * the maker, the year and the picture with its credit for a work — so the card
+ * can open the part and say "place 4 of 8" without a second read.
+ *
+ * Held entries only, twice over: a part is listed only where one of its fields
+ * is held, and only those fields are carried. A change the run wrote is news
+ * the run report shows, not a question; a field a claim refused is the
+ * conflict card's, and answering it here would apply a curator's own value
+ * back as though a source had sent it.
+ *
+ * The row is found through `partRecord.ts`, the rule publishing resolves the
+ * same entry by, so the row the card opens is the row publishing writes. Where
+ * no stored row answers — a place the source has since withdrawn — the entry
+ * stays, with nothing to open: the proposal is still what the run recorded.
+ * NULL where no part holds anything, so a card with nothing on this half reads
+ * the object's half alone. `ch` is the `experience_sync_changes` alias, `e`
+ * the object's.
+ */
+export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
+  const location = recordedLocationSql({
+    experienceId: `${experience}.id`, ref: "c->'item'->>'ref'", name: "c->'item'->>'name'",
+  });
+  const treasure = recordedTreasureSql({ experienceId: `${experience}.id`, ref: "c->'item'->>'ref'" });
+  return `(SELECT jsonb_agg(part ORDER BY part->>'kind', (part->>'ordinal')::int NULLS LAST, part->'item'->>'name')
+             FROM (
+               SELECT jsonb_build_object(
+                        'kind', k.kind,
+                        'item', c -> 'item',
+                        'fields', (SELECT jsonb_agg(f) FROM jsonb_array_elements(c -> 'fields') AS f
+                                    WHERE (f->>'held')::boolean),
+                        'locationId', loc.id, 'latitude', loc.latitude, 'longitude', loc.longitude,
+                        'ordinal', loc.ordinal,
+                        'treasureId', work.id, 'artist', work.artist, 'year', work.year,
+                        'imageUrl', work.image_url, 'imageCredit', work.image_credit,
+                        'treasureType', work.treasure_type) AS part
+                 FROM (VALUES ('locations'), ('treasures')) AS k(kind)
+                 CROSS JOIN LATERAL jsonb_array_elements(
+                   COALESCE(${changes}.contents -> k.kind -> 'changed', '[]'::jsonb)) AS c
+                 LEFT JOIN LATERAL (${location}) AS loc ON k.kind = 'locations'
+                 LEFT JOIN LATERAL (${treasure}) AS work ON k.kind = 'treasures'
+                WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(c -> 'fields') AS f
+                               WHERE (f->>'held')::boolean)
+             ) AS parts) AS proposed_parts`;
+}
 
 /**
  * How many unread points or works one `contents` card lists.

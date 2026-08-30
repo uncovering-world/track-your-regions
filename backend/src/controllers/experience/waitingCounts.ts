@@ -37,21 +37,51 @@ export function arrivalWaitingSql(alias = 'e'): string {
 }
 
 /**
- * A visible row holding a proposal the gate refused.
+ * Whether a changeset row carries a field of the object's own the gate held.
  *
  * `held: true` on the field itself rather than the absence of a curator's claim
  * (#519): a field can be refused for either reason, and only the gate's refusal
- * is answerable by publishing.
+ * is answerable by publishing. `alias` is the `experience_sync_changes` alias.
+ */
+export function heldFieldExistsSql(alias = 'ch'): string {
+  return `EXISTS (
+      SELECT 1 FROM jsonb_array_elements(${alias}.changed_fields) AS f
+      WHERE (f->>'held')::boolean
+    )`;
+}
+
+/**
+ * Whether a changeset row carries a field of one of the object's *parts* the
+ * gate held — a place's name, a work's attribution (ADR-0037).
+ *
+ * The record keys contents by kind, so both kinds are asked by name; a kind the
+ * run did nothing to is absent, which the COALESCE reads as an empty list. The
+ * same positive flag as above, for the same reason: a part's field a claim
+ * refused is the conflict card's, and never counted here.
+ */
+export function heldPartExistsSql(alias = 'ch'): string {
+  return `EXISTS (
+      SELECT 1 FROM (VALUES ('locations'), ('treasures')) AS k(kind)
+      CROSS JOIN LATERAL jsonb_array_elements(
+        COALESCE(${alias}.contents -> k.kind -> 'changed', '[]'::jsonb)) AS c
+      CROSS JOIN LATERAL jsonb_array_elements(c -> 'fields') AS f
+      WHERE (f->>'held')::boolean
+    )`;
+}
+
+/**
+ * A visible row holding a proposal the gate refused — on a field of its own,
+ * or on a field of one of its parts. Both, because the queue's held card
+ * carries both and this count has to agree with it row for row.
  */
 export function heldWaitingSql(alias = 'e'): string {
   return `${alias}.pending_change_sync_log_id IS NOT NULL
     AND ${alias}.missing_since IS NULL AND ${hideRefusedSql(alias)}
     AND EXISTS (
       SELECT 1 FROM experience_sync_changes ch
-      CROSS JOIN LATERAL jsonb_array_elements(ch.changed_fields) AS f
       WHERE ch.experience_id = ${alias}.id
         AND ch.sync_log_id = ${alias}.pending_change_sync_log_id
-        AND (f->>'held')::boolean
+        AND (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')})
     )`;
 }
 

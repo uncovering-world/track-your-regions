@@ -50,6 +50,19 @@ describe('the waiting predicates', () => {
     expect(sql).toContain('ch.sync_log_id = e.pending_change_sync_log_id');
   });
 
+  it('counts a proposal held on a field of a part, which the same card carries', () => {
+    // ADR-0037: a museum every field of which came through, with one work's
+    // attribution held, is holding a proposal — and the queue's held card shows
+    // it, so a count that read `changed_fields` alone would tell the panel
+    // nothing is waiting for a source whose queue has a card in it.
+    const sql = heldWaitingSql();
+    expect(sql).toMatch(/ch\.contents/);
+    expect(sql).toMatch(/'changed'/);
+    // Both kinds of contents, by name: a part is a place or a work.
+    expect(sql).toMatch(/'locations'/);
+    expect(sql).toMatch(/'treasures'/);
+  });
+
   it('asks both content axes, and only about points the source still offers', () => {
     const sql = contentsWaitingSql();
     // A visible row: an unread row itself is an arrival, counted once above.
