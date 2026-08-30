@@ -21,6 +21,7 @@ import {
   objectContextSelectSql, countedWorksSelectSql, QUEUE_PAGE_SIZE,
 } from './reviewQueueContext.js';
 import { queryAnsweredWithdrawals, queryContents, queryWithdrawn } from './reviewQueueContents.js';
+import { withDangerFields } from './experienceDanger.js';
 
 /**
  * The decisions waiting for a curator, scoped to what they cover.
@@ -98,7 +99,13 @@ export async function getReviewQueue(req: AuthenticatedRequest, res: Response): 
   // themselves. A COUNT(*) per kind would be a second source of truth for a number, and
   // this endpoint deliberately returns no totals — see the note on counts below.
   const pageSize = Number(limit) + 1;
-  const paged = <T>(rows: T[]) => ({ items: rows.slice(0, Number(limit)), hasMore: rows.length > Number(limit) });
+  // Every kind carries the object fragment, so every kind goes through the same
+  // danger mapping the reader-facing reads use: `in_danger` as a boolean and the
+  // listing's year as `danger_since`, never the raw "Y 2003".
+  const paged = <T extends Record<string, unknown>>(rows: T[]) => ({
+    items: rows.slice(0, Number(limit)).map(withDangerFields),
+    hasMore: rows.length > Number(limit),
+  });
 
   // The rows span categories, so the unrestricted check correlates on each
   // row's own category rather than on the optional request filter.
