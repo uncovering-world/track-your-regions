@@ -20,6 +20,7 @@
 import { changedKeys, isEmptyValue } from './objectDiff';
 import { keyMeaningOf, meaningOf, type ChangeContext, type FieldMeaning, type ProposedField } from './fieldMeaning';
 import type { FieldProvenance } from './ProvenanceTrail';
+import type { HeldPart } from '../../api/experiences';
 
 export type FactKind = 'new' | 'changed' | 'removed';
 
@@ -44,6 +45,13 @@ export interface FactSubject {
   kind: 'object' | 'place' | 'work';
   /** The part's name — a place's, a work's. The object's group carries its card's header instead. */
   label: string;
+  /**
+   * What tells this group from a sibling with the same label, for the table's keys:
+   * a label is a Wikidata string with no uniqueness about it — the Getty holds two
+   * works called Spring — and a key built from it would let React reuse one part's
+   * rows for the other. The record's reference where there is one.
+   */
+  key?: string;
   /** "place 4 of 7", "by Vermeer" — what tells one part from another. */
   detail?: string | null;
   /** Opens the part where it can be looked at: a point on the map, a work with its picture. */
@@ -143,4 +151,60 @@ export function summarize(rows: ReadonlyArray<FactRow>): Record<FactKind, FactRo
   const byKind: Record<FactKind, FactRow[]> = { changed: [], new: [], removed: [] };
   for (const r of rows) byKind[r.kind].push(r);
   return byKind;
+}
+
+/** What tells one part from its siblings, as the group heading says it. */
+function partDetail(part: HeldPart, offeredLocations: number | undefined): string | null {
+  if (part.kind === 'locations') {
+    // "place 4 of 8": the ordinal is the source's own numbering, and the total is
+    // how many the object offers today — the denominator every card carries.
+    if (part.ordinal == null) return null;
+    return offeredLocations ? `place ${part.ordinal} of ${offeredLocations}` : `place ${part.ordinal}`;
+  }
+  // The maker and the year readers see today, since the row is what the change
+  // is against. Nothing where the row is gone: a detail about a work nobody can
+  // open would describe a row the card cannot show.
+  if (part.treasureId == null) return null;
+  const who = part.artist ? `by ${part.artist}` : null;
+  const when = part.year != null ? String(part.year) : null;
+  return [who, when].filter(Boolean).join(', ') || null;
+}
+
+/** Whether the stored row behind a part's record is there to be opened. */
+function openable(part: HeldPart): boolean {
+  return part.kind === 'locations'
+    ? part.latitude != null && part.longitude != null
+    : part.treasureId != null;
+}
+
+/**
+ * One group per part whose field a gated run held (ADR-0037), under the
+ * object's own group.
+ *
+ * The heading is the name the curator saw — the record's, which is what the
+ * part was called *before* the run, so a held rename heads its group with the
+ * name readers still see. A part the source gave no name gets its reference,
+ * which is what the record has. The detail and the way to open the part come
+ * from the stored row and are absent where there is none: a place the source
+ * withdrew after proposing its rename still carries the proposal — it is what
+ * the run recorded — and nothing to look at.
+ */
+export function partGroups(
+  parts: ReadonlyArray<HeldPart>,
+  context: ChangeContext,
+  shape: { offeredLocations?: number },
+  onOpen: (part: HeldPart) => void,
+): FactGroup[] {
+  return parts.map((part, index) => ({
+    subject: {
+      kind: part.kind === 'locations' ? 'place' : 'work',
+      label: part.item.name ?? part.item.ref ?? 'an unnamed part',
+      // The reference is the identity the record stores; the position is the
+      // fallback for the one referenceless point, which no sibling shares.
+      key: `${part.kind}:${part.item.ref ?? '#' + String(index)}`,
+      detail: partDetail(part, shape.offeredLocations),
+      ...(openable(part) ? { onOpen: () => onOpen(part) } : {}),
+    },
+    rows: rowsFor(part.fields, context),
+  }));
 }

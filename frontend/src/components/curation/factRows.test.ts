@@ -6,8 +6,8 @@
  * held card from run 68, the Louvre's from museum run 64.
  */
 
-import { describe, it, expect } from 'vitest';
-import { rowsFor, summarize } from './factRows';
+import { describe, it, expect, vi } from 'vitest';
+import { partGroups, rowsFor, summarize } from './factRows';
 
 const NO_CONTEXT = { proposed: [] };
 
@@ -91,5 +91,75 @@ describe('summarize', () => {
     expect(byKind.changed.map(r => r.meaning.label)).toEqual(['in danger']);
     expect(byKind.new.map(r => r.meaning.label)).toEqual(['inscription criteria', 'picture credit']);
     expect(byKind.removed).toEqual([]);
+  });
+});
+
+describe('partGroups', () => {
+  // The Wine Glass under Gemäldegalerie, its attribution held (ADR-0037), and
+  // one place of a serial site renamed — as the queue's held card carries them.
+  const wineGlass = {
+    kind: 'treasures' as const,
+    item: { name: 'The Wine Glass', ref: 'Q782639' },
+    fields: [{ field: 'artist', old: 'Johannes Vermeer', new: 'Jan Vermeer van Haarlem the Elder', held: true }],
+    treasureId: 3102, artist: 'Jan Vermeer van Haarlem the Elder', year: 1659,
+    imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Wine.jpg', imageCredit: null, treasureType: 'painting',
+  };
+  const montsegur = {
+    kind: 'locations' as const,
+    item: { name: 'Château de Montésgur', ref: '1755-004' },
+    fields: [{ field: 'name', old: 'Château de Montésgur', new: 'Château de Montségur', held: true }],
+    locationId: 11134, latitude: 42.8758, longitude: 1.8323, ordinal: 5,
+  };
+
+  it('makes one group per part, headed by the name the curator saw', () => {
+    const groups = partGroups([montsegur, wineGlass], NO_CONTEXT, { offeredLocations: 8 }, () => {});
+
+    expect(groups.map(g => [g.subject.kind, g.subject.label])).toEqual([
+      ['place', 'Château de Montésgur'],
+      ['work', 'The Wine Glass'],
+    ]);
+    expect(groups[0].rows.map(r => r.meaning.label)).toEqual(['name']);
+    expect(groups[1].rows.map(r => r.meaning.label)).toEqual(['artist']);
+    expect(groups[1].rows[0].kind).toBe('changed');
+  });
+
+  it('tells a part from its siblings: which place of how many, whose work', () => {
+    const [place, work] = partGroups([montsegur, wineGlass], NO_CONTEXT, { offeredLocations: 8 }, () => {});
+
+    expect(place.subject.detail).toBe('place 5 of 8');
+    // The maker readers see today, since the row is what the change is against.
+    expect(work.subject.detail).toBe('by Jan Vermeer van Haarlem the Elder, 1659');
+  });
+
+  it('offers a way to open a part only where there is a row to open', () => {
+    const onOpen = vi.fn();
+    const withdrawn = { ...montsegur, locationId: null, latitude: null, longitude: null, ordinal: null };
+    const [gone, work] = partGroups([withdrawn, wineGlass], NO_CONTEXT, { offeredLocations: 8 }, onOpen);
+
+    // The source withdrew the place after proposing its rename: the proposal is
+    // still what the run recorded, and there is no pin to look at.
+    expect(gone.subject.onOpen).toBeUndefined();
+    expect(gone.subject.detail).toBeNull();
+    work.subject.onOpen?.();
+    expect(onOpen).toHaveBeenCalledWith(wineGlass);
+  });
+
+  it('names a part by its reference where the source gave it no name', () => {
+    const [group] = partGroups([{ ...montsegur, item: { name: null, ref: '1755-004' } }], NO_CONTEXT, {}, () => {});
+    expect(group.subject.label).toBe('1755-004');
+  });
+
+  it('tells two parts with one name apart by the reference, so the table can key them', () => {
+    // The Getty holds two works called Spring inside its best-known twelve, and a
+    // label is a Wikidata string with no uniqueness about it; the reference is the
+    // identity the record stores.
+    const [first, second] = partGroups([
+      { ...wineGlass, item: { name: 'Spring', ref: 'Q1' } },
+      { ...wineGlass, item: { name: 'Spring', ref: 'Q2' } },
+    ], NO_CONTEXT, {}, () => {});
+
+    expect(first.subject.label).toBe(second.subject.label);
+    expect(first.subject.key).toBeDefined();
+    expect(first.subject.key).not.toBe(second.subject.key);
   });
 });
