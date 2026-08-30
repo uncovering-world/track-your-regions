@@ -201,7 +201,7 @@ export async function upsertExperienceRecord(
 ): Promise<UpsertOutcome> {
   if (options.dryRun) return previewUpsert(params);
 
-  // `HELD` guards every content column below, and answers for the report in
+  // `HELD` guards every content column below but tags, and answers for the report in
   // `RETURNING`. Inside `ON CONFLICT DO UPDATE`, `experiences.curation_state` is
   // the PRE-update value as re-read under the row lock — which is what makes the
   // rule expressible in SQL at all, and what makes this the version the report
@@ -238,7 +238,23 @@ export async function upsertExperienceRecord(
         description = CASE WHEN experiences.curated_fields ? 'description' OR ${HELD} THEN experiences.description ELSE EXCLUDED.description END,
         short_description = CASE WHEN experiences.curated_fields ? 'short_description' OR ${HELD} THEN experiences.short_description ELSE EXCLUDED.short_description END,
         category = CASE WHEN experiences.curated_fields ? 'category' OR ${HELD} THEN experiences.category ELSE EXCLUDED.category END,
-        tags = CASE WHEN experiences.curated_fields ? 'tags' OR ${HELD} THEN experiences.tags ELSE EXCLUDED.tags END,
+        -- Behind a claim but not behind the gate. Tags are labels the import
+        -- derives from facts it also stores by name -- the criteria, the danger
+        -- listing, the landmark's type -- and no reader-facing read returns
+        -- them (the by-id read did, rendered by nothing, until #570 took the
+        -- column out of it), so there is nothing a reader can already see for
+        -- the gate to protect (#570, the rule #571 stated: a person is asked only about
+        -- what a reader can eventually see). Held, they filed 3785 rows in
+        -- this database's log that restated the row beside them. A claim still
+        -- holds, unlike the run-owned counters in metadata: a curator can set
+        -- tags through the edit endpoint, and a person's deliberate write is
+        -- not a measurement the run can be right about. computeChangeSet
+        -- reports tags nowhere, so nothing written here waits on anybody.
+        -- One consequence is owned rather than hidden: the in_danger tag now
+        -- moves ahead of the metadata flag it mirrors while that flag is
+        -- held, and the Catalogue Check comparing the two leaves out a row
+        -- whose held proposal holds the flag itself.
+        tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
         location = CASE WHEN experiences.curated_fields ? 'location' OR ${HELD} THEN experiences.location ELSE EXCLUDED.location END,
         country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR ${HELD} THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
         country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR ${HELD} THEN experiences.country_names ELSE EXCLUDED.country_names END,

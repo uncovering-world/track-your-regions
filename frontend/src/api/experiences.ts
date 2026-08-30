@@ -157,7 +157,6 @@ export interface ExperienceDetail extends Experience {
   category_id: number;
   name_local: Record<string, string> | null;
   description: string | null;
-  tags: string[] | null;
   metadata: Record<string, unknown> | null;
   boundary_geojson: GeoJSON.Geometry | null;
   area_km2: number | null;

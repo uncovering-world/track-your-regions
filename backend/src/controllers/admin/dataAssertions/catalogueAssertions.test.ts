@@ -338,6 +338,18 @@ describe('the danger flag against its tag', () => {
     // `dangerList` here would make the assertion a second copy of the
     // importer's reading, which is the copy that would rot.
     expect(sql).toContain("e.tags ? 'in_danger'");
+    // And not while the flag itself is held: under a gate the run writes the tag
+    // past it and holds the flag, so the two are apart by design until the card
+    // is published (#570). The held *flag*, not the held row -- any held field
+    // sets the pointer, and every UNESCO row on the dev database carries one
+    // (criteria and a credit held on all 1272), so a bare pointer test would
+    // switch the check off for the whole category. The flag is named on its
+    // own, never inside the `metadata` catch-all, so only its own name is asked.
+    expect(sql).toContain("AND ch.sync_log_id = e.pending_change_sync_log_id");
+    expect(sql).toContain("AND (f->>'held')::boolean");
+    expect(sql).toContain("AND f->>'field' = 'metadata.inDanger')");
+    expect(sql).not.toContain("'metadata')");
+    expect(sql).not.toContain('AND e.pending_change_sync_log_id IS NULL');
     expect(sql).toContain("e.metadata->'inDanger' = 'true'::jsonb");
   });
 

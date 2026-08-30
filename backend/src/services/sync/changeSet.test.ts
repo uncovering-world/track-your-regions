@@ -391,14 +391,42 @@ describe('a metadata key the run computes about its own pass', () => {
     // `old` as well as `new`, because `publishHeldFields.ts` reads `old` as the
     // list of keys this entry speaks for: a counter named there would be wiped
     // back to the value the proposal was computed against the moment somebody
-    // published the website.
+    // published the website. `admittedFor` goes with the counters now (#570):
+    // derived from them, seen by nobody.
     expect(held.new).toEqual({
       wikidataQid: 'Q19675',
       website: 'https://www.louvre.fr/en',
-      admittedFor: { qid: 'Q12418', label: 'Mona Lisa' },
     });
     expect(held.old).not.toHaveProperty('artworkCount');
     expect(held.old).not.toHaveProperty('totalArtworkSitelinks');
+    expect(held.old).not.toHaveProperty('admittedFor');
+  });
+
+  it('asks nobody about the work that did the qualifying', () => {
+    // The admission rule re-runs every pass and files its own card if the museum
+    // stops qualifying; the name of the work that tipped it is not a decision.
+    const result = computeChangeSet(
+      museum(2363),
+      museum(2363, { admittedFor: { qid: 'Q45130', label: 'The Geographer' } }),
+      [], HELD,
+    );
+
+    expect(result.changeType).toBe('unchanged');
+    expect(result.heldFields).toEqual([]);
+  });
+
+  it('applies the same rule to a landmark\'s language-edition count', () => {
+    // Monument to Salavat Yulaev, as the landmark source stores it: the count is
+    // Wikidata's, moves with every translation anyone adds, and reaches no reader.
+    const landmark = (sitelinksCount: number) => snapshot({
+      name: 'Monument to Salavat Yulaev',
+      metadata: { wikidataQid: 'Q4304093', creator: 'Soslanbek Tavasiev', year: 1967, type: 'monument', sitelinksCount },
+    });
+
+    const result = computeChangeSet(landmark(14), landmark(15), [], HELD);
+
+    expect(result.changeType).toBe('unchanged');
+    expect(result.heldFields).toEqual([]);
   });
 
   it('raises no conflict when claimed, because the upsert writes it anyway', () => {
@@ -484,5 +512,38 @@ describe('the equality a curation card mirrors (#570)', () => {
     const incoming = snapshot({ metadata: { yearBuilt: 2003 } });
 
     expect(computeChangeSet(before, incoming, [], WROTE).changeType).toBe('updated');
+  });
+});
+
+/**
+ * Tags are the run's own labels, and no reader sees them (#570).
+ *
+ * The import derives them from facts it also stores by name, and no reader-facing
+ * read returns the column, so a card about them asked a person to decide something
+ * nobody could see the outcome of. Bamiyan's held card from run 68 carried
+ * `[] → ["criterion_i", …, "in_danger"]` beside a criteria row saying the same thing.
+ */
+describe('a tags change is not a change', () => {
+  const bamiyan = (tags: string[]) => snapshot({
+    name: 'Cultural Landscape and Archaeological Remains of the Bamiyan Valley',
+    tags,
+  });
+
+  it('raises no card, held or applied, when only the tags moved', () => {
+    const result = computeChangeSet(bamiyan([]), bamiyan(['criterion_i', 'criterion_ii', 'in_danger']), [], HELD);
+
+    expect(result.changeType).toBe('unchanged');
+    expect(result.heldFields).toEqual([]);
+    expect(result.changedFields).toEqual([]);
+  });
+
+  it('reports no conflict on a claimed value either, since nobody reads the outcome', () => {
+    // The upsert keeps the curator's tags -- a person's write is not a
+    // measurement -- and there is no decision to ask for: whichever value stands,
+    // no reader sees it.
+    const result = computeChangeSet(bamiyan(['in_danger']), bamiyan(['criterion_i']), ['tags'], WROTE);
+
+    expect(result.curatedConflicts).toEqual([]);
+    expect(result.changeType).toBe('unchanged');
   });
 });

@@ -668,3 +668,22 @@ describe('region membership a reader can see', () => {
     expect(params[2]).toBe(false);
   });
 });
+
+/**
+ * The tags column, and why the by-id read leaves it out (#570).
+ *
+ * The gate bypass in syncUtils.ts rests on "no reader-facing read returns the
+ * column". This read was the one that did, so the premise is pinned here rather
+ * than stated: a select that picked `e.tags` back up would hand an anonymous
+ * caller a value no curator looked at.
+ */
+describe('getExperience and the tags column', () => {
+  it('does not return tags, which is what lets a gated run write them unreviewed', async () => {
+    queueQueries([PUBLIC_WV_REGION]);
+
+    await getExperience({ params: { id: '281' } } as never, makeRes() as never);
+
+    const [sql] = mockedQuery.mock.calls[0];
+    expect(String(sql)).not.toMatch(/\be\.tags\b/);
+  });
+});
