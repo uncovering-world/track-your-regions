@@ -159,15 +159,23 @@ export interface KeptRow {
   new_lon: number;
   new_lat: number;
   external_ref: string | null;
+  /**
+   * Whether the gate kept the stored name — the arm's own guard, evaluated in
+   * its RETURNING on the row it locked (ADR-0037). The record takes it as given
+   * rather than re-deriving it, which is what keeps the two from disagreeing.
+   */
+  was_held: boolean;
 }
 
 /**
- * What the run rewrote about the points it kept.
+ * What the run rewrote about the points it kept, or was refused.
  *
  * A claimed column is reported rather than hidden: the guard kept the curator's
  * value, and `curatedConflict` is how the object's diff says exactly that — the
  * source proposed something and did not get it. A run that quietly dropped those
  * would leave a curator unable to see that their point is still being argued with.
+ * A held name is reported for the same reason with the other flag: nobody has
+ * looked, a verdict is waiting, and the value lives nowhere else.
  */
 export function keptChanges(rows: KeptRow[]): ContentItemChange[] {
   const out: ContentItemChange[] = [];
@@ -176,6 +184,7 @@ export function keptChanges(rows: KeptRow[]): ContentItemChange[] {
       { name: row.old_name, lon: Number(row.old_lon), lat: Number(row.old_lat) },
       { name: row.new_name, lon: Number(row.new_lon), lat: Number(row.new_lat) },
       row.old_curated_fields ?? [],
+      Boolean(row.was_held),
     );
     if (fields.length > 0) {
       // Named by what it was called before the run rewrote it, like every other

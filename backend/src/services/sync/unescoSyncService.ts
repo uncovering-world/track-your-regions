@@ -8,6 +8,7 @@
 import {
   writeExperienceLocations,
   type LocationWriteResult,
+  type LocationWriteRun,
 } from './locationWriter.js';
 import type { IncomingLocation } from './locationIncoming.js';
 import { upsertExperienceRecord } from './syncUtils.js';
@@ -418,7 +419,9 @@ async function upsertExperience(
   // that was never touched.
   let contents: ContentsByKind | undefined;
   if (!context.dryRun) {
-    const written = await upsertExperienceLocations(experienceId, exp);
+    const written = await upsertExperienceLocations(
+      experienceId, exp, { syncLogId: context.syncLogId },
+    );
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
@@ -453,6 +456,7 @@ async function upsertExperience(
 async function upsertExperienceLocations(
   experienceId: number,
   exp: ProcessedExperience,
+  run: LocationWriteRun,
 ): Promise<LocationWriteResult> {
   // Components when the site has them, the main point otherwise. The write
   // itself keeps every point that is still offered on its existing row — see
@@ -466,7 +470,7 @@ async function upsertExperienceLocations(
       }))
     : [{ name: null, externalRef: null, lon: exp.lon, lat: exp.lat }];
 
-  return writeExperienceLocations(experienceId, incoming);
+  return writeExperienceLocations(experienceId, incoming, run);
 }
 
 // =============================================================================
