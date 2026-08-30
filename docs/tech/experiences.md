@@ -421,9 +421,37 @@ museum holds, so under a gated source every move became a held proposal. Measure
 of the 15 held changes were `metadata`, and the Louvre's was in full
 `totalArtworkSitelinks: 2363 → 2365` — while the row itself still stored 2363, four runs later.
 One level down the same rule is already SQL: the treasures upsert writes `sitelinks_count`
-unconditionally, "a measurement, not a judgement". `admittedFor` is derived too and is
-deliberately not in the set — it names the most famous work a museum holds, which is the reason
-the row exists at all, and is worth a look when it changes.
+unconditionally, "a measurement, not a judgement".
+
+**The rule's general form** (#570, stated by the maintainer): *a person is asked only about what a
+reader can eventually see; what the import works out on the way there is not a question.* Two
+more keys and one column fall under it:
+
+- `sitelinksCount` on a landmark is the museums' fame sum one object up — how many Wikipedia
+  editions have an article, read off Wikidata, moving with every translation anyone adds — and
+  sixteen of its moves had reached curators' cards. In the set.
+- `admittedFor` was held out the first time as "the reason the row exists and worth a look when
+  it changes". It is the work with the most language links among the ones the pass placed —
+  derived from the counter above — no reader sees it, and the look it was kept for is already
+  taken by the admission rule, which re-runs against live data every pass and files a refusal
+  card the moment a museum stops qualifying. In the set.
+- `tags` are labels the import derives from facts it also stores by name (`criterion_ii` from the
+  criteria string, `in_danger` from the danger listing, `monument` from the landmark's type),
+  and no reader-facing read returns the column — the by-id read did, rendered by nothing, and
+  #570 took it out of the select so that the premise the gate bypass rests on is one a test can
+  check rather than a sentence. The upsert writes them past the gate (there is
+  nothing a reader can already see for the gate to protect — 3785 held rows in this database's
+  log restated the row beside them), the diff compares them nowhere, and the card never shows
+  them. Unlike the counters, a **claim** still holds them: a curator can set tags through the
+  edit endpoint, and a person's deliberate write is not a measurement. A claimed value the source
+  disagrees with is kept and not reported either — whichever value stands, no reader sees it.
+  `publishHeldFields` keeps its tags arm for the cards earlier runs filed. One consequence is
+  owned rather than hidden: the `in_danger` tag now moves ahead of the `metadata.inDanger` flag
+  it mirrors while that flag is held for a curator, so the Catalogue Check comparing the two
+  (`danger-flag-disagrees-with-its-tag`) leaves out a row whose held proposal holds the flag
+  itself — the window in which the two are apart by design, invisible to readers because the
+  badge follows the flag. The held flag and not the held row, since any held field sets the
+  pointer and every UNESCO row on the dev database carries one (`docs/tech/data-assertions.md`).
 
 ### What a run did to an object's contents ([ADR-0026](../decisions/0026-a-run-records-what-a-container-holds.md))
 
@@ -521,7 +549,7 @@ source are written invisible rather than withheld ([ADR-0025](../decisions/0025-
 but an experience row that is already published has no second row to hide an unreviewed value behind
 — so for that row alone the run keeps the stored content instead. The condition is
 `requires_curation AND experiences.curation_state <> 'pending'`, computed inside the upsert because it
-depends on the stored state the same statement is about to write, and it rides on every content column
+depends on the stored state the same statement is about to write, and it rides on every content column but `tags` (#570)
 beside that column's own `curated_fields` guard. A row still `pending` is *not* held: nobody can see
 it, so the run refreshes it in place and the curator reviews the newest state rather than whatever
 landed first.
@@ -763,7 +791,7 @@ path needs.
 
 **Three fields the importer asked for wrongly, and a dry run that found them.** Naming the fields in `select` turned the first into a 400 that said `Unknown field: criteria` — that field does not exist in `whc001` and never did, so `buildUnescoTags` produced no criterion tag for any site: measured on the live database, **0 of 1272**. The real name is `criteria_txt` (`(i)(ii)(iii)(iv)` for the Bamiyan Valley), present on 1256 of 1273 records. The other two were found by previewing the fix: `danger` and `transboundary` are compared against the number `1`, and the portal sends the **strings** `"True"` / `"False"` — from either endpoint. So `metadata.inDanger` was false for all 1272 sites, 58 of which are listed in danger, and not one of the 51 transboundary sites carried its tag. The `in_danger` tag survived only because `danger_list` is a string and was tested beside the flag. `isSet` now reads a yes in any of the shapes a portal might send it, rather than the one shape seen today.
 
-**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata` on 1255 (the criteria string), `metadata.inDanger` on 58, `shortDescription` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false for all three categories in the seed (`db/init/01-schema.sql`), and gating one is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string and the criterion tags — is what still needs a curator.
+**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata` on 1255 (the criteria string), `metadata.inDanger` on 58, `shortDescription` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false for all three categories in the seed (`db/init/01-schema.sql`), and gating one is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string — is what still needs a curator; the criterion tags filed beside it are no longer a question and no longer a row on the card (#570), though publishing such a card still writes them.
 
 **A site in danger, and since when.** The World Heritage list carries 58 sites inscribed on the [List of World Heritage in Danger](https://whc.unesco.org/en/danger/), and the catalogue stores that fact **twice**: as the `in_danger` tag and as `metadata.inDanger`, which is the field every badge keys on. The two came from different halves of the source — the tag from either of `danger` and `danger_list`, the flag from `danger` alone — so the reading bug above left the tag right on 58 rows and the flag false on all 1272, and the badge three surfaces draw appeared for nobody ([#600](https://github.com/uncovering-world/track-your-regions/issues/600)). Both writers ask one predicate now (`isInDanger`), so a portal that empties either field cannot end the answer in silence, and a delisted site is still not badged: the field's vocabulary is Y/N and the parser reads the answer rather than the field's presence — Belize Barrier Reef Reserve System, off the list since 2018, answers `danger: "False"` with `danger_list: null` (measured 2026-08-27, when the two fields agreed exactly on 58 of 1273 records).
 
@@ -1190,7 +1218,7 @@ Every read below except `/search` and `/categories` carries `optionalAuth`, beca
 | Method | Endpoint | Notes |
 |--------|----------|-------|
 | GET | `/api/experiences` | Filters: `categoryId`, `category`, `country`, `regionId`, `search`, `bbox`, `includeLost`, `limit`, `offset`. `bbox` matches a place the same caller may see, and the object's own coordinate only where it has none — the same set of places the position is drawn from (ADR-0028), so a box can no longer match an object on a coordinate the row does not answer with. What one coordinate per row still cannot promise is that the pin is *inside* the box: a serial site matched on one part is answered with the part nearest its anchor, which may be another one — four of the 47 objects an Alps-sized box holds, the Beech Forests among them, matched in the Alps and answered in the Carpathians. Drawing every part is [#558](https://github.com/uncovering-world/track-your-regions/issues/558). A box with `west > east` crosses the antimeridian and is matched as its two halves. Also excludes `pending` rows unconditionally — no `includeUnread` toggle exists |
-| GET | `/api/experiences/:id` | Full detail. 404s for a refused row — the class rule, not this row's exception: every read that describes an experience refuses one the category kept out, and every by-id read whose answer *is* the row answers 404 (see § Lifecycle filtering, which also says what shape the refusal takes where the answer is not the row). Also 404s a `pending` row, except for a curator/admin whose scope reaches the experience (`maySeeUnreadExperience()`) |
+| GET | `/api/experiences/:id` | Full detail — without `tags`, which nothing renders and which a gated run now writes unreviewed, a bypass that holds only while no reader-facing read returns them (#570; `experienceQueryController.test.ts` pins the select). 404s for a refused row — the class rule, not this row's exception: every read that describes an experience refuses one the category kept out, and every by-id read whose answer *is* the row answers 404 (see § Lifecycle filtering, which also says what shape the refusal takes where the answer is not the row). Also 404s a `pending` row, except for a curator/admin whose scope reaches the experience (`maySeeUnreadExperience()`) |
 | GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `includeLost`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility. Rows come back `ORDER BY e.name`, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id) FILTER (…)` over the same predicate the list uses — which includes the lifecycle rule, so it follows `includeLost` — and not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience. `lostHidden` reports how many the region holds that no longer exist and are **not** being shown — zero once `includeLost` is on, since nothing is hidden then, and it excludes `pending` rows too, or a row gated for both reasons would be counted as something the toggle would reveal. `pending` rows are excluded from both the list and the count unconditionally, for every caller including a curator: this is a *set*, not one of the three by-id reads the pending gate relaxes |
 | GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Supports `includeChildren` and `includeLost`, the latter because this batch has to follow the list: a row the list shows but this omits arrives with no markers and a confident `0/N in region`. Eliminates N+1 per-experience location fetches. Excludes a `pending` container or a `pending` location, unconditionally |
 | GET | `/api/experiences/search` | `q`, `limit`. Also excludes `pending` rows unconditionally |
@@ -1508,7 +1536,7 @@ the missing group, or the same row would appear twice under two contradictory fr
 Catholic cathedral — named by The Elevation of the Cross (24 sitelinks)`. It names internal
 tests, states no threshold, and never says where its numbers came from. `refusalReason.ts`
 splits it in two: a sentence for the card, and the reasoning — the threshold, what the counts
-are of, and the stored text verbatim — behind a question mark (`RuleHelp`). Every shape the
+are of, and the stored text verbatim — behind a question mark (`HelpHint`). Every shape the
 live catalogue holds is covered, and an unrecognised one falls through to the stored text
 rather than to a confident summary of a rule the file has not read. Two details are load-
 bearing. Twelve of the twenty-two refusals here weigh exactly one work, so the one-work case
@@ -2031,6 +2059,99 @@ answering everything in front of it.
 The page lives at `/review` (`frontend/src/components/curation/ReviewQueue.tsx`), reachable
 from the header for curators. That gate is convenience: every action it offers is checked
 server-side against the caller's scope.
+
+**A proposal is a table of facts** (#570). `factRows.ts` turns what the queue carries — `metadata`
+with an object on each side, `location`, `shortDescription` — into rows: one per fact that
+moved, each with its meaning from `fieldMeaning.tsx`, its kind (*new*, *changed*, *removed*)
+and the one sentence its fact has about the change. `FactTable.tsx` lays them out as *fact ·
+readers see · the run proposes* (a held card) or *fact · as curated · the source proposes · your
+answer* (a conflict card — "as curated" rather than "yours", since the value that stands may be
+another curator's, and the trail under it says whose), and `ProposalSummary` counts the rows by kind above the table, so a
+curator reads which question the card asks before a single row: on this catalogue 1272 held
+cards propose only facts arriving — the criteria, which no reader surface shows yet, and a
+picture credit, which readers will see under the picture. The line "nothing readers see
+changes" is said from the facts rather than from the kind of change: only where every row
+arrives *and* the vocabulary marks each arriving fact `unseen` (`UNSEEN_BY_READERS` in
+`fieldMeaning.tsx`, measured against what the expanded row, Discover's card and its detail
+panel read), since a picture or a description arriving is a fact appearing that readers see. The shape is the one the tools built for this decision converge on:
+Wikidata's Mismatch Finder lays a disagreement with an external database out as *property ·
+Wikidata value · external value · review status*, one row per property; OSMCha colours a
+changeset added / modified / deleted before a reviewer opens a feature; Wikimedia's visual diffs
+show a change as the reader would see it rather than as it is stored.
+
+The measurement behind it: `metadata` is the most frequently changed field in
+`experience_sync_changes` — 4314 entries, against 3785 for `tags` and 124 for every named
+`metadata.*` key together — and 2927 of those 4314 differ in exactly one key, none in more
+than three. Printed whole, the run-68 proposal on the Bamiyan Valley asked about eight named
+things on one side against six on the other; as rows it is three facts.
+
+What the table decides, rather than merely draws:
+
+- **Rows, not fields.** The storage grouping — "source data", then the keys under it — is gone.
+  A field with named parts becomes one row per part that moved (`changedKeys` in
+  `objectDiff.ts`; the keys that agree are not rows), and the rule is the *shape* rather than the
+  field's name: `nameLocal` is a language map with the same defect and gets the same rows, each
+  named as its language. The rows of one field stay contiguous and share its answer — a
+  conflict card's answer cell spans them — because `accept-source` takes a field and never a key
+  inside one. A value the vocabulary can say whole stays one row — the rule is a `render` on
+  the meaning, not a list of field names — so a coordinate is a place and not two numbers, and
+  a picture credit claimed per key is the photographer and the terms rather than `author` and
+  `license` rows carrying a definition written for neither. `tags` is never a row
+  (`NOT_A_QUESTION`): nothing on the site reads them, newer runs
+  do not file them, and publishing a card an older run filed still writes them — harmless for
+  the same reason they are not shown.
+- **`valuesEqual` is a second copy of `jsonEquals` from `changeSet.ts`, on purpose.** The server
+  decided the *field* changed; this decides which *keys* to show for it, and the two must answer
+  alike or the card contradicts the queue that raised it. Key order is not a difference (JSONB
+  does not keep it) and `null` against a missing key is not one either — which is what keeps the
+  17 log entries where `criteria` merely appeared as `null` off the screen. No runtime is shared
+  between them — the packages share no build (#527) — so nothing structural can hold them
+  together and the pin is behavioural, on both sides: `objectDiff.test.ts` states the properties
+  against the copy, `changeSet.test.ts` § "the equality a curation card mirrors" states the same
+  ones against `jsonEquals` through `computeChangeSet`. Relaxing either fails a test beside it,
+  which is what a prose invariant could not do; both were checked by injecting the drift they
+  exist for, and the pre-existing "ignores JSONB key order" case does **not** cover this — its
+  reordered keys are the major ones, compared per key, and its catch-all payload is a single key.
+  `isEmptyValue` beside it is deliberately wider — an empty list is nothing to a person, so a
+  row reads as *new* rather than *changed* — and kept apart, since the server's equality is not
+  the card's to loosen.
+- **A value is shown as readers see it.** Each meaning may carry a `render`: the In Danger badge
+  is the badge, with the year from the object's own listing (every queue kind now selects the
+  danger listing through `dangerSelectSql` and maps it with `withDangerFields`, so a card gets
+  `danger_since` exactly as the badge does); the criteria are chips with their meaning one hover
+  away (`utils/unescoCriteria.ts`); a credit is the photographer and the terms; a Q-number is
+  glossed and linked; a year of `-1848` is "1848 BC"; hectares carry m² or km² beside them;
+  nothing is a dash. Text a person wrote is compared word by word across the two columns. A
+  value the vocabulary cannot say is shown as stored, and the kind stripe says what happened —
+  the "shown as stored, not compared word by word" note is gone with the layout that needed it.
+- **The definition is on the term.** The fact's name carries a dotted underline and a tooltip on
+  hover and on keyboard focus — the idiom `RefusalLine` and `SourceId` already use — rather than
+  a question-mark button per row; `HelpHint` (once `RuleHelp`) keeps the button for the places
+  that explain a rule rather than a fact, and now says in its accessible name which.
+- **The sentence is one line and about this change.** Never the kind, which the row already
+  says. A fact whose change is an event in the world — the danger listing, a coordinate, the
+  countries, the Wikidata item, the UNESCO region, the inscription year — is marked `event` and
+  its sentence arrowed: "Listed since 2003 — readers see no badge today; publishing adds it",
+  "Moved 33.4 km north — may fall in a different region; check the pin", "Inscription years do not
+  change — check the source page". A changed country *name* reads the country *codes* row to
+  tell a spelling correction from a change of country, which is why a sentence sees the whole
+  proposal (`ChangeContext`). The year in the danger sentence and on the proposed badge comes
+  from the same place: `withDangerFields` dates a listing only on a row whose flag is true, so
+  on the one card where the year is most of the fact — a site just listed, flag about to turn
+  true — the object carries no year and `listedSince` reads it from the card's own
+  `metadata` row or `metadata.dangerList` row, which a new listing always changes with the
+  flag. A card carrying no year leaves it out rather than inventing one.
+- **Rows are grouped by subject, and the object is only the first.** A run records what moved
+  inside an object as well — a place of a serial site renamed, a work's attribution corrected
+  (ADR-0026, `contents.locations.changed[]` and `contents.treasures.changed[]`, the same field
+  shape one level down; on this database 32 cards carry work-field changes and 2 carry
+  place-field changes, e.g. `Château de Montésgur → Château de Montségur`). `FactTable` takes
+  `FactGroup[]`: the object's group has no heading, a part's group is headed by the part's name,
+  what tells it from its siblings, and `onOpen`. The queue does not yet surface a part's held
+  field changes on the held card — it lists only the counts of unread points and works — so
+  today only the object's group is fed; the follow-up is a read that selects `changed[]` entries
+  with held fields into the card and a group per part, opening through `PointPreviewDialog` for
+  a place and the works preview for a work until a part has an address of its own (#575).
 
 **The three gated kinds share one section and group by experience.**
 `frontend/src/components/curation/WaitingToPublish.tsx` renders "Waiting to be published" — one

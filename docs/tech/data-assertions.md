@@ -275,7 +275,21 @@ would rot — and it asks in **both** directions, because the halves fail
 differently: tagged with no flag is the danger-listed site showing nothing
 that `035-in-danger-flag.sql` repaired, while flagged with no tag tells a
 traveller a place is in peril on no evidence at all. It reports nothing today;
-the migration left the two agreeing on every row.
+the migration left the two agreeing on every row. One window is left out on
+purpose: a row whose held proposal holds the flag itself. Under a gated
+category the run writes `tags` past the gate — labels nothing renders, derived
+from facts the row stores by name (#570) — and holds the flag with the rest of
+the row, so a site the Committee has just listed carries the tag ahead of the
+flag until a curator publishes the card, and one just delisted the other way
+round. That is the two halves apart by design and invisible to readers, since
+the badge follows the flag; reporting it would fill the screen after every
+Committee session with rows the import did not break. The exclusion asks the
+changeset `pending_change_sync_log_id` points at whether it holds
+`metadata.inDanger`, not merely whether a pointer is set: any held field sets
+the pointer, and on the dev database every one of the 1272 UNESCO rows carries
+one (the criteria and a credit are held on all of them) while 58 hold the flag
+— a bare pointer test would have switched the check off for the whole category
+it was written for.
 
 The last is a licence obligation rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask
