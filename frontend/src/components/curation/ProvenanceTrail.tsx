@@ -33,7 +33,7 @@ export interface FieldProvenance {
 /**
  * A past answer's value, short enough for a line in the trail and marked where it is cut.
  *
- * Cut rather than dropped, and the difference from `FieldDiff` is the difference between
+ * Cut rather than dropped, and the difference from `FactTable` is the difference between
  * the two: there, both values are what the decision rests on and a hidden character can
  * change the answer, so nothing is cut. Here it is a line of history, and the question is
  * "what did they take" — the opening of it answers that, silence does not. Silence is also
@@ -48,24 +48,20 @@ function taken(value: string): string {
   return value.length <= 120 ? value : `${value.slice(0, 120).trimEnd()}…`;
 }
 
-/** What the source's proposal is worth reading against: whose text, and how old. */
-export function ProvenanceTrail({ field, runCompletedAt }: {
-  field: FieldProvenance;
-  runCompletedAt?: string | null;
-}) {
+/**
+ * What the source's proposal is worth reading against: whose text, and what was
+ * answered about it before. The run's date is not here — the card names it once, in
+ * the line above its table (`ProposalSummary`), rather than under every field.
+ */
+export function ProvenanceTrail({ field }: { field: FieldProvenance }) {
   const earlier = field.decidedBefore ?? [];
-  if (!field.claim && !runCompletedAt && earlier.length === 0) return null;
+  if (!field.claim && earlier.length === 0) return null;
 
   return (
     <Stack spacing={0.25} sx={{ mt: 0.5 }}>
       {field.claim && (
         <Typography variant="caption" color="text.secondary">
           Claimed by {field.claim.by} on {formatDateTime(field.claim.at)}
-        </Typography>
-      )}
-      {runCompletedAt && (
-        <Typography variant="caption" color="text.secondary">
-          Proposed by the run that finished {formatDateTime(runCompletedAt)}
         </Typography>
       )}
       {/* Every earlier answer, not a count of them: "answered twice before" tells a

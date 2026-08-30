@@ -40,8 +40,9 @@ import { plural } from '../../utils/plural';
 import { worldViewList } from '../../utils/worldViewList';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ItemHeader, messageFor } from './queueCard';
-import { FieldDiff } from './FieldDiff';
-import { fieldLabel } from './fieldLabel';
+import { FactTable, ProposalSummary } from './FactTable';
+import { rowsFor } from './factRows';
+import { fieldLabel } from './fieldMeaning';
 
 /** One experience, with whatever a gated run left open about it. */
 export interface GatedGroup {
@@ -102,6 +103,8 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   const queryClient = useQueryClient();
   const [showObject, setShowObject] = useState(false);
   const proposed = held?.proposed ?? [];
+  const context = { proposed, inDanger: item.in_danger, dangerSince: item.danger_since };
+  const rows = rowsFor(proposed, context);
   const points = count(contents?.pending_locations);
   const works = count(contents?.pending_treasures);
 
@@ -129,9 +132,13 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
     <Card variant="outlined">
       <CardContent>
         <ItemHeader item={item} />
-        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>
-          {runNote(group)}
-        </Typography>
+        {/* A held half names its run in the summary above its table; the line here is
+            for the cards that have no table — an arrival, or contents alone. */}
+        {!held && (
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>
+            {runNote(group)}
+          </Typography>
+        )}
 
         <Stack divider={<Divider flexItem />} spacing={1.5} sx={{ mb: 2 }}>
           {arrival && (
@@ -143,23 +150,40 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
             </GatedRow>
           )}
 
-          {proposed.length > 0 && (
+          {/* A card an earlier run filed with only the catalogue's own labels held —
+              tags, which are no longer a question and no longer a row — would
+              otherwise read "proposes nothing" over an empty table while its button
+              wrote them. None on this database today; the shape is real, and it
+              clears at the category's next run. */}
+          {proposed.length > 0 && rows.length === 0 && (
             <GatedRow label="fields">
-              <Typography variant="body2" sx={{ mb: 0.5 }}>
-                {plural(proposed.length, 'field')} held — {proposed.map(f => fieldLabel(f.field)).join(', ')}
+              <Typography variant="body2">
+                {held?.sync_log_id ? `Run ${held.sync_log_id}` : 'An earlier run'} proposed only the
+                catalogue’s own labels, which nothing readers see. Publishing writes them and asks
+                nothing of you.
               </Typography>
-              {/* The same comparison the conflict card makes, because it is the same
-                  decision: two versions of one text and a person choosing between them.
-                  The labels differ and are the caller's to give — here the left side is
-                  what readers are looking at right now, and no curator wrote it. */}
-              {proposed.map(field => (
-                <Box key={field.field} sx={{ mb: 0.5 }}>
-                  <FieldDiff
-                    field={field}
-                    labels={{ before: 'readers see', after: 'the run proposed' }}
-                  />
-                </Box>
-              ))}
+            </GatedRow>
+          )}
+
+          {rows.length > 0 && (
+            <GatedRow label="fields">
+              {/* What the run proposes, counted by kind, before a single row: the first
+                  thing a curator needs to know is whether a value readers see is being
+                  replaced or a fact is appearing where there was none, and on this
+                  catalogue the second is the whole batch (#570). */}
+              <ProposalSummary
+                lead={held?.sync_log_id ? `Run ${held.sync_log_id} proposes` : 'An earlier run proposes'}
+                rows={rows}
+              />
+              {/* The same table the conflict card draws, because it is the same
+                  decision: two versions of one fact and a person choosing between them.
+                  The column headings differ and are the caller's to give — here the left
+                  side is what readers are looking at right now, and no curator wrote it. */}
+              <FactTable
+                groups={[{ subject: { kind: 'object', label: item.name }, rows }]}
+                labels={{ before: 'readers see', after: 'the run proposes' }}
+                context={context}
+              />
               {/* Said here, where a curator is looking at wording they may not
                   want, because it is the one way to take the rest and refuse
                   this: publishing re-reads the claims under its own write lock
@@ -278,19 +302,15 @@ function publishBodyFor({ held, contents }: GatedGroup): PublishRequest {
 }
 
 /**
- * Which run put this in front of the curator.
+ * Which run put this in front of the curator, for the cards that have no table.
  *
- * Two different facts wearing one column name. A held card's run is the pointer
- * the publication is checked against; an arrival's is the run that first saw the
- * row, and nothing is checked against it — so the caption names it as first
- * sight rather than as a proposal, and a card that is only unread contents names
- * no run at all, because none of its rows carries one.
+ * An arrival's run is the one that first saw the row, and nothing is checked
+ * against it — so the caption names it as first sight rather than as a proposal
+ * — and a card that is only unread contents names no run at all, because none of
+ * its rows carries one. A held card's run is the pointer the publication is
+ * checked against, and the summary above its table names it (#570).
  */
-function runNote({ arrival, held }: GatedGroup): string {
-  // `sync_log_id` is optional on the type, and a held item should always
-  // carry one — but printing the literal word "undefined" for a row that
-  // somehow lacks it is worse than naming no run at all.
-  if (held) return held.sync_log_id === undefined ? 'Proposed by an earlier run' : `Proposed by run ${held.sync_log_id}`;
+function runNote({ arrival }: GatedGroup): string {
   if (arrival?.sync_log_id) return `First seen by run ${arrival.sync_log_id}`;
   return 'Arrived under this object';
 }

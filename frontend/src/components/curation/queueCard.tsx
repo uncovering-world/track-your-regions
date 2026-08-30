@@ -47,4 +47,4 @@ export function messageFor(item: { name: string }, error: unknown): string {
 // `describe()` lived here and cut every value at 120 characters. It is gone rather than
 // tightened: on Aksum it turned a decision between 200 characters of a curator's text and
 // 511 from the source into two ellipses, and the screen's whole purpose is to show what
-// the decision rests on. `FieldDiff` renders both values whole and marks the difference.
+// the decision rests on. `FactTable` renders both values whole and marks the difference.
