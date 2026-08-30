@@ -69,9 +69,52 @@ describe('pointChanges', () => {
 
     expect(changes.find(c => c.field === 'location')).toMatchObject({ curatedConflict: true });
     expect(changes.find(c => c.field === 'name')).toMatchObject({ curatedConflict: false });
-    // The gate holds a contents *row*, never a field of a row already stored
-    // (ADR-0025 § 3.1), so nothing here is ever waiting on a publication.
+    // Nothing held: the caller said the row was not under the gate.
     expect(changes.every(c => c.held === false)).toBe(true);
+  });
+
+  it('says the gate held a rename on a point readers can already see', () => {
+    // Château de Montésgur → Château de Montségur: a typo fix from the source
+    // that landed on a gated category without anyone looking (#717). Under
+    // ADR-0037 the writer keeps the stored name, and this is how it says so.
+    const before = { name: 'Château de Montésgur', lon: 1.83, lat: 42.88 };
+    const changes = pointChanges(before, { ...before, name: 'Château de Montségur' }, [], true);
+
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ field: 'name', held: true, curatedConflict: false });
+  });
+
+  it('lets a claim win over the hold, as the object diff does', () => {
+    // The claim is the narrower and separately answerable refusal: accept-source
+    // owns it, and publishing leaves a claimed field alone — so a field carrying
+    // both would raise two contradictory cards over one value (changeSet.ts).
+    const changes = pointChanges(
+      BOMA,
+      { name: 'Something else entirely', lon: BOMA.lon, lat: BOMA.lat + 0.02 },
+      ['location'],
+      true,
+    );
+
+    expect(changes.find(c => c.field === 'location')).toMatchObject({ curatedConflict: true, held: false });
+    expect(changes.find(c => c.field === 'name')).toMatchObject({ curatedConflict: false, held: true });
+  });
+
+  it('stamps the hold on the name alone, since the coordinate is written whatever the gate says', () => {
+    // The writer's guard covers `name`; the keeping arm adopts the source's
+    // coordinate regardless (ADR-0027 decision 4). A kept row is within the
+    // pairing's ten metres, but the pairing measures on the spheroid and this
+    // diff on a sphere, and the two disagree by up to 0.6 % — so a point kept at
+    // 9.95 m can still report a move here, and a `location` entry stamped held
+    // would be one publishing cannot write: a card no answer clears.
+    const changes = pointChanges(
+      BOMA,
+      { name: 'Something else entirely', lon: BOMA.lon, lat: BOMA.lat + 0.0001 },
+      [],
+      true,
+    );
+
+    expect(changes.find(c => c.field === 'name')).toMatchObject({ held: true });
+    expect(changes.find(c => c.field === 'location')).toMatchObject({ held: false, curatedConflict: false });
   });
 });
 
@@ -101,5 +144,28 @@ describe('workChanges', () => {
   it('treats an absent year the same whichever way it is absent', () => {
     expect(workChanges({ ...MONA, year: null }, { ...MONA, year: undefined as unknown as null }))
       .toEqual([]);
+  });
+
+  it('says the gate held a re-attribution on a work readers can already see', () => {
+    // The Wine Glass, Gemäldegalerie: Wikidata moved the attribution from
+    // Johannes Vermeer to an obscure namesake, and run 64 wrote it live under a
+    // gated category (#717). Held, the card asks; written, nobody was asked.
+    const glass = { ...MONA, name: 'The Wine Glass', artist: 'Johannes Vermeer', year: 1660 };
+    const changes = workChanges(
+      glass, { ...glass, artist: 'Jan Vermeer van Haarlem the Elder' }, [], true,
+    );
+
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ field: 'artist', significance: 'major', held: true });
+  });
+
+  it('holds every unclaimed field of a work at once, and none of the claimed ones', () => {
+    const changes = workChanges(
+      MONA, { ...MONA, artist: 'Workshop', year: 1506, imageUrl: null }, ['artist'], true,
+    );
+
+    expect(changes.find(c => c.field === 'artist')).toMatchObject({ curatedConflict: true, held: false });
+    expect(changes.find(c => c.field === 'year')).toMatchObject({ curatedConflict: false, held: true });
+    expect(changes.find(c => c.field === 'image_url')).toMatchObject({ curatedConflict: false, held: true });
   });
 });

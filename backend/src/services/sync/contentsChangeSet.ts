@@ -62,22 +62,53 @@ function plain(field: string, before: unknown, after: unknown,
 }
 
 /**
- * Mark the changes a curator's claim refused.
+ * Mark the changes a curator's claim refused, and the ones the gate held.
  *
  * The claim keys are the column names `experience_locations.curated_fields` and
  * `treasures.curated_fields` hold (ADR-0029), and the field names below are those
  * columns — so unlike the object's diff, which maps `imageUrl` to `image_url` and
- * `metadata.website` to `metadata`, there is nothing to translate here. `held` stays
- * false throughout: the gate holds contents by writing a *row* invisible rather than
- * by refusing a field on a row that already exists (ADR-0025 § 3.1), so a field
- * change on a stored point or work is never the thing waiting for a publication.
+ * `metadata.website` to `metadata`, there is nothing to translate here.
+ *
+ * `heldFields` is the writer's own answer about the row, not a rule re-applied here
+ * — the same arrangement `computeChangeSet` has with `syncUtils`: the hold is
+ * decided in SQL against the stored row as the write locked it, and the diff takes
+ * the answer as given. The gate holds a contents *row* by writing it invisible
+ * (ADR-0025 decision 5) and, since ADR-0037, holds a *field* of a row readers can
+ * already see exactly as it holds the object's own fields. The claim wins where
+ * both are true, for the reason `changeSet.ts` gives: the two are answered by
+ * different endpoints, and a field carrying both would raise two contradictory
+ * cards over one value.
+ *
+ * Stamped per field rather than per row, because the writers' guards are per
+ * column and the two do not always coincide — see `pointChanges`. A field marked
+ * held that the writer wrote is a proposal publishing cannot apply, and the card
+ * that carries it can never be cleared.
  */
-function underClaims(changes: FieldChange[], curatedFields: readonly string[]): FieldChange[] {
+function underClaims(
+  changes: FieldChange[], curatedFields: readonly string[], heldFields: ReadonlySet<string>,
+): FieldChange[] {
   const claimed = new Set(curatedFields);
   return changes.map(change => (claimed.has(change.field)
     ? { ...change, curatedConflict: true }
-    : change));
+    : { ...change, held: heldFields.has(change.field) }));
 }
+
+/**
+ * What the location writer's guard covers when the row is held: the name alone.
+ *
+ * The keeping arm adopts the source's coordinate whatever the gate says — a kept
+ * row is within the pairing's ten metres, the same point written more precisely
+ * (ADR-0027 decision 4). The pairing measures that on the spheroid (`ST_DWithin`
+ * on `geography`) and this diff on a sphere (`distanceMeters`), and the two can
+ * disagree by up to 0.6 %, so a point kept at 9.95 m can still report a move
+ * here; stamped held, that entry would be one publishing refuses to write.
+ */
+const POINT_HELD_FIELDS: ReadonlySet<string> = new Set(['name']);
+
+/** What the treasures upsert's guard covers: every field the diff reports. */
+const WORK_HELD_FIELDS: ReadonlySet<string> = new Set(['name', 'artist', 'year', 'image_url']);
+
+const NONE_HELD: ReadonlySet<string> = new Set();
 
 /**
  * What a run would change about one point it already holds.
@@ -87,11 +118,15 @@ function underClaims(changes: FieldChange[], curatedFields: readonly string[]): 
  * kilometre is a traveller in the wrong place. A rename is minor — a component that
  * became a *different* place arrives with a different reference, which is a new row
  * and not a change to this one.
+ *
+ * `held` is whether the writer kept the stored values because the row is visible
+ * under a gated source (ADR-0037); the writer knows, this does not.
  */
 export function pointChanges(
   before: PointSnapshot,
   after: PointSnapshot,
   curatedFields: readonly string[] = [],
+  held = false,
 ): FieldChange[] {
   const changes: FieldChange[] = [];
 
@@ -119,7 +154,7 @@ export function pointChanges(
     ));
   }
 
-  return underClaims(changes, curatedFields);
+  return underClaims(changes, curatedFields, held ? POINT_HELD_FIELDS : NONE_HELD);
 }
 
 /**
@@ -129,11 +164,14 @@ export function pointChanges(
  * around: a work whose attribution changed is a different reason to stand in front
  * of it. A title is usually a translation settling down, and a year and a
  * photograph are description.
+ *
+ * `held` as on `pointChanges`: the writer's answer about the row, taken as given.
  */
 export function workChanges(
   before: WorkSnapshot,
   after: WorkSnapshot,
   curatedFields: readonly string[] = [],
+  held = false,
 ): FieldChange[] {
   const changes: FieldChange[] = [];
 
@@ -150,5 +188,5 @@ export function workChanges(
     changes.push(plain('image_url', before.imageUrl, after.imageUrl, 'minor'));
   }
 
-  return underClaims(changes, curatedFields);
+  return underClaims(changes, curatedFields, held ? WORK_HELD_FIELDS : NONE_HELD);
 }
