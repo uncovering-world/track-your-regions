@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { publishOutcomeFor } from './WaitingToPublish';
+import { publishOutcomeFor } from './publishOutcome';
 import type { PublishResult } from '../../api/experiences';
 
 function result(over: Partial<PublishResult> = {}): PublishResult {

@@ -24,26 +24,20 @@ import { useState } from 'react';
 import {
   Box, Typography, Card, CardContent, Button, Stack, Divider,
 } from '@mui/material';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  fetchExperience,
   publishExperience,
   type HeldPart,
   type PublishRequest,
-  type PublishResult,
   type ReviewQueueItem,
-  type ImageCredit,
 } from '../../api/experiences';
-import { LoadingSpinner } from '../shared/LoadingSpinner';
-import { ImageCreditLine } from '../shared/ImageCreditLine';
-import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
-import { worldViewList } from '../../utils/worldViewList';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
 import { partGroups, rowsFor } from './factRows';
-import { fieldLabel } from './fieldMeaning';
+import { ObjectPreview } from './ObjectPreview';
+import { publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
 
 /** One experience, with whatever a gated run left open about it. */
@@ -415,171 +409,3 @@ function holdingNote(group: GatedGroup): string {
   }
   return 'The object itself is already visible; publishing releases only what has arrived under it.';
 }
-
-/**
- * The object as a curator may see it, which is the only reason it can be seen.
- *
- * An arrival is absent from every list, count and map — the gate is absolute
- * there — and a by-id read is the one place it answers, relaxed for a curator
- * exactly so this card can be followed through to the thing it is asking about.
- * Without it the card names an object and offers no way to judge it, which is
- * the dead end this whole section exists to remove.
- *
- * Exported for its test: the promise below is about what survives a *rerender*
- * with a different id, which no caller can observe and no assertion about
- * `GatedCard` reaches without driving a mutation first.
- */
-export function ObjectPreview({ experienceId }: { experienceId: number }) {
-  // Which picture failed, not that one did. `GatedCard` is mounted unkeyed from
-  // `ReviewBench`, and `showObject` survives moving between two waiting rows, so
-  // a new `experienceId` reconciles into this same instance — a flag would carry
-  // one object's refusal onto the next and hide a picture that is there. Same
-  // finding as `ObjectContext`, same shape, second site.
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['experience', experienceId],
-    queryFn: () => fetchExperience(experienceId),
-  });
-
-  if (isLoading) return <LoadingSpinner size={20} padding={2} />;
-  if (isError || !data) {
-    return (
-      <Typography variant="body2" color="error" sx={{ mt: 2 }}>
-        Could not open the object{error instanceof Error ? `: ${error.message}` : '.'}
-      </Typography>
-    );
-  }
-
-  const source = extractImageUrl(data.image_url);
-  // A failure is ordinary here rather than exceptional: this preview draws from
-  // the same catalogue the queue does, whose URLs largely answer 403 (#557), and
-  // a credit beside a picture that did not arrive names a photographer for
-  // nothing.
-  const url = source ? toThumbnailUrl(source, 250) : null;
-  const image = url && url !== failedUrl ? url : null;
-  // Already in hand: `GET /experiences/:id` returns `metadata` whole, so the
-  // credit was reaching this preview and simply not being drawn.
-  const credit = (data.metadata?.imageCredit ?? null) as ImageCredit | null;
-  return (
-    <Stack direction="row" spacing={2} sx={{ mt: 2 }} alignItems="flex-start">
-      {image && (
-        <Box sx={{ width: 120, flexShrink: 0 }}>
-          <Box
-            component="img"
-            src={image}
-            alt={data.name}
-            sx={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 1 }}
-            onError={() => setFailedUrl(image)}
-          />
-          <ImageCreditLine credit={credit} />
-        </Box>
-      )}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body2" sx={{ mb: 0.5 }}>
-          {data.description || data.short_description || 'No description on the object.'}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" display="block">
-          {data.latitude.toFixed(4)}, {data.longitude.toFixed(4)}
-          {data.country_names?.length > 0 ? ` — ${data.country_names.join(', ')}` : ''}
-        </Typography>
-        {/* `fetchExperience` (`GET /api/experiences/:id`) carries no
-            `location_count` at all — that column exists only on the region
-            list's own query (`buildRegionQueries`) — so a count here would
-            read zero regardless of the object's real contents. A true
-            sentence beats a number that is always wrong; #524 tracks the read
-            that would list this object's points and works properly. */}
-        <Typography variant="caption" color="text.secondary" display="block">
-          Its points and works are not listed on this preview.
-        </Typography>
-      </Box>
-    </Stack>
-  );
-}
-
-/**
- * What the publication did to the object's parts, one clause per part.
- *
- * Each part written to is named as the card's group named it, with its fields in
- * the same words (ADR-0037) and the ones left as the curator wrote them, singular
- * where there is one. A part the proposal named that the source has since
- * withdrawn is said rather than dropped: nothing was written and nothing readers
- * see changed, and a line that omitted it would read as though it had been.
- */
-function partOutcomes(data: PublishResult): string[] {
-  const said: string[] = [];
-  for (const part of data.appliedParts ?? []) {
-    const clauses: string[] = [];
-    if (part.fields.length > 0) clauses.push(`${part.fields.map(fieldLabel).join(', ')} applied`);
-    if (part.claimedFieldsSkipped.length > 0) {
-      const them = part.claimedFieldsSkipped.length === 1 ? 'it' : 'them';
-      clauses.push(`${part.claimedFieldsSkipped.map(fieldLabel).join(', ')} left as you wrote ${them}`);
-    }
-    if (clauses.length > 0) said.push(`${part.name}: ${clauses.join(', ')}`);
-  }
-  for (const part of data.partsNotFound ?? []) {
-    said.push(`${part.name} is no longer offered, so nothing was written to it`);
-  }
-  return said;
-}
-
-/**
- * What the publication did, in one sentence, plus a second when it went wrong
- * halfway.
- *
- * `withdrawalsReleased` and `placementFailed` are the two the response carries
- * that nothing would otherwise say: a point the source replaced stops being
- * shown at this moment and nowhere else records when, and a publication that
- * landed while re-placing the object failed is a success with stale regions —
- * which must not read as an unqualified one.
- */
-export function publishOutcomeFor(
-  item: { name: string }, data?: PublishResult,
-): string | undefined {
-  if (!data) return undefined;
-  const parts: string[] = [];
-  // Field names in the reader's words here too — this line answers the same card whose
-  // rows are labelled through `fieldLabel`.
-  if (data.appliedFields.length > 0) {
-    parts.push(`${data.appliedFields.map(fieldLabel).join(', ')} applied`);
-  }
-  if (data.claimedFieldsSkipped.length > 0) {
-    parts.push(`${data.claimedFieldsSkipped.map(fieldLabel).join(', ')} left as you wrote them`);
-  }
-  parts.push(...partOutcomes(data));
-  const released: string[] = [];
-  if (data.locationsPublished > 0) released.push(plural(data.locationsPublished, 'point'));
-  // The same works counted from two axes — the link says a work has been passed
-  // *here*, the work says it has been passed at all — so this is one number for
-  // a curator, not two.
-  const worksPublished = Math.max(data.treasureLinksPublished, data.treasuresPublished);
-  if (worksPublished > 0) released.push(plural(worksPublished, 'work'));
-  if (released.length > 0) parts.push(`${released.join(' and ')} now visible`);
-  if (data.withdrawalsReleased > 0) {
-    parts.push(`${plural(data.withdrawalsReleased, 'replaced point')} no longer shown`);
-  }
-  if (parts.length === 0) parts.push('published');
-
-  const outcome = `${item.name}: ${parts.join('; ')}.`;
-  if (!data.placementFailed) return outcome;
-  // Named, and addressed to someone who cannot fix it. Re-assigning regions is
-  // admin-only end to end, and this page's ordinary reader is a region- or
-  // category-scoped curator — so the actionable step is to hand an admin the
-  // object and the world views, which means the sentence has to contain them.
-  // Ids come along with the names because that is what an admin works from.
-  // Bent by what the same sentence just printed, and keyed on a *named* world view
-  // rather than on the array's length: `worldViewList` joins several — one failure per
-  // world view is its ordinary shape — and the two shapes that name none are `[]` and
-  // the single `{id: null}` the server sends when listing the world views is itself what
-  // failed, which renders "every world view — they could not even be listed". Counting
-  // that one as length 1 put "that world view" under a plural sentence, in the line
-  // written to be handed to an admin word for word.
-  const failed = data.placementFailedWorldViews;
-  const failedOne = failed?.length === 1 && failed[0].id !== null;
-  return `${outcome} Its regions were not recomputed in ${worldViewList(data.placementFailedWorldViews)} — only an admin can `
-    + `run a re-assignment, so tell one this object and ${failedOne ? 'that world view' : 'those world views'}; `
-    // Counted rather than left singular: one publish can release several withdrawals — the
-    // same number this sentence has already printed as "no longer shown" — and placement is
-    // reached only when at least one was, so there is always a number to give.
-    + `until then it is placed by ${plural(data.withdrawalsReleased, 'point')} it no longer has.`;
-}
-
