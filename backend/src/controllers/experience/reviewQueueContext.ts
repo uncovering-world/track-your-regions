@@ -10,6 +10,7 @@
  */
 
 import { offeredLocationSql } from './experienceLifecycle.js';
+import { dangerSelectSql } from './experienceDanger.js';
 
 /**
  * How many items a queue page holds by default.
@@ -37,6 +38,12 @@ export const QUEUE_PAGE_SIZE = 25;
  */
 export function objectContextSelectSql(alias = 'e'): string {
   return `${alias}.image_url,
+          -- The danger listing, raw, through the same fragment the reader-facing
+          -- reads use, so withDangerFields can turn it into "since 2003" for
+          -- the card exactly as it does for the badge. A card proposing
+          -- inDanger false -> true on Bamiyan is about a site listed since
+          -- 2003; without the year it reads as this year's news (#570).
+          ${dangerSelectSql(alias)},
           -- With the picture rather than after it: a curator's screen is where the
           -- catalogue is being worked on rather than published, and a licence
           -- naming its photographer does not stop asking because the audience is

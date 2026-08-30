@@ -880,3 +880,52 @@ describe('getReviewQueue', () => {
     });
   });
 });
+
+/**
+ * The danger listing travels with every card, in the shape readers get it (#570).
+ */
+describe('the object fragment carries the danger listing', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValue({ rows: [] });
+  });
+
+  it('selects it through the reader-facing fragment on every kind', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // One fragment, so a card cannot say less about a site's listing than the
+    // badge does. Every kind, named: a kind that composed its own select would
+    // otherwise pass on the strength of its neighbours.
+    for (const marker of [
+      "'missing' AS kind", "'refused' AS kind", "'kept-out' AS kind", "'conflict' AS kind",
+      "'arrival' AS kind", "'held' AS kind", "'contents' AS kind",
+      "'withdrawn' AS kind", "'withdrawn-answered' AS kind",
+    ]) {
+      const call = mockedQuery.mock.calls.find(([sql]) => String(sql).includes(marker));
+      expect(call, `no query for ${marker}`).toBeDefined();
+      expect(String(call![0])).toContain("metadata->>'dangerList' as danger_list");
+    }
+  });
+
+  it('hands the card a year, not the raw "Y 2003"', async () => {
+    const res = makeRes();
+    // The raw columns come back only from a statement that selected them, so a
+    // fragment that dropped the listing fails here as well as above — the
+    // mapping cannot be proved on columns the query never asked for.
+    mockedQuery.mockImplementation(async (sql: string) => (
+      String(sql).includes("'kept-out' AS kind") && String(sql).includes("as danger_list")
+        ? { rows: [{ id: 208, name: 'Bamiyan Valley', in_danger: 'true', danger_list: 'Y 2003' }] }
+        : { rows: [] }
+    ));
+
+    await getReviewQueue({ user: ADMIN, query: {} } as never, res as never);
+
+    // A card proposing `inDanger: false -> true` on this site is about a listing
+    // that began in 2003, and only the year lets it say so.
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      keptOut: [expect.objectContaining({ name: 'Bamiyan Valley', in_danger: true, danger_since: 2003 })],
+    }));
+    const [[payload]] = res.json.mock.calls;
+    expect(payload.keptOut[0]).not.toHaveProperty('danger_list');
+  });
+});

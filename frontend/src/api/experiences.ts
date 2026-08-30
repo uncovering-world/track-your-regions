@@ -447,6 +447,13 @@ export interface ReviewQueueItem {
   website_url?: string | null;
   wikipedia_url?: string | null;
   region_names?: string[] | null;
+  /**
+   * The danger listing as the reader-facing reads carry it, so a card about
+   * `inDanger` can say "listed since 2003" rather than reading as this year's
+   * news. Through `withDangerFields` on every kind, like the rest of the object.
+   */
+  in_danger?: boolean;
+  danger_since?: number | null;
   /** Why this category turned the row down, in the rule's own words. Refused items only. */
   admission_reason?: string | null;
   /** When a curator answered. Kept-out items only. */
