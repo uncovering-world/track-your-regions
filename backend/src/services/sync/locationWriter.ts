@@ -94,6 +94,7 @@
 import { pool } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
+import { pointHeldProposalAt } from './heldProposalPointer.js';
 import type { ContentsDelta } from './types.js';
 // The source's list, before anything is known about the store: how it becomes a
 // CTE, how its values bind, and the duplicates the source itself ships.
@@ -135,6 +136,17 @@ export interface LocationWriteResult {
 }
 
 /**
+ * The run this write belongs to, for the pointer a held field needs.
+ *
+ * Required rather than defaulted: a caller that left it out would hold a
+ * visible point's name and never point the object at the run that held it —
+ * a proposal recorded in the changeset with no card able to find it.
+ */
+export interface LocationWriteRun {
+  syncLogId: number | null;
+}
+
+/**
  * Make `experience_locations` for one experience match `incoming`, keeping the
  * row — and the id — of every point that is still offered.
  *
@@ -144,9 +156,36 @@ export interface LocationWriteResult {
 export async function writeExperienceLocations(
   experienceId: number,
   offered: IncomingLocation[],
+  run: LocationWriteRun,
 ): Promise<LocationWriteResult> {
   const incoming = dedupeByIdentity(offered);
   const cte = incomingCte(incoming.length);
+
+  /**
+   * The hold, as one SQL expression over the stored row: a gated source may not
+   * overwrite what a reader can already see (ADR-0025 decision 5), and since
+   * ADR-0037 that covers a point's name as it covers the object's own columns.
+   * A row still `pending` has nothing to protect and keeps being refreshed in
+   * place, so the curator reviews the newest state rather than whatever
+   * arrived first.
+   *
+   * The gate is read through the experience, exactly as the insert arm reads
+   * it: this writer has an experience id and no category id, and a parameter
+   * would be a second source of truth that could disagree with the column
+   * between the check and the write. Evaluated inside the keeping arm on the
+   * row it locked, and again in that arm's RETURNING, so the report cannot
+   * disagree with the write about whether the write happened (`heldSql` in
+   * syncUtils.ts, and the reason it answers for itself: #519).
+   *
+   * One column only. `location` is deliberately outside it: a kept row is
+   * within ten metres of the source's point, which is the same place written
+   * more precisely (ADR-0027 decision 4) and nothing a reader can see — and a
+   * claimed coordinate is the claim's to refuse, never the gate's.
+   */
+  const heldPoint = `((SELECT c.requires_curation
+                        FROM experiences e JOIN experience_categories c ON c.id = e.category_id
+                       WHERE e.id = $1)
+                     AND el.curation_state <> 'pending')`;
 
   /**
    * One stored row per incoming point, and one incoming point per stored row.
@@ -359,7 +398,12 @@ export async function writeExperienceLocations(
       `WITH ${cte}
        UPDATE experience_locations el
        SET ordinal = i.ordinal, external_ref = i.external_ref,
-           name = ${claimed('name')} THEN el.name ELSE i.name END,
+           -- Behind the claim and behind the gate, like the object's own name.
+           -- A held name fails the fast path's matched term on every run until
+           -- a curator answers, so the object takes this path per run while it
+           -- is held -- the cost ADR-0029 decision 5 already accepts for a claimed
+           -- point, and the same re-proposal the object's own held field makes.
+           name = ${claimed('name')} OR ${heldPoint} THEN el.name ELSE i.name END,
            source_membership = 'present',
            -- The coordinate the source is offering, on the runs that reach this arm.
            -- The source's value is the more precise of the two by construction — it is
@@ -393,7 +437,10 @@ export async function writeExperienceLocations(
        RETURNING el.id, p.metres,
                  p.old_name, p.old_lon, p.old_lat, p.old_curated_fields,
                  i.name AS new_name, i.lon AS new_lon, i.lat AS new_lat,
-                 el.external_ref`,
+                 el.external_ref,
+                 -- The guard's own expression, so the record cannot disagree
+                 -- with the write about whether the name was written.
+                 ${heldPoint} AS was_held`,
       params,
     );
 
@@ -740,6 +787,20 @@ export async function writeExperienceLocations(
     // as the insert that caused it: the two are one fact about the object.
     if (inserted.rows.length > 0) await retirePassAfterNewContent(client, experienceId);
 
+    // What the run rewrote about points it kept, or was refused. Computed from the
+    // values the pairing carried in, since the arm above has already replaced
+    // them: a point that moved 1.2 km and one whose name gained an en dash both
+    // reach here, and only the first survives `contentsChangeSet`'s normalisation.
+    const changed = keptChanges(kept.rows);
+
+    // A held name is a proposal a curator has to be able to find, and the card
+    // finds it through the object's pointer (ADR-0037). In the same transaction
+    // as the hold, so no run can land between the two: a hold recorded with no
+    // pointer is a proposal no screen can reach.
+    if (changed.some(entry => entry.fields.some(field => field.held))) {
+      await pointHeldProposalAt(client, experienceId, run.syncLogId);
+    }
+
     await client.query('COMMIT');
 
     // The keeping arm splits on whether the coordinate actually moved, which is what
@@ -782,11 +843,7 @@ export async function writeExperienceLocations(
         added: named(inserted.rows),
         withdrawn: named(marked.rows),
         returned: named(returned.rows),
-        // What the run rewrote about points it kept. Computed from the values the
-        // pairing carried in, since the arm above has already replaced them: a
-        // point that moved 1.2 km and one whose name gained an en dash both reach
-        // here, and only the first survives `contentsChangeSet`'s normalisation.
-        changed: keptChanges(kept.rows),
+        changed,
       },
     };
   } catch (err) {

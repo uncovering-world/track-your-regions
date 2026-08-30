@@ -303,7 +303,9 @@ async function upsertMuseumExperience(
       [experienceId],
     );
 
-    const written = await upsertSingleLocation(experienceId, museum.qid, details.lon!, details.lat!);
+    const written = await upsertSingleLocation(
+      experienceId, museum.qid, details.lon!, details.lat!, { syncLogId: context.syncLogId },
+    );
     // Registered here rather than returned: `upsertMuseumTreasures` runs after
     // this and can throw, and a returned field would be lost with it while the
     // point had already moved on disk.

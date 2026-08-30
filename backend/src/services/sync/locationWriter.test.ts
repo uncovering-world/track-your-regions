@@ -17,13 +17,25 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { writeExperienceLocations } from './locationWriter.js';
+import { writeExperienceLocations as write } from './locationWriter.js';
 import { dedupeByIdentity } from './locationIncoming.js';
 import { LOCATION_UNCHANGED_METERS } from './changeSet.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
+import type { IncomingLocation } from './locationIncoming.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
+
+/**
+ * A run that can name itself, which is what every test here stands in for
+ * unless it says otherwise. Named rather than defaulted, because the production
+ * signature takes the run with no default at all: a writer that forgot it would
+ * hold a field and never point the object at the run that held it.
+ */
+const RUN: { syncLogId: number | null } = { syncLogId: 42 };
+const writeExperienceLocations = (
+  experienceId: number, offered: IncomingLocation[], run = RUN,
+) => write(experienceId, offered, run);
 
 const A = { name: 'A', externalRef: 'r1', lon: 10, lat: 20 };
 const B = { name: 'B', externalRef: 'r2', lon: 11, lat: 21 };
@@ -483,10 +495,13 @@ describe('a new point arrives stamped', () => {
     expect(kept).toBeDefined();
     expect(marked).toBeDefined();
     expect(held).toBeDefined();
-    expect(returned).not.toMatch(/curation_state/);
-    expect(kept).not.toMatch(/curation_state/);
-    expect(marked).not.toMatch(/curation_state/);
-    expect(held).not.toMatch(/curation_state/);
+    // "Touch" means assign. The keeping arm *reads* the column since ADR-0037 —
+    // a visible row is what its name guard is about — and reading it is not
+    // deciding it.
+    expect(returned).not.toMatch(/curation_state\s*=/);
+    expect(kept).not.toMatch(/curation_state\s*=/);
+    expect(marked).not.toMatch(/curation_state\s*=/);
+    expect(held).not.toMatch(/curation_state\s*=/);
   });
 
   it('retires the venue pass when it actually gained a point', async () => {
@@ -1233,7 +1248,9 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
       const sql = setOf(String(statements.find(s => (arm === KEEP
         ? KEEP.test(s) && !RESURRECT.test(s)
         : RESURRECT.test(s)))));
-      expect(sql).toContain("CASE WHEN el.curated_fields ? 'name' THEN el.name");
+      // The claim opens the CASE on both arms; the keeping arm carries the gate's
+      // term after it (ADR-0037), which the describe block at the foot pins.
+      expect(sql).toMatch(/CASE WHEN el\.curated_fields \? 'name'[\s\S]*?THEN el\.name/);
       expect(sql).toContain("CASE WHEN el.curated_fields ? 'location' THEN el.location");
     }
 
@@ -1394,5 +1411,89 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     // or a point the pairing kept is inserted a second time beside the row it updated.
     expect(String(statements.find(s => INSERT.test(s))))
       .toContain('NOT EXISTS (SELECT 1 FROM paired_rows p WHERE p.ordinal = i.ordinal)');
+  });
+});
+
+/**
+ * A gated source may not overwrite what a reader can already see, and since
+ * ADR-0037 that covers a field of a point as it has always covered a field of
+ * the object: a visible component's name keeps its stored value, the diff says
+ * the gate held it, and the object is pointed at the run so the curator's card
+ * can find the proposal. Measured before this existed: 73 part-field changes
+ * had been written live under gated categories, two of them renames of a place
+ * (#717).
+ */
+describe('a visible point under a gated source', () => {
+  /** The keeping arm's row for Château de Montésgur, whose name the source corrected. */
+  const MONTSEGUR = {
+    id: 7, metres: 0,
+    old_name: 'Château de Montésgur', old_lon: 1.83, old_lat: 42.88, old_curated_fields: [],
+    new_name: 'Château de Montségur', new_lon: 1.83, new_lat: 42.88,
+    external_ref: '1755-004',
+  };
+  const held = (row: typeof MONTSEGUR, wasHeld: boolean) => ({ ...row, was_held: wasHeld });
+  const POINTER = /SET pending_change_sync_log_id/;
+
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedConnect.mockReset();
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+  });
+
+  it('keeps the stored name where the row is visible and the source is gated', async () => {
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    const kept = String(statements.find(s => KEEP.test(s) && !RESURRECT.test(s)));
+    // The same guard the object's upsert puts on its columns: the claim, or the
+    // gate over a row a reader can see — read through the experience, as the
+    // insert arm reads the gate, so the two cannot disagree.
+    expect(kept).toMatch(/name = CASE WHEN el\.curated_fields \? 'name'\s+OR \(\(SELECT c\.requires_curation[\s\S]*el\.curation_state <> 'pending'\)\s+THEN el\.name ELSE i\.name END/);
+    // The guard's own expression answers for the report, on the row the
+    // statement locked — the arrangement that keeps the write and the record
+    // from disagreeing about one run (syncUtils.ts, #519).
+    expect(kept).toMatch(/RETURNING[\s\S]*AS was_held/);
+    // The coordinate is not behind the hold: a kept row is within ten metres of
+    // the source's point, the same place written more precisely (ADR-0027).
+    expect(kept).toMatch(/location = CASE WHEN el\.curated_fields \? 'location' THEN el\.location\s+ELSE ST_SetSRID/);
+  });
+
+  it('reports the rename as held, and points the object at the run inside the transaction', async () => {
+    const { client, statements } = fakeClient([[KEEP, { rows: [held(MONTSEGUR, true)] }]]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [A]);
+
+    expect(result.delta.changed).toEqual([{
+      item: { name: 'Château de Montésgur', ref: '1755-004' },
+      fields: [expect.objectContaining({ field: 'name', held: true, curatedConflict: false })],
+    }]);
+    const pointer = only(statements, POINTER);
+    expect(pointer).toMatch(/curation_state <> 'pending'/);
+    expect(statements.indexOf(pointer)).toBeLessThan(statements.indexOf('COMMIT'));
+    expect(client.query).toHaveBeenCalledWith(pointer, [1, 42]);
+  });
+
+  it('points at nothing when the rename was written', async () => {
+    const { client, statements } = fakeClient([[KEEP, { rows: [held(MONTSEGUR, false)] }]]);
+    mockedConnect.mockResolvedValue(client);
+
+    const result = await writeExperienceLocations(1, [A]);
+
+    expect(result.delta.changed[0].fields[0]).toMatchObject({ field: 'name', held: false });
+    expect(statements.filter(s => POINTER.test(s))).toEqual([]);
+  });
+
+  it('points at nothing for a run that cannot name itself', async () => {
+    const { client, statements } = fakeClient([[KEEP, { rows: [held(MONTSEGUR, true)] }]]);
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A], { syncLogId: null });
+
+    // The proposal is still recorded as held; only the pointer is withheld,
+    // because NULL there means "nothing is held" and would be a lie.
+    expect(statements.filter(s => POINTER.test(s))).toEqual([]);
   });
 });

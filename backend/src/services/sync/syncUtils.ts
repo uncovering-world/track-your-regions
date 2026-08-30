@@ -7,7 +7,9 @@
 import { eq } from 'drizzle-orm';
 import { pool, db } from '../../db/index.js';
 import { experienceSyncLogs, experienceCategories } from '../../db/schema.js';
-import { writeExperienceLocations, type LocationWriteResult } from './locationWriter.js';
+import {
+  writeExperienceLocations, type LocationWriteResult, type LocationWriteRun,
+} from './locationWriter.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
   computeChangeSet, METADATA_CLAIM_PREFIX, SYNC_OWNED_METADATA_KEYS,
@@ -491,10 +493,11 @@ export async function upsertSingleLocation(
   externalRef: string,
   lon: number,
   lat: number,
+  run: LocationWriteRun,
 ): Promise<LocationWriteResult> {
   return writeExperienceLocations(experienceId, [
     { name: null, externalRef, lon, lat },
-  ]);
+  ], run);
 }
 
 // =============================================================================
