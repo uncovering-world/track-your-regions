@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { publishOutcomeFor } from './publishOutcome';
+import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
 import type { PublishResult } from '../../api/experiences';
 
 function result(over: Partial<PublishResult> = {}): PublishResult {
@@ -19,6 +19,7 @@ function result(over: Partial<PublishResult> = {}): PublishResult {
     claimedFieldsSkipped: [],
     appliedParts: [],
     fromSyncLogId: null,
+    heldLeftOpen: 0,
     locationsPublished: 0,
     treasureLinksPublished: 0,
     treasuresPublished: 0,
@@ -153,5 +154,68 @@ describe('publishOutcomeFor', () => {
     expect(line).toContain('every world view — they could not even be listed');
     expect(line).toContain('those world views');
     expect(line).not.toContain('that world view;');
+  });
+
+  it('says the card is still standing after a one-row publish', () => {
+    // The symmetry a refusal already had: publishing one of six leaves the rest
+    // waiting, and the refetch shows a card that looks unanswered otherwise. A
+    // state and not a number, for the `tags` reason the refusal line gives.
+    const line = publishOutcomeFor(item, { ...result(), appliedFields: ['name'], heldLeftOpen: 2 });
+
+    expect(line).toContain('the rest of the card is still waiting');
+    expect(line).not.toMatch(/\b2 (things|thing)\b/);
+  });
+
+  it('says nothing of the kind when the whole card was answered', () => {
+    expect(publishOutcomeFor(item, { ...result(), appliedFields: ['name'] }))
+      .not.toContain('still waiting');
+  });
+});
+
+/**
+ * What a refusal says, since the row it answered goes away with it.
+ *
+ * The line is the only place the answer is stated at all: the refetch drops the
+ * row, and where it was the last one the whole card goes with it.
+ */
+describe('heldRefusalOutcomeFor', () => {
+  const refusal = {
+    experienceId: 1, declinedFields: ['metadata'], declinedParts: [],
+    fromSyncLogId: 68, heldLeftOpen: 0,
+  };
+
+  it('names what was refused and the run that has to ask again', () => {
+    const line = heldRefusalOutcomeFor(item, refusal);
+
+    // By value and by run: a curator meeting the field again next month is being
+    // told the source changed its mind, not that the click failed.
+    expect(line).toContain('source data refused');
+    expect(line).toContain('readers keep what they see');
+    expect(line).toContain('run 68 has to propose something different');
+  });
+
+  it('names a part with its field, since a bare field name answers for nothing', () => {
+    const line = heldRefusalOutcomeFor(item, {
+      ...refusal, declinedFields: [],
+      declinedParts: [{ kind: 'treasures', name: 'The Wine Glass', fields: ['artist'] }],
+    });
+
+    expect(line).toContain('artist of The Wine Glass');
+  });
+
+  it('says the card is still standing, without counting what is on it', () => {
+    // `heldLeftOpen` counts the changeset fields the run held, and the card does
+    // not draw all of them — `tags` is written and never shown (#570). Refusing
+    // one of Bamiyan's two visible rows leaves two fields open, and "2 things
+    // still waiting" over a card showing one is a line a curator counts and
+    // disagrees with. Found by driving the real screen.
+    const line = heldRefusalOutcomeFor(item, { ...refusal, heldLeftOpen: 2 });
+
+    expect(line).toContain('The rest of the card is still waiting.');
+    expect(line).not.toMatch(/\b2 (things|thing)\b/);
+  });
+
+  it('says nothing more when that was the last of it', () => {
+    expect(heldRefusalOutcomeFor(item, refusal)).not.toContain('still waiting');
   });
 });

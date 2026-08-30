@@ -26,6 +26,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  declineHeld,
   publishExperience,
   type HeldPart,
   type PublishRequest,
@@ -35,9 +36,10 @@ import { plural } from '../../utils/plural';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
-import { partGroups, rowsFor } from './factRows';
+import { partGroups, rowsFor, type FactSubject } from './factRows';
+import { HeldAnswer, type HeldSelection } from './HeldAnswer';
 import { ObjectPreview } from './ObjectPreview';
-import { publishOutcomeFor } from './publishOutcome';
+import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
 
 /** One experience, with whatever a gated run left open about it. */
@@ -112,6 +114,20 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
     held?.proposed_parts ?? [], context, { offeredLocations: item.offered_locations }, setOpenPart,
   );
   const partRows = parts.flatMap(group => group.rows);
+  // What one subject's proposal actually holds, for the answer column's note
+  // about a paired row. Read off the proposal rather than off the drawn rows,
+  // because the pairing the note promises is the server's and the server matches
+  // on what the changeset carries. The part is found the way the record names it
+  // — kind, reference and name together, since neither half alone is an identity.
+  const heldFieldsOf = (subject: FactSubject): string[] => {
+    const part = subject.part;
+    if (part === undefined) return proposed.filter(f => f.held).map(f => f.field);
+    return (held?.proposed_parts ?? [])
+      .filter(candidate => candidate.kind === part.kind
+        && (candidate.item.ref ?? null) === part.ref
+        && (candidate.item.name ?? null) === part.name)
+      .flatMap(candidate => candidate.fields.filter(f => f.held).map(f => f.field));
+  };
   const points = count(contents?.pending_locations);
   const works = count(contents?.pending_treasures);
 
@@ -134,6 +150,33 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
       onDone(error ? messageFor(item, error) : publishOutcomeFor(item, data));
     },
   });
+
+  // The other answer to one row (#722), and its own mutation because it is its
+  // own act: publishing writes columns, releases contents and can re-place the
+  // object, while refusing writes nothing to the row at all and closes the
+  // question for that value alone.
+  const refuse = useMutation({
+    mutationFn: (selection: HeldSelection) =>
+      declineHeld(group.id, selection, held?.sync_log_id ?? 0),
+    onSettled: (data, error) => {
+      // Refusing writes nothing, so nothing about the object needs re-reading —
+      // the one gap it opens is a later publish's to make, not this call's (the
+      // caption says so) — but the queue's own counts do, and they ride on the same
+      // invalidation the publish path uses rather than a second, narrower one
+      // that would drift from it.
+      invalidateExperiences(queryClient, { experienceId: group.id });
+      onDone(error ? messageFor(item, error) : heldRefusalOutcomeFor(item, data));
+    },
+  });
+  // Either answer in flight disables *every* button on the card, the object-level
+  // ones included. Both endpoints take OBJECT_LOCK, and an object publish with no
+  // selection writes every row still open: start refusing one field, click
+  // "Publish the change" before it lands, and if the publish wins the lock it
+  // writes the value being refused and clears the pointer — the refusal then finds
+  // no proposal, answers 409, and the value is on the site with no card left to
+  // answer. Guarding only the per-row buttons would leave the two that publish the
+  // most as the way to lose the answer being given.
+  const answering = publish.isPending || refuse.isPending;
 
   return (
     <Card variant="outlined">
@@ -193,16 +236,42 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                 groups={[{ subject: { kind: 'object', label: item.name }, rows }, ...parts]}
                 labels={{ before: 'readers see', after: 'the run proposes' }}
                 context={context}
+                // One fact at a time (#722), because a run improves and damages in
+                // the same breath: run 68 wants to drop "(Phase II)" from Getbol's
+                // name and to rewrite its description for the 2026 extension, and
+                // until now those were one button. The subject comes with the field
+                // because a field name is not an identity across groups — two works
+                // in one museum both have an attribution row.
+                answer={(field, _fieldRows, subject) => (
+                  <HeldAnswer
+                    subject={subject}
+                    field={field}
+                    busy={answering}
+                    heldFields={heldFieldsOf(subject)}
+                    onPublish={selection => publish.mutate({
+                      heldFields: selection.fields,
+                      heldParts: selection.parts,
+                      expectedSyncLogId: held?.sync_log_id ?? 0,
+                    })}
+                    onRefuse={selection => refuse.mutate(selection)}
+                  />
+                )}
               />
-              {/* Said here, where a curator is looking at wording they may not
-                  want, because it is the one way to take the rest and refuse
-                  this: publishing re-reads the claims under its own write lock
-                  and skips any field the curator has since claimed
-                  (`publishHeldFields.ts`), reporting it back as left alone.
-                  Without naming the order nobody would find it. */}
+              {/* What the two answers differ in, and the difference is not
+                  symmetric — the same sentence the conflict card ends on, for the
+                  same reason. Publishing puts the run's value on the site;
+                  refusing writes nothing at all, because the value readers see has
+                  already won every run since the gate first held this one. What it
+                  changes is the asking, and only for that value. */}
               <Typography variant="caption" color="text.secondary">
-                Don’t want one of these? Edit it yourself first — editing claims the field — and then
-                publish: a field you claim is left as you wrote it, and everything else still lands.
+                Publishing one of these leaves the rest waiting — except a work’s picture and the
+                credit that belongs to it, which are answered together, as the rows say. “Not this”
+                on its own changes nothing readers see and settles the question — the run has to
+                propose something different to ask again. One combination does reach them: say no
+                to source data and then publish a new picture, and the picture goes out with
+                nobody credited, since the refused credit may not be written and the stored one
+                names a photograph nobody will see. A field you have edited yourself is a different
+                question and keeps your wording either way.
               </Typography>
             </GatedRow>
           )}
@@ -250,7 +319,7 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
           <Button
             variant="outlined"
-            disabled={publish.isPending}
+            disabled={answering}
             onClick={() => publish.mutate(undefined)}
           >
             {publishLabel(group)}
@@ -264,7 +333,7 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
           {held && contents && (
             <Button
               variant="text"
-              disabled={publish.isPending}
+              disabled={answering}
               onClick={() => publish.mutate({ fieldsOnly: true, expectedSyncLogId: held.sync_log_id })}
             >
               Publish the change only

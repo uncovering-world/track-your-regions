@@ -33,7 +33,7 @@ import {
 } from '@mui/material';
 import { wordDiff, type DiffPart } from '../../utils/wordDiff';
 import type { ChangeContext, FieldMeaning } from './fieldMeaning';
-import { summarize, type FactGroup, type FactKind, type FactRow } from './factRows';
+import { summarize, type FactGroup, type FactKind, type FactRow, type FactSubject } from './factRows';
 import { ProvenanceTrail } from './ProvenanceTrail';
 
 /** Whose two columns these are — the caller's to say, since the same table answers two questions. */
@@ -262,10 +262,15 @@ export function FactTable({ groups, labels, context, answer }: {
   labels: FactLabels;
   context: ChangeContext;
   /**
-   * The answer to one field, for a conflict card — rendered once per field, in its own
-   * column, spanning every row the field made. Absent on a card answered whole.
+   * The answer to one field — rendered once per field, in its own column, spanning every
+   * row the field made. Absent on a card answered whole.
+   *
+   * The subject comes with it because a field name is not an identity across groups: two
+   * works in one museum both have an `artist` row, and the held card has to say which
+   * work it is answering about (#722). The conflict card ignores it — its table is the
+   * object's group and nothing else.
    */
-  answer?: (field: string, rows: FactRow[]) => ReactNode;
+  answer?: (field: string, rows: FactRow[], subject: FactSubject) => ReactNode;
 }) {
   const columns = answer ? 4 : 3;
   const head = (text: string) => (
@@ -301,7 +306,7 @@ function GroupRows({ group, columns, context, answer }: {
   group: FactGroup;
   columns: number;
   context: ChangeContext;
-  answer?: (field: string, rows: FactRow[]) => ReactNode;
+  answer?: (field: string, rows: FactRow[], subject: FactSubject) => ReactNode;
 }) {
   const { rows } = group;
   return (
@@ -319,7 +324,7 @@ function GroupRows({ group, columns, context, answer }: {
             <ValueCells row={row} context={context} />
             {answer && first && (
               <TableCell rowSpan={span} sx={{ verticalAlign: 'top', width: 160 }}>
-                {answer(row.field, rows.slice(i, i + span))}
+                {answer(row.field, rows.slice(i, i + span), group.subject)}
               </TableCell>
             )}
           </TableRow>

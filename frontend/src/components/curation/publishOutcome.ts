@@ -11,7 +11,10 @@
  * from another for a string.
  */
 
-import { type PublishResult } from '../../api/experiences';
+import {
+  type DeclineHeldResult,
+  type PublishResult,
+} from '../../api/experiences';
 import { plural } from '../../utils/plural';
 import { worldViewList } from '../../utils/worldViewList';
 import { fieldLabel } from './fieldMeaning';
@@ -78,6 +81,12 @@ export function publishOutcomeFor(
     parts.push(`${plural(data.withdrawalsReleased, 'replaced point')} no longer shown`);
   }
   if (parts.length === 0) parts.push('published');
+  // What the click did *not* reach, said the way a refusal says it (#722): a
+  // publication of one row of six leaves the card standing, and the refetch
+  // shows a card that looks unanswered. As a state and not a number, for the
+  // reason `heldRefusalOutcomeFor` documents — `heldLeftOpen` counts changeset
+  // fields and the table does not draw all of them.
+  if (data.heldLeftOpen > 0) parts.push('the rest of the card is still waiting');
 
   const outcome = `${item.name}: ${parts.join('; ')}.`;
   if (!data.placementFailed) return outcome;
@@ -101,4 +110,46 @@ export function publishOutcomeFor(
     // same number this sentence has already printed as "no longer shown" — and placement is
     // reached only when at least one was, so there is always a number to give.
     + `until then it is placed by ${plural(data.withdrawalsReleased, 'point')} it no longer has.`;
+}
+
+
+/**
+ * What refusing held rows settled, since the refetch takes the row away.
+ *
+ * Named rather than counted, and the run named with them: the answer is about
+ * *those values*, so a curator who meets the same field again next month is
+ * being told the source changed its mind, not that the click failed. The same
+ * sentence `refusalOutcomeFor` says one card over, about the other kind of
+ * refusal.
+ *
+ * Whether anything is still open is said, because it is the difference between
+ * "that was the last of it" and "the card is still standing" — and the card
+ * going or staying is the only other signal the curator gets.
+ *
+ * Said as a state and not as a number, deliberately. `heldLeftOpen` counts the
+ * changeset fields the run held, and the card does not draw all of them: `tags`
+ * is a field publishing writes and the table never shows (#570). Refusing one of
+ * Bamiyan's two visible rows really does leave two fields open, and a line
+ * reading "2 things still waiting" over a card showing one is a line a curator
+ * counts and disagrees with. The server's number is right for the audit row,
+ * where the vocabulary is the record's; it is wrong for a sentence about what is
+ * on screen.
+ */
+export function heldRefusalOutcomeFor(
+  item: { name: string },
+  data?: DeclineHeldResult,
+): string | undefined {
+  if (!data) return undefined;
+  const named = [
+    ...data.declinedFields.map(fieldLabel),
+    // A part's fields are named with the part, as a publication names them:
+    // "artist of The Wine Glass" is answerable, "artist" on a museum with two
+    // hundred works is not.
+    ...data.declinedParts.flatMap(part => part.fields.map(f => `${fieldLabel(f)} of ${part.name}`)),
+  ];
+  if (named.length === 0) return undefined;
+  const settled = `${item.name}: ${named.join(', ')} refused — readers keep what they see, `
+    + `and run ${data.fromSyncLogId} has to propose something different to ask again.`;
+  if (data.heldLeftOpen === 0) return settled;
+  return `${settled} The rest of the card is still waiting.`;
 }

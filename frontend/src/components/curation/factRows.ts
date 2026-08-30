@@ -54,6 +54,15 @@ export interface FactSubject {
   key?: string;
   /** "place 4 of 7", "by Vermeer" — what tells one part from another. */
   detail?: string | null;
+  /**
+   * The part as the *record* names it, for an answer about one of its rows (#722).
+   *
+   * Distinct from `key`, which is only unique within this card, and from `label`, which is
+   * for a person: this is the pair the server matches on — the kind it was filed under and
+   * the reference and name the record carries — and it is echoed back unchanged. Absent on
+   * the object's own group, which needs no naming.
+   */
+  part?: { kind: 'locations' | 'treasures'; ref: string | null; name: string | null };
   /** Opens the part where it can be looked at: a point on the map, a work with its picture. */
   onOpen?: () => void;
 }
@@ -202,6 +211,10 @@ export function partGroups(
       // The reference is the identity the record stores; the position is the
       // fallback for the one referenceless point, which no sibling shares.
       key: `${part.kind}:${part.item.ref ?? '#' + String(index)}`,
+      // The record's own pair, carried whole rather than folded into the key
+      // above: that key only has to be unique on this card, and an answer has to
+      // name the row the server will find (#722).
+      part: { kind: part.kind, ref: part.item.ref, name: part.item.name },
       detail: partDetail(part, shape.offeredLocations),
       ...(openable(part) ? { onOpen: () => onOpen(part) } : {}),
     },

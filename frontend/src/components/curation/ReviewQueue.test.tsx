@@ -22,13 +22,14 @@ vi.mock('../../api/experiences', () => ({
   setLocationState: vi.fn(),
   acceptSourceValue: vi.fn(),
   declineSourceValue: vi.fn(),
+  declineHeld: vi.fn(),
   publishExperience: vi.fn(),
   fetchExperience: vi.fn(),
 }));
 
 import {
   fetchReviewQueue, setExperienceState, setExperienceAdmission, setLocationState,
-  acceptSourceValue, declineSourceValue, publishExperience, fetchExperience,
+  acceptSourceValue, declineSourceValue, declineHeld, publishExperience, fetchExperience,
 } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ReviewPage } from './ReviewPage';
@@ -40,6 +41,7 @@ const mockedDecline = declineSourceValue as unknown as ReturnType<typeof vi.fn>;
 const mockedAdmission = setExperienceAdmission as unknown as ReturnType<typeof vi.fn>;
 const mockedLocationState = setLocationState as unknown as ReturnType<typeof vi.fn>;
 const mockedPublish = publishExperience as unknown as ReturnType<typeof vi.fn>;
+const mockedDeclineHeld = declineHeld as unknown as ReturnType<typeof vi.fn>;
 const mockedExperience = fetchExperience as unknown as ReturnType<typeof vi.fn>;
 const mockedInvalidate = invalidateExperiences as unknown as ReturnType<typeof vi.fn>;
 
@@ -50,6 +52,7 @@ const PUBLISHED = {
   appliedFields: ['name'],
   claimedFieldsSkipped: [],
   fromSyncLogId: 47,
+  heldLeftOpen: 0,
   locationsPublished: 0,
   treasureLinksPublished: 0,
   treasuresPublished: 0,
@@ -176,6 +179,10 @@ describe('ReviewQueue', () => {
       locationId: 13211, experienceId: 1592, offeredToReaders: true,
     });
     mockedPublish.mockReset().mockResolvedValue(PUBLISHED);
+    mockedDeclineHeld.mockReset().mockResolvedValue({
+      experienceId: 7, declinedFields: ['name'], declinedParts: [], fromSyncLogId: 47,
+      heldLeftOpen: 0,
+    });
     mockedInvalidate.mockReset();
     mockedExperience.mockReset().mockResolvedValue({
       id: 55, name: 'Museo Soumaya', description: 'The Slim family collection.',
@@ -1254,16 +1261,53 @@ describe('ReviewQueue', () => {
         expect.anything(), { experienceId: 7 }));
     });
 
-    it('names the order that keeps a curator\'s own wording through a publish', async () => {
+    it('answers one fact at a time, publishing that row and leaving the rest', async () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
       });
       renderQueue();
 
-      // Publishing re-reads the claims under its write lock and skips a field the
-      // curator has claimed since the run. That makes "keep the paintings, refuse
-      // the label" possible — but only if the card says which order to do it in.
-      expect(await screen.findByText(/editing claims the field/i)).toBeInTheDocument();
+      fireEvent.click(await screen.findByRole('button', { name: /publish this/i }));
+
+      // #722: a run improves and damages in the same breath, and until now the
+      // card's one button took both or neither. The row names the field; what is
+      // not named stays open and keeps the card.
+      await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, {
+        heldFields: ['name'], heldParts: undefined, expectedSyncLogId: 47,
+      }));
+    });
+
+    it('refuses one fact without claiming it', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /not this/i }));
+
+      // Not `publishExperience` and not an edit: the one lever a curator had
+      // before was to claim the field by editing it, which says whose value it
+      // is rather than what is wrong with this one, and outlives the question.
+      await waitFor(() => expect(mockedDeclineHeld).toHaveBeenCalledWith(
+        7, { fields: ['name'], parts: undefined }, 47));
+      expect(mockedPublish).not.toHaveBeenCalled();
+    });
+
+    it('says what a refusal settled, since the row goes away', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], held: [HELD], limit: 25, offset: 0,
+      });
+      renderQueue();
+
+      fireEvent.click(await screen.findByRole('button', { name: /not this/i }));
+
+      // The answer is about *that value*, so a curator meeting the field again
+      // next month is being told the source changed its mind, not that the click
+      // failed. Matched on the line's own words rather than on the sentence about
+      // proposing again, which the card's standing caption also carries — a
+      // pattern both would satisfy would pass with the notice never rendered.
+      expect(await screen.findByText(/refused — readers keep what they see/i))
+        .toBeInTheDocument();
     });
 
     it('shows what the server said when the card was drawn against an older run', async () => {
