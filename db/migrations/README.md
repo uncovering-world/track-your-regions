@@ -37,6 +37,17 @@ A migration that adds a constraint the existing rows violate has to run *before*
 the next re-application of `01-schema.sql`, since the schema file will otherwise
 fail on the same constraint. Each such migration says so in its header.
 
+`039-held-decisions.sql` adds `experience_held_decisions` and the `declined_held` audit action —
+where a curator's answer to *one row* of a held proposal is recorded (#722,
+[ADR-0038](../../docs/decisions/0038-a-held-proposal-is-answered-per-field.md)). Both verdicts,
+keyed on the experience, the part the record names and the field, storing the value answered
+about: the queue, the panel's count and publishing suppress a row only while the proposal is
+jsonb-equal to it, so a source that changes its mind is heard. `UNIQUE NULLS NOT DISTINCT` is
+load-bearing rather than tidy — the object's own row carries three NULLs and the one referenceless
+point carries one, and under the default rule no two such rows would ever collide. Nothing to
+backfill: every held proposal on disk is unanswered by definition, because until this file there
+was no way to answer one field of one. Applying it changes nothing a reader sees.
+
 `038-sync-log-total-held.sql` adds `experience_sync_logs.total_held` — how many rows a reader
 can already see the run proposed a change to and the gate kept whole, each waiting on a verdict —
 and fills it for the runs that predate the column from the `held` rows they recorded (#523). A

@@ -123,11 +123,17 @@ placement, on the identical `withdrawalsReleased > 0` trigger. An earlier versio
 of this section said the four siblings had "no post-commit work"; that was true of
 three of them and the criterion decides per branch, not per endpoint.
 
-The ones that remain — `/:id/state`, `/:id/decline-source`, `/review/queue` — stay
-exempt, checked rather than assumed: each ends at `res.json` with nothing after its
-`client.release()`. `/:id/decline-source` is the plainest of them: it writes one
-small row per field and does not touch the experience at all, because the value it
-refuses had already won every run. `/:id/accept-source` was on this list until
+The ones that remain — `/:id/state`, `/:id/decline-source`, `/:id/decline-held`,
+`/review/queue` — stay exempt, checked rather than assumed: each ends at `res.json`
+with nothing after its `client.release()`. `/:id/decline-source` is the plainest of
+them: it writes one small row per field and does not touch the experience at all,
+because the value it refuses had already won every run. `/:id/decline-held` (#722)
+is the same shape one gate over and joined the list on the same check rather than
+on the resemblance: a handful of small rows, one `UPDATE experiences` that only ever
+clears a pointer, an audit row, and nothing after the commit. Its opposite,
+`/:id/publish`, is in the table above because publishing can reach
+`placeAfterRelease`; refusing cannot, because it writes nothing that could move a
+pin. `/:id/accept-source` was on this list until
 accepting a coordinate started moving a pin; it is in the table above now, for the
 reason given below it. That is the second time a route has left this list by
 growing post-commit work, which is why the list is re-read against the handlers
