@@ -54,7 +54,7 @@ import { formatDateTime } from '../../utils/dateFormat';
 import { worldViewList } from '../../utils/worldViewList';
 import { ItemHeader, messageFor } from './queueCard';
 import { PointPreviewDialog } from './PointPreviewDialog';
-import { RuleHelp } from './RuleHelp';
+import { HelpHint } from './HelpHint';
 
 type WithdrawnPoint = NonNullable<ReviewQueueItem['withdrawn_points']>[number];
 
@@ -268,7 +268,7 @@ function PointVerdict({ item, point, onDone }: {
         >
           False alarm — put it back
         </Button>
-        <RuleHelp text={HELP} />
+        <HelpHint text={HELP} label="what marking a point gone does" />
       </Stack>
     </Box>
   );
@@ -535,7 +535,7 @@ export function AnsweredWithdrawalCard({ item, onDone }: {
             <AnsweredVerdict item={item} point={point} onDone={onDone} />
           </Box>
         ))}
-        <RuleHelp text={TAKE_BACK_HELP} />
+        <HelpHint text={TAKE_BACK_HELP} label="why answered points are listed here" />
       </CardContent>
     </Card>
   );

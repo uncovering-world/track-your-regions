@@ -3,11 +3,15 @@
  *
  * A curator works through nineteen refusals at a sitting, so the card carries one short
  * sentence and this carries the reasoning: how the source decides, what threshold it
- * applied, and the rule's own wording. The works it counted hang on the count itself
- * (`WorksPreview`) — that is a different question, asked by a different part of the
- * sentence. Putting all of that on every card would be four lines of
- * machinery per row and a screen nobody finishes reading; leaving it out would ask for a
- * verdict on a rule the page never explains.
+ * applied, the rule's own wording, what marking a point gone does. Putting all of that
+ * on every card would be four lines of machinery per row and a screen nobody finishes
+ * reading; leaving it out would ask for a verdict on a rule the page never explains.
+ *
+ * The caller says what the hint is about, because the button is the only thing a screen
+ * reader gets: "how this rule decides" and "what marking a point gone does" are
+ * different promises, and one label for both would be wrong for one of them. A *fact*
+ * is explained differently — on its own name, in the review card's table (`FactTable`),
+ * since a question mark per row was most of what made that card a pile of text.
  *
  * Renders nothing when there is nothing to add, rather than a question mark that answers
  * none — an affordance that disappoints is worse than no affordance.
@@ -16,7 +20,11 @@
 import { IconButton, Tooltip, Typography } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 
-export function RuleHelp({ text }: { text: string | null }) {
+export function HelpHint({ text, label }: {
+  text: string | null;
+  /** What the hint explains, for the button's accessible name: "how this rule decides". */
+  label: string;
+}) {
   if (!text) return null;
 
   return (
@@ -31,7 +39,7 @@ export function RuleHelp({ text }: { text: string | null }) {
       arrow
       slotProps={{ tooltip: { sx: { maxWidth: 360 } } }}
     >
-      <IconButton size="small" aria-label="how this rule decides" sx={{ p: 0.25 }}>
+      <IconButton size="small" aria-label={label} sx={{ p: 0.25 }}>
         <HelpOutlineIcon fontSize="inherit" />
       </IconButton>
     </Tooltip>

@@ -10,7 +10,7 @@
 import { Box, Stack, Typography } from '@mui/material';
 import { refusalSummary, refusalHelp } from './refusalReason';
 import { WorksPreview, type CountedWork } from './WorksPreview';
-import { RuleHelp } from './RuleHelp';
+import { HelpHint } from './HelpHint';
 
 export function RefusalLine({ reason, works, held, name }: {
   reason: string | null | undefined;
@@ -51,7 +51,7 @@ export function RefusalLine({ reason, works, held, name }: {
           </>
         )}
       </Typography>
-      <RuleHelp text={refusalHelp(reason)} />
+      <HelpHint text={refusalHelp(reason)} label="how this rule decides" />
     </Stack>
   );
 }
