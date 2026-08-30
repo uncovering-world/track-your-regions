@@ -554,6 +554,38 @@ beside that column's own `curated_fields` guard. A row still `pending` is *not* 
 it, so the run refreshes it in place and the curator reviews the newest state rather than whatever
 landed first.
 
+**And a field of a part readers can already see is held the same way**
+([ADR-0037](../decisions/0037-a-part-field-readers-see-is-held-like-the-objects.md)). A run rewrote a
+visible work's attribution or a visible place's name on the spot — 73 such changes on the dev database,
+22 of them attributions, *The Wine Glass* moved from Johannes Vermeer to a namesake with nobody asked —
+while the same run's change to the museum's own name waited on a card. The location writer's keeping
+arm and the treasures upsert now carry the object's guard one level down: a visible point keeps its
+`name`, a visible work keeps `name`, `artist`, `year`, `image_url` and, with the picture, its credit.
+Each statement reads the gate as it already read it for the row it inserts, evaluates the guard on the
+row it locked, and returns the guard's own answer (`was_held`) so the record cannot disagree with the
+write; `pointChanges` and `workChanges` take that answer as their fourth argument and file each
+unclaimed change as `held`. The claim wins where both are true. Visibility is the **row's own**
+state — `treasures.curation_state`, never the link's, since a work verified through another venue is
+on show there. Outside the hold, on purpose: a coordinate rewritten within ten metres (the same point,
+more precisely — ADR-0027, and nothing a reader can see), a work's `sitelinks_count`, `is_iconic` and
+`treasure_type`, the identity and provenance columns, and the `returned` arm, whose row is hidden
+until it returns. A held name fails the writer's fast path on every run until answered, the cost
+ADR-0029 decision 5 already accepts for a claimed point.
+
+The pointer follows. `pending_change_sync_log_id` is set through one statement all three writers
+share (`heldProposalPointer.ts`), and the order they run in is what makes the column honest: the
+object upsert runs first and **clears** it where the object's own fields propose nothing, the content
+writers set it again where they held — so it names the newest run that held anything about the object,
+at either level, and is clear when nothing is. The location writer points inside its own transaction;
+the treasures writer once per museum, after the works. A run with no log id records the hold and
+withholds the pointer, as the object's has always done.
+
+A held picture's credit travels with it. The run fetched a credit for the picture it could not write,
+and publishing rather than the next run is what puts that picture on show — so `treasureWriter`
+records a `metadata.imageCredit` entry beside a held `image_url` where the credit differs from the
+stored one, under the picture's own flags, and publishing writes both. The object's diff reports the
+same key under the same name, so the card's vocabulary needs nothing new to say "picture credit".
+
 **A held field is reported as a refused write, not as one the run made.** `computeChangeSet` files
 every difference in exactly one of three buckets, and the bucket is what the run reports:
 `changedFields` means *written*, `curatedConflicts` means a curator's claim refused it, `heldFields`
@@ -686,7 +718,13 @@ under a gate is written `pending` rather than refused, so a `created` row is nev
 queue's `arrival` card already carries it. Nor is new *content* under a gate: a point or a work
 arriving on a visible object is written `pending` too (`locationWriter.ts`, `museum/treasureWriter.ts`),
 files as a `contents` row, and is not in this count — so the number is of held **changes**, and a
-run that only hung twelve unread paintings in the Louvre reports Held 0. The count of all three
+run that only hung twelve unread paintings in the Louvre reports Held 0. A held *field of a part*
+is a held change and is in it
+([ADR-0037](../decisions/0037-a-part-field-readers-see-is-held-like-the-objects.md)): `wasHeld` reads
+the recorded contents beside `heldFields` (`contentsHeld` in `types.ts`), so a museum every field of
+which came through, with one work's attribution held, counts as held and files as `held` rather
+than `contents` — the held half is the unanswered one, and the report's `?type=held` filter is
+where a curator would look. The count of all three
 waiting kinds — arrivals, held changes, unread contents — is per source, not per run:
 `waitingCountsByCategory` (`waitingCounts.ts`), which the gate panel shows. The counter is the
 number of rows the run held, written from memory when the log closes; wherever the changeset
@@ -1961,6 +1999,21 @@ reported by the run as `change_type = 'held'` with each kept-out field flagged `
 `pending_change_sync_log_id` names the run whose proposal is waiting, and the proposal itself is
 read straight from that run's changeset row.
 
+Two halves to the card since [ADR-0037](../decisions/0037-a-part-field-readers-see-is-held-like-the-objects.md):
+`proposed`, the object's own held fields off `changed_fields`, and `proposed_parts`, the held fields
+of its parts off the contents record — a place renamed, a work re-attributed — each part carrying
+the record's name and reference, the held fields alone, and the stored row behind the record so the
+card can open it and say "place 5 of 8" or "by Johannes Vermeer, 1660" without a second read
+(`heldPartsSelectSql` in `reviewQueueContents.ts`). A row is a card where *either* half holds
+something — `heldFieldExistsSql OR heldPartExistsSql`, the pair `heldWaitingSql` counts by, so the
+panel's number and the queue's cards agree row for row. Either half may be NULL on a card about the
+other; the trailing guard drops a row with nothing on both, and is load-bearing now where it used to
+be a floor. The row behind a part is found by one rule the card and publishing share,
+`partRecord.ts`: the reference narrows, the name decides among the nine duplicated references, the
+lowest id breaks a tie, and the one referenceless point is found because the reference is compared
+with `IS NOT DISTINCT FROM`. Offered rows only; a part the source has since withdrawn keeps its
+group on the card with nothing to open.
+
 The pointer is not proof the gate is what held every field on it. `syncUtils.ts`'s
 `proposedAnything` sets the pointer for *any* refused proposal — a curator's own `curated_fields`
 claim included, and not only the gate-held fields this card is about — so without a filter a field
@@ -2270,7 +2323,16 @@ experience's own row alone — a visible museum that gained three checked painti
 been read. `{ locationIds }` / `{ treasureIds }` (or both) do the same for exactly those rows.
 `{ fieldsOnly: true }` is the mirror of the second (#524): the held fields land and every unread
 point and work stays where it is, so declining one proposed sentence stops holding back twelve
-checked paintings. It answers **409 on a row nobody has passed yet** — an arrival has no held
+checked paintings. The held fields of the object's *parts* go with the object's own on both shapes
+that write them ([ADR-0037](../decisions/0037-a-part-field-readers-see-is-held-like-the-objects.md);
+`publishHeldParts.ts`): each part is resolved through `partRecord.ts` and locked after the object,
+a place's `name` and a work's `name`, `artist`, `year`, `image_url` and credit are written from the
+run's own record, a field the part's curator has since claimed is skipped and reported per part, an
+unwritable field refuses the whole call with the pointer standing, and a part the record names that
+no offered row answers to is reported as `partsNotFound` and the rest published — 409ing over a place
+the source has since withdrawn would leave a card no answer can clear. The staleness check covers a
+proposal held on parts alone, asked of the proposal rather than of the writes. The response carries
+`appliedParts`, the audit row `parts` and `partsNotFound`. A contents publish touches none of it. It answers **409 on a row nobody has passed yet** — an arrival has no held
 fields to publish on their own, and publishing it this way would put an object in front of readers
 with nothing on the map, which is what the writer's deferral machinery exists to prevent. The trail
 records which of the three acts it was — `scope`, one of `object`, `contents` or `fields` — because

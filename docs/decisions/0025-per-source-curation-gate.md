@@ -1,7 +1,7 @@
 # ADR-0025: A source is trusted or it is not, and the product says which
 
 **Date:** 2026-08-10
-**Status:** Accepted
+**Status:** Accepted — decision 5 narrowed by ADR-0037
 
 ---
 
