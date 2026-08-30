@@ -657,7 +657,8 @@ describe('setExperienceAdmission', () => {
     expect(queries.some(q => q.sql.includes('UPDATE treasures'))).toBe(false);
     expect(res.json).toHaveBeenCalledWith({
       experienceId: 5, admission: 'admitted', published: false,
-      curationState: 'auto', appliedFields: [], claimedFieldsSkipped: [], fromSyncLogId: null,
+      curationState: 'auto', appliedFields: [], claimedFieldsSkipped: [], appliedParts: [],
+      fromSyncLogId: null,
       locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0,
     });
 

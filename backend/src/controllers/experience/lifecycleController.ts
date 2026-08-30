@@ -23,6 +23,7 @@ import { OBJECT_LOCK } from '../../db/locks.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
+import type { AppliedPart } from './publishHeldParts.js';
 
 type Membership = 'present' | 'former';
 type Existence = 'extant' | 'lost';
@@ -444,6 +445,9 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     curationState,
     appliedFields: [] as string[],
     claimedFieldsSkipped: [] as string[],
+    // Empty for the reason the two above are: a held field of a part is a
+    // proposal too (ADR-0037), and an override answers none.
+    appliedParts: [] as AppliedPart[],
     fromSyncLogId: null,
     locationsPublished,
     treasureLinksPublished,

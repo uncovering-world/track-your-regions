@@ -14,6 +14,7 @@
  */
 
 import { CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, claimKeyFor } from '../../services/sync/changeSet.js';
+import type { ContentsByKind } from '../../services/sync/types.js';
 import type { PoolClient } from 'pg';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
@@ -199,6 +200,12 @@ interface HeldFieldWrites {
    * exactly that failure.
    */
   proposalMissing: boolean;
+  /**
+   * The contents record on the same changeset row, for the held fields of the
+   * object's parts (`publishHeldParts.ts`, ADR-0037). Read here rather than
+   * twice: one row, one read, under the one lock.
+   */
+  contents: ContentsByKind | null;
 }
 
 /**
@@ -219,18 +226,19 @@ export async function heldFieldWrites(
   const bind = (value: unknown) => `$${params.push(value)}`;
   const writes: HeldFieldWrites = {
     assignments: [], params, applied: [], claimedFieldsSkipped: [], unwritable: [],
-    proposalMissing: false,
+    proposalMissing: false, contents: null,
   };
   if (pointer === null) return writes;
 
   const proposal = await client.query(
-    `SELECT changed_fields FROM experience_sync_changes
+    `SELECT changed_fields, contents FROM experience_sync_changes
       WHERE experience_id = $1 AND sync_log_id = $2
       ORDER BY id DESC LIMIT 1`,
     [experienceId, pointer],
   );
   if (proposal.rows.length === 0) return { ...writes, proposalMissing: true };
   const proposed = (proposal.rows[0].changed_fields ?? []) as ProposedField[];
+  writes.contents = (proposal.rows[0].contents ?? null) as ContentsByKind | null;
   // Only what the *gate* held, and read off the field's own flag rather than
   // inferred from the absence of a claim (#519). A field the curator had claimed
   // is refused for its own reason, carries `curatedConflict`, and is answered

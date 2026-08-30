@@ -39,6 +39,9 @@ import type { AuthenticatedRequest } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { heldFieldWrites, publicationAssignments } from './publishHeldFields.js';
+import {
+  applyHeldPartWrites, planHeldPartWrites, type AppliedPart, type PartNotFound,
+} from './publishHeldParts.js';
 
 /**
  * What the curator asked to be published.
@@ -129,6 +132,20 @@ interface PublishResult {
   appliedFields: string[];
   /** Held fields left alone because the curator claims them (see below). */
   claimedFieldsSkipped: string[];
+  /**
+   * The parts whose held fields were written now — a place renamed, a work
+   * re-attributed (ADR-0037) — each with what it applied and what it left as
+   * the curator wrote it. Empty on a contents publish, which leaves the
+   * proposal exactly where it was.
+   */
+  appliedParts: AppliedPart[];
+  /**
+   * Parts the proposal names that no offered row answers to any more — a place
+   * the source withdrew after proposing its rename. Reported rather than
+   * refused: there is nothing to apply and nothing readers see, and a 409 would
+   * leave a card no answer can clear. Present only when there is one.
+   */
+  partsNotFound?: PartNotFound[];
   /** The run whose held proposal was applied, or null when none was held. */
   fromSyncLogId: number | null;
   locationsPublished: number;
@@ -253,10 +270,14 @@ export async function publishExperience(req: AuthenticatedRequest, res: Response
  */
 function staleProposalRefusal(
   write: { applied: string[]; unwritable: string[] },
+  // Whether the proposal holds anything on a part (ADR-0037) — asked of the
+  // proposal rather than of the part writes, so a proposal whose every part
+  // has since been withdrawn is still checked against the run the card named.
+  heldParts: boolean,
   pointer: number | null,
   expectedSyncLogId: number | undefined,
 ): { error: string; pendingChangeSyncLogId: number | null } | null {
-  const willWriteHeldFields = write.applied.length > 0 || write.unwritable.length > 0;
+  const willWriteHeldFields = write.applied.length > 0 || write.unwritable.length > 0 || heldParts;
   const staleCheckApplies = willWriteHeldFields || expectedSyncLogId !== undefined;
   if (!staleCheckApplies || pointer === (expectedSyncLogId ?? null)) return null;
 
@@ -342,6 +363,8 @@ export async function publishUnderLock(
     let applied: string[] = [];
     let claimedFieldsSkipped: string[] = [];
     let heldFrom: number | null = null;
+    let appliedParts: AppliedPart[] = [];
+    let partsNotFound: PartNotFound[] = [];
 
     if (!contentsOnly) {
       const pointer = (before.pending_change_sync_log_id as number | null) ?? null;
@@ -378,7 +401,11 @@ export async function publishUnderLock(
       // curator already claimed writes nothing, and per ADR-0025 § 4.4 there is
       // nothing for such a call to be stale about.
       const write = await heldFieldWrites(client, experienceId, pointer, before, claimed);
-      const staleness = staleProposalRefusal(write, pointer, expectedSyncLogId);
+      // The parts' half of the same proposal (ADR-0037): resolved and locked
+      // now, written after the object below. Reads only, so a refusal on
+      // either half still has nothing to roll back but locks.
+      const parts = await planHeldPartWrites(client, experienceId, write.contents);
+      const staleness = staleProposalRefusal(write, parts.heldAny, pointer, expectedSyncLogId);
       if (staleness) {
         return await refuse(409, staleness.error, staleness.pendingChangeSyncLogId);
       }
@@ -398,7 +425,10 @@ export async function publishUnderLock(
           pointer);
       }
 
-      if (write.unwritable.length > 0) {
+      // Either half's unwritable field refuses the whole call, for the reason
+      // below; a part's is named with its part, so the message says which.
+      const unwritable = [...write.unwritable, ...parts.unwritable];
+      if (unwritable.length > 0) {
         // Nothing held may be dropped in silence. Clearing the pointer over a
         // value this code could not write would leave that value proposed by
         // every run from here on and applied by none — the escape the gate
@@ -415,7 +445,7 @@ export async function publishUnderLock(
         // any route. That is the deliberate trade (no value is ever dropped in
         // silence) and the reason the test guards the differ rather than the map.
         return await refuse(409,
-          `Publishing cannot write what this run proposed for ${write.unwritable.join(', ')} — nothing was published`,
+          `Publishing cannot write what this run proposed for ${unwritable.join(', ')} — nothing was published`,
           pointer);
       }
       applied = write.applied;
@@ -428,6 +458,12 @@ export async function publishUnderLock(
          WHERE id = $1`,
         write.params,
       );
+
+      // The parts, after the object and in the same transaction: a held
+      // attribution published while the pointer that named it stayed would be
+      // a proposal answered and still asked.
+      appliedParts = await applyHeldPartWrites(client, parts);
+      partsNotFound = parts.notFound;
     }
 
     // A fields-only publish leaves every unread point and work exactly where it
@@ -447,6 +483,11 @@ export async function publishUnderLock(
       scope: scopeOf({ contentsOnly, fieldsOnly }),
       fields: applied,
       claimedFieldsSkipped,
+      // The parts written to, each with what it applied and what it left
+      // claimed, and the ones the proposal named that no row answered to: the
+      // record a person reconstructs a decision from, months later.
+      parts: appliedParts,
+      partsNotFound,
       fromSyncLogId: heldFrom,
       locations: locationsPublished,
       treasureLinks: treasureLinksPublished,
@@ -496,6 +537,8 @@ export async function publishUnderLock(
         curationState: contentsOnly ? (before.curation_state as string) : 'verified',
         appliedFields: applied,
         claimedFieldsSkipped,
+        appliedParts,
+        ...(partsNotFound.length === 0 ? {} : { partsNotFound }),
         fromSyncLogId: heldFrom,
         locationsPublished,
         treasureLinksPublished,
