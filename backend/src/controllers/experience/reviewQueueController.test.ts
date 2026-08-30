@@ -459,8 +459,27 @@ describe('getReviewQueue', () => {
     const sql = await capturedQueueSql('held');
     expect(sql).toContain('e.pending_change_sync_log_id IS NOT NULL');
     expect(sql).toContain('ch.sync_log_id = e.pending_change_sync_log_id');
-    // jsonb_agg over an empty set returns NULL, and an empty card is worse than none.
-    expect(sql).toMatch(/WHERE q\.proposed IS NOT NULL/);
+    // jsonb_agg over an empty set returns NULL, and an empty card is worse than
+    // none — on either half: the object's own held fields, or its parts'.
+    expect(sql).toMatch(/WHERE \(q\.proposed IS NOT NULL OR q\.proposed_parts IS NOT NULL\)/);
+  });
+
+  it('carries the held fields of the object\'s parts, resolved to the rows the card can open', async () => {
+    // ADR-0037: the run records a held re-attribution of a work, or a held
+    // rename of a place, in the changeset's contents record; the card shows it
+    // as a group under the part's name, and needs the stored row behind the
+    // record to open it — a coordinate for a place, the picture and the maker
+    // for a work. Held entries only: a change the run wrote is news, not a
+    // question, and a field a claim refused is the conflict card's.
+    const sql = await capturedQueueSql('held');
+    expect(sql).toContain('AS proposed_parts');
+    expect(sql).toMatch(/ch\.contents/);
+    expect(sql).toMatch(/'locations'/);
+    expect(sql).toMatch(/'treasures'/);
+    expect(sql).toMatch(/FROM experience_locations/);
+    expect(sql).toMatch(/FROM treasures/);
+    // A card whose only held field is a part's is still a card.
+    expect(sql).not.toMatch(/CROSS JOIN LATERAL jsonb_array_elements\(ch\.changed_fields\)/);
   });
 
   it('excludes a refused row from the held card', async () => {
