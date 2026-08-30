@@ -8,11 +8,34 @@
  * and its maker — without leaving the queue.
  */
 
-import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/experiences';
+import { declineHeld, publishExperience } from '../../api/experiences';
 import { GatedCard } from './WaitingToPublish';
+
+vi.mock('../../api/experiences', async importOriginal => ({
+  ...await importOriginal<typeof import('../../api/experiences')>(),
+  declineHeld: vi.fn(),
+  publishExperience: vi.fn(),
+}));
+
+const mockedDeclineHeld = declineHeld as unknown as ReturnType<typeof vi.fn>;
+const mockedPublish = publishExperience as unknown as ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  mockedDeclineHeld.mockReset().mockResolvedValue({
+    experienceId: 6194, declinedFields: [],
+    declinedParts: [{ kind: 'treasures', name: 'The Wine Glass', fields: ['artist'] }],
+    fromSyncLogId: 64, heldLeftOpen: 0,
+  });
+  mockedPublish.mockReset().mockResolvedValue({
+    experienceId: 6194, curationState: 'verified', appliedFields: [], claimedFieldsSkipped: [],
+    appliedParts: [], fromSyncLogId: 64, heldLeftOpen: 0, locationsPublished: 0,
+    treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0,
+  });
+});
 
 /** Gemäldegalerie's held card, carrying The Wine Glass's re-attribution. */
 function held(): ReviewQueueItem {
@@ -69,5 +92,86 @@ describe('a held card about a part', () => {
     expect(dialog).toHaveTextContent('painting');
     expect(screen.getByRole('link', { name: 'The Wine Glass' }))
       .toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q782639');
+  });
+
+  it('says on the row that a picture and its credit are one answer', async () => {
+    const withPicture = held();
+    withPicture.proposed_parts![0].fields.push(
+      { field: 'image_url', old: 'http://old', new: 'http://new', held: true },
+      { field: 'metadata.imageCredit', old: null, new: { author: 'Someone' }, held: true },
+    );
+    renderCard(withPicture);
+
+    // The server answers the two together, but they are two changeset fields and
+    // the table draws a cell per field — so the card would otherwise show four
+    // buttons under a caption promising each answers only its own row.
+    expect(screen.getByText('Answered with its credit.')).toBeInTheDocument();
+    expect(screen.getByText('Answered with its picture.')).toBeInTheDocument();
+    // Not on the attribution, which really is answered on its own.
+    expect(screen.getAllByText(/Answered with its/)).toHaveLength(2);
+  });
+
+  it('does not promise a credit answer where the run held no credit', () => {
+    // The ordinary shape on a work, not a corner: `creditToWrite` returns nothing
+    // for a changed picture whose new file the Commons batch did not come back
+    // for, and the writer drops an entry whose two sides are equal — so a run can
+    // hold `image_url` alone. The server widens the answer only onto a row that
+    // is open, so with no credit row there is nothing to widen onto, and a note
+    // saying otherwise would overstate what the button does.
+    const pictureOnly = held();
+    pictureOnly.proposed_parts![0].fields.push(
+      { field: 'image_url', old: 'https://old', new: 'https://new', held: true },
+    );
+    renderCard(pictureOnly);
+
+    expect(screen.getByText('a work in this object')).toBeInTheDocument();
+    expect(screen.queryByText(/Answered with its/)).not.toBeInTheDocument();
+  });
+
+  it('answers the work\'s row by naming the part the way the record names it', async () => {
+    renderCard(held());
+
+    fireEvent.click(screen.getByRole('button', { name: /not this/i }));
+
+    // The record names a part and never identifies it (ADR-0026 decision 4), so
+    // the answer echoes back the pair the server matches on: neither the
+    // reference nor the name is an identity alone — a reference is shared by the
+    // components of a serial site listed once per country, and two works in one
+    // museum can carry one name.
+    await waitFor(() => expect(mockedDeclineHeld).toHaveBeenCalledWith(6194, {
+      fields: undefined,
+      parts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['artist'] }],
+    }, 64));
+  });
+
+  it('publishes the work\'s row alone, without touching the object\'s own fields', async () => {
+    renderCard(held());
+
+    fireEvent.click(screen.getByRole('button', { name: /publish this/i }));
+
+    await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(6194, {
+      heldFields: undefined,
+      heldParts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['artist'] }],
+      expectedSyncLogId: 64,
+    }));
+  });
+
+  it('locks the object-level buttons too while a refusal is in flight', async () => {
+    // Both endpoints take OBJECT_LOCK, and an object publish naming no selection
+    // writes every row still open. So a "Publish the change" that wins the lock
+    // mid-refusal publishes the very value being refused and clears the pointer;
+    // the refusal then finds no proposal, answers 409, and the value is on the
+    // site with no card left to answer it. The per-row buttons were guarded from
+    // the start — these two publish the most and were not.
+    mockedDeclineHeld.mockReset().mockReturnValue(new Promise(() => {}));
+    renderCard(held());
+
+    const publishAll = screen.getByRole('button', { name: 'Publish the change' });
+    expect(publishAll).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /not this/i }));
+
+    await waitFor(() => expect(publishAll).toBeDisabled());
+    expect(mockedPublish).not.toHaveBeenCalled();
   });
 });

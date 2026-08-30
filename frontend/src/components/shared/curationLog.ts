@@ -80,6 +80,11 @@ export const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   published: { label: 'Published', color: VIOLET },
   accepted_source: { label: 'Took the source’s', color: BLUE },
   declined_source: { label: 'Kept ours', color: AMBER },
+  // The gate's own refusal, and a different act from the one above it: that one
+  // stands by a curator's claim, this one says "not this value" where nobody
+  // claimed anything (#722). One word apart on purpose — a reader scanning a
+  // history has to be able to tell which question was answered.
+  declined_held: { label: 'Not this', color: AMBER },
   admission_confirmed: { label: 'Kept out', color: RED },
   admission_overridden: { label: 'Put back', color: GREEN },
 };
@@ -229,6 +234,15 @@ function formatPublished(d: Record<string, unknown>): string | null {
   if (applied.length > 0) lines.push(`Applied: ${applied.map(fieldLabel).join(', ')}`);
   if (kept.length > 0) lines.push(`Kept as curated: ${kept.map(fieldLabel).join(', ')}`);
   lines.push(...releasedContents(d));
+  // What the click did not reach, which is the difference between publishing a
+  // proposal and publishing one row of six (#722). The audit row carries the
+  // number for exactly this reader; without the line, the two publications read
+  // the same on the screen a person reconstructs a decision from. Said as a
+  // count here rather than as the card's "the rest is still waiting": the log's
+  // vocabulary is the record's, and the record counts the fields the run held.
+  if (typeof d.heldLeftOpen === 'number' && d.heldLeftOpen > 0) {
+    lines.push(`Left waiting: ${d.heldLeftOpen}`);
+  }
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
@@ -270,6 +284,32 @@ function formatAcceptedSource(d: Record<string, unknown>): string | null {
 function formatDeclinedSource(d: Record<string, unknown>): string | null {
   const lines = fieldEntries(d.fields).map(entry =>
     `${fieldLabel(entry.field as string)}: source proposed "${truncate40(entry.declined)}"`);
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * What a curator refused of a gated run's proposal, and what it left standing (#722).
+ *
+ * The value goes in, as it does for the refusal one card over: the decision row is the
+ * standing answer and is overwritten by the next one, so this is where "what did we
+ * refuse in August" survives. A part's fields are named with the part, because
+ * "attribution" on a museum of two hundred works names nothing.
+ *
+ * What is still open is said, since it is the difference between "that was the last of
+ * it" and "the card is still standing" — and nothing else in the history records it.
+ */
+function formatDeclinedHeld(d: Record<string, unknown>): string | null {
+  const lines = fieldEntries(d.fields).map(entry =>
+    `${fieldLabel(entry.field as string)}: run proposed "${truncate40(entry.declined)}"`);
+  for (const part of Array.isArray(d.parts) ? d.parts : []) {
+    const named = part as { name?: unknown; field?: unknown; declined?: unknown };
+    if (named.field === undefined) continue;
+    lines.push(`${String(named.name ?? 'a part')} — ${fieldLabel(String(named.field))}: `
+      + `run proposed "${truncate40(named.declined)}"`);
+  }
+  if (typeof d.heldLeftOpen === 'number' && d.heldLeftOpen > 0) {
+    lines.push(`${d.heldLeftOpen} still waiting on this card`);
+  }
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
@@ -316,6 +356,7 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (entry.action === 'published') return formatPublished(d);
   if (entry.action === 'accepted_source') return formatAcceptedSource(d);
   if (entry.action === 'declined_source') return formatDeclinedSource(d);
+  if (entry.action === 'declined_held') return formatDeclinedHeld(d);
   if (ADMISSION_ACTIONS.has(entry.action)) return formatAdmission(d);
   // `unrejected`, `added_to_region` and `removed_from_region` never reach this line:
   // their writers insert no `details` at all, and the region their act was about is

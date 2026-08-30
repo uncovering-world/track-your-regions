@@ -920,6 +920,8 @@ export async function setExperienceAdmission(
   appliedParts: AppliedPart[];
   /** Always null, for the same reason. */
   fromSyncLogId: number | null;
+  /** Always zero: an override answers no held row, so it leaves none behind either. */
+  heldLeftOpen: number;
   locationsPublished: number;
   treasureLinksPublished: number;
   treasuresPublished: number;
@@ -1001,6 +1003,41 @@ export async function declineSourceValue(
   });
 }
 
+/** What refusing one or more held rows settled. */
+export interface DeclineHeldResult {
+  experienceId: number;
+  declinedFields: string[];
+  declinedParts: Array<{ kind: string; name: string; fields: string[] }>;
+  fromSyncLogId: number;
+  /** Held rows still open. Zero means the card is gone and the pointer with it. */
+  heldLeftOpen: number;
+}
+
+/**
+ * Refuse what a gated run proposed for named rows of a held card (#722).
+ *
+ * The other answer to a held row, and not the same act as refusing a conflict:
+ * `decline-source` closes a disagreement with a curator's *claim*, and its
+ * lookup requires one, so it would 409 on every field a category's gate held
+ * with nobody having claimed anything.
+ *
+ * No value goes up, for the reason `declineSourceValue` sends none: the queue
+ * suppresses a row by comparing the stored answer against what the source is
+ * proposing now, so a refusal of a value nobody proposed would silence nothing
+ * while looking like an answer. What goes up is which rows, named as the queue
+ * named them.
+ */
+export async function declineHeld(
+  experienceId: number,
+  selection: { fields?: string[]; parts?: HeldSelectionPart[] },
+  expectedSyncLogId: number,
+): Promise<DeclineHeldResult> {
+  return authFetchJson(`${API_URL}/api/experiences/${experienceId}/decline-held`, {
+    method: 'POST',
+    body: JSON.stringify({ ...selection, expectedSyncLogId }),
+  });
+}
+
 /** One part publishing wrote to, as the server names it and the outcome line repeats it. */
 export interface AppliedPart {
   kind: 'locations' | 'treasures';
@@ -1036,6 +1073,15 @@ export interface PublishResult {
    */
   partsNotFound?: PartNotFound[];
   fromSyncLogId: number | null;
+  /**
+   * Held rows this call left open, at both levels (#722).
+   *
+   * Non-zero exactly when the card is still standing, because the pointer that
+   * keys it was kept — which `publishOutcomeFor` says as a state rather than as
+   * this number, since the table does not draw every field the run held. Read
+   * whole in the audit row, where the vocabulary is the record's.
+   */
+  heldLeftOpen: number;
   locationsPublished: number;
   treasureLinksPublished: number;
   treasuresPublished: number;
@@ -1055,12 +1101,15 @@ export interface PublishResult {
 }
 
 /**
- * The four shapes the endpoint accepts, as four shapes rather than six optional
+ * The five shapes the endpoint accepts, as five shapes rather than seven optional
  * fields.
  *
  * A union because the server's own schema is one: `publishExperienceBodySchema`
- * refuses `fieldsOnly` beside `contentsOnly` or either id array, and refuses
- * `expectedSyncLogId` on any contents publish. Typed as a bag of optionals, a
+ * refuses `fieldsOnly` beside `contentsOnly` or either id array, refuses
+ * `expectedSyncLogId` on any contents publish, refuses a held selection beside a
+ * contents publish — it already publishes the fields half — and refuses a held
+ * selection *without* `expectedSyncLogId`, which is why the fifth member declares
+ * it required: a per-row answer is about the proposal one run made. Typed as a bag of optionals, a
  * caller could write the combination that 400s and find out at runtime; typed as
  * this, the compiler refuses it at the call site — which is where the card is
  * being written and the intent is still legible.
@@ -1072,16 +1121,48 @@ export interface PublishResult {
 export type PublishRequest =
   /** The object: its held fields, its own state, and every unread row under it. */
   | { locationIds?: undefined; treasureIds?: undefined; contentsOnly?: undefined;
-      fieldsOnly?: undefined; expectedSyncLogId?: number }
+      fieldsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
+      expectedSyncLogId?: number }
   /** Every pending content row, the object's own state left alone. */
   | { contentsOnly: true; locationIds?: undefined; treasureIds?: undefined;
-      fieldsOnly?: undefined; expectedSyncLogId?: undefined }
+      fieldsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
+      expectedSyncLogId?: undefined }
   /** Exactly these rows, and nothing else. */
   | { locationIds?: number[]; treasureIds?: number[]; contentsOnly?: undefined;
-      fieldsOnly?: undefined; expectedSyncLogId?: undefined }
+      fieldsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
+      expectedSyncLogId?: undefined }
   /** The object's held fields, and none of its unread contents (#524). */
   | { fieldsOnly: true; locationIds?: undefined; treasureIds?: undefined;
-      contentsOnly?: undefined; expectedSyncLogId?: number };
+      contentsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
+      expectedSyncLogId?: number }
+  /**
+   * Exactly these rows of the held proposal, and the rest left open (#722).
+   *
+   * The fields publish narrowed the way the id arrays narrow the contents one.
+   * It carries no `fieldsOnly` because naming held rows already says so — not
+   * because the server refuses the two together, which it deliberately does
+   * not: a body restating its own half has one reading, unlike the pairs the
+   * schema's `.refine`s forbid, so there is no defect to write a rule against.
+   */
+  | { heldFields?: string[]; heldParts?: HeldSelectionPart[]; locationIds?: undefined;
+      treasureIds?: undefined; contentsOnly?: undefined; fieldsOnly?: undefined;
+      expectedSyncLogId: number };
+
+/**
+ * One part of a held proposal, as a request names it (#722).
+ *
+ * The record names a part and never identifies it (ADR-0026 decision 4), so a
+ * request does the same and a card echoes back what the queue gave it: the kind,
+ * the reference and the name. Both halves are nullable there and here, and the
+ * server matches on the pair, because a reference is duplicated across the
+ * components of a serial site and a name is not unique either.
+ */
+export interface HeldSelectionPart {
+  kind: 'locations' | 'treasures';
+  ref: string | null;
+  name: string | null;
+  fields: string[];
+}
 
 /**
  * Say that a reader may see this — the only endpoint that applies a gate-held

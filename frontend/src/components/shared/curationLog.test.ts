@@ -211,6 +211,32 @@ describe('a publication', () => {
     expect(line).not.toContain('shortDescription');
   });
 
+  it('says what a one-row publication left waiting', () => {
+    // The difference between publishing a proposal and publishing one row of six
+    // (#722), which the counts cannot carry: the audit row records it for this
+    // reader, and without the line the two entries read the same.
+    const line = formatLogDetails(entry('published', {
+      scope: 'fields',
+      fields: ['name'], claimedFieldsSkipped: [],
+      fromSyncLogId: 68, heldLeftOpen: 5,
+      locations: 0, treasureLinks: 0, treasures: 0, withdrawalsReleased: 0,
+    })) as string;
+
+    expect(line).toContain('Applied: name');
+    expect(line).toContain('Left waiting: 5');
+  });
+
+  it('says nothing of the kind for a publication that answered the card', () => {
+    const line = formatLogDetails(entry('published', {
+      scope: 'object',
+      fields: ['name'], claimedFieldsSkipped: [],
+      fromSyncLogId: 68, heldLeftOpen: 0,
+      locations: 0, treasureLinks: 0, treasures: 0, withdrawalsReleased: 0,
+    })) as string;
+
+    expect(line).not.toContain('Left waiting');
+  });
+
   it('counts the works once, having been given the same works twice', () => {
     // The link says a work has been passed *here*, the work says it has been passed at
     // all. Added, they would double a museum's release.
