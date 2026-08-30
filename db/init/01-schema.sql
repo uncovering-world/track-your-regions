@@ -2823,7 +2823,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     curator_id INTEGER NOT NULL REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -2833,15 +2833,16 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- CHECK has to be applied on its own — see the same shape on
 -- experience_sync_changes above.
 --
--- 'declined_source' is the newest of them and rides in
--- db/migrations/022-conflict-decisions.sql for a database that already holds
--- data. The list is a closed one, so a curator's action cannot be recorded at
--- all until it is named here: the audit insert is inside the same transaction
--- as the decision, and a rejected action rolls the decision back with it. That
--- is why widening it is a schema change and not a code-only one.
+-- 'declined_held' is the newest of them and rides in
+-- db/migrations/039-held-decisions.sql for a database that already holds data;
+-- 'declined_source', its neighbour one gate over, rides in 022. The list is a
+-- closed one, so a curator's action cannot be recorded at all until it is named
+-- here: the audit insert is inside the same transaction as the decision, and a
+-- rejected action rolls the decision back with it. That is why widening it is a
+-- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited'));
 
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);
@@ -2879,6 +2880,72 @@ CREATE TABLE IF NOT EXISTS experience_conflict_decisions (
 -- single-column index would) and accept-source's delete by experience and field list.
 
 COMMENT ON TABLE experience_conflict_decisions IS 'Source proposals a curator refused; suppresses the queue card while the proposal is unchanged';
+
+-- One gate over: how a curator answers a single field of a held proposal (#722).
+--
+-- A held field is one nobody claimed and the gate kept out of the columns
+-- because a reader can already see the stored value (ADR-0025 decision 5,
+-- ADR-0037 for a field of a place or a work). The card used to have one answer
+-- for all of it. This table is what lets it have one per row, and it records
+-- both verdicts rather than only the refusal.
+--
+-- Refusing needed somewhere to live because there was nowhere: the one way to
+-- turn down a single held field was to edit it, which claims it, and a claim is
+-- a statement about whose value it is rather than about this value -- it also
+-- outlives the question, so a source proposing something else next month meets
+-- the claim and no curator.
+--
+-- Publishing needed it for a different reason, and only since the answer became
+-- per row. A whole-card publish clears pending_change_sync_log_id, which is what
+-- takes the card away; publishing one of six leaves the pointer standing for the
+-- other five, and the run's record still says the field it wrote was held. With
+-- no row here that card would go on offering a value it has already applied.
+-- Rewriting the run's record instead is not an option: what a changeset holds is
+-- what happened.
+--
+-- A sibling of experience_conflict_decisions rather than a widening of it. The
+-- two answer different questions, are read by different queries, and only this
+-- one has a part: since ADR-0037 a held card carries the fields of the object's
+-- places and works beside the object's own. The part is identified the way
+-- partRecord.ts identifies it -- the reference narrows, the name decides --
+-- because nine (experience_id, external_ref) pairs on this database are
+-- duplicated, and one point carries no reference at all. Both halves are the
+-- record's own, which names a changed item by what it was called before the run
+-- rewrote it, so they are stable for as long as the hold stands.
+--
+-- What is stored is the value answered about, and the readers suppress a
+-- proposal only while it is jsonb-equal to it: a source that has changed its
+-- mind is asking a new question and must be heard.
+--
+-- NULLS NOT DISTINCT is load-bearing, not tidiness. The object's own field
+-- carries three NULLs and the referenceless point one; under the default rule
+-- no two such rows would ever collide, so the standing answer would become a
+-- pile and the upsert that replaces it would never fire.
+CREATE TABLE IF NOT EXISTS experience_held_decisions (
+    id BIGSERIAL PRIMARY KEY,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    -- NULL is the object's own field. A part carries the record's kind, and the
+    -- CHECK is what stops a third spelling of the same two words.
+    part_kind VARCHAR(20) CHECK (part_kind IS NULL OR part_kind IN ('locations', 'treasures')),
+    part_ref VARCHAR(255),
+    part_name VARCHAR(500),
+    field VARCHAR(100) NOT NULL,
+    answer VARCHAR(10) NOT NULL CHECK (answer IN ('published', 'refused')),
+    value JSONB NOT NULL,
+    decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE NULLS NOT DISTINCT (experience_id, part_kind, part_ref, part_name, field)
+);
+
+-- No index beyond the unique constraint, for the reason given above it: the
+-- btree leads on experience_id, which is where every reader of this table
+-- starts -- the queue asking whether one card's row is answered, publishing
+-- reading one object's answers under its lock.
+
+COMMENT ON TABLE experience_held_decisions IS 'Gate-held proposals a curator has answered, by value; keeps the held card and its count from asking again while the proposal is unchanged';
+COMMENT ON COLUMN experience_held_decisions.part_kind IS 'NULL for the object own field; otherwise the contents kind the record filed the part under';
+COMMENT ON COLUMN experience_held_decisions.answer IS 'published: the value was written by a curator click. refused: the curator said not this, and nothing was written';
+COMMENT ON COLUMN experience_held_decisions.value IS 'The proposed value the answer is about, read from the locked proposal and never from the request';
 
 -- When a user was first shown the "New" chip (issue #480). The chip lives for
 -- max(category window, a week from this timestamp), so only the first
