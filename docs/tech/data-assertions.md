@@ -289,7 +289,12 @@ changeset `pending_change_sync_log_id` points at whether it holds
 the pointer, and on the dev database every one of the 1272 UNESCO rows carries
 one (the criteria and a credit are held on all of them) while 58 hold the flag
 — a bare pointer test would have switched the check off for the whole category
-it was written for.
+it was written for. Since #722 it asks one thing more: whether that held flag is
+still **unanswered**. A curator who says "not this" to the proposed flag has
+settled it, and no card will ever come round to reconcile the two halves — which
+is the disagreement this check exists to report rather than one to go on
+excusing. `picture-with-nobody-credited`'s `credit_waiting` arms narrowed alongside it,
+though on a refusal alone rather than on any answer — see its own section for why.
 
 The last is a licence obligation rather than a consistency rule. Most Commons
 files are CC BY or CC BY-SA, which of a page that merely shows a photograph ask
@@ -314,6 +319,25 @@ museum's pointer for a held `metadata.imageCredit` naming the work, through this
 venue's link, and says "waiting" only there. A credit fetched for the picture the
 row already shows is written, not held. "Publish what is waiting" and "go and
 fetch it" are different afternoons.
+
+Both arms ask for a held credit the curator has not **refused** since #722. A
+refused credit is not waiting on anybody: the curator has said no to that value,
+the queue has dropped the row, and nothing will come round to write it — so the
+line has to stop saying "publish what is waiting" and let the row be reported as
+the credit-less picture it is. The one that reaches a reader arrives this way:
+refuse an object's source data and then publish its held picture, and
+`picture-with-nobody-credited` is what names it.
+
+Refused and not merely *answered*, which is where this parts company with
+`danger-flag-disagrees-with-its-tag` — that one excuses a row on any answer,
+because a published flag is a flag that landed. A published credit is not. On a
+card whose picture is still open and offers a different file, publishing the
+source-data row deliberately withholds the run's credit — the stored one names a
+photograph nobody will see, and the run's may not be written under a picture the
+row does not yet show — and publishing the picture afterwards finishes what that
+call had to leave (`publishHeldFields.ts`, `creditPin`). So the credit really is
+still waiting, and treating "answered" as settled would send an admin to go and
+find a photographer the queue is one click from naming.
 
 ## Adding an assertion
 
@@ -340,7 +364,12 @@ Two rules about the SQL:
 - **Compose the predicates the product already composes.** An assertion about
   what a reader sees imports the fragments from `experienceLifecycle.ts`; one
   about placement uses placement's own predicate; one about the curation queue
-  composes `heldWaitingSql`. An assertion that asks a slightly different
+  composes `heldWaitingSql` — and, where it asks about one *field* rather than
+  about the row, `heldDecisions.ts`'s own fragment, so a proposal a curator has
+  already settled stops being reported as waiting on one (#722) — where "settled"
+  is the answered fragment for the danger flag and the *refused* one for the
+  credit, since publishing a credit does not always write it.
+  An assertion that asks a slightly different
   question than the read it guards is worse than no assertion, because it
   reports clear while the screens disagree. This is why the assertions live in
   the controller layer: the service layer may not import a controller, and these
