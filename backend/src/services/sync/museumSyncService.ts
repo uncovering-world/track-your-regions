@@ -334,7 +334,7 @@ async function processMuseum(
   if (!context.dryRun) {
     treasures = await upsertMuseumTreasures(experienceId, museum.artworks, {
       fetched: imageCredits, stored: storedTreasureCredits,
-    });
+    }, { syncLogId: context.syncLogId });
   }
 
   return {

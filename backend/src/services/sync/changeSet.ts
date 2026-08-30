@@ -196,7 +196,7 @@ function setEquals(a: string[] | null, b: string[] | null): boolean {
 }
 
 /** Deep value equality with object keys compared as sets, not sequences. */
-function jsonEquals(a: unknown, b: unknown): boolean {
+export function jsonEquals(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (isAbsent(a) && isAbsent(b)) return true;
   if (a === null || b === null || a === undefined || b === undefined) return false;

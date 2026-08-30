@@ -48,9 +48,18 @@ const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
  */
 const NO_CREDITS: TreasureCredits = { fetched: new Map(), stored: new Map() };
 
+/**
+ * A run that can name itself. Named for the reason `NO_CREDITS` is: the
+ * production signature takes the run with no default, because a writer that
+ * forgot it would hold a visible work's attribution and never point the museum
+ * at the run that held it.
+ */
+const RUN: { syncLogId: number | null } = { syncLogId: 42 };
+
 const upsertMuseumTreasures = (
   experienceId: number, artworks: ProcessedContent[], credits: TreasureCredits = NO_CREDITS,
-) => writeTreasures(experienceId, artworks, credits);
+  run = RUN,
+) => writeTreasures(experienceId, artworks, credits, run);
 const mockedRetire = retirePassAfterNewContent as unknown as ReturnType<typeof vi.fn>;
 
 /** `Top Art Museums` — the category a treasure's gate is read from. */
@@ -140,7 +149,9 @@ describe('a work arrives marked as unread', () => {
     const sql = String(treasureCall()[0]);
     const onUpdate = sql.slice(sql.indexOf('DO UPDATE SET'));
     expect(sql.slice(0, sql.indexOf('DO UPDATE SET'))).toContain('curation_state');
-    expect(onUpdate).not.toContain('curation_state');
+    // Never assigned on conflict. The hold *reads* it since ADR-0037 — a visible
+    // row is what the guards are about — and reading it is not deciding it.
+    expect(onUpdate).not.toMatch(/curation_state\s*=/);
   });
 
   it('keeps the fields a curator claimed, and follows the source everywhere else', async () => {
@@ -448,8 +459,10 @@ describe('what a run stores about a work photograph', () => {
     // beside it would be replaced, printing the source's photographer under a
     // photograph a person chose.
     const onUpdate = String(treasureCall()[0]).slice(String(treasureCall()[0]).indexOf('DO UPDATE SET'));
+    // The claim opens the CASE; the gate's term follows it (ADR-0037), pinned
+    // by the describe block at the foot.
     expect(onUpdate).toMatch(
-      /metadata = CASE WHEN treasures\.curated_fields \? 'image_url'\s+THEN treasures\.metadata ELSE EXCLUDED\.metadata END/,
+      /metadata = CASE WHEN treasures\.curated_fields \? 'image_url'[\s\S]*?THEN treasures\.metadata ELSE EXCLUDED\.metadata END/,
     );
   });
 
@@ -465,5 +478,151 @@ describe('what a run stores about a work photograph', () => {
     const index = columns![1].split(',').map(c => c.trim()).indexOf('metadata');
     const params = treasureCall()[1] as unknown[];
     expect(params[index]).toBeNull();
+  });
+});
+
+/**
+ * A gated source may not overwrite what a reader can already see, and since
+ * ADR-0037 that covers a work's fields as it has always covered the museum's
+ * own. Measured before this existed: run 64 rewrote the attribution of The Wine
+ * Glass (Gemäldegalerie) from Johannes Vermeer to an obscure namesake, live,
+ * under a gated category, with nobody asked (#717). The row's own state decides
+ * visibility — a work verified through one venue is on show there even where
+ * another venue's link is still pending.
+ */
+describe('a visible work under a gated source', () => {
+  const FILE = 'http://commons.wikimedia.org/wiki/Special:FilePath/Wine%20Glass.jpg';
+  const NEW_FILE = 'http://commons.wikimedia.org/wiki/Special:FilePath/Wine%20Glass%202.jpg';
+  const CREDIT: ImageCredit = {
+    author: 'Mbzt', license: 'CC BY-SA 4.0',
+    licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0',
+    detailsUrl: 'https://commons.wikimedia.org/wiki/File:Wine_Glass.jpg',
+  };
+  const NEW_CREDIT: ImageCredit = { ...CREDIT, author: 'Someone Else' };
+  const POINTER = /SET pending_change_sync_log_id/;
+
+  /** The Wine Glass as stored, and the source's offer against it. */
+  const GLASS = {
+    external_id: 'Q12418', name: 'The Wine Glass', artist: 'Johannes Vermeer',
+    year: 1660, image_url: FILE, image_credit: CREDIT, curated_fields: [] as string[],
+  };
+  const offer = (overrides: Partial<ProcessedContent> = {}) => artwork({
+    name: 'The Wine Glass', artist: 'Jan Vermeer van Haarlem the Elder', year: 1660, imageUrl: FILE,
+    ...overrides,
+  });
+
+  /** One stored work, the upsert's answer about the hold, and a link already there. */
+  function scriptHeld(wasHeld: boolean, stored: Partial<typeof GLASS> = {}) {
+    scriptStored([{ ...GLASS, ...stored }]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'The Wine Glass', was_held: wasHeld }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+  }
+  const sentSql = () => mockedQuery.mock.calls.map(c => String(c[0]));
+
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedRetire.mockReset();
+  });
+
+  it('keeps every field a curator could be asked about where the row is visible and gated', async () => {
+    scriptHeld(true);
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [offer()]);
+
+    const sql = String(treasureCall()[0]);
+    const onUpdate = sql.slice(sql.indexOf('DO UPDATE SET'));
+    // The gate, bound as the same parameter the insert reads it from, and the
+    // row's own state — never the link's, and never EXCLUDED's.
+    const gate = "OR ((SELECT requires_curation FROM experience_categories WHERE id = $12)";
+    for (const column of ['name', 'artist', 'year', 'image_url']) {
+      expect(onUpdate, column).toContain(`${column} = CASE WHEN treasures.curated_fields ? '${column}' ${gate}`);
+    }
+    expect(onUpdate).toContain("AND treasures.curation_state <> 'pending')");
+    expect(onUpdate).not.toContain('EXCLUDED.curation_state');
+    // The credit follows its picture — held with it, or the row would name the
+    // source's photographer under the photograph the hold just kept — and *only*
+    // with it: a credit fetched for the picture the row already shows is the
+    // row's own, and holding it would leave every visible work under a gated
+    // museum unable to gain a credit for as long as the gate stands, with
+    // nothing recorded and no card to apply it from (the review of #717).
+    expect(onUpdate).toContain(
+      `metadata = CASE WHEN treasures.curated_fields ? 'image_url'\n                             OR (${gate.slice(3)}`,
+    );
+    expect(onUpdate).toMatch(/AND treasures\.image_url IS DISTINCT FROM EXCLUDED\.image_url\)\s+THEN treasures\.metadata ELSE EXCLUDED\.metadata END/);
+    // The guard's own answer, on the row the statement locked.
+    expect(sql).toMatch(/RETURNING id, name,[\s\S]*AS was_held/);
+    // Still outside every guard: a count and a threshold on it are measurements.
+    expect(onUpdate).toContain('sitelinks_count = EXCLUDED.sitelinks_count');
+  });
+
+  it('reports the re-attribution as held and points the museum at the run', async () => {
+    scriptHeld(true);
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [offer()]);
+
+    expect(delta.changed).toEqual([{
+      item: { name: 'The Wine Glass', ref: 'Q12418' },
+      fields: [expect.objectContaining({
+        field: 'artist', old: 'Johannes Vermeer', new: 'Jan Vermeer van Haarlem the Elder',
+        significance: 'major', held: true, curatedConflict: false,
+      })],
+    }]);
+    const pointer = sentSql().find(s => POINTER.test(s));
+    expect(pointer).toBeDefined();
+    const call = mockedQuery.mock.calls.find(c => POINTER.test(String(c[0])));
+    expect(call?.[1]).toEqual([EXPERIENCE_ID, 42]);
+  });
+
+  it('carries the new picture\'s credit beside a held picture, so publishing can credit it', async () => {
+    scriptHeld(true);
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [offer({ artist: 'Johannes Vermeer', imageUrl: NEW_FILE })], {
+      fetched: new Map([[NEW_FILE, NEW_CREDIT]]), stored: new Map(),
+    });
+
+    expect(delta.changed[0].fields).toEqual([
+      expect.objectContaining({ field: 'image_url', old: FILE, new: NEW_FILE, held: true }),
+      expect.objectContaining({ field: 'metadata.imageCredit', old: CREDIT, new: NEW_CREDIT, held: true }),
+    ]);
+  });
+
+  it('carries no credit entry where the picture did not change', async () => {
+    scriptHeld(true);
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [offer()], {
+      fetched: new Map([[FILE, NEW_CREDIT]]), stored: new Map(),
+    });
+
+    // A credit refreshed for the same photograph is the row tidying itself, not
+    // a picture a curator is asked about.
+    expect(delta.changed[0].fields.map(f => f.field)).toEqual(['artist']);
+  });
+
+  it('writes the re-attribution and points at nothing where the row is not held', async () => {
+    scriptHeld(false);
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [offer()]);
+
+    expect(delta.changed[0].fields[0]).toMatchObject({ field: 'artist', held: false });
+    expect(sentSql().filter(s => POINTER.test(s))).toEqual([]);
+  });
+
+  it('points at nothing for a run that cannot name itself', async () => {
+    scriptHeld(true);
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [offer()], NO_CREDITS, { syncLogId: null });
+
+    expect(sentSql().filter(s => POINTER.test(s))).toEqual([]);
+  });
+
+  it('lets a claim win over the hold on the field it covers', async () => {
+    scriptHeld(true, { curated_fields: ['artist'] });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [offer({ year: 1661 })]);
+
+    expect(delta.changed[0].fields).toEqual([
+      expect.objectContaining({ field: 'artist', curatedConflict: true, held: false }),
+      expect.objectContaining({ field: 'year', curatedConflict: false, held: true }),
+    ]);
   });
 });

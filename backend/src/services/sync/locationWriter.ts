@@ -94,7 +94,7 @@
 import { pool } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
-import { pointHeldProposalAt } from './heldProposalPointer.js';
+import { pointHeldProposalAt, type WriteRun } from './heldProposalPointer.js';
 import type { ContentsDelta } from './types.js';
 // The source's list, before anything is known about the store: how it becomes a
 // CTE, how its values bind, and the duplicates the source itself ships.
@@ -135,16 +135,8 @@ export interface LocationWriteResult {
   delta: ContentsDelta;
 }
 
-/**
- * The run this write belongs to, for the pointer a held field needs.
- *
- * Required rather than defaulted: a caller that left it out would hold a
- * visible point's name and never point the object at the run that held it —
- * a proposal recorded in the changeset with no card able to find it.
- */
-export interface LocationWriteRun {
-  syncLogId: number | null;
-}
+/** The run this write belongs to — `WriteRun`, under the name this writer's callers use. */
+export type LocationWriteRun = WriteRun;
 
 /**
  * Make `experience_locations` for one experience match `incoming`, keeping the

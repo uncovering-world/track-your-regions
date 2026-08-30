@@ -27,6 +27,19 @@
 import type { QueryRunner } from './curationDecay.js';
 
 /**
+ * The run a content write belongs to, for the pointer a held field needs.
+ *
+ * Both content writers take it as a required argument rather than a default:
+ * a caller that left it out would hold a visible part's field and never point
+ * the object at the run that held it — a proposal recorded in the changeset
+ * with no card able to find it. `null` is a run that cannot name itself, which
+ * records the hold and withholds the pointer.
+ */
+export interface WriteRun {
+  syncLogId: number | null;
+}
+
+/**
  * Point `experienceId` at `syncLogId` as the run whose proposal it is holding.
  *
  * A no-op for a `pending` row — an arrival is refreshed in place rather than

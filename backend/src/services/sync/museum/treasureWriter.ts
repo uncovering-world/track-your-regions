@@ -11,7 +11,9 @@
 import { pool } from '../../../db/index.js';
 import { creditToWrite, type ImageCredit, type StoredCredit } from '../imageCredit.js';
 import { retirePassAfterNewContent } from '../curationDecay.js';
+import { pointHeldProposalAt, type WriteRun } from '../heldProposalPointer.js';
 import { workChanges } from '../contentsChangeSet.js';
+import { jsonEquals, type FieldChange } from '../changeSet.js';
 import type {
   ContentItem, ContentItemChange, ContentsDelta, ProcessedContent,
 } from '../types.js';
@@ -19,6 +21,29 @@ import { ICONIC_SITELINKS, ICONIC_RELEASE } from './tier1.js';
 
 /** `Top Art Museums` — the category a treasure reads its gate from, since it has none of its own. */
 const MUSEUM_CATEGORY_ID = 2;
+
+/**
+ * The hold, as one SQL expression over the stored row: a gated source may not
+ * overwrite what a reader can already see (ADR-0025 decision 5), and since
+ * ADR-0037 that covers a work's fields as it covers the museum's own columns.
+ *
+ * The row's **own** state decides it, not the link's: a work is passed once,
+ * globally (ADR-0025 decision 2), so one verified through another venue is on
+ * show there even where this venue's link is still pending, and its attribution
+ * is exactly what a reader can already see. A work still `pending` has nothing
+ * to protect and keeps being refreshed in place. The gate is the museum
+ * category's, bound as the same parameter the insert reads it from, so the two
+ * cannot disagree. Evaluated inside `DO UPDATE` on the row the statement locked
+ * and again in its RETURNING, so the record cannot disagree with the write
+ * (`heldSql` in syncUtils.ts, and #519 for why the answer has to come back).
+ *
+ * `treasures.` is not decoration: inside `ON CONFLICT DO UPDATE` both the table
+ * and `EXCLUDED` are in scope, and `EXCLUDED.curation_state` is what the insert's
+ * own CASE just computed — `pending` under a gate — which would make the guard
+ * `true AND false` for every row.
+ */
+const HELD_WORK = `((SELECT requires_curation FROM experience_categories WHERE id = $12)
+                    AND treasures.curation_state <> 'pending')`;
 
 /** What a run knows about who took the pictures: what it fetched, and what the rows hold. */
 export interface TreasureCredits {
@@ -47,12 +72,91 @@ export function treasureMetadata(
   fetched: Map<string, ImageCredit>,
   stored: Map<string, StoredCredit>,
 ): string | null {
-  const patch = creditToWrite(
+  const patch = creditPatch(artwork, fetched, stored);
+  return Object.keys(patch).length > 0 ? JSON.stringify(patch) : null;
+}
+
+/** The credit the run would write, as the object `treasureMetadata` serialises. */
+function creditPatch(
+  artwork: ProcessedContent,
+  fetched: Map<string, ImageCredit>,
+  stored: Map<string, StoredCredit>,
+): { imageCredit?: ImageCredit | null } {
+  return creditToWrite(
     artwork.imageUrl ? fetched.get(artwork.imageUrl) : undefined,
     stored.get(artwork.externalId),
     artwork.imageUrl,
   );
-  return Object.keys(patch).length > 0 ? JSON.stringify(patch) : null;
+}
+
+/**
+ * The credit entry that rides beside a changed picture in the record.
+ *
+ * A hosted picture carries a credit, and a picture the gate holds is published
+ * by a curator rather than by the next run — so the credit the run fetched for
+ * it has to travel with the proposal, or publishing would put the new
+ * photograph on show under the old photographer's name, or under none. The
+ * entry takes the picture's own flags: held with it, and absent where a claim
+ * refused the picture, since `accept-source` drops the credit with the picture
+ * it releases and a second entry would ask the same question twice.
+ *
+ * The object's own diff reports the same key under the same name, so the
+ * curator's vocabulary needs nothing new to say "picture credit".
+ */
+function creditChange(
+  fields: FieldChange[],
+  before: ImageCredit | null,
+  patch: { imageCredit?: ImageCredit | null },
+): FieldChange | null {
+  const picture = fields.find(field => field.field === 'image_url');
+  if (!picture || picture.curatedConflict) return null;
+  const after = patch.imageCredit ?? null;
+  if (jsonEquals(before, after)) return null;
+  return {
+    field: 'metadata.imageCredit', old: before, new: after,
+    significance: 'minor', curatedConflict: false, held: picture.held,
+  };
+}
+
+/** A work as the run found it, read once for the whole museum before any is written. */
+interface StoredWork {
+  name: string | null;
+  artist: string | null;
+  year: number | null;
+  imageUrl: string | null;
+  imageCredit: ImageCredit | null;
+  curatedFields: string[];
+}
+
+/**
+ * What this run did to a work it already held, or tried to.
+ *
+ * **The "after" is the source's offer, not the row the statement wrote** — the
+ * same pair `keptChanges` compares for a point, and for the same reason. The
+ * upsert's own `CASE` keeps the stored value wherever a claim holds, so a claimed
+ * field written back over itself compares equal: read from the written row,
+ * exactly the refusals worth reporting are the ones that disappear, and
+ * `curatedConflict` could never be true for a work. Read from the offer, a claim
+ * marks the entry rather than erasing it.
+ *
+ * `wasHeld` is the statement's own answer about the row (ADR-0037): the diff
+ * marks every unclaimed change with it, and the record then says which of these
+ * the run wrote and which a curator is being asked about. A held picture carries
+ * its credit beside it (`creditChange`).
+ */
+function rewriteOf(
+  was: StoredWork,
+  artwork: ProcessedContent,
+  patch: { imageCredit?: ImageCredit | null },
+  wasHeld: boolean,
+): ContentItemChange | null {
+  const fields = workChanges(was, {
+    name: artwork.name, artist: artwork.artist, year: artwork.year, imageUrl: artwork.imageUrl,
+  }, was.curatedFields, wasHeld);
+  const credit = creditChange(fields, was.imageCredit, patch);
+  if (credit) fields.push(credit);
+  if (fields.length === 0) return null;
+  return { item: { name: was.name, ref: artwork.externalId }, fields };
 }
 
 /**
@@ -91,6 +195,10 @@ export async function upsertMuseumTreasures(
   // `readStoredTreasureCredits` is awaited in `fetchMuseumItems`, before the
   // first museum is written, rather than beside the fetch it protects.
   credits: TreasureCredits,
+  // Required for the reason `credits` is: a caller that left it out would hold
+  // a visible work's attribution and never point the museum at the run that
+  // held it — a proposal recorded in the changeset with no card able to find it.
+  run: WriteRun,
 ): Promise<ContentsDelta> {
   const added: ContentItem[] = [];
   const changed: ContentItemChange[] = [];
@@ -103,25 +211,30 @@ export async function upsertMuseumTreasures(
   // passed. The claim set comes with it, because a field the source proposed and
   // the guard above refused is the *reason* to report rather than a case to skip.
   const refs = artworks.map(a => a.externalId);
-  const before = new Map<string, {
-    name: string | null; artist: string | null; year: number | null;
-    imageUrl: string | null; curatedFields: string[];
-  }>();
+  const before = new Map<string, StoredWork>();
   if (refs.length > 0) {
+    // The credit comes with the picture, for the entry `creditChange` builds: a
+    // held picture's proposal has to carry who took the new one.
     const stored = await pool.query(
-      `SELECT external_id, name, artist, year, image_url, curated_fields
+      `SELECT external_id, name, artist, year, image_url, curated_fields,
+              metadata->'imageCredit' AS image_credit
          FROM treasures WHERE external_id = ANY($1::text[])`,
       [refs],
     );
     for (const row of stored.rows) {
       before.set(row.external_id, {
         name: row.name, artist: row.artist, year: row.year,
-        imageUrl: row.image_url, curatedFields: row.curated_fields ?? [],
+        imageUrl: row.image_url, imageCredit: row.image_credit ?? null,
+        curatedFields: row.curated_fields ?? [],
       });
     }
   }
 
   for (const artwork of artworks) {
+    // Once per work, and read twice: serialised as the ninth parameter, and
+    // compared against the stored credit where the picture is held.
+    const patch = creditPatch(artwork, credits.fetched, credits.stored);
+
     // Step 1: Upsert into treasures (globally unique by external_id)
     //
     // `curation_state` is bound to `MUSEUM_CATEGORY_ID` directly rather than
@@ -144,11 +257,20 @@ export async function upsertMuseumTreasures(
         -- sitelinks_count and is_iconic are outside it deliberately -- a count and a
         -- threshold on that count are a measurement, not a judgement -- and so is
         -- external_id, which is identity and is the conflict target above.
-        name = CASE WHEN treasures.curated_fields ? 'name' THEN treasures.name ELSE EXCLUDED.name END,
+        --
+        -- And behind the gate, since ADR-0037: a visible work keeps every one of
+        -- these four where the source is gated, exactly as the museum's own
+        -- columns do, and the record below says so. treasure_type stays the
+        -- source's: a class label the pipeline collected the work under, not a
+        -- fact a curator is asked about, and nothing reports a change to it.
+        name = CASE WHEN treasures.curated_fields ? 'name' OR ${HELD_WORK}
+                    THEN treasures.name ELSE EXCLUDED.name END,
         treasure_type = EXCLUDED.treasure_type,
-        artist = CASE WHEN treasures.curated_fields ? 'artist' THEN treasures.artist ELSE EXCLUDED.artist END,
-        year = CASE WHEN treasures.curated_fields ? 'year' THEN treasures.year ELSE EXCLUDED.year END,
-        image_url = CASE WHEN treasures.curated_fields ? 'image_url'
+        artist = CASE WHEN treasures.curated_fields ? 'artist' OR ${HELD_WORK}
+                      THEN treasures.artist ELSE EXCLUDED.artist END,
+        year = CASE WHEN treasures.curated_fields ? 'year' OR ${HELD_WORK}
+                    THEN treasures.year ELSE EXCLUDED.year END,
+        image_url = CASE WHEN treasures.curated_fields ? 'image_url' OR ${HELD_WORK}
                          THEN treasures.image_url ELSE EXCLUDED.image_url END,
         sitelinks_count = EXCLUDED.sitelinks_count,
         is_iconic = CASE
@@ -170,15 +292,30 @@ export async function upsertMuseumTreasures(
         -- would still be replaced, printing the source photographer's name under
         -- a photograph they chose -- the one thing this feature promises never to
         -- do. Read at write time, so the window closes.
+        --
+        -- Held with the picture, and only with it. The credit follows its
+        -- photograph: a run that held the picture and wrote the credit would
+        -- name the source's photographer under the photograph the hold just
+        -- kept, and that credit travels in the record instead (creditChange).
+        -- A credit fetched for the picture the row already shows is the row's
+        -- own, and is written -- held, every visible work under a gated museum
+        -- would be unable to gain a credit for as long as the gate stood, with
+        -- nothing recorded and no card to apply it from, which is the licence
+        -- rule and the gate's own promise broken at once.
         metadata = CASE WHEN treasures.curated_fields ? 'image_url'
+                             OR (${HELD_WORK}
+                                 AND treasures.image_url IS DISTINCT FROM EXCLUDED.image_url)
                         THEN treasures.metadata ELSE EXCLUDED.metadata END,
         updated_at = NOW()
       -- The name beside the id because a link is named by what the catalogue
       -- calls the work, which on a claimed field is not what the source sent.
       -- Nothing else off this row: the comparison that reports a rewrite reads
       -- the pre-run snapshot instead, and taking its claim set from here would be
-      -- taking it from the statement that already honoured it.
-      RETURNING id, name`,
+      -- taking it from the statement that already honoured it. The hold is the
+      -- one exception, and it is the guards' own expression rather than a value
+      -- off the row: the record has to say whether the write happened, and only
+      -- the statement that decided it can answer that without a second reading.
+      RETURNING id, name, ${HELD_WORK} AS was_held`,
       [
         artwork.externalId,
         artwork.name,
@@ -188,7 +325,8 @@ export async function upsertMuseumTreasures(
         artwork.imageUrl,
         artwork.sitelinksCount,
         artwork.sitelinksCount >= ICONIC_SITELINKS,
-        treasureMetadata(artwork, credits.fetched, credits.stored),
+        // What `treasureMetadata` serialises, from the patch computed above.
+        Object.keys(patch).length > 0 ? JSON.stringify(patch) : null,
         ICONIC_SITELINKS,
         ICONIC_RELEASE,
         MUSEUM_CATEGORY_ID,
@@ -198,27 +336,11 @@ export async function upsertMuseumTreasures(
     const stored = treasureResult.rows[0];
     const treasureId = stored.id;
 
-    // What this run did to a work it already held, or tried to.
-    //
-    // **The "after" is the source's offer, not the row the statement wrote** —
-    // the same pair `keptChanges` compares for a point, and for the same reason.
-    // The upsert's own `CASE` keeps the stored value wherever a claim holds, so a
-    // claimed field written back over itself compares equal: read from the
-    // written row, exactly the refusals worth reporting are the ones that
-    // disappear, and `curatedConflict` could never be true for a work. Read from
-    // the offer, a claim marks the entry rather than erasing it.
-    //
     // A work the run has just inserted has no "before" and is an arrival, which
     // `added` below carries.
     const was = before.get(artwork.externalId);
-    if (was) {
-      const fields = workChanges(was, {
-        name: artwork.name, artist: artwork.artist, year: artwork.year, imageUrl: artwork.imageUrl,
-      }, was.curatedFields);
-      if (fields.length > 0) {
-        changed.push({ item: { name: was.name, ref: artwork.externalId }, fields });
-      }
-    }
+    const rewrite = was && rewriteOf(was, artwork, patch, Boolean(stored.was_held));
+    if (rewrite) changed.push(rewrite);
 
     // Step 2: Link treasure to experience via junction table. Unlike the
     // treasure above, a link does have an experience to read the gate through,
@@ -251,6 +373,14 @@ export async function upsertMuseumTreasures(
   // curator's pass no longer covers everything on show, and it is the same fact
   // whether one work arrived or twelve.
   if (added.length > 0) await retirePassAfterNewContent(pool, experienceId);
+
+  // A held field is a proposal a curator has to be able to find, and the card
+  // finds it through the museum's pointer (ADR-0037). Once for the museum, after
+  // the works: the pointer names the run, not the work, and twelve held
+  // attributions are one card.
+  if (changed.some(entry => entry.fields.some(field => field.held))) {
+    await pointHeldProposalAt(pool, experienceId, run.syncLogId);
+  }
 
   // `changed` is expected to be empty most runs and is still computed. Re-asking
   // a museum's works of Wikidata weeks after importing them turned up no

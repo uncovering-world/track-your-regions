@@ -437,10 +437,13 @@ const offeredPlaceInNoRegion: CatalogueAssertion = {
  * meanwhile shows the picture. Publishing that change names the author; the
  * remaining 176 have nothing waiting and need a run to fetch one.
  *
- * **On the works, nothing has fetched one.** `treasureWriter` writes a work's
- * credit straight into its row rather than proposing it, so there is no queue
- * to look in and no `contents` changeset mentions a credit — measured, zero.
- * A museum run is what writes these.
+ * **On the works, nothing has fetched one** — with one shape excepted since
+ * ADR-0037. `treasureWriter` writes a work's credit straight into its row, and a
+ * museum run is what writes these; but a *held* picture holds its credit with it,
+ * and the credit the run fetched for that picture rides in the museum's contents
+ * record as a `metadata.imageCredit` entry beside the held `image_url`. So the
+ * work arm below asks the museum's pointer for exactly that entry, and a work
+ * reads "waiting" only where its picture is itself waiting on a curator.
  *
  * That distinction is the whole value of saying it per row: "publish what is
  * waiting" and "go and fetch it" are different afternoons, and a report that
@@ -479,10 +482,16 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
   // carries an `imageCredit` the stored row does not have. Both halves key on
   // the same pointer.
   //
-  // Only objects are asked, because only an object's credit can be held:
-  // `treasureWriter` writes a work's straight into its row rather than proposing
-  // it, and no `contents` changeset mentions a credit — measured, zero. If that
-  // changes, the work arm needs its own question rather than this constant.
+  // A work is asked too, since ADR-0037, and its question is shaped by where a
+  // held credit lives: the treasures upsert holds a work's credit only with its
+  // picture, and the credit the run fetched for the held picture rides in the
+  // museum's contents record as a `metadata.imageCredit` entry beside the
+  // `image_url` one (`treasureWriter.ts`, `creditChange`). So the work arm walks
+  // the museum's pointer to that record and looks for a held credit naming this
+  // work — through this venue's link, since the pointer is the museum's. A
+  // credit fetched for a picture the row already shows is written, not held, so
+  // a work with a picture and no credit is "go and fetch one" unless its picture
+  // is itself waiting on a curator.
   sql: `SELECT 'object' AS holder, e.id AS row_id, e.name AS row_name,
                split_part(split_part(e.image_url, '//', 2), '/', 1) AS host,
                (${heldWaitingSql('e')}
@@ -498,7 +507,25 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
          UNION ALL
         SELECT 'work', t.id, t.name,
                split_part(split_part(t.image_url, '//', 2), '/', 1),
-               FALSE
+               EXISTS (SELECT 1
+                         FROM experience_treasures et
+                         JOIN experiences e ON e.id = et.experience_id
+                         JOIN experience_sync_changes ch ON ch.experience_id = e.id
+                                                        AND ch.sync_log_id = e.pending_change_sync_log_id
+                         CROSS JOIN LATERAL jsonb_array_elements(
+                           COALESCE(ch.contents -> 'treasures' -> 'changed', '[]'::jsonb)) AS c
+                         CROSS JOIN LATERAL jsonb_array_elements(c -> 'fields') AS f
+                        WHERE et.treasure_id = t.id
+                          -- The queue's own question, composed as the object arm
+                          -- composes it: a refused or missing museum keeps its
+                          -- pointer while the held card hides it, and keyed on the
+                          -- pointer alone this would say "waiting" about a change
+                          -- no screen offers to publish.
+                          AND ${heldWaitingSql('e')}
+                          AND c -> 'item' ->> 'ref' = t.external_id
+                          AND f ->> 'field' = 'metadata.imageCredit'
+                          AND (f->>'held')::boolean
+                          AND jsonb_typeof(f -> 'new') = 'object') AS credit_waiting
           FROM treasures t
          WHERE t.image_url IS NOT NULL AND t.image_url <> ''
            AND t.metadata->>'imageCredit' IS NULL
