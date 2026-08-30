@@ -312,6 +312,35 @@ describe('SyncChangeList', () => {
     expect(lines).toEqual(['places: 1 moved (1 kept over the source, claimed)']);
   });
 
+  it('counts a change the gate held for a curator apart from the rest', () => {
+    // The other refusal (ADR-0037): the source proposed an attribution for a work
+    // readers can already see, and the gate kept the stored one for a curator to
+    // answer. An admin reading "2 re-attributed" would take both as written.
+    const lines = contentsLines({
+      treasures: {
+        added: [], withdrawn: [], returned: [],
+        changed: [
+          {
+            item: { name: 'The Wine Glass', ref: 'Q782639' },
+            fields: [{
+              field: 'artist', old: 'Johannes Vermeer', new: 'Jan Vermeer van Haarlem the Elder',
+              significance: 'major' as const, curatedConflict: false, held: true,
+            }],
+          },
+          {
+            item: { name: 'Borghese Gladiator', ref: 'Q1163523' },
+            fields: [{
+              field: 'artist', old: 'Agasias of Ephesus', new: 'Nicolas Cordier',
+              significance: 'major' as const, curatedConflict: false, held: false,
+            }],
+          },
+        ],
+      },
+    });
+
+    expect(lines).toEqual(['works: 2 re-attributed (1 held for a curator)']);
+  });
+
   it('names each kind of contents and gives a return its own word', () => {
     // Direct rather than through a render, which is why the function is exported: the
     // integration case above drives `locations` only, and `treasures` is the kind whose
