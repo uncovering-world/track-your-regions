@@ -271,15 +271,25 @@ If multiple suggestions all have conflicts (e.g. after a wide-scope geoshape mat
 
 ### Undo for Destructive Operations
 
-Two tree operations are destructive and support undo:
+Six tree operations are destructive and support undo — one arm of `dispatchUndo`
+(`wvImportHierarchyController.ts`) each:
 
 - **Dismiss children** — deletes all descendant regions and their members, making the parent a leaf
+- **Prune to leaves** — deletes every grandchild and deeper, making the direct children leaves
+- **Smart flatten** — deletes all descendants and absorbs their divisions into the parent
 - **Handle as grouping** — clears the parent's match and re-runs matching on children, overwriting their state
+- **Collapse to parent** — clears every descendant's suggestions and members, keeping the regions, and re-searches at the parent
+- **Auto-resolve children** — assigns divisions to the children in one pass, overwriting what they held
 
-After either operation succeeds, a **Snackbar** appears at the bottom with an "Undo" button (15-second auto-dismiss, clickaway-resistant). Clicking Undo restores:
+After any of them succeeds, a **Snackbar** appears at the bottom with an "Undo" button (15-second auto-dismiss, clickaway-resistant). Clicking Undo restores:
 
-- **Dismiss undo**: re-inserts all deleted descendant regions (parent-first for FK ordering), restores their `region_import_state`, `region_match_suggestions`, and `region_members`
-- **Grouping undo**: restores each child's original `region_import_state`, suggestions, and `region_members`, restores the parent's state and members
+- **Operations that deleted regions** (dismiss, prune, smart flatten): re-inserts the deleted regions (parent-first for FK ordering) and restores their `region_import_state`, `region_match_suggestions` and `region_members`; smart flatten also restores the parent's members, which it had absorbed
+- **Operations that only rewrote members** (grouping, collapse, auto-resolve): restores each child's original `region_import_state`, suggestions and `region_members`, and the parent's state and members
+
+A restored region arrives with **no geometry**, which is what puts it and every
+ancestor of it back into the next run's closure — see
+`import-review-tree-ops.md` § *What a tree operation leaves stale* for why that
+makes undo self-healing on the first three and not on the last three (#718).
 
 Implementation: **in-memory** undo store (`Map<worldViewId, UndoEntry>`), one entry per world view (last operation only). The snapshot captures all affected table rows before the destructive transaction. After a successful undo or a new destructive operation on the same world view, the previous undo entry is discarded.
 
@@ -453,7 +463,7 @@ All require admin auth.
 | POST | `/matches/:worldViewId/ai-match-one` | AI-match a single region (synchronous) |
 | POST | `/matches/:worldViewId/handle-as-grouping` | Drill into children — match them independently against GADM |
 | POST | `/matches/:worldViewId/dismiss-children` | Delete child regions, make parent a leaf |
-| POST | `/matches/:worldViewId/undo` | Undo last dismiss-children or handle-as-grouping (in-memory, last only) |
+| POST | `/matches/:worldViewId/undo` | Undo the last undoable tree operation — one of the six in § Undo for Destructive Operations (in-memory, last only) |
 | POST | `/matches/:worldViewId/sync-instances` | Copy match decisions to other instances of same region |
 | POST | `/matches/:worldViewId/reject-remaining` | Bulk-reject all remaining suggestions for a region |
 | POST | `/matches/:worldViewId/select-map-image` | Select map image from candidates for a region |

@@ -233,7 +233,13 @@ async function dispatchUndo(client: DbClient, entry: UndoEntry): Promise<void> {
 // =============================================================================
 
 /**
- * Undo the last dismiss-children or handle-as-grouping operation.
+ * Undo the last undoable tree operation on this world view.
+ *
+ * Six store an entry and `dispatchUndo` has an arm for each: dismiss-children,
+ * prune-to-leaves, smart-flatten, handle-as-grouping, auto-resolve-children and
+ * collapse-to-parent. The store keeps one entry per world view, so "the last"
+ * is all there is.
+ *
  * POST /api/admin/wv-import/matches/:worldViewId/undo
  */
 export async function undoLastOperation(req: AuthenticatedRequest, res: Response): Promise<void> {

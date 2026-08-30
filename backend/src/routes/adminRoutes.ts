@@ -617,7 +617,7 @@ router.post('/wv-import/matches/:worldViewId/rename-region', validate(worldViewI
 // Move a region to a new parent
 router.post('/wv-import/matches/:worldViewId/reparent-region', validate(worldViewIdParamSchema, 'params'), validate(wvImportReparentRegionSchema), reparentRegion);
 
-// Undo last dismiss-children or handle-as-grouping operation
+// Undo the last undoable tree operation — one of six, see undoLastOperation
 router.post('/wv-import/matches/:worldViewId/undo', validate(worldViewIdParamSchema, 'params'), undoLastOperation);
 
 // Sync match decisions to other instances of same region
