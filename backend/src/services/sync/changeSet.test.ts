@@ -430,3 +430,59 @@ describe('CURATED_KEY_BY_FIELD', () => {
     dottedKeys.forEach(key => expect(key.startsWith(METADATA_CLAIM_PREFIX)).toBe(true));
   });
 });
+
+/**
+ * The equality a second copy depends on (#570).
+ *
+ * `frontend/src/components/curation/objectDiff.ts` holds `valuesEqual`, a copy of
+ * `jsonEquals` below, because the curation card has to decide *which keys* of a change
+ * this diff reported are worth a row. The two must answer alike: a card that finds no
+ * differing key in a field the queue raised falls back to printing the object whole,
+ * and one that finds a key this diff considers equal asks a curator about a value that
+ * never moved.
+ *
+ * Nothing structural can hold them together — the two packages share no runtime, which
+ * is what #527 is open about — so the pin is behavioural and lives on both sides. These
+ * cases state the properties inside a metadata value; `objectDiff.test.ts` states the
+ * same ones against its own copy, and each names the other. Relaxing any of them here
+ * fails here, which is the point: the drift would otherwise be invisible until a
+ * curator read a row that should not exist.
+ */
+describe('the equality a curation card mirrors (#570)', () => {
+  it('does not treat key order inside a metadata value as a difference', () => {
+    const before = snapshot({ metadata: { imageCredit: { author: 'G. Brigas', license: '© UNESCO' } } });
+    const incoming = snapshot({ metadata: { imageCredit: { license: '© UNESCO', author: 'G. Brigas' } } });
+
+    expect(computeChangeSet(before, incoming, [], WROTE).changeType).toBe('unchanged');
+  });
+
+  it('does not treat a null or empty metadata key as different from a missing one', () => {
+    // 17 entries in this catalogue's log carry `criteria` appearing as `null`, and the
+    // card must not raise a row for any of them.
+    const before = snapshot({ metadata: { areaHectares: 1476300 } });
+    const incoming = snapshot({ metadata: { areaHectares: 1476300, criteria: null, website: '' } });
+
+    expect(computeChangeSet(before, incoming, [], WROTE).changeType).toBe('unchanged');
+  });
+
+  it('does treat the order of an array inside a metadata value as a difference', () => {
+    // Deliberately unlike `countryCodes`, which is compared as a set two blocks above.
+    // Relaxing this one to match it is the drift that would silently split the card
+    // from the queue, since the copy compares arrays by position.
+    const before = snapshot({ metadata: { criteria: ['(i)', '(ii)'] } });
+    const incoming = snapshot({ metadata: { criteria: ['(ii)', '(i)'] } });
+    const result = computeChangeSet(before, incoming, [], WROTE);
+
+    expect(result.changeType).toBe('updated');
+    expect(result.changedFields.map(f => f.field)).toEqual(['metadata']);
+  });
+
+  it('holds a string apart from the number that reads the same', () => {
+    // The trap the card's "shown as stored" note exists for: a word comparison over
+    // `"2003"` and `2003` marks nothing while the two really disagree.
+    const before = snapshot({ metadata: { yearBuilt: '2003' } });
+    const incoming = snapshot({ metadata: { yearBuilt: 2003 } });
+
+    expect(computeChangeSet(before, incoming, [], WROTE).changeType).toBe('updated');
+  });
+});
