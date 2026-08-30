@@ -23,7 +23,7 @@ vi.mock('../../api/experiences', async () => {
   return { ...actual, fetchExperience: (id: number) => fetchExperience(id) };
 });
 
-import { ObjectPreview } from './WaitingToPublish';
+import { ObjectPreview } from './ObjectPreview';
 
 function detail(over: Partial<ExperienceDetail> = {}): ExperienceDetail {
   return {

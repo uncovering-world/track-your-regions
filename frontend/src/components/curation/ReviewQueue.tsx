@@ -33,7 +33,7 @@ import {
   type ReviewQueueItem,
   type PublishResult,
 } from '../../api/experiences';
-import { publishOutcomeFor } from './WaitingToPublish';
+import { publishOutcomeFor } from './publishOutcome';
 import { formatDateTime } from '../../utils/dateFormat';
 import { worldViewList } from '../../utils/worldViewList';
 import { ItemHeader, messageFor } from './queueCard';
