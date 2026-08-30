@@ -328,6 +328,12 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // Beside its opposite, because the SQL lists it there and this is a literal
     // comparison — the list's *order* is part of what the two files must agree on.
     'declined_source',
+    // What POST /:id/decline-held records (#722): a curator saying "not this" to
+    // a value a category's *gate* held, where nobody claimed anything. Beside
+    // its neighbour above because the SQL lists it there, and a separate action
+    // because a history that showed one word for both would not say which
+    // question was answered.
+    'declined_held',
     'missing_dismissed', 'admission_confirmed', 'admission_overridden',
     // ADR-0025 § 4.4 — what POST /:id/publish records.
     'published',
