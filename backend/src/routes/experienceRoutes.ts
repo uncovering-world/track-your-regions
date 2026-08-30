@@ -31,6 +31,7 @@ import {
   editLocation,
   acceptSourceValue,
   declineSourceValue,
+  declineHeldValue,
   publishExperience,
   publishWaiting,
   markNewBadgesSeen,
@@ -56,6 +57,7 @@ import {
   locationIdParamSchema,
   acceptSourceBodySchema,
   declineSourceBodySchema,
+  declineHeldBodySchema,
   publishExperienceBodySchema,
   regionIdParamSchema,
   idAndRegionIdParamSchema,
@@ -174,6 +176,14 @@ router.post('/:id/accept-source', authenticatedLimiter, validate(idParamSchema, 
 // transaction and schedules no post-commit work at all — it does not even touch
 // the experience, because the value it refuses had already won every run.
 router.post('/:id/decline-source', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(declineSourceBodySchema), declineSourceValue);
+// The same answer one gate over (#722): "not this" to a value the category's gate
+// held, rather than to one a curator had claimed. Exempt on the same criterion as
+// the line above and for the same reason — it writes a handful of small rows
+// inside one transaction, touches no column a reader sees, and schedules nothing
+// after the commit. Its opposite, `/:id/publish`, is limited because publishing
+// can reach `placeAfterRelease`; refusing cannot, because refusing writes nothing
+// that could move a pin.
+router.post('/:id/decline-held', validate(idParamSchema, 'params'), requireAuth, requireCurator, validate(declineHeldBodySchema), declineHeldValue);
 
 // Release everything one source is holding (ADR-0025 decision 5, and
 // `docs/tech/experiences.md` § "Turning a source's gate on, and letting it go").

@@ -13,6 +13,7 @@ export * from './locationEditController.js';
 export * from './reviewQueueController.js';
 export * from './acceptSourceController.js';
 export * from './declineSourceController.js';
+export * from './declineHeldController.js';
 export * from './publishWaitingController.js';
 export * from './publishController.js';
 export * from './experienceNewBadge.js';
