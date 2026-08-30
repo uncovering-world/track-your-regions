@@ -290,6 +290,24 @@ describe('a picture with nobody credited', () => {
     expect(sql).toMatch(/metadata->>'imageCredit' IS NULL/);
   });
 
+  it('asks the same question of a work, through the record a held picture carries its credit in', () => {
+    // Since ADR-0037 a work's picture can be held, and the credit the run fetched
+    // for it rides beside it in the contents record as a `metadata.imageCredit`
+    // entry — so the work arm has a question to ask rather than a constant, and
+    // the constant would call a credit a curator is holding "go and fetch one".
+    const workArm = sql.slice(sql.indexOf('UNION ALL'), sql.indexOf('FROM treasures t'));
+    expect(workArm).not.toMatch(/\bFALSE\s*$/);
+    expect(workArm).toContain("'metadata.imageCredit'");
+    expect(workArm).toMatch(/contents.*'treasures'.*'changed'/);
+    expect(workArm).toContain("(f->>'held')::boolean");
+    // The queue's own question, composed as the object's half composes it — not
+    // the pointer alone. A refused or missing museum keeps its pointer while the
+    // held card carries `hideRefusedSql` and `missing_since IS NULL`, so keyed
+    // on the pointer the report would say "waiting on a curator" about a change
+    // no screen offers to publish (the review of #717, round two).
+    expect(workArm).toContain(collapse(heldWaitingSql('e')));
+  });
+
   it('says when the author is already fetched and waiting on a curator', () => {
     // Measured: 1414 of the 1590 uncredited objects have a held change naming
     // imageCredit. "Publish what is waiting" and "go and fetch it" are different
