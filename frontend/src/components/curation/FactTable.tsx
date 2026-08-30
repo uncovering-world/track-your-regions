@@ -287,7 +287,9 @@ export function FactTable({ groups, labels, context, answer }: {
         </TableHead>
         <TableBody>
           {groups.map(group => (
-            <GroupRows key={`${group.subject.kind}:${group.subject.label}`} group={group} columns={columns} context={context} answer={answer} />
+            // The subject's own key where it has one: two works with one name are
+            // two groups, and a key built from the label would hand one the other's rows.
+            <GroupRows key={group.subject.key ?? `${group.subject.kind}:${group.subject.label}`} group={group} columns={columns} context={context} answer={answer} />
           ))}
         </TableBody>
       </Table>

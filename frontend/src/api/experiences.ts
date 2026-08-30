@@ -406,6 +406,28 @@ export async function rejectExperience(
 }
 
 /**
+ * One part of an object whose field a gated run held (ADR-0037), as the held
+ * card carries it: the part as the run's record names it, the held fields, and
+ * whatever the stored row can add so the part can be opened and told from its
+ * siblings. The row's fields are null where no offered row answers to the record.
+ */
+export interface HeldPart {
+  kind: 'locations' | 'treasures';
+  item: { name: string | null; ref: string | null };
+  fields: Array<{ field: string; old: unknown; new: unknown; held?: boolean }>;
+  locationId?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  ordinal?: number | null;
+  treasureId?: number | null;
+  artist?: string | null;
+  year?: number | null;
+  imageUrl?: string | null;
+  imageCredit?: ImageCredit | null;
+  treasureType?: string | null;
+}
+
+/**
  * An experience waiting on a curator's decision.
  *
  * `missing` means a run stopped finding it at the source; `conflict` means the
@@ -500,6 +522,18 @@ export interface ReviewQueueItem {
   }> | null;
   /** When the run whose proposal this is finished. Conflicts only. */
   run_completed_at?: string | null;
+  /**
+   * The held fields of the object's *parts* — a place renamed, a work
+   * re-attributed — under a gated source (ADR-0037). `held` items only, beside
+   * `proposed`, which is the object's own; either may be null on a card about
+   * the other, never both. Each carries the part as the run's record names it,
+   * the held fields alone, and the stored row behind the record so the card can
+   * open it — a coordinate and an ordinal for a place, the maker, the year and
+   * the picture for a work. The row's fields are null where the record names a
+   * part no offered row answers to any more: the proposal stands, with nothing
+   * to open.
+   */
+  proposed_parts?: HeldPart[] | null;
   /**
    * The famous works the category's rule weighed, most widely known first, capped at twelve.
    *
@@ -882,6 +916,8 @@ export async function setExperienceAdmission(
   appliedFields: string[];
   /** Always empty, for the same reason. */
   claimedFieldsSkipped: string[];
+  /** Always empty: a held field of a part is a proposal too (ADR-0037), and an override answers none. */
+  appliedParts: AppliedPart[];
   /** Always null, for the same reason. */
   fromSyncLogId: number | null;
   locationsPublished: number;
@@ -965,6 +1001,20 @@ export async function declineSourceValue(
   });
 }
 
+/** One part publishing wrote to, as the server names it and the outcome line repeats it. */
+export interface AppliedPart {
+  kind: 'locations' | 'treasures';
+  name: string;
+  fields: string[];
+  claimedFieldsSkipped: string[];
+}
+
+/** A part the proposal named that no offered row answers to. */
+export interface PartNotFound {
+  kind: 'locations' | 'treasures';
+  name: string;
+}
+
 /** What a publication did, so the page can say it before the refetch. */
 export interface PublishResult {
   experienceId: number;
@@ -973,6 +1023,18 @@ export interface PublishResult {
   appliedFields: string[];
   /** Held fields left as the curator wrote them, because they claim them. */
   claimedFieldsSkipped: string[];
+  /**
+   * The parts whose held fields were written now (ADR-0037), each with what it
+   * applied and what it left as the curator wrote it. Empty on a contents
+   * publish, which leaves the proposal where it was.
+   */
+  appliedParts: AppliedPart[];
+  /**
+   * Parts the proposal named that no offered row answers to any more — a place
+   * the source withdrew after proposing its rename. Present only when there is
+   * one; nothing was written to them and nothing readers see changed.
+   */
+  partsNotFound?: PartNotFound[];
   fromSyncLogId: number | null;
   locationsPublished: number;
   treasureLinksPublished: number;

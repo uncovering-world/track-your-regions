@@ -68,7 +68,13 @@ function subtitle(work: CountedWork): string {
   return parts.join(' · ');
 }
 
-function WorkRow({ work }: { work: CountedWork }) {
+/**
+ * One work, as every surface that shows a work to a curator draws it: the
+ * picture at thumbnail size, the name linked to where it came from, what it is,
+ * who made it, when. Exported for the held card's part preview (ADR-0037), which
+ * opens a work the same way this list shows one.
+ */
+export function WorkCard({ work }: { work: CountedWork }) {
   // A plain flag is safe wherever the parent keys the child, as it does here — by
   // the work's own id — `NOT NULL UNIQUE` in the schema, so there is no fallback
   // to write — and a different work is therefore a different instance that cannot
@@ -187,13 +193,13 @@ export function WorksPreview({ works, total, held, only, children }: {
       slotProps={{ tooltip: { sx: { maxWidth: 340, maxHeight: 420, overflowY: 'auto' } } }}
       title={(
         <Stack spacing={0.75} sx={{ py: 0.5 }}>
-          {named.map(work => <WorkRow key={work.externalId} work={work} />)}
+          {named.map(work => <WorkCard key={work.externalId} work={work} />)}
           {named.length > 0 && rest.length > 0 && (
             <Typography variant="caption" color="inherit" sx={{ pt: 0.5 }}>
               Also kept here, less widely known:
             </Typography>
           )}
-          {rest.map(work => <WorkRow key={work.externalId} work={work} />)}
+          {rest.map(work => <WorkCard key={work.externalId} work={work} />)}
           {/* The card carries at most twelve, so a holding of more must not show twelve and
               stop: a curator counting them would think the number above was wrong. */}
           {missing > 0 && (

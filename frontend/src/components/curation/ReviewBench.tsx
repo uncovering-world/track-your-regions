@@ -28,7 +28,8 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'else, and will keep proposing it until you answer.',
   waiting: 'This came from a source held back until a person looks, so none of it has reached '
     + 'a visitor: an object nobody has passed yet, a change kept off a page readers can '
-    + 'already see, or newly-arrived points and works under a row that is visible. '
+    + 'already see — or off one of the places or works it is made of — or newly-arrived '
+    + 'points and works under a row that is visible. '
     + 'Publishing is what lets it out, and nothing else does.',
   refused: 'Every list here has a rule of ours for what belongs in it, and this failed it — so '
     + 'visitors have never seen it. The source may well still list it. The question is not '

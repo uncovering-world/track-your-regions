@@ -28,6 +28,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchExperience,
   publishExperience,
+  type HeldPart,
   type PublishRequest,
   type PublishResult,
   type ReviewQueueItem,
@@ -41,8 +42,9 @@ import { worldViewList } from '../../utils/worldViewList';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
-import { rowsFor } from './factRows';
+import { partGroups, rowsFor } from './factRows';
 import { fieldLabel } from './fieldMeaning';
+import { PartPreviewDialog } from './PartPreviewDialog';
 
 /** One experience, with whatever a gated run left open about it. */
 export interface GatedGroup {
@@ -102,9 +104,20 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   const item = arrival ?? held ?? contents!;
   const queryClient = useQueryClient();
   const [showObject, setShowObject] = useState(false);
+  // Which part is open, held as the part rather than a flag: the card is mounted
+  // unkeyed, and a flag would carry one object's open work onto the next.
+  const [openPart, setOpenPart] = useState<HeldPart | null>(null);
   const proposed = held?.proposed ?? [];
   const context = { proposed, inDanger: item.in_danger, dangerSince: item.danger_since };
   const rows = rowsFor(proposed, context);
+  // The held fields of the object's parts, one group per part under the object's
+  // own (ADR-0037): a change inside a part is a change on the object's card, not
+  // a separate queue. The summary counts every row, since a curator deciding
+  // whether to publish is deciding about all of it.
+  const parts = partGroups(
+    held?.proposed_parts ?? [], context, { offeredLocations: item.offered_locations }, setOpenPart,
+  );
+  const partRows = parts.flatMap(group => group.rows);
   const points = count(contents?.pending_locations);
   const works = count(contents?.pending_treasures);
 
@@ -165,22 +178,25 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
             </GatedRow>
           )}
 
-          {rows.length > 0 && (
+          {(rows.length > 0 || partRows.length > 0) && (
             <GatedRow label="fields">
               {/* What the run proposes, counted by kind, before a single row: the first
                   thing a curator needs to know is whether a value readers see is being
                   replaced or a fact is appearing where there was none, and on this
-                  catalogue the second is the whole batch (#570). */}
+                  catalogue the second is the whole batch (#570). The parts' rows count
+                  with the object's: one card, one decision. */}
               <ProposalSummary
                 lead={held?.sync_log_id ? `Run ${held.sync_log_id} proposes` : 'An earlier run proposes'}
-                rows={rows}
+                rows={[...rows, ...partRows]}
               />
               {/* The same table the conflict card draws, because it is the same
                   decision: two versions of one fact and a person choosing between them.
                   The column headings differ and are the caller's to give — here the left
-                  side is what readers are looking at right now, and no curator wrote it. */}
+                  side is what readers are looking at right now, and no curator wrote it.
+                  A part's group follows the object's, headed by the part's name and a
+                  way to open it. */}
               <FactTable
-                groups={[{ subject: { kind: 'object', label: item.name }, rows }]}
+                groups={[{ subject: { kind: 'object', label: item.name }, rows }, ...parts]}
                 labels={{ before: 'readers see', after: 'the run proposes' }}
                 context={context}
               />
@@ -270,6 +286,7 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
         </Typography>
 
         {showObject && <ObjectPreview experienceId={group.id} />}
+        <PartPreviewDialog part={openPart} onClose={() => setOpenPart(null)} />
       </CardContent>
     </Card>
   );
@@ -480,6 +497,32 @@ export function ObjectPreview({ experienceId }: { experienceId: number }) {
 }
 
 /**
+ * What the publication did to the object's parts, one clause per part.
+ *
+ * Each part written to is named as the card's group named it, with its fields in
+ * the same words (ADR-0037) and the ones left as the curator wrote them, singular
+ * where there is one. A part the proposal named that the source has since
+ * withdrawn is said rather than dropped: nothing was written and nothing readers
+ * see changed, and a line that omitted it would read as though it had been.
+ */
+function partOutcomes(data: PublishResult): string[] {
+  const said: string[] = [];
+  for (const part of data.appliedParts ?? []) {
+    const clauses: string[] = [];
+    if (part.fields.length > 0) clauses.push(`${part.fields.map(fieldLabel).join(', ')} applied`);
+    if (part.claimedFieldsSkipped.length > 0) {
+      const them = part.claimedFieldsSkipped.length === 1 ? 'it' : 'them';
+      clauses.push(`${part.claimedFieldsSkipped.map(fieldLabel).join(', ')} left as you wrote ${them}`);
+    }
+    if (clauses.length > 0) said.push(`${part.name}: ${clauses.join(', ')}`);
+  }
+  for (const part of data.partsNotFound ?? []) {
+    said.push(`${part.name} is no longer offered, so nothing was written to it`);
+  }
+  return said;
+}
+
+/**
  * What the publication did, in one sentence, plus a second when it went wrong
  * halfway.
  *
@@ -502,6 +545,7 @@ export function publishOutcomeFor(
   if (data.claimedFieldsSkipped.length > 0) {
     parts.push(`${data.claimedFieldsSkipped.map(fieldLabel).join(', ')} left as you wrote them`);
   }
+  parts.push(...partOutcomes(data));
   const released: string[] = [];
   if (data.locationsPublished > 0) released.push(plural(data.locationsPublished, 'point'));
   // The same works counted from two axes — the link says a work has been passed

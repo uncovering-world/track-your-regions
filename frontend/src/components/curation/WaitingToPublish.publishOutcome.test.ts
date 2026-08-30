@@ -17,6 +17,7 @@ function result(over: Partial<PublishResult> = {}): PublishResult {
     curationState: 'verified',
     appliedFields: [],
     claimedFieldsSkipped: [],
+    appliedParts: [],
     fromSyncLogId: null,
     locationsPublished: 0,
     treasureLinksPublished: 0,
@@ -29,6 +30,30 @@ function result(over: Partial<PublishResult> = {}): PublishResult {
 const item = { name: 'Museo Nacional del Prado' };
 
 describe('publishOutcomeFor', () => {
+  it('names each part it wrote to, with the fields in the reader\'s words', () => {
+    // A held re-attribution published (ADR-0037): the line says which work, and
+    // what about it, the way the card's own group did — and which of its fields
+    // stayed as the curator wrote them.
+    const line = publishOutcomeFor(item, result({
+      appliedParts: [
+        { kind: 'treasures', name: 'The Wine Glass', fields: ['artist', 'image_url'], claimedFieldsSkipped: [] },
+        { kind: 'locations', name: 'Château de Montésgur', fields: [], claimedFieldsSkipped: ['name'] },
+      ],
+    }));
+
+    expect(line).toContain('The Wine Glass: artist, picture applied');
+    expect(line).toContain('Château de Montésgur: name left as you wrote it');
+    expect(line).not.toContain('image_url');
+  });
+
+  it('says which parts the proposal named that were no longer there to write', () => {
+    const line = publishOutcomeFor(item, result({
+      partsNotFound: [{ kind: 'locations', name: 'Château de Montésgur' }],
+    }));
+
+    expect(line).toContain('Château de Montésgur is no longer offered, so nothing was written to it');
+  });
+
   it('says what became visible, counting works from whichever axis moved', () => {
     // The link says a work has been passed *here*, the row says it has been passed at
     // all, so a work already verified in another venue moves only the link — and one
