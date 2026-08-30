@@ -32,11 +32,9 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
   assignRegionsForExperiences: vi.fn(async () => 3),
 }));
 
-import { pool } from '../../db/index.js';
 import {
   assignRegionsForExperiences, worldViewsWithGeometry,
 } from '../../services/sync/regionAssignmentService.js';
-import { publishExperience } from './publishController.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { publishExperienceBodySchema } from '../../types/index.js';
 import { computeChangeSet, type ExperienceSnapshot } from '../../services/sync/changeSet.js';
@@ -75,120 +73,10 @@ const CHANGED_SNAPSHOT: ExperienceSnapshot = {
   metadata: { inDanger: true, dateInscribed: '1980', visitors: 250 },
 };
 
-const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
-const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
-
-function makeRes() {
-  return { json: vi.fn(), status: vi.fn().mockReturnThis() };
-}
-
-const CURATOR = { id: 7, role: 'curator' as const };
-const ADMIN = { id: 1, role: 'admin' as const };
-
-/**
- * One entry of a gated run's `changed_fields`, as the changeset stores it.
- *
- * `held` is stated on every fixture that stands for a gate-held field, because
- * that is what the writer now keys on (#519): a fixture leaving it out describes a
- * field the run applied, and this endpoint has nothing to do with those.
- */
-interface Proposed {
-  field: string; old?: unknown; new?: unknown; curatedConflict?: boolean; held?: boolean;
-}
-
-/**
- * Captures what the transaction ran, so assertions can read the statements.
- *
- * `row` is what the `FOR UPDATE` re-read returns — the state every decision here
- * rests on, read inside the lock rather than before it. `null` is the row that
- * vanished between the handler's existence check and the lock.
- */
-function makeClient(opts: {
-  row?: Record<string, unknown> | null;
-  proposal?: Proposed[];
-  rowCounts?: Record<string, number>;
-} = {}) {
-  // Fragments must not be prefixes of one another: the lookup below takes the
-  // first entry whose text appears in the statement, and two `UPDATE
-  // experience_locations` statements now run in one publish.
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  return {
-    queries,
-    client: {
-      query: vi.fn(async (sql: string, params?: unknown[]) => {
-        queries.push({ sql, params: params ?? [] });
-        if (sql.includes('experience_sync_changes') && sql.includes('SELECT changed_fields')) {
-          return opts.proposal === undefined ? { rows: [] } : { rows: [{ changed_fields: opts.proposal }] };
-        }
-        if (sql.includes(OBJECT_LOCK)) {
-          return {
-            rows: opts.row === null ? [] : [{
-              // Every column the locked read carries in production. `admission`
-              // is here for the reason the others are: a mock missing it would
-              // let the refused-row guard be deleted without a test noticing.
-              curation_state: 'pending',
-              curated_fields: [],
-              metadata: null,
-              admission: 'admitted',
-              pending_change_sync_log_id: null,
-              ...(opts.row ?? {}),
-            }],
-          };
-        }
-        const counted = Object.entries(opts.rowCounts ?? {}).find(([fragment]) => sql.includes(fragment));
-        return { rows: [], rowCount: counted ? counted[1] : 0 };
-      }),
-      release: vi.fn(),
-    },
-  };
-}
-
-/** The one statement containing `fragment`, or a failure naming what went wrong. */
-function only(queries: Array<{ sql: string; params: unknown[] }>, fragment: string) {
-  const found = queries.filter(q => q.sql.includes(fragment));
-  if (found.length === 0) throw new Error(`no statement contained ${fragment}`);
-  if (found.length > 1) throw new Error(`${found.length} statements contained ${fragment}`);
-  return found[0];
-}
-
-function none(queries: Array<{ sql: string; params: unknown[] }>, fragment: string): boolean {
-  return !queries.some(q => q.sql.includes(fragment));
-}
-
-/**
- * Did the transaction write anything at all?
- *
- * Asked on how each statement *starts*, not on whether 'UPDATE' appears in it:
- * the locked read is `SELECT … FOR UPDATE`, so a substring test is true of every
- * refusal and would pass over any write this endpoint made.
- */
-function noWrites(queries: Array<{ sql: string; params: unknown[] }>): boolean {
-  return !queries.some(q => /^\s*(UPDATE|INSERT)/.test(q.sql));
-}
-
-/**
- * The handler's one pre-lock read every caller makes: the row exists.
- *
- * `resolveExperienceScope` short-circuits on `role === 'admin'` without a
- * query at all, which is what every test using the default `publish()` caller
- * gets — so this queues exactly one answer. A curator-scoped test queues the
- * scope-resolution read itself, right after calling this, because that one
- * only runs for a non-admin caller.
- */
-function grantScope(categoryId = 2) {
-  mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, category_id: categoryId }] });
-}
-
-async function publish(
-  body: unknown,
-  client: { query: unknown; release: unknown },
-  user: { id: number; role: 'admin' | 'curator' } = ADMIN,
-) {
-  const res = makeRes();
-  mockedConnect.mockResolvedValue(client);
-  await publishExperience({ user, params: { id: '5' }, body } as never, res as never);
-  return res;
-}
+import {
+  CURATOR, grantScope, makeClient, mockedConnect, mockedQuery, none, noWrites, only, publish,
+  type Proposed,
+} from './publishController.fixtures.js';
 
 const mockedPlace = assignRegionsForExperiences as unknown as ReturnType<typeof vi.fn>;
 const mockedWorldViews = worldViewsWithGeometry as unknown as ReturnType<typeof vi.fn>;
@@ -281,6 +169,12 @@ describe('publishing an arrival', () => {
       scope: 'object',
       fields: [],
       claimedFieldsSkipped: [],
+      // The parts written to and the ones the proposal named that no row
+      // answered to (ADR-0037), for the same reader: absent, they read as
+      // "no part was touched", which on a card about a work's attribution is
+      // the opposite of what happened.
+      parts: [],
+      partsNotFound: [],
       fromSyncLogId: null,
       locations: 2,
       treasureLinks: 12,
