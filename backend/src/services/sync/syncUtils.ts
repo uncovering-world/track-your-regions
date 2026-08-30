@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { pool, db } from '../../db/index.js';
 import { experienceSyncLogs, experienceCategories } from '../../db/schema.js';
 import { writeExperienceLocations, type LocationWriteResult } from './locationWriter.js';
+import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
   computeChangeSet, METADATA_CLAIM_PREFIX, SYNC_OWNED_METADATA_KEYS,
   type ChangeSetResult, type ExperienceSnapshot,
@@ -435,22 +436,11 @@ export async function upsertExperienceRecord(
     // touched nothing, and a pointer set on every pass would tell a curator that
     // 1200 rows were waiting on a decision when none of them were.
     //
-    // A run with no log id writes nothing here rather than writing NULL. The id
-    // is what a curator's screen resolves to see the proposal, so a run that
-    // cannot name itself has nothing to offer the column — and NULL is not
-    // "unknown run", it is "nothing is held", which would be a lie about a row
-    // whose content this run just held.
-    if (options.syncLogId != null) {
-      await pool.query(
-        `UPDATE experiences SET pending_change_sync_log_id = $3
-          WHERE id = $1 AND curation_state <> 'pending'
-            AND EXISTS (
-              SELECT 1 FROM experience_categories
-               WHERE id = $2 AND requires_curation
-            )`,
-        [row.id, params.categoryId, options.syncLogId],
-      );
-    }
+    // The statement is shared with the two content writers, which set the same
+    // pointer for a held field of a point or a work (ADR-0037); the predicate —
+    // a visible row under a gated source, and never from a run with no log id —
+    // lives there so the three cannot drift.
+    await pointHeldProposalAt(pool, row.id as number, options.syncLogId ?? null);
   } else if (row.pending_change_sync_log_id !== null) {
     // The complement, and the reason the column can be trusted to mean what its
     // comment says. A run that proposed nothing at all — nothing written and

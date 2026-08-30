@@ -735,7 +735,7 @@ describe('a gated run holds a visible row content, not a pending one', () => {
     const pointer = sentSql().find(sql => /SET pending_change_sync_log_id/.test(sql));
     expect(pointer).toBeDefined();
     expect(pointer).not.toMatch(/= NULL/);
-    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, PARAMS.categoryId, 42]);
+    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, 42]);
   });
 
   it('reads the stored state, not the value it is about to write', async () => {
@@ -782,10 +782,13 @@ describe('a gated run holds a visible row content, not a pending one', () => {
     const pointer = sentSql().find(sql => /SET pending_change_sync_log_id/.test(sql));
     expect(pointer).toBeDefined();
     expect(pointer).toMatch(/curation_state <> 'pending'/);
+    // The gate is read through the row rather than bound as a second parameter:
+    // the statement is shared with the content writers (heldProposalPointer.ts),
+    // which have an experience id and no category id.
     expect(pointer).toMatch(
-      /EXISTS \(\s*SELECT 1 FROM experience_categories\s*WHERE id = \$2 AND requires_curation\s*\)/,
+      /EXISTS \(\s*SELECT 1 FROM experience_categories c\s*WHERE c\.id = e\.category_id AND c\.requires_curation\s*\)/,
     );
-    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, PARAMS.categoryId, 42]);
+    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, 42]);
   });
 
   it('records no held proposal for a pass that proposed nothing', async () => {
@@ -839,7 +842,7 @@ describe('a gated run holds a visible row content, not a pending one', () => {
     const pointer = sentSql().find(sql => /SET pending_change_sync_log_id/.test(sql));
     expect(pointer).toBeDefined();
     expect(pointer).not.toMatch(/= NULL/);
-    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, PARAMS.categoryId, 42]);
+    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([501, 42]);
   });
 
   it('leaves the pointer alone when the run cannot name itself', async () => {
