@@ -316,3 +316,18 @@ export function recordedContents(byKind: ContentsByKind): ContentsByKind | null 
   if (moving.length === 0) return null;
   return Object.fromEntries(moving.map(kind => [kind, byKind[kind]]));
 }
+
+/**
+ * Whether the record carries a field of a part the gate held (ADR-0037).
+ *
+ * The one predicate behind the run's `held` counter and the changeset row's
+ * word, for the part-level half of what `wasHeld` answers about the object's
+ * own fields: a visible row the run proposed a change to and kept whole is held
+ * whichever level the proposal sits at.
+ */
+export function contentsHeld(byKind: ContentsByKind | null): boolean {
+  if (!byKind) return false;
+  return Object.values(byKind).some(delta => delta?.changed.some(
+    entry => entry.fields.some(field => field.held),
+  ));
+}
