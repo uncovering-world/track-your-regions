@@ -176,6 +176,12 @@ describe('publishing an arrival', () => {
       parts: [],
       partsNotFound: [],
       fromSyncLogId: null,
+      // Zero on every call that answers the whole card, which is every call that
+      // existed before per-row answers (#722). Asserted rather than allowed to
+      // drift: a non-zero here means the pointer stayed, and a trail that did not
+      // say so would read the same for "published all of it" and "published one
+      // row of six".
+      heldLeftOpen: 0,
       locations: 2,
       treasureLinks: 12,
       treasures: 12,
@@ -316,6 +322,117 @@ describe('publishing a held proposal', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ fromSyncLogId: 53 }));
   });
 
+  it('publishes only the row a curator named, and keeps the pointer for the rest', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53 },
+      proposal: HELD,
+    });
+
+    const res = await publish({ heldFields: ['name'], expectedSyncLogId: 53 }, client);
+
+    // #722: a run improves and damages in the same breath, and the card's one
+    // button used to take both or neither. What is not named stays open, and
+    // the pointer is what keeps it findable — clearing it here would take the
+    // description off every screen there is, unanswered.
+    const update = only(queries, 'UPDATE experiences');
+    expect(update.sql).toContain('name = ');
+    expect(update.sql).not.toContain('description = ');
+    expect(update.sql).not.toContain('pending_change_sync_log_id = NULL');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      appliedFields: ['name'], heldLeftOpen: 1,
+    }));
+  });
+
+  it('records what it published, so the card it leaves standing stops offering it', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53 },
+      proposal: HELD,
+    });
+
+    await publish({ heldFields: ['name'], expectedSyncLogId: 53 }, client);
+
+    // The run's own record still says the field was held — what a changeset
+    // holds is what happened — so without this row the card that keeps its
+    // pointer would go on proposing a value it has already applied.
+    const insert = only(queries, 'INSERT INTO experience_held_decisions');
+    expect(insert.params).toContain('published');
+    expect(insert.params).toContain(JSON.stringify('Museo Nacional del Prado'));
+  });
+
+  it('leaves a row somebody already answered alone, even on a whole-card publish', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53 },
+      proposal: HELD,
+      answered: [{ kind: null, ref: null, name: null, field: 'description' }],
+    });
+
+    const res = await publish({ expectedSyncLogId: 53 }, client);
+
+    // Refused last week. Publishing the card must not write it back: the answer
+    // is by value, and this is the same value.
+    const update = only(queries, 'UPDATE experiences');
+    expect(update.sql).toContain('name = ');
+    expect(update.sql).not.toContain('description = ');
+    // Nothing else was left open, so the card goes.
+    expect(update.sql).toContain('pending_change_sync_log_id = NULL');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ appliedFields: ['name'] }));
+  });
+
+  it('refuses a selection that reaches nothing rather than reporting success', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53 },
+      proposal: HELD,
+      answered: [{ kind: null, ref: null, name: null, field: 'name' }],
+    });
+
+    const res = await publish({ heldFields: ['name'], expectedSyncLogId: 53 }, client);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(none(queries, 'UPDATE experiences')).toBe(true);
+  });
+
+  it('refuses a selection at a row that is holding nothing', async () => {
+    grantScope();
+    // The pointer was cleared while the card was open — somebody else answered
+    // it, or a later run withdrew the proposal. Every gate opens on that path:
+    // nothing is written, so the staleness check exempts a caller who named no
+    // run, and there is no proposal to be missing either. Reporting success
+    // would tell the curator they had answered a card that is not there.
+    //
+    // Sent with no run id, which is the shape that reached the end. The schema
+    // refuses such a body over HTTP; the writer refuses it here, because
+    // `publishUnderLock` is exported and the guard has to hold on its own.
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: null },
+    });
+
+    const res = await publish({ heldFields: ['name'] }, client);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(none(queries, 'UPDATE experiences')).toBe(true);
+  });
+
+  it('names held rows without releasing the unread contents under them', async () => {
+    grantScope();
+    const { client, queries } = makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53 },
+      proposal: HELD,
+      rowCounts: { 'UPDATE experience_locations SET curation_state': 4 },
+    });
+
+    const res = await publish({ heldFields: ['name'], expectedSyncLogId: 53 }, client);
+
+    // Naming held rows is a fields publish, the way naming ids is a contents
+    // one: answering one sentence must not put four unread points on the map
+    // as a side effect (#524).
+    expect(none(queries, 'UPDATE experience_locations SET curation_state')).toBe(true);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ locationsPublished: 0 }));
+  });
+
   it('never restarts an already-visible object\'s New-chip window', async () => {
     grantScope();
     const { client, queries } = makeClient({
@@ -349,7 +466,9 @@ describe('publishing a held proposal', () => {
     expect(locked).toBeLessThan(lookup);
     expect(lookup).toBeLessThan(write);
     // The pointer decides which run's proposal is applied, not "the newest".
-    expect(only(queries, 'experience_sync_changes').params).toEqual([5, 53]);
+    // Named by the proposal read rather than by the table, since the answers
+    // already standing against that proposal are read off the same table (#722).
+    expect(only(queries, 'SELECT changed_fields').params).toEqual([5, 53]);
   });
 
   it('writes all eleven content fields, not the five accept-source can', async () => {
@@ -668,58 +787,6 @@ describe('publishing bare contents ({ contentsOnly: true })', () => {
     expect(res.status).not.toHaveBeenCalledWith(409);
     expect(none(queries, 'UPDATE experiences')).toBe(true);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ locationsPublished: 1 }));
-  });
-});
-
-describe('the metadata column, which no single entry describes', () => {
-  const heldMetadata = (old: unknown, next: unknown, row: Record<string, unknown>) => makeClient({
-    row: { curation_state: 'auto', pending_change_sync_log_id: 53, ...row },
-    proposal: [{ field: 'metadata', old, new: next, held: true }],
-  });
-
-  const written = (queries: Array<{ sql: string; params: unknown[] }>) => {
-    const update = only(queries, 'UPDATE experiences');
-    const index = Number(/metadata = \$(\d+)/.exec(update.sql)![1]) - 1;
-    return JSON.parse(String(update.params[index]));
-  };
-
-  it('applies a key the source dropped', async () => {
-    grantScope();
-    const { client, queries } = heldMetadata({ a: 1, website: 'w' }, { a: 1 }, { metadata: { a: 1, website: 'w' } });
-
-    await publish({ expectedSyncLogId: 53 }, client);
-
-    // Recorded only by its absence from `new`. Merged with `||` it would survive,
-    // the run would propose the same removal every time, and this endpoint would
-    // clear the pointer without ever applying it.
-    expect(written(queries)).toEqual({ a: 1 });
-  });
-
-  it('keeps a key the diff reported on its own', async () => {
-    grantScope();
-    const { client, queries } = heldMetadata({ a: 1 }, { a: 2 }, { metadata: { inDanger: true, a: 1 } });
-
-    await publish({ expectedSyncLogId: 53 }, client);
-
-    // `computeChangeSet` strips `inDanger` out of both sides before diffing the
-    // rest, so the catch-all is not speaking for it — and assigning the
-    // catch-all's `new` would delete a UNESCO site's danger listing.
-    expect(written(queries)).toEqual({ inDanger: true, a: 2 });
-  });
-
-  it('gives a per-key claim back to the curator', async () => {
-    grantScope();
-    const { client, queries } = heldMetadata(
-      { a: 1, website: 'curated' }, { a: 1, website: 'from-the-source' },
-      { metadata: { a: 1, website: 'curated' }, curated_fields: ['metadata.website'] },
-    );
-
-    await publish({ expectedSyncLogId: 53 }, client);
-
-    // A claim made after the run cannot be filtered out of the proposal: the key
-    // is inside the catch-all, under the field name 'metadata'. So it is
-    // re-applied from what is stored, exactly as the upsert re-applies it.
-    expect(written(queries)).toEqual({ a: 1, website: 'curated' });
   });
 });
 
@@ -1289,6 +1356,16 @@ describe('publishExperienceBodySchema', () => {
       treasureIds: [1], expectedSyncLogId: 53,
     }).success).toBe(false);
     expect(publishExperienceBodySchema.safeParse({ expectedSyncLogId: 53 }).success).toBe(true);
+    // Naming rows answers a card, and a held card always names its run (#722):
+    // without the pair, a selection at a row whose pointer has been cleared
+    // passes every gate and reports success over a card that is not there.
+    expect(publishExperienceBodySchema.safeParse({ heldFields: ['name'] }).success).toBe(false);
+    expect(publishExperienceBodySchema.safeParse({
+      heldParts: [{ kind: 'treasures', ref: 'Q1', name: 'A', fields: ['artist'] }],
+    }).success).toBe(false);
+    expect(publishExperienceBodySchema.safeParse({
+      heldFields: ['name'], expectedSyncLogId: 53,
+    }).success).toBe(true);
   });
 
   it('accepts the bare contentsOnly shape', () => {

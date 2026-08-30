@@ -449,6 +449,12 @@ export async function setExperienceAdmission(req: AuthenticatedRequest, res: Res
     // proposal too (ADR-0037), and an override answers none.
     appliedParts: [] as AppliedPart[],
     fromSyncLogId: null,
+    // Zero because this call answered no held row, not because none was open
+    // (#722): a row holding a proposal keeps its pointer and its own card
+    // through an override, exactly as the paragraph above says. The field is
+    // present rather than absent so the one sentence the review page builds
+    // from this shape needs no branch for which endpoint produced it.
+    heldLeftOpen: 0,
     locationsPublished,
     treasureLinksPublished,
     treasuresPublished,

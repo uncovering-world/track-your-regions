@@ -59,6 +59,19 @@ export interface ClientOptions {
    * is a part the record names that no offered row answers to any more.
    */
   parts?: { location?: Record<string, unknown> | null; treasure?: Record<string, unknown> | null };
+  /**
+   * Held rows a curator has already answered (#722), as `answeredHeldRows`
+   * returns them: the object's own field carries three nulls, a part's the kind
+   * and the record's pair.
+   *
+   * Absent is the ordinary case — a proposal nobody has answered yet — which is
+   * what every test written before per-row answers describes.
+   */
+  answered?: Array<{
+    kind: string | null; ref: string | null; name: string | null; field: string;
+    /** Which answer stands — the credit rule reads it, so a test can drive either. */
+    answer?: 'published' | 'refused';
+  }>;
   rowCounts?: Record<string, number>;
 }
 
@@ -76,6 +89,9 @@ function lockedRow(opts: ClientOptions) {
     curation_state: 'pending',
     curated_fields: [],
     metadata: null,
+    // Read for the credit rule (#722): the run's credit belongs to the run's
+    // picture, so writing it means knowing whether that picture is the stored one.
+    image_url: null,
     admission: 'admitted',
     pending_change_sync_log_id: null,
     ...(opts.row ?? {}),
@@ -97,6 +113,15 @@ function proposalRow(opts: ClientOptions) {
 function answer(sql: string, opts: ClientOptions): { rows: unknown[]; rowCount?: number } {
   if (sql.includes('experience_sync_changes') && sql.includes('SELECT changed_fields')) {
     return { rows: proposalRow(opts) };
+  }
+  // Which rows of that proposal already carry an answer. Read off the same
+  // table, which is why this arm sits above nothing and is keyed on the
+  // decisions table rather than on the changeset (#722).
+  if (sql.includes('experience_held_decisions') && sql.includes('SELECT NULL::text AS kind')) {
+    // `answer` defaults to the refusal, which is the verdict a rule can act
+    // on: a published row means the column already holds the value, so a test
+    // that omits it is describing the case with something to decide.
+    return { rows: (opts.answered ?? []).map(row => ({ answer: 'refused', ...row })) };
   }
   // The part rows, resolved and locked by `publishHeldParts.ts`.
   if (sql.includes('FROM experience_locations el') && sql.includes('FOR UPDATE')) {
