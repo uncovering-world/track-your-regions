@@ -28,7 +28,7 @@
  * that existed came to disagree.
  */
 
-import { fieldLabel } from '../curation/fieldLabel';
+import { fieldLabel } from '../curation/fieldMeaning';
 import { plural } from '../../utils/plural';
 import type { CurationLogEntry } from '../../api/experiences';
 
