@@ -29,7 +29,7 @@ import type { ChangeSetResult } from './changeSet.js';
 import type { SyncProgress } from './types.js';
 import { runningSyncs, isTerminalSyncStatus } from './types.js';
 import type { RunVerdict, ErrorDetail, ContentsByKind } from './types.js';
-import { recordedContents } from './types.js';
+import { contentsHeld, recordedContents } from './types.js';
 
 // =============================================================================
 // Types
@@ -153,9 +153,17 @@ function initSyncProgress(dryRun: boolean): SyncProgress {
  * to fill the counter for runs that predate it from the rows they recorded.
  * Not `heldFields` alone: a created row under a gate is written pending rather
  * than refused, and `created` already carries that news.
+ *
+ * Either level. A field of a part readers can see is held like the object's own
+ * since ADR-0037, and the row is then held whichever level the proposal sits at
+ * — every field of the museum's own came through, and what a curator is being
+ * asked about is one work's attribution. Read off the *recorded* contents rather
+ * than the raw delta, so the same shape the changeset row carries is the one the
+ * counter answers for.
  */
-function wasHeld(result: ProcessItemResult): boolean {
-  return result.outcome === 'unchanged' && result.changeSet.heldFields.length > 0;
+function wasHeld(result: ProcessItemResult, contents: ContentsByKind | null): boolean {
+  return result.outcome === 'unchanged'
+    && (result.changeSet.heldFields.length > 0 || contentsHeld(contents));
 }
 
 /**
@@ -193,7 +201,7 @@ function resolveChangeType(
   result: ProcessItemResult,
   contents: ContentsByKind | null,
 ): ChangeRecord['changeType'] {
-  if (wasHeld(result)) return 'held';
+  if (wasHeld(result, contents)) return 'held';
   if (result.returnedFromMissing && result.outcome !== 'created') return 'returned';
   if (result.outcome === 'unchanged' && result.changeSet.curatedConflicts.length > 0) return 'conflict';
   if (result.outcome === 'unchanged' && contents !== null) return 'contents';
@@ -222,6 +230,10 @@ function recordItemOutcome<T>(
   changes: ChangeRecord[],
 ): void {
   const { changedFields, curatedConflicts, heldFields, significance } = result.changeSet;
+  // What the row will carry about the object's contents, decided before the
+  // counters: a held field of a part makes the row held (ADR-0037), and the
+  // counter has to answer for the same shape the row does.
+  const contents = recordedContents(result.contents ?? {});
   // Claimed fields only. A held field is not one a person claimed — the whole
   // difference the two words carry — and `total_curated_conflicts` would stop
   // meaning what its column comment says if it absorbed them.
@@ -241,7 +253,7 @@ function recordItemOutcome<T>(
   // too, where this counts rows, and only inside `unchanged`. Without this a
   // gated run reads as a run that touched nothing — run 68 held all 1272
   // UNESCO sites and reported "unchanged 1272".
-  if (wasHeld(result)) progress.held++;
+  if (wasHeld(result, contents)) progress.held++;
 
   if (progress.logId === null) return;
 
@@ -253,7 +265,6 @@ function recordItemOutcome<T>(
   // holds moved (ADR-0026). The fourth is the case that produced no row at all
   // until this column existed: a serial site gaining a component was recorded
   // nowhere, not merely rendered nowhere.
-  const contents = recordedContents(result.contents ?? {});
   const worthRecording = result.outcome !== 'unchanged'
     || curatedConflicts.length > 0
     || heldFields.length > 0

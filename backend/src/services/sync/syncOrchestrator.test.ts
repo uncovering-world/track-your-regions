@@ -799,6 +799,45 @@ describe('orchestrateSync changeset recording', () => {
     expect(recorded[0].changeType).toBe('contents');
   });
 
+  it('counts a row whose only hold is a field of a part as held, and files it so', async () => {
+    // The Wine Glass's attribution, held on a visible work under a gated museum
+    // (ADR-0037): every field of the museum's own came through, and what a
+    // curator is being asked about lives one level down.
+    const heldPart = processed('unchanged');
+    heldPart.contents = {
+      treasures: {
+        added: [], withdrawn: [], returned: [],
+        changed: [{
+          item: { name: 'The Wine Glass', ref: 'Q12418' },
+          fields: [{
+            field: 'artist', old: 'Johannes Vermeer', new: 'Jan Vermeer van Haarlem the Elder',
+            significance: 'major', curatedConflict: false, held: true,
+          }],
+        }],
+      },
+    };
+    const config = makeConfig({
+      processItem: vi.fn().mockResolvedValueOnce(heldPart).mockResolvedValueOnce(processed('unchanged')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    // `total_held` is "rows a reader can already see the run proposed a change
+    // to and the gate kept whole" — which this row is, whichever level the
+    // proposal sits at. And the row files as `held` rather than `contents`,
+    // because the held half is the one nobody has answered, and the admin
+    // report's `?type=held` filter is where a curator would look for it.
+    expect(updateSyncLog).toHaveBeenCalledWith(
+      TEST_CATEGORY_ID, 42, 'success',
+      expect.objectContaining({ held: 1, unchanged: 2, updated: 0 }),
+      undefined,
+    );
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].changeType).toBe('held');
+    expect(recorded[0].contents.treasures.changed[0].fields[0].held).toBe(true);
+  });
+
   it('calls a row with both a claim and a contents move a conflict, not a contents row', async () => {
     const both = processed('unchanged');
     both.changeSet.curatedConflicts = [
