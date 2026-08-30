@@ -306,9 +306,14 @@ naming `imageCredit` waiting in the curation queue, so a run fetched the
 photographer, the gate refused to write it unread, and the page has been showing
 the picture ever since — publishing that change names them. On the works nothing
 has fetched one at all: `treasureWriter` writes a work's credit straight into
-its row rather than proposing it, no `contents` changeset mentions a credit, and
-a museum run is what writes these. "Publish what is waiting" and "go and fetch
-it" are different afternoons.
+its row, and a museum run is what writes these. The one case where a work's credit
+*is* waiting is a held picture: since ADR-0037 the treasures upsert holds a visible
+work's picture under a gated museum, and the credit the run fetched for it rides in
+the museum's contents record beside the held `image_url` — so the work arm asks the
+museum's pointer for a held `metadata.imageCredit` naming the work, through this
+venue's link, and says "waiting" only there. A credit fetched for the picture the
+row already shows is written, not held. "Publish what is waiting" and "go and
+fetch it" are different afternoons.
 
 ## Adding an assertion
 
