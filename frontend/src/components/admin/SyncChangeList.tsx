@@ -68,15 +68,23 @@ function rewriteSummary(
   };
   const counts = new Map<string, number>();
   let claimed = 0;
+  let held = 0;
   for (const row of changed) {
     for (const field of row.fields) {
       const verb = verbs[field.field] ?? `changed ${field.field}`;
       counts.set(verb, (counts.get(verb) ?? 0) + 1);
       if (field.curatedConflict) claimed += 1;
+      // The other refusal (ADR-0037): the gate kept the stored value of a part
+      // readers can see, and a curator's card is asking about it. Two numbers
+      // rather than one, because they are two events with two answers.
+      else if (field.held) held += 1;
     }
   }
   const said = [...counts].map(([verb, count]) => `${count} ${verb}`).join(', ');
-  return claimed > 0 ? `${said} (${claimed} kept over the source, claimed)` : said;
+  const refused: string[] = [];
+  if (claimed > 0) refused.push(`${claimed} kept over the source, claimed`);
+  if (held > 0) refused.push(`${held} held for a curator`);
+  return refused.length > 0 ? `${said} (${refused.join('; ')})` : said;
 }
 
 /**
