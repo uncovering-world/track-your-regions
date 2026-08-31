@@ -29,6 +29,7 @@ import { Chip, Link, Stack, Tooltip } from '@mui/material';
 import { parseCriteria } from '../../utils/unescoCriteria';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import { safeHref } from '../../utils/safeHref';
+import { creators } from '../../utils/creatorList';
 
 /** One field of a proposal, as the queue carries it. */
 export interface ProposedField {
@@ -527,11 +528,11 @@ const MEANINGS: Record<string, FieldMeaning> = {
     what: 'The sum of those works’ Wikipedia language editions — the run’s ranking input.',
     whenItChanges: 'Never a question: the run writes it without asking.',
   },
-  'metadata.creator': {
-    label: 'creator',
-    what: 'The sculptor or architect, as Wikidata records it. Missing for more than half the monuments — anonymous, ancient, or simply unrecorded.',
-    whenItChanges: 'An attribution changed on Wikidata: research, or a fix. Plausible; check the article if the name is unfamiliar.',
-    render: value => (isAbsent(value) ? 'unknown' : String(value)),
+  'metadata.creators': {
+    label: 'attribution',
+    what: 'Everyone Wikidata records as having made it — the sculptors, the architect, sometimes the foundry. Missing for more than half the monuments: anonymous, ancient, or simply unrecorded. Christ the Redeemer is two people, the Fountain of Cybele seven.',
+    whenItChanges: 'An attribution changed on Wikidata: research, or a fix. A name added or dropped, since restating the same people in another order is not reported. Plausible; check the article if a name is unfamiliar.',
+    render: value => (Array.isArray(value) ? creators(value.map(String)) ?? 'unknown' : 'unknown'),
   },
   'metadata.year': {
     label: 'year',
@@ -556,10 +557,11 @@ const MEANINGS: Record<string, FieldMeaning> = {
   },
 
   // A work inside a museum, and a place inside a serial site (contentsChangeSet.ts)
-  artist: {
-    label: 'artist',
-    what: 'Who made the work, as Wikidata records it.',
-    whenItChanges: 'An attribution changed on Wikidata: research, or a fix. Check the work’s page if the name is unfamiliar.',
+  artists: {
+    label: 'attribution',
+    what: 'Everyone Wikidata records as having made the work. Most have one maker and a minority have several: Morning in a Pine Forest is Shishkin’s forest and Savitsky’s bears.',
+    whenItChanges: 'An attribution changed on Wikidata: research, or a fix. A name added or dropped, since restating the same people in another order is not reported. Check the work’s page if a name is unfamiliar.',
+    render: value => (Array.isArray(value) ? creators(value.map(String)) ?? 'nobody recorded' : 'nobody recorded'),
   },
   year: {
     label: 'year',
@@ -607,7 +609,7 @@ const UNSEEN_BY_READERS = new Set([
   'tags',
   'metadata.criteria', 'metadata.region', 'metadata.areaHectares', 'metadata.transboundary',
   'metadata.wikidataQid', 'metadata.admittedFor', 'metadata.artworkCount', 'metadata.totalArtworkSitelinks',
-  'metadata.creator', 'metadata.year', 'metadata.type', 'metadata.sitelinksCount',
+  'metadata.creators', 'metadata.year', 'metadata.type', 'metadata.sitelinksCount',
 ]);
 
 /** The meaning of a field the changeset names: a column, or `metadata.<key>`. */

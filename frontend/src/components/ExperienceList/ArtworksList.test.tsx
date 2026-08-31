@@ -55,7 +55,8 @@ function work(overrides: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
     external_id: 'Q724954',
     name: 'Mesha Stele',
     treasure_type: 'stele',
-    artist: null,
+    artists: [],
+    artists_curated: false,
     year: null,
     image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Mesha%20stele.jpg',
     image_credit: {
@@ -69,6 +70,69 @@ function work(overrides: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
 function renderList(contents = [work()]) {
   return render(<ArtworksList contents={contents} total={contents.length} experienceId={7} />);
 }
+
+describe('a work with more than one maker', () => {
+  beforeEach(() => setArtworkPreview.mockReset());
+
+  it('names both, because that is the fact rather than a summary of it', () => {
+    // Shishkin painted the forest and Savitsky the bears. Naming one was the
+    // catalogue picking a winner the source never picked (#720).
+    renderList([work({
+      name: 'Morning in a Pine Forest',
+      artists: ['Ivan Shishkin', 'Konstantin Savitsky'],
+      year: 1889,
+    })]);
+
+    expect(screen.getByText(/Ivan Shishkin and Konstantin Savitsky/)).toBeInTheDocument();
+  });
+
+  it('counts them rather than naming a leader nobody chose', () => {
+    // The pool's own answer for the Moon Museum arrives with David Novros in
+    // front and Andy Warhol last — the banded query answers in reverse of the
+    // source's order (ADR-0040) — so leading with the first name would name a
+    // query planner's pick as the artist who led six.
+    renderList([work({
+      name: 'Moon Museum',
+      artists: [
+        'David Novros', 'Forrest Myers', 'John Chamberlain',
+        'Robert Rauschenberg', 'Claes Oldenburg', 'Andy Warhol',
+      ],
+    })]);
+
+    expect(screen.getByText(/6 artists/)).toBeInTheDocument();
+    expect(screen.queryByText(/David Novros/)).not.toBeInTheDocument();
+  });
+
+  it('leads with the first name once a curator has claimed the order', () => {
+    renderList([work({
+      name: 'Moon Museum',
+      artists: [
+        'Andy Warhol', 'Claes Oldenburg', 'Robert Rauschenberg',
+        'John Chamberlain', 'Forrest Myers', 'David Novros',
+      ],
+      artists_curated: true,
+    })]);
+
+    // Now the first name is somebody's answer rather than a row order.
+    expect(screen.getByText(/Andy Warhol and 5 others/)).toBeInTheDocument();
+  });
+
+  it('drops the credit when the photographer is any of the makers, not just the first', () => {
+    // Commons names the painter as the author of a photograph of a painting, so
+    // a row already reading "Leonardo da Vinci and Andrea del Verrocchio" gains
+    // nothing from a credit naming the second of them.
+    renderList([work({
+      name: 'The Baptism of Christ',
+      artists: ['Leonardo da Vinci', 'Andrea del Verrocchio'],
+      image_credit: {
+        author: 'Andrea del Verrocchio', license: 'Public domain',
+        licenseUrl: null, detailsUrl: null,
+      },
+    })]);
+
+    expect(screen.queryByText(/Public domain/)).not.toBeInTheDocument();
+  });
+});
 
 describe('a work whose picture does not arrive', () => {
   beforeEach(() => setArtworkPreview.mockReset());

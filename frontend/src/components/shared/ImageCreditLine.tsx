@@ -74,17 +74,24 @@ const NO_ATTRIBUTION_REQUIRED = /^(public domain|pdm|pd-|cc0)/i;
  * or a photographer who is not the artist already named. The large views take no
  * `redundantWith` and always show it: there the picture is the subject, and
  * there is room.
+ *
+ * A work names every one of its makers (#720), so the question is whether the
+ * credit names somebody the row does not — **any** of them, not the first. The
+ * Baptism of Christ is Leonardo and Verrocchio, and a photograph credited to
+ * Verrocchio beside a row reading "Leonardo da Vinci and Andrea del Verrocchio"
+ * repeats the row exactly as the single-name case did.
  */
 export function creditAddsBeyond(
   credit: ImageCredit | null | undefined,
-  artist: string | null | undefined,
+  artist: string | readonly string[] | null | undefined,
 ): boolean {
   if (!credit || (!credit.author && !credit.license)) return false;
   if (!credit.license || !NO_ATTRIBUTION_REQUIRED.test(credit.license.trim())) return true;
   // A free licence and no new name says nothing the row needs. Compared loosely,
   // because "Leonardo da Vinci" and "leonardo  da vinci" are one person.
   const same = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
-  return !!credit.author && (!artist || same(credit.author) !== same(artist));
+  const named = (typeof artist === 'string' ? [artist] : artist ?? []).map(same);
+  return !!credit.author && !named.includes(same(credit.author));
 }
 
 /**
@@ -105,18 +112,19 @@ export function creditLabel(credit?: ImageCredit | null): string {
 interface ImageCreditLineProps {
   credit?: ImageCredit | null;
   /**
-   * The work's own artist, where the surface already names it.
+   * The work's own makers, where the surface already names them.
    *
    * **Passing the prop at all** opts this line into the "only where it adds" rule
    * above — the dense lists do, the large views do not. Presence and not value:
-   * `redundantWith={row.artist}` on a row whose artist is `undefined` is still a
-   * dense row asking for the rule, and reading the value would have made it a
+   * `redundantWith={row.artists}` on a row whose makers are `undefined` is still
+   * a dense row asking for the rule, and reading the value would have made it a
    * large view by accident, printing the repetition `creditAddsBeyond` exists to
-   * remove. Every caller's artist field is `string | null` today, but the docs
-   * now advertise this call, so the next one is written against whatever type
-   * that surface happens to have.
+   * remove.
+   *
+   * A list or one name: a work carries every maker the source names (#720), and
+   * the object-level surfaces that pass this still have a single string.
    */
-  redundantWith?: string | null;
+  redundantWith?: string | readonly string[] | null;
   /**
    * What to paint the line, for a surface that is not the page's own background.
    *

@@ -54,7 +54,7 @@ describe('the label', () => {
   });
 
   it('names a work’s fields, which arrive without a prefix from one level down', () => {
-    expect(fieldLabel('artist')).toBe('artist');
+    expect(fieldLabel('artists')).toBe('attribution');
     expect(fieldLabel('image_url')).toBe('picture');
   });
 });

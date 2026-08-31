@@ -951,8 +951,8 @@ describe('ReviewQueue', () => {
             latitude: 38.5, longitude: -6.1,
           })),
           pending_works: [
-            { id: 9, name: 'Venus de Milo', artist: 'Alexandros of Antioch', year: -100, imageUrl: null, iconic: true },
-            { id: 10, name: 'Study of a head', artist: null, year: null, imageUrl: null, iconic: false },
+            { id: 9, name: 'Venus de Milo', artists: ['Alexandros of Antioch'], artistsCurated: false, year: -100, imageUrl: null, iconic: true },
+            { id: 10, name: 'Study of a head', artists: [], artistsCurated: false, year: null, imageUrl: null, iconic: false },
           ],
         }],
         limit: 25, offset: 0,

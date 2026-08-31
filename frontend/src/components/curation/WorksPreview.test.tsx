@@ -13,9 +13,9 @@ import { WorksPreview, type CountedWork } from './WorksPreview';
 
 /** Onze-Lieve-Vrouwekathedraal's three, as the catalogue holds them. */
 const CATHEDRAL: CountedWork[] = [
-  { name: 'The Elevation of the Cross', type: 'painting', artist: 'Peter Paul Rubens', imageUrl: null, year: 1610, externalId: 'Q901' },
-  { name: 'The Descent from the Cross', type: 'painting', artist: 'Peter Paul Rubens', imageUrl: null, year: 1612, externalId: 'Q902' },
-  { name: 'The Assumption of the Virgin', type: 'painting', artist: 'Peter Paul Rubens', imageUrl: null, year: 1626, externalId: 'Q903' },
+  { name: 'The Elevation of the Cross', type: 'painting', artists: ['Peter Paul Rubens'], artistsCurated: false, imageUrl: null, year: 1610, externalId: 'Q901' },
+  { name: 'The Descent from the Cross', type: 'painting', artists: ['Peter Paul Rubens'], artistsCurated: false, imageUrl: null, year: 1612, externalId: 'Q902' },
+  { name: 'The Assumption of the Virgin', type: 'painting', artists: ['Peter Paul Rubens'], artistsCurated: false, imageUrl: null, year: 1626, externalId: 'Q903' },
 ];
 
 function open(node: React.ReactElement) {
@@ -85,7 +85,7 @@ describe('WorksPreview', () => {
 
   it('names each work by what it is, who made it and when', async () => {
     await open(
-      <WorksPreview works={[{ name: 'Doryphoros', type: 'statue', artist: 'Polykleitos', imageUrl: null, year: -450, externalId: 'Q910' }]}>
+      <WorksPreview works={[{ name: 'Doryphoros', type: 'statue', artists: ['Polykleitos'], artistsCurated: false, imageUrl: null, year: -450, externalId: 'Q910' }]}>
         {phrase}
       </WorksPreview>,
     );
@@ -98,8 +98,8 @@ describe('WorksPreview', () => {
     // "200" beside "200 BC" reads as a typo rather than as four centuries.
     await open(
       <WorksPreview works={[
-        { name: 'Antinous Farnese', type: 'statue', artist: null, imageUrl: null, year: 200, externalId: 'Q904' },
-        { name: 'The Night Watch', type: 'painting', artist: null, imageUrl: null, year: 1642, externalId: 'Q905' },
+        { name: 'Antinous Farnese', type: 'statue', artists: [], artistsCurated: false, imageUrl: null, year: 200, externalId: 'Q904' },
+        { name: 'The Night Watch', type: 'painting', artists: [], artistsCurated: false, imageUrl: null, year: 1642, externalId: 'Q905' },
       ]}
       >
         {phrase}
@@ -118,7 +118,7 @@ describe('WorksPreview', () => {
         name: 'Mesha Stele',
         externalId: 'Q724954',
         type: 'stele',
-        artist: null,
+        artists: [], artistsCurated: false,
         imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Mesha%20stele.jpg',
         year: -840,
         imageCredit: {
@@ -163,10 +163,10 @@ describe('WorksPreview', () => {
     };
     await open(
       <WorksPreview works={[
-        { name: 'Spring', type: 'painting', artist: null, year: 1573, externalId: 'Q1',
+        { name: 'Spring', type: 'painting', artists: [], artistsCurated: false, year: 1573, externalId: 'Q1',
           imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Spring%20one.jpg',
           imageCredit: credit },
-        { name: 'Spring', type: 'painting', artist: null, year: 1894, externalId: 'Q2',
+        { name: 'Spring', type: 'painting', artists: [], artistsCurated: false, year: 1894, externalId: 'Q2',
           imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Spring%20two.jpg',
           imageCredit: credit },
       ]}

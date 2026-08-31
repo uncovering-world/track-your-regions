@@ -41,6 +41,7 @@ import { HeldAnswer, type HeldSelection } from './HeldAnswer';
 import { ObjectPreview } from './ObjectPreview';
 import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
+import { creatorsBrief } from '../../utils/creatorList';
 
 /** One experience, with whatever a gated run left open about it. */
 export interface GatedGroup {
@@ -310,7 +311,8 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                 items={(contents?.pending_works ?? []).map(work => ({
                   id: work.id,
                   primary: work.name ?? 'Untitled',
-                  secondary: [work.artist, work.year].filter(Boolean).join(', ') || null,
+                  secondary: [creatorsBrief(work.artists, work.artistsCurated), work.year]
+                    .filter(Boolean).join(', ') || null,
                 }))}
               />
             </GatedRow>

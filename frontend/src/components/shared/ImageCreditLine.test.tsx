@@ -154,6 +154,30 @@ describe('a credit beside a row that already names the artist', () => {
     }, 'Rembrandt')).toBe(false);
   });
 
+  it('is dropped when the photographer is any of the makers, not just the first', () => {
+    // The Baptism of Christ is Leonardo and Verrocchio, and Commons credits the
+    // photograph of it to the second of them. A row already naming both gains
+    // nothing (#720) — and reading only the first name would print the repetition
+    // this rule exists to remove.
+    expect(creditAddsBeyond(
+      credit({ author: 'Andrea del Verrocchio' }),
+      ['Leonardo da Vinci', 'Andrea del Verrocchio'],
+    )).toBe(false);
+  });
+
+  it('is kept when a free photograph names nobody among the makers', () => {
+    expect(creditAddsBeyond(
+      credit({ author: 'Google Arts Project' }),
+      ['Leonardo da Vinci', 'Andrea del Verrocchio'],
+    )).toBe(true);
+  });
+
+  it('is kept on a work with no maker recorded, where the list is empty', () => {
+    // An empty list is what "nobody recorded" now is, and it must read as the
+    // old `null` did rather than as a name nothing can match.
+    expect(creditAddsBeyond(credit(), [])).toBe(true);
+  });
+
   it('is what the component honours when a row hands it the artist', () => {
     const { container, rerender } = render(
       <ImageCreditLine credit={credit()} redundantWith="Rembrandt" />,

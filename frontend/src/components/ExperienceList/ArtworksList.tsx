@@ -6,6 +6,7 @@ import { useViewedTreasures } from '../../hooks/useVisitedExperiences';
 import type { ExperienceTreasure } from '../../api/experiences';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { creatorsBrief } from '../../utils/creatorList';
 import { VISITED_GREEN } from '../../utils/categoryColors';
 import { ARTWORKS_INITIAL_LIMIT } from './utils';
 
@@ -120,16 +121,17 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
           {content.name}
         </Typography>
         <Typography variant="caption" color="text.secondary" noWrap>
-          {[content.artist, content.year, content.treasure_type].filter(Boolean).join(' · ')}
+          {[creatorsBrief(content.artists, content.artists_curated), content.year, content.treasure_type]
+            .filter(Boolean).join(' · ')}
         </Typography>
-        {/* `redundantWith` because the line above already names the artist, and
+        {/* `redundantWith` because the line above already names the makers, and
             Commons names the painter as the author of a photograph of a painting —
-            so on most rows this would repeat the artist and add a licence that asks
+            so on most rows this would repeat a maker and add a licence that asks
             for nothing. It draws where it carries something: a CC BY or CC BY-SA
-            photograph, or a photographer who is not the artist. See
+            photograph, or a photographer who is none of them. See
             `creditAddsBeyond`. Hung on the picture that is actually on screen. */}
         {url && !failed && (
-          <ImageCreditLine credit={content.image_credit} redundantWith={content.artist} />
+          <ImageCreditLine credit={content.image_credit} redundantWith={content.artists} />
         )}
       </Box>
     </Box>

@@ -15,12 +15,16 @@ import { useState } from 'react';
 import { Box, Link, Stack, Tooltip, Typography } from '@mui/material';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { creatorsBrief } from '../../utils/creatorList';
 import type { ImageCredit } from '../../api/experiences';
 
 export interface CountedWork {
   name: string;
   type: string | null;
-  artist: string | null;
+  /** Every maker the source names, in no asserted order. Empty where none is recorded (#720). */
+  artists: string[];
+  /** Whether a curator has vouched for that order (ADR-0040). */
+  artistsCurated: boolean;
   imageUrl: string | null;
   /** Whose photograph of the work this is, when the run managed to ask. */
   imageCredit?: ImageCredit | null;
@@ -60,7 +64,10 @@ function sourceLink(work: CountedWork): string | null {
 function subtitle(work: CountedWork): string {
   const parts: string[] = [];
   if (work.type) parts.push(work.type);
-  if (work.artist) parts.push(work.artist);
+  // The brief form: these rows sit in a tooltip, and the Moon Museum's six
+  // names would push the type and the era off the end of it.
+  const makers = creatorsBrief(work.artists, work.artistsCurated);
+  if (makers) parts.push(makers);
   if (typeof work.year === 'number') {
     if (work.year < 0) parts.push(`${Math.abs(work.year)} BC`);
     else parts.push(work.year < 1000 ? `AD ${work.year}` : String(work.year));
@@ -136,7 +143,7 @@ export function WorkCard({ work }: { work: CountedWork }) {
         {/* The line above already names the artist, and Commons names the painter
             as the author of a photograph of a painting — so this draws only where
             it carries something the row does not: a licence asking to be honoured,
-            or a photographer who is not the artist. Hung on the thumbnail, since a
+            or a photographer who is none of the makers. Hung on the thumbnail, since a
             name under no picture credits nobody for nothing.
             `color="inherit"` because these rows live inside a `Tooltip` and nowhere
             else: MUI's default tooltip is grey[700] at 92% with white text, this
@@ -144,7 +151,7 @@ export function WorkCard({ work }: { work: CountedWork }) {
             would be near-black on near-black — the neighbouring `Typography`s take
             `color="inherit"` for the same reason. */}
         {thumbnail && (
-          <ImageCreditLine credit={work.imageCredit} redundantWith={work.artist} color="inherit" />
+          <ImageCreditLine credit={work.imageCredit} redundantWith={work.artists} color="inherit" />
         )}
       </Box>
     </Stack>

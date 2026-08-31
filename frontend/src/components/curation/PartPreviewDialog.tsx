@@ -45,7 +45,8 @@ export function PartPreviewDialog({ part, onClose }: {
         // unless the name itself is what is held.
         name: part.item.name ?? part.item.ref,
         type: part.treasureType ?? null,
-        artist: part.artist ?? null,
+        artists: part.artists ?? [],
+        artistsCurated: part.artistsCurated ?? false,
         imageUrl: part.imageUrl ?? null,
         imageCredit: part.imageCredit ?? null,
         year: part.year ?? null,

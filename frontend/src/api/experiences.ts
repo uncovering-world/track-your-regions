@@ -324,7 +324,15 @@ export interface ExperienceTreasure {
   external_id: string;
   name: string;
   treasure_type: string;
-  artist: string | null;
+  /** Every maker the source names. The order is a curator's to confirm — see `artists_curated` (#720). */
+  artists: string[];
+  /**
+   * Whether a curator has vouched for the order the makers are stored in.
+   *
+   * The stored order is a query planner's and not the source's (ADR-0040), so a
+   * dense row leads with a name only once somebody has made that claim.
+   */
+  artists_curated: boolean;
   year: number | null;
   image_url: string | null;
   /**
@@ -420,7 +428,8 @@ export interface HeldPart {
   longitude?: number | null;
   ordinal?: number | null;
   treasureId?: number | null;
-  artist?: string | null;
+  artists?: string[] | null;
+  artistsCurated?: boolean | null;
   year?: number | null;
   imageUrl?: string | null;
   imageCredit?: ImageCredit | null;
@@ -544,7 +553,8 @@ export interface ReviewQueueItem {
   counted_works?: Array<{
     name: string;
     type: string | null;
-    artist: string | null;
+    artists: string[];
+    artistsCurated: boolean;
     imageUrl: string | null;
     /** Whose photograph of the work it is — `countedWorksSelectSql` sends it beside the URL. */
     imageCredit?: ImageCredit | null;
@@ -615,7 +625,8 @@ export interface ReviewQueueItem {
   pending_works?: Array<{
     id: number;
     name: string | null;
-    artist: string | null;
+    artists: string[];
+    artistsCurated: boolean;
     year: number | null;
     imageUrl: string | null;
     iconic: boolean;

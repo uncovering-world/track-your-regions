@@ -27,7 +27,7 @@ const mockedPublish = publishExperience as unknown as ReturnType<typeof vi.fn>;
 beforeEach(() => {
   mockedDeclineHeld.mockReset().mockResolvedValue({
     experienceId: 6194, declinedFields: [],
-    declinedParts: [{ kind: 'treasures', name: 'The Wine Glass', fields: ['artist'] }],
+    declinedParts: [{ kind: 'treasures', name: 'The Wine Glass', fields: ['artists'] }],
     fromSyncLogId: 64, heldLeftOpen: 0,
   });
   mockedPublish.mockReset().mockResolvedValue({
@@ -49,9 +49,9 @@ function held(): ReviewQueueItem {
       kind: 'treasures',
       item: { name: 'The Wine Glass', ref: 'Q782639' },
       fields: [{
-        field: 'artist', old: 'Johannes Vermeer', new: 'Jan Vermeer van Haarlem the Elder', held: true,
+        field: 'artists', old: ['Johannes Vermeer'], new: ['Jan Vermeer van Haarlem the Elder'], held: true,
       }],
-      treasureId: 3102, artist: 'Jan Vermeer van Haarlem the Elder', year: 1659,
+      treasureId: 3102, artists: ['Jan Vermeer van Haarlem the Elder'], year: 1659,
       imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Wine.jpg',
       imageCredit: null, treasureType: 'painting',
     }],
@@ -160,7 +160,7 @@ describe('a held card about a part', () => {
     // museum can carry one name.
     await waitFor(() => expect(mockedDeclineHeld).toHaveBeenCalledWith(6194, {
       fields: undefined,
-      parts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['artist'] }],
+      parts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['artists'] }],
     }, 64));
   });
 
@@ -171,7 +171,7 @@ describe('a held card about a part', () => {
 
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(6194, {
       heldFields: undefined,
-      heldParts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['artist'] }],
+      heldParts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['artists'] }],
       expectedSyncLogId: 64,
     }));
   });

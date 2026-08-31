@@ -100,8 +100,8 @@ describe('partGroups', () => {
   const wineGlass = {
     kind: 'treasures' as const,
     item: { name: 'The Wine Glass', ref: 'Q782639' },
-    fields: [{ field: 'artist', old: 'Johannes Vermeer', new: 'Jan Vermeer van Haarlem the Elder', held: true }],
-    treasureId: 3102, artist: 'Jan Vermeer van Haarlem the Elder', year: 1659,
+    fields: [{ field: 'artists', old: ['Johannes Vermeer'], new: ['Jan Vermeer van Haarlem the Elder'], held: true }],
+    treasureId: 3102, artists: ['Jan Vermeer van Haarlem the Elder'], year: 1659,
     imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Wine.jpg', imageCredit: null, treasureType: 'painting',
   };
   const montsegur = {
@@ -119,7 +119,7 @@ describe('partGroups', () => {
       ['work', 'The Wine Glass'],
     ]);
     expect(groups[0].rows.map(r => r.meaning.label)).toEqual(['name']);
-    expect(groups[1].rows.map(r => r.meaning.label)).toEqual(['artist']);
+    expect(groups[1].rows.map(r => r.meaning.label)).toEqual(['attribution']);
     expect(groups[1].rows[0].kind).toBe('changed');
   });
 
