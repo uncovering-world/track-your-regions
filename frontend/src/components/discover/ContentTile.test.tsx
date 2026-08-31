@@ -26,7 +26,8 @@ function work(over: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
     external_id: 'Q724954',
     name: 'Mesha Stele',
     treasure_type: 'stele',
-    artist: null,
+    artists: [],
+    artists_curated: false,
     year: null,
     image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Mesha%20stele.jpg',
     image_credit: {
@@ -94,7 +95,7 @@ describe('a work in the contents grid', () => {
     // implement, so a focus-based assertion would pass or fail for reasons that have
     // nothing to do with this. Reaching the control opens the tooltip; bound to the
     // inner strip, as it was, this event never reaches it.
-    renderTile({ artist: 'Mesha', year: -840 });
+    renderTile({ artists: ['Mesha'], year: -840 });
 
     fireEvent.mouseOver(screen.getByRole('button', { name: /Mesha Stele/ }));
 
@@ -104,7 +105,7 @@ describe('a work in the contents grid', () => {
   it('keeps saying what the press will do, rather than describing the work', () => {
     // Without `describeChild` MUI writes the tooltip into the child's `aria-label`,
     // and the announcement becomes the description instead of the action.
-    renderTile({ artist: 'Mesha' });
+    renderTile({ artists: ['Mesha'] });
 
     expect(screen.getByRole('button', { name: /Mesha Stele — mark as seen/ }))
       .toBeInTheDocument();

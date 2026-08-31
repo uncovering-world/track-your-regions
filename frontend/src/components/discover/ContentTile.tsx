@@ -4,6 +4,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import type { ExperienceTreasure } from '../../api/experiences';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 import { creditLabel, ImageCreditLine } from '../shared/ImageCreditLine';
+import { creatorsBrief } from '../../utils/creatorList';
 import { VISITED_GREEN } from '../../utils/categoryColors';
 
 /**
@@ -48,7 +49,8 @@ export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed
 
   const tip = [
     content.name,
-    content.artist ? ` - ${content.artist}` : '',
+    creatorsBrief(content.artists, content.artists_curated)
+      ? ` - ${creatorsBrief(content.artists, content.artists_curated)}` : '',
     content.year ? ` (${content.year})` : '',
     // Whose photograph, always — the tile itself only draws the credit where it
     // carries something the row does not, and a reader wondering about a picture
@@ -169,7 +171,7 @@ export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed
           placeholder above — a photographer named under a picture nobody is looking
           at is credited for nothing. Every treasure image stored today is a
           `Special:FilePath` URL, so this guards the next source, not this one. */}
-      {thumbUrl && <ImageCreditLine credit={content.image_credit} redundantWith={content.artist} />}
+      {thumbUrl && <ImageCreditLine credit={content.image_credit} redundantWith={content.artists} />}
     </Box>
   );
 }

@@ -37,12 +37,12 @@ describe('publishOutcomeFor', () => {
     // stayed as the curator wrote them.
     const line = publishOutcomeFor(item, result({
       appliedParts: [
-        { kind: 'treasures', name: 'The Wine Glass', fields: ['artist', 'image_url'], claimedFieldsSkipped: [] },
+        { kind: 'treasures', name: 'The Wine Glass', fields: ['artists', 'image_url'], claimedFieldsSkipped: [] },
         { kind: 'locations', name: 'Château de Montésgur', fields: [], claimedFieldsSkipped: ['name'] },
       ],
     }));
 
-    expect(line).toContain('The Wine Glass: artist, picture applied');
+    expect(line).toContain('The Wine Glass: attribution, picture applied');
     expect(line).toContain('Château de Montésgur: name left as you wrote it');
     expect(line).not.toContain('image_url');
   });
@@ -197,10 +197,10 @@ describe('heldRefusalOutcomeFor', () => {
   it('names a part with its field, since a bare field name answers for nothing', () => {
     const line = heldRefusalOutcomeFor(item, {
       ...refusal, declinedFields: [],
-      declinedParts: [{ kind: 'treasures', name: 'The Wine Glass', fields: ['artist'] }],
+      declinedParts: [{ kind: 'treasures', name: 'The Wine Glass', fields: ['artists'] }],
     });
 
-    expect(line).toContain('artist of The Wine Glass');
+    expect(line).toContain('attribution of The Wine Glass');
   });
 
   it('says the card is still standing, without counting what is on it', () => {

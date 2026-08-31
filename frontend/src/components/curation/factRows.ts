@@ -21,6 +21,7 @@ import { changedKeys, isEmptyValue } from './objectDiff';
 import { keyMeaningOf, meaningOf, type ChangeContext, type FieldMeaning, type ProposedField } from './fieldMeaning';
 import type { FieldProvenance } from './ProvenanceTrail';
 import type { HeldPart } from '../../api/experiences';
+import { creatorsBrief } from '../../utils/creatorList';
 
 export type FactKind = 'new' | 'changed' | 'removed';
 
@@ -174,7 +175,8 @@ function partDetail(part: HeldPart, offeredLocations: number | undefined): strin
   // is against. Nothing where the row is gone: a detail about a work nobody can
   // open would describe a row the card cannot show.
   if (part.treasureId == null) return null;
-  const who = part.artist ? `by ${part.artist}` : null;
+  const makers = creatorsBrief(part.artists, part.artistsCurated ?? false);
+  const who = makers ? `by ${makers}` : null;
   const when = part.year != null ? String(part.year) : null;
   return [who, when].filter(Boolean).join(', ') || null;
 }

@@ -62,7 +62,7 @@ function rewriteSummary(
   const verbs: Record<string, string> = {
     location: 'moved',
     name: 'renamed',
-    artist: 're-attributed',
+    artists: 're-attributed',
     year: 'redated',
     image_url: 'repictured',
   };

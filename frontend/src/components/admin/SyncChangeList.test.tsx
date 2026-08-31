@@ -323,14 +323,14 @@ describe('SyncChangeList', () => {
           {
             item: { name: 'The Wine Glass', ref: 'Q782639' },
             fields: [{
-              field: 'artist', old: 'Johannes Vermeer', new: 'Jan Vermeer van Haarlem the Elder',
+              field: 'artists', old: ['Johannes Vermeer'], new: ['Jan Vermeer van Haarlem the Elder'],
               significance: 'major' as const, curatedConflict: false, held: true,
             }],
           },
           {
             item: { name: 'Borghese Gladiator', ref: 'Q1163523' },
             fields: [{
-              field: 'artist', old: 'Agasias of Ephesus', new: 'Nicolas Cordier',
+              field: 'artists', old: ['Agasias of Ephesus'], new: ['Nicolas Cordier'],
               significance: 'major' as const, curatedConflict: false, held: false,
             }],
           },

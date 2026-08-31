@@ -688,7 +688,9 @@ export function ContentsSection({
       const lower = searchText.toLowerCase();
       filtered = filtered.filter((c) =>
         c.name.toLowerCase().includes(lower) ||
-        (c.artist || '').toLowerCase().includes(lower),
+        // Every maker, not the first: a reader looking for Savitsky in the
+        // Tretyakov must find `Morning in a Pine Forest` (#720).
+        c.artists.some(maker => maker.toLowerCase().includes(lower)),
       );
     }
     if (!showAll && !searchText) {
