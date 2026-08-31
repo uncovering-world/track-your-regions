@@ -110,7 +110,8 @@ export function countedWorksSelectSql(alias = 'e'): string {
   // headings ("less widely known", "the least widely known") would rank nothing.
   return `(SELECT jsonb_agg(w ORDER BY fame)
              FROM (SELECT jsonb_build_object(
-                            'name', t.name, 'type', t.treasure_type, 'artist', t.artist,
+                            'name', t.name, 'type', t.treasure_type, 'artists', t.artists,
+                            'artistsCurated', t.curated_fields ? 'artists',
                             'imageUrl', t.image_url, 'year', t.year,
                             -- The works preview draws these at 48 px inside a tooltip,
                             -- with no enlargement to move the obligation onto -- unlike

@@ -57,7 +57,8 @@ export function recordedLocationSql(
 export function recordedTreasureSql(
   { experienceId, ref }: { experienceId: string; ref: string },
 ): string {
-  return `SELECT t.id, t.name, t.artist, t.year, t.image_url, t.treasure_type,
+  return `SELECT t.id, t.name, t.artists, t.curated_fields ? 'artists' AS artists_curated,
+                 t.year, t.image_url, t.treasure_type,
                  t.curated_fields, t.metadata->'imageCredit' AS image_credit
             FROM treasures t
             JOIN experience_treasures et ON et.treasure_id = t.id

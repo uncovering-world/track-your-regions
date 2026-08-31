@@ -63,7 +63,7 @@ describe('publishing the held fields of an object\'s parts', () => {
   const WINE_GLASS: ProposedPart = {
     item: { name: 'The Wine Glass', ref: 'Q782639' },
     fields: [
-      { field: 'artist', old: 'Johannes Vermeer', new: 'Jan Vermeer van Haarlem the Elder', held: true },
+      { field: 'artists', old: ['Johannes Vermeer'], new: ['Jan Vermeer van Haarlem the Elder'], held: true },
       { field: 'image_url', old: OLD_FILE, new: NEW_FILE, held: true },
       { field: 'metadata.imageCredit', old: { author: 'Mbzt' }, new: NEW_CREDIT, held: true },
     ],
@@ -111,17 +111,17 @@ describe('publishing the held fields of an object\'s parts', () => {
     const lock = only(queries, 'FROM treasures t');
     expect(lock.sql).toContain('et.experience_id = $1');
     expect(lock.sql).toContain('FOR UPDATE');
-    const write = only(queries, 'UPDATE treasures SET artist');
+    const write = only(queries, 'UPDATE treasures SET artists');
     expect(write.sql).toContain('image_url = $');
     // The credit rides with the picture: a hosted picture carries a credit, and
     // the next run is not the thing publishing this one.
     expect(write.sql).toContain("'imageCredit'");
     expect(write.sql).toContain('updated_at = NOW()');
-    expect(write.params).toEqual([3102, 'Jan Vermeer van Haarlem the Elder', NEW_FILE, JSON.stringify(NEW_CREDIT)]);
+    expect(write.params).toEqual([3102, ['Jan Vermeer van Haarlem the Elder'], NEW_FILE, JSON.stringify(NEW_CREDIT)]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{
         kind: 'treasures', name: 'The Wine Glass',
-        fields: ['artist', 'image_url', 'metadata.imageCredit'], claimedFieldsSkipped: [],
+        fields: ['artists', 'image_url', 'metadata.imageCredit'], claimedFieldsSkipped: [],
       }],
     }));
   });
@@ -143,7 +143,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     // painting to an obscure namesake and changed its photograph in the same
     // run. The picture can be taken and the attribution left standing.
     const write = only(queries, 'UPDATE treasures SET image_url');
-    expect(write.sql).not.toContain('artist = ');
+    expect(write.sql).not.toContain('artists = ');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{
         kind: 'treasures', name: 'The Wine Glass',
@@ -175,7 +175,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     // The attribution, which is a different fact, stays open.
     const write = only(queries, 'UPDATE treasures SET image_url');
     expect(write.sql).toContain(`'imageCredit'`);
-    expect(write.sql).not.toContain('artist = ');
+    expect(write.sql).not.toContain('artists = ');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{
         kind: 'treasures', name: 'The Wine Glass',
@@ -244,7 +244,7 @@ describe('publishing the held fields of an object\'s parts', () => {
       row: HELD_ROW,
       contents: { treasures: { changed: [WINE_GLASS] } },
       parts: { treasure: WINE_GLASS_ROW },
-      answered: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', field: 'artist' }],
+      answered: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', field: 'artists' }],
     });
 
     const res = await publish({ expectedSyncLogId: 64 }, client);
@@ -252,7 +252,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     // Refused: the namesake is not the painter. The picture and its credit are
     // still the run's to give, and the whole-card button writes those alone.
     const write = only(queries, 'UPDATE treasures SET image_url');
-    expect(write.sql).not.toContain('artist = ');
+    expect(write.sql).not.toContain('artists = ');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{
         kind: 'treasures', name: 'The Wine Glass',
@@ -267,7 +267,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     const { client, queries } = makeClient({
       row: HELD_ROW,
       contents: { treasures: { changed: [WINE_GLASS] } },
-      parts: { treasure: { ...WINE_GLASS_ROW, curated_fields: ['artist'] } },
+      parts: { treasure: { ...WINE_GLASS_ROW, curated_fields: ['artists'] } },
     });
 
     const res = await publish({ expectedSyncLogId: 64 }, client);
@@ -277,10 +277,10 @@ describe('publishing the held fields of an object\'s parts', () => {
     // Named by its first assignment: the object publish also passes the
     // museum's unread works with `UPDATE treasures SET curation_state`.
     const write = only(queries, 'UPDATE treasures SET image_url');
-    expect(write.sql).not.toContain('artist =');
+    expect(write.sql).not.toContain('artists =');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [expect.objectContaining({
-        fields: ['image_url', 'metadata.imageCredit'], claimedFieldsSkipped: ['artist'],
+        fields: ['image_url', 'metadata.imageCredit'], claimedFieldsSkipped: ['artists'],
       })],
     }));
   });
@@ -360,7 +360,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     // shown to nobody, so there is nothing to apply and nothing to refuse — and
     // 409ing would leave a card no answer can clear.
     expect(none(queries, 'UPDATE experience_locations SET name')).toBe(true);
-    expect(only(queries, 'UPDATE treasures SET artist').params[0]).toBe(3102);
+    expect(only(queries, 'UPDATE treasures SET artists').params[0]).toBe(3102);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       partsNotFound: [{ kind: 'locations', name: 'Château de Montésgur' }],
       appliedParts: [expect.objectContaining({ kind: 'treasures' })],

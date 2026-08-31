@@ -76,7 +76,8 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
                                       AND NOT ${heldPartAnsweredSql(`${experience}.id`, 'k.kind')}),
                         'locationId', loc.id, 'latitude', loc.latitude, 'longitude', loc.longitude,
                         'ordinal', loc.ordinal,
-                        'treasureId', work.id, 'artist', work.artist, 'year', work.year,
+                        'treasureId', work.id, 'artists', work.artists,
+                        'artistsCurated', work.artists_curated, 'year', work.year,
                         'imageUrl', work.image_url, 'imageCredit', work.image_credit,
                         'treasureType', work.treasure_type) AS part
                  FROM (VALUES ('locations'), ('treasures')) AS k(kind)
@@ -210,7 +211,8 @@ export async function queryContents(
              COALESCE(jsonb_agg(jsonb_build_object(
                'id', id,
                'name', name,
-               'artist', artist,
+               'artists', artists,
+               'artistsCurated', artists_curated,
                'year', year,
                'imageUrl', image_url,
                'iconic', is_iconic
@@ -221,7 +223,8 @@ export async function queryContents(
         -- says the work is here, the work says it is a work, and either being unread
         -- is a question. A work turned down globally leaves every venue at once,
         -- which is why the two are separate columns (ADR-0025).
-        SELECT t.id, t.name, t.artist, t.year, t.image_url, t.is_iconic, t.sitelinks_count,
+        SELECT t.id, t.name, t.artists, t.curated_fields ? 'artists' AS artists_curated,
+               t.year, t.image_url, t.is_iconic, t.sitelinks_count,
                row_number() OVER (ORDER BY t.sitelinks_count DESC NULLS LAST, t.id) AS rn
         FROM experience_treasures et
         JOIN treasures t ON t.id = et.treasure_id

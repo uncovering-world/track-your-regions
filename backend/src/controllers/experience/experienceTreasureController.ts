@@ -27,7 +27,12 @@ export async function getExperienceTreasures(req: AuthenticatedRequest, res: Res
 
   const result = await pool.query(`
     SELECT
-      t.id, t.external_id, t.name, t.treasure_type, t.artist, t.year,
+      t.id, t.external_id, t.name, t.treasure_type, t.artists,
+      -- Whether anyone has vouched for the order the makers are stored in. The
+      -- stored order is a query planner's, not the source's (ADR-0040), so a row
+      -- leads with a name only where a curator claimed the column. The claim set
+      -- itself stays server-side: this is the one bit of it a reader's row needs.
+      t.curated_fields ? 'artists' AS artists_curated, t.year,
       t.image_url, t.sitelinks_count, t.is_iconic,
       -- Beside the picture, as it is on the object itself: these files are
       -- served from Wikimedia Commons and a share of them are CC BY or CC BY-SA,

@@ -301,7 +301,8 @@ export const treasures = pgTable('treasures', {
   externalId: varchar('external_id', { length: 255 }).notNull().unique(),
   name: varchar('name', { length: 500 }).notNull(),
   treasureType: varchar('treasure_type', { length: 50 }).notNull(),
-  artist: varchar('artist', { length: 500 }),
+  /** Every maker the source names, in no asserted order. Empty where none is recorded (#720). */
+  artists: varchar('artists', { length: 500 }).array().notNull().default([]),
   year: integer('year'),
   imageUrl: varchar('image_url', { length: 1000 }),
   sitelinksCount: integer('sitelinks_count').notNull().default(0),
