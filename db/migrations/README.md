@@ -7,22 +7,90 @@ Postgres applies it automatically when a database is created empty
 
 The numbered files in this directory carry what a database holding data cannot
 get from that file: one-shot cleanups, backfills, and DDL that fails while the
-old rows are still there. Apply them by hand, in filename order:
+old rows are still there.
+
+## Applying them
+
+```bash
+npm run db:migrate:status   # what this database has been through, and what is pending
+npm run db:migrate          # apply every pending file, in filename order
+```
+
+`scripts/db-migrate.sh` applies the pending files and records each one in
+`schema_migrations`, so the database itself says which of them it has seen
+(#435, [ADR-0041](../../docs/decisions/0041-a-database-says-which-migrations-it-has-seen.md)).
+`npm run db:status` prints the same summary alongside the row counts.
+
+A file is recorded only when psql reached the end of it: the `INSERT` into the
+ledger is appended to the migration and handed to the same invocation under
+`ON_ERROR_STOP=1`. That flag is the point. psql exits 0 when a statement in a
+piped script fails, so without it a migration that aborts on purpose — 006
+refuses to run when a row it would delete still has dependents — reports success
+to the shell. `006` also sets `\set ON_ERROR_STOP on` in the file itself so it
+cannot be defeated by the way it is invoked; `001`-`005` predate that habit.
+
+Applying one file by hand still works and is sometimes what you want — a long
+migration you are watching, or one you are stepping through:
 
 ```bash
 npm run db:run-sql -- -v ON_ERROR_STOP=1 < db/migrations/006-single-default-world-view.sql
 ```
 
-The flag is not optional. `db:run-sql` is plain `psql`, and psql exits 0 when a
-statement in a piped script fails, so without it a migration that aborts on
-purpose — 006 refuses to run when a row it would delete still has dependents —
-reports success to the shell. `006` also sets `\set ON_ERROR_STOP on` in the
-file itself so it cannot be defeated by the way it is invoked; `001`-`005`
-predate that habit.
+The ledger does not see it. It is a record, not a lock: tell it afterwards with
+`npm run db:baseline -- --through NNN`, naming the file you actually ran, or the
+file stays pending and the next `db:migrate` runs it again. Say `--through`:
+plain `db:baseline` records *every* pending file, which after a hand-applied 041
+would also assert that 042 was applied — the "somebody was sure" failure, written
+down.
 
-Nothing records which of these files a given database has already seen — that
-state is tribal knowledge today. Issue #435 tracks adding a `schema_migrations`
-ledger and a runner.
+## Two rules for a new migration
+
+**Name it `NNN-slug.sql`** — three digits, then lowercase words joined by
+dashes. Filename order is the order they are applied in, so a name outside that
+shape, or a number already used, makes the order a guess; the runner refuses
+both, and `backend/src/db/migrationLedger.test.ts` fails the gate before it
+gets that far.
+
+**Declare your own transaction.** The runner wraps nothing, because a file knows
+whether its work is one step or several and nothing outside it does — 34 of the
+files here open a `BEGIN`/`COMMIT` of their own. A wrapper would not even hold:
+`psql --single-transaction` over such a file warns that a transaction is already
+in progress, and the file's own `COMMIT` then ends psql's outer one, leaving
+everything after it unwrapped. That is atomicity you can see and cannot rely on.
+Write the file to be re-runnable while you are there: a run interrupted between a
+migration's commit and its ledger row leaves the file pending, and the next run
+applies it again.
+
+## A database that predates the ledger
+
+`schema_migrations` arrives with the canonical schema, so an existing database
+needs it re-applied once. Then state what that database already carries:
+
+```bash
+npm run db:baseline                  # every pending file, recorded without being run
+npm run db:baseline -- --through 040 # or only up to a given one
+```
+
+A baselined row is marked `ran = false`, because it is an assertion by a person
+and not something this database was observed doing; `db:status` reports the two
+apart.
+
+**A database built from the canonical schema needs the same baseline, and for
+the same reason.** Everything here is already in the file it was built from, and
+the backfills have no rows to repair. Two paths build one: `npm run db:create`,
+which baselines it itself, and Docker Compose, which mounts `db/init/` into
+`docker-entrypoint-initdb.d` and creates `track_regions` on first start —
+`scripts/setup.sh` baselines that one, so run `npm run db:baseline` once by hand
+if you brought the stack up another way.
+
+Getting this wrong is the failure worth naming. An unbaselined database of that
+kind stands at 40 pending files it must not run: `015-museum-clean-slate.sql`
+deletes catalogue rows by volume rather than by whether it has run before, so
+applying it after an import takes the freshly imported rows with it — its own
+header says it is a one-time manual action, not a repeatable step. So an empty
+ledger never means "apply everything": `db:status` says to baseline, and
+`db:migrate` refuses outright on a database that holds a catalogue and has
+recorded nothing.
 
 Re-applying `01-schema.sql` to an existing database is the other half of the
 workflow: it is how new tables and columns arrive between migrations. That is

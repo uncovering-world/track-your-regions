@@ -51,6 +51,7 @@ a multi-decision ADR to revise one of them would retire the decisions that still
 | [0038](0038-a-held-proposal-is-answered-per-field.md) | A held proposal is answered per field, and the answer is recorded by value | Accepted — decisions 1 and 1a narrowed by ADR-0039 | 2026-08-30 |
 | [0039](0039-a-run-records-facts-not-columns.md) | A run records facts, not columns: every metadata key is its own changeset entry | Accepted | 2026-08-31 |
 | [0040](0040-a-work-names-every-one-of-its-makers.md) | A work names every one of its makers, and a curator can correct them | Accepted | 2026-08-31 |
+| [0041](0041-a-database-says-which-migrations-it-has-seen.md) | A database says which migrations it has seen | Accepted | 2026-08-31 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

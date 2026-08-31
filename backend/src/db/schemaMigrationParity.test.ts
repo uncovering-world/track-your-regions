@@ -157,8 +157,10 @@ describe('the curation gate exists in both schema homes', () => {
   });
 
   it('creates the gate column and answers for the three predating sources in one guard, identically in both files', () => {
-    // The whole ordering problem lives here. Nothing in this repo records which
-    // of these files a database has seen, and either can reach it first:
+    // The whole ordering problem lives here. `schema_migrations` records which
+    // migrations a database has seen (ADR-0041) and nothing records when
+    // `01-schema.sql` was last re-applied to it, so which of these two files
+    // reached the column first is still unknown, and either can be the one:
     //
     //  - an unguarded UPDATE re-runs after an admin has gated a source and
     //    silently un-gates it;

@@ -24,6 +24,7 @@ npm run perf:local         # Everything this machine can measure on its own data
 npm run dev:frontend:preview  # Dev stack's frontend as the production build (what performance is measured on - never the dev server); dev:frontend:dev switches back, dev:frontend:mode says which is up
 npm run dev                # Start all services via Docker Compose (rebuilds images, so container deps track package.json)
 npm run db:shell           # Open psql shell to active database
+npm run db:migrate         # Apply pending db/migrations/ files and record them (db:migrate:status to look first)
 npm run help               # Full command reference (all other scripts: package.json)
 ```
 
@@ -63,7 +64,7 @@ Express backend + React/MUI frontend + PostgreSQL/PostGIS + Martin vector tile s
 ### Database
 - **Name**: `track_regions` (NOT `track_your_regions`)
 - **Container**: `tyr-ng-db` — access via `docker exec -i tyr-ng-db psql -U postgres -d track_regions`
-- **Schema**: `db/init/01-schema.sql` — the only init file: tables, triggers, auth, Martin tile functions and the SRID 3857 columns. One-shot changes for databases that already hold data live in `db/migrations/` (see its README)
+- **Schema**: `db/init/01-schema.sql` — the only init file: tables, triggers, auth, Martin tile functions and the SRID 3857 columns. One-shot changes for databases that already hold data live in `db/migrations/`, applied by `npm run db:migrate` and recorded in `schema_migrations`, so a database says which of them it has seen rather than it being remembered (ADR-0041). A migration is named `NNN-slug.sql` and declares its own transaction — nothing is wrapped around it. See `db/migrations/README.md`
 - **Extensions**: PostGIS, pg_trgm, unaccent
 
 ### Domain Model
@@ -207,6 +208,7 @@ Before working in a specific area, read the relevant docs. Start from the area g
 | **Anything that reads or writes the URL** (a route, a selection, a new parameter) | `docs/tech/addresses.md` | The grammar, ids vs slugs, push vs replace, silent degradation, the one parse/build module |
 | **Shared frontend components/utils** | `docs/tech/shared-frontend-patterns.md` | Full inventory with "use this, not that" table |
 | **Experience system** | `docs/tech/experiences.md` | Sources, sync, region assignment, API |
+| **Anything that changes the database schema** (a table, a column, a backfill) | `docs/tech/development-guide.md` § Database Migrations | `db/migrations/README.md` — the naming and transaction rules, and how a database gets a ledger |
 | **Anything that writes catalogue rows** | `docs/tech/data-assertions.md` | Admin panel → Catalogue Checks: the invariants over live rows, and the debt it carries |
 | **Anything that changes what the browser loads or draws** (a dependency, a route, a layout, a hot endpoint) | `docs/tech/development-guide.md` § Performance | `docs/tech/performance.md` — the lane, the baseline, the budgets and the rule for moving them |
 | **Security** | `docs/security/SECURITY.md` | `docs/security/asvs-checklist.yaml` — per-requirement status |

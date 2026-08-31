@@ -22,11 +22,17 @@ npm run db:load-gadm # load world boundaries (if you skipped it during setup)
    left untouched.
 2. **Starts the database** (`docker compose up -d db`) and waits for it to become
    healthy.
-3. **Creates the first admin** (`createAdmin.ts`). The password is read from stdin
+3. **Records the migration ledger** (`db-migrate.sh baseline --only-if-empty`).
+   Compose builds this database from `db/init/01-schema.sql`, so it already
+   carries everything in `db/migrations/` and their backfills have no rows to
+   repair; recording that keeps it from standing at 40 pending files it must not
+   run (ADR-0041). Only when the ledger is empty, so re-running setup after a new
+   migration has landed cannot write that migration down as applied.
+4. **Creates the first admin** (`createAdmin.ts`). The password is read from stdin
    (never passed on the command line); leave it blank to have one generated and
    shown once. See [authentication.md](authentication.md) for the admin-bootstrap
    rules.
-4. **Runs the optional-integrations wizard** (`scripts/setup-integrations.sh`).
+5. **Runs the optional-integrations wizard** (`scripts/setup-integrations.sh`).
 
 Re-running `npm run setup` is safe: the `.env` core is left as-is, and the
 integrations wizard only prompts for integrations that are still unset — so you
