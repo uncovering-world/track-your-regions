@@ -7,7 +7,9 @@
 # the case this ledger exists for is the one where a migration does not finish
 # and must not be recorded as though it had (#435, ADR-0041).
 #
-# Needs a running Postgres (npm run db:up) and psql on the host, so it is a
+# Needs a running Postgres (npm run db:up), and a host psql for its own setup --
+# it builds throwaway databases from the canonical schema by path. The runner
+# under test needs neither: it falls back to the db container. So this is a
 # local gate rather than a CI one, like the E2E smoke lane.
 #
 #   npm run test:db-migrate

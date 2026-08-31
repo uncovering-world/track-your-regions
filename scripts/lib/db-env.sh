@@ -84,6 +84,26 @@ psql_admin() {
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres "$@"
 }
 
+# psql, wherever this machine keeps it.
+#
+# A fresh clone is documented as needing Docker and Node and nothing else
+# (README), so a host psql cannot be assumed: when there is none, go through the
+# db container the way db:run-sql does. Callers that want to send a file must
+# redirect it on stdin rather than pass -f, since a host path does not exist
+# inside the container.
+db_psql() {
+    if command -v psql > /dev/null 2>&1; then
+        PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$@"
+    else
+        (cd "$PROJECT_ROOT" && docker compose exec -T db psql -U "$DB_USER" "$@")
+    fi
+}
+
+# The same, against the postgres database, for questions about databases.
+db_psql_admin() {
+    db_psql -d postgres "$@"
+}
+
 # Check if database exists.
 #
 # The name is an operator's argument -- db-cli.sh hands `use`, `drop` and
@@ -95,5 +115,5 @@ psql_admin() {
 db_exists() {
     local db_name="$1"
     local escaped="${db_name//\'/\'\'}"
-    psql_admin -tAc "SELECT 1 FROM pg_database WHERE datname='$escaped'" 2>/dev/null | grep -q 1
+    db_psql_admin -tAc "SELECT 1 FROM pg_database WHERE datname='$escaped'" 2>/dev/null | grep -q 1
 }
