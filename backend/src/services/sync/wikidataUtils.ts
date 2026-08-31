@@ -102,6 +102,21 @@ export function extractQid(uri: string): string {
 }
 
 /**
+ * A QID, not a blank node (`.well-known/genid/…`) and not a literal.
+ *
+ * Beside `extractQid` because two collectors ask it of two different things. Of a
+ * *URI*, it is "did the source name an entity or an anonymous node" — 51 works in
+ * the museum pool carry a blank-node creator. Of a *label*, it is "did the label
+ * service find a name at all": asked for a language chain it cannot satisfy, it
+ * answers with the bare entity id, which is how the National Gallery of Art once
+ * arrived as the string `Q214867`. A QID stored as a name names nobody, and both
+ * the museum parse and the landmark parse drop that shape (#720).
+ */
+export function isQid(value: string): boolean {
+  return /^Q\d+$/.test(value);
+}
+
+/**
  * Parse WKT Point coordinates: "Point(lon lat)" -> { lat, lon }
  */
 export function parseWktPoint(wkt: string): { lat: number; lon: number } | null {

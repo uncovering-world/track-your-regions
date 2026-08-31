@@ -42,7 +42,7 @@ interface FixtureWork {
   clsLabel: string;
   /** The broad root whose fame bands it answers under. Those rows bind no class label. */
   broadRoot?: string;
-  artist?: string;
+  artists?: string[];
   year?: number;
   statements: { property: 'P195' | 'P276'; venue: string; rank?: 'preferred' | 'normal' }[];
 }
@@ -98,7 +98,7 @@ const ENTITIES: Record<string, FixtureEntity> = {
 const WORKS: Record<string, FixtureWork> = {
   Q12418: {
     label: 'Mona Lisa', sitelinks: 146, cls: PAINTING, clsLabel: 'painting',
-    broadRoot: PAINTING, artist: 'Leonardo da Vinci', year: 1503,
+    broadRoot: PAINTING, artists: ['Leonardo da Vinci'], year: 1503,
     statements: [
       { property: 'P195', venue: 'Q3044768' },
       { property: 'P276', venue: 'Q10292830', rank: 'preferred' },
@@ -118,9 +118,13 @@ const WORKS: Record<string, FixtureWork> = {
       { property: 'P276', venue: 'Q900001' },
     ],
   },
+  // Two makers, which the endpoint answers with as two rows, and fetched twice
+  // over besides — by its narrow class and by its fame band — so the parse has
+  // to keep the list and the merge has to leave it alone (#720).
   Q900201: {
     label: 'Work in the Sala', sitelinks: 30, cls: PAINTING, clsLabel: 'painting',
-    broadRoot: PAINTING, statements: [{ property: 'P276', venue: 'Q900013' }],
+    broadRoot: PAINTING, artists: ['Ivan Shishkin', 'Konstantin Savitsky'],
+    statements: [{ property: 'P276', venue: 'Q900013' }],
   },
   Q900202: {
     label: 'Work in the Galleria', sitelinks: 28, cls: PAINTING, clsLabel: 'painting',
@@ -181,7 +185,15 @@ function askedFor(query: string): string[] {
   return [...query.matchAll(/wd:(Q\d+)/g)].map((m) => m[1]);
 }
 
-function poolRow(qid: string, work: FixtureWork, clsLabel?: string): SparqlBinding {
+function poolRows(qid: string, work: FixtureWork, clsLabel?: string): SparqlBinding[] {
+  const creators = work.artists ?? [];
+  if (creators.length <= 1) return [poolRow(qid, work, clsLabel, creators[0])];
+  // The endpoint answers a work with two makers twice, which is the whole of
+  // what #720 is about: the parse used to keep whichever arrived first.
+  return creators.map(creator => poolRow(qid, work, clsLabel, creator));
+}
+
+function poolRow(qid: string, work: FixtureWork, clsLabel?: string, creator?: string): SparqlBinding {
   const row: SparqlBinding = {
     w: uri(qid),
     wLabel: { value: work.label },
@@ -194,7 +206,7 @@ function poolRow(qid: string, work: FixtureWork, clsLabel?: string): SparqlBindi
     row.clsLabel = { value: clsLabel };
     row.cls = uri(work.cls);
   }
-  if (work.artist) row.creatorLabel = { value: work.artist };
+  if (creator) row.creatorLabel = { value: creator };
   if (work.year) row.year = { value: String(work.year) };
   return row;
 }
@@ -263,14 +275,14 @@ function stubSparql() {
     if (query.includes('VALUES ?cls')) {
       return Object.entries(WORKS)
         .filter(([, w]) => qids.includes(w.cls))
-        .map(([qid, w]) => poolRow(qid, w, w.clsLabel));
+        .flatMap(([qid, w]) => poolRows(qid, w, w.clsLabel));
     }
     if (query.includes('?w wdt:P31 wd:')) {
       const band = bandOf(query);
       return Object.entries(WORKS)
         .filter(([, w]) => w.broadRoot === qids[0]
           && w.sitelinks >= band.min && (band.max === null || w.sitelinks < band.max))
-        .map(([qid, w]) => poolRow(qid, w));
+        .flatMap(([qid, w]) => poolRows(qid, w));
     }
     throw new Error(`unexpected query: ${query}`);
   });
@@ -294,10 +306,20 @@ describe('collectTier1Museums', () => {
     expect(louvre.details?.museumLabel).toBe('Louvre Museum');
     expect(louvre.artworks.map((a) => a.externalId)).toEqual(['Q12418']);
     expect(louvre.artworks[0]).toMatchObject({
-      name: 'Mona Lisa', treasureType: 'painting', artist: 'Leonardo da Vinci', year: 1503,
+      name: 'Mona Lisa', treasureType: 'painting', artists: ['Leonardo da Vinci'], year: 1503,
     });
     // The whole pool is fetched, including the works that place nowhere.
     expect(out.fetched).toBe(Object.keys(WORKS).length);
+  });
+
+  it('hands a work with two makers to the writer with both of them, in the source\'s order', async () => {
+    const out = await run();
+
+    // Shishkin painted the forest and Savitsky the bears, and which of the two a
+    // reader was told used to be whichever row the endpoint answered with first.
+    const pine = out.items.flatMap((i) => i.artworks).find((a) => a.externalId === 'Q900201');
+    expect(pine, 'the two-maker work reached no museum').toBeDefined();
+    expect(pine!.artists).toEqual(['Ivan Shishkin', 'Konstantin Savitsky']);
   });
 
   it('records why a venue an iconic work named was dropped', async () => {

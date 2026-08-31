@@ -194,7 +194,10 @@ function mergeWork(existing: PoolWork, incoming: PoolWork): void {
     existing.typeQid = incoming.typeQid;
   }
   if (!existing.imageUrl) existing.imageUrl = incoming.imageUrl;
-  if (!existing.creator) existing.creator = incoming.creator;
+  // A list, and still a gap being filled rather than an answer overwritten: both
+  // answers are the same work's `P170` statements, and a short one can only come
+  // from a truncated pool, which `failIfTruncated` refuses outright.
+  if (existing.creators.length === 0) existing.creators = incoming.creators;
   if (existing.year === null) existing.year = incoming.year;
   if (incoming.sitelinks > existing.sitelinks) existing.sitelinks = incoming.sitelinks;
 }
@@ -350,7 +353,7 @@ function toContent(work: PoolWork): ProcessedContent {
     // the orchestrator would record as the whole museum failing, losing its remaining treasures
     // with it. A clipped display string is the cheaper failure.
     treasureType: work.type.slice(0, TREASURE_TYPE_MAX),
-    artist: work.creator,
+    artists: work.creators,
     year: work.year,
     imageUrl: work.imageUrl,
     sitelinksCount: work.sitelinks,

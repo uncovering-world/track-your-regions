@@ -119,7 +119,7 @@ describe('pointChanges', () => {
 });
 
 const MONA = {
-  name: 'Mona Lisa', artist: 'Leonardo da Vinci', year: 1503,
+  name: 'Mona Lisa', artists: ['Leonardo da Vinci'], year: 1503,
   imageUrl: 'https://commons.wikimedia.org/mona.jpg',
 };
 
@@ -130,15 +130,63 @@ describe('workChanges', () => {
   });
 
   it('calls a change of attribution major and the rest description', () => {
-    const reattributed = workChanges(MONA, { ...MONA, artist: 'Workshop of Leonardo da Vinci' });
+    const reattributed = workChanges(MONA, { ...MONA, artists: ['Workshop of Leonardo da Vinci'] });
     expect(reattributed).toHaveLength(1);
-    expect(reattributed[0]).toMatchObject({ field: 'artist', significance: 'major' });
+    expect(reattributed[0]).toMatchObject({ field: 'artists', significance: 'major' });
 
     // A traveller stands in front of a work because of who made it; a year
     // settling down and a better photograph are the catalogue tidying itself.
     expect(workChanges(MONA, { ...MONA, year: 1506 })[0]).toMatchObject({ significance: 'minor' });
     expect(workChanges(MONA, { ...MONA, imageUrl: null })[0])
       .toMatchObject({ field: 'image_url', significance: 'minor' });
+  });
+
+  it('says nothing when the source restates the same makers in another order', () => {
+    // Morning in a Pine Forest is Shishkin's forest and Savitsky's bears, and
+    // which of the two Wikidata answers with first is not a fact about the
+    // painting (#720). Asking a curator to choose between the two orderings is
+    // the card that taught people to stop reading the queue.
+    const pine = { ...MONA, name: 'Morning in a Pine Forest',
+      artists: ['Ivan Shishkin', 'Konstantin Savitsky'] };
+
+    expect(workChanges(pine, { ...pine, artists: ['Konstantin Savitsky', 'Ivan Shishkin'] }))
+      .toEqual([]);
+  });
+
+  it('reports a maker gained or lost, which is what the source actually said', () => {
+    const pine = { ...MONA, name: 'Morning in a Pine Forest',
+      artists: ['Ivan Shishkin', 'Konstantin Savitsky'] };
+
+    const dropped = workChanges(pine, { ...pine, artists: ['Ivan Shishkin'] });
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]).toMatchObject({
+      field: 'artists', significance: 'major',
+      old: ['Ivan Shishkin', 'Konstantin Savitsky'], new: ['Ivan Shishkin'],
+    });
+
+    const gained = workChanges(
+      { ...pine, artists: ['Ivan Shishkin'] },
+      { ...pine, artists: ['Konstantin Savitsky', 'Ivan Shishkin'] },
+    );
+    expect(gained).toHaveLength(1);
+    expect(gained[0]).toMatchObject({ field: 'artists', significance: 'major' });
+  });
+
+  it('folds a maker\'s typesetting the way it folds a title\'s', () => {
+    // The same rule the name comparison has carried since the 6264-component
+    // measurement: an en dash for a hyphen is the source's typesetting.
+    const pollaiuolo = { ...MONA, artists: ['Antonio del Pollaiuolo', 'Piero del Pollaiuolo'] };
+    expect(workChanges(pollaiuolo, {
+      ...pollaiuolo, artists: ['antonio  del Pollaiuolo', 'Piero del Pollaiuolo'],
+    })).toEqual([]);
+  });
+
+  it('says a work gained its first maker, and lost its last', () => {
+    const unattributed = { ...MONA, artists: [] };
+    expect(workChanges(unattributed, MONA)[0])
+      .toMatchObject({ field: 'artists', old: [], new: ['Leonardo da Vinci'] });
+    expect(workChanges(MONA, unattributed)[0])
+      .toMatchObject({ field: 'artists', old: ['Leonardo da Vinci'], new: [] });
   });
 
   it('treats an absent year the same whichever way it is absent', () => {
@@ -150,21 +198,21 @@ describe('workChanges', () => {
     // The Wine Glass, Gemäldegalerie: Wikidata moved the attribution from
     // Johannes Vermeer to an obscure namesake, and run 64 wrote it live under a
     // gated category (#717). Held, the card asks; written, nobody was asked.
-    const glass = { ...MONA, name: 'The Wine Glass', artist: 'Johannes Vermeer', year: 1660 };
+    const glass = { ...MONA, name: 'The Wine Glass', artists: ['Johannes Vermeer'], year: 1660 };
     const changes = workChanges(
-      glass, { ...glass, artist: 'Jan Vermeer van Haarlem the Elder' }, [], true,
+      glass, { ...glass, artists: ['Jan Vermeer van Haarlem the Elder'] }, [], true,
     );
 
     expect(changes).toHaveLength(1);
-    expect(changes[0]).toMatchObject({ field: 'artist', significance: 'major', held: true });
+    expect(changes[0]).toMatchObject({ field: 'artists', significance: 'major', held: true });
   });
 
   it('holds every unclaimed field of a work at once, and none of the claimed ones', () => {
     const changes = workChanges(
-      MONA, { ...MONA, artist: 'Workshop', year: 1506, imageUrl: null }, ['artist'], true,
+      MONA, { ...MONA, artists: ['Workshop'], year: 1506, imageUrl: null }, ['artists'], true,
     );
 
-    expect(changes.find(c => c.field === 'artist')).toMatchObject({ curatedConflict: true, held: false });
+    expect(changes.find(c => c.field === 'artists')).toMatchObject({ curatedConflict: true, held: false });
     expect(changes.find(c => c.field === 'year')).toMatchObject({ curatedConflict: false, held: true });
     expect(changes.find(c => c.field === 'image_url')).toMatchObject({ curatedConflict: false, held: true });
   });

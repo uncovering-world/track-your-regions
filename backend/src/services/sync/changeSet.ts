@@ -10,6 +10,8 @@
  * of edits that are real.
  */
 
+import { sameLabelSet } from './labelFold.js';
+
 export interface ExperienceSnapshot {
   name: string;
   nameLocal: Record<string, string> | null;
@@ -126,6 +128,29 @@ export const SYNC_OWNED_METADATA_KEYS = [
 /** Whether a metadata key belongs to the run rather than to the object. */
 function isSyncOwned(key: string): boolean {
   return (SYNC_OWNED_METADATA_KEYS as readonly string[]).includes(key);
+}
+
+/**
+ * The metadata keys whose value is a *set* of names rather than a list.
+ *
+ * `creators` is the one, and it is public art's half of ADR-0040: the source
+ * says who made a monument and not in what order, so a run restating the same
+ * seven people in another order has changed nothing about it. `jsonEquals`
+ * compares arrays positionally and would report that as a change — and under the
+ * gate raise a held card asking a curator to choose between two orderings of one
+ * fact, which is the card ADR-0040 exists to remove.
+ *
+ * Folded, as the works comparison is: the same rule, so the two levels cannot
+ * disagree about whether two lists name the same people.
+ */
+const METADATA_SET_KEYS: ReadonlySet<string> = new Set(['creators']);
+
+/** Whether a metadata key's two values say the same thing. */
+function sameMetadataValue(key: string, before: unknown, after: unknown): boolean {
+  if (METADATA_SET_KEYS.has(key) && Array.isArray(before) && Array.isArray(after)) {
+    return sameLabelSet(before.map(String), after.map(String));
+  }
+  return jsonEquals(before, after);
 }
 
 /**
@@ -418,7 +443,7 @@ function metadataChanges(
   const reported = new Set(ignoredKeys);
   for (const key of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
     if (reported.has(key)) continue;
-    if (jsonEquals(ownValue(left, key), ownValue(right, key))) continue;
+    if (sameMetadataValue(key, ownValue(left, key), ownValue(right, key))) continue;
     changes.push({
       field: `${METADATA_CLAIM_PREFIX}${key}`,
       old: ownValue(left, key),

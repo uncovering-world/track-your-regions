@@ -16,6 +16,7 @@
 
 import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from './changeSet.js';
 import type { FieldChange } from './changeSet.js';
+import { sameLabel, sameLabelSet } from './labelFold.js';
 
 /** A point as the diff sees it. `ref` and `ordinal` are identity, so neither is here. */
 export interface PointSnapshot {
@@ -27,32 +28,10 @@ export interface PointSnapshot {
 /** A work as the diff sees it. `externalId` is identity; the counts are measurements. */
 export interface WorkSnapshot {
   name: string | null;
-  artist: string | null;
+  /** Every maker the source names, in no asserted order. Empty where none is recorded (#720). */
+  artists: string[];
   year: number | null;
   imageUrl: string | null;
-}
-
-/**
- * Two labels that name the same thing.
- *
- * Unicode-normalised, dashes folded together, whitespace collapsed, compared
- * case-insensitively. Everything folded here is a typographic rewrite of one name:
- * `Boma-Badingilo` becoming `Boma–Badingilo` is the source's typesetting, not a
- * decision about a place, and nobody can answer a card that asks about it.
- *
- * Case is folded for the same reason and no further: a name that differs by more
- * than its punctuation is a real rename and is reported, minor.
- */
-function sameLabel(a: string | null, b: string | null): boolean {
-  const fold = (value: string | null) => (value ?? '')
-    .normalize('NFKC')
-    // Every dash Unicode offers, to the plain one. `‐-―` covers hyphen
-    // through horizontal bar; `−` is the minus sign, which sources use too.
-    .replace(/[‐-―−]/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-  return fold(a) === fold(b);
 }
 
 /** A change with no claim and no hold, which is what most of them are. */
@@ -106,7 +85,7 @@ function underClaims(
 const POINT_HELD_FIELDS: ReadonlySet<string> = new Set(['name']);
 
 /** What the treasures upsert's guard covers: every field the diff reports. */
-const WORK_HELD_FIELDS: ReadonlySet<string> = new Set(['name', 'artist', 'year', 'image_url']);
+const WORK_HELD_FIELDS: ReadonlySet<string> = new Set(['name', 'artists', 'year', 'image_url']);
 
 const NONE_HELD: ReadonlySet<string> = new Set();
 
@@ -160,10 +139,17 @@ export function pointChanges(
 /**
  * What a run would change about one work it already holds.
  *
- * `artist` is the major one, and it is the only field here a traveller plans
+ * `artists` is the major one, and it is the only field here a traveller plans
  * around: a work whose attribution changed is a different reason to stand in front
  * of it. A title is usually a translation settling down, and a year and a
  * photograph are description.
+ *
+ * The makers are compared as a **set** (#720). The source states them in an order
+ * and can restate them in another, and a run that reordered co-authors has changed
+ * nothing about the work — asking a curator which of "Shishkin and Savitsky" or
+ * "Savitsky and Shishkin" is right is a card about nothing. A name added or
+ * dropped is a real change and is reported. The writer's guard asks the same
+ * question of the same pair, so the row cannot move while the record says it did.
  *
  * `held` as on `pointChanges`: the writer's answer about the row, taken as given.
  */
@@ -178,8 +164,8 @@ export function workChanges(
   if (!sameLabel(before.name, after.name)) {
     changes.push(plain('name', before.name, after.name, 'minor'));
   }
-  if (!sameLabel(before.artist, after.artist)) {
-    changes.push(plain('artist', before.artist, after.artist, 'major'));
+  if (!sameLabelSet(before.artists, after.artists)) {
+    changes.push(plain('artists', before.artists, after.artists, 'major'));
   }
   if ((before.year ?? null) !== (after.year ?? null)) {
     changes.push(plain('year', before.year, after.year, 'minor'));

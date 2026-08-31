@@ -10,8 +10,10 @@ import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import type { SyncProgress, WikidataLandmark, ErrorDetail, ContentsByKind } from './types.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncOrchestrator.js';
+import { foldLabel } from './labelFold.js';
 import {
   extractQid,
+  isQid,
   parseWktPoint,
   delay,
   WaitBudget,
@@ -57,32 +59,70 @@ function creditPatch(externalId: string, imageUrl: string | null): { imageCredit
 
 const LOG_PREFIX = '[Landmark Sync]';
 
-function bindingsToLandmarks(bindings: SparqlBinding[], type: 'sculpture' | 'monument'): WikidataLandmark[] {
-  const landmarks: WikidataLandmark[] = [];
+/**
+ * The landmarks one answer describes, one entry per landmark.
+ *
+ * **One per item, not one per row** (#720). The queries below carry five
+ * OPTIONALs and a monument with several makers therefore arrives several times;
+ * this used to push each row as a landmark of its own, so a monument's stored
+ * creator was whichever of its duplicates won the upsert — the Fountain of
+ * Cybele has seven, the Siegessäule six. Measured on 2026-08-31, the sculpture
+ * query answers 130 rows for 80 items and `monument` 134 for 93 against a
+ * `LIMIT 160`, so the duplicates were also spending a cap that counts rows.
+ *
+ * The first row of an item fixes everything single-valued about it, exactly as
+ * the museum pool's parse does, and every row contributes its creator.
+ *
+ * Exported for its test: the grouping is the whole of what one answer becomes,
+ * and nothing downstream can be asked whether it happened.
+ */
+export function bindingsToLandmarks(bindings: SparqlBinding[], type: 'sculpture' | 'monument'): WikidataLandmark[] {
+  const landmarks = new Map<string, WikidataLandmark>();
+  const seenCreators = new Map<string, Set<string>>();
 
   for (const b of bindings) {
     const coord = b.coord?.value ? parseWktPoint(b.coord.value) : null;
     if (!coord || !b.item) continue;
 
     const qid = extractQid(b.item.value);
-    landmarks.push({
-      qid,
-      label: b.itemLabel?.value || 'Unknown',
-      description: b.itemDescription?.value || null,
-      lat: coord.lat,
-      lon: coord.lon,
-      imageUrl: b.image?.value || null,
-      creatorLabel: b.creatorLabel?.value || null,
-      year: b.year?.value ? parseInt(b.year.value) : null,
-      sitelinks: parseInt(b.sitelinks?.value || '0'),
-      countryLabel: b.countryLabel?.value || null,
-      type,
-      articleUrl: b.article?.value || null,
-      website: b.website?.value || null,
-    });
+    let landmark = landmarks.get(qid);
+    if (!landmark) {
+      landmark = {
+        qid,
+        label: b.itemLabel?.value || 'Unknown',
+        description: b.itemDescription?.value || null,
+        lat: coord.lat,
+        lon: coord.lon,
+        imageUrl: b.image?.value || null,
+        creators: [],
+        year: b.year?.value ? parseInt(b.year.value) : null,
+        sitelinks: parseInt(b.sitelinks?.value || '0'),
+        countryLabel: b.countryLabel?.value || null,
+        type,
+        articleUrl: b.article?.value || null,
+        website: b.website?.value || null,
+      };
+      landmarks.set(qid, landmark);
+      seenCreators.set(qid, new Set());
+    }
+
+    // Deduped by folded label: the same person can be reached through more than
+    // one row, and the query binds no creator entity to tell two apart by.
+    //
+    // A label that *is* a QID is dropped, as the museum parse drops it: that is
+    // the label service answering for an entity it has no name for in any of the
+    // eight languages, and a QID on a card names nobody. Collecting every creator
+    // rather than whichever won a race is what makes it reachable — an unlabelled
+    // co-creator used to lose that race.
+    const creator = b.creatorLabel?.value;
+    const seen = seenCreators.get(qid)!;
+    if (creator && !isQid(creator) && !seen.has(foldLabel(creator))) {
+      seen.add(foldLabel(creator));
+      landmark.creators.push(creator);
+    }
   }
 
-  return landmarks;
+  return [...landmarks.values()];
 }
 
 /**
@@ -104,7 +144,7 @@ async function fetchSculptures(
       FILTER(?sitelinks > 15)
       FILTER NOT EXISTS { ?item wdt:P195 ?coll . ?coll wdt:P31/wdt:P279* wd:Q33506 }
       OPTIONAL { ?item wdt:P18 ?image }
-      OPTIONAL { ?item wdt:P170 ?creator }
+      OPTIONAL { ?item wdt:P170 ?creator . FILTER(STRSTARTS(STR(?creator), "http://www.wikidata.org/entity/Q")) }
       OPTIONAL { ?item wdt:P571 ?inception }
       OPTIONAL { ?item wdt:P17 ?country }
       OPTIONAL { ?item wdt:P856 ?website }
@@ -138,7 +178,7 @@ function buildMonumentQuery(typeQid: string, limit: number): string {
       ?item wikibase:sitelinks ?sitelinks .
       FILTER(?sitelinks > 20)
       OPTIONAL { ?item wdt:P18 ?image }
-      OPTIONAL { ?item wdt:P170 ?creator }
+      OPTIONAL { ?item wdt:P170 ?creator . FILTER(STRSTARTS(STR(?creator), "http://www.wikidata.org/entity/Q")) }
       OPTIONAL { ?item wdt:P571 ?inception }
       OPTIONAL { ?item wdt:P17 ?country }
       OPTIONAL { ?item wdt:P856 ?website }
@@ -168,12 +208,26 @@ async function fetchOneMonumentType(
   typeQid: string,
   progress: SyncProgress,
   sparql: WikidataDoor,
-  into: Map<string, SparqlBinding>,
+  into: Map<string, SparqlBinding[]>,
 ): Promise<boolean> {
   try {
     for (const b of await sparql(buildMonumentQuery(typeQid, MONUMENT_LIMIT))) {
       const key = b.item?.value;
-      if (key && !into.has(key)) into.set(key, b);
+      if (!key) continue;
+      // **Every row of an item, not the first of them** (#720). This used to be
+      // `if (!into.has(key)) into.set(key, b)`, which threw away exactly what a
+      // monument with several makers arrives as — so grouping downstream had
+      // nothing left to group, and a monument's creator stayed the planner's
+      // pick of the first row of whichever of the four type queries answered
+      // first. Measured on the run that found it: of 17 monuments proposing
+      // creators, the 15 that also instance `sculpture` came through
+      // `fetchSculptures` and 9 of those named several people; the 2 that only
+      // ever arrive here named one each.
+      //
+      // Still first-*item*-wins across the four queries, which is what this map
+      // is for: a memorial that is also a cenotaph is one monument.
+      const rows = into.get(key);
+      if (rows) rows.push(b); else into.set(key, [b]);
     }
     return true;
   } catch (error) {
@@ -186,11 +240,19 @@ async function fetchOneMonumentType(
   }
 }
 
-async function fetchMonuments(
+/**
+ * The monuments four type queries between them offer, each with every row it
+ * arrived on.
+ *
+ * Exported for its test: the collection across the four queries is where a
+ * monument's rows were being thrown away, and `bindingsToLandmarks` cannot be
+ * asked whether they reached it.
+ */
+export async function fetchMonuments(
   progress: SyncProgress,
   sparql: WikidataDoor,
 ): Promise<WikidataLandmark[]> {
-  const collected = new Map<string, SparqlBinding>();
+  const collected = new Map<string, SparqlBinding[]>();
   let succeeded = 0;
 
   for (let i = 0; i < MONUMENT_TYPE_QIDS.length; i++) {
@@ -202,7 +264,7 @@ async function fetchMonuments(
     await delay(SPARQL_DELAY_MS);
   }
 
-  const landmarks = bindingsToLandmarks([...collected.values()], 'monument');
+  const landmarks = bindingsToLandmarks([...collected.values()].flat(), 'monument');
   if (succeeded === 0 || landmarks.length === 0) {
     throw new Error('Monument fetch failed: no type query answered');
   }
@@ -225,7 +287,7 @@ async function upsertLandmarkExperience(
 
   const metadata = {
     wikidataQid: landmark.qid,
-    creator: landmark.creatorLabel,
+    creators: landmark.creators,
     year: landmark.year,
     sitelinksCount: landmark.sitelinks,
     type: landmark.type,

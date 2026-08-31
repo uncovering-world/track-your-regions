@@ -71,7 +71,7 @@ function artwork(overrides: Partial<ProcessedContent> = {}): ProcessedContent {
     externalId: 'Q12418',
     name: 'Mona Lisa',
     treasureType: 'painting',
-    artist: 'Leonardo da Vinci',
+    artists: ['Leonardo da Vinci'],
     year: 1503,
     imageUrl: 'https://upload.wikimedia.org/mona-lisa.jpg',
     sitelinksCount: 140,
@@ -163,14 +163,114 @@ describe('a work arrives marked as unread', () => {
     // it a curator who corrects an attribution has it back the source's way after
     // the next run, and nothing anywhere says so happened.
     const onUpdate = String(treasureCall()[0]).slice(String(treasureCall()[0]).indexOf('DO UPDATE SET'));
-    for (const column of ['name', 'artist', 'year', 'image_url']) {
+    for (const column of ['name', 'year', 'image_url']) {
       expect(onUpdate).toContain(`CASE WHEN treasures.curated_fields ? '${column}'`);
     }
+    // The makers carry the same claim, on an arm of their own because the column
+    // is a list and has a second reason to keep what it holds (below).
+    expect(onUpdate).toContain("WHEN treasures.curated_fields ? 'artists'");
     // A count and the threshold read off it are a measurement rather than a
     // judgement, so they stay the source's on every run.
     expect(onUpdate).toContain('sitelinks_count = EXCLUDED.sitelinks_count');
     expect(onUpdate).not.toContain("curated_fields ? 'sitelinks_count'");
     expect(onUpdate).not.toContain("curated_fields ? 'is_iconic'");
+  });
+
+  it('keeps the stored order where the source names the same makers in another order', async () => {
+    // Stored one way, offered the other: the diff reports nothing, so the row
+    // must not move either (#720).
+    scriptStored([{
+      external_id: 'Q12418', name: 'Mona Lisa',
+      artists: ['Ivan Shishkin', 'Konstantin Savitsky'],
+      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      curated_fields: [],
+    }]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [
+      artwork({ artists: ['Konstantin Savitsky', 'Ivan Shishkin'] }),
+    ]);
+
+    const sql = String(treasureCall()[0]);
+    const keep = /WHEN \$(\d+)::boolean THEN treasures\.artists/.exec(
+      sql.slice(sql.indexOf('DO UPDATE SET')),
+    );
+    expect(keep, 'the keep-the-stored-order arm is gone').not.toBeNull();
+    expect((treasureCall()[1] as unknown[])[Number(keep![1]) - 1]).toBe(true);
+    expect(delta.changed).toEqual([]);
+  });
+
+  it('asks the keep-or-replace question the way the diff asks it, not byte for byte', async () => {
+    // The reason the answer is computed here rather than as SQL containment: the
+    // diff folds case, dashes and whitespace, and array containment does not. A
+    // maker whose label gains a typographic edit *and* moves position would
+    // otherwise be reported as no change and written anyway — a row moving with
+    // nothing recorded, which is what this arm exists to prevent.
+    scriptStored([{
+      external_id: 'Q12418', name: 'Mona Lisa',
+      artists: ['Antonio del Pollaiuolo', 'Piero del Pollaiuolo'],
+      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      curated_fields: [],
+    }]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [
+      artwork({ artists: ['piero  del Pollaiuolo', 'Antonio del Pollaiuolo'] }),
+    ]);
+
+    const sql = String(treasureCall()[0]);
+    const keep = /WHEN \$(\d+)::boolean THEN treasures\.artists/.exec(
+      sql.slice(sql.indexOf('DO UPDATE SET')),
+    );
+    expect((treasureCall()[1] as unknown[])[Number(keep![1]) - 1]).toBe(true);
+    expect(delta.changed).toEqual([]);
+  });
+
+  it('replaces the makers where a name really was added or dropped', async () => {
+    scriptStored([{
+      external_id: 'Q12418', name: 'Mona Lisa', artists: ['Ivan Shishkin'],
+      year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
+      curated_fields: [],
+    }]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 900, name: 'Mona Lisa' }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [
+      artwork({ artists: ['Ivan Shishkin', 'Konstantin Savitsky'] }),
+    ]);
+
+    const sql = String(treasureCall()[0]);
+    const keep = /WHEN \$(\d+)::boolean THEN treasures\.artists/.exec(
+      sql.slice(sql.indexOf('DO UPDATE SET')),
+    );
+    expect((treasureCall()[1] as unknown[])[Number(keep![1]) - 1]).toBe(false);
+    expect(delta.changed[0].fields[0]).toMatchObject({ field: 'artists' });
+  });
+
+  it('treats a work it has never seen as one to write, not one to keep', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [artwork()]);
+
+    const sql = String(treasureCall()[0]);
+    const keep = /WHEN \$(\d+)::boolean THEN treasures\.artists/.exec(
+      sql.slice(sql.indexOf('DO UPDATE SET')),
+    );
+    expect((treasureCall()[1] as unknown[])[Number(keep![1]) - 1]).toBe(false);
+  });
+
+  it('sends the makers as a list, not as a joined string', async () => {
+    scriptWorks('new');
+
+    await upsertMuseumTreasures(EXPERIENCE_ID, [
+      artwork({ artists: ['Ivan Shishkin', 'Konstantin Savitsky'] }),
+    ]);
+
+    const params = treasureCall()[1] as unknown[];
+    expect(params).toContainEqual(['Ivan Shishkin', 'Konstantin Savitsky']);
+    expect(params).not.toContain('Ivan Shishkin, Konstantin Savitsky');
   });
 
   it('reads a link\'s gate through the experience the work is shown in', async () => {
@@ -275,7 +375,7 @@ describe('the works delta a museum run reports', () => {
     // The "before" the upsert cannot answer for itself: it is one
     // `INSERT … ON CONFLICT` and `RETURNING` gives back the new values.
     scriptStored([{
-      external_id: 'Q12418', name: 'La Gioconda', artist: 'Leonardo',
+      external_id: 'Q12418', name: 'La Gioconda', artists: ['Leonardo'],
       year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
       curated_fields: [],
     }]);
@@ -290,16 +390,16 @@ describe('the works delta a museum run reports', () => {
       item: { name: 'La Gioconda', ref: 'Q12418' },
       fields: [
         expect.objectContaining({ field: 'name', old: 'La Gioconda', new: 'Mona Lisa' }),
-        expect.objectContaining({ field: 'artist', old: 'Leonardo', new: 'Leonardo da Vinci' }),
+        expect.objectContaining({ field: 'artists', old: ['Leonardo'], new: ['Leonardo da Vinci'] }),
       ],
     }]);
     // An attribution is the one field here a traveller plans around.
-    expect(delta.changed[0].fields.find(f => f.field === 'artist')?.significance).toBe('major');
+    expect(delta.changed[0].fields.find(f => f.field === 'artists')?.significance).toBe('major');
   });
 
   it('names a claimed work by what the catalogue calls it, not by the source', async () => {
     scriptStored([{
-      external_id: 'Q12418', name: 'La Gioconda', artist: 'Leonardo da Vinci',
+      external_id: 'Q12418', name: 'La Gioconda', artists: ['Leonardo da Vinci'],
       year: 1503, image_url: 'https://upload.wikimedia.org/mona-lisa.jpg',
       curated_fields: ['name'],
     }]);
@@ -503,11 +603,11 @@ describe('a visible work under a gated source', () => {
 
   /** The Wine Glass as stored, and the source's offer against it. */
   const GLASS = {
-    external_id: 'Q12418', name: 'The Wine Glass', artist: 'Johannes Vermeer',
+    external_id: 'Q12418', name: 'The Wine Glass', artists: ['Johannes Vermeer'],
     year: 1660, image_url: FILE, image_credit: CREDIT, curated_fields: [] as string[],
   };
   const offer = (overrides: Partial<ProcessedContent> = {}) => artwork({
-    name: 'The Wine Glass', artist: 'Jan Vermeer van Haarlem the Elder', year: 1660, imageUrl: FILE,
+    name: 'The Wine Glass', artists: ['Jan Vermeer van Haarlem the Elder'], year: 1660, imageUrl: FILE,
     ...overrides,
   });
 
@@ -534,9 +634,10 @@ describe('a visible work under a gated source', () => {
     // The gate, bound as the same parameter the insert reads it from, and the
     // row's own state — never the link's, and never EXCLUDED's.
     const gate = "OR ((SELECT requires_curation FROM experience_categories WHERE id = $12)";
-    for (const column of ['name', 'artist', 'year', 'image_url']) {
+    for (const column of ['name', 'year', 'image_url']) {
       expect(onUpdate, column).toContain(`${column} = CASE WHEN treasures.curated_fields ? '${column}' ${gate}`);
     }
+    expect(onUpdate).toContain(`WHEN treasures.curated_fields ? 'artists' ${gate}`);
     expect(onUpdate).toContain("AND treasures.curation_state <> 'pending')");
     expect(onUpdate).not.toContain('EXCLUDED.curation_state');
     // The credit follows its picture — held with it, or the row would name the
@@ -563,7 +664,7 @@ describe('a visible work under a gated source', () => {
     expect(delta.changed).toEqual([{
       item: { name: 'The Wine Glass', ref: 'Q12418' },
       fields: [expect.objectContaining({
-        field: 'artist', old: 'Johannes Vermeer', new: 'Jan Vermeer van Haarlem the Elder',
+        field: 'artists', old: ['Johannes Vermeer'], new: ['Jan Vermeer van Haarlem the Elder'],
         significance: 'major', held: true, curatedConflict: false,
       })],
     }]);
@@ -576,7 +677,7 @@ describe('a visible work under a gated source', () => {
   it('carries the new picture\'s credit beside a held picture, so publishing can credit it', async () => {
     scriptHeld(true);
 
-    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [offer({ artist: 'Johannes Vermeer', imageUrl: NEW_FILE })], {
+    const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [offer({ artists: ['Johannes Vermeer'], imageUrl: NEW_FILE })], {
       fetched: new Map([[NEW_FILE, NEW_CREDIT]]), stored: new Map(),
     });
 
@@ -595,7 +696,7 @@ describe('a visible work under a gated source', () => {
 
     // A credit refreshed for the same photograph is the row tidying itself, not
     // a picture a curator is asked about.
-    expect(delta.changed[0].fields.map(f => f.field)).toEqual(['artist']);
+    expect(delta.changed[0].fields.map(f => f.field)).toEqual(['artists']);
   });
 
   it('writes the re-attribution and points at nothing where the row is not held', async () => {
@@ -603,7 +704,7 @@ describe('a visible work under a gated source', () => {
 
     const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [offer()]);
 
-    expect(delta.changed[0].fields[0]).toMatchObject({ field: 'artist', held: false });
+    expect(delta.changed[0].fields[0]).toMatchObject({ field: 'artists', held: false });
     expect(sentSql().filter(s => POINTER.test(s))).toEqual([]);
   });
 
@@ -616,12 +717,12 @@ describe('a visible work under a gated source', () => {
   });
 
   it('lets a claim win over the hold on the field it covers', async () => {
-    scriptHeld(true, { curated_fields: ['artist'] });
+    scriptHeld(true, { curated_fields: ['artists'] });
 
     const delta = await upsertMuseumTreasures(EXPERIENCE_ID, [offer({ year: 1661 })]);
 
     expect(delta.changed[0].fields).toEqual([
-      expect.objectContaining({ field: 'artist', curatedConflict: true, held: false }),
+      expect.objectContaining({ field: 'artists', curatedConflict: true, held: false }),
       expect.objectContaining({ field: 'year', curatedConflict: false, held: true }),
     ]);
   });
