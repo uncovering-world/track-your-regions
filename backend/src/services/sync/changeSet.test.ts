@@ -383,6 +383,53 @@ describe('a metadata key claimed per key', () => {
   });
 });
 
+describe("a monument's makers, which are a set and not a list", () => {
+  // Public art's half of ADR-0040. The source says who made a monument and not in
+  // what order — the landmark queries answer in their planner's order, as the
+  // museum pool does — so a run restating the same people another way round has
+  // changed nothing, and under the gate a reported change is a held card asking a
+  // curator to choose between two orderings of one fact.
+  const monument = (creators: string[]) => snapshot({
+    name: 'Christ the Redeemer',
+    metadata: { wikidataQid: 'Q79961', creators },
+  });
+
+  it('says nothing when the same people come back the other way round', () => {
+    const changes = computeChangeSet(
+      monument(['Paul Landowski', 'Carlos Oswald']),
+      monument(['Carlos Oswald', 'Paul Landowski']), [], WROTE,
+    );
+    expect(changes.changedFields.filter(f => f.field === 'metadata.creators')).toEqual([]);
+  });
+
+  it('folds their typesetting, as the works comparison does', () => {
+    const changes = computeChangeSet(
+      monument(['Paul Landowski', 'Carlos Oswald']),
+      monument(['paul  landowski', 'Carlos Oswald']), [], WROTE,
+    );
+    expect(changes.changedFields.filter(f => f.field === 'metadata.creators')).toEqual([]);
+  });
+
+  it('reports a maker gained or dropped, which is what the source really said', () => {
+    const gained = computeChangeSet(
+      monument(['Paul Landowski']),
+      monument(['Paul Landowski', 'Carlos Oswald']), [], WROTE,
+    );
+    expect(gained.changedFields.find(f => f.field === 'metadata.creators')).toMatchObject({
+      old: ['Paul Landowski'], new: ['Paul Landowski', 'Carlos Oswald'],
+    });
+  });
+
+  it('leaves every other list compared as a list', () => {
+    // The set rule is one key's, not a new rule for arrays: `countryNames` and
+    // the rest keep their own comparisons.
+    const before = snapshot({ metadata: { criteria: ['i', 'ii'] } });
+    const after = snapshot({ metadata: { criteria: ['ii', 'i'] } });
+    expect(computeChangeSet(before, after, [], WROTE).changedFields.find(f => f.field === 'metadata.criteria'))
+      .toBeDefined();
+  });
+});
+
 describe('a metadata key the run computes about its own pass', () => {
   // Run 64's Louvre card, as it stood: 122 works, and a sum over them that two
   // language links somewhere in the world had just moved.

@@ -13,6 +13,7 @@ import { creditToWrite, type ImageCredit, type StoredCredit } from '../imageCred
 import { retirePassAfterNewContent } from '../curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from '../heldProposalPointer.js';
 import { workChanges } from '../contentsChangeSet.js';
+import { sameLabelSet } from '../labelFold.js';
 import { jsonEquals, type FieldChange } from '../changeSet.js';
 import type {
   ContentItem, ContentItemChange, ContentsDelta, ProcessedContent,
@@ -121,7 +122,7 @@ function creditChange(
 /** A work as the run found it, read once for the whole museum before any is written. */
 interface StoredWork {
   name: string | null;
-  artist: string | null;
+  artists: string[];
   year: number | null;
   imageUrl: string | null;
   imageCredit: ImageCredit | null;
@@ -151,7 +152,7 @@ function rewriteOf(
   wasHeld: boolean,
 ): ContentItemChange | null {
   const fields = workChanges(was, {
-    name: artwork.name, artist: artwork.artist, year: artwork.year, imageUrl: artwork.imageUrl,
+    name: artwork.name, artists: artwork.artists, year: artwork.year, imageUrl: artwork.imageUrl,
   }, was.curatedFields, wasHeld);
   const credit = creditChange(fields, was.imageCredit, patch);
   if (credit) fields.push(credit);
@@ -216,14 +217,14 @@ export async function upsertMuseumTreasures(
     // The credit comes with the picture, for the entry `creditChange` builds: a
     // held picture's proposal has to carry who took the new one.
     const stored = await pool.query(
-      `SELECT external_id, name, artist, year, image_url, curated_fields,
+      `SELECT external_id, name, artists, year, image_url, curated_fields,
               metadata->'imageCredit' AS image_credit
          FROM treasures WHERE external_id = ANY($1::text[])`,
       [refs],
     );
     for (const row of stored.rows) {
       before.set(row.external_id, {
-        name: row.name, artist: row.artist, year: row.year,
+        name: row.name, artists: row.artists ?? [], year: row.year,
         imageUrl: row.image_url, imageCredit: row.image_credit ?? null,
         curatedFields: row.curated_fields ?? [],
       });
@@ -235,6 +236,14 @@ export async function upsertMuseumTreasures(
     // compared against the stored credit where the picture is held.
     const patch = creditPatch(artwork, credits.fetched, credits.stored);
 
+    // A work the run has just inserted has no "before" and is an arrival.
+    const was = before.get(artwork.externalId);
+    // The same question `workChanges` asks below, asked once and bound as $13 —
+    // see the `artists` arm. Against the snapshot rather than the locked row, as
+    // the whole comparison is: a claim or the gate decides the row on its own
+    // arm, and this one only ever chooses between two orders of one answer.
+    const sameMakers = !!was && sameLabelSet(was.artists, artwork.artists);
+
     // Step 1: Upsert into treasures (globally unique by external_id)
     //
     // `curation_state` is bound to `MUSEUM_CATEGORY_ID` directly rather than
@@ -244,7 +253,7 @@ export async function upsertMuseumTreasures(
     // passed by a curator, and this run must not reset that (ADR-0025).
     const treasureResult = await pool.query(
       `INSERT INTO treasures (
-        external_id, name, treasure_type, artist, year,
+        external_id, name, treasure_type, artists, year,
         image_url, sitelinks_count, is_iconic, metadata, curation_state, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
         CASE WHEN (SELECT requires_curation FROM experience_categories WHERE id = $12)
@@ -266,8 +275,21 @@ export async function upsertMuseumTreasures(
         name = CASE WHEN treasures.curated_fields ? 'name' OR ${HELD_WORK}
                     THEN treasures.name ELSE EXCLUDED.name END,
         treasure_type = EXCLUDED.treasure_type,
-        artist = CASE WHEN treasures.curated_fields ? 'artist' OR ${HELD_WORK}
-                      THEN treasures.artist ELSE EXCLUDED.artist END,
+        -- The makers, with one arm the other columns have no use for: where the
+        -- source names the same people in another order, the stored order stays
+        -- (#720). A row that moved while the record said it did not is the one
+        -- thing the record exists to prevent.
+        --
+        -- The answer is computed in TypeScript and bound as $13, not written as
+        -- SQL containment, and that is the whole point: the diff asks
+        -- sameLabelSet, which folds case, dashes and whitespace, while array
+        -- containment compares byte for byte. A maker whose label gains a
+        -- typographic edit *and* moves position would have been reported as no
+        -- change and written anyway. One rule, asked once, in one runtime.
+        artists = CASE
+          WHEN treasures.curated_fields ? 'artists' OR ${HELD_WORK} THEN treasures.artists
+          WHEN $13::boolean THEN treasures.artists
+          ELSE EXCLUDED.artists END,
         year = CASE WHEN treasures.curated_fields ? 'year' OR ${HELD_WORK}
                     THEN treasures.year ELSE EXCLUDED.year END,
         image_url = CASE WHEN treasures.curated_fields ? 'image_url' OR ${HELD_WORK}
@@ -320,7 +342,7 @@ export async function upsertMuseumTreasures(
         artwork.externalId,
         artwork.name,
         artwork.treasureType,
-        artwork.artist,
+        artwork.artists,
         artwork.year,
         artwork.imageUrl,
         artwork.sitelinksCount,
@@ -330,15 +352,13 @@ export async function upsertMuseumTreasures(
         ICONIC_SITELINKS,
         ICONIC_RELEASE,
         MUSEUM_CATEGORY_ID,
+        sameMakers,
       ]
     );
 
     const stored = treasureResult.rows[0];
     const treasureId = stored.id;
 
-    // A work the run has just inserted has no "before" and is an arrival, which
-    // `added` below carries.
-    const was = before.get(artwork.externalId);
     const rewrite = was && rewriteOf(was, artwork, patch, Boolean(stored.was_held));
     if (rewrite) changed.push(rewrite);
 

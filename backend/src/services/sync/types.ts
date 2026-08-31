@@ -135,7 +135,8 @@ export interface ProcessedContent {
    * Open rather than an enum since the bounded class closure replaced the hand-picked type list.
    */
   treasureType: string;
-  artist: string | null;
+  /** Every maker the source names, in no asserted order. Empty where none is recorded (#720). */
+  artists: string[];
   year: number | null;
   imageUrl: string | null;
   sitelinksCount: number;
@@ -170,7 +171,14 @@ export interface WikidataLandmark {
   lat: number;
   lon: number;
   imageUrl: string | null;
-  creatorLabel: string | null;
+  /**
+   * Every maker the source names, in no asserted order. Empty where none is recorded.
+   *
+   * A list for the reason a work's is (#720): 19 of the 83 stored monuments with
+   * a creator have more than one, and Christ the Redeemer is Landowski's statue
+   * on Oswald's design.
+   */
+  creators: string[];
   year: number | null;
   sitelinks: number;
   countryLabel: string | null;

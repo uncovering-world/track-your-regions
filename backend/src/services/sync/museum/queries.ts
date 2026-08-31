@@ -20,7 +20,8 @@
  * else to batch is the pipeline's decision, since only it knows how long a run may take.
  */
 
-import { extractQid, parseWktPoint, LABEL_LANGS, type SparqlBinding } from '../wikidataUtils.js';
+import { extractQid, isQid, parseWktPoint, LABEL_LANGS, type SparqlBinding } from '../wikidataUtils.js';
+import { foldLabel } from '../labelFold.js';
 import type { CacheDescriptor } from '../wikidataCache.js';
 
 /**
@@ -56,7 +57,7 @@ export function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-export { LABEL_LANGS };
+export { LABEL_LANGS, isQid };
 
 const ENTITY_PREFIX = 'http://www.wikidata.org/entity/';
 
@@ -78,10 +79,7 @@ export const POOL_MIN_SITELINKS = 10;
 /** No pool query has ever returned this many rows; one that does stops the run. */
 export const POOL_LIMIT = 3000;
 
-/** A QID, not a blank node (`.well-known/genid/…`) and not a literal. */
-export function isQid(value: string): boolean {
-  return /^Q\d+$/.test(value);
-}
+
 
 /** QIDs of a binding column, blank nodes dropped. */
 function qidsOf(rows: SparqlBinding[], column: string): string[] {
@@ -154,7 +152,23 @@ export interface PoolWork {
   label: string;
   sitelinks: number;
   imageUrl: string | null;
-  creator: string | null;
+  /**
+   * Every maker the source names, deduped, in the order the answer arrived (#720).
+   *
+   * A list because the query below already answers with one row per creator and
+   * the parse used to keep whichever arrived first — which is how `Morning in a
+   * Pine Forest` came to be Savitsky's alone, and `The Feast of the Gods`
+   * Titian's.
+   *
+   * **The order here is storage, not a claim** (ADR-0040). SPARQL exposes no
+   * statement order, so what a query answers in is its planner's: measured
+   * against a real run's cached answers, the banded pool returns the creators in
+   * *reverse* statement order — which is also the whole of run 64's churn, the
+   * old parse having kept the first row and so the last statement. Nothing here
+   * sorts it either. Who leads is a curator's judgement, recorded by the work
+   * edit endpoint and counted by a Catalogue Checks watch until it is made.
+   */
+  creators: string[];
   year: number | null;
   /** The class the work was collected under, as a reader sees it: `painting`, `fresco`, `icon`. */
   type: string;
@@ -246,7 +260,7 @@ function bandLabel(band: Band): string {
  */
 function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
   return `${HINT_PREFIX}
-    SELECT ?w ?wLabel ?sl ?img ?creatorLabel (YEAR(?inception) AS ?year) WHERE {
+    SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) WHERE {
       hint:Query hint:optimizer "None" .
       ?w wikibase:sitelinks ?sl .
       hint:Prior hint:rangeSafe true .
@@ -266,7 +280,7 @@ function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
  */
 function classPoolQuery(classQids: string[], limit: number): string {
   return `
-    SELECT ?w ?wLabel ?sl ?img ?creatorLabel (YEAR(?inception) AS ?year) ?cls ?clsLabel WHERE {
+    SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) ?cls ?clsLabel WHERE {
       VALUES ?cls { ${values(classQids)} }
       ?w wdt:P31 ?cls ; wikibase:sitelinks ?sl .
       FILTER(?sl >= ${POOL_MIN_SITELINKS})${POOL_DETAILS}
@@ -300,23 +314,66 @@ function typeQidOf(row: SparqlBinding, fallbackQid: string | null): string | nul
   return isQid(qid) ? qid : fallbackQid;
 }
 
+/**
+ * Add one row's creator to a work, if it says anything new.
+ *
+ * Deduped twice over, because the query answers with a row per combination of
+ * creator, image and inception and a work with two of each arrives four times.
+ * By QID first: that is the statement's own identity. By folded label as well,
+ * for the shape a QID cannot catch — Q2415079 (*The Washington Family*) names
+ * "Edward Savage" twice under two entities, and a card reading "Edward Savage
+ * and Edward Savage" is the source's duplicate made ours.
+ *
+ * A row whose `?creator` is unbound still counts if it carries a label: the
+ * blank-node filter lives in the query, and a shape that binds only the label
+ * has said a name.
+ */
+function addCreator(into: PoolWork, seen: Set<string>, row: SparqlBinding): void {
+  const label = row.creatorLabel?.value;
+  if (!label) return;
+  const qid = row.creator ? extractQid(row.creator.value) : '';
+  // A label that *is* a QID is the label service answering with the bare entity
+  // id, which names nobody. `typeOf` drops the same shape for the same reason.
+  if (isQid(label)) return;
+  const keys = [`label:${foldLabel(label)}`, ...(isQid(qid) ? [`qid:${qid}`] : [])];
+  if (keys.some(key => seen.has(key))) return;
+  for (const key of keys) seen.add(key);
+  into.creators.push(label);
+}
+
+/**
+ * The works one answer describes, one entry per work.
+ *
+ * The first row of a work fixes everything single-valued about it and every row
+ * contributes its creator, which is the asymmetry worth naming: the other
+ * OPTIONALs cross-multiply and any of their rows answers the question asked,
+ * while `P170` is the one column where a second row is a second fact rather
+ * than a repetition (#720).
+ */
 function parsePool(rows: SparqlBinding[], fallbackType: string, fallbackQid: string | null = null): PoolWork[] {
   const works = new Map<string, PoolWork>();
+  const seenCreators = new Map<string, Set<string>>();
   for (const row of rows) {
     const uri = row.w?.value;
     if (!uri) continue;
     const qid = extractQid(uri);
-    if (!isQid(qid) || works.has(qid)) continue;
-    works.set(qid, {
-      qid,
-      label: row.wLabel?.value || qid,
-      sitelinks: parseInt(row.sl?.value || '0', 10),
-      imageUrl: row.img?.value || null,
-      creator: row.creatorLabel?.value || null,
-      year: row.year?.value ? parseInt(row.year.value, 10) : null,
-      type: typeOf(row, fallbackType),
-      typeQid: typeQidOf(row, fallbackQid),
-    });
+    if (!isQid(qid)) continue;
+    let work = works.get(qid);
+    if (!work) {
+      work = {
+        qid,
+        label: row.wLabel?.value || qid,
+        sitelinks: parseInt(row.sl?.value || '0', 10),
+        imageUrl: row.img?.value || null,
+        creators: [],
+        year: row.year?.value ? parseInt(row.year.value, 10) : null,
+        type: typeOf(row, fallbackType),
+        typeQid: typeQidOf(row, fallbackQid),
+      };
+      works.set(qid, work);
+      seenCreators.set(qid, new Set());
+    }
+    addCreator(work, seenCreators.get(qid)!, row);
   }
   return [...works.values()];
 }
