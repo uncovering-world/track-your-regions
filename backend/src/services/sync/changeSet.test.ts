@@ -130,20 +130,49 @@ describe('computeChangeSet', () => {
     });
   });
 
-  it('reports unremarkable metadata edits as one minor change', () => {
+  it('reports an unremarkable metadata edit under the key that moved', () => {
     const incoming = snapshot({ metadata: { inDanger: false, dateInscribed: 1981, areaHectares: 1476999 } });
     const result = computeChangeSet(snapshot(), incoming, [], WROTE);
 
     expect(result.significance).toBe('minor');
-    expect(result.changedFields.map(f => f.field)).toEqual(['metadata']);
+    // One entry per key that moved, and none for the keys that did not: a
+    // curator answers a fact, and a key is a fact. A single `metadata` entry
+    // carrying every moved key made the card fold them into one answer, which
+    // is what stopped a curator taking inscription criteria without also
+    // taking a picture credit they had not checked.
+    expect(result.changedFields.map(f => f.field)).toEqual(['metadata.areaHectares']);
+    expect(result.changedFields[0].old).toBe(1476300);
+    expect(result.changedFields[0].new).toBe(1476999);
+  });
 
-    // The catch-all's payload is stripped of the major keys too, not only a
-    // claimed one: `inDanger`/`dateInscribed` get their own entry whenever
-    // they change, so carrying them here as well -- unchanged, in this
-    // fixture -- would put the same value in two rows, one of them
-    // mislabelled as something this run "applied" alongside areaHectares.
-    expect(result.changedFields[0].old).toEqual({ areaHectares: 1476300 });
-    expect(result.changedFields[0].new).toEqual({ areaHectares: 1476999 });
+  it('keeps the flag that decides a claim off the reported change', () => {
+    const result = computeChangeSet(snapshot(), snapshot({
+      metadata: { inDanger: false, dateInscribed: 1981, areaHectares: 1476999 },
+    }), [], WROTE);
+
+    // `protectedByClaim` is how `metadataChanges` answers what a field name
+    // cannot. Spread into the reported change it reached `changed_fields`, which
+    // is provenance and is never deleted, and an API shape that does not declare
+    // it. A reported change is exactly these six keys.
+    expect(Object.keys(result.changedFields[0]).sort()).toEqual(
+      ['curatedConflict', 'field', 'held', 'new', 'old', 'significance'],
+    );
+  });
+
+  it('reads a metadata key only where the side owns it, prototype names included', () => {
+    // The keys come from the source. `right.__proto__` on a side that does not
+    // carry it answers with the accessor on `Object.prototype`, so the diff would
+    // report `old: Object.prototype` -- stored as `{}` -- for a key the row never
+    // had, and would decide whether to report it at all against that same wrong
+    // value. The read-side half of the rule `publishHeldFields.ts` keeps on the
+    // write side.
+    const hostile = JSON.parse('{"inDanger":false,"dateInscribed":1981,"areaHectares":1476300,"__proto__":{"x":1}}');
+    const result = computeChangeSet(snapshot(), snapshot({ metadata: hostile }), [], WROTE);
+
+    const entry = result.changedFields.find(f => f.field === 'metadata.__proto__');
+    expect(entry).toBeDefined();
+    expect(entry!.old).toBeUndefined();
+    expect(entry!.new).toEqual({ x: 1 });
   });
 
   it('records a curated field as a conflict and not as an applied change', () => {
@@ -297,8 +326,8 @@ describe('a gated source over a row a reader can already see', () => {
 
 describe('a metadata key claimed per key', () => {
   // The second key is deliberately an ordinary one. A key the run owns would be
-  // stripped from the catch-all before the diff ran, and these cases are about
-  // what the catch-all does with the keys it does speak for.
+  // held out of the diff entirely and raises no entry at all, and these cases are
+  // about what a per-key entry does with a key a run really is proposing.
   const before = snapshot({ metadata: { website: 'https://curator.example', wikipediaUrl: 'https://en.wikipedia.org/wiki/Serengeti' } });
   const incoming = snapshot({ metadata: { website: 'https://source.example', wikipediaUrl: 'https://en.wikipedia.org/wiki/Serengeti_National_Park' } });
 
@@ -313,26 +342,25 @@ describe('a metadata key claimed per key', () => {
   it('still reports the unclaimed keys as applied, because the run applied them', () => {
     const result = computeChangeSet(before, incoming, ['metadata.website'], WROTE);
 
-    // Exactly one applied field, named 'metadata', and exactly one conflict —
-    // not just "changedFields contains 'metadata' somewhere", which would
-    // hold even if the claimed key leaked into the same catch-all entry.
-    expect(result.changedFields.map(c => c.field)).toEqual(['metadata']);
-    expect(result.curatedConflicts).toHaveLength(1);
+    // Each key names itself, so the claimed one and the applied one are two
+    // rows rather than a row and a payload — the separation #488 asked for,
+    // now structural: there is no shared payload a claimed value could leak
+    // into.
+    expect(result.changedFields.map(c => c.field)).toEqual(['metadata.wikipediaUrl']);
+    expect(result.curatedConflicts.map(c => c.field)).toEqual(['metadata.website']);
     expect(result.changeType).toBe('updated');
 
-    // The applied row's own payload must not carry the value that was not
-    // applied — only what this run actually wrote lives in the row labelled
-    // applied (#488, one layer in).
-    const applied = result.changedFields[0];
-    expect(applied.old).not.toHaveProperty('website');
-    expect(applied.new).not.toHaveProperty('website');
-    expect(applied.new).toMatchObject({ wikipediaUrl: 'https://en.wikipedia.org/wiki/Serengeti_National_Park' });
+    expect(result.changedFields[0].new).toBe('https://en.wikipedia.org/wiki/Serengeti_National_Park');
   });
 
   it('keeps a whole-column claim as a conflict, with nothing else applied', () => {
     const result = computeChangeSet(before, incoming, ['metadata'], WROTE);
 
-    expect(result.curatedConflicts.map(c => c.field)).toContain('metadata');
+    // A claim on the column protects every key under it, which no per-key name
+    // matches — so the keys themselves have to carry the answer. Without this
+    // the source's values would be reported as applied over a curator's claim.
+    expect(result.curatedConflicts.map(c => c.field).sort())
+      .toEqual(['metadata.website', 'metadata.wikipediaUrl']);
     expect(result.changedFields).toHaveLength(0);
     expect(result.changeType).toBe('unchanged');
   });
@@ -348,8 +376,10 @@ describe('a metadata key claimed per key', () => {
     const result = computeChangeSet(orphanedBefore, incoming, ['metadata.website'], WROTE);
 
     expect(result.curatedConflicts).toHaveLength(0);
-    expect(result.changedFields.map(c => c.field)).toEqual(['metadata']);
-    expect(result.changedFields[0].new).toMatchObject({ website: 'https://source.example' });
+    expect(result.changedFields.map(c => c.field).sort())
+      .toEqual(['metadata.website', 'metadata.wikipediaUrl']);
+    expect(result.changedFields.find(c => c.field === 'metadata.website')?.new)
+      .toBe('https://source.example');
   });
 });
 
@@ -385,21 +415,17 @@ describe('a metadata key the run computes about its own pass', () => {
 
     const result = computeChangeSet(before, incoming, [], HELD);
 
-    expect(result.heldFields.map(f => f.field)).toEqual(['metadata']);
-    const held = result.heldFields[0];
-    // The curator is asked about the website and nothing else. Stripped from
-    // `old` as well as `new`, because `publishHeldFields.ts` reads `old` as the
-    // list of keys this entry speaks for: a counter named there would be wiped
-    // back to the value the proposal was computed against the moment somebody
-    // published the website. `admittedFor` goes with the counters now (#570):
-    // derived from them, seen by nobody.
-    expect(held.new).toEqual({
-      wikidataQid: 'Q19675',
-      website: 'https://www.louvre.fr/en',
-    });
-    expect(held.old).not.toHaveProperty('artworkCount');
-    expect(held.old).not.toHaveProperty('totalArtworkSitelinks');
-    expect(held.old).not.toHaveProperty('admittedFor');
+    // The curator is asked about the website and nothing else. With one entry
+    // per key the counters cannot ride along in a payload at all -- they raise
+    // no entry, so there is nothing for a publication to wipe them back to.
+    // `admittedFor` goes with them (#570): derived from them, seen by nobody.
+    expect(result.heldFields.map(f => f.field)).toEqual(['metadata.website']);
+    expect(result.heldFields[0].new).toBe('https://www.louvre.fr/en');
+    const named = [...result.heldFields, ...result.changedFields, ...result.curatedConflicts]
+      .map(f => f.field);
+    expect(named).not.toContain('metadata.artworkCount');
+    expect(named).not.toContain('metadata.totalArtworkSitelinks');
+    expect(named).not.toContain('metadata.admittedFor');
   });
 
   it('asks nobody about the work that did the qualifying', () => {
@@ -502,7 +528,7 @@ describe('the equality a curation card mirrors (#570)', () => {
     const result = computeChangeSet(before, incoming, [], WROTE);
 
     expect(result.changeType).toBe('updated');
-    expect(result.changedFields.map(f => f.field)).toEqual(['metadata']);
+    expect(result.changedFields.map(f => f.field)).toEqual(['metadata.criteria']);
   });
 
   it('holds a string apart from the number that reads the same', () => {
