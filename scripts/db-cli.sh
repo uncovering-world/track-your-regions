@@ -12,6 +12,7 @@
 #   mark-golden       - Mark current DB as protected
 #   unmark-golden     - Remove golden protection
 #   load-gadm         - Load GADM data into current DB
+#   migrate [args]    - Apply pending db/migrations/ files (see db-migrate.sh)
 #   shell             - Open psql to current DB
 #   status            - Show current DB info and row counts
 #   dump [file]       - Dump current DB to file
@@ -151,6 +152,16 @@ cmd_create() {
     # Switch to this database
     echo "$db_name" > "$ACTIVE_DB_FILE"
     update_env_db_name "$db_name"
+
+    # A database built from the canonical schema already has every structural
+    # change the migrations carry, and their backfills have no rows to repair,
+    # so it starts level rather than 40 files behind.
+    #
+    # After the switch, not before: this is the last step, and a database that
+    # is created but not pointed at is a worse thing to leave behind than one
+    # whose ledger is empty. If it does fail, db:status says so and
+    # npm run db:baseline finishes the job.
+    "$SCRIPT_DIR/db-migrate.sh" baseline --database "$db_name"
 
     echo -e "${GREEN}Created and switched to database: $db_name${NC}"
     echo -e "${YELLOW}Next step: npm run db:load-gadm${NC}"
@@ -395,6 +406,11 @@ cmd_load_gadm() {
     echo -e "${GREEN}All division levels now have geometry.${NC}"
 }
 
+# Hand the migration commands to the runner that owns them.
+cmd_migrate() {
+    "$SCRIPT_DIR/db-migrate.sh" "$@"
+}
+
 cmd_shell() {
     local active
     active=$(get_active_db)
@@ -591,6 +607,12 @@ cmd_status() {
     echo ""
 
     if [[ -n "$active" ]] && db_exists "$active"; then
+        # What this database has been through, alongside what is in it. The
+        # runner speaks for itself here, including when it has to say the
+        # ledger is missing, so status never claims a state it cannot read.
+        "$SCRIPT_DIR/db-migrate.sh" status || true
+        echo ""
+
         echo -e "${BLUE}Core entities:${NC}"
 
         local div_count div_geom wv_count reg_count reg_leaf reg_geom view_count
@@ -737,6 +759,9 @@ case "$command" in
     load-gadm)
         cmd_load_gadm
         ;;
+    migrate)
+        cmd_migrate "$@"
+        ;;
     shell)
         cmd_shell "$@"
         ;;
@@ -767,6 +792,7 @@ case "$command" in
         echo "  mark-golden     Mark current DB as protected"
         echo "  unmark-golden   Remove golden protection"
         echo "  load-gadm       Load GADM data into current DB"
+        echo "  migrate [args]  Apply pending db/migrations/ files (status | apply | baseline)"
         echo "  make-admin <email>  Promote a user to admin"
         echo "  shell           Open psql to current DB"
         echo "  status          Show current DB info and row counts"

@@ -85,6 +85,22 @@ if [ "${status:-}" != "healthy" ]; then
   echo "Check 'docker compose logs db'; continuing anyway." >&2
 fi
 
+# Compose builds this database from db/init/01-schema.sql, so it already carries
+# every structural change db/migrations/ holds and their backfills have no rows
+# to repair. Record that, or it stands at 40 pending files it must not run:
+# 015 deletes rows by volume and would take a freshly imported catalogue with it
+# (#435, ADR-0041).
+#
+# --only-if-empty, because this script is documented as safe to re-run: after a
+# 041 has landed and not yet been applied, an unconditional baseline would write
+# it down as applied without running it. And the database is named from .env
+# rather than left to .active-db, since the one Compose built is the one .env
+# names (POSTGRES_DB) -- not whichever a developer last switched to.
+SETUP_DB="$(grep -E '^DB_NAME=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" || true)"
+echo "Recording the migrations this database was built with..."
+"$SCRIPT_DIR/db-migrate.sh" baseline --only-if-empty --database "${SETUP_DB:-track_regions}" || \
+  echo "Warning: could not record the migration ledger; run 'npm run db:baseline' once the database is up." >&2
+
 # Create the admin. Password is read from stdin so it never appears in argv.
 ADMIN_PW=""
 if [ -t 0 ]; then
