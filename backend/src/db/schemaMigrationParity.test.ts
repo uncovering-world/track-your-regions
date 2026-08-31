@@ -349,6 +349,11 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // before contents carried claims (migration 027), because until then the next
     // run took the correction back and there was nothing to record.
     'location_edited',
+    // The same correction to a work rather than to a point (#720): who made it,
+    // what it is called, when. Its own action, and not `location_edited` widened,
+    // because a trail that said "edited a part" would not say which kind of part
+    // — a work is shared by every museum holding it, and a point is not.
+    'work_edited',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;

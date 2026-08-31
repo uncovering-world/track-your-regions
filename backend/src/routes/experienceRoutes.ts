@@ -29,6 +29,7 @@ import {
   setExperienceState,
   setLocationState,
   editLocation,
+  editWork,
   acceptSourceValue,
   declineSourceValue,
   declineHeldValue,
@@ -54,6 +55,8 @@ import {
   newBadgesSeenBodySchema,
   lifecycleStateBodySchema,
   editLocationBodySchema,
+  editWorkBodySchema,
+  workEditParamsSchema,
   locationIdParamSchema,
   acceptSourceBodySchema,
   declineSourceBodySchema,
@@ -156,6 +159,19 @@ router.post('/locations/:locationId/state', authenticatedLimiter, validate(locat
 // moves the object's anchor where the object is one point, and re-places the
 // experience into regions afterwards — the same shape of work as the line above.
 router.patch('/locations/:locationId/edit', authenticatedLimiter, validate(locationIdParamSchema, 'params'), requireAuth, requireCurator, validate(editLocationBodySchema), editLocation);
+
+// A curator's correction to one work of one museum: what it is called, who made
+// it, when. The museum is in the path because a work hangs in more than one and
+// carries no scope of its own — see `workEditController`.
+//
+// No limiter, verified rather than assumed against § 5's criterion: the cost that
+// puts a curator route in the limited table is post-commit placement, and this
+// handler ends at `res.json` with nothing after its `client.release()` — a work
+// has no coordinate, so nothing it writes can move a pin. That puts it beside
+// `/:id/decline-source` and `/:id/decline-held` rather than beside its own
+// sibling `/locations/:locationId/edit`, which is limited precisely because a
+// corrected coordinate always re-places the object.
+router.patch('/:id/works/:treasureId/edit', validate(workEditParamsSchema, 'params'), requireAuth, requireCurator, validate(editWorkBodySchema), editWork);
 // Rate-limited for the same reason `/:id/publish` below is, and it is the same
 // branch rather than a similar one: overriding a refusal on a gated arrival
 // publishes its contents through the shared `publishContents`, so it can release
