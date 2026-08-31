@@ -480,10 +480,12 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
   // alone would therefore say "waiting on a curator" for ever over an empty
   // queue, and send a person to publish something nobody is holding.
   //
-  // The narrow half beside it asks whether what is waiting is *this*: the held
-  // field is `metadata` as a whole, so the question is whether the proposal
-  // carries an `imageCredit` the stored row does not have. Both halves key on
-  // the same pointer.
+  // The narrow half beside it asks whether what is waiting is *this*, and has to
+  // ask it of both record shapes because both are live. Since ADR-0039 the held
+  // field is `metadata.imageCredit` and its value is the credit; a card filed
+  // before it holds `metadata` as a whole, where the question is whether the
+  // payload carries an `imageCredit` the stored row does not have. The second is
+  // the compatibility half, not the first. Both key on the same pointer.
   //
   // A work is asked too, since ADR-0037, and its question is shaped by where a
   // held credit lives: the treasures upsert holds a work's credit only with its
@@ -501,10 +503,12 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
   // point at a screen that has nothing to say about it.
   //
   // **Refused, not merely answered** — the one place this asks a narrower
-  // question than the queue does, and the reason is `creditPin`'s: publishing the
-  // object's `metadata` row while its picture is still open and different
-  // deliberately withholds the run's credit, and publishing the picture
-  // afterwards finishes what that call had to leave. So a *published* credit can
+  // question than the queue does, and the reason is `creditPin`'s: on a card
+  // filed before ADR-0039, publishing the object's source-data row while its
+  // picture is still open and different deliberately withholds the run's credit,
+  // and publishing the picture afterwards finishes what that call had to leave.
+  // Since ADR-0039 the credit is its own row and `partnerOf` couples it to the
+  // picture, so the two move together and this cannot arise on a newer card. So a *published* credit can
   // still be one click from being written, and reading it as settled would drop
   // "waiting on a curator" from a row that is — sending an admin to find a
   // photographer the queue could have named. A refusal is the only answer after
@@ -519,7 +523,29 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                                AND ch.sync_log_id = e.pending_change_sync_log_id
                                AND (f->>'held')::boolean
                                AND NOT ${heldFieldRefusedSql('e.id')}
-                               AND f->'new' ? 'imageCredit')) AS credit_waiting
+                               -- Both record shapes, because both are live. Since
+                               -- ADR-0039 the credit is an entry of its own, whose
+                               -- new value *is* the credit; before it the credit
+                               -- was a key inside the catch-all payload, and a
+                               -- card filed then stands until a run re-proposes.
+                               -- Asking only the older shape would answer false
+                               -- for every card a run files from here and send an
+                               -- admin to fetch a photographer the queue can name
+                               -- in one click, which is the exact confusion this
+                               -- check exists to prevent.
+                               -- And that it actually carries one. The older
+                               -- shape asked this implicitly, by testing for the
+                               -- key; the work arm below asks it outright. A run
+                               -- that *removes* a credit files an entry under the
+                               -- same name whose new value is absent -- the shape
+                               -- creditPin's remaining live arm is named after --
+                               -- and naming it waiting would append "its author
+                               -- fetched and waiting on a curator" to a row where
+                               -- no author is on offer at all.
+                               AND ((f->>'field' = 'metadata.imageCredit'
+                                     AND jsonb_typeof(f->'new') = 'object')
+                                    OR (f->>'field' = 'metadata' AND f->'new' ? 'imageCredit'))
+                               )) AS credit_waiting
           FROM experiences e
          WHERE e.image_url IS NOT NULL AND e.image_url <> ''
            AND e.metadata->>'imageCredit' IS NULL
@@ -600,6 +626,8 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
  * The flag is a major key, reported under its own name and never inside the
  * `metadata` catch-all (`changeSet.ts`), which is why the catch-all is not in
  * the test: naming it there would exclude every row holding a criteria string.
+ * Since ADR-0039 a run emits no catch-all at all, so that exclusion binds only
+ * the cards filed before it — which stand until a run re-proposes.
  *
  * And it is the flag still *waiting*, not one that was answered. A curator who
  * refuses the proposed flag (#722) has decided the tag and the badge will go on

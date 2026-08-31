@@ -515,9 +515,14 @@ async function creditsForFixedImages(
  *
  * The credit goes in the same statement, so no moment exists in which the card
  * shows a photograph nobody is named for — and it is **omitted** rather than
- * written as `null` where Commons could not answer, because a stored null is
- * what the next run's catch-all diff reports as a change, for the removal of a
- * nothing.
+ * written as `null` where Commons could not answer. Not because the differ
+ * would notice: `jsonEquals` reads null and absent as one absence, so a stored
+ * null raises no change and the next run reports `unchanged`. It is the
+ * presence tests that tell them apart. `'{"a":null}'::jsonb ? 'a'` is true, so
+ * a stored null makes the key *present* to the upsert's claim guard
+ * (`experiences.metadata ? claimed.k`, `syncUtils.ts`), which would then
+ * re-apply a curator's claim over a credit that is not there — protecting a
+ * nothing, and keeping the source's real answer out when one finally arrives.
  */
 async function writeFixedImage(
   experienceId: number,
