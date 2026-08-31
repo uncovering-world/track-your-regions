@@ -687,10 +687,81 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
 };
 
 /**
+ * A work naming several makers in an order nobody has confirmed.
+ *
+ * A count to watch rather than a zero to hold, and ADR-0040 is why. The
+ * catalogue stores every creator the source names, which is the fix; the *order*
+ * it stores them in is a query planner's. SPARQL exposes no statement order at
+ * all, and the banded pool query answers in reverse of the source's own —
+ * measured on all eight multi-creator works sampled, and the whole of why museum
+ * run 64 moved *Morning in a Pine Forest* from Ivan Shishkin, who painted the
+ * forest, to Konstantin Savitsky, who painted the bears.
+ *
+ * So the rows here are not wrong, they are unvouched-for: two names read as a
+ * collaboration whichever way round they sit, and a row of six says "6 artists"
+ * rather than naming a leader, until somebody decides. This is what says how
+ * many such decisions are outstanding.
+ *
+ * **One row per work**, not per pair of makers: a work with six of them is one
+ * decision, and `maker_count` is there to say how big a decision. Two makers are
+ * deliberately included even though nothing on screen depends on their order —
+ * the question the panel answers is "whose attribution has a person looked at",
+ * and a curator working through these wants the pair that needs swapping as much
+ * as the six that need arranging.
+ *
+ * The remedy is a curator's, through the work edit endpoint, which claims
+ * `artists` and so takes the row out of this count for good — the same claim
+ * that stops the next run reordering it.
+ *
+ * It reads zero on a gated catalogue that has never published one of these, and
+ * that is not the same as nothing to do: under ADR-0037 a run may not rewrite a
+ * visible work's attribution, so the second maker arrives as a held proposal and
+ * the row holds one name until somebody publishes it. Museum run 79 filed 22 of
+ * them and moved this count not at all. What is waiting *there* is the queue's
+ * own question and is counted on the gate's panel; this one begins where that
+ * one ends.
+ */
+const workMakersUnconfirmed: CatalogueAssertion = {
+  id: 'work-makers-unconfirmed',
+  area: 'objects',
+  title: 'A work names several makers in an order nobody has confirmed',
+  kind: 'watch',
+  meaning:
+    'Expected while the catalogue is young, and accepted by ADR-0040: the source says who made a '
+    + 'work and not in what order, so the stored order is the query\'s rather than anyone\'s. '
+    + 'Nothing on a screen claims one of them leads until a curator says so. Watch the number come '
+    + 'down as attributions are read; a jump means an import found new collaborations.',
+  // The claim is the whole of "somebody has looked at this", and it is the same
+  // key the upsert honours and the edit endpoint writes, so this cannot drift
+  // from what a claim actually protects.
+  sql: `SELECT t.id AS treasure_id,
+               t.name AS work_name,
+               array_length(t.artists, 1) AS maker_count,
+               t.artists[1] AS first_maker
+          FROM treasures t
+         WHERE array_length(t.artists, 1) > 1
+           AND NOT (t.curated_fields ? 'artists')
+           -- A work nobody has passed is not yet a work anybody is being misled
+           -- by: it is invisible, and the first thing a curator does with it is
+           -- decide whether it belongs at all. Its makers *are* stored in full —
+           -- the hold protects a visible row, and an arrival has nothing to
+           -- protect — so without this the count would include works no screen
+           -- has ever drawn.
+           AND t.curation_state <> 'pending'
+         ORDER BY array_length(t.artists, 1) DESC, t.name`,
+  describe: row => {
+    const makers = count(row, 'maker_count');
+    return `${text(row, 'work_name')}: ${makers} makers, `
+      + `stored with ${text(row, 'first_maker')} first and nobody having said so`;
+  },
+};
+
+/**
  * The list, in the order a person reads it: the two that say a place is stored
  * twice, the one that says an object has nowhere to go, the count that is not
  * a violation, the two about where things are, the one about a fact stored
- * twice, and the one about whose photograph is on the page.
+ * twice, the one about whose photograph is on the page, and the count of works
+ * whose makers nobody has arranged.
  *
  * Adding to it is the whole extension mechanism — an object with an id, an
  * area, a sentence, a query and a way to say one of its rows out loud. Nothing
@@ -708,4 +779,5 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   ...divisionTreeAssertions,
   dangerFlagAgainstItsTag,
   pictureWithNobodyCredited,
+  workMakersUnconfirmed,
 ];
