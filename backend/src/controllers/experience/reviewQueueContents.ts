@@ -298,7 +298,8 @@ export async function queryWithdrawn(
              -- on the marked row, or a region assignment on it -- the second needing no
              -- visit anywhere near it, because placement only ever deletes auto rows, so a
              -- curator's manual assignment outlives the withdrawal. Or the database has
-             -- not had 026 applied, nothing recording which migrations it has seen. Or,
+             -- not had 026 applied -- which the ledger now answers (ADR-0041), though
+             -- answering it is not applying it. Or,
              -- **on an ungated source only**, the pairing was greedy and this row lost it:
              -- ADR-0027 decision 5a-i, where the loser is marked while a row is inserted
              -- for the ordinal it lost, both within ten metres of one incoming point by

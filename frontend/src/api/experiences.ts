@@ -678,7 +678,8 @@ export interface ReviewQueueItem {
      * worth reading which rather than assuming one, the count having moved twice as the
      * writer changed. `db/migrations/026` leaves a pair standing
      * where the marked row carries a visit or a region assignment; a database may not have
-     * had 026 applied at all, nothing recording which files it has seen; and the pairing is
+     * had 026 applied at all, which `npm run db:migrate:status` now answers (ADR-0041)
+     * without making it any less possible; and the pairing is
      * greedy, so it can mark a row while inserting one for the ordinal it lost, both within
      * ten metres of the same incoming point (decision 5a-i, #549). The last is a *new* card
      * rather than an inherited one. So anything up to ten metres can reach this field, which

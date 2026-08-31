@@ -2417,9 +2417,9 @@ CHECK, so the endpoint answers a bare 500 and the publication rolls back correct
 — a working refusal, but an opaque one. Without 020 the two statements that release a held
 withdrawal name a column that is not there, with the same result; and a gated run fails earlier
 still, since `locationWriter` writes the pairing into that column and the whole location write for
-that experience rolls back. `db/migrations/README.md` records nothing about which files a database
-has already seen (#435), so both are hand-applications to remember, not something the code can
-detect.
+that experience rolls back. Whether a given database has been through them is now readable —
+`npm run db:migrate:status` lists what is pending, and `npm run db:migrate` applies it
+(ADR-0041) — so 019 and 020 are no longer two hand-applications to remember.
 
 **Five shapes, all explicit, none of them inferred from the others' absence.** An empty body
 publishes the object: its held fields, `curation_state = 'verified'`, and every unread point and

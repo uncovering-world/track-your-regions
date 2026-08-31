@@ -166,6 +166,35 @@ services/
 - **`booleanStringSchema` stays as string.** Zod validates `'true'`/`'false'` but does NOT transform to boolean. Controllers use `=== 'true'` string comparison. Don't add `.transform()`.
 - **`getExperiencesByRegion`** API must include `country_names`, `external_id`, and `category_priority` in SELECT — frontends depend on these.
 
+## Database Migrations
+
+`db/init/01-schema.sql` is the canonical schema — a fresh database gets it
+automatically, and it is re-applied by hand as it grows. The numbered files in
+`db/migrations/` carry what a database already holding data cannot get from
+re-applying it: one-shot cleanups, backfills, and DDL that fails while the old
+rows are still there.
+
+```bash
+npm run db:migrate:status   # what this database has been through, and what is pending
+npm run db:migrate          # apply every pending file, in filename order
+npm run db:baseline         # record pending files as applied WITHOUT running them
+```
+
+The runner records each file in `schema_migrations`, so a database says what it
+has seen instead of it being remembered (ADR-0041). Two rules bind a new
+migration:
+
+- **Name it `NNN-slug.sql`.** Filename order is the order they are applied in;
+  the runner refuses a name outside that shape or a number used twice, and
+  `backend/src/db/migrationLedger.test.ts` catches it in the gate first.
+- **Declare your own transaction.** Nothing is wrapped around a migration — most
+  files open a `BEGIN`/`COMMIT`, and a wrapper around one that does would end at
+  its `COMMIT` and leave the rest unwrapped. Write it to be re-runnable: a file
+  the ledger did not record is applied again on the next run.
+
+`db/migrations/README.md` has the rest, including what each existing migration
+does and how to give an older database a ledger.
+
 ## Frontend
 
 ### Component Organization
