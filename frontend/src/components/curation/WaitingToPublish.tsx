@@ -264,14 +264,15 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                   already won every run since the gate first held this one. What it
                   changes is the asking, and only for that value. */}
               <Typography variant="caption" color="text.secondary">
-                Publishing one of these leaves the rest waiting — except a work’s picture and the
-                credit that belongs to it, which are answered together, as the rows say. “Not this”
-                on its own changes nothing readers see and settles the question — the run has to
-                propose something different to ask again. One combination does reach them: say no
-                to source data and then publish a new picture, and the picture goes out with
-                nobody credited, since the refused credit may not be written and the stored one
-                names a photograph nobody will see. A field you have edited yourself is a different
-                question and keeps your wording either way.
+                Publishing one of these leaves the rest waiting — except a picture and the credit
+                that belongs to it, which are answered together wherever both are on the card, as
+                the rows say. “Not this” changes nothing readers see and settles the question — the
+                run has to propose something different to ask again. On a card raised before facts
+                were asked one at a time, one combination still reaches readers: say no to source
+                data and then publish a new picture, and the picture goes out with nobody credited,
+                since the refused credit may not be written and the stored one names a photograph
+                nobody will see. A field you have edited yourself is a different question and keeps
+                your wording either way.
               </Typography>
             </GatedRow>
           )}

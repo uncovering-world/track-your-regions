@@ -323,8 +323,14 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
             // breath: a better description arriving with a mangled name used to be
             // one button that took both or neither. The endpoint has always accepted
             // a list — it was the screen that could not say "this one". The answer
-            // sits in its own column, spanning every row the field made: a key inside
-            // the source data is answered with the field, never on its own. Every
+            // sits in its own column, once per fact: a key inside the source data has
+            // been a fact of its own since #488 claimed one per key, and every key a
+            // run reports since ADR-0039. It spans only where facts still share
+            // one answer, which is that same defect somewhere else: a stored entry
+            // filed before ADR-0039 whose keys share one field — the conflicts on
+            // this card are the older ones, since a whole-column claim now comes
+            // back per key — and a language map, whose names share one cell for
+            // the same reason (#728). Every
             // field is refusable, including the ones whose acceptance says "at next
             // sync": refusing writes nothing, so there is no field this answer cannot
             // reach.
