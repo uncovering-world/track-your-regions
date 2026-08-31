@@ -211,6 +211,17 @@ address is the filter working rather than the run breaking. It adds a counter an
 widens the changeset's type check; there is nothing to backfill, because no run
 before it distinguished the two.
 
+`040-every-creator-of-a-work.sql` converts four stores that name one field at once —
+`treasures.artist` becoming `artists`, the claims on it, the change records carrying
+it, and the answers to those records — because their match is the field name *and* the
+value, and a half-converted set is worse than either end of it: an unconverted record
+lands in `publishHeldParts`'s `unwritable` and refuses the whole card it belongs to. It
+leaves `experience_curation_log` alone on purpose: that table records what a curator
+did and what the field was called when they did it. Order-independent with
+`01-schema.sql` — that file adds the column empty, this fills it and drops the old one,
+each step guarded so either order arrives at the same place — and it widens the
+curation-log action CHECK, so it is also the newest file that states that list whole.
+
 `009-experience-change-provenance.sql` is the current example of the other kind:
 its DDL is a copy of what `01-schema.sql` already carries and re-applying the
 schema file achieves the same thing. What only exists in the migration is the

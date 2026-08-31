@@ -73,7 +73,30 @@ accepted debt, and a fresh checkout of the code inherits none.
 | boundaries | A division stored as a leaf while divisions hang beneath it | invariant |
 | boundaries | A division holding a single source polygon while divisions hang beneath it | invariant |
 | objects | A site whose danger tag and whose In Danger badge disagree | invariant |
+| objects | A work names several makers in an order nobody has confirmed | watch |
 | pictures | A picture shown with nobody credited | invariant |
+
+`work-makers-unconfirmed` is the newest watch and the one whose *kind* is the whole
+point. A work often has more than one maker and the catalogue now stores every one
+(ADR-0040), but the source states who and not in what order: SPARQL exposes no statement
+order, and the query the pool actually sends answers in reverse of Wikidata's own. So the
+stored order is nobody's judgement, no screen claims one of them leads until a curator
+makes it, and this is the count of decisions outstanding. It reads zero on a gated
+catalogue that has never published one of these, which is not the same as nothing to do: a
+run may not rewrite a visible work's attribution ([ADR-0037](../decisions/0037-a-part-field-readers-see-is-held-like-the-objects.md)),
+so the second maker arrives as a held proposal and the row holds one name until somebody
+publishes it — museum run 79 filed 22 such proposals and moved this count not at all. What
+is waiting there is the queue's own question, counted on the gate's panel; this assertion
+begins where that one ends. It is expected to rise as those are published and to come down
+as attributions are read — a curator answers it through the work edit endpoint, whose claim on `artists` takes
+the row out of the count and stops the next run reordering it. **One row per work**, not
+per pair of makers — a work naming six of them is one decision, and `maker_count` says how
+big a decision. A work naming two counts as much as one naming six: the question is whose
+attribution a person has looked at, not whether a screen currently depends on the answer.
+Works nobody has passed are left out, since a `pending` row is invisible and the first
+thing a curator does with it is decide whether it belongs at all — their makers *are*
+stored in full, the hold protecting a visible row and an arrival having nothing to
+protect.
 
 The first two are the detection half of
 `db/migrations/026-collapse-false-withdrawals.sql`, promoted from a one-shot
