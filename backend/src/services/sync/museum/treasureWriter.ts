@@ -404,7 +404,7 @@ export async function upsertMuseumTreasures(
 
   // `changed` is expected to be empty most runs and is still computed. Re-asking
   // a museum's works of Wikidata weeks after importing them turned up no
-  // differences at all in name, artist, year or image — but that says how often a
+  // differences at all in name, makers, year or image — but that says how often a
   // card will appear, not whether the run should be able to raise one. The axis
   // that moves for a work is which venue holds it, and the day a source does
   // rewrite an attribution is the day a curator needs to hear about it rather

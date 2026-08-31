@@ -13,7 +13,8 @@
  *   - the label service needs `mul` in its fallback chain, or the National Gallery of Art comes
  *     back as the bare string `Q214867`;
  *   - `wdt:P170` (creator) needs the same blank-node filter the venue bindings get: 51 works in
- *     the pool carry a `.well-known/genid/…` artist today.
+ *     the pool carry a `.well-known/genid/…` creator today, and every creator is
+ *     collected rather than whichever won a race (#720), so the filter is load-bearing.
  *
  * Each exported fetcher sends one query, with one exception: the broad pool is asked in fame
  * bands, and takes the runner so that pacing and cancellation still happen between them. What

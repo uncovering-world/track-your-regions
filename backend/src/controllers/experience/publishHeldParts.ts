@@ -80,7 +80,7 @@ const WRITABLE: Record<ContentKind, ReadonlySet<string>> = {
   // claim's to refuse — so a record carrying one is a shape this code has never
   // seen, and refusing it is the safety net the object's own writer has.
   locations: new Set(['name']),
-  treasures: new Set(['name', 'artist', 'year', 'image_url', 'metadata.imageCredit']),
+  treasures: new Set(['name', 'artists', 'year', 'image_url', 'metadata.imageCredit']),
 };
 
 /** The claim a field answers to: the credit is the picture's, as `accept-source` releases them together. */
@@ -169,7 +169,7 @@ function writeFor(
         ? `metadata = COALESCE(metadata, '{}'::jsonb) - 'imageCredit'`
         : `metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('imageCredit', ${bind(JSON.stringify(field.new))}::jsonb)`);
     } else {
-      // name, artist, year, image_url — the column is the field's own name, and
+      // name, artists, year, image_url — the column is the field's own name, and
       // Postgres infers each parameter's type from the column it is assigned to.
       assignments.push(`${field.field} = ${bind(field.new ?? null)}`);
     }
