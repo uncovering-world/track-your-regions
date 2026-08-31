@@ -1,17 +1,27 @@
 /**
  * Tests for the one column publishing cannot assign from a changeset entry.
  *
- * `metadata` is reported in parts — the keys a product decision hangs on
- * individually, the ones a curator claimed, and a catch-all for the rest — and
- * `nextMetadata` resolves them together. Its own file beside
+ * `metadata` is reported **one key at a time** since ADR-0039, and a card filed
+ * before it carries the older shape: the keys a product decision hangs on
+ * individually, the ones a curator claimed, and a catch-all for the rest. Both
+ * are live, because a changeset is what happened and is never rewritten, and
+ * `nextMetadata` resolves either into one column.
+ *
+ * **The file is split along that line.** The block `once every key is a fact of
+ * its own` is the per-key half; the fixtures above it file a bare `metadata`
+ * entry and are the pre-ADR-0039 half, on purpose rather than for want of
+ * updating. One above it belongs to neither — `keeps the credit where the run
+ * says nothing about it` carries no metadata entry of any shape and reads the
+ * same either way, which is also the module's most-exercised path. Its own file beside
  * `publishController.test.ts`, which had reached the length the lint draws the
  * line at, and beside `publishHeldParts.test.ts`, which left for the same
  * reason; the client and the helpers are shared through
  * `publishController.fixtures.ts`, so the three files describe one server.
  *
  * The rule worth pinning hardest is the credit's (#722): it is the credit of
- * the *stored picture*, which on this catalogue means the catch-all decides it
- * on 1413 of the 1414 cards that hold one.
+ * the *stored picture*. On 1413 of the 1414 cards that hold one there is no
+ * picture change at all, so the pin stays null and the entries decide — the
+ * credit's own since ADR-0039, the catch-all's on a card filed before it.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -169,7 +179,7 @@ describe('the metadata column, which no single entry describes', () => {
     expect(written(queries)).toEqual({});
   });
 
-  it('keeps the credit where the run proposes no metadata row at all', async () => {
+  it('keeps the credit where the run says nothing about it, in either record shape', async () => {
     grantScope();
     const { client, queries } = makeClient({
       row: {
@@ -182,11 +192,14 @@ describe('the metadata column, which no single entry describes', () => {
 
     await publish({ expectedSyncLogId: 53 }, client);
 
-    // `computeChangeSet` emits the catch-all only where the two stripped
-    // objects differ, so a run with no metadata row is *asserting* the stored
-    // metadata — the same photographer for the new picture. Reading the absent
-    // row as "no credit offered" would delete a credit the run stands behind,
-    // on every call that publishes a picture.
+    // Not a legacy fixture despite sitting above the per-key block: the
+    // proposal carries no metadata entry of any shape, so this reads the same
+    // before and after ADR-0039. A key is reported only where it differs, so a
+    // run saying nothing about the credit is *asserting* the stored one — the
+    // same photographer for the new picture. Reading the silence as "no credit
+    // offered" would delete a credit the run stands behind, on every call that
+    // publishes a picture. This is `creditPin`'s first guard and the module's
+    // most-exercised path: 1413 of the 1414 cards holding a credit.
     expect(picture(queries)).toBe('https://whc.unesco.org/document/225476');
     expect(none(queries, 'metadata = ')).toBe(true);
   });
@@ -452,6 +465,30 @@ describe('the metadata column, which no single entry describes', () => {
 
       expect(picture(queries)).toBe('https://new');
       expect(written(queries)).toEqual({});
+    });
+
+    it('writes a key the source named __proto__, rather than losing it to the prototype', async () => {
+      grantScope();
+      // The key comes from the source, and every source key is an entry of its
+      // own now. Plain assignment would hit the accessor on `Object.prototype`:
+      // the value lands on the object's prototype, `JSON.stringify` never sees
+      // it, and the column is written without the fact the curator just
+      // published -- success reported, nothing stored.
+      const { client, queries } = perKey(
+        { metadata: { a: 1 } },
+        [{ field: 'metadata.__proto__', old: undefined, new: { hostile: true }, held: true }],
+      );
+
+      await publish({ heldFields: ['metadata.__proto__'], expectedSyncLogId: 53 }, client);
+
+      // Asserted by own-property, not against a literal: `{ __proto__: ... }`
+      // in an object literal sets the prototype too, so the expectation would
+      // have been `{ a: 1 }` and would have passed against the defect.
+      const stored = written(queries) as Record<string, unknown>;
+      expect(Object.hasOwn(stored, '__proto__')).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(stored, '__proto__')?.value)
+        .toEqual({ hostile: true });
+      expect(stored.a).toBe(1);
     });
 
     it('names the credit on its own where the run holds no picture change', async () => {

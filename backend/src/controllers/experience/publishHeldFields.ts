@@ -32,13 +32,19 @@ interface ProposedField {
 }
 
 /**
- * Do the three fields that share the `metadata` column belong to this field?
+ * Does this field share the `metadata` column with the rest of its family?
  *
- * `CURATED_KEY_BY_FIELD` maps thirteen field names onto eleven columns, and the
- * three that collapse are `metadata`, `metadata.inDanger` and
- * `metadata.dateInscribed` — each carrying a key rather than the whole object.
- * They cannot be written by assignment one at a time, so they are recognised
- * here and resolved together in `nextMetadata`.
+ * Every `metadata.<key>` does, and since ADR-0039 that is every key a source can
+ * name — `metadata.criteria`, `metadata.imageCredit`, whatever a portal invents
+ * next — plus the bare `metadata` a card filed earlier still carries. The test
+ * is the prefix, deliberately, and not a lookup in `CURATED_KEY_BY_FIELD`: that
+ * map answers a different question (which claim protects a field) and names only
+ * three of these, so a reader checking `metadata.criteria` against it would find
+ * nothing and conclude the field goes looking for a column of its own.
+ *
+ * None of them can be written by assignment one at a time — they are one jsonb
+ * column — so `assignmentFor` returns null for the family and `nextMetadata`
+ * resolves them together.
  */
 function isMetadataField(field: string): boolean {
   return field === 'metadata' || field.startsWith(METADATA_CLAIM_PREFIX);
@@ -113,7 +119,7 @@ function assignmentFor(field: string, value: unknown, bind: (value: unknown) => 
  * its own answer cell, and the rule that keeps it with its picture is a coupling
  * of two selections in `heldSelection.ts` — at both levels, as it always was for
  * a work. What is left here is the column rule for the shapes that coupling does
- * not reach: a picture landing where the run offers no credit for it, and a card
+ * not reach: a picture landing while the run's own credit entry drops the key, and a card
  * filed before ADR-0039, whose credit rides inside a `metadata` catch-all with
  * no name of its own and can therefore still be refused while the picture lands.
  */
@@ -127,51 +133,9 @@ function creditOf(metadata: unknown): unknown {
   return bag[CREDIT_KEY];
 }
 
-/** What the credit must become, or null where the catch-all may decide it. */
+/** What the credit must become, or null where the entries may decide it. */
 type CreditPin = { value: unknown } | null;
 
-/**
- * Whether this call has to overrule the catch-all about the credit, and with
- * what.
- *
- * The rule is one sentence — **the stored credit is the credit of the stored
- * picture** — and it bites in three shapes, all of them requiring the run to
- * have proposed a metadata row at all:
- *
- * - this call writes the picture, so the row is about to show the run's
- *   photograph and must carry the credit that row gives for it — or none,
- *   where that row drops the key: no credit beats the last photographer's name
- *   under a photograph they did not take;
- * - the same, where a curator has **refused** that row. The refused value may
- *   not be written, because refusing writes nothing (ADR-0038 decision 2), and
- *   the stored one names a photograph nobody will see any more — so the row is
- *   published with nobody credited, which `picture-with-nobody-credited`
- *   reports. The one place a refusal reaches what a reader sees, and object-
- *   only: `PAIRED_WITH` makes a part's credit unrefusable without its picture;
- * - the run offers a *different* picture and this call is not writing it, so
- *   the row keeps the one it shows and the stored credit with it.
- *
- * A prior **publication** of the metadata row is deliberately not a fourth
- * shape. The arm above may have withheld the run's credit when that row was
- * answered, on a card whose picture was still open and different, so "published"
- * is no evidence that the column holds it; publishing the picture afterwards
- * finishes what that call had to leave, and `creditMoves` is what keeps it from
- * writing where the column already agrees.
- *
- * Everywhere else the pin is null and the catch-all decides — the run that
- * proposes no metadata row at all included, which is the run *asserting* the
- * stored credit rather than offering none. That is not a corner but the ordinary
- * case: measured on this catalogue, 1413 of the 1414 cards holding a credit hold
- * no picture change at all — the run fetched the photographer for the picture
- * the page has been showing all along, and publishing that change is what
- * finally names them (`data-assertions.md` § picture-with-nobody-credited). A
- * rule that fired there would delete the credit and mark the row answered, so no
- * later run would offer it again.
- *
- * A picture the run proposes that already equals the stored one is the same
- * ordinary case: the row already shows what the run offers, so the credit beside
- * it belongs to what a reader is looking at.
- */
 /**
  * What the run proposes for the object's credit, and what stands against it.
  *
@@ -207,6 +171,53 @@ function creditProposal(
   };
 }
 
+/**
+ * Whether this call has to overrule the entries about the credit, and with
+ * what.
+ *
+ * The rule is one sentence — **the stored credit is the credit of the stored
+ * picture** — and it bites in three shapes, all of them requiring the run to
+ * have said something about the credit at all: its own `metadata.imageCredit`
+ * entry since ADR-0039, or the key inside a catch-all on a card filed before
+ * it. `creditProposal` resolves either into one answer:
+ *
+ * - this call writes the picture, so the row is about to show the run's
+ *   photograph and must carry the credit that row gives for it — or none,
+ *   where that row drops the key: no credit beats the last photographer's name
+ *   under a photograph they did not take;
+ * - the same, where a curator has **refused** that row. The refused value may
+ *   not be written, because refusing writes nothing (ADR-0038 decision 2), and
+ *   the stored one names a photograph nobody will see any more — so the row is
+ *   published with nobody credited, which `picture-with-nobody-credited`
+ *   reports. The one place a refusal reaches what a reader sees, and only on a
+ *   card filed before ADR-0039: `partnerOf` now makes a credit unrefusable
+ *   without its picture at **both** levels, so on anything a run files from here
+ *   the two answers cannot be separated. An older card's credit has no name of
+ *   its own to pair with, which is why the arm stays;
+ * - the run offers a *different* picture and this call is not writing it, so
+ *   the row keeps the one it shows and the stored credit with it.
+ *
+ * A prior **publication** of the credit's row is deliberately not a fourth
+ * shape. The arm above may have withheld the run's credit when that row was
+ * answered, on a card whose picture was still open and different, so "published"
+ * is no evidence that the column holds it; publishing the picture afterwards
+ * finishes what that call had to leave, and `creditMoves` is what keeps it from
+ * writing where the column already agrees.
+ *
+ * Everywhere else the pin is null and the entries decide — the run that
+ * proposes nothing about the credit included, which is the run *asserting* the
+ * stored one rather than offering none. That is not a corner but the ordinary
+ * case: measured on this catalogue, 1413 of the 1414 cards holding a credit hold
+ * no picture change at all — the run fetched the photographer for the picture
+ * the page has been showing all along, and publishing that change is what
+ * finally names them (`data-assertions.md` § picture-with-nobody-credited). A
+ * rule that fired there would delete the credit and mark the row answered, so no
+ * later run would offer it again.
+ *
+ * A picture the run proposes that already equals the stored one is the same
+ * ordinary case: the row already shows what the run offers, so the credit beside
+ * it belongs to what a reader is looking at.
+ */
 function creditPin(
   proposal: { picture?: ProposedField; credit?: CreditProposal },
   stored: { imageUrl: unknown; credit: unknown },
@@ -228,8 +239,8 @@ function creditPin(
     // So the row shows the new photograph with nobody credited, which is the
     // honest outcome and which `picture-with-nobody-credited` reports.
     if (proposal.credit.answer === 'refused') return { value: undefined };
-    // Otherwise the row takes what the run's metadata row gives — or none,
-    // where that row drops the key. Including where the row was *published*
+    // Otherwise the row takes what the run's credit row gives — or none, where
+    // that row drops the key. Including where the row was *published*
     // earlier: the credit may have been held back then, by the arm below, on a
     // card whose picture was still open and different, so "published" is no
     // evidence that the column holds it. `creditMoves` is what keeps this from
@@ -253,9 +264,9 @@ function claimedMetadataKeys(claimed: string[]): string[] {
  * The object the selected metadata entries come to, before the credit rule and
  * before the claims.
  *
- * Its own function because it is the awkward half and `nextMetadata` now has
- * two decisions on top of it: the catch-all is replaced wholesale rather than
- * merged, and each per-key entry then decides its own key.
+ * Its own function because it is the awkward half and `nextMetadata` has two
+ * decisions on top of it: each per-key entry decides its own key, and a
+ * pre-ADR-0039 card's catch-all is replaced wholesale rather than merged.
  */
 function metadataFromEntries(
   left: Record<string, unknown>, entries: ProposedField[],
@@ -275,7 +286,17 @@ function metadataFromEntries(
     // Absent and null are one case here, not two: `computeChangeSet` treats
     // both as absent, so a diff reporting either means the key is going.
     if (entry.new === undefined || entry.new === null) delete next[key];
-    else next[key] = entry.new;
+    // `defineProperty` rather than assignment, because the key comes from the
+    // source. A metadata key literally named `__proto__` hits the accessor on
+    // `Object.prototype` instead of creating a property: the value would land
+    // on this object's prototype, `JSON.stringify` would not see it, and the
+    // column would be written without the fact a curator had just published —
+    // success reported, nothing stored. Only reachable since every source key
+    // became an entry of its own (ADR-0039); before that this loop saw the two
+    // major keys and whatever a curator had claimed.
+    else Object.defineProperty(next, key, {
+      value: entry.new, enumerable: true, writable: true, configurable: true,
+    });
   }
   return next;
 }
@@ -284,17 +305,20 @@ function metadataFromEntries(
  * The metadata to store, or null when the proposal says nothing about it.
  *
  * The one field that cannot be assigned from what the changeset carries.
- * `computeChangeSet` reports metadata in parts: the keys a product decision
- * hangs on individually, a key the curator claimed individually, and one
- * catch-all for the rest — and it strips the individually reported keys out of
- * *both sides* before diffing the rest. So the catch-all's `new` is not the
- * source's object, it is the source's object minus those keys, and assigning it
- * would delete every one of them.
+ * `computeChangeSet` reports metadata one key at a time (ADR-0039), so for
+ * anything a run files from here this starts at what is stored and lets each
+ * `metadata.<key>` entry decide its own key.
  *
- * What the catch-all does carry is its `old`: the stored object minus the same
- * stripped keys. A stored key its `old` does not mention is therefore a key the
- * catch-all was not speaking for, and is kept; everything it does speak for is
- * replaced by its `new` wholesale. Then each per-key entry decides its own key.
+ * The catch-all branch below is **live, not dead**, and ADR-0039 decision 4 is
+ * why: a changeset is what happened and is never rewritten, so a card filed
+ * before the change keeps its shape until a run re-proposes. Such a card
+ * reported metadata in parts and stripped the individually reported keys out of
+ * *both sides* before diffing the rest, so its catch-all's `new` is not the
+ * source's object but the source's object minus those keys, and assigning it
+ * would delete every one of them. What it does carry is its `old`: the stored
+ * object minus the same stripped keys. A stored key its `old` does not mention
+ * is therefore a key the catch-all was not speaking for, and is kept; everything
+ * it does speak for is replaced by its `new` wholesale.
  *
  * Replacing wholesale rather than merging with `||` is the point of the whole
  * arrangement. A key the source dropped is recorded only by its absence from
@@ -304,10 +328,10 @@ function metadataFromEntries(
  * Last, whatever the curator claims per key is re-applied from what is stored,
  * mirroring the upsert's own re-application (`syncUtils.ts`) including its
  * condition: only where the stored row still carries the key, because a claim
- * whose key is gone falls straight through there too. The catch-all is what
- * makes this necessary — a claim made *after* the run swallowed the key into
- * the catch-all, so filtering claimed fields out of the proposal cannot reach
- * it, and publishing would quietly overwrite a curator's own link.
+ * whose key is gone falls straight through there too. A claim made *after* the
+ * run is what makes this necessary: the proposal was computed against a row
+ * nobody had claimed the key on, so filtering claimed fields out of it cannot
+ * reach the key, and publishing would quietly overwrite a curator's own link.
  */
 function nextMetadata(
   stored: unknown,
@@ -326,18 +350,19 @@ function nextMetadata(
   const left = (stored ?? {}) as Record<string, unknown>;
   const next = metadataFromEntries(left, entries);
 
-  // The credit, where and only where leaving it to the catch-all would make it
-  // describe a picture the row does not show (#722). `imageUrl` and `metadata`
-  // are two answerable rows, so publishing the picture alone used to leave the
-  // credit naming the *previous* photograph's author, and publishing the
-  // source's data alone credited a photographer for a picture nobody is shown.
+  // The credit, where and only where leaving it to the entries would make it
+  // describe a picture the row does not show (#722). The picture and the credit
+  // are two answerable rows, so publishing the picture alone would leave the
+  // credit naming the *previous* photograph's author.
   //
-  // Not a coupling of the two rows — the catch-all also carries the criteria
-  // and the region, which have nothing to do with the picture — and not a rule
-  // that fires on every call either: `creditPin` returns null wherever the
-  // run's credit is already the stored picture's, which is 1413 of the 1414
-  // cards holding a credit on this catalogue. There the catch-all decides, as
-  // it always did.
+  // The coupling of the two rows is `partnerOf`'s job and covers anything a run
+  // files since ADR-0039. What is left here are the shapes it does not reach: a
+  // picture landing while the run's credit entry drops the key, and a card filed
+  // earlier, whose credit rode inside a catch-all that also carried the criteria
+  // and the region and could therefore be refused on its own. Not a rule that
+  // fires on every call either: `creditPin` returns null wherever the run's
+  // credit is already the stored picture's, which is 1413 of the 1414 cards
+  // holding a credit on this catalogue.
   if (pin !== null) {
     if (pin.value === undefined || pin.value === null) delete next[CREDIT_KEY];
     else next[CREDIT_KEY] = pin.value;

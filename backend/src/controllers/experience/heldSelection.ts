@@ -97,7 +97,8 @@ export function heldPartRows(
 }
 
 /**
- * A part's picture and the credit that belongs to it, each naming the other.
+ * A picture and the credit that belongs to it, each naming the other, at either
+ * level.
  *
  * On a part the two are separate writable fields (`publishHeldParts.ts`), so
  * without this an answer could take a work's new photograph and leave the old
@@ -140,10 +141,11 @@ function partnerOf(field: string, kind: ContentKind | null): string | undefined 
  * and null are one case on both halves, since a client echoing a JSON record
  * back drops the keys whose value was null.
  *
- * A part's field is named by its partner too, which is what makes a picture and
- * its credit one answer at both endpoints. The widening lives here rather than
- * in each of them: a coupling only one endpoint honoured would let a refusal
- * separate what a publication cannot.
+ * A field is named by its partner too — an object's as well as a part's, since
+ * ADR-0039 gave the object's credit a name of its own — which is what makes a
+ * picture and its credit one answer at both **endpoints**, publish and decline.
+ * The widening lives here rather than in each of them: a coupling only one
+ * endpoint honoured would let a refusal separate what a publication cannot.
  */
 function names(selection: HeldSelection, row: HeldRowRef): boolean {
   const partner = partnerOf(row.field, row.kind);
@@ -159,12 +161,14 @@ function names(selection: HeldSelection, row: HeldRowRef): boolean {
 /**
  * Whether a row the caller named was reached, its partner counting as itself.
  *
- * The matcher above widens across `PAIRED_WITH`, so the accounting has to widen
- * with it: a caller naming a work's picture *and* its credit where the run held
- * only one of them reaches one row, and an unmatched entry refuses the whole
- * call. Exported so publishing's own loop asks the same question — two copies
- * of this drifting from the matcher is precisely the shape that produced the
- * defect.
+ * The matcher above widens across `partnerOf`, so the accounting has to widen
+ * with it: a caller naming a picture *and* its credit where the run held only
+ * one of them reaches one row, and an unmatched entry refuses the whole call.
+ * An object's pair as well as a work's, since ADR-0039 — and that is not
+ * hypothetical: publishing's own object-level accounting was a bare field-name
+ * test until this branch, so the two endpoints disagreed about exactly that
+ * body. Exported so publishing's loop asks this question rather than keeping a
+ * second copy, which is precisely the shape that produced the defect.
  */
 export function namedRowReached(reached: ReadonlySet<string>, row: HeldRowRef): boolean {
   if (reached.has(heldRowKey(row))) return true;
