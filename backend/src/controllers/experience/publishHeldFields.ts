@@ -18,7 +18,7 @@ import type { ContentsByKind } from '../../services/sync/types.js';
 import {
   answeredHeldRows, heldRowKey, type HeldAnswer, type HeldRowRef,
 } from './heldDecisions.js';
-import { selectedFilter, type HeldSelection } from './heldSelection.js';
+import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelection.js';
 import type { PoolClient } from 'pg';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
@@ -109,13 +109,17 @@ function assignmentFor(field: string, value: unknown, bind: (value: unknown) => 
 /**
  * The key a hosted picture's credit lives under, and how to read it.
  *
- * `computeChangeSet` reports the credit inside the `metadata` catch-all rather
- * than as a field of its own — `CURATED_KEY_BY_FIELD` names only `metadata`,
- * `metadata.inDanger` and `metadata.dateInscribed` — so it has no answer cell
- * of its own on the card, and the rule that keeps it with its picture has to be
- * written here rather than as a coupling of two selections.
+ * Since ADR-0039 a run reports the credit as `metadata.imageCredit`, a fact with
+ * its own answer cell, and the rule that keeps it with its picture is a coupling
+ * of two selections in `heldSelection.ts` — at both levels, as it always was for
+ * a work. What is left here is the column rule for the shapes that coupling does
+ * not reach: a picture landing where the run offers no credit for it, and a card
+ * filed before ADR-0039, whose credit rides inside a `metadata` catch-all with
+ * no name of its own and can therefore still be refused while the picture lands.
  */
 const CREDIT_KEY = 'imageCredit';
+/** The changeset name for the object's credit, now that every key has one. */
+const CREDIT_FIELD = `${METADATA_CLAIM_PREFIX}${CREDIT_KEY}`;
 
 function creditOf(metadata: unknown): unknown {
   const bag = metadata as Record<string, unknown> | null;
@@ -168,17 +172,52 @@ type CreditPin = { value: unknown } | null;
  * ordinary case: the row already shows what the run offers, so the credit beside
  * it belongs to what a reader is looking at.
  */
+/**
+ * What the run proposes for the object's credit, and what stands against it.
+ *
+ * Two record shapes answer to this, and both are live at once. A run since the
+ * per-key change records the credit as its own `metadata.imageCredit` entry — a
+ * fact with its own two buttons. A card filed before it carries the credit
+ * inside the `metadata` catch-all, with no name of its own, and those cards keep
+ * standing until a run re-proposes: a changeset is what happened and is never
+ * rewritten (`heldDecisions.ts`). So the rule reads the named entry first and
+ * falls back to the catch-all's key.
+ *
+ * The answer is fetched against whichever entry supplied the value, for the
+ * reason the pin exists at all: a refused proposal must not steer what the
+ * column may come to hold.
+ */
+interface CreditProposal {
+  value: unknown;
+  answer?: HeldAnswer;
+}
+
+function creditProposal(
+  held: ReadonlyArray<ProposedField>, answered: ReadonlyMap<string, HeldAnswer>,
+): CreditProposal | undefined {
+  const own = held.find(field => field.field === CREDIT_FIELD);
+  if (own !== undefined) {
+    return { value: own.new, answer: answered.get(heldRowKey(objectRow(CREDIT_FIELD))) };
+  }
+  const catchAll = held.find(field => field.field === 'metadata');
+  if (catchAll === undefined) return undefined;
+  return {
+    value: creditOf(catchAll.new),
+    answer: answered.get(heldRowKey(objectRow('metadata'))),
+  };
+}
+
 function creditPin(
-  proposal: { picture?: ProposedField; metadata?: ProposedField; metadataAnswer?: HeldAnswer },
+  proposal: { picture?: ProposedField; credit?: CreditProposal },
   stored: { imageUrl: unknown; credit: unknown },
   writesPicture: boolean,
 ): CreditPin {
-  // A run that proposes no `metadata` row at all is asserting the metadata that
-  // is stored, credit included: `computeChangeSet` emits the catch-all only
-  // where the two stripped objects differ. So there is nothing to overrule —
-  // reading the absent row as "the run offers no credit" would delete one the
-  // run is still standing behind, on any call that publishes the picture.
-  if (proposal.metadata === undefined) return null;
+  // A run that proposes nothing about the credit is asserting the one that is
+  // stored: a key is reported only where it differs. So there is nothing to
+  // overrule — reading the silence as "the run offers no credit" would delete
+  // one the run is still standing behind, on any call that publishes the
+  // picture.
+  if (proposal.credit === undefined) return null;
 
   if (writesPicture) {
     // Refused, and the picture is landing anyway — two clicks a curator can
@@ -188,14 +227,14 @@ function creditPin(
     // because it names the photographer of a picture nobody will see any more.
     // So the row shows the new photograph with nobody credited, which is the
     // honest outcome and which `picture-with-nobody-credited` reports.
-    if (proposal.metadataAnswer === 'refused') return { value: undefined };
+    if (proposal.credit.answer === 'refused') return { value: undefined };
     // Otherwise the row takes what the run's metadata row gives — or none,
     // where that row drops the key. Including where the row was *published*
     // earlier: the credit may have been held back then, by the arm below, on a
     // card whose picture was still open and different, so "published" is no
     // evidence that the column holds it. `creditMoves` is what keeps this from
     // writing where it already does.
-    return { value: creditOf(proposal.metadata.new) };
+    return { value: proposal.credit.value };
   }
 
   if (proposal.picture === undefined) return null;
@@ -453,8 +492,15 @@ export async function heldFieldWrites(
     .filter(field => !selected.includes(field))
     .map(field => objectRow(field.field));
   if (selection) {
-    const reached = new Set(selected.map(field => field.field));
-    writes.unmatched = (selection.fields ?? []).filter(field => !reached.has(field));
+    // Through `namedRowReached`, not a bare field-name test. The matcher widens
+    // an object's selection across the picture/credit pairing now, so accounting
+    // that did not would refuse a body `decline-held` accepts: naming both on a
+    // card that holds only the picture reaches one row, which is a match and not
+    // an unmatched name. Two copies of this question drifting apart is the shape
+    // that produced the defect the export exists to prevent.
+    const reached = new Set(selected.map(field => heldRowKey(objectRow(field.field))));
+    writes.unmatched = (selection.fields ?? [])
+      .filter(field => !namedRowReached(reached, objectRow(field)));
   }
 
   // A claim made since the run is an answer someone already gave about whose
@@ -483,11 +529,10 @@ export async function heldFieldWrites(
   const pin = creditPin(
     {
       picture: held.find(field => field.field === 'imageUrl'),
-      metadata: held.find(field => field.field === 'metadata'),
       // Read off the *whole* held set, then asked what answer stands against
       // it: the row may have been answered already, and a refused proposal
       // must not steer a rule about what the column may hold.
-      metadataAnswer: writes.answered.get(heldRowKey(objectRow('metadata'))),
+      credit: creditProposal(held, writes.answered),
     },
     { imageUrl: before.image_url, credit: creditOf(before.metadata) },
     writes.applied.includes('imageUrl'),
