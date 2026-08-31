@@ -84,8 +84,16 @@ psql_admin() {
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres "$@"
 }
 
-# Check if database exists
+# Check if database exists.
+#
+# The name is an operator's argument -- db-cli.sh hands `use`, `drop` and
+# `create` theirs straight from the command line -- and it lands inside a SQL
+# string literal, so the quotes in it are doubled first, the way cmd_make_admin
+# already does with an email. Every caller is covered by escaping here rather
+# than by each of them checking: the runner's own stricter rule about what a
+# database name may look like is a property of the runner, not of this lookup.
 db_exists() {
     local db_name="$1"
-    psql_admin -tAc "SELECT 1 FROM pg_database WHERE datname='$db_name'" 2>/dev/null | grep -q 1
+    local escaped="${db_name//\'/\'\'}"
+    psql_admin -tAc "SELECT 1 FROM pg_database WHERE datname='$escaped'" 2>/dev/null | grep -q 1
 }

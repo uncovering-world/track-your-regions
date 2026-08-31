@@ -139,8 +139,11 @@ cmd_create() {
         exit 1
     fi
 
-    # Create database
-    psql_admin -c "CREATE DATABASE \"$db_name\"" || {
+    # Create database. The name is an operator's argument going into a quoted
+    # identifier, so any quote in it is doubled first -- the same care db_exists
+    # and cmd_make_admin take with a string literal.
+    local ident="${db_name//\"/\"\"}"
+    psql_admin -c "CREATE DATABASE \"$ident\"" || {
         echo -e "${RED}Error: Failed to create database.${NC}"
         exit 1
     }
@@ -256,10 +259,11 @@ cmd_drop() {
     fi
 
     # Terminate connections
-    psql_admin -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$db_name'" > /dev/null 2>&1 || true
+    local esc_name="${db_name//\'/\'\'}" ident="${db_name//\"/\"\"}"
+    psql_admin -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$esc_name'" > /dev/null 2>&1 || true
 
     # Drop database
-    psql_admin -c "DROP DATABASE \"$db_name\"" || {
+    psql_admin -c "DROP DATABASE \"$ident\"" || {
         echo -e "${RED}Error: Failed to drop database.${NC}"
         exit 1
     }
