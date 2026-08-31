@@ -111,6 +111,26 @@ describe('a held card about a part', () => {
     expect(screen.getAllByText(/Answered with its/)).toHaveLength(2);
   });
 
+  it('says on the object\u2019s own rows that a picture and its credit are one answer', () => {
+    // The pairing reaches the object since ADR-0039, and a refusal has no undo:
+    // four buttons that each answer both rows, with nothing saying so, is the
+    // screen misleading a curator about the one act it cannot take back. The
+    // object spells the picture `imageUrl`, not the column name a part uses,
+    // which is why the note mirrors `partnerOf` rather than keying on one name.
+    const withObjectPicture = held();
+    withObjectPicture.proposed = [
+      { field: 'imageUrl', old: 'https://old', new: 'https://new', held: true },
+      {
+        field: 'metadata.imageCredit', old: null,
+        new: { author: 'JUNG Mi-gyeong' }, held: true,
+      },
+    ];
+    renderCard(withObjectPicture);
+
+    expect(screen.getByText('Answered with its credit.')).toBeInTheDocument();
+    expect(screen.getByText('Answered with its picture.')).toBeInTheDocument();
+  });
+
   it('does not promise a credit answer where the run held no credit', () => {
     // The ordinary shape on a work, not a corner: `creditToWrite` returns nothing
     // for a changed picture whose new file the Commons batch did not come back

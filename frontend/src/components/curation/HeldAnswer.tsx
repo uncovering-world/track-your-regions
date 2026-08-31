@@ -8,11 +8,20 @@
  * *claims* it, a statement about whose value it is rather than about this value,
  * and one that outlives the question.
  *
- * So the answer sits in its own column, once per fact and spanning every row the
- * fact made — the shape the conflict card has had since #516, because it is the
- * same decision: two versions of one fact, and a person choosing between them.
- * A key inside the source's data is answered with the field it belongs to, never
- * on its own, which is what the span is for.
+ * So the answer sits in its own column, once per fact — the shape the conflict
+ * card has had since #516, because it is the same decision: two versions of one
+ * fact, and a person choosing between them. **A key inside the source's data is
+ * a fact** and carries its own two buttons (ADR-0039, which narrows ADR-0038
+ * decision 1 for exactly this): it used to be answered with the field it
+ * belonged to and never on its own, which is what folded a site's inscription
+ * criteria together with a picture credit nobody had checked.
+ *
+ * The cell still spans in two shapes, and both are this defect somewhere else:
+ * a card filed before ADR-0039, whose bare `metadata` entry splits into a row
+ * per key that all carry one field, kept alive because a changeset is never
+ * rewritten; and a language map, whose names share one answer for the same
+ * reason (#728). There `FactTable`'s `Answers all N.` is the only thing saying
+ * so.
  *
  * Neither button is a primary. The card's premise is that readers keep what they
  * can see until somebody says otherwise, and colouring one answer would make the
@@ -45,23 +54,36 @@ export function heldSelectionFor(subject: FactSubject, field: string): HeldSelec
 }
 
 /**
- * A work's picture and the credit that belongs to it, as the card has to say it.
+ * A picture and the credit that belongs to it, as the card has to say it.
  *
- * The server answers the two together — `heldSelection.ts`'s `PAIRED_WITH`
- * widens the match at both endpoints — but they are two changeset fields, and
- * `FactTable` draws one answer cell per field. So a work whose run held both
+ * The server answers the two together — `heldSelection.ts`'s `partnerOf` widens
+ * the match at both endpoints — but they are two changeset fields, and
+ * `FactTable` draws one answer cell per field. So a subject whose run held both
  * gets two cells and four buttons, any of which answers both rows. The card
  * says so under them rather than pretending they are independent: two buttons
  * under a promise they will not keep is the screen misleading a curator about
- * an act that has no undo.
+ * an act that has no undo, since a refusal settles that value for good.
+ *
+ * **Level-aware, because the server's rule is.** It was a work's rule only while
+ * the object's credit had no name of its own; since ADR-0039 the object has
+ * `metadata.imageCredit` as a fact and the pairing reaches it. The two levels
+ * spell the picture differently — `imageUrl` on the object, the column
+ * `image_url` on a part — so this mirrors `partnerOf` rather than keying on one
+ * name. Backend and frontend cannot import each other (#527), so the two are
+ * pinned by the same cases on both sides.
  *
  * Merging the two into one cell would be the other fix, and it would put a copy
  * of the server's pairing into the table's layout rule. This says it instead.
  */
-const PARTNER_NOTE: Record<string, { partner: string; note: string }> = {
-  image_url: { partner: 'metadata.imageCredit', note: 'Answered with its credit.' },
-  'metadata.imageCredit': { partner: 'image_url', note: 'Answered with its picture.' },
-};
+const CREDIT = 'metadata.imageCredit';
+const PICTURE_OF = { object: 'imageUrl', part: 'image_url' } as const;
+
+function pairingFor(field: string, isPart: boolean): { partner: string; note: string } | undefined {
+  const picture = PICTURE_OF[isPart ? 'part' : 'object'];
+  if (field === picture) return { partner: CREDIT, note: 'Answered with its credit.' };
+  if (field === CREDIT) return { partner: picture, note: 'Answered with its picture.' };
+  return undefined;
+}
 
 /**
  * The answer column's two buttons for one fact.
@@ -71,8 +93,9 @@ const PARTNER_NOTE: Record<string, { partner: string; note: string }> = {
  * since the gate first held this one — and settles the question for that value,
  * so a source that comes back with something different is heard again.
  *
- * The one exception to "the rest of the card" is a work's picture and its
- * credit, which either button answers together; the note under them says so —
+ * The one exception to "the rest of the card" is a picture and its credit — an
+ * object's as well as a work's, since ADR-0039 — which either button answers
+ * together; the note under them says so —
  * but only where the partner row is actually open. `heldFields` is what this
  * subject's proposal holds, and the note is drawn against it rather than
  * against the field's name alone: the server widens the selection only onto a
@@ -93,7 +116,7 @@ export function HeldAnswer({ subject, field, busy, heldFields, onPublish, onRefu
   onRefuse: (selection: HeldSelection) => void;
 }) {
   const selection = heldSelectionFor(subject, field);
-  const pairing = subject.part ? PARTNER_NOTE[field] : undefined;
+  const pairing = pairingFor(field, subject.part !== undefined);
   const partnerNote = pairing !== undefined && heldFields.includes(pairing.partner)
     ? pairing.note
     : undefined;
