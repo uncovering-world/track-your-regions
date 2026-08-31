@@ -535,7 +535,14 @@ describe('publishing a held proposal', () => {
     // below keeps the writer able to apply the rows earlier runs filed.
     expect(names).toEqual(expect.arrayContaining(
       ['name', 'nameLocal', 'description', 'shortDescription', 'category',
-        'location', 'countryCodes', 'countryNames', 'imageUrl', 'metadata']));
+        'location', 'countryCodes', 'countryNames', 'imageUrl']));
+    // Metadata arrives one key at a time, never as a catch-all: a key is a fact
+    // and a fact is answered on its own. So what has to be writable is each key
+    // by name, which is also the direction that catches a key the differ can
+    // propose and the writer cannot apply.
+    expect(names).toEqual(expect.arrayContaining(
+      ['metadata.inDanger', 'metadata.dateInscribed', 'metadata.visitors']));
+    expect(names).not.toContain('metadata');
     expect(names).not.toContain('tags');
 
     grantScope();

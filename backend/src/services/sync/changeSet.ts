@@ -82,12 +82,16 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
  * card read `totalArtworkSitelinks: 2363 → 2365`, and the next run raised the
  * same card again, for essentially every museum, for ever (#571).
  *
- * Held out of the diff on **both sides**, like the major keys and a per-key
- * claim above: a run that moved nothing else is `unchanged` and raises no card,
- * and a run that also changed something real shows a card carrying only the
- * something real. Both sides, because a stored key the catch-all's `old` does
- * not mention is a key the catch-all does not speak for, which is what keeps
- * `publishHeldFields.ts` from wiping the counter when a curator publishes.
+ * Held out of the diff on **both sides**: a run that moved nothing else is
+ * `unchanged` and raises no card, and a run that also changed something real
+ * shows a card carrying only the something real. Both sides, because a key held
+ * out on one only would still differ from the other and would still raise an
+ * entry of its own. On a card filed before ADR-0039, where these keys could ride
+ * in a shared payload, both sides mattered for a second reason:
+ * `publishHeldFields.ts` reads that payload's `old` as the list of keys the
+ * entry speaks for, so a counter named there was wiped back to the value the
+ * proposal was computed against the moment somebody published the field beside
+ * it.
  *
  * `syncUtils.ts` writes these keys past the gate for the same reason
  * `last_seen_at` goes past it, and the two halves have to agree. Ignored in the
@@ -176,6 +180,42 @@ interface RawDiff {
   old: unknown;
   new: unknown;
   significance: FieldSignificance;
+  /**
+   * Whether a claim protects this change, where the name alone cannot say.
+   *
+   * Every field but a metadata key answers this from `curated_fields` and
+   * `claimKeyFor`. A metadata key cannot: the upsert re-applies a per-key claim
+   * only while the stored row still carries that key (`experiences.metadata ?
+   * claimed.k` in `syncUtils.ts`), so an orphaned claim falls through and the
+   * source's value lands — filing it as a conflict would offer a curator
+   * "accept" on a value already applied. And a claim on the whole column
+   * protects every key under it, which no per-key name matches. Both are facts
+   * about the stored row, so the answer comes from `metadataChanges`, which has
+   * it, rather than from a name lookup that does not.
+   *
+   * It answers **protection at the diff, and nothing about the name**. The
+   * per-key names a whole-column claim's entries now carry are ones no reader
+   * resolves back to it: the queue, `accept-source` and `decline-source` look a
+   * conflict's claim up through `claimKeyFor`, which sends `metadata.website` to
+   * itself, and `['metadata']` does not contain that — so such a conflict is
+   * recorded, protected, and asked nowhere, where the same claim used to raise
+   * one entry named `metadata` that the map resolves.
+   *
+   * **Publishing is the fourth reader and loses more than the asking.** Its
+   * skip list is the same lookup (`publishHeldFields.ts`,
+   * `claimed.includes(claimKeyFor(field.field))`), so per-key entries under a
+   * whole-column claim are not skipped, land in `writable`, and are written key
+   * by key over a column the claim covers; the claimed-key re-application there
+   * filters on the same prefix and restores nothing. Reachable only for a claim
+   * made *after* the run, since a claim standing at diff time holds every key.
+   * So `syncUtils.ts` still keeps the column whole on `curated_fields ?
+   * 'metadata'` while publishing no longer does — which is why this flag's
+   * answer stops at the diff.
+   *
+   * Nothing writes a bare `metadata` claim today. Tracked as #729 rather than
+   * fixed in a change about something else.
+   */
+  protectedByClaim?: boolean;
 }
 
 function isAbsent(value: unknown): boolean {
@@ -242,13 +282,27 @@ function fieldSignificance(field: string): FieldSignificance {
 /**
  * Keys a curator claimed individually, as bare key names.
  *
- * A sync-owned key drops out for the same reason a major one does: it is not
- * reported through the catch-all, so it cannot be reported as a claim on the
- * catch-all either. The upsert's re-application of claimed keys carries the
- * identical exclusion, or one of the two would report a conflict over a value
- * the other had just written. Unreachable today — `editExperience` claims only
- * `website`, `wikipediaUrl` and `imageCredit` — but the two sides should agree
- * by construction rather than by what the edit surface happens to offer.
+ * Two kinds drop out, for two different reasons — the two filters below carry
+ * one each, and this is the only sentence recording either. A **sync-owned** key
+ * raises no entry at all (`SYNC_OWNED_METADATA_KEYS`), so there is no entry for
+ * a claim to attach to. A **major** key raises one every time it differs, in its
+ * own loop below, and is excluded here because carrying it a second time would
+ * push the same key twice — once as major, once as minor.
+ *
+ * The upsert's re-application of claimed keys carries the **sync-owned** half of
+ * that exclusion and only it (`claimed.k <> ALL($16)`, where `$16` is
+ * `SYNC_OWNED_METADATA_KEYS`; the SQL's own comment scopes itself to a claimed
+ * counter). Without it one of the two would report a conflict over a value the
+ * other had just written.
+ *
+ * The major half diverges, in the opposite direction and unreachably: a claim on
+ * `metadata.inDanger` is dropped here, reported by the major loop with no
+ * `protectedByClaim`, and checked by `claimKeyFor` against a whole-column claim
+ * — so the changeset would call the source's value applied while the upsert
+ * re-applied the curator's. Nothing writes such a claim (`editExperience` offers
+ * `website`, `wikipediaUrl` and `imageCredit`), so it is a shape to know about
+ * rather than a defect to see — tracked as #727 rather than fixed in a change
+ * about something else.
  */
 function claimedMetadataKeys(curatedFields: string[]): string[] {
   return curatedFields
@@ -259,16 +313,38 @@ function claimedMetadataKeys(curatedFields: string[]): string[] {
 }
 
 /**
- * Metadata is diffed in three parts: the keys a product decision hangs on
- * (a site entering the danger list) are reported individually and count as
- * major, a key a curator claimed individually is also reported on its own so
- * a claim on it can be told apart from the catch-all, and everything else
- * collapses into one minor entry.
+ * One side's value for a metadata key, absent where the side does not own it.
  *
- * A fourth group is reported nowhere: the keys the run computes about its own
+ * `source[key]` is not that question. A key named `__proto__` reaches the
+ * accessor on `Object.prototype`, so a side that does not carry it answers with
+ * a prototype object rather than with nothing: the diff then reports
+ * `old: Object.prototype` — `{}` once it is stored — for a key the row never
+ * had, and the comparison that decides whether to report it at all is made
+ * against the same wrong value. The keys come from the source, so this is the
+ * read-side half of the rule `publishHeldFields.ts` keeps on the write side.
+ */
+function ownValue(source: Record<string, unknown>, key: string): unknown {
+  return Object.hasOwn(source, key) ? source[key] : undefined;
+}
+
+/**
+ * Metadata is diffed **one key at a time**: every key that differs is reported
+ * under its own name, `metadata.<key>` (ADR-0039). What the three loops below
+ * still decide is significance and protection, not shape — a key a product
+ * decision hangs on (a site entering the danger list) counts as major, a key a
+ * curator claimed individually is checked against that claim, and the rest are
+ * minor.
+ *
+ * It used to be three shapes, with everything unclaimed collapsing into one
+ * catch-all entry — and that made the card fold those facts into one answer,
+ * because an answer is addressed to an entry. Which bucket a key landed in was
+ * decided here and was invisible to the person being asked.
+ *
+ * One group is reported nowhere: the keys the run computes about its own
  * pass. They are not a question, so they raise no card — see
  * `SYNC_OWNED_METADATA_KEYS`.
  */
+
 function metadataChanges(
   before: Record<string, unknown> | null,
   incoming: Record<string, unknown> | null,
@@ -279,15 +355,21 @@ function metadataChanges(
   const right = incoming ?? {};
 
   for (const key of MAJOR_METADATA_KEYS) {
-    if (!jsonEquals(left[key], right[key])) {
-      changes.push({ field: `${METADATA_CLAIM_PREFIX}${key}`, old: left[key], new: right[key], significance: 'major' });
+    if (!jsonEquals(ownValue(left, key), ownValue(right, key))) {
+      changes.push({
+        field: `${METADATA_CLAIM_PREFIX}${key}`,
+        old: ownValue(left, key),
+        new: ownValue(right, key),
+        significance: 'major',
+      });
     }
   }
 
-  // A key the curator claimed is reported on its own, so the queue can name it
-  // and the upsert's per-key guard (#488) has something to correspond to. Left
-  // inside the catch-all it would be invisible: one 'metadata' diff carrying
-  // both the key the run kept and the keys it applied.
+  // A claimed key is checked against its claim here rather than left to the
+  // generic lookup below, which would ask a whole-column question of a per-key
+  // name (#488). Since ADR-0039 every key is reported on its own regardless;
+  // what this loop still decides is that the claim is honoured, and on which
+  // condition.
   //
   // The filter mirrors the guard's own condition, not just its key: the SQL
   // only re-applies a claimed key when the stored row still carries it
@@ -302,30 +384,48 @@ function metadataChanges(
   // orphaned claim — but the two sides should agree by construction.
   const claimed = claimedMetadataKeys(curatedFields).filter(key => Object.hasOwn(left, key));
   for (const key of claimed) {
-    if (!jsonEquals(left[key], right[key])) {
-      changes.push({ field: `${METADATA_CLAIM_PREFIX}${key}`, old: left[key], new: right[key], significance: 'minor' });
+    if (!jsonEquals(ownValue(left, key), ownValue(right, key))) {
+      changes.push({
+        field: `${METADATA_CLAIM_PREFIX}${key}`,
+        old: ownValue(left, key),
+        new: ownValue(right, key),
+        significance: 'minor',
+      });
     }
   }
 
   const ignoredKeys = [...MAJOR_METADATA_KEYS, ...SYNC_OWNED_METADATA_KEYS, ...claimed];
-  const withoutReportedKeys = (source: Record<string, unknown>) => {
-    const copy = { ...source };
-    for (const key of ignoredKeys) delete copy[key];
-    return copy;
-  };
-
-  // Both sides stripped of what this entry does not speak for — reported on its
-  // own above, major or individually claimed, or reported nowhere because the
-  // run owns it — so the payload matches the label: a key claimed
-  // and kept has already had its say in a conflict row above, and carrying
-  // its value here too would show a curator that value inside a row marked
-  // applied, right next to the row saying it was refused (#488, one layer in:
-  // the field was already reported in the right bucket; this is what that
-  // bucket's own row says happened).
-  const strippedLeft = withoutReportedKeys(left);
-  const strippedRight = withoutReportedKeys(right);
-  if (!jsonEquals(strippedLeft, strippedRight)) {
-    changes.push({ field: 'metadata', old: strippedLeft, new: strippedRight, significance: 'minor' });
+  // Everything else, one entry per key, for the same reason the two groups above
+  // get one: **a curator answers a fact, and a key is a fact.** These used to
+  // collapse into a single `metadata` entry, which made the card fold them into
+  // one answer — on 1227 of the 1484 held cards on the development catalogue,
+  // where a run proposes inscription criteria and a picture credit together and
+  // taking the criteria meant taking the credit with them. Which bucket a key
+  // landed in was a storage decision (this function), invisible to the person
+  // being asked: `metadata.inDanger` had its own answer only because #600 gave it
+  // its own entry. Now every key does.
+  //
+  // The stripping the catch-all needed goes with it. Its payload had to be
+  // trimmed of the keys reported above, or a curator would read a claimed value
+  // inside a row marked applied beside the row saying it was refused (#488); with
+  // one key per entry there is no shared payload to disagree with itself.
+  // A claim on the whole column protects every key under it, which no per-key
+  // name matches; and a per-key claim the stored row can no longer honour
+  // protects nothing. Neither is knowable from a field name, so this decides it
+  // — see `RawDiff.protectedByClaim`. The keys reported above are gone from this
+  // loop, so what remains is protected only by a whole-column claim.
+  const wholeColumnClaimed = curatedFields.includes('metadata');
+  const reported = new Set(ignoredKeys);
+  for (const key of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
+    if (reported.has(key)) continue;
+    if (jsonEquals(ownValue(left, key), ownValue(right, key))) continue;
+    changes.push({
+      field: `${METADATA_CLAIM_PREFIX}${key}`,
+      old: ownValue(left, key),
+      new: ownValue(right, key),
+      significance: 'minor',
+      protectedByClaim: wholeColumnClaimed,
+    });
   }
 
   return changes;
@@ -425,14 +525,24 @@ export function computeChangeSet(
   for (const diff of collectDifferences(before, incoming, curatedFields)) {
     // A claim key is not always a column: 'metadata.website' is claimed under
     // that literal name (#488), which is what `claimKeyFor`'s fallback is for.
-    const isProtected = curated.has(claimKeyFor(diff.field));
+    const isProtected = diff.protectedByClaim ?? curated.has(claimKeyFor(diff.field));
     // The claim wins where both are true, and the upsert's `claim OR held` guard
     // is indifferent — it keeps the stored value either way. The claim is the
     // narrower and separately answerable reason: `accept-source` owns it, and
     // publishing deliberately leaves a claimed field alone, so filing it as held
     // would offer a curator their own value back as though a source had sent it.
+    // Named field by field rather than spread: `protectedByClaim` is how
+    // `metadataChanges` answers a question a field name cannot, and it is nobody
+    // else's. Spread, it was stored in `changed_fields` on every per-key metadata
+    // entry — an internal flag in provenance that is never deleted, and on an API
+    // shape `FieldChange` does not declare. Listing what a reported change is
+    // keeps the next internal field off the wire too, which a destructure would
+    // not.
     const change: FieldChange = {
-      ...diff,
+      field: diff.field,
+      old: diff.old,
+      new: diff.new,
+      significance: diff.significance,
       curatedConflict: isProtected,
       held: !isProtected && held,
     };
