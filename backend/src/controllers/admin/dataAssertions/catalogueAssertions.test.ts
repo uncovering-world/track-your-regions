@@ -332,12 +332,33 @@ describe('a picture with nobody credited', () => {
     })).not.toContain('waiting');
   });
 
+  it('finds a held credit in either record shape', () => {
+    // The object arm used to test for an `imageCredit` key inside a payload,
+    // which was the catch-all's shape. Since ADR-0039 the credit is an entry of
+    // its own and its value *is* the credit, so that test answers false for
+    // every card a run files from here -- measured against the live catalogue
+    // mid-transition, 199 rows would still have said "waiting" and 1315 would
+    // have flipped to "a sync run has to fetch one", which is the other of the
+    // two sentences this check exists to tell apart.
+    expect(sql).toContain("f->>'field' = 'metadata.imageCredit'");
+    expect(sql).toContain("f->>'field' = 'metadata' AND f->'new' ? 'imageCredit'");
+    // And that the entry carries a credit, not merely its name. A run that
+    // *removes* one files an entry under the same name with no new value -- the
+    // shape `creditPin`'s remaining live arm exists for -- and the older test
+    // asked this implicitly by looking for the key. Without it the report says
+    // "its author fetched and waiting on a curator" over a row where nobody is
+    // on offer, which is the same confusion in the other direction.
+    expect(sql).toContain("jsonb_typeof(f->'new') = 'object'");
+  });
+
   it('stops saying "waiting" only for a credit a curator refused, not for one they published', () => {
     // The one reader that deliberately does not ask the queue's question (#722).
-    // Publishing the object's `metadata` row while its picture is still open and
-    // different withholds the run's credit on purpose (`creditPin`: a prior
-    // publication is not evidence the column holds it), and publishing the
-    // picture afterwards finishes it — so a *published* credit is still one click
+    // On a card filed before ADR-0039, publishing the object's source-data row
+    // while its picture is still open and different withholds the run's credit
+    // on purpose (`creditPin`: a prior publication is not evidence the column
+    // holds it), and publishing the picture afterwards finishes it. Since
+    // ADR-0039 the credit is its own row and `partnerOf` couples it to the
+    // picture, so the two move together and the sequence needs an older card — so a *published* credit is still one click
     // from being written, and reading it as settled sends an admin to find a
     // photographer the queue could have named. Probed live: with a `published`
     // answer recorded against Ancient City of Damascus the answered predicate

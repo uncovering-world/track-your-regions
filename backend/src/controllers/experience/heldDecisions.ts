@@ -96,9 +96,9 @@ export function heldFieldAnsweredSql(experience: string, entry = 'f'): string {
  * The same question narrowed to a **refusal**, for the one reader that needs it.
  *
  * Answered and refused are the same thing to the queue — either way the row has
- * left the card — but not to `picture-with-nobody-credited`. Publishing the
- * object's `metadata` row on a card whose picture is still open and different
- * deliberately withholds the run's credit (`publishHeldFields.ts`, `creditPin`:
+ * left the card — but not to `picture-with-nobody-credited`. On a card filed
+ * before ADR-0039, publishing the object's source-data row while its picture is
+ * still open and different deliberately withholds the run's credit (`publishHeldFields.ts`, `creditPin`:
  * "a prior publication is deliberately not a fourth shape"), and publishing the
  * picture afterwards finishes what that call had to leave. So a *published*
  * credit may still be waiting on a curator, and reading it as settled would

@@ -309,7 +309,13 @@ Its two halves got there differently, and the line says which a row is. On the
 objects the author is already known: 1414 of the 1590 have a `held` change
 naming `imageCredit` waiting in the curation queue, so a run fetched the
 photographer, the gate refused to write it unread, and the page has been showing
-the picture ever since — publishing that change names them. On the works nothing
+the picture ever since — publishing that change names them. The arm reads **both
+record shapes**, because both are live: since ADR-0039 the credit is an entry of
+its own (`metadata.imageCredit`, whose value is the credit), and a card filed
+before it carries the credit as a key inside the `metadata` catch-all's payload.
+Asking only the older shape would answer "go and fetch one" for every card a run
+files from here — measured mid-transition on the development catalogue, 1315 of
+the 1514 it reports. On the works nothing
 has fetched one at all: `treasureWriter` writes a work's credit straight into
 its row, and a museum run is what writes these. The one case where a work's credit
 *is* waiting is a held picture: since ADR-0037 the treasures upsert holds a visible
@@ -324,15 +330,18 @@ Both arms ask for a held credit the curator has not **refused** since #722. A
 refused credit is not waiting on anybody: the curator has said no to that value,
 the queue has dropped the row, and nothing will come round to write it — so the
 line has to stop saying "publish what is waiting" and let the row be reported as
-the credit-less picture it is. The one that reaches a reader arrives this way:
-refuse an object's source data and then publish its held picture, and
-`picture-with-nobody-credited` is what names it.
+the credit-less picture it is. The one that reaches a reader arrives this way,
+and **only on a card filed before ADR-0039**: refuse an object's source data and
+then publish its held picture, and `picture-with-nobody-credited` is what names
+it. On anything a run files from here the combination is unreachable — where the
+run holds both, `partnerOf` refuses the picture along with the credit; where it
+holds the credit alone there is no picture row to publish.
 
 Refused and not merely *answered*, which is where this parts company with
 `danger-flag-disagrees-with-its-tag` — that one excuses a row on any answer,
 because a published flag is a flag that landed. A published credit is not. On a
-card whose picture is still open and offers a different file, publishing the
-source-data row deliberately withholds the run's credit — the stored one names a
+card **filed before ADR-0039** whose picture is still open and offers a different
+file, publishing the source-data row deliberately withholds the run's credit — the stored one names a
 photograph nobody will see, and the run's may not be written under a picture the
 row does not yet show — and publishing the picture afterwards finishes what that
 call had to leave (`publishHeldFields.ts`, `creditPin`). So the credit really is

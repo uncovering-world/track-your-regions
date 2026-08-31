@@ -410,9 +410,11 @@ constant, because a rule the diff and the write disagreed about is worse than ei
 
 - **The diff leaves them out, on both sides.** A run that moved nothing else is `unchanged` and
   raises no card; a card a real change does raise carries only the real change. Both sides,
-  because `publishHeldFields.ts` reads the catch-all's `old` as the list of keys that entry
-  speaks for — a counter named there would be wiped back to the value the proposal was computed
-  against the moment somebody published the field beside it.
+  because a key held out on one side only would still differ and still raise an entry of its own
+  (ADR-0039). On a card filed before that, where the keys shared one catch-all payload, both sides
+  mattered for a second reason: `publishHeldFields.ts` reads that payload's `old` as the list of
+  keys the entry speaks for, so a counter named there was wiped back to the value the proposal was
+  computed against the moment somebody published the field beside it.
 - **The upsert writes them past the gate and past a `metadata` claim**, the way `last_seen_at`
   goes past both. Ignoring them in the diff alone would have been worse than the bug: the counter
   would freeze at whatever it read when the gate went up, with nothing left to report it and
@@ -833,7 +835,7 @@ path needs.
 
 **Three fields the importer asked for wrongly, and a dry run that found them.** Naming the fields in `select` turned the first into a 400 that said `Unknown field: criteria` — that field does not exist in `whc001` and never did, so `buildUnescoTags` produced no criterion tag for any site: measured on the live database, **0 of 1272**. The real name is `criteria_txt` (`(i)(ii)(iii)(iv)` for the Bamiyan Valley), present on 1256 of 1273 records. The other two were found by previewing the fix: `danger` and `transboundary` are compared against the number `1`, and the portal sends the **strings** `"True"` / `"False"` — from either endpoint. So `metadata.inDanger` was false for all 1272 sites, 58 of which are listed in danger, and not one of the 51 transboundary sites carried its tag. The `in_danger` tag survived only because `danger_list` is a string and was tested beside the flag. `isSet` now reads a yes in any of the shapes a portal might send it, rather than the one shape seen today.
 
-**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata` on 1255 (the criteria string), `metadata.inDanger` on 58, `shortDescription` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false for all three categories in the seed (`db/init/01-schema.sql`), and gating one is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string — is what still needs a curator; the criterion tags filed beside it are no longer a question and no longer a row on the card (#570), though publishing such a card still writes them.
+**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata.criteria` on 1255 (the criteria string), `metadata.inDanger` on 58, `shortDescription` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false for all three categories in the seed (`db/init/01-schema.sql`), and gating one is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string — is what still needs a curator; the criterion tags filed beside it are no longer a question and no longer a row on the card (#570), though publishing such a card still writes them.
 
 **A site in danger, and since when.** The World Heritage list carries 58 sites inscribed on the [List of World Heritage in Danger](https://whc.unesco.org/en/danger/), and the catalogue stores that fact **twice**: as the `in_danger` tag and as `metadata.inDanger`, which is the field every badge keys on. The two came from different halves of the source — the tag from either of `danger` and `danger_list`, the flag from `danger` alone — so the reading bug above left the tag right on 58 rows and the flag false on all 1272, and the badge three surfaces draw appeared for nobody ([#600](https://github.com/uncovering-world/track-your-regions/issues/600)). Both writers ask one predicate now (`isInDanger`), so a portal that empties either field cannot end the answer in silence, and a delisted site is still not badged: the field's vocabulary is Y/N and the parser reads the answer rather than the field's presence — Belize Barrier Reef Reserve System, off the list since 2018, answers `danger: "False"` with `danger_list: null` (measured 2026-08-27, when the two fields agreed exactly on 58 of 1273 records).
 
@@ -851,7 +853,7 @@ Both sources hand the credit over once asked. **UNESCO** carries `main_image_aut
 
 **A credit belongs to a picture, and to whoever owns it.** A run reuses a stored credit only while the row still shows the same file — a source whose `wdt:P18` changes while the Commons batch for the new file fails would otherwise write the new photograph and the previous photographer's name in one statement. And a run writes no credit at all for a picture a curator claimed, because the upsert keeps their `image_url` and would set the source's photographer beside it. Both rules live in `creditToWrite`, and **all three collectors go through it** — UNESCO included, which matters most there: it carries more of the catalogue's photographs than any other source, and its credit comes from the record rather than from a fetch, so an unconditional write would have printed the portal's photographer under a picture a curator had chosen. A record naming an author but carrying no picture stores no credit at all.
 
-**The admin "fix missing images" action credits what it puts there.** It writes the picture and its credit in one `UPDATE`, omits the key where Commons could not answer — a stored `null` is what the next run's catch-all diff reports as a change, for the removal of a nothing — and **skips a row whose `image_url` a curator claims**, so clearing a wrong photograph is not undone by the next click. Rows kept that way are counted and named separately from "no image found", which would blame the source for a person's decision.
+**The admin "fix missing images" action credits what it puts there.** It writes the picture and its credit in one `UPDATE`, omits the key where Commons could not answer — a stored `null` is what the next run reports as a change on `metadata.imageCredit`, for the removal of a nothing — and **skips a row whose `image_url` a curator claims**, so clearing a wrong photograph is not undone by the next click. Rows kept that way are counted and named separately from "no image found", which would blame the source for a person's decision.
 
 **A curator who replaces the picture replaces the credit with it.** `PATCH /experiences/:id/edit` writes `metadata.imageCredit` in the same statement as `image_url` and claims `metadata.imageCredit` alongside it. Both halves are load-bearing: without the write, the card would go on naming the photographer of the picture that was just removed — a false claim about a real person, worse than naming nobody; without the claim, the next run would write *its* photographer's name against the curator's photograph, because the sync's metadata clause overwrites an unclaimed key and preserves a claimed one. If the new URL is a Commons file, the credit is resolved for it (one attempt, five seconds, failure is null) — outside the transaction, because a lock held across a request to somebody else's server is a lock held for as long as they feel like taking. **`metadata.imageCredit` alone is claimed only where the edit put a value in it**: claiming a `null` would be permanent, so one slow Commons response would leave a real photograph uncredited for good — and nothing overwrites the gap meanwhile, because a run writes no credit for a picture it does not own. `metadata.website` and `metadata.wikipediaUrl` are the opposite and claimed either way: **clearing** one is a decision, and leaving it unclaimed would have the next run write the source's value straight back over the removal. **Everywhere the picture is, the credit is**: the Discover detail panel, the expanded list card, the map's hover preview and Discover's hover overlay — the credit rides in the hover store's `HoverPreview` for the first of those, since it has no `Experience` in scope. One gap is deliberate and named rather than left to be discovered: the 56×56 thumbnail on a Discover card, which is too small to caption legibly and opens onto a panel that names the photographer.
 
@@ -1808,24 +1810,35 @@ satisfies. That guard now also honours a per-key claim on each of them directly 
 re-applying just that key over the source's value. `CURATED_KEY_BY_FIELD` still does
 not carry either key, though, so that fallback is still what represents them here.)
 
-`computeChangeSet` now carries that same fallback (#488) for the metadata keys
-`CURATED_KEY_BY_FIELD` does not carry: such a key, claimed individually and still present on
-the stored row, is diffed on its own, under `metadata.<key>`, and checked against that
-identical name, so a curator's claim on it reports as its own conflict rather than
-disappearing inside the catch-all `metadata` diff. (A claim whose key the row no longer
-carries gets none of that: the guard would not re-apply it either, so it falls through and is
-diffed as part of the catch-all instead, exactly like a key nobody claimed.)
-Before this, `metadataChanges` never produced a diff a per-key claim could match against — the
+`computeChangeSet` diffs **every** metadata key on its own now, under `metadata.<key>`
+(ADR-0039), so a curator's claim on one reports as its own conflict rather than disappearing
+inside a catch-all diff. Before #488 there was no diff a per-key claim could match against — the
 claimed key and whatever else changed were one `metadata` diff, which `CURATED_KEY_BY_FIELD`
 protects only as a whole-column claim — so a run that correctly kept the curator's value (the
 per-key guard above) still filed `changed_fields: metadata, curatedConflict: false`: a write
 that never happened, reported as one that did, with no conflict for a queue card to raise. (The gate
 has the same shape one layer out, and #519 is that story: a write the hold refused, filed as one the
-run made. Both are fixed the same way — the field says which refusal kept it out.) The
-keys nobody claimed individually — other than `inDanger`/`dateInscribed`, which the catch-all
-never carries, claimed or not — still fall into the catch-all and still report as applied,
-because the run did apply them; a claim on `metadata` itself is unaffected and still protects
-the whole column.
+run made. Both are fixed the same way — the field says which refusal kept it out.)
+
+**Whether a claim reaches a key is decided where the stored row can be seen**, not by the name:
+`RawDiff.protectedByClaim` carries the answer out of `metadataChanges`, because two facts about
+the row settle it and no lookup can. A claim on the whole `metadata` column protects every key
+under it, which no per-key name matches — without this the source's values would report as applied
+over a curator's claim. And a claim whose key the row no longer carries protects nothing: the
+upsert only re-applies a claimed key while `experiences.metadata ? claimed.k`, so the source's
+value lands and filing it as a conflict would offer a curator "accept" on a value already written.
+
+**The flag answers protection, not addressability, and the whole-column arm is where that costs
+something** (#729). Such a claim used to raise one conflict named `metadata`, which
+`CURATED_KEY_BY_FIELD` resolves; it now raises one per key, and all three readers look a
+conflict's claim up by name — the queue through the same map, `accept-source` and `decline-source`
+through `claimKeyFor` — which sends `metadata.website` to itself, and `['metadata']` does not
+contain it, so those conflicts reach no card and no answer. **Publishing is a fourth reader and
+loses more than the asking**: its skip list is the same lookup, so the per-key entries are not
+skipped and are written key by key over the column the claim covers, while `syncUtils.ts` still
+keeps that column whole on `curated_fields ? 'metadata'`. Reachable only for a claim made *after*
+the run, since one standing at diff time holds every key. Unreachable today, since nothing writes a
+bare `metadata` claim, and the same class as the per-key gap the paragraph below records.
 
 A claim on a key the map *does* carry — `metadata.inDanger` or `metadata.dateInscribed` — is
 not this fallback's case, and would still be reported as applied, not as a conflict:
@@ -1838,7 +1851,7 @@ misreported here, #488's exact shape, unfixed for those two keys. No writer
 produces such a claim today: `editExperience` (`curationController.ts`) adds
 `metadata.website`, `metadata.wikipediaUrl` and `metadata.imageCredit` per key — never
 `inDanger` or `dateInscribed`, the two the map carries — so this is a doc-truth gap rather
-than a live one. The credit joined that list with the picture credits and takes the same
+than a live one, tracked as #727 with its sibling above. The credit joined that list with the picture credits and takes the same
 fallback, being no more a major key than the other two. The rule holds for the keys the map does not carry: there,
 the claim key the queue reads and the claim key the upsert honours are the same string, and
 `computeChangeSet` — producing the very `changed_fields` and `curatedConflicts` the queue
@@ -2041,8 +2054,10 @@ predicate `heldDecisions.ts` owns — `heldFieldAnsweredSql` for the object's ow
 `danger-flag-disagrees-with-its-tag`, because four spellings of that rule would be how they came
 to disagree. `picture-with-nobody-credited` composes the same module and asks it a **narrower**
 question, `heldFieldRefusedSql` / `heldPartRefusedSql`: the one reader for which publishing is not
-settling, since publishing the object's `metadata` row while its picture is still open withholds
-the run's credit on purpose and the next click writes it (`data-assertions.md` says why). Sharing
+settling: on a card filed before ADR-0039, publishing the object's source-data row while its
+picture is still open withholds the run's credit on purpose and the next click writes it
+(`data-assertions.md` says why; since ADR-0039 the credit is its own row and moves with its
+picture, so the sequence needs an older card). Sharing
 the module is what lets that difference be stated once and deliberately rather than arrived at. The answer is matched **by value**, and
 the comparison stays in SQL where jsonb equality lives: a source that comes back with something
 different is asking a new question and the row returns, while one repeating itself is not heard
@@ -2188,7 +2203,7 @@ What the table decides, rather than merely draws:
   ones against `jsonEquals` through `computeChangeSet`. Relaxing either fails a test beside it,
   which is what a prose invariant could not do; both were checked by injecting the drift they
   exist for, and the pre-existing "ignores JSONB key order" case does **not** cover this — its
-  reordered keys are the major ones, compared per key, and its catch-all payload is a single key.
+  reordered keys are compared per key, each being an entry of its own since ADR-0039.
   `isEmptyValue` beside it is deliberately wider — an empty list is nothing to a person, so a
   row reads as *new* rather than *changed* — and kept apart, since the server's equality is not
   the card's to loosen.
@@ -2250,9 +2265,11 @@ What the card does that is not a free choice:
   at the endpoint: naming no contents applies the held fields, marks the row read *and* releases
   every unread point and work under it, and the label says what the click covers ("Publish the
   change and what arrived with it"). Beside it, since #722, each fact on the held table carries
-  its own answer in its own column — **publish this** and **not this**, the conflict card's shape
-  and its spanning rule, so a key inside the source's data is answered with the field it belongs
-  to. `HeldAnswer` builds the selection from the row's subject: the object's group names the
+  its own answer in its own column — **publish this** and **not this**, the conflict card's shape.
+  A key inside the source's data is a fact and carries its own pair of buttons (ADR-0039); the
+  column spans only where facts still share one answer, which is that same defect somewhere else:
+  a card filed before ADR-0039, whose keys share one field, and a language map (#728). It says how
+  many it answers there, which is the only thing on screen that says so. `HeldAnswer` builds the selection from the row's subject: the object's group names the
   field, a part's carries the pair the record identifies it by. Neither button is a primary — the
   card's premise is that readers keep what they can see until somebody says otherwise. The
   contents rows still have no per-row control: this queue counts them rather than listing ids on
@@ -2413,22 +2430,28 @@ rewritten to say otherwise. Both endpoints clear the pointer only when nothing i
 pointer exactly as every call did before; a refusal always names its rows, `declineHeldBodySchema`
 requiring at least one.
 **A picture and the credit that belongs to it are one answer**, and that is the one place a
-per-row answer is deliberately not per row. On a *part* they are two writable fields, so
-`heldSelection.ts` has each name the other: a selection reaching `image_url` reaches
-`metadata.imageCredit` with it, at both endpoints, since a coupling only publishing honoured
-would let a refusal separate what a publication cannot. On the *object* the credit has no field
-of its own — `computeChangeSet` reports it inside the `metadata` catch-all — so the rule there is
-a rule about one key, in `creditPin`/`nextMetadata`: **the stored credit is the credit of the
-stored picture**. It bites in three shapes. This call writes the picture, so the row takes the
-credit the run's `metadata` row gives it — or none, where that row drops the key: no credit beats
-the last photographer's name under a photograph they did not take. The same, where a curator has
-**refused** that row: the refused value may not be written, and the stored one names a photograph
-nobody will see any more, so the row is published with nobody credited and
-`picture-with-nobody-credited` reports it — the one place a refusal reaches what a reader sees,
-and object-only, since `PAIRED_WITH` makes a part's credit unrefusable without its picture. Or
+per-row answer is deliberately not per row. It holds at both levels now (ADR-0039): a run
+records every metadata key as a fact of its own, so the object's credit is
+`metadata.imageCredit` exactly as a part's is, and `heldSelection.ts` has each name the other —
+a selection reaching the picture reaches the credit with it, at both endpoints, since a coupling
+only publishing honoured would let a refusal separate what a publication cannot. The pairing is
+level-aware because the two levels spell the picture differently: the object's changeset field is
+`imageUrl`, a part's is its column `image_url`.
+
+Underneath it, `creditPin`/`nextMetadata` still hold the column rule — **the stored credit is the
+credit of the stored picture** — for the shapes the pairing does not reach. This call writes the
+picture and the run's own credit entry drops the key, so the stored one goes: no credit beats the
+last photographer's name under a photograph they did not take. A run that says *nothing* about the
+credit is the opposite case and the pin stays out of it — silence is the run asserting the stored
+credit, and reading it as an offer of none would delete one the source still stands behind. Or a card **filed before ADR-0039**,
+whose credit rides inside a `metadata` catch-all with no name of its own and can therefore still
+be refused while the picture lands — the row is then published with nobody credited and
+`picture-with-nobody-credited` reports it. Those cards keep standing until a run re-proposes,
+because a changeset is what happened and is never rewritten, so `creditProposal` reads the named
+entry first and falls back to the catch-all's key. Or
 the run offers a *different* picture and this call is not writing it, so the row keeps what it
-shows and the stored credit with it. Everywhere else the pin is null and the catch-all decides,
-which is not a corner but the
+shows and the stored credit with it. Everywhere else the pin is null and the credit's own entry
+decides, which is not a corner but the
 ordinary case: **1413 of the 1414 cards holding a credit hold no picture change at all**, the run
 having found the photographer for the picture the page has been showing all along (§
 `picture-with-nobody-credited` in `data-assertions.md`). A rule that fired there would delete the
@@ -2511,14 +2534,19 @@ proposed every run and applied never. For the same reason nothing held may be dr
 a value this writer cannot produce (a coordinate the changeset did not record as a pair of numbers)
 refuses the whole call rather than clearing the pointer around it.
 
-`metadata` is the one field that cannot be assigned from what the changeset carries.
-`computeChangeSet` reports it in parts and strips the individually reported keys out of both sides
-before diffing the rest, so the catch-all's `new` is the source's object *minus* those keys.
-Publishing reconstructs it: keys the catch-all's `old` does not mention were not its business and
-are kept, everything it does speak for is replaced wholesale — deletions included, since a dropped
-key is recorded only by its absence and a `||` merge would leave it proposed for ever — each
-per-key entry then decides its own key, and finally every `metadata.<key>` a curator claims is
-re-applied from what is stored, exactly as the upsert re-applies it.
+`metadata` is the one field that cannot be assigned from what the changeset carries. A run reports
+it **one key at a time** (ADR-0039) — `metadata.<key>` for every key that differs, and nothing at
+all for the keys the run computes about its own pass — so publishing starts from what is stored
+and lets each entry decide its own key, deleting where the entry's `new` is absent, since a
+dropped key is recorded only by its absence and a `||` merge would leave it proposed for ever.
+Finally every `metadata.<key>` a curator claims is re-applied from what is stored, exactly as the
+upsert re-applies it.
+
+A card **filed before ADR-0039** carries a `metadata` catch-all instead, whose `new` is the
+source's object minus the keys reported individually. Publishing reconstructs that shape too:
+keys the catch-all's `old` does not mention were not its business and are kept, everything it does
+speak for is replaced wholesale. The path stays because a changeset is what happened and is never
+rewritten — those cards stand until a run re-proposes.
 
 **A claim is skipped, not refused.** Publishing answers "may readers see this"; a
 `curated_fields` claim answers "whose text is it". Both can be open at once, so a claimed field is
