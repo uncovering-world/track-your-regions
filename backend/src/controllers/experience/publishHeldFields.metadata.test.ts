@@ -386,4 +386,91 @@ describe('the metadata column, which no single entry describes', () => {
     // re-applied from what is stored, exactly as the upsert re-applies it.
     expect(written(queries)).toEqual({ a: 1, website: 'curated' });
   });
+
+  describe('once every key is a fact of its own', () => {
+    /** A run recorded the per-key way: the credit names itself. */
+    const perKey = (row: Record<string, unknown>, proposal: unknown[]) => makeClient({
+      row: { curation_state: 'auto', pending_change_sync_log_id: 53, ...row },
+      proposal: proposal as never,
+    });
+
+    it('answers the picture and its credit together, as a work already did', async () => {
+      grantScope();
+      // The asymmetry this removes: a work's credit was a field of its own and
+      // was paired with its picture, while the object's rode inside the
+      // catch-all and could be refused while the photograph landed -- a
+      // photograph on the site under nobody's name. Now the object's credit is
+      // `metadata.imageCredit`, so naming the picture answers both.
+      const { client, queries } = perKey(
+        { metadata: { imageCredit: { author: 'The old photograph\u2019s' } }, image_url: 'https://old' },
+        [
+          { field: 'imageUrl', old: 'https://old', new: 'https://new', held: true },
+          {
+            field: 'metadata.imageCredit',
+            old: { author: 'The old photograph\u2019s' },
+            new: { author: 'JUNG Mi-gyeong' },
+            held: true,
+          },
+        ],
+      );
+
+      const res = await publish({ heldFields: ['imageUrl'], expectedSyncLogId: 53 }, client);
+
+      expect(picture(queries)).toBe('https://new');
+      expect(written(queries)).toEqual({ imageCredit: { author: 'JUNG Mi-gyeong' } });
+      // The write alone proves nothing -- the credit pin would land it anyway.
+      // What the pairing decides is whether the credit was *answered*: without
+      // it the row stays open, the pointer stands, and the card comes back
+      // asking about a credit already on the site.
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ heldLeftOpen: 0 }));
+      const answers = queries
+        .filter(q => q.sql.includes('INSERT INTO experience_held_decisions'))
+        .map(q => q.params[4]);
+      expect(answers.sort()).toEqual(['imageUrl', 'metadata.imageCredit']);
+    });
+
+    it('drops a stored credit when the picture lands and the run offers none', async () => {
+      grantScope();
+      // The run changed the photograph and fetched no credit for it -- the
+      // ordinary Commons miss. The stored credit names a photograph nobody will
+      // see, so it may not stay; nobody is credited and the catalogue check
+      // says so, which is the honest outcome.
+      const { client, queries } = perKey(
+        { metadata: { imageCredit: { author: 'The old photograph\u2019s' } }, image_url: 'https://old' },
+        [
+          { field: 'imageUrl', old: 'https://old', new: 'https://new', held: true },
+          {
+            field: 'metadata.imageCredit',
+            old: { author: 'The old photograph\u2019s' },
+            new: undefined,
+            held: true,
+          },
+        ],
+      );
+
+      await publish({ heldFields: ['imageUrl'], expectedSyncLogId: 53 }, client);
+
+      expect(picture(queries)).toBe('https://new');
+      expect(written(queries)).toEqual({});
+    });
+
+    it('names the credit on its own where the run holds no picture change', async () => {
+      grantScope();
+      // 1413 of the 1414 cards holding a credit hold no picture change at all:
+      // the run fetched the photographer of the picture the page has been
+      // showing all along, and publishing that one fact names them.
+      const { client, queries } = perKey(
+        { metadata: {}, image_url: 'https://shown' },
+        [{
+          field: 'metadata.imageCredit', old: undefined,
+          new: { author: 'Graciela Gonzalez Brigas' }, held: true,
+        }],
+      );
+
+      await publish({ heldFields: ['metadata.imageCredit'], expectedSyncLogId: 53 }, client);
+
+      expect(picture(queries)).toBeUndefined();
+      expect(written(queries)).toEqual({ imageCredit: { author: 'Graciela Gonzalez Brigas' } });
+    });
+  });
 });

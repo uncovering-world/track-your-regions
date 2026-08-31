@@ -106,14 +106,30 @@ export function heldPartRows(
  * holds a credit only with the picture it belongs to — and they are answered
  * together for the reason `accept-source` releases their claims together.
  *
- * One level up the credit has no field of its own: it lives inside the
- * `metadata` catch-all, so the rule there is a rule about one key and lives in
- * `nextMetadata` (`publishHeldFields.ts`), not here.
+ * It holds at **both** levels now. A run records every metadata key on its own
+ * (`changeSet.ts`), so the object's credit is `metadata.imageCredit` — a fact
+ * with its own two buttons, exactly like a work's — and the pairing that kept a
+ * work's photograph with its photographer keeps the object's too. Before that
+ * the object's credit rode inside the `metadata` catch-all with no name of its
+ * own, which is why the rule there had to be a rule about one key inside
+ * `nextMetadata` and why refusing the catch-all and then publishing the picture
+ * could put a photograph on the site under nobody's name.
+ *
+ * The two levels spell the picture differently — the object's changeset field is
+ * `imageUrl`, a part's is its column `image_url` — so the partner cannot be one
+ * lookup table: `metadata.imageCredit` pairs with a different name depending on
+ * which it belongs to.
  */
-const PAIRED_WITH: Record<string, string> = {
-  image_url: 'metadata.imageCredit',
-  'metadata.imageCredit': 'image_url',
-};
+const OBJECT_PICTURE = 'imageUrl';
+const PART_PICTURE = 'image_url';
+const CREDIT = 'metadata.imageCredit';
+
+function partnerOf(field: string, kind: ContentKind | null): string | undefined {
+  const picture = kind === null ? OBJECT_PICTURE : PART_PICTURE;
+  if (field === picture) return CREDIT;
+  if (field === CREDIT) return picture;
+  return undefined;
+}
 
 /**
  * Whether a selection names this row.
@@ -130,13 +146,14 @@ const PAIRED_WITH: Record<string, string> = {
  * separate what a publication cannot.
  */
 function names(selection: HeldSelection, row: HeldRowRef): boolean {
-  if (row.kind === null) return (selection.fields ?? []).includes(row.field);
-  const partner = PAIRED_WITH[row.field];
+  const partner = partnerOf(row.field, row.kind);
+  const named = (fields: readonly string[]) => fields.includes(row.field)
+    || (partner !== undefined && fields.includes(partner));
+  if (row.kind === null) return named(selection.fields ?? []);
   return (selection.parts ?? []).some(part => part.kind === row.kind
     && (part.ref ?? null) === row.ref
     && (part.name ?? null) === row.name
-    && (part.fields.includes(row.field)
-      || (partner !== undefined && part.fields.includes(partner))));
+    && named(part.fields));
 }
 
 /**
@@ -151,7 +168,7 @@ function names(selection: HeldSelection, row: HeldRowRef): boolean {
  */
 export function namedRowReached(reached: ReadonlySet<string>, row: HeldRowRef): boolean {
   if (reached.has(heldRowKey(row))) return true;
-  const partner = row.kind === null ? undefined : PAIRED_WITH[row.field];
+  const partner = partnerOf(row.field, row.kind);
   return partner !== undefined && reached.has(heldRowKey({ ...row, field: partner }));
 }
 
