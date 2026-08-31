@@ -16,6 +16,10 @@
 #                            ledger, or one just created from the canonical
 #                            schema)
 #
+# Reaches the database through a host psql where there is one, and through the
+# db container where there is not -- a fresh clone is documented as needing
+# Docker and Node and nothing else.
+#
 # Options:
 #   --database <name>      - Act on this database instead of the active one
 #   --through <NNN>        - baseline only: stop after this migration number
@@ -177,7 +181,7 @@ resolve_database() {
 # truth out of one.
 require_ledger() {
     local present
-    present="$(psql_cmd -d "$DB" -tAc "SELECT to_regclass('public.schema_migrations') IS NOT NULL" | tr -d '[:space:]')"
+    present="$(db_psql -d "$DB" -tAc "SELECT to_regclass('public.schema_migrations') IS NOT NULL" | tr -d '[:space:]')"
     if [[ "$present" != "t" ]]; then
         echo -e "${RED}Database '$DB' has no schema_migrations table.${NC}" >&2
         echo "It arrives with the canonical schema. Re-apply it, then try again:" >&2
@@ -199,7 +203,7 @@ read_ledger() {
     local rows base checksum ran
     RECORDED_CHECKSUM=()
     RECORDED_RAN=()
-    rows="$(psql_cmd -d "$DB" -tAF$'\t' -c \
+    rows="$(db_psql -d "$DB" -tAF$'\t' -c \
         "SELECT filename, checksum, ran FROM schema_migrations ORDER BY filename")"
     while IFS=$'\t' read -r base checksum ran; do
         [[ -n "$base" ]] || continue
@@ -227,9 +231,9 @@ database_holds_catalogue() {
     local present rows
     # Two statements rather than one guarded by CASE: a missing relation fails
     # at parse time, before any guard inside the same query is evaluated.
-    present="$(psql_cmd -d "$DB" -tAc "SELECT to_regclass('public.experiences') IS NOT NULL" | tr -d '[:space:]')"
+    present="$(db_psql -d "$DB" -tAc "SELECT to_regclass('public.experiences') IS NOT NULL" | tr -d '[:space:]')"
     [[ "$present" == "t" ]] || return 1
-    rows="$(psql_cmd -d "$DB" -tAc "SELECT EXISTS (SELECT 1 FROM experiences)" | tr -d '[:space:]')"
+    rows="$(db_psql -d "$DB" -tAc "SELECT EXISTS (SELECT 1 FROM experiences)" | tr -d '[:space:]')"
     [[ "$rows" == "t" ]]
 }
 
@@ -361,7 +365,7 @@ cmd_apply() {
         cat "$MIGRATIONS_DIR/$base" > "$TMP_SQL"
         printf '\n-- Recorded by scripts/db-migrate.sh\n%s\n' "$(record_sql "$base" "$checksum" TRUE)" >> "$TMP_SQL"
 
-        if psql_cmd -d "$DB" -v ON_ERROR_STOP=1 -f "$TMP_SQL"; then
+        if db_psql -d "$DB" -v ON_ERROR_STOP=1 < "$TMP_SQL"; then
             cleanup
             applied=$((applied + 1))
             echo -e "${GREEN}    applied and recorded${NC}"
@@ -434,7 +438,7 @@ cmd_baseline() {
     done
     echo "COMMIT;" >> "$TMP_SQL"
 
-    if psql_cmd -d "$DB" -v ON_ERROR_STOP=1 -q -f "$TMP_SQL"; then
+    if db_psql -d "$DB" -v ON_ERROR_STOP=1 -q < "$TMP_SQL"; then
         cleanup
         echo -e "${GREEN}Recorded ${#chosen[@]} migration(s) as baselined.${NC}"
     else
