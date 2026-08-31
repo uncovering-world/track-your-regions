@@ -2688,7 +2688,6 @@ CREATE TABLE IF NOT EXISTS treasures (
     -- (Q574422 is 68 characters), and a clipped display string is a cheaper
     -- failure than an insert that takes the whole museum down with it.
     treasure_type VARCHAR(50) NOT NULL,
-    artist VARCHAR(500),                       -- "Leonardo da Vinci"
     year INTEGER,                              -- 1503
     image_url VARCHAR(1000),                   -- Wikimedia Commons URL (not downloaded)
     sitelinks_count INTEGER NOT NULL DEFAULT 0,
@@ -2702,6 +2701,28 @@ COMMENT ON TABLE treasures IS 'Notable treasures (artworks, artifacts) that can 
 COMMENT ON COLUMN treasures.external_id IS 'Wikidata QID for the artwork/item — globally unique';
 COMMENT ON COLUMN treasures.sitelinks_count IS 'Wikipedia sitelinks count - proxy for fame/notability';
 COMMENT ON COLUMN treasures.is_iconic IS 'Whether this treasure is considered iconic/must-see';
+
+-- Every maker the source names (#720, ADR-0040).
+--
+-- A list because most works have one maker and a minority have several, and the
+-- minority is where the catalogue was wrong rather than incomplete: `Morning in
+-- a Pine Forest` is Shishkin's forest and Savitsky's bears, and a single column
+-- made which of the two a reader was told an accident of which row the endpoint
+-- answered with first. Measured on 2026-08-31, 30 of the 1232 stored works with
+-- a creator have more than one, up to the Moon Museum's six.
+--
+-- **The stored order is not the source's**, which is what the column comment
+-- below says and what the ADR measured: SPARQL exposes no statement order at
+-- all, the banded pool answers in reverse of Wikidata's own on all eight works
+-- sampled, and the narrow-class pool beside it answers in statement order — so
+-- which order a work is stored in depends on which query found it. Who leads is
+-- a curator's judgement, recorded by claiming this column.
+--
+-- NOT NULL with an empty default rather than nullable: "no maker recorded" is
+-- 114 works, and giving it a second shape would put a COALESCE in front of every
+-- read. Each element keeps `artist`'s old width, which is the label's bound.
+ALTER TABLE treasures ADD COLUMN IF NOT EXISTS artists VARCHAR(500)[] NOT NULL DEFAULT '{}';
+COMMENT ON COLUMN treasures.artists IS 'Every creator the source names for the work. The stored order is not the source''s and asserts nothing; a curator confirms it by claiming the column (ADR-0040).';
 
 CREATE INDEX IF NOT EXISTS idx_treasures_type ON treasures(treasure_type);
 CREATE INDEX IF NOT EXISTS idx_treasures_sitelinks ON treasures(sitelinks_count DESC);
@@ -2721,7 +2742,7 @@ COMMENT ON COLUMN treasures.curation_state IS 'Whether this work has been passed
 -- false, which would take the source's value on every unclaimed row. See
 -- db/migrations/027.
 ALTER TABLE treasures ADD COLUMN IF NOT EXISTS curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
-COMMENT ON COLUMN treasures.curated_fields IS 'Column names a curator has claimed on this work: name, artist, year, image_url. Not sitelinks_count or is_iconic, which are a measurement and a threshold rather than a judgement, and not external_id, which is identity.';
+COMMENT ON COLUMN treasures.curated_fields IS 'Column names a curator has claimed on this work: name, artists, year, image_url. Not sitelinks_count or is_iconic, which are a measurement and a threshold rather than a judgement, and not external_id, which is identity.';
 
 -- Junction table: many-to-many between experiences and treasures
 CREATE TABLE IF NOT EXISTS experience_treasures (
@@ -2823,7 +2844,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     curator_id INTEGER NOT NULL REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -2842,7 +2863,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited'));
 
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);
