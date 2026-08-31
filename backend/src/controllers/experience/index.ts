@@ -10,6 +10,7 @@ export * from './curationController.js';
 export * from './lifecycleController.js';
 export * from './locationStateController.js';
 export * from './locationEditController.js';
+export * from './workEditController.js';
 export * from './reviewQueueController.js';
 export * from './acceptSourceController.js';
 export * from './declineSourceController.js';

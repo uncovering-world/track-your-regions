@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { foldLabel } from '../services/sync/labelFold.js';
 import {
   isStorableHttpUrl,
   isStorableImageUrl,
@@ -179,6 +180,46 @@ export const editLocationBodySchema = z.object({
   body => body.name !== undefined || body.latitude !== undefined,
   { message: 'Nothing to change: pass a name, a coordinate, or both' },
 );
+
+/** One work of one experience: the museum a curator is acting from, and the work in it. */
+export const workEditParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  treasureId: z.coerce.number().int().positive(),
+});
+
+/**
+ * A curator's correction to one work: what it is called, who made it, when.
+ *
+ * `artists` is a list because a work often has more than one maker (#720), and
+ * an **empty** list is a value a curator can mean — "the source names someone
+ * and nobody knows who made this" — which is why it is not folded into absence.
+ * Twenty is a bound rather than a judgement: the most any stored work names is
+ * the Moon Museum's six, and the Fountain of Cybele's seven among monuments.
+ *
+ * `year` accepts null for the same reason: a date withdrawn is an answer.
+ * `image_url` is absent on purpose — see `workEditController`.
+ */
+export const editWorkBodySchema = z.object({
+  name: z.string().trim().min(1).max(500).optional(),
+  artists: z.array(z.string().trim().min(1).max(500)).max(20).optional(),
+  year: z.number().int().min(-4000).max(2200).nullable().optional(),
+}).refine(
+  body => body.name !== undefined || body.artists !== undefined || body.year !== undefined,
+  { message: 'Nothing to change: pass a name, the makers, a year, or any of them' },
+).refine(
+  // The importer dedupes by entity and by folded label, so a stored list never
+  // names the same person twice; without this an edit could store what no run
+  // can produce, and `creators()` would render it — "Edward Savage and Edward
+  // Savage". Folded, so the check is the same question the importer asks.
+  body => body.artists === undefined || !hasRepeatedLabel(body.artists),
+  { message: 'The same maker is named twice' },
+);
+
+/** Whether two entries of a list name the same person, ignoring their typesetting. */
+function hasRepeatedLabel(values: readonly string[]): boolean {
+  const seen = new Set(values.map(foldLabel));
+  return seen.size !== values.length;
+}
 
 export const markTreasureViewedBodySchema = z.object({
   experienceId: z.number().int().positive().optional(),

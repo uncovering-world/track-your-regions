@@ -30,6 +30,7 @@
 
 import { fieldLabel } from '../curation/fieldMeaning';
 import { plural } from '../../utils/plural';
+import { creators } from '../../utils/creatorList';
 import type { CurationLogEntry } from '../../api/experiences';
 
 // Six hues, and the sense each carries. The colour is the reader's first cue down a
@@ -66,6 +67,10 @@ export const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   // beside the four above, so leaving it out would have the History read "Place: source
   // dropped it" on one row and `location_edited` on the next.
   location_edited: { label: 'Place corrected', color: BLUE },
+  // The same correction to a work rather than to a point (#720). Its own words and
+  // not "Place corrected" widened: a work is shared by every museum holding it and a
+  // point is not, so a trail that said one for both would hide how far the act reached.
+  work_edited: { label: 'Work corrected', color: BLUE },
   // The same four verdicts about the whole object, and deliberately the same words
   // without the prefix: the prefix is the entire difference between a component's
   // departure and the whole site's (ADR-0026), and two sentences that differ in more
@@ -129,6 +134,11 @@ function truncate40(value: unknown): string {
     && typeof pair.lat === 'number' && typeof pair.lon === 'number') {
     return `${pair.lat}, ${pair.lon}`;
   }
+  // A work's makers are a list (#720), and `String(['a', 'b'])` is "a,b" — a shape
+  // no other line in the product uses for the same fact. Through the shared
+  // sentence, so a corrected attribution reads here as it reads on the card it
+  // was corrected from. Empty is a value a curator can mean, and says so.
+  if (Array.isArray(value)) return creators(value.map(String)) ?? '(nobody recorded)';
   // Absent rather than falsy. `metadata.inDanger` is a boolean and the counters are
   // numbers, so a source proposal this catalogue really receives — `inDanger: false`,
   // `artworkCount: 0` — read as "(empty)" under `value || …`, which is not what the row
@@ -334,6 +344,28 @@ function formatAdmission(d: Record<string, unknown>): string | null {
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
+/**
+ * A correction to one part of an object, as against a verdict about its standing.
+ *
+ * A correction has values to show, and `details` carries only the keys the edit actually
+ * changed — which is what lets the shared formatter run over it without inventing a
+ * coordinate move out of a rename, or an attribution out of one.
+ *
+ * The part is a bare id said to be one, for the reason `formatVerdict` gives: the audit
+ * row hangs off the experience and names the part in `details`, which is what stops a
+ * serial site's seven components recording seven indistinguishable rows. One function for
+ * a place and a work because the two differ in the key and the noun and in nothing else.
+ */
+function formatPartEdit(
+  d: Record<string, unknown>, idKey: string, noun: string,
+): string | null {
+  const id = d[idKey];
+  return [
+    id === undefined || id === null ? null : `${noun} #${id}`,
+    formatEditedChanges(d),
+  ].filter(Boolean).join(' — ') || null;
+}
+
 export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (!entry.details) return null;
   const d = entry.details as Record<string, unknown>;
@@ -344,15 +376,8 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (POINT_VERDICT_ACTIONS.has(entry.action) || OBJECT_VERDICT_ACTIONS.has(entry.action)) {
     return formatVerdict(d);
   }
-  // A correction rather than a verdict, so it has values to show — and `details` carries
-  // only the keys the edit actually changed, which is what lets the shared formatter run
-  // over it without inventing a coordinate move out of a rename.
-  if (entry.action === 'location_edited') {
-    return [
-      d.locationId === undefined || d.locationId === null ? null : `Place #${d.locationId}`,
-      formatEditedChanges(d),
-    ].filter(Boolean).join(' — ') || null;
-  }
+  if (entry.action === 'location_edited') return formatPartEdit(d, 'locationId', 'Place');
+  if (entry.action === 'work_edited') return formatPartEdit(d, 'treasureId', 'Work');
   if (entry.action === 'published') return formatPublished(d);
   if (entry.action === 'accepted_source') return formatAcceptedSource(d);
   if (entry.action === 'declined_source') return formatDeclinedSource(d);
