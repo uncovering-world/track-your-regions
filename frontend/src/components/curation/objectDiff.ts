@@ -2,15 +2,22 @@
  * Which keys of an object actually moved.
  *
  * A field whose value is an object has named parts, and a card that prints the object
- * whole asks a curator to find the difference by eye. On this catalogue that is the
- * common case rather than an edge: `metadata` is the most frequently changed field in
- * the sync log — 4314 entries, against 124 for every named `metadata.*` key together —
- * and 2927 of those 4314 differ in exactly one key. The whole of what run 68 proposed
- * about the Bamiyan Valley was `criteria` arriving and an `imageCredit` with it, asked
- * as eight named things on one side against six on the other (#570).
+ * whole asks a curator to find the difference by eye. That is what raised this: at the
+ * time, `metadata` was the most frequently changed field in the sync log — 4314 entries
+ * against 124 for every named `metadata.*` key together — and 2927 of those 4314
+ * differed in exactly one key. The whole of what run 68 proposed about the Bamiyan
+ * Valley was `criteria` arriving and an `imageCredit` with it, asked as eight named
+ * things on one side against six on the other (#570).
+ *
+ * **Those numbers are the *before* picture now.** Since ADR-0039 a run files no bare
+ * `metadata` entry at all and every key gets its own, so the 4314 stops growing and the
+ * 124 becomes all of it. What still reaches this function is a language map (#728) and
+ * the catch-alls filed before the change, which stand until a run re-proposes — so the
+ * splitting still earns its place, on a shrinking set rather than the common case.
  *
  * The rule here is the **shape**, not the field's name. `metadata` is what raised the
- * issue, but `nameLocal` is a language map with the same defect and the same remedy,
+ * issue; `nameLocal` is a language map with the same defect and the same remedy and is
+ * now the live one,
  * and keying the behaviour off `field === 'metadata'` would be the "field with no named
  * parts" mistake written the other way round: a name deciding what a value is.
  *

@@ -280,8 +280,13 @@ export function FactTable({ groups, labels, context, answer }: {
   );
 
   return (
+    // Capped rather than stretched to the window. Left to fill it, the proposed
+    // value took 897px on a wide screen and pushed the buttons that answer it
+    // some 750px to the right of the words they are about, across empty space --
+    // a curator reading a value has to cross the table to answer it, and a long
+    // measure is the harder half of that to read in the first place.
     <TableContainer sx={{ overflowX: 'auto' }}>
-      <Table size="small" sx={{ '& td, & th': { px: 1.5 }, minWidth: 640 }}>
+      <Table size="small" sx={{ '& td, & th': { px: 1.5 }, minWidth: 640, maxWidth: 1180 }}>
         <TableHead>
           <TableRow>
             {head('Fact')}
@@ -323,8 +328,28 @@ function GroupRows({ group, columns, context, answer }: {
             </TableCell>
             <ValueCells row={row} context={context} />
             {answer && first && (
-              <TableCell rowSpan={span} sx={{ verticalAlign: 'top', width: 160 }}>
+              // Centred rather than top-aligned wherever the cell spans more
+              // than its own row: pinned to the top, the buttons sat beside the
+              // first row and every row under it read as a fact with no answer,
+              // which is how a curator comes to think a fact cannot be answered
+              // at all. Both shapes that still span are the same defect
+              // somewhere else, not a case worth keeping: a card filed before
+              // ADR-0039, whose bare `metadata` entry splits into a row per key
+              // that all carry one field, and a language map, whose six names
+              // share one answer for the same reason (#728). Several *facts*
+              // under one answer, either way. There this caption is the only
+              // thing on screen saying so — the fallback ADR-0039 rejected as a
+              // sufficient fix, doing the job it can still do until both go.
+              <TableCell
+                rowSpan={span}
+                sx={{ verticalAlign: span > 1 ? 'middle' : 'top', width: 160 }}
+              >
                 {answer(row.field, rows.slice(i, i + span), group.subject)}
+                {span > 1 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    {`Answers all ${span}.`}
+                  </Typography>
+                )}
               </TableCell>
             )}
           </TableRow>
