@@ -62,6 +62,36 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
 -- =============================================================================
+-- Schema Migrations (which files in db/migrations/ this database has seen)
+-- =============================================================================
+-- This file is the canonical schema and is re-applied by hand as it grows; the
+-- numbered files in db/migrations/ carry the one-shot changes a database that
+-- already holds data cannot get from re-applying it. Which of those a given
+-- database has been through used to be nowhere: it was remembered, or it was
+-- not (#435, ADR-0041). This table is where it is written down, by
+-- scripts/db-migrate.sh and by nothing else.
+--
+-- ran = false records a file asserted to be applied without being executed here
+-- (npm run db:baseline) -- how a database older than the ledger states what it
+-- already carries, and how a database created from this file states that its
+-- backfills have nothing to fix. It is a person's claim rather than an
+-- observation, so db:status reports the two apart.
+--
+-- checksum is the SHA-256 of the file as it stood when it was recorded, so a
+-- migration edited afterwards can be told from one that has not moved.
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename   TEXT PRIMARY KEY,
+    checksum   TEXT NOT NULL,
+    ran        BOOLEAN NOT NULL DEFAULT TRUE,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE schema_migrations IS 'One row per file in db/migrations/ that this database has been through. Written by scripts/db-migrate.sh (#435, ADR-0041).';
+COMMENT ON COLUMN schema_migrations.checksum IS 'SHA-256 of the migration file as recorded, so a file edited afterwards can be told from one that has not moved.';
+COMMENT ON COLUMN schema_migrations.ran IS 'TRUE when this database executed the file; FALSE when a person asserted it was already applied (npm run db:baseline).';
+
+-- =============================================================================
 -- Administrative Divisions (GADM boundaries)
 -- =============================================================================
 -- Stores official GADM boundaries with pre-simplified geometries for different
