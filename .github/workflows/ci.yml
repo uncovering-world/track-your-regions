@@ -247,8 +247,12 @@ jobs:
       - name: Run E2E smoke suite
         run: npm run test:e2e:smoke
 
+      # `always()`, not `failure()`: a spec that passes on retry is flaky and
+      # no longer fails the job (#447), so on a `failure()` condition the one
+      # run holding the failed attempt's trace, screenshot and video would be
+      # the one that threw them away. The report is small and kept for a week.
       - name: Upload Playwright report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
