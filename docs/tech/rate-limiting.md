@@ -247,3 +247,21 @@ router.use(authenticatedLimiter);
 - Legacy `X-RateLimit-*` headers are disabled
 - Keying is IP-based (default `express-rate-limit` behavior via `req.ip`)
 - In-memory store (default); consider Redis store for multi-instance deployments
+- **Two read tiers take their ceiling from the environment**, because one IP is
+  one visitor everywhere except the isolated E2E stack, where every request
+  comes from a single browser container and the whole smoke suite shares one
+  budget. `RATE_LIMIT_PUBLIC_READ_MAX` and `RATE_LIMIT_SEARCH_MAX` are read once
+  at import by `readCeiling()`, and **only a positive integer moves them** —
+  unset, empty, fractional, zero or unparseable is the production number, so an
+  environment nobody configured is the strict one. `docker-compose.test.yml` is
+  the only place that raises them, and it raises rather than removes them so a
+  runaway loop is still stopped by something. `rateLimiter.test.ts` pins the
+  fallbacks, the wiring, and that no auth or write tier reads the environment at
+  all.
+
+  Worth knowing for the next lane failure: exhausting this budget does not look
+  like a rate-limit error anywhere. `GET /api/world-views` answers 429, the
+  client reads the rejection as an empty list, and the app draws its "fresh
+  installation" screen with no world view to adopt — which reads as a seeding
+  problem. Suspect the budget when a whole suite's first navigation stops
+  working and nothing in the failure names a limit (#592).
