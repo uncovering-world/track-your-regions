@@ -649,6 +649,47 @@ npm run security:all   # check + slow Semgrep (Node + Python) + Trivy image scan
 npm run test:e2e:smoke # isolated test stack, seeded fixture, Playwright smoke
 ```
 
+### Reading a smoke result
+
+The smoke lane gives a spec that fails a second attempt before calling it
+failed — `retries: 1`, and the `e2e` service sets `CI=1`, so that holds on a
+developer's machine exactly as on a runner. A spec that passes runs once.
+What the wrapper then prints says which of three things happened, and only
+one of them is about the branch:
+
+- **PASS**, with a `Flaky:` line and the specs named under
+  *Flaky (passed on retry)* — a spec failed its first attempt and passed the
+  second. The run is green: a retry-pass is not a failed gate (#447). What
+  the **failed** attempt did is what is kept — `trace: 'retain-on-first-failure'`
+  records every first attempt and throws the recording away when it passed —
+  so `frontend/test-results` and `frontend/playwright-report` hold that
+  attempt's trace, screenshot and video, and CI keeps both directories as the
+  `playwright-report` artifact on **every** run, green ones included. Open the
+  trace with `npx playwright show-trace <trace.zip>`. One spec flaking under a
+  parallel Docker build is the box; the same spec flaking on an idle machine
+  is a defect — chase it there, not in the gate.
+- **FAIL** — a spec never passed in two attempts, or none ran at all. A suite
+  whose specs all skip is a failure too: Playwright exits 0 for it, so the
+  verdict rests on specs that actually ran.
+- **Failed to prepare test environment** — no spec ran, because the stack
+  never got ready. Three things can end it there, and the message is the same
+  for all three: the image build, a readiness probe that went unanswered for
+  180 s, and the fixture seed. The build and the seed leave the failing
+  command's own output immediately above the message; the readiness one is
+  the case that prints `docker compose ps` and the last 200 lines of that
+  service's own log, which is what says whether it was slow, crashed, or
+  never bound the port. That is the state *at the moment of the timeout*, and
+  on CI it is the only copy there will be — the runner is discarded. Locally
+  the run exits before the cleanup step, so the stack is still up whichever
+  of the three it was: `docker compose -p tyr-test logs <service>` gives the
+  whole log rather than the printed 200 lines, and `npm run test:stack:down`
+  puts it away afterwards.
+
+The per-spec budget is 120 s against 14–47 s measured on an idle machine
+(`frontend/playwright.config.ts` carries the numbers). Nearly all of that is
+the app load every spec pays, plus the tracing above; a spec that approaches
+the budget is describing the load, not its own assertions.
+
 Neither tier above touches the **rows**. Where a change writes catalogue data —
 a sync service, the location writer, region placement — the question "did the
 run write rows that should not exist" is asked of a database rather than of a
