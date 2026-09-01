@@ -163,6 +163,22 @@ function sameMetadataValue(key: string, before: unknown, after: unknown): boolea
  */
 export const METADATA_CLAIM_PREFIX = 'metadata.';
 
+/**
+ * The prefix a language of the local-names map is reported under (`nameLocal.ko`).
+ *
+ * `name_local` is one jsonb column and used to be reported as one entry carrying
+ * the whole map, so a run proposing six local names for Getbol asked six facts
+ * with one pair of buttons — the defect ADR-0039 removed for `metadata`, one
+ * column over (#728). Each language that differs is its own entry now, and
+ * publishing merges them back onto the stored map exactly as it does for
+ * metadata keys.
+ *
+ * Shared with `publishHeldFields.ts`, which has to recognise the family to know
+ * it cannot be written by assignment, for the same reason
+ * `METADATA_CLAIM_PREFIX` is shared: two spellings of one prefix can drift.
+ */
+export const NAME_LOCAL_CLAIM_PREFIX = 'nameLocal.';
+
 /** Snapshot fields that are `major` when they differ. `location` is synthetic. */
 const MAJOR_FIELDS = new Set(['name', 'location', 'countryCodes']);
 
@@ -187,17 +203,52 @@ export const CURATED_KEY_BY_FIELD: Record<string, string> = {
 };
 
 /**
+ * Families of per-part entries that one **whole-column** claim protects, and the
+ * column each shares. Keyed by the name before the dot, so `nameLocal.ko` and
+ * `nameLocal.en` both resolve to the column the upsert actually guards.
+ *
+ * `metadata` is deliberately not here, and the asymmetry is the point.
+ * `editExperience` claims metadata **per key** — `metadata.website` is a claim
+ * name in its own right and no column at all (#488) — so a family rule sending
+ * every `metadata.*` to `metadata` would answer a whole-column question of a
+ * per-key claim. Nothing claims one language of `name_local`: the upsert's guard
+ * is `curated_fields ? 'name_local'` and keeps or replaces the map whole
+ * (`syncUtils.ts`), and no editor writes the column at all, so the claim on a
+ * language is the claim on all of them.
+ *
+ * Read in two runtimes. `claimKeyFor` below is one; the queue's conflict SQL is
+ * the other, and takes this object as a parameter rather than spelling the rule
+ * out again — see `reviewQueueController.ts`.
+ */
+export const CLAIM_KEY_BY_FAMILY: Record<string, string> = {
+  nameLocal: 'name_local',
+};
+
+/**
  * The `curated_fields` entry that protects a given field.
  *
- * The map above answers this for every field that has a column, and the
- * fallback answers it for the ones that do not: `editExperience` claims
- * `metadata.website` per key, and no column matches that name (#488). One
- * function rather than the same `?? field` written out at each site, because
+ * Three answers in order. The map above answers it for every field that has a
+ * column. The families answer it for the per-part entries of a column claimed
+ * whole, which is what makes a `name_local` claim reach `nameLocal.ko` (#728) —
+ * without it the diff would call the source's local name applied while the
+ * upsert kept the curator's, and publishing would write over the claimed column.
+ * The fallback answers it for a name that is its own claim: `editExperience`
+ * claims `metadata.website` per key, and no column matches that name (#488).
+ *
+ * One function rather than the same lookup written out at each site, because
  * every caller — the diff below, the queue's conflict lookup, the publish
  * writer — has to reach the same key or one of them protects nothing.
  */
 export function claimKeyFor(field: string): string {
-  return CURATED_KEY_BY_FIELD[field] ?? field;
+  // The family is looked up off the name before the first dot whether or not
+  // there is one, which is what `split_part(field, '.', 1)` answers in the SQL
+  // mirror. Guarding on the dot here would make the two disagree about a bare
+  // field name that is also a family key -- unreachable, since every such name
+  // is in the map above and answered before this line, but the two have to be
+  // the same function and not two functions that happen to agree.
+  return CURATED_KEY_BY_FIELD[field]
+    ?? CLAIM_KEY_BY_FAMILY[field.split('.')[0]]
+    ?? field;
 }
 
 interface RawDiff {
@@ -456,6 +507,47 @@ function metadataChanges(
   return changes;
 }
 
+/**
+ * The local names are diffed **one language at a time**: every language that
+ * differs is reported under its own name, `nameLocal.<lang>` (#728).
+ *
+ * The same rule ADR-0039 applied to `metadata`, and for the same reason — an
+ * answer is addressed to an entry, so a map reported whole is six facts under
+ * one pair of buttons. Run 68 proposes six local names for Getbol, Korean Tidal
+ * Flats (Phase II); a curator who wants the corrected Korean name had to take
+ * the English one with it, or refuse both.
+ *
+ * What each entry says is what the card used to work out for itself: the card
+ * split the whole-map entry with `changedKeys` (`objectDiff.ts`), on the same
+ * equality, in the same alphabetical order. So a run files what a reader was
+ * already shown, and the answer now reaches the row rather than the column.
+ * Alphabetical because a jsonb column does not keep the order the keys went in,
+ * and the same card has to read the same way twice.
+ *
+ * `jsonEquals` per language rather than `textEquals`, because that is what the
+ * card compared and what the two sides are pinned to (`objectDiff.ts` §
+ * `valuesEqual`); the two agree on a string, and only this one is right about a
+ * value that is not one.
+ */
+function nameLocalChanges(
+  before: Record<string, string> | null,
+  incoming: Record<string, string> | null,
+): RawDiff[] {
+  const left: Record<string, unknown> = before ?? {};
+  const right: Record<string, unknown> = incoming ?? {};
+  const changes: RawDiff[] = [];
+  for (const language of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
+    if (jsonEquals(ownValue(left, language), ownValue(right, language))) continue;
+    changes.push({
+      field: `${NAME_LOCAL_CLAIM_PREFIX}${language}`,
+      old: ownValue(left, language),
+      new: ownValue(right, language),
+      significance: 'minor',
+    });
+  }
+  return changes;
+}
+
 function collectDifferences(
   before: ExperienceSnapshot,
   incoming: ExperienceSnapshot,
@@ -470,9 +562,7 @@ function collectDifferences(
     }
   }
 
-  if (!jsonEquals(before.nameLocal, incoming.nameLocal)) {
-    diffs.push({ field: 'nameLocal', old: before.nameLocal, new: incoming.nameLocal, significance: 'minor' });
-  }
+  diffs.push(...nameLocalChanges(before.nameLocal, incoming.nameLocal));
 
   // Tags are compared nowhere. The import derives them from facts it also
   // stores by name -- `criterion_ii` from the criteria string, `in_danger`

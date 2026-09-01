@@ -281,9 +281,38 @@ describe('getReviewQueue', () => {
     // 'shortDescription' is claimed as 'short_description', and
     // 'metadata.inDanger' as plain 'metadata' — not a mechanical case change
     const [, conflictParams] = callMatching("'conflict' AS kind");
-    const map = JSON.parse(String(conflictParams.at(-4)));
+    const map = JSON.parse(String(conflictParams.at(-5)));
     expect(map.shortDescription).toBe('short_description');
     expect(map['metadata.inDanger']).toBe('metadata');
+  });
+
+  it('resolves a per-language entry to the column its claim is stored under', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // The second lookup, and the reason it exists: a run records one language at
+    // a time (#728), and no name of the form `nameLocal.<lang>` is in the map
+    // above or ever could be — the languages are the source's. The claim they
+    // all fall under is `name_local`, which the upsert honours whole, so without
+    // this arm such a conflict would be protected and asked nowhere.
+    const [, conflictParams] = callMatching("'conflict' AS kind");
+    const families = JSON.parse(String(conflictParams.at(-4)));
+    expect(families.nameLocal).toBe('name_local');
+    // And `metadata` is deliberately absent: its claims are per key, so a family
+    // rule over it would answer a whole-column question of `metadata.website`.
+    expect(families.metadata).toBeUndefined();
+  });
+
+  it('reads the claim key the way claimKeyFor does, in the same order', async () => {
+    await getReviewQueue({ user: ADMIN, query: {} } as never, makeRes() as never);
+
+    // The SQL is `claimKeyFor` in another runtime, and the two are pinned by
+    // shape rather than by structure — nothing can import one into the other
+    // (#527). Map first, then the family off the name before the dot, then the
+    // field itself: any other order sends `metadata.inDanger` somewhere else.
+    const [conflictSql] = callMatching("'conflict' AS kind");
+    const claimKey = /COALESCE\(\$\d+::jsonb->>\(f->>'field'\), \$\d+::jsonb->>split_part\(f->>'field', '\.', 1\), f->>'field'\)/;
+    // Both readers of it: the claim's author, and whether the claim stands.
+    expect(conflictSql.match(new RegExp(claimKey, 'g'))).toHaveLength(2);
   });
 
   it('names who claimed each field and when, by the key the claim is stored under', async () => {
@@ -307,7 +336,7 @@ describe('getReviewQueue', () => {
     // museum's name and the card named a curator who never claimed it.
     expect(conflictSql).toContain("log.action = 'location_edited'");
     expect(conflictSql).toContain("(log.details->>'anchorMoved')::boolean");
-    expect(conflictSql).toMatch(/log\.details \? COALESCE\(\s*\$\d+::jsonb->>\(f->>'field'\), f->>'field'\)/);
+    expect(conflictSql).toMatch(/log\.details \? COALESCE\(\$\d+::jsonb->>\(f->>'field'\),/);
     // Newest wins, and `created_at` alone does not decide it: two edits in one
     // request share a timestamp, so the id breaks the tie the way it does
     // everywhere else in this file.

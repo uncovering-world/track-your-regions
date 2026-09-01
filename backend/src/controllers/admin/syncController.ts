@@ -410,14 +410,14 @@ export async function getSyncLogChanges(req: Request, res: Response): Promise<vo
   // (`changeSet.ts` weighs `changedFields`, `curatedConflicts` and `heldFields`), so
   // without the third term a row is dropped exactly when a component arrived *beside*
   // a minor edit — UNESCO 1239 gaining Waldsiedlung Zehlendorf in a run that also
-  // rewrote its `nameLocal` — and that row is the only record anywhere that the
+  // rewrote its `nameLocal.en` — and that row is the only record anywhere that the
   // component arrived (ADR-0026).
   //
   // The fourth term is the same shape for a curator's claim (#516). A row where the
   // source ran into one is `conflict` only when nothing else on it moved; when the
   // run also applied an ordinary edit it is `updated`, and `significance` weighs the
   // refused field like any other — so a claimed `metadata.website` or
-  // `shortDescription` beside an applied `nameLocal` computes 'minor' and the first
+  // `shortDescription` beside an applied `nameLocal.en` computes 'minor' and the first
   // three terms drop it. That row is the one in the run where a machine and a person
   // disagreed, which is exactly what an admin opens the report to find. The
   // containment test is the idiom the queue and the two verdict endpoints already
